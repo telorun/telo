@@ -38,7 +38,7 @@ const CONSUMER_DEF = {
 } as unknown as ResourceManifest;
 
 /** An Application that starts `loopback`, so reachability is satisfied. */
-function app(targets: unknown[] = [{ kind: "OAuthClient.RedirectListener", name: "loopback" }]) {
+function app(targets: unknown[] = [makeTaggedSentinel("ref", "loopback")]) {
   return {
     kind: "Telo.Application",
     metadata: { name: "TestApp" },
@@ -168,10 +168,10 @@ describe("reading observed state of a resource nothing can start", () => {
       kind: "Run.Sequence",
       metadata: { name: "login" },
       steps: [
-        { name: "listen", invoke: { kind: "OAuthClient.RedirectListener", name: "loopback" } },
+        { name: "listen", invoke: makeTaggedSentinel("ref", "loopback") },
         {
           name: "use",
-          invoke: { kind: "Consumer.Client", name: "browser" },
+          invoke: makeTaggedSentinel("ref", "browser"),
           inputs: { url: makeTaggedSentinel("cel", "resources.loopback.status.redirectUri") },
         },
       ],
@@ -179,7 +179,7 @@ describe("reading observed state of a resource nothing can start", () => {
 
     expect(
       analyze(
-        [LISTENER_DEF, CONSUMER_DEF, sequence, app([{ kind: "Run.Sequence", name: "login" }]), listener, login],
+        [LISTENER_DEF, CONSUMER_DEF, sequence, app([makeTaggedSentinel("ref", "login")]), listener, login],
         "OBSERVED_STATE_NEVER_RUN",
       ),
     ).toEqual([]);
@@ -400,7 +400,7 @@ describe("status: inherited from a Telo.Abstract", () => {
   } as unknown as ResourceManifest;
 
   const manifests = [
-    { kind: "Telo.Application", metadata: { name: "App" }, targets: [{ kind: "Backend.Loopback", name: "loopback" }] },
+    { kind: "Telo.Application", metadata: { name: "App" }, targets: [makeTaggedSentinel("ref", "loopback")] },
     consumerImport,
     backendImport,
     contract,
@@ -464,7 +464,7 @@ describe("status: on a cross-module exported instance", () => {
     {
       kind: "Telo.Application",
       metadata: { name: "App" },
-      targets: [{ kind: "ObservedLib.RedirectListener", name: "exported", alias: "Lib" }],
+      targets: [makeTaggedSentinel("ref", "Lib.exported")],
     },
     libImport,
     library,

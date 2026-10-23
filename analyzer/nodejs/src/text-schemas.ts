@@ -31,6 +31,7 @@ import {
   TEXT_VALUES_FOR_ANNOTATION,
   type ValuePath,
 } from "./text-slot.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 export type SchemaRole = "kind" | "data" | "params";
 
@@ -58,7 +59,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 function inlineSchemaOf(value: unknown): Record<string, unknown> | undefined {
   if (!isPlainObject(value)) return undefined;
   if (typeof value.kind === "string") {
-    return typeof value.name === "string" || !isPlainObject(value.schema) ? undefined : value.schema;
+    return isResolvedReference(value) || !isPlainObject(value.schema) ? undefined : value.schema;
   }
   return value;
 }

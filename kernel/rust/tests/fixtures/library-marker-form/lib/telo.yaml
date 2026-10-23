@@ -1,0 +1,39 @@
+kind: Telo.Library
+metadata:
+  name: LibraryMarkerForm
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Api
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/telorun-console?local_path=../../../../../../modules/console/rust#writeline_controller
+schema:
+  type: object
+---
+kind: Telo.Definition
+metadata:
+  name: Server
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/telorun-console?local_path=../../../../../../modules/console/rust#writeline_controller
+schema:
+  type: object
+  properties:
+    mounts:
+      type: array
+      items:
+        type: object
+        properties:
+          mount: { x-telo-ref: Self.Api }
+---
+kind: Self.Api
+metadata:
+  name: usersApi
+---
+kind: Self.Server
+metadata:
+  name: server
+mounts:
+  - mount: { __ref: true, kind: Self.Api, name: usersApi }

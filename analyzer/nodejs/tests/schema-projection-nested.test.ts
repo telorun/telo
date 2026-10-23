@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import {
@@ -148,10 +149,10 @@ describe("a nested projection", () => {
       kind: "run.Sequence",
       metadata: { name: "main", module: "app" },
       steps: [
-        { name: "pick", invoke: { kind: "extract.Extract", name: "page" } },
+        { name: "pick", invoke: makeTaggedSentinel("ref", "page") },
         {
           name: "use",
-          invoke: { kind: "extract.Extract", name: "page" },
+          invoke: makeTaggedSentinel("ref", "page"),
           inputs: {
             name: read("steps.pick.result.fields.cards[0].name"),
             typo: read("steps.pick.result.fields.cards[0].nmae"),

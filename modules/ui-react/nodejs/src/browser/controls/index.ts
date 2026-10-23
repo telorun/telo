@@ -1,5 +1,5 @@
 /**
- * The built-in controls: the reference implementation of `ui_react_controls-1`,
+ * The built-in controls: the reference implementation of `ui_react_controls-2`,
  * drawn wherever no theme replaces a control. This directory is the only part
  * of the renderer that reaches the interactive primitives, the icon set and the
  * browser's own entry elements.
@@ -11,8 +11,10 @@ import { DateInput, DateTimeInput, NumberInput, TextArea, TextInput, TimeInput }
 import { Icon } from "./icon.js";
 import { Listbox } from "./listbox.js";
 import { Menu } from "./menu.js";
+import { Navigation } from "./navigation.js";
 import { Confirmation, Dialog, Drawer, Popover } from "./overlays.js";
 import { MultiSelect, Select } from "./select.js";
+import { Tabs } from "./tabs.js";
 import { TagsInput } from "./tags-input.js";
 import { Tooltip } from "./tooltip.js";
 
@@ -38,5 +40,7 @@ export const BUILT_IN_CONTROLS: Controls = {
   Confirmation,
   Menu,
   Tooltip,
+  Navigation,
+  Tabs,
   Icon,
 };

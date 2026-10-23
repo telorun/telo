@@ -16,14 +16,16 @@ policy:
 | Kind | Keys (default) | The controls sit |
 | --- | --- | --- |
 | `Ui.AbovePlacement` | `compact` | in a row above the content |
-| `Ui.AsidePlacement` | `side`: `start` \| `end` (`start`); `compact` | in a column beside the content, at that edge |
+| `Ui.AsidePlacement` | `side`: `start` \| `end` (`start`); `compact` (`{ kind: Ui.CollapsiblePlacement }`) | in a column beside the content, at that edge |
 | `Ui.CollapsiblePlacement` | `open`: boolean (`false`) | above the content, folded behind a toggle |
 | `Ui.OverlayPlacement` | `surface`, required | in an overlay opened from a button |
 
 Left out, `placement` is exactly `{ kind: Ui.AbovePlacement }`.
 
 `Ui.FilterPlacement` is the abstract all four extend, and what the bar's slot
-is typed by.
+is typed by. `Ui.FoldingFilterPlacement` is the narrower abstract
+`Ui.CollapsiblePlacement` and `Ui.OverlayPlacement` extend, and what every
+`compact` slot is typed by.
 
 ## Folding
 
@@ -54,8 +56,15 @@ toggle.
 
 `compact` on `Ui.AbovePlacement` and `Ui.AsidePlacement` names the placement
 used instead below the application's breakpoint. It takes one that folds — a
-`Ui.CollapsiblePlacement` or a `Ui.OverlayPlacement` — and neither of those
-has a `compact` of its own, so there is nothing to nest.
+`Ui.FoldingFilterPlacement`: a `Ui.CollapsiblePlacement`, a
+`Ui.OverlayPlacement`, or a kind of your own extending it, accepted with no
+change to `ui` — and neither built-in one has a `compact` of its own, so there
+is nothing to nest.
+
+A column beside the content leaves no room for the content on a narrow
+viewport, so a `Ui.AsidePlacement` always folds there: left out, its `compact`
+is exactly `{ kind: Ui.CollapsiblePlacement }`, folded to begin with. A
+`Ui.AbovePlacement` has no such default — a row above the content only wraps.
 
 ## Refused
 
@@ -65,8 +74,9 @@ has a `compact` of its own, so there is nothing to nest.
 | a `Ui.AbovePlacement` or `Ui.AsidePlacement` at `compact` | `REFERENCE_KIND_MISMATCH` |
 | a panel, an inline or a page surface at `Ui.OverlayPlacement.surface` | `REFERENCE_KIND_MISMATCH` |
 
-A bar that pins a field while nothing folds is
-[warned](filters.md#warned), on the placement that does not fold.
+A bar that pins a field while nothing ever folds — a `Ui.AbovePlacement`
+with no `compact`, or no placement at all — is [warned](filters.md#warned).
+An aside bar always folds on a narrow viewport, so it is never warned.
 
 ## What a renderer receives
 
@@ -76,8 +86,9 @@ member filled:
 | `type` | Members |
 | --- | --- |
 | `above` | `compact?` |
-| `aside` | `side`, `compact?` |
+| `aside` | `side`, `compact` |
 | `collapsible` | `open` |
 | `overlay` | `surface` — a [`Ui.OverlaySpec`](surfaces.md#what-a-renderer-receives) |
 
-`compact`, where present, is a `collapsible` or an `overlay` branch.
+`compact`, where present — always on `aside` — is a `collapsible` or an
+`overlay` branch.

@@ -191,11 +191,13 @@ stylesheets:
   - !module-path ./ui.css
 compactBelow: 48rem
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Todos
     children:
       - { type: composite, ref: !ref todoFilters }
-  - path: /done
+  - kind: Ui.Page
+    path: /done
     title: Done
     children:
       - { type: text, text: Finished work, style: heading }
@@ -208,11 +210,13 @@ pages:
           columns:
             - value: !cel "row.text"
             - value: !cel "row.dueOn"
-  - path: /all
+  - kind: Ui.Page
+    path: /all
     title: All columns
     children:
       - { type: composite, ref: !ref allColumns }
-  - path: /variants
+  - kind: Ui.Page
+    path: /variants
     title: Variants
     children:
       - type: composite
@@ -221,11 +225,13 @@ pages:
       - type: composite
         ref: !ref publicColumns
         when: !cel "!('x-role' in request.headers && request.headers['x-role'] == 'staff')"
-  - path: /new
+  - kind: Ui.Page
+    path: /new
     title: New todo
     children:
       - { type: composite, ref: !ref todoForm, style: strong }
-  - path: /components
+  - kind: Ui.Page
+    path: /components
     title: Components
     children:
       - type: columns
@@ -251,7 +257,8 @@ pages:
           source: { basePath: /api/notes }
           columns:
             - value: !cel "row.text"
-  - path: /gallery
+  - kind: Ui.Page
+    path: /gallery
     title: Gallery
     children:
       - type: composite
@@ -276,7 +283,8 @@ title: Plain
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Home
     children:
       - { type: text, text: Nothing else }
@@ -296,7 +304,8 @@ theme:
   controls:
     - !ref Widgets.controls
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: New todo
     children:
       - { type: composite, ref: !ref todoForm }

@@ -26,7 +26,8 @@ header:
         at: !cel "query.tab"
         matches: { const: one }
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Home
     query:
       tab: { type: string }

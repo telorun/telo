@@ -1,0 +1,5 @@
+modules:
+  modules/ui-react: Fixed
+body: "One UiReact.App mounted on two servers answers a page request on each: the page
+  is evaluated in the request scope of the server the request reached, where every
+  server but the last mounted answered 500."

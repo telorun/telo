@@ -167,7 +167,8 @@ the charter describes it, with the docs, changesets and `CLAUDE.md` / authoring-
 `CLAUDE.md` makes mandatory for it. Where the charter puts shared machinery in one
 implementation (the Node kernel's bundle loading shared with the controller host), moving that
 code so both use it is within the exception, provided the Node kernel's behaviour does not
-change — `pnpm run test` staying exactly as green is the proof.
+change — the moved code's own manifest and unit tests staying exactly as green locally, and the
+PR's CI over everything else, are the proof.
 
 Surface the charter does not name goes to `decider`. When its answer is not major, the surface is
 added to *Charter surface* with the decision, and the slice builds it. When parity cannot be
@@ -230,11 +231,13 @@ Run the architect's phases on the slice, with these differences:
   stated as behaviour, as the architect requires. A build-order slice may turn no test green;
   its acceptance is then the step's behaviour as the charter states it, proved by its own tests
   and conformance vectors, and the no-regression rule still holds.
-- **Gates.** Every card runs what CI runs on Rust (`cargo check --workspace --locked` with each
-  of `--features telorun-sdk/napi` and `--features telorun-sdk/native`, then `cargo test
-  --workspace --locked`), `pnpm run test` (Node must stay exactly as green as it was), the
-  sweep filtered to the slice's tests, and `node scripts/check-changeset-status.mjs`. The last
-  card also runs the full sweep: no regressions.
+- **Gates.** Never a whole suite — the PR's CI runs those. Every card runs `cargo check
+  --workspace --locked` with each of `--features telorun-sdk/napi` and
+  `--features telorun-sdk/native`, then `cargo test -p <crate> --locked` for each crate it
+  touched; the Node manifest and unit tests of any module or package it touched (Node must stay
+  exactly as green as it was there); the sweep filtered to the slice's tests; and
+  `node scripts/check-changeset-status.mjs`. The last card also runs the full sweep: no
+  regressions.
 - **Headless.** A tick is a print-mode process. Spawn every subagent in the foreground. When
   `SendMessage` to a card's builder is unavailable, spawn a fresh builder with the card's `brief.md`
   and `builder.md` instead — the architect's fallback for a lost builder.

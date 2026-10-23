@@ -1,0 +1,4 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer says a name in an inline declaration is configuration for a kind that
+  declares a name field, as { kind: UiLucide.Icon, name: house }."

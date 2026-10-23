@@ -17,6 +17,22 @@ export type { AssetFile } from "./composite.js";
 export { deliveredMenu, placed, presented, type AuthoredNode, type RootShapes } from "./node-resolution.js";
 export { modelShape, type Shape, type ShapeReader } from "./model-schema.js";
 export { placedRowAction } from "./row-actions.js";
+// What a renderer's controller hosts a page with: the page it invokes per
+// request, the nodes of its own header prepared and delivered the same way, the
+// request headers they read, and the navigation with every default filled.
+export { errorNode, RequestNodes, type EvaluatedNode } from "./delivered-nodes.js";
+export { headerReads, unionReads, type HeaderReads } from "./request-header-reads.js";
+export { isPage, type PageDocument, type PageInstance, type PageReading, type PageRequest } from "./page-controller.js";
+export {
+  deliveredNavigation,
+  preparedNavigation,
+  type IconAddress,
+  type NavigationConfig,
+  type NavigationEntrySpec,
+  type NavigationPlacementSpec,
+  type PreparedNavigation,
+} from "./navigation.js";
+export { isIcon, type IconFile } from "./icon.js";
 // How a renderer's controller sends the texts of what `ui` provides: each text
 // of a `Ui.SpecNode` found by following its schema and translated, and the
 // renderer's own words.
@@ -28,6 +44,7 @@ export { DESIGN_TOKENS, type DesignTokenName } from "./design-tokens-controller.
 
 export * as WordsController from "./words-controller.js";
 export * as ViewController from "./view-controller.js";
+export * as PageController from "./page-controller.js";
 export * as DataController from "./data-controller.js";
 export * as TableController from "./table-controller.js";
 export * as FormController from "./form-controller.js";
@@ -59,3 +76,10 @@ export {
   OverlayPlacementController,
 } from "./filter-placement.js";
 export { LocalStoreController, SessionStoreController } from "./state-store.js";
+export {
+  HeaderNavigationController,
+  OverlayNavigationController,
+  SidebarNavigationController,
+  TabBarNavigationController,
+} from "./navigation.js";
+export { FileIconController } from "./icon.js";

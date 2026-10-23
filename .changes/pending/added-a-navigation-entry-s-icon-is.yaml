@@ -1,0 +1,15 @@
+modules:
+  modules/ui-react: Added
+body: "A navigation entry's icon is drawn as the glyph part: the application serves the
+  icon's file under its content digest, refusing one that is not an SVG, PNG or WebP
+  image with ERR_UI_ICON_FORMAT_UNKNOWN when it starts, and the glyph is an empty
+  element masked by that file over currentColor (--ui-react-glyph), so it takes the
+  colour of the entry's text and none of the file's markup enters the page. Navigation's
+  entries take an optional icon element, drawn before the label in a row, a column and a
+  panel and in a rail in place of the first letter, which a vector pins; glyph joins the
+  part list with background-color and mask-image reserved, the sidebar and tab-bar
+  scenes carry icons, and the default theme sizes the glyph and stacks a tab's glyph
+  over its text. A vector host turns an element spec at any depth of a prop into an
+  element (withElements, exported by @telorun/ui-react-contract). Breaking for a theme
+  of another module: it styles glyph; and for a controls set implementing Navigation: it
+  draws an entry's icon."

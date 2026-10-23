@@ -43,3 +43,12 @@ content:
         edit:
           surface: { kind: Ui.Panel, address: { name: crudTask } }
           unsaved: confirm
+---
+# The page every application lists at /crud, placing the view.
+kind: Ui.Page
+metadata:
+  name: crudScreen
+path: /crud
+title: CRUD
+children:
+  - { type: composite, ref: !ref crudPage }

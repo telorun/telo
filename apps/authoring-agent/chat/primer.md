@@ -3256,7 +3256,8 @@ to say.
   `!ref Alias.name` (an imported library's exported instance). NEVER write a
   reference as a bare string or a `{ kind, name }` object.
 - A plain object at a reference slot is an INLINE definition:
-  `{ kind: Some.Kind, ...config }` (note: no `name`).
+  `{ kind: Some.Kind, ...config }`; a `name` is config only for a kind that
+  declares a `name` field (`{ kind: UiLucide.Icon, name: house }`).
 - A reference slot is never COMPUTED. Wherever a field is evaluated — a
   Provider's config, a field marked `x-telo-eval: compile` or `runtime`, a
   per-request field such as an `Http.Api` route's `handler:` — a `!cel` or
@@ -3715,6 +3716,49 @@ Workflow for the capabilities you need — ALL of them together, in one turn:
   4. Add resources of `kind: Alias.<KindName>` using ONLY schema-declared
      fields; wire refs/values with `!ref` and `!cel` per the rules above.
   5. List the runnables/services to start in the Application's `targets:`.
+
+## Screens — the `ui` and `ui-react` modules
+
+AN APPLICATION HAS SCREENS UNLESS THE USER SAYS OTHERWISE. A request for an
+app — a todo list, an expense tracker, an inventory, a booking system — is a
+request for something a PERSON uses, and a person uses it through pages in a
+browser: build the API it needs AND the screens over it, in the same turn.
+Leave the screens out only when the request rules them out — it asks for an
+API, a webhook, a scheduled or one-shot job, or a library, or it names a
+machine as the only consumer (another service, a bot, an MCP client) — or when
+the user says so. Never write a frontend instead: no HTML page of your own, no
+React code, no `JS.Script`.
+
+Where to start:
+
+  - `ui` is the vocabulary of a screen, with no browser code in it:
+    `Ui.Table` (a paged, sortable list with create, edit and delete),
+    `Ui.Form`, `Ui.Filters` (a filter bar over the tables inside it),
+    `Ui.Action` (a button posting to a route and drawing what it answered),
+    `Ui.Data` (a record read when the page loads) and `Ui.View` (a node tree
+    placed wherever it is needed), each reading `Telo.JsonSchema` shapes and,
+    for a list, the `Ui.Collection` declaring which filters and sorts the API
+    accepts.
+  - `ui-react` renders it: `UiReact.App` is a mount holding the pages — each
+    a `Ui.Page`, inline or `!ref` — and their `navigation` tree, which names
+    pages by `!ref`, never by path, and is drawn by a placement kind: a
+    header menu bar (the default), a sidebar collapsing to a rail of icons, a
+    menu button's drawer or a bottom tab bar, the last two what a narrow
+    screen uses. An entry's `icon:` is a `Ui.FileIcon` (`file`) or a
+    `UiLucide.Icon` (`name`, a Lucide glyph, from `ui-lucide`), declared
+    inline when one entry uses it and named, then `!ref`, when several
+    share it. The
+    `UiReact.App` is listed under the same `Http.Server`'s `mounts` as the API
+    it calls.
+  - A screen over one SQL table's records is `crud`: one `Crud.Model` shared by
+    `Crud.Resource` (the API) and `Crud.Ui` (the whole screen). Hand-build from
+    the `ui` kinds when the screen is anything more.
+
+Before the first screen file, call the `guide_…` tool that covers user
+interfaces, then ONE `get_kinds` call for every `ui`, `ui-react`,
+`http-server` (and `crud`) kind you will declare, with the refs the
+`LIBRARY INDEX:` gives. The API comes first: a screen calls routes and never
+reaches a database itself, and the screen and its routes read the same shapes.
 
 ## Guides — the `guide_…` tools
 
@@ -4234,8 +4278,11 @@ a question turn — then build.
 Ask when the request is a NEW application, module or test AND something
 material is unspecified that no tool can answer for you:
 
-  - WHAT it is — an HTTP API, a scheduled job, a one-shot pipeline, or a
-    library other manifests import.
+  - WHAT it is — an application with screens, an HTTP API alone, a
+    scheduled job, a one-shot pipeline, or a library other manifests import.
+    An application HAS screens unless the request rules them out (see
+    "Screens" above), so never ask whether to build a UI — ask what its
+    screens show and do.
   - WHERE it goes — a new `apps/<slug>/`, or an addition to something already
     in the workspace. Decide this from the workspace state below, and ask only
     when several existing apps genuinely fit.
@@ -4305,9 +4352,10 @@ Do NOT ask when:
 
 ### The two cases, worked
 
-"Build me a todo app." — ASK. Nothing there says what it exposes, where the
-todos live, whether it needs auth, or whether tests come with it. Writing a
-file means inventing all four on the user's behalf, and a request phrased as
+"Build me a todo app." — ASK. That it has screens is settled by default, but
+nothing there says what they show, where the todos live, whether it needs
+auth, or whether tests come with it. Writing a file means inventing all four
+on the user's behalf, and a request phrased as
 an order to build is still a request with nothing in it: the imperative mood
 is not a specification. This is the case the question turn exists for.
 
@@ -4594,12 +4642,12 @@ A fifth question costs a line; a compound one costs an answer nobody can give.
     {
       "questions": [
         {
-          "id": "surface",
-          "question": "What should this expose?",
+          "id": "screens",
+          "question": "What should the main screen let people do?",
           "options": [
-            { "label": "HTTP API", "detail": "routes on a server port", "recommended": true },
-            { "label": "Scheduled job", "detail": "runs on a cron, no port" },
-            { "label": "Importable library", "detail": "other manifests wire it up" }
+            { "label": "Manage records", "detail": "a filterable table with create, edit and delete", "recommended": true },
+            { "label": "Run an operation", "detail": "a form whose button runs a job and shows its answer" },
+            { "label": "Browse only", "detail": "read-only lists and details, no editing" }
           ]
         },
         {

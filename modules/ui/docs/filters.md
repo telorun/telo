@@ -168,8 +168,9 @@ that keeps nothing — neither `address: true` nor a `store` — are each a
 
 ### Warned
 
-`UI_FILTER_PINNED_UNUSED` — a field is `pinned` on a bar that folds nothing,
+`UI_FILTER_PINNED_UNUSED` — a field is `pinned` on a bar that never folds,
 so every filter is on show whatever is pinned. It is reported for an omitted
-placement (`RESOURCE_RULE_VIOLATED`), and for a `Ui.AbovePlacement` or
-`Ui.AsidePlacement` with no `compact` (`REFERRER_RULE_VIOLATED`), while `show`
-is `all`. It is a warning: the manifest runs.
+placement (`RESOURCE_RULE_VIOLATED`), and for a `Ui.AbovePlacement` with no
+`compact` (`REFERRER_RULE_VIOLATED`), while `show` is `all`. A
+`Ui.AsidePlacement` folds on a narrow viewport whether or not it names a
+`compact`, so it is not warned. It is a warning: the manifest runs.

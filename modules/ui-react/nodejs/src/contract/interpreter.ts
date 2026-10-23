@@ -17,6 +17,8 @@ export interface Target {
   /** The element's text, trimmed, equals this. */
   text?: string;
   role?: string;
+  /** The element's tag name, lower case: `nav`, `a`, `button`. */
+  tag?: string;
   id?: string;
   /** Attributes the element carries, each with exactly this value. */
   attributes?: Record<string, string>;
@@ -57,6 +59,8 @@ export interface Expectation {
 export type Step =
   | { click: Target }
   | { press: Target; pointer?: "mouse" | "touch" }
+  /** A mouse pointer moved onto the target. */
+  | { hover: Target }
   | { key: string; on?: Target; shift?: boolean }
   | { fill: Target; value: string }
   | { focus: Target }
@@ -147,7 +151,9 @@ const contract = controlsContract as unknown as ControlsContract;
 /** A host drawing one control into a container. */
 export interface VectorHost {
   /** Draw the control with these props, and again whenever they change.
-   *  `ElementSpec` values under `children` are the host's to turn into elements. */
+   *  Every `ElementSpec` value, under `children` or at any depth of another
+   *  prop's lists and plain objects (`withElements`), is the host's to turn
+   *  into an element. */
   render(props: Record<string, unknown>): void;
   unmount(): void;
 }
@@ -244,6 +250,7 @@ function candidates(target: Target, session: Session): Element[] {
   const scope: ParentNode = target.within ? resolve(target.within, session) : document;
   let found = [...scope.querySelectorAll(target.part !== undefined ? `[data-telo-part="${target.part}"]` : target.role !== undefined ? `[role="${target.role}"]` : "*")];
   if (target.role !== undefined) found = found.filter((element) => element.getAttribute("role") === target.role);
+  if (target.tag !== undefined) found = found.filter((element) => element.localName === target.tag);
   if (target.text !== undefined) found = found.filter((element) => element.textContent?.trim() === target.text);
   for (const [name, value] of Object.entries(target.attributes ?? {})) found = found.filter((element) => element.getAttribute(name) === value);
   // A closing copy of an overlay takes no input and is no element of the page.
@@ -288,6 +295,17 @@ function pointer(view: View, type: string, element: Element, kind: "mouse" | "to
   Object.defineProperty(event, "pointerType", { value: kind });
   Object.defineProperty(event, "pointerId", { value: 1 });
   return element.dispatchEvent(event);
+}
+
+/** A mouse pointer arriving on the element from outside the page, then moving on it. */
+function hover(view: View, element: HTMLElement): void {
+  for (const type of ["pointerover", "mouseover"]) pointer(view, type, element, "mouse");
+  for (const type of ["pointerenter", "mouseenter"]) {
+    const event = new view.MouseEvent(type, { bubbles: false, composed: true });
+    Object.defineProperty(event, "pointerType", { value: "mouse" });
+    element.dispatchEvent(event);
+  }
+  for (const type of ["pointermove", "mousemove"]) pointer(view, type, element, "mouse");
 }
 
 function click(view: View, element: HTMLElement): void {
@@ -365,6 +383,7 @@ async function perform(step: Step, session: Session): Promise<void> {
   const { view } = session;
   if ("click" in step) click(view, resolve(step.click, session));
   else if ("press" in step) pointer(view, "pointerdown", resolve(step.press, session), step.pointer ?? "mouse");
+  else if ("hover" in step) hover(view, resolve(step.hover, session));
   else if ("key" in step) key(view, step.key, step.on ? resolve(step.on, session) : (view.document.activeElement ?? view.document.body), step.shift === true);
   else if ("fill" in step) fill(view, resolve(step.fill, session), step.value);
   else if ("focus" in step) resolve(step.focus, session).focus();
@@ -388,10 +407,26 @@ function supplied(spec: ElementSpec): ElementSpec {
 const isElementSpec = (value: unknown): value is ElementSpec =>
   value !== null && typeof value === "object" && typeof (value as ElementSpec).element === "string";
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (value === null || typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+};
+
 function fromData(value: unknown, session: Session): unknown {
   if (Array.isArray(value)) return value.map((item) => fromData(item, session));
   if (value !== null && typeof value === "object" && (value as { $element?: unknown }).$element === "opener") return session.opener ?? null;
   if (isElementSpec(value)) return supplied(value);
+  if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, fromData(item, session)]));
+  return value;
+}
+
+/** A value with every `ElementSpec` in it — itself, or at any depth of its
+ *  lists and plain objects — turned into an element by `toElement`. */
+export function withElements(value: unknown, toElement: (spec: ElementSpec) => unknown): unknown {
+  if (Array.isArray(value)) return value.map((item) => withElements(item, toElement));
+  if (isElementSpec(value)) return toElement(value);
+  if (isPlainObject(value)) return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, withElements(item, toElement)]));
   return value;
 }
 

@@ -33,8 +33,6 @@ export function Menu({ open, items, onOpenChange, onChange, children }: MenuProp
                 {...entryProps(index)}
                 data-telo-part="menu-item"
                 role="menuitem"
-                aria-current={item.current ? "true" : undefined}
-                data-current={item.current ? "true" : undefined}
                 onClick={() => choose(index)}
               >
                 {item.label}

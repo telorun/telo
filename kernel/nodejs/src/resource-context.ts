@@ -52,6 +52,10 @@ import {
   outermostNeedEntry,
   type NeedConstraint,
   type NeedTableEntry,
+  isInlineDeclaration,
+  isResolvedReference,
+  resolvedReference,
+  type ResolvedReference,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
@@ -670,6 +674,14 @@ export class ResourceContextImpl implements ResourceContext {
     // field (`resources.<need>.<field>`), so a reference reaching one is refused
     // here, whichever shape it arrives in.
     const normalized = isRefSentinel(value) ? this.ensureKindRef(value) : value;
+    // An inline declaration is no reference, whatever fields it holds — a
+    // `name` among them names nothing (`resolved-reference.ts`).
+    if (isInlineDeclaration(normalized) && !guard(normalized)) {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `${describe()} must be a \`!ref\` to a ${expects ? `resource satisfying \`${expects}\`` : "resource"}.`,
+      );
+    }
     const refusingNeeds = (candidate: unknown): candidate is T => {
       if (isNeedFulfilment(candidate)) {
         throw new RuntimeError(
@@ -839,15 +851,12 @@ export class ResourceContextImpl implements ResourceContext {
    * under `resourceName` or a generated name; a value that is already a
    * reference is normalized and returned as-is.
    *
-   * @param resource Inline definition, `{kind, name}` reference, or `!ref` sentinel
+   * @param resource Inline definition, resolved reference, or `!ref` sentinel
    * @param resourceName Name to assign when the value is an unnamed inline definition
-   * @returns Normalized {kind, name, alias?} reference
+   * @returns The resolved reference (`resolved-reference.ts`)
    * @throws RuntimeError if 'kind' is missing
    */
-  ensureKindRef(
-    resource: any,
-    resourceName?: string,
-  ): { kind: string; name: string; alias?: string } {
+  ensureKindRef(resource: any, resourceName?: string): ResolvedReference {
     if (!resource || typeof resource !== "object") {
       throw new RuntimeError(
         "ERR_INVALID_VALUE",
@@ -878,7 +887,7 @@ export class ResourceContextImpl implements ResourceContext {
             `[${this.metadata.name}] !ref '${source}' is not an exported instance of import '${alias}'.`,
           );
         }
-        return { kind: ref.kind, name: ref.name, alias };
+        return resolvedReference(ref.kind, ref.name, alias);
       }
       const refName = alias === "Self" ? source.slice(dot + 1) : source;
       // Mirror the legacy `{kind, name}` path: return a `{kind, name}` ref and let
@@ -893,7 +902,7 @@ export class ResourceContextImpl implements ResourceContext {
         (this.contextForName(refName).resourceInstances.get(refName)?.resource.kind as string | undefined) ??
         this.kernel.resourceKindByName(refName) ??
         "";
-      return { kind, name: refName };
+      return resolvedReference(kind, refName);
     }
 
     // A slot already holding a live instance — a reference a template forwarded
@@ -901,7 +910,14 @@ export class ResourceContextImpl implements ResourceContext {
     // its declaration; dispatch still goes through the instance itself.
     const declared = declarationOfInstance(resource);
     if (declared) {
-      return { kind: declared.kind, name: declared.metadata?.name ?? "" };
+      return resolvedReference(declared.kind, declared.metadata?.name ?? "");
+    }
+
+    // A resolved reference — told from an inline declaration by its marker
+    // alone, so a kind declaring a `name` field is declared inline like any
+    // other (`resolved-reference.ts`, the analyzer's one reader).
+    if (isResolvedReference(resource)) {
+      return resolvedReference(resource.kind, resource.name, resource.alias);
     }
 
     if (!resource.kind) {
@@ -911,34 +927,25 @@ export class ResourceContextImpl implements ResourceContext {
       );
     }
 
+    // Anything else with a `kind` is an inline declaration, named by its own
+    // `metadata.name`, else the name the caller supplies, else a generated one.
     const kind = resource.kind;
     const name =
-      resource.name ??
-      resource.metadata?.name ??
-      resourceName ??
-      `Unnamed${Math.random().toString(16).slice(2, 8)}`;
-    // `alias` marks a resolved cross-module reference (`{kind, name, alias}`)
-    // produced from a `!ref Alias.name`. It is always a reference into an
-    // imported library's exported instance — never an inline definition — so it
-    // is a reference key alongside kind/name/metadata (not inline config) and is
-    // carried through so downstream scope resolution routes into the import.
-    const alias = typeof resource.alias === "string" ? resource.alias : undefined;
+      resource.metadata?.name ?? resourceName ?? `Unnamed${Math.random().toString(16).slice(2, 8)}`;
 
-    // Register an inline manifest when:
-    //  - the ref carries definition properties (clearly an inline definition), or
-    //  - the ref is bare `{kind}` with no explicit name and the caller supplied
+    // Register the inline manifest when:
+    //  - it carries configuration (clearly a declaration), or
+    //  - it is a bare `{kind}` with no `metadata.name` and the caller supplied
     //    a `resourceName` (the slot is known-inline — e.g. a Run.Sequence step
     //    with `invoke: {kind: SomeInvocable}` — and wants a fresh stateless
     //    instance registered under the generated name).
-    // Pure references (`{kind, name}` pointing at an existing resource) carry
-    // an explicit name and skip registration. registerManifest itself throws
+    // A bare `{kind, metadata: {name}}` names a resource registered elsewhere
+    // and skips registration. registerManifest itself throws
     // ERR_DUPLICATE_RESOURCE on collision — surfacing collisions loudly is
     // the contract here; previous silent-skip-on-duplicate hid real bugs
     // (e.g. inline auto-names colliding across sibling Run.Sequence steps).
-    const hasInlineProperties = Object.keys(resource).some(
-      (k) => k !== "kind" && k !== "name" && k !== "metadata" && k !== "alias",
-    );
-    const hasExplicitName = resource.name !== undefined || resource.metadata?.name !== undefined;
+    const hasInlineProperties = Object.keys(resource).some((k) => k !== "kind" && k !== "metadata");
+    const hasExplicitName = resource.metadata?.name !== undefined;
     const shouldRegister =
       hasInlineProperties || (!hasExplicitName && resourceName !== undefined);
 
@@ -953,7 +960,7 @@ export class ResourceContextImpl implements ResourceContext {
       });
     }
 
-    return alias ? { kind, name, alias } : { kind, name };
+    return resolvedReference(kind, name);
   }
 
   getResourcesByName(_kind: string, name: string): RuntimeResource | null {

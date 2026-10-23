@@ -1,7 +1,9 @@
 {
   "parts": {
-    "shell": ["app", "header", "header-start", "app-title", "nav", "nav-link", "header-end", "main", "page", "page-title"],
-    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "menu-trigger", "image", "svg", "value", "list", "list-heading", "data"],
+    "shell": ["app", "header", "header-start", "app-title", "nav", "nav-menu", "header-end", "sidebar", "sidebar-toggle", "main", "page", "page-title", "tab-bar"],
+    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "list", "list-heading", "data"],
+    "navigation": ["navigation", "nav-toggle", "nav-item", "nav-group", "nav-panel"],
+    "tabs": ["tabs", "tab-list", "tab", "tab-panel"],
     "table": [
       "table", "table-toolbar", "table-create", "table-main", "table-frame", "table-grid", "table-head", "table-body",
       "table-row", "table-header-cell", "table-sort", "table-cell", "row-actions", "row-action", "row-edit", "row-delete",
@@ -26,7 +28,7 @@
       "surface-overlay", "surface", "surface-header", "surface-title", "surface-description", "surface-body",
       "surface-close"
     ],
-    "shared": ["icon", "select-content", "select-item", "menu", "menu-item", "tooltip"],
+    "shared": ["icon", "glyph", "select-content", "select-item", "menu", "menu-item", "tooltip"],
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {
@@ -38,18 +40,17 @@
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
     "data-surface": { "values": ["dialog", "drawer", "popover", "inline", "panel", "page", "confirmation"], "on": ["surface"] },
-    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["surface", "filters"] },
+    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["surface", "filters", "sidebar"] },
     "data-placement": { "values": ["above", "aside", "collapsible", "overlay"], "on": ["filters"] },
     "data-active": { "values": ["true"], "on": ["filter", "filter-chip"] },
     "data-pending": { "values": ["true"], "on": ["filters"] },
     "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface"] },
     "data-align": { "values": ["start", "center", "end"], "on": ["surface"] },
     "data-modal": { "values": ["true", "false"], "on": ["surface"] },
-    "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell"] },
-    "data-current": { "values": ["page"], "on": ["nav-link"] }
+    "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell"] }
   },
   "partStates": [
-    { "values": ["open", "closed"], "on": ["filters-bar", "filter-chip"] }
+    { "values": ["open", "closed"], "on": ["filters-bar", "filter-chip", "sidebar"] }
   ],
   "reserved": [
     { "part": "filters-bar", "properties": ["display"], "because": "a closed collapsible bar is hidden" },
@@ -59,6 +60,9 @@
     { "part": "table-frame", "properties": ["overflow-x"], "because": "a grid wider than its table scrolls in its frame" },
     { "part": "table", "properties": ["display", "grid-template-columns"], "because": "a panel sits beside the frame and the pager" },
     { "part": "table-toolbar", "properties": ["order"], "because": "the toolbar stays above a panel" },
-    { "part": "surface", "properties": ["order"], "because": "a panel sits on its side" }
+    { "part": "surface", "properties": ["order"], "because": "a panel sits on its side" },
+    { "part": "app", "properties": ["display", "grid-template-columns"], "because": "a sidebar sits beside the page" },
+    { "part": "tab-bar", "properties": ["position", "bottom"], "because": "a tab bar stays at the bottom edge" },
+    { "part": "glyph", "properties": ["background-color", "mask-image"], "because": "a glyph is its file's shape in the colour of the text around it" }
   ]
 }

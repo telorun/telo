@@ -1,0 +1,51 @@
+kind: Telo.Application
+metadata:
+  name: UiReactLibraryPagesTest
+  version: 1.0.0
+  description: |
+    A page a library exports is listed and put in the navigation by an
+    application with nothing else written for it: the application document
+    routes to it and names it in a group by its own title, and its page
+    document holds the nodes the library wrote.
+imports:
+  App: ../../app
+  Run: ../../run
+  HttpClient: ../../http-client
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata:
+  name: test
+with:
+  - kind: App.Instance
+    metadata: { name: fixture }
+    source: ./__fixtures__/library-pages/telo.yaml
+    ports:
+      http: 19318
+targets:
+  - !ref fixture
+steps:
+  - name: app
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19318/admin/_telo/ui/app" }
+  - name: page
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19318/admin/_telo/ui/page?path=/reports" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        pages: !cel "steps.app.result.body.pages.map(p, p.path)"
+        navigation: !cel "steps.app.result.body.navigation.items"
+        children: !cel "steps.page.result.body.children"
+      expected:
+        pages: [/, /reports]
+        navigation:
+          - { type: page, key: home, path: /, text: { lang: und, message: [Home] } }
+          - type: group
+            key: shipped
+            text: { lang: und, message: [Shipped] }
+            items:
+              - { type: page, key: shipped/reports, path: /reports, text: { lang: und, message: [Reports] } }
+        children:
+          - { type: text, text: { lang: und, message: [Shipped by a library] } }

@@ -327,3 +327,12 @@ kind: Ui.PageSurface
 metadata:
   name: taskPage
 address: { name: task }
+---
+# The page every application lists at /tables, placing the view.
+kind: Ui.Page
+metadata:
+  name: tablesScreen
+path: /tables
+title: Tables
+children:
+  - { type: composite, ref: !ref tablesPage }

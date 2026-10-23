@@ -24,8 +24,7 @@ export function nearestName(
   target: string,
   candidates: Iterable<string>,
 ): string | undefined {
-  if (!target) return undefined;
-  const threshold = Math.min(3, Math.floor(target.length / 3));
+  const threshold = thresholdFor(target);
   if (threshold < 1) return undefined;
 
   let best: string | undefined;
@@ -44,4 +43,32 @@ export function nearestName(
   }
 
   return !best || bestDist > threshold || tied ? undefined : best;
+}
+
+/** How far a candidate may be from `target` and still be offered. */
+function thresholdFor(target: string): number {
+  return target ? Math.min(3, Math.floor(target.length / 3)) : 0;
+}
+
+/**
+ * Every candidate at the smallest distance from `target` within {@link nearestName}'s
+ * threshold, in candidate order — for prose that names its suggestions rather
+ * than a repair applied in one click, where a tie is information, not an
+ * arbitrary pick.
+ */
+export function nearestNames(target: string, candidates: Iterable<string>): string[] {
+  const threshold = thresholdFor(target);
+  if (threshold < 1) return [];
+  let best: string[] = [];
+  let bestDist = threshold + 1;
+  for (const candidate of candidates) {
+    const d = distance(target, candidate);
+    if (d < bestDist) {
+      best = [candidate];
+      bestDist = d;
+    } else if (d === bestDist) {
+      best.push(candidate);
+    }
+  }
+  return best;
 }

@@ -1,0 +1,17 @@
+modules:
+  modules/ui: Added
+body: "Pages and site navigation are vocabulary. Ui.Page (path, title, query, children)
+  is an invocable page: its composites are resolved once when it is created, and it
+  answers each request with its nodes as delivered for that request; its reading is {
+  path, title, query }. Ui.Navigation is the record { items, placement } an application
+  takes: items a tree of Ui.NavigationItem entries tagged page (a page by reference, its
+  text defaulting to the page's title), link and group (nested to any depth), each with
+  a when evaluated per request, a group with nothing delivered left out. Placements are
+  kinds under Ui.NavigationPlacement: Ui.HeaderNavigation (a menu bar with dropdowns and
+  submenus, its compact a Ui.CompactNavigationPlacement) and Ui.OverlayNavigation (the
+  whole tree behind a menu button in a Ui.Overlay surface), sent as
+  Ui.NavigationPlacementSpec. ui fills every default: no navigation is one entry per
+  page, no placement the header, a header's compact an overlay navigation, an overlay's
+  surface a drawer from the start edge. @telorun/ui exports isPage, RequestNodes,
+  headerReads, preparedNavigation and deliveredNavigation, and Ui.Words gains the menu
+  word. Breaking: a Ui.Words set of one's own must give menu."

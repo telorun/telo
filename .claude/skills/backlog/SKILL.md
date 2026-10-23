@@ -236,14 +236,17 @@ Run the architect's phases on the batch, with its confirmed entries as the task 
   the repro shows the correct behaviour, and a regression test at the lowest level that proves it
   lives in the repo (a manifest test in the module's `tests/`, a check-run agreement row for a
   check/run disagreement, a unit test otherwise).
-- **Gates.** Every card runs `pnpm run test`, `pnpm run check` on every manifest it touched, each
-  of its entries' repros, `node scripts/check-changeset-status.mjs`, and `telo release check`
-  when it touched a module. A card touching the Rust half or a module the Rust kernel loads also
-  runs `cargo check --workspace --locked` with each of `--features telorun-sdk/napi` and
-  `--features telorun-sdk/native`, then `cargo test --workspace --locked`. `pnpm run test` must
-  be no less green than it was at `origin/main` — run it there once per batch, in the worktree
-  before the first card, and keep the output in `00-validation/baseline.md`, so a failure that
-  predates the batch is told apart from one the batch caused.
+- **Gates.** Never a whole suite — the PR's CI runs those. Every card runs the manifest tests of
+  every module it touched (`pnpm run test --include '<module>/tests/*.yaml'`, plus any root
+  `tests/*.yaml` it added or changed), the unit tests of every package it touched, `pnpm run check`
+  on every manifest it touched, each of its entries' repros, `node scripts/check-changeset-status.mjs`,
+  and `telo release check` when it touched a module. A card touching the Rust half or a module the
+  Rust kernel loads also runs `cargo check --workspace --locked` with each of
+  `--features telorun-sdk/napi` and `--features telorun-sdk/native`, then `cargo test -p <crate>
+  --locked` for each crate it touched. These scoped runs must be no less green than at
+  `origin/main` — run them there once per batch, in the worktree before the first card, and keep
+  the output in `00-validation/baseline.md`, so a failure that predates the batch is told apart
+  from one the batch caused.
 - **Headless.** A tick is a print-mode process. Spawn every subagent in the foreground. When
   `SendMessage` to a card's builder is unavailable, spawn a fresh builder with the card's `brief.md`
   and `builder.md` instead — the architect's fallback for a lost builder.

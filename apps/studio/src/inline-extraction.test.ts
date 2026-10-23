@@ -51,8 +51,10 @@ describe("planInlineExtraction", () => {
   });
 
   it("refuses a slot holding a reference rather than a declaration", () => {
-    const fields = { mounts: [{ mount: { kind: "Http.Api", name: "api" } }] };
-    expect(planInlineExtraction(fields, "/mounts/0/mount", "api2")).toBeNull();
+    const written = { mounts: [{ mount: makeTaggedSentinel("ref", "api") }] };
+    expect(planInlineExtraction(written, "/mounts/0/mount", "api2")).toBeNull();
+    const resolved = { mounts: [{ mount: { __ref: true, kind: "Http.Api", name: "api" } }] };
+    expect(planInlineExtraction(resolved, "/mounts/0/mount", "api2")).toBeNull();
   });
 
   it("refuses a pointer that names nothing", () => {

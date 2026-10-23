@@ -80,7 +80,10 @@ await engine.executeSteps(manifest.steps, steps, undefined, { inputs }, invokeCt
 ```
 
 A loaded manifest reaches your controller with every inline step target already
-extracted and named, so `resolveInvokes` leaves each `{ kind, name }` alone.
+extracted and named, so `resolveInvokes` leaves each resolved reference — a
+`{ __ref: true, kind, name }` — alone. A step built in code names its target
+with `kindRef(kind, name)` from `@telorun/sdk`; a plain `{ kind, name }` there
+is an inline declaration of `kind`.
 Keep the call in `init()` all the same: it is what names the inline targets of a
 body assembled at runtime (a template body's children, steps built in code). The
 name is `inlineStepTargetName(owner, stepPath, stepName)` from `@telorun/sdk`,

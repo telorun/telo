@@ -23,8 +23,9 @@ use telo_analyzer::system_kinds::{
     is_module_document, skips_ref_resolution, APPLICATION, DEFINITION, JSON_SCHEMA, LIBRARY,
 };
 use telo_analyzer::{
-    find_invalid_reference_forms, find_unresolved_sentinels, kind_of, name_of,
-    resolve_ref_sentinels, RefTargets,
+    authored_object_form, declares_name_field, find_invalid_reference_forms,
+    find_unresolved_sentinels, kind_of, name_of, reference_form_message, resolve_ref_sentinels,
+    InvalidReferenceForm, RefTargets, ReferenceForm, RESOLVED_REFERENCE_MARKER,
 };
 
 use crate::controllers::module::import_controller::parse_import;
@@ -156,6 +157,7 @@ pub fn load_module(
     });
 
     let mut documents = documents;
+    read_reference_forms(&context, &mut documents, role)?;
     let targets = build_ref_targets(&context, &documents)?;
     for document in documents.iter_mut() {
         if kind_of(document).is_some_and(skips_ref_resolution) {
@@ -255,28 +257,111 @@ fn reject_need_types(documents: &[Value], source: &str) -> Result<(), KernelErro
     Ok(())
 }
 
-/// Fail on any reference this kernel cannot make sense of, once resolution has
-/// run over every document.
+/// Read the objects an author wrote as a reference at a reference slot, before
+/// `!ref` resolution writes the marker itself, at reference slots only — so a
+/// resource whose own kind declares a `name` field is no reference at all.
 ///
-/// Two shapes, both of which the Node analyzer rejects and neither of which may
-/// reach a controller: a `!ref` that resolved to nothing, and a hand-written
-/// `{kind, name}` mapping. The first is swept for explicitly because this kernel
-/// has no scopes — unlike Node, no sentinel can legitimately survive to be
-/// resolved on demand later.
+/// The entry's own module is refused for both spellings, as the Node kernel's
+/// load analysis and `telo check` refuse them: the legacy `{ kind, name }` form
+/// of a kind declaring no `name` field, and the `__ref` key. An imported
+/// library's `{ kind, name }` — what published artifacts carry — is marked as
+/// the reference it means, and only its `__ref` key is refused.
+fn read_reference_forms(
+    context: &ModuleContext,
+    documents: &mut [Value],
+    role: ModuleRole,
+) -> Result<(), KernelError> {
+    let kind_declares_name = |written: &str| {
+        context
+            .resolve_kind(written)
+            .ok()
+            .map(|definition| declares_name_field(definition.manifest.get("schema").unwrap_or(&Value::Null)))
+    };
+    for document in documents.iter_mut() {
+        let Some(kind) = kind_of(document).map(str::to_owned) else {
+            continue;
+        };
+        if skips_ref_resolution(&kind) {
+            continue;
+        }
+        let label = format!("{kind}/{}", name_of(document).unwrap_or("<unnamed>"));
+        let found = if is_module_document(&kind) {
+            target_reference_forms(document, &kind_declares_name)
+        } else {
+            let Some(schema) = context
+                .resolve_kind(&kind)
+                .ok()
+                .and_then(|definition| definition.manifest.get("schema").cloned())
+            else {
+                continue;
+            };
+            find_invalid_reference_forms(document, &schema, &kind_declares_name, &value_branch_accepts)
+        };
+        for invalid in found {
+            if role == ModuleRole::Import && invalid.form == ReferenceForm::Object {
+                if let Some(Value::Object(object)) = document.pointer_mut(&invalid.pointer) {
+                    object.insert(RESOLVED_REFERENCE_MARKER.to_string(), Value::Bool(true));
+                }
+                continue;
+            }
+            return Err(KernelError::new(
+                "ERR_INVALID_REFERENCE_FORM",
+                format!("{label}: {}", reference_form_message(&invalid)),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The objects written as a reference among a module document's `targets:` —
+/// an entry that is itself a reference, or an inline step's `invoke:`, the
+/// boot-step grammar this kernel runs.
+fn target_reference_forms(
+    document: &Value,
+    kind_declares_name: &dyn Fn(&str) -> Option<bool>,
+) -> Vec<InvalidReferenceForm> {
+    let Some(targets) = document.get("targets").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    for (index, target) in targets.iter().enumerate() {
+        let (value, path, pointer) = match target.get("invoke") {
+            Some(invoke) if target.get("kind").is_none() => {
+                (invoke, format!("targets[{index}].invoke"), format!("/targets/{index}/invoke"))
+            }
+            _ => (target, format!("targets[{index}]"), format!("/targets/{index}")),
+        };
+        if let Some((form, name)) = authored_object_form(value, kind_declares_name) {
+            found.push(InvalidReferenceForm { path, pointer, form, name });
+        }
+    }
+    found
+}
+
+/// Whether a value branch of a union accepts `value`, validated against the
+/// branch with the `$defs` of the document it was written in. A branch that
+/// does not compile accepts nothing.
+fn value_branch_accepts(branch: &Value, root: &Value, value: &Value) -> bool {
+    let mut schema = branch.clone();
+    if let Some(object) = schema.as_object_mut() {
+        for key in ["$defs", "definitions"] {
+            if let Some(definitions) = root.get(key) {
+                object.entry(key.to_string()).or_insert_with(|| definitions.clone());
+            }
+        }
+    }
+    jsonschema::validator_for(&schema).is_ok_and(|validator| validator.is_valid(value))
+}
+
+/// Fail on a `!ref` that resolved to nothing, once resolution has run over
+/// every document. Swept for explicitly because this kernel has no scopes —
+/// unlike Node, no sentinel can legitimately survive to be resolved on demand
+/// later.
 fn reject_leftover_references(
     context: &ModuleContext,
     documents: &[Value],
 ) -> Result<(), KernelError> {
     for document in documents {
-        for invalid in find_invalid_reference_forms(document) {
-            return Err(KernelError::new(
-                "ERR_INVALID_REFERENCE_FORM",
-                format!(
-                    "'{}' at '{}': a reference must be written with the `!ref` tag, not as a `{{kind, name}}` mapping. Write `!ref {}`.",
-                    context.source, invalid.path, invalid.name
-                ),
-            ));
-        }
         for unresolved in find_unresolved_sentinels(document) {
             return Err(unresolved_reference_error(
                 context,

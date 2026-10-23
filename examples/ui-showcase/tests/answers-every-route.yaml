@@ -13,7 +13,7 @@ metadata:
     sign-ins, signing in, the guarded routes with and without it, signing out —
     the language switch under each mount, and the brand switch; and a reader's route, a listing, an action's route,
     the task desk component's counts and tasks and the guard under the
-    `/radix` and `/brand` mounts, which have no brand switch.
+    `/radix`, `/brand` and `/sidebar` mounts, which have no brand switch.
 imports:
   App: ../../../modules/app
   Run: ../../../modules/run
@@ -416,9 +416,9 @@ steps:
         - [ 302, /themes, showcase-brand=; Path=/; Max-Age=0; SameSite=Lax ]
         - 400
 
-  # ---- The same API under the other two mounts ----
+  # ---- The same API under the other three mounts ----
   # Their pages read and write under their own mount, so every route the root
-  # serves is served under `/radix` and `/brand` too — guarded the same way —
+  # serves is served under `/radix`, `/brand` and `/sidebar` too — guarded the same way —
   # except the brand switch, which belongs to the root application alone.
   - name: radixTeam
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /radix/api/team }
@@ -452,6 +452,22 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /brand/api/private/account, responseType: text }
   - name: brandBrand
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/brand?set=acme", responseType: text }
+  - name: sidebarTeam
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /sidebar/api/team }
+  - name: sidebarProjects
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/sidebar/api/projects?limit=4" }
+  - name: sidebarTag
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /sidebar/api/tags, method: POST }
+    inputs:
+      body: { tag: sidebar }
+  - name: sidebarCounts
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/sidebar/api/task-counts?code=OPS-7" }
+  - name: sidebarTasks
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/sidebar/api/tasks?limit=1" }
+  - name: sidebarAccount
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: /sidebar/api/private/account, responseType: text }
+  - name: sidebarBrand
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/sidebar/api/brand?set=acme", responseType: text }
   - name: verifyMounts
     invoke: { kind: Assert.Equals }
     inputs:
@@ -472,6 +488,14 @@ steps:
           tasks: !cel "[steps.brandTasks.result.status, size(steps.brandTasks.result.body.rows)]"
           account: !cel "steps.brandAccount.result.status"
           brandSwitch: !cel "steps.brandBrand.result.status"
+        sidebar:
+          team: !cel "[steps.sidebarTeam.result.status, steps.sidebarTeam.result.body.name]"
+          projects: !cel "steps.sidebarProjects.result.body.rows.map(r, r.code)"
+          tag: [ !cel "steps.sidebarTag.result.status", !cel "steps.sidebarTag.result.body" ]
+          counts: !cel "[steps.sidebarCounts.result.status, steps.sidebarCounts.result.body.code]"
+          tasks: !cel "[steps.sidebarTasks.result.status, size(steps.sidebarTasks.result.body.rows)]"
+          account: !cel "steps.sidebarAccount.result.status"
+          brandSwitch: !cel "steps.sidebarBrand.result.status"
       expected:
         radix:
           team: [ 200, Northwind Studio ]
@@ -486,6 +510,14 @@ steps:
           team: [ 200, Northwind Studio ]
           projects: [ TEL-42, OPS-7, WEB-3, DOC-12 ]
           tag: [ 201, { tag: mounted, count: 5 } ]
+          counts: [ 200, OPS-7 ]
+          tasks: [ 200, 1 ]
+          account: 401
+          brandSwitch: 404
+        sidebar:
+          team: [ 200, Northwind Studio ]
+          projects: [ TEL-42, OPS-7, WEB-3, DOC-12 ]
+          tag: [ 201, { tag: sidebar, count: 6 } ]
           counts: [ 200, OPS-7 ]
           tasks: [ 200, 1 ]
           account: 401

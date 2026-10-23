@@ -17,6 +17,7 @@ import {
   readSuppliedResources,
   membersSlotOf,
   reservedImportAliasMessage,
+  isResolvedReference,
 } from "@telorun/analyzer";
 import type { ParsedExportEntry } from "@telorun/analyzer";
 import type { ResourceInstance, ResourceManifest } from "@telorun/sdk";
@@ -42,6 +43,15 @@ import {
   sharedLibraries,
   type SharedLibrary,
 } from "./shared-libraries.js";
+
+/** The marker refusals of a library, judged once per library scope — the
+ *  scope is cached per resolved URL, and its raw manifests never change. */
+const markerRefusals = new WeakMap<object, string[]>();
+function markerRefusalsOf(scope: object, judge: () => { message: string }[]): string[] {
+  let found = markerRefusals.get(scope);
+  if (!found) markerRefusals.set(scope, (found = judge().map((d) => d.message)));
+  return found;
+}
 
 export async function create(
   resource: any,
@@ -106,16 +116,24 @@ export async function create(
 
   // The library's scope is the kernel's own analysis registry seen from inside
   // the library (`resolveLibraryScope`, cached per URL). Normalizing in it
-  // resolves the library's `!ref` sentinels to `{kind, name}` before its
-  // resources are registered below — the step the root load performs via
-  // `analyzer.normalize`; without it a `!ref` reaches its controller as a raw
-  // sentinel and Phase-5 injection, which recognizes only `{kind, name}`, skips
-  // it. Normalization still runs per site: it clones the manifests, and Phase-5
+  // resolves the library's `!ref` sentinels — and its legacy `{ kind, name }`
+  // references — to marked resolved references before its resources are
+  // registered below, the step the root load performs via `analyzer.normalize`;
+  // without it a `!ref` reaches its controller as a raw sentinel and Phase-5
+  // injection, which recognizes only a marked reference, skips it.
+  // Normalization still runs per site: it clones the manifests, and Phase-5
   // injection mutates a registered resource's ref fields in place, so two import
   // sites must never share manifest object identity.
   const scope = await resolveLibraryScope(resolvedUrl, identity.name, ctx);
   const { analyzer } = ctx.libraryAnalysisHost();
   const libraryRegistry = scope.registry;
+  // An author-written `__ref` key, which only resolution may write, is refused
+  // here as `telo check` refuses it at the library itself; the entry's own
+  // modules are refused by the load's analysis, a library's are not part of it.
+  const forms = markerRefusalsOf(scope, () => analyzer.referenceForms(scope.rawManifests, libraryRegistry));
+  if (forms.length > 0) {
+    throw new RuntimeError("ERR_INVALID_REFERENCE_FORM", forms.join("\n"));
+  }
   const manifests = analyzer.normalize(
     scope.rawManifests,
     libraryRegistry,
@@ -740,15 +758,15 @@ function resolveBorrowedResources(
   const out = new Map<string, BorrowedResource>();
   const alias = resource.metadata.name as string;
   for (const [name, value] of Object.entries(readSuppliedResources(resource))) {
-    const ref = value as { name?: unknown; alias?: unknown } | undefined;
-    const targetName = typeof ref?.name === "string" ? ref.name : undefined;
+    const ref = isResolvedReference(value) ? value : undefined;
+    const targetName = ref?.name;
     if (!targetName) {
       throw new RuntimeError(
         "ERR_REF_UNRESOLVED",
         `Import '${alias}': resource input '${name}' must be a '!ref' to a resource this module declares.`,
       );
     }
-    const targetAlias = typeof ref?.alias === "string" ? ref.alias : undefined;
+    const targetAlias = ref?.alias;
     const instance =
       targetAlias && targetAlias !== "Self"
         ? ctx.moduleContext.resolveImportedInstance(targetAlias, targetName)

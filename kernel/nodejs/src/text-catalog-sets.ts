@@ -17,13 +17,13 @@
  */
 import {
   declaresTextCatalogSet,
+  isResolvedReference,
   textCatalogSetDuplicates,
   textCatalogSetMembers,
   type NamedShapeResolver,
   type ReachSite,
   type TextCatalogSetHost,
 } from "@telorun/analyzer";
-import { isCelRecord } from "@telorun/cel";
 import { isCompiledValue, RuntimeError, type ResourceManifest } from "@telorun/sdk";
 import { receivedConfigurationOf } from "./callable-data-views.js";
 import { authoredDeclarationOf } from "./declaration-scope.js";
@@ -46,10 +46,8 @@ interface Held {
 }
 
 function readReference(value: unknown): { name: string; alias?: string } | undefined {
-  if (!isCelRecord(value)) return undefined;
-  const { kind, name, alias } = value as Record<string, unknown>;
-  if (typeof kind !== "string" || typeof name !== "string") return undefined;
-  return { name, ...(typeof alias === "string" ? { alias } : {}) };
+  if (!isResolvedReference(value)) return undefined;
+  return { name: value.name, ...(value.alias !== undefined ? { alias: value.alias } : {}) };
 }
 
 /**

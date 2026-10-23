@@ -46,12 +46,15 @@ import {
   findDynamicRead,
   type DynamicLeaf,
   isTaggedCondition,
+  parseRulePointer,
   pointerSegments,
   readRawResourceRules,
   readResourceRules,
   resolveRuleSubjects,
   type ResourceRule,
+  type RulePointerStep,
 } from "./resource-rule.js";
+import { resolveSchemaPointer } from "./manifest-navigation.js";
 
 /** Published name for the shared budget — see `rule-condition.ts`. */
 export const RESOURCE_RULE_BUDGET_MS = RULE_BUDGET_MS;
@@ -102,6 +105,116 @@ export function schemaAtPointer(schema: unknown, pointer: string): unknown {
     node = next;
   }
   return node;
+}
+
+/** The named shape a non-local `$ref` names, with the module that declares it;
+ *  `module` is the module of the document the reference is written in. */
+export type RuleShapeLookup = (
+  ref: string,
+  module: string | undefined,
+) => { schema: Record<string, any>; module: string | undefined } | undefined;
+
+/** A schema node, with the document its local references resolve in and the
+ *  module that wrote it. */
+interface SchemaPlace {
+  readonly node: Record<string, any>;
+  readonly root: Record<string, any>;
+  readonly module: string | undefined;
+}
+
+/** The deepest a repeated group is followed through a schema. */
+const MAX_SCHEMA_REPEAT = 16;
+
+/**
+ * The schema nodes an `in:` pointer names in a kind's schema — following local
+ * references and, through `shapes`, named ones, and looking into union
+ * branches — or why it names none. A repeated group must reach something from
+ * where it is written, or it is a typo that silently iterates nothing.
+ */
+export function ruleCollectionSchemas(
+  schema: unknown,
+  pointer: string,
+  module: string | undefined,
+  shapes?: RuleShapeLookup,
+): { nodes: Record<string, any>[] } | { problem: string } {
+  const steps = parseRulePointer(pointer);
+  if (!steps) {
+    return { problem: `'in' must be a JSON Pointer starting with '/', optionally with '*' and repeated groups '(…)*', got '${pointer}'.` };
+  }
+  if (!isObject(schema)) return { nodes: [] };
+
+  const resolved = (place: SchemaPlace): SchemaPlace[] => {
+    const out: SchemaPlace[] = [];
+    const seen = new Set<object>();
+    const visit = (current: SchemaPlace): void => {
+      if (seen.has(current.node)) return;
+      seen.add(current.node);
+      const ref = current.node.$ref;
+      if (typeof ref === "string") {
+        if (ref.startsWith("#")) {
+          const target = resolveSchemaPointer(current.root, ref);
+          if (isObject(target)) visit({ ...current, node: target });
+        } else {
+          const shape = shapes?.(ref, current.module);
+          if (shape) visit({ node: shape.schema, root: shape.schema, module: shape.module });
+        }
+      }
+      out.push(current);
+      for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+        const branches = current.node[key];
+        if (Array.isArray(branches)) for (const branch of branches) if (isObject(branch)) visit({ ...current, node: branch });
+      }
+    };
+    visit(place);
+    return out;
+  };
+
+  const along = (from: readonly SchemaPlace[], path: readonly RulePointerStep[]): SchemaPlace[] | string => {
+    let places = [...from];
+    for (const step of path) {
+      const next: SchemaPlace[] = [];
+      for (const place of places) {
+        if (step.kind === "repeat") {
+          next.push(place);
+          let frontier: SchemaPlace[] = [place];
+          const reached = new Set<object>([place.node]);
+          for (let depth = 0; frontier.length > 0 && depth < MAX_SCHEMA_REPEAT; depth++) {
+            const found: SchemaPlace[] = [];
+            for (const alternative of step.alternatives) {
+              const each = along(frontier, alternative);
+              if (typeof each === "string") return each;
+              if (depth === 0 && each.length === 0) {
+                return `'in' repeats a group that names nothing this kind's schema declares at '${pointer}'.`;
+              }
+              found.push(...each);
+            }
+            frontier = found.filter((candidate) => !reached.has(candidate.node));
+            for (const candidate of frontier) reached.add(candidate.node);
+            next.push(...frontier);
+          }
+          continue;
+        }
+        for (const node of resolved(place)) {
+          const children: unknown[] =
+            step.kind === "any"
+              ? [node.node.items, node.node.additionalProperties, ...Object.values((node.node.patternProperties ?? {}) as object)]
+              : [
+                  isObject(node.node.properties) ? node.node.properties[step.key] : undefined,
+                  node.node.type === "array" ? node.node.items : undefined,
+                  node.node.additionalProperties,
+                ];
+          const child = children.find(isObject);
+          if (child) next.push({ ...node, node: child });
+        }
+      }
+      places = next;
+    }
+    return places;
+  };
+
+  const reached = along([{ node: schema, root: schema, module }], steps);
+  if (typeof reached === "string") return { problem: reached };
+  return { nodes: reached.flatMap(resolved).map((place) => place.node) };
 }
 
 /** The schemas a reference slot's kind may hold — the kind's and each of its
@@ -187,6 +300,8 @@ export function validateResourceRuleDeclarations(
   moduleNames?: ReadonlySet<string>,
   /** What a `resolve:` pointer continuing past a reference slot reads in. */
   kindSchemas?: KindSchemas,
+  /** The named shapes an `in:` pointer follows a `$ref` into. */
+  shapes?: RuleShapeLookup,
 ): ResourceRuleIssue[] {
   const own = (manifest as unknown as Record<string, unknown>).schema;
   const schema = effectiveSchema ?? own;
@@ -256,17 +371,22 @@ export function validateResourceRuleDeclarations(
     if (entry.in !== undefined) {
       if (typeof entry.in !== "string") {
         issue(`${at}.in`, "'in' must be a JSON Pointer to the collection the rule iterates.");
-      } else if (!pointerSegments(entry.in)) {
-        issue(`${at}.in`, `'in' must be a JSON Pointer starting with '/', got '${entry.in}'.`);
       } else {
-        const node = schemaAtPointer(schema, entry.in);
-        if (node === undefined) {
+        const named = ruleCollectionSchemas(
+          schema,
+          entry.in,
+          (manifest.metadata as { module?: string } | undefined)?.module,
+          shapes,
+        );
+        if ("problem" in named) {
+          issue(`${at}.in`, named.problem);
+        } else if (named.nodes.length === 0) {
           issue(
             `${at}.in`,
             `'in' points at '${entry.in}', which this kind's schema does not declare. ` +
               "The pointer is the diagnostic's anchor, so it must name a field of this kind.",
           );
-        } else if (!isIterableSchema(node)) {
+        } else if (!named.nodes.some(isIterableSchema)) {
           issue(
             `${at}.in`,
             `'in' points at '${entry.in}', which is not a collection. A rule iterates an ` +
@@ -388,6 +508,11 @@ export function evaluateResourceRules(
 
     const started = Date.now();
     for (const subject of subjects) {
+      // The collection itself is known only once the resource is created.
+      if (subject.dynamic) {
+        findings.push({ kind: "skipped", rule, path: subject.path, dynamic: subject.dynamic });
+        continue;
+      }
       // Only the nodes this condition READS decide whether it can run — see
       // `readNodes`. Scanning the whole subject would disable every
       // resource-wide rule on any manifest containing one unrelated expression.

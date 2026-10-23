@@ -3,19 +3,37 @@
    so this names no part only a control draws. */
 @layer telo.base {
   [data-telo-part="app"] { display: flex; flex-direction: column; min-height: 100vh; }
-  /* One row: the navigation takes the room between the title and the end and
-     wraps within it; below the breakpoint the header wraps instead. */
+  /* One row: the navigation takes the room between the title and the end, and
+     what does not fit it moves under More; below the breakpoint the header wraps
+     instead. The navigation fills its slot, which is one column wide. */
   [data-telo-part="header"] { display: flex; align-items: center; flex-wrap: nowrap; }
   [data-telo-part="app-title"] { flex: none; }
-  [data-telo-part="nav"] { display: flex; flex-wrap: wrap; flex: 1 1 0; min-width: 0; }
+  [data-telo-part="nav"] { display: grid; grid-template-columns: minmax(0, 1fr); flex: 1 1 0; min-width: 0; }
+  [data-telo-part="nav-menu"] { display: inline-flex; align-items: center; justify-content: center; flex: none; }
   [data-telo-part="header-start"],
   [data-telo-part="header-end"] { display: flex; align-items: center; flex: none; flex-wrap: nowrap; }
   [data-telo-part="header-end"] { margin-inline-start: auto; }
   [data-compact] > [data-telo-part="header"] { flex-wrap: wrap; }
-  [data-compact] > [data-telo-part="header"] > [data-telo-part="nav"] { flex: 0 1 auto; }
   [data-compact] > [data-telo-part="header"] > [data-telo-part="header-start"],
   [data-compact] > [data-telo-part="header"] > [data-telo-part="header-end"] { flex: 0 1 auto; flex-wrap: wrap; min-width: 0; }
   [data-telo-part="main"] { flex: 1; min-width: 0; }
+  /* A sidebar is a column beside the page, under the header, at its side; a
+     tab bar stays at the bottom edge while the page scrolls. */
+  [data-telo-part="app"]:has(> [data-telo-part="sidebar"]) { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  [data-telo-part="app"]:has(> [data-telo-part="sidebar"][data-side="end"]) { grid-template-columns: minmax(0, 1fr) auto; }
+  [data-telo-part="app"] > [data-telo-part="header"] { grid-column: 1 / -1; }
+  [data-telo-part="sidebar"] { display: flex; flex-direction: column; min-width: 0; }
+  [data-telo-part="tab-bar"] { position: sticky; bottom: 0; }
+  /* An icon's glyph is its file as a mask over the colour of the text around
+     it, so whatever colours the text colours the glyph. */
+  [data-telo-part="glyph"] {
+    display: inline-block; flex: none; inline-size: 1.25em; block-size: 1.25em; vertical-align: middle;
+    background-color: currentColor;
+    -webkit-mask-image: var(--ui-react-glyph); mask-image: var(--ui-react-glyph);
+    -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+    -webkit-mask-position: center; mask-position: center;
+    -webkit-mask-size: contain; mask-size: contain;
+  }
   [data-telo-part="page"],
   [data-telo-part="stack"],
   [data-telo-part="table"],

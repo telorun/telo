@@ -46,4 +46,29 @@ describe("refuseMistypedResults", () => {
     expect(held(["a", "b"])).not.toThrow();
     expect(held(["a", "a"])).toThrow(/^tags must NOT have duplicate items/);
   });
+  it("words a result outside an enum the way every schema refusal is worded", () => {
+    const expression = { __compiled: true, call: () => undefined };
+    const many = Array.from({ length: 30 }, (_, index) => `icon${index}`).concat("house");
+    const refusal = (allowed: string[], name: unknown) => {
+      try {
+        refuseMistypedResults(
+          { name: expression },
+          { name },
+          { type: "object", properties: { name: { type: "string", enum: allowed } } },
+          new SchemaValidator(),
+          (path, problem) => new Error(`${path} ${problem}.`),
+        );
+      } catch (error) {
+        return (error as Error).message;
+      }
+      return undefined;
+    };
+    expect(refusal(many, "hous")).toBe(
+      `name must be one of 31 allowed values; did you mean 'house'? — the expression produced the string "hous".`,
+    );
+    expect(refusal(["house", "home"], "hous")).toBe(
+      `name must be equal to one of the allowed values (house | home) — the expression produced the string "hous".`,
+    );
+    expect(refusal(["house"], 7)).toBe(`name must be a string, but the expression produced the number 7.`);
+  });
 });

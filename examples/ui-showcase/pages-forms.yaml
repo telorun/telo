@@ -211,3 +211,12 @@ label: !cel "row.name"
 hint: !cel "row.code"
 collection: !ref projectModel
 source: { basePath: /api/projects }
+---
+# The page every application lists at /forms, placing the view.
+kind: Ui.Page
+metadata:
+  name: formsScreen
+path: /forms
+title: Forms
+children:
+  - { type: composite, ref: !ref formsPage }

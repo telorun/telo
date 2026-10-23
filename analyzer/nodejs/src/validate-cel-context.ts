@@ -26,6 +26,7 @@ import {
   scopeMatchOf,
   type NamedShapeLookup,
 } from "./eval-paths.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 /** True when a node's value is decided at load or dispatch rather than written
  *  — a tagged sentinel (`!cel`, `!sql`, an embed) or an already-compiled value.
@@ -210,7 +211,7 @@ export function resolveTypeFieldToSchema(
     // Named type reference resolved from a `!ref` → { kind, name }. Reached only
     // where the canonical rewrite could not run (a scope whose aliases are not in
     // hand); resolves by bare name, as it always has.
-    if (typeof obj.name === "string") {
+    if (isResolvedReference(obj)) {
       return resolveTypeFieldToSchema(obj.name, allManifests, ancestry);
     }
   }
@@ -717,16 +718,8 @@ export function readContextRefFrom(
   if (slash === -1) return undefined;
   const subpath = annotation.slice(slash + 1);
   const ref = holder[annotation.slice(0, slash)] as Record<string, any> | undefined;
-  if (
-    !subpath ||
-    !ref ||
-    typeof ref !== "object" ||
-    typeof ref.kind !== "string" ||
-    typeof ref.name !== "string"
-  ) {
-    return undefined;
-  }
-  return { ref: ref as { kind: string; name: string }, subpath };
+  if (!subpath || !isResolvedReference(ref)) return undefined;
+  return { ref, subpath };
 }
 
 /**

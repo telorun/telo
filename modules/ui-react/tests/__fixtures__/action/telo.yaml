@@ -155,7 +155,8 @@ title: Reports
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Reports
     query:
       months: { type: array, items: { type: string } }

@@ -1116,6 +1116,10 @@ is the assertion: a fully specified request writes a valid file in the first
 turn, a vague one writes nothing and comes back with questions. Either case
 passing alone would be satisfied by an agent that always does one of the two.
 
+`assumes-ui.yaml` and `asks-before-building.yaml` are a second pair, over the
+agent's default that an application has screens: a request that never mentions
+one still writes a `UiReact.App`, and answers ruling a UI out write none.
+
 `asks-about-external-data.yaml` covers the case that reads as a specification
 and is not — a report joining YouTrack to a Google Sheet names three systems and
 still says nothing about which sheet, which columns, or how the sides match.

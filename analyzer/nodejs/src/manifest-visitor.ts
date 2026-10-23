@@ -10,6 +10,7 @@ import type { RefFieldEntry, SchemaFromFieldEntry } from "./reference-field-map.
 import { siteRefEntry, type Pattern, type ReachRef } from "./reference-reach.js";
 import { pointerSegments } from "./resource-rule.js";
 import { keysUnder } from "./scope-declarations.js";
+import { carriesReferenceMarker, isResolvedReference } from "./resolved-reference.js";
 import type { ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { templateBodies, withTemplateSelf } from "./template-body.js";
@@ -168,13 +169,19 @@ export interface VisitOptions {
    *  schema-from slots either way. */
   expand?: boolean;
   /** When true, additionally discover refs by scanning each resource's value
-   *  tree for `!ref` sentinels and `{kind, name}` reference objects — surfacing
+   *  tree for `!ref` sentinels and resolved references — surfacing
    *  refs no reference slot names because they sit in a step body, where the
    *  reach stops (notably `Run.Sequence` step `invoke`s). Emitted as `RefSite`s
    *  with `nested: true`, deduped against the reach's sites by concrete path.
    *  Opt-in: the validators / dependency graph must NOT enable it (those refs
    *  are runtime-resolved, not boot dependencies). */
   discoverNestedRefs?: boolean;
+  /** With `discoverNestedRefs`, also emit an AUTHOR-WRITTEN object at a nested
+   *  `{kind, …}` boundary that holds a string `name` or the resolved-reference
+   *  marker — the candidates the reference-form check judges on the raw
+   *  manifest set, before resolution. Never set after resolution: there a
+   *  nested reference is told from an inline declaration by the marker alone. */
+  authoredReferenceForms?: boolean;
   /** Root (consumer-owned) module names, paired with `aliasesByModule` so a
    *  nested kind inside an imported library's definition resolves through THAT
    *  library's aliases. */
@@ -186,13 +193,13 @@ export interface VisitOptions {
 const NESTED_REF_ENTRY: RefFieldEntry = { refs: [], uses: [], isArray: false };
 
 /** Scans a value tree for ref-shaped values, emitting each with its concrete
- *  path. Recognizes `!ref <name>` sentinels and named `{kind, name}` reference
- *  objects. Other tagged sentinels (`!cel`, `!literal`) and precompiled nodes
+ *  path. Recognizes `!ref <name>` sentinels and resolved references (and, with
+ *  `authored`, an author-written object a reference-form check judges). Other tagged sentinels (`!cel`, `!literal`) and precompiled nodes
  *  are leaves. Path format matches the reach's concrete sites /
  *  `walkCelExpressions` (`a.b[0].c`).
  *
- *  Stops at every `{kind, …}` resource boundary: a named ref is emitted, an
- *  inline resource (`{kind}` with no name) is left alone, and **neither is
+ *  Stops at every `{kind, …}` resource boundary: a resolved reference is
+ *  emitted, an inline declaration is left alone, and **neither is
  *  descended into**. A nested resource's own refs belong to its inner topology,
  *  not the enclosing node — e.g. an inline `Sql.Exec` step's `connection` is the
  *  Exec's dependency, not the surrounding `Run.Sequence`'s. The scan is started
@@ -202,6 +209,7 @@ function walkRefValues(
   value: unknown,
   path: string,
   cb: (value: unknown, path: string) => void,
+  authored: boolean,
 ): void {
   if (isRefSentinel(value)) {
     cb(value, path);
@@ -209,19 +217,24 @@ function walkRefValues(
   }
   if (isTaggedSentinel(value)) return;
   if (Array.isArray(value)) {
-    value.forEach((v, i) => walkRefValues(v, `${path}[${i}]`, cb));
+    value.forEach((v, i) => walkRefValues(v, `${path}[${i}]`, cb, authored));
     return;
   }
   if (value === null || typeof value !== "object") return;
   if ((value as { __compiled?: unknown }).__compiled) return;
   const obj = value as Record<string, unknown>;
   if (typeof obj.kind === "string") {
-    // Resource boundary — emit if it's a named ref, then stop descending.
-    if (typeof obj.name === "string") cb(value, path);
+    // Resource boundary — emit a reference, then stop descending.
+    if (
+      isResolvedReference(obj) ||
+      (authored && (typeof obj.name === "string" || carriesReferenceMarker(obj)))
+    ) {
+      cb(value, path);
+    }
     return;
   }
   for (const [k, v] of Object.entries(obj)) {
-    walkRefValues(v, path ? `${path}.${k}` : k, cb);
+    walkRefValues(v, path ? `${path}.${k}` : k, cb, authored);
   }
 }
 
@@ -292,17 +305,13 @@ export function visitManifest(
             if (!v || typeof v !== "object") return;
             const declarationPath = Array.isArray(site.data) ? `${site.path}[${i}]` : site.path;
             // A scope entry must be an inline resource definition; a `!ref`
-            // (tagged sentinel or resolved `{kind, name}`) is not — record it
-            // so a static diagnostic flags it instead of registering a
-            // config-less manifest.
-            const rec = v as Record<string, unknown>;
-            if (
-              isRefSentinel(v) ||
-              (typeof rec.kind === "string" && typeof rec.name === "string")
-            ) {
+            // (tagged sentinel or resolved reference) is not — record it so a
+            // static diagnostic flags it instead of registering a config-less
+            // manifest.
+            if (isRefSentinel(v) || isResolvedReference(v)) {
               scopeRefEntries.push({
                 path: declarationPath,
-                refName: isRefSentinel(v) ? v.source : String(rec.name),
+                refName: isRefSentinel(v) ? v.source : (v as { name: string }).name,
               });
               return;
             }
@@ -407,7 +416,7 @@ export function visitManifest(
         });
       };
       for (const [key, value] of Object.entries(r as Record<string, unknown>)) {
-        walkRefValues(value, key, emitNested);
+        walkRefValues(value, key, emitNested, options.authoredReferenceForms === true);
       }
     }
 

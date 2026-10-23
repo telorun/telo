@@ -3,8 +3,9 @@ metadata:
   name: UiShowcaseScreenTest
   version: 1.0.0
   description: >-
-    Runs `examples/ui-showcase` and reads what each of its three mounts serves:
-    the application documents — pages, look, control sets, brand tokens chosen
+    Runs `examples/ui-showcase` and reads what each of its four mounts serves:
+    the application documents — pages, the navigation tree with a group and a
+    group inside it and an icon on every entry, look, control sets, brand tokens chosen
     by a cookie, the derived theme's typefaces, the Polish translation, the
     header with its language and theme menus and the brand switch, a language
     chosen by a cookie and marked whichever chose it — and
@@ -25,8 +26,9 @@ metadata:
     of the example's own on a page and in a cell, served with their
     stylesheet; a generated admin screen sharing a filter state key with the
     Filters page; and the themes page with its tokens, typefaces and, on `/`,
-    the links between mounts and the brand switch. `/radix` and `/brand` place
-    the very same views. The routes these call are asserted by
+    the links between mounts and the brand switch. `/radix`, `/brand` and
+    `/sidebar` place the very same views, `/sidebar` drawing its navigation in
+    a sidebar that is a tab bar on a phone. The routes these call are asserted by
     `answers-every-route.yaml`, `tables-and-filters.yaml`,
     `forms-and-actions.yaml` and `components-crud-themes.yaml`.
 imports:
@@ -97,6 +99,8 @@ steps:
       headers: { cookie: showcase-lang=pl }
   - name: brandApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /brand/_telo/ui/app }
+  - name: sidebarApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /sidebar/_telo/ui/app }
   - name: brandThemeTokens
     invoke: { kind: HttpClient.Request, client: !ref browser, responseType: text }
     inputs:
@@ -206,6 +210,10 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/crud" }
   - name: brandThemes
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/brand/_telo/ui/page?path=/themes" }
+  - name: sidebarOverview
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/sidebar/_telo/ui/page?path=/" }
+  - name: sidebarThemes
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/sidebar/_telo/ui/page?path=/themes" }
 
   # The components' module and their stylesheet, as the page loads them.
   - name: componentModule
@@ -239,10 +247,12 @@ steps:
       crud: !cel "steps.crud.result.body.children[0].children"
       themes: !cel "steps.themes.result.body.children[0].children"
 
-  # Three mounts of one design: the same pages, under the built-in look with
-  # the example's stylesheet, under Radix, and under a theme of the example's
-  # own with Radix's controls. Every mount reads a cookie for its language, and
-  # `/` also for its brand.
+  # Four mounts of one design: the same pages, under the built-in look with
+  # the example's stylesheet, under Radix, under a theme of the example's own
+  # with Radix's controls, and under the built-in look with the navigation in a
+  # sidebar — its rail and store, and a tab bar of four tabs on a phone — every
+  # entry's icon served under each mount. Every
+  # mount reads a cookie for its language, and `/` also for its brand.
   - name: verifyApps
     invoke: { kind: Assert.Equals }
     inputs:
@@ -250,14 +260,26 @@ steps:
         title: !cel "steps.app.result.body.title"
         lang: !cel "steps.app.result.body.lang"
         pages: !cel "steps.app.result.body.pages.map(p, [p.path, p.title.message[0]])"
-        compactBelow: !cel "[steps.app.result.body.compactBelow, steps.radixApp.result.body.compactBelow, steps.brandApp.result.body.compactBelow]"
-        samePages: !cel "steps.radixApp.result.body.pages == steps.app.result.body.pages && steps.brandApp.result.body.pages == steps.app.result.body.pages"
-        titles: !cel "[steps.radixApp.result.body.title.message[0], steps.brandApp.result.body.title.message[0]]"
+        compactBelow: !cel "[steps.app, steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.body.compactBelow)"
+        samePages: !cel "[steps.radixApp, steps.brandApp, steps.sidebarApp].all(a, a.result.body.pages == steps.app.result.body.pages)"
+        # Each mount's tree, each entry with the file its icon is served as.
+        navigation: !cel >-
+          [steps.app, steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.body.navigation.items.map(e, e.type == 'group'
+            ? [e.text.message[0], e.icon.substring(e.icon.lastIndexOf('/') + 1), e.items.map(i, i.type == 'group'
+              ? [i.text.message[0], i.icon.substring(i.icon.lastIndexOf('/') + 1), i.items.map(j, [j.path, j.icon.substring(j.icon.lastIndexOf('/') + 1)])]
+              : [i.path, i.icon.substring(i.icon.lastIndexOf('/') + 1)])]
+            : [e.path, e.icon.substring(e.icon.lastIndexOf('/') + 1)]))
+        placement: !cel "steps.app.result.body.navigation.placement"
+        sameNavigation: !cel >-
+          steps.radixApp.result.body.navigation.placement == steps.app.result.body.navigation.placement
+            && steps.brandApp.result.body.navigation.placement == steps.app.result.body.navigation.placement
+        sidebarPlacement: !cel "steps.sidebarApp.result.body.navigation.placement"
+        titles: !cel "[steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.body.title.message[0])"
         stylesheets: !cel >-
-          [steps.app.result.body, steps.acmeApp.result.body, steps.radixApp.result.body, steps.brandApp.result.body]
+          [steps.app.result.body, steps.acmeApp.result.body, steps.radixApp.result.body, steps.brandApp.result.body, steps.sidebarApp.result.body]
             .map(a, a.stylesheets.map(s, s.substring(s.lastIndexOf('/') + 1)))
-        sets: !cel "[steps.app.result.body, steps.radixApp.result.body, steps.brandApp.result.body].map(a, a.controls.sets.map(s, s.exports))"
-        vary: !cel "[steps.app.result.headers['vary'], steps.radixApp.result.headers['vary'], steps.brandApp.result.headers['vary']]"
+        sets: !cel "[steps.app.result.body, steps.radixApp.result.body, steps.brandApp.result.body, steps.sidebarApp.result.body].map(a, a.controls.sets.map(s, s.exports))"
+        vary: !cel "[steps.app, steps.radixApp, steps.brandApp, steps.sidebarApp].map(a, a.result.headers['vary'])"
       expected:
         title: { lang: en, message: [ UI showcase ] }
         lang: en
@@ -272,25 +294,59 @@ steps:
           - [ /components, Components ]
           - [ /crud, CRUD ]
           - [ /themes, Themes ]
-        compactBelow: [ 48rem, 48rem, 48rem ]
+        compactBelow: [ 48rem, 48rem, 48rem, 48rem ]
         samePages: true
-        titles: [ UI showcase — Radix, UI showcase — brand ]
+        navigation:
+          - &tree
+            - [ /, mark.svg ]
+            - - Building blocks
+              - blocks.svg
+              - - [ /conditions, split.svg ]
+                - [ /data, database.svg ]
+                - [ /tables, table.svg ]
+                - [ /filters, funnel.svg ]
+                - [ Input, text-cursor-input.svg, [ [ /forms, clipboard-list.svg ], [ /actions, zap.svg ] ] ]
+            - [ /components, puzzle.svg ]
+            - [ /crud, list-checks.svg ]
+            - [ /themes, palette.svg ]
+          - *tree
+          - *tree
+          - *tree
+        placement:
+          type: header
+          compact:
+            type: overlay
+            surface: { type: drawer, side: start, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+        sameNavigation: true
+        sidebarPlacement:
+          type: sidebar
+          side: start
+          rail: { collapsed: false }
+          store: { type: local }
+          compact:
+            type: tab-bar
+            visible: 4
+            surface: { type: drawer, side: bottom, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+        titles: [ UI showcase — Radix, UI showcase — brand, UI showcase — sidebar ]
         stylesheets:
           - [ renderer.css, default-theme.css, showcase.css ]
           - [ renderer.css, default-theme.css, tokens.css, showcase.css ]
           - [ renderer.css, ui-react-radix.css, theme-tokens.css, radix-theme.css ]
           - [ renderer.css, ui-react-radix.css, theme-tokens.css, brand.css, tokens.css ]
+          - [ renderer.css, default-theme.css, showcase.css ]
         sets:
           - []
-          - &radixControls [ [ Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon ] ]
+          - &radixControls [ [ Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon ] ]
           - *radixControls
+          - []
         vary:
           - &vary "Accept-Language, Cookie, Host, X-Forwarded-Proto"
           - *vary
           - *vary
+          - *vary
 
   # The header every application draws on every page: the mark, then two
-  # menus — Language, the language in effect marked, and Theme, the three
+  # menus — Language, the language in effect marked, and Theme, the four
   # mounts' home pages, another mount's by an absolute address, this mount
   # marked. The root's Theme menu adds the brand switch, each item delivered
   # only while it changes something.
@@ -310,6 +366,9 @@ steps:
         brandEnd: !cel >-
           steps.brandApp.result.body.header.end.map(n, [n.text.message[0],
             n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
+        sidebarEnd: !cel >-
+          steps.sidebarApp.result.body.header.end.map(n, [n.text.message[0],
+            n.items.map(i, [i.text.message[0], i.href, has(i.style) ? i.style : null])])
         # Behind a proxy chain the first scheme X-Forwarded-Proto lists is the
         # client's.
         proxiedTheme: !cel "steps.proxiedApp.result.body.header.end[1].items.map(i, i.href)"
@@ -326,8 +385,9 @@ steps:
             - - [ Default, /, strong ]
               - [ Radix, "http://127.0.0.1:8151/radix/", null ]
               - [ Brand, "http://127.0.0.1:8151/brand/", null ]
+              - [ Sidebar, "http://127.0.0.1:8151/sidebar/", null ]
               - [ Use the Acme brand, "/api/brand?set=acme", null ]
-        acmeTheme: [ Default, Radix, Brand, "Use the theme's own values" ]
+        acmeTheme: [ Default, Radix, Brand, Sidebar, "Use the theme's own values" ]
         radixStart: true
         radixEnd:
           - [ Language, *languages ]
@@ -335,13 +395,22 @@ steps:
             - - [ Default, "http://127.0.0.1:8151/", null ]
               - [ Radix, /, strong ]
               - [ Brand, "http://127.0.0.1:8151/brand/", null ]
+              - [ Sidebar, "http://127.0.0.1:8151/sidebar/", null ]
         brandEnd:
           - [ Language, *languages ]
           - - Theme
             - - [ Default, "http://127.0.0.1:8151/", null ]
               - [ Radix, "http://127.0.0.1:8151/radix/", null ]
               - [ Brand, /, strong ]
-        proxiedTheme: [ /, "https://127.0.0.1:8151/radix/", "https://127.0.0.1:8151/brand/", "/api/brand?set=acme" ]
+              - [ Sidebar, "http://127.0.0.1:8151/sidebar/", null ]
+        sidebarEnd:
+          - [ Language, *languages ]
+          - - Theme
+            - - [ Default, "http://127.0.0.1:8151/", null ]
+              - [ Radix, "http://127.0.0.1:8151/radix/", null ]
+              - [ Brand, "http://127.0.0.1:8151/brand/", null ]
+              - [ Sidebar, /, strong ]
+        proxiedTheme: [ /, "https://127.0.0.1:8151/radix/", "https://127.0.0.1:8151/brand/", "https://127.0.0.1:8151/sidebar/", "/api/brand?set=acme" ]
 
   # The language in effect is the `showcase-lang` cookie's, read before the
   # Accept-Language header, under every mount; the Language menu marks it
@@ -417,7 +486,8 @@ steps:
         heading: { lang: pl, message: [ Każdy rodzaj węzła ] }
 
   # The overview's structural nodes: the three containers, text in each style,
-  # badges, a link of each address form, images and SVG markup.
+  # badges, a link of each address form, images and SVG markup, and tabs under
+  # the page's address.
   - name: verifyNodes
     invoke: { kind: Assert.Equals }
     inputs:
@@ -429,8 +499,11 @@ steps:
         links: !cel "steps.nodes.result.overview[9].children.map(c, [c.type, c.href])"
         images: !cel "steps.nodes.result.overview[12].children.map(c, [c.type, 'src' in c ? c.src : '-', c.alt.message])"
         markup: !cel "steps.nodes.result.overview[12].children[2].markup.startsWith('<svg')"
+        tabs: !cel >-
+          cel.bind(t, steps.nodes.result.overview[25], [t.address, t.tabs.map(tab, [tab.text.message[0], tab.children.map(c, c.type)])])
+        polishTab: !cel "steps.polishOverview.result.body.children[0].children[25].tabs[0].text"
       expected:
-        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, data, text, text, table, text, columns, text, text, text, box ]
+        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, data, text, text, table, text, columns, text, text, text, box, text, text, tabs ]
         containers: [ box, stack, box ]
         styles: [ heading, subheading, muted, strong, accent, danger, warning, success, [ strong, accent ] ]
         badges: [ [ badge, "-" ], [ badge, accent ], [ badge, success ], [ badge, warning ], [ badge, danger ] ]
@@ -444,6 +517,12 @@ steps:
           - [ image, /files/mark.svg, [] ]
           - [ svg, "-", [ Three overlapping circles ] ]
         markup: true
+        tabs:
+          - { name: overviewTab }
+          - - [ Summary, [ text ] ]
+            - [ Details, [ text, badge ] ]
+            - [ Notes, [ text ] ]
+        polishTab: { lang: pl, message: [ Podsumowanie ] }
 
   # The team record read when the page opens: each value presented by its
   # schema, the enumeration's labels, a list with a default header, a written
@@ -1019,7 +1098,7 @@ steps:
             - direct
             - button
             - chips
-            - { type: aside, side: end }
+            - { type: aside, side: end, compact: { type: collapsible, open: false } }
             - { key: review, address: false, store: { type: session }, fields: [ status, assigneeEmail, priority, dueOn ] }
             - - [ status, in, auto, false ]
               - [ assigneeEmail, in, auto, false ]
@@ -1512,7 +1591,7 @@ steps:
         polish: !cel "steps.polishCrud.result.body.children[0].children[0].text"
       expected:
         kinds: [ text, text, text, text, filters ]
-        bar: [ chosen, chips, commit, chips, { type: aside, side: end }, aside, false, { type: local }, 15 ]
+        bar: [ chosen, chips, commit, chips, { type: aside, side: end, compact: { type: collapsible, open: false } }, aside, false, { type: local }, 15 ]
         sharedState: true
         table:
           - /api/tasks
@@ -1524,7 +1603,7 @@ steps:
         edit: [ panel, { name: crudTask }, close, confirm ]
         polish: { lang: pl, message: [ Wygenerowany ekran administracyjny ] }
 
-  # Themes: the three mounts, every design token and the typefaces drawn by
+  # Themes: the four mounts, every design token and the typefaces drawn by
   # components of the example's own; on `/` only, links to the other two mounts
   # and the brand switch, with a badge while the brand cookie is set.
   - name: verifyThemes
@@ -1539,7 +1618,7 @@ steps:
         polish: !cel "[steps.polishThemes.result.body.children[0].children[0].text, steps.polishThemes.result.body.children[1].children[0].text]"
       expected:
         kinds: [ text, text, columns, text, text, text, component, text, text, component ]
-        mounts: [ At the root, Under /radix, Under /brand ]
+        mounts: [ At the root, Under /radix, Under /brand, Under /sidebar ]
         components:
           - [ TokenSheet, {}, true ]
           - [ TypefaceSamples, {}, true ]
@@ -1548,10 +1627,10 @@ steps:
           - [ "/api/brand?set=acme", "/api/brand?set=none" ]
         badge: [ false, true ]
         polish:
-          - { lang: pl, message: [ Trzy punkty montowania jednego projektu ] }
+          - { lang: pl, message: [ Cztery punkty montowania jednego projektu ] }
           - { lang: pl, message: [ Przełącz punkt montowania lub markę ] }
 
-  # `/radix` and `/brand` place the very views `/` does.
+  # `/radix`, `/brand` and `/sidebar` place the very views `/` does.
   - name: verifySharedPages
     invoke: { kind: Assert.Equals }
     inputs:
@@ -1562,6 +1641,7 @@ steps:
         brand: !cel >-
           [steps.brandOverview, steps.brandConditions, steps.brandData, steps.brandTables, steps.brandFilters, steps.brandForms,
             steps.brandActions, steps.brandComponents, steps.brandCrud, steps.brandThemes].map(p, p.result.body.children)
+        sidebar: !cel "[steps.sidebarOverview.result.body.children, steps.sidebarThemes.result.body.children]"
       expected:
         radix: &shared
           - !cel "[steps.overview.result.body.children[0]]"
@@ -1575,3 +1655,6 @@ steps:
           - !cel "steps.crud.result.body.children"
           - !cel "[steps.themes.result.body.children[0]]"
         brand: *shared
+        sidebar:
+          - !cel "[steps.overview.result.body.children[0]]"
+          - !cel "[steps.themes.result.body.children[0]]"

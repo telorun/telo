@@ -41,7 +41,7 @@ import type { ModuleDocuments } from "./module-documents.js";
 import { isModuleKind } from "./module-kinds.js";
 import { importAnchoredDiagnostic, type ReachingImport } from "./reaching-import.js";
 import type { ReachSite } from "./reference-reach.js";
-import { isInlineResource } from "./reference-field-map.js";
+import { isInlineDeclaration } from "./resolved-reference.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
 import { readProjectionRef, type ProjectionScope, type ProjectionTrail } from "./schema-projection.js";
 import {
@@ -236,7 +236,7 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
     resolve: (held, value) => {
       const origin = value && typeof value === "object" ? forwardedFrom.get(value) : undefined;
       if (origin && origin !== held.manifest) return host.resolve({ manifest: origin, throughInput: held.throughInput }, value);
-      if (value && typeof value === "object" && !Array.isArray(value) && isInlineResource(value as Record<string, unknown>)) {
+      if (value && typeof value === "object" && !Array.isArray(value) && isInlineDeclaration(value)) {
         const module = moduleOf(held.manifest);
         const inline = {
           ...(value as Record<string, unknown>),

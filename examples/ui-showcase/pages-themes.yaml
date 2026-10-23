@@ -1,4 +1,4 @@
-# Themes: the three mounts of one design, every design token as the page's
+# Themes: the four mounts of one design, every design token as the page's
 # theme and brand give it, and the typefaces in use. Every application places
 # this view on its `/themes` page; the `/` application adds the links between
 # the mounts and the brand switch.
@@ -8,13 +8,13 @@ metadata:
 content:
   type: stack
   children:
-    # ---- Three mounts ----
-    - { type: text, text: Three mounts of one design, style: heading }
+    # ---- Four mounts ----
+    - { type: text, text: Four mounts of one design, style: heading }
     - type: text
       style: muted
       text: >-
-        The same pages are served three times, each application naming its own theme and brand. The pages are
-        one set of views, placed by reference from all three, so only the look differs.
+        The same pages are served four times, each application naming its own theme, brand and navigation. The
+        pages are one set of views, placed by reference from all four, so only the look and the navigation differ.
     - type: columns
       children:
         - type: box
@@ -29,7 +29,7 @@ content:
             - { type: text, text: Under /radix, style: subheading }
             - type: text
               text: >-
-                The Radix theme: its stylesheet and its eleven controls — the choice lists, dialogs, drawers,
+                The Radix theme: its stylesheet and its thirteen controls — the choice lists, dialogs, drawers,
                 popovers, menus and tooltips — with the brand left to the theme.
         - type: box
           children:
@@ -39,6 +39,13 @@ content:
                 A theme of this example's own: Radix's controls under a stylesheet written here, with token values
                 of its own. The application's brand is one token set, which ships the Inter typeface the theme
                 names.
+        - type: box
+          children:
+            - { type: text, text: Under /sidebar, style: subheading }
+            - type: text
+              text: >-
+                The built-in look with the navigation in a sidebar beside the page, which collapses to a rail and
+                remembers its open groups. On a phone it becomes a tab bar along the bottom edge.
     - type: text
       style: muted
       text: >-
@@ -67,3 +74,12 @@ content:
         fonts.
     - type: composite
       ref: { kind: Ui.Component, component: !ref Components.typefaceSamples }
+---
+# The page every application lists at /themes, placing the view.
+kind: Ui.Page
+metadata:
+  name: themesScreen
+path: /themes
+title: Themes
+children:
+  - { type: composite, ref: !ref themesPage }

@@ -16,15 +16,15 @@ exports:
     - specifier: "@fixture/layer-controls"
       path: ./browser/layer-controls.js
       source: ./src/layer-controls.js
-      abi: ui_react_controls-1
+      abi: ui_react_controls-2
       external: [react, react/jsx-runtime, react-dom]
-      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
+      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
 ---
 kind: UiReact.Controls
 metadata:
   name: layerControls
 entry: "@fixture/layer-controls"
-implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
+implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation]
 ---
 kind: UiReact.Theme
 metadata:

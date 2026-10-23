@@ -12,6 +12,13 @@ by a React renderer this module ships prebuilt.
   is no generated code and nothing to compile per application.
 - **Per-request pages.** A node's `when:` and its text may read the request's
   headers, so a role or a tenant decides what a page shows.
+- **A menu that fits the screen.** The [navigation](docs/app.md#navigation) is
+  a tree of pages, links and groups — a menu bar with dropdowns and submenus,
+  or a sidebar collapsing to a rail of icons that remembers its open groups,
+  and below the breakpoint a menu button opening a drawer or a bottom tab bar
+  — written as data, naming pages by reference so a library's pages join it
+  unchanged. An entry's [icon](docs/app.md#icons) is drawn in the colour of
+  its text, so a theme colours it as it colours text.
 - **Data on page load, drawn by condition.** A [`Ui.Data`](../ui/docs/data.md)
   is read when it is drawn — a loading state first, a failure state for a
   refused read — and read again on window focus or when a request inside it
@@ -31,7 +38,8 @@ by a React renderer this module ships prebuilt.
 - **Styling is a published contract.** Every element carries a stable part
   name; your stylesheet is applied last and always wins.
 - **Controls behind a contract.** Every interactive leaf — text boxes, choices,
-  lists, dialogs, menus, tooltips, glyphs — is drawn through one published
+  lists, dialogs, menus, navigation, tabs, tooltips, glyphs — is drawn through
+  one published
   [controls contract](docs/controls-abi.md), with its behaviour as data and an
   interpreter to check an implementation against it; the built-ins are its
   reference implementation.
@@ -123,7 +131,8 @@ words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1d4ed8" }
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Todos
     children:
       - type: composite

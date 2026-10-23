@@ -40,6 +40,7 @@ import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import { createAjv } from "./schema-compat.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 /** How a kind's entry collection projects to an object schema. */
 export interface SchemaProjection {
@@ -1084,7 +1085,7 @@ function hopOf(holder: Holder, inner: readonly string[], run: Derivation): Proje
 function referenceValueKind(value: unknown, run: Derivation): "reference" | "inline" | "data" {
   if (run.scope.isLiveReference?.(value) === true || isRefSentinel(value)) return "reference";
   if (!isObject(value) || typeof value.kind !== "string") return "data";
-  return typeof value.name === "string" ? "reference" : "inline";
+  return isResolvedReference(value) ? "reference" : "inline";
 }
 
 /** The declaration the value at a reference slot of `holder` names, as the next

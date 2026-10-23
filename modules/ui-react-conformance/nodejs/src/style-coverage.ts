@@ -36,6 +36,10 @@ const ALSO_SETS: Record<string, string[]> = {
   "min-block-size": ["min-height"],
   grid: ["grid-template-columns"],
   "grid-template": ["grid-template-columns"],
+  background: ["background-color"],
+  mask: ["mask-image"],
+  "-webkit-mask": ["mask-image"],
+  "-webkit-mask-image": ["mask-image"],
 };
 
 const declares = (rule: StyleRule, property: string) =>

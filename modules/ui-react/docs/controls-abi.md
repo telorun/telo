@@ -1,8 +1,8 @@
-# The controls contract — `ui_react_controls-1`
+# The controls contract — `ui_react_controls-2`
 
 What a theme's controls are written against. The renderer draws every
 interactive leaf of a page — every text box, choice, list, overlay, menu,
-tooltip and glyph — through one control set: a theme's control where the
+navigation, tab list, tooltip and glyph — through one control set: a theme's control where the
 theme implements it, this module's built-in everywhere else. The built-ins are
 the reference implementation; they meet this contract the way any other
 implementation must.
@@ -44,11 +44,14 @@ control's **sub-parts** are the only other parts it may draw.
 | `Confirmation` | Overlay | `surface` | `surface-overlay` |
 | `Menu` | Overlay | `menu` | `menu-item` |
 | `Tooltip` | Overlay | `tooltip` | — |
+| `Navigation` | Navigation | `navigation` | `nav-item`, `nav-toggle`, `nav-group`, `nav-panel`, `icon` |
+| `Tabs` | Navigation | `tabs` | `tab-list`, `tab`, `tab-panel` |
 | `Icon` | Glyph | `icon` | — |
 
 The glyph names an `Icon` is drawn with are closed too: `add`, `alert`,
-`close`, `delete`, `edit`, `filter`, `loading`, `next`, `previous`, `remove`,
-`reset`, `sort-ascending`, `sort-descending`, `sortable`. A glyph inside a
+`close`, `collapse`, `delete`, `edit`, `expand`, `filter`, `loading`, `menu`,
+`more`, `next`, `previous`, `remove`, `reset`, `sort-ascending`,
+`sort-descending`, `sortable`. A glyph inside a
 control — a select's chevron, a checkbox's mark, a tag's × — is that control's
 `icon` sub-part, not an `Icon`.
 
@@ -119,6 +122,8 @@ decides what changes.
 | `Confirmation` | `onOpenChange` → `open` |
 | `Menu` | `onOpenChange` → `open`, `onChange` |
 | `Tooltip` | `onOpenChange` → `open` |
+| `Navigation` | `onOpenChange` → `open`, `onChange` |
+| `Tabs` | `onChange` → `value` |
 
 ## Overlays and anchored controls
 
@@ -134,21 +139,103 @@ inside it while it is open and gives it back to what had it when it closes; a
 confirmation is answered only by Escape or by one of the renderer's buttons.
 
 `Menu` and `Tooltip` are given the renderer's own element as their only child
-— the filter bar's add button, a menu node's trigger, an icon button — and draw
-it as their trigger, carrying no state of theirs on it. A `Menu` entry given
-`current` is the current choice — a menu node's link whose style is `strong`.
-A control may mark it `aria-current="true"` and `data-current="true"` on its
-`menu-item`; one that does not still meets the contract, so the mark is shown
-only under controls that set it. `Popover` is placed against `anchor`, an
-element the renderer drew.
+— the filter bar's add button, an icon button — and draw it as their trigger,
+carrying no state of theirs on it. `Menu` is a list of things to do
+(`role="menu"`), never a list of places to go: links are `Navigation`'s.
+`Popover` is placed against `anchor`, an element the renderer drew.
+
+## Navigation
+
+`Navigation` draws a tree of links in the WAI-ARIA disclosure navigation
+pattern: every entry with an `href` is a real link (`a`, the `nav-item` part)
+and every entry with `items` is a button (`nav-toggle`) disclosing them, with
+`aria-expanded` and, while open, `aria-controls` naming the element its
+entries are drawn in.
+
+- **The tree.** `layout` draws the top-level entries in a row
+  (`horizontal`), in a column (`vertical`), or in a column of each top-level
+  entry's glyph — its first letter when it has none — (`rail`), the entry
+  still named by its whole label. The root carries the layout as
+  `data-layout`, and `attributes` as given.
+- **Icons.** An entry's `icon` is an element the renderer drew — a `glyph`
+  hidden from assistive technology — and the control places it as given,
+  never copying or restyling it: before the label of the entry's link or
+  button, and in a rail as the whole text of a top-level entry.
+- **A landmark only when named.** Given `label`, the root is a `nav` named by
+  it; without one it is no landmark — a menu node's one group is not the
+  page's navigation.
+- **Groups in a column open in place.** In `vertical`, an open group's
+  entries are drawn in a `nav-group` right after its button, inside the
+  navigation, at every depth. A `nav-group` is no layer and carries no
+  `data-telo-layer`; Tab reaches its entries in the order they are drawn.
+- **Groups in a row or a rail float.** In `horizontal` and `rail`, an open
+  group's entries are drawn in a `nav-panel` at the end of `<body>`, a layer
+  root carrying `data-telo-layer`, placed against its button: below it for a
+  top-level group of a row, beside it otherwise — a rail's top-level group
+  beside the rail, and a nested group beside its button in the panel holding
+  it. A panel stays inside the viewport. Tab moves from an open group's button
+  into its panel, and from the panel's last entry on to the entry after the
+  group; Shift+Tab moves back the same way.
+- **Entries opening a dialog.** An entry given `opens: "dialog"` has
+  neither `href` nor `items`: it is a button (`nav-toggle`) carrying
+  `aria-haspopup="dialog"`, and `aria-expanded` and `data-state` by whether
+  its key is listed in `open`. It draws nothing of its own when open and has
+  no `aria-controls`: a press asks for its key as a group's button would, and
+  the renderer draws the dialog.
+- **What does not fit.** Given `more`, a row of several top-level entries
+  moves those that do not fit its width, from the end, into one more group
+  drawn last, keyed and labelled by `more`; without it, every entry stays in
+  the row. Like placement, this needs a layout engine to observe and is the
+  control's to provide, not a term the vectors check.
+- **Open groups.** `open` is the set of the open groups' keys, in any order. A
+  group is drawn open when its key is listed and every group holding it is
+  open, so a listed group inside a closed one stays closed until that one
+  opens. `onOpenChange` reports the set a person asks for, which depends on
+  the layout:
+  - in `vertical`, a press on a group's button asks for the set with that one
+    key added or taken out, so several groups may be open at once. Nothing
+    else closes a group in place: Escape, a press or the focus outside and
+    following a link ask for no change;
+  - in `horizontal` and `rail`, opening a group asks for its chain — its key
+    and those of the groups holding it — so every group beside it and beneath
+    them closes, and a press on an open group's button asks for the groups
+    holding it. Escape asks to close the innermost open group, and a press or
+    the focus outside every panel and outside the navigation asks to close
+    what it lies outside of in one report; closing a panel with the focus in
+    it gives the focus to its button.
+- **Following a link.** A plain press on a link — no modifier key, the main
+  button — is reported as `onChange` with the link's key; the control keeps
+  the browser from following it, and the renderer moves to it. In
+  `horizontal` and `rail` it is followed, while a panel is open, by
+  `onOpenChange([], "close")`; in `vertical` by nothing — closing whatever
+  holds the navigation is the renderer's. Any other press on a link is the
+  browser's.
+- **Current.** An entry given `current` carries it as `data-current`, and a
+  link as `aria-current` too: `page` for the page being shown, `true` for the
+  current choice of a set, such as the language in use. The More group
+  carries `data-current="true"` while an entry it holds is current.
+
+## Tabs
+
+`Tabs` draws content under tabs in the WAI-ARIA tabs pattern with manual
+activation: a `tab-list` (`role="tablist"`, named by `label`) of `tab`
+buttons (`role="tab"`, `aria-selected` on the chosen one), then one
+`tab-panel` (`role="tabpanel"`, reached by Tab) holding `children`, the chosen
+tab's content. The arrow keys, Home and End move the focus among the tabs and
+the chosen one is the one Tab reaches; Enter, Space or a press on a tab other
+than the chosen one is reported as `onChange` with its key. The renderer
+draws a [`tabs` node](../../ui/docs/nodes.md#tabs) with it, keying each tab by
+the key the page document gives it and holding which one is chosen; its parts are in the
+[styling contract](styling.md#tabs)'s list.
 
 ## Layers
 
-`Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`
-and `Tooltip` are the **layer controls**: each draws a layer at the end of
-`<body>` — an overlay's `surface` and a modal one's `surface-overlay`, a
-choice list's `select-content`, a `menu`, a `tooltip`. The contract data marks
-each of them `layer: true`.
+`Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`, `Confirmation`, `Menu`,
+`Tooltip` and `Navigation` are the **layer controls**: each draws a layer at
+the end of `<body>` — an overlay's `surface` and a modal one's
+`surface-overlay`, a choice list's `select-content`, a `menu`, a `tooltip`, a
+row's or a rail's `nav-panel`. The contract data marks each of them
+`layer: true`.
 
 - **The marker.** The root of every layer a control draws at the end of
   `<body>` carries `data-telo-layer`. A closing copy is a child of `<body>`
@@ -156,16 +243,17 @@ each of them `layer: true`.
   application's element nor a supplied one: nothing in it is an element of
   the page. A live layer root keeps `data-telo-layer` while a later modal
   layer makes it `inert`, and stays an element of the page.
-- **One unit.** A set implementing any layer control implements all eight
+- **One unit.** A set implementing any layer control implements all nine
   (`UI_CONTROLS_LAYERS_PARTIAL`), so every layer on a page comes from one
   implementation. A primitive library keeps one stack of the layers it draws,
   and two stacks cannot be made to cooperate — one cancels the Escape or traps
   the focus another needs — so the contract guarantees instead that a page
-  holds one stack. The other fourteen controls draw no layer and may be
+  holds one stack. The other fifteen controls draw no layer and may be
   replaced in any subset.
 - **Composition within the stack.** How one implementation's layers compose
   — a list opened in a dialog, a drawer or a popover, the confirmation over a
-  dialog or a drawer, the menu in a filter overlay, a tooltip over a surface —
+  dialog or a drawer, the menu in a filter overlay, a tooltip over a surface
+  or over a navigation panel —
   is its own, and the scenes hold it to one rule. Escape closes only the top
   layer. A press outside the top layer is offered to each layer from the top
   down: each layer it lies outside of may close, as its own `dismiss.outside`
@@ -173,7 +261,7 @@ each of them `layer: true`.
   layer it lies inside of; otherwise it stops after the first **shielding**
   layer, which is still offered it. A modal dialog or drawer, a confirmation,
   and an open `Select`, `MultiSelect` or `Menu` list shield; a popover, a
-  non-modal dialog or drawer, and a tooltip do not. So a press on the page
+  non-modal dialog or drawer, a navigation panel and a tooltip do not. So a press on the page
   closes a chip's popover and the non-modal popover holding the chip
   together, while one made with a list open in that popover closes only the
   list.
@@ -198,7 +286,7 @@ the built-ins:
 This is the built-ins' tested behaviour, not a term every implementation
 meets. A layer built on Radix's overlays cannot meet it — they cancel Escape in
 the capture phase, and a modal one traps the focus and sets `pointer-events:
-none` on `<body>` — which is why the eight are one unit.
+none` on `<body>` — which is why the nine are one unit.
 
 ## States
 
@@ -242,8 +330,13 @@ no terms of the contract.
 | `Confirmation` | `data-state` | `open`, `closed` | its root, `surface-overlay` |
 | `Menu` | `data-state` | `open`, `closed` | its root |
 | `Menu` | `data-highlighted` | present | `menu-item` |
-| `Menu` | `data-current` | `true` | `menu-item` |
 | `Tooltip` | `data-state` | `closed`, `delayed-open`, `instant-open` | its root |
+| `Navigation` | `data-layout` | `horizontal`, `vertical`, `rail` | its root |
+| `Navigation` | `data-state` | `open`, `closed` | `nav-toggle` |
+| `Navigation` | `data-state` | `open`, `closed` | `nav-panel` |
+| `Navigation` | `data-current` | `page`, `true` | `nav-item`, `nav-toggle` |
+| `Tabs` | `data-state` | `active`, `inactive` | `tab` |
+| `Tabs` | `data-state` | `active` | `tab-panel` |
 
 ## The declaration
 
@@ -491,21 +584,69 @@ export interface ConfirmationProps extends OverlayProps {
   describedBy: string;
 }
 
-/** One entry of a menu. */
-export interface MenuItem extends Option {
-  /** Given, the entry is the current choice: the control may mark it with
-   *  `aria-current="true"` and `data-current="true"`. */
-  current?: boolean;
-}
-
 export interface MenuProps {
   open: boolean;
-  items: MenuItem[];
+  /** The things to do, each a key and its finished text. */
+  items: Option[];
   onOpenChange(open: boolean, reason?: CloseReason): void;
   /** An entry is chosen. */
   onChange(key: string): void;
   /** The renderer's button it opens from: rendered as the menu's trigger. */
   children: ReactElement;
+}
+
+/** One entry of a navigation: a link, a group of entries, or a button
+ *  opening a dialog the renderer draws. */
+export interface NavigationEntry {
+  /** Issued by the renderer, unique in the navigation. */
+  key: string;
+  label: string;
+  /** The address a link leads to; a group has none. */
+  href?: string;
+  /** A group's entries, in order; a link has none. */
+  items?: NavigationEntry[];
+  /** Given, the entry has neither `href` nor `items`: its button opens a
+   *  dialog the renderer draws, and is expanded while its key is in `open`. */
+  opens?: "dialog";
+  /** The entry is current: a link carries it as `aria-current` and
+   *  `data-current`, a group's button as `data-current`. */
+  current?: "page" | "true";
+  /** The renderer's glyph for the entry, hidden from assistive technology:
+   *  drawn before the label, and in a rail in place of its first letter. */
+  icon?: ReactElement;
+}
+
+export interface NavigationProps {
+  /** Given, the navigation is a landmark this names; without it, none. */
+  label?: string;
+  /** In a row, in a column, or in a column of each top-level entry's first
+   *  letter. A group opens a panel over the page in a row or a rail, and in
+   *  place beneath its button in a column. */
+  layout: "horizontal" | "vertical" | "rail";
+  items: NavigationEntry[];
+  /** Given, the group what does not fit a horizontal row moves into;
+   *  without it, every entry stays in the row. */
+  more?: { key: string; label: string };
+  /** The keys of the open groups, in any order: a group is drawn open when its
+   *  key is listed and every group holding it is open. */
+  open: string[];
+  /** Set on the root as given. */
+  attributes?: Record<string, string>;
+  onOpenChange(open: string[], reason?: CloseReason): void;
+  /** A link is followed: the renderer moves to it. */
+  onChange(key: string): void;
+}
+
+export interface TabsProps {
+  /** The tab list's accessible name. */
+  label?: string;
+  /** The tabs, in order, each a key and its finished text. */
+  tabs: Option[];
+  /** The chosen tab's key. */
+  value: string;
+  onChange(value: string): void;
+  /** The chosen tab's content, drawn in its panel. */
+  children: ReactNode;
 }
 
 export interface TooltipProps {
@@ -522,10 +663,14 @@ export type IconName =
   | "add"
   | "alert"
   | "close"
+  | "collapse"
   | "delete"
   | "edit"
+  | "expand"
   | "filter"
   | "loading"
+  | "menu"
+  | "more"
   | "next"
   | "previous"
   | "remove"
@@ -538,7 +683,7 @@ export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-1`: a module implementing any of them
+/** The control set of `ui_react_controls-2`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;
@@ -562,6 +707,8 @@ export interface Controls {
   Confirmation: ComponentType<ConfirmationProps>;
   Menu: ComponentType<MenuProps>;
   Tooltip: ComponentType<TooltipProps>;
+  Navigation: ComponentType<NavigationProps>;
+  Tabs: ComponentType<TabsProps>;
   Icon: ComponentType<IconProps>;
 }
 
@@ -624,10 +771,11 @@ this module, beside the interpreter that runs it:
   application's token stylesheet uses.
 
 A step is one of `click`, `press` (a pointer pressed down, `mouse` or
-`touch`), `key` (with `shift`), `fill`, `focus`, `blur`, `scroll` (the element
-and everything in it scrolled to its end), `wait`, `props` (a vector's props
-changed), `respond` (a scene's answers changed) and `expect`. An element is
-named by its `part`, `text`, `role`, `id`, `attributes`, `within` and `index`.
+`touch`), `hover` (a mouse pointer moved onto the element), `key` (with
+`shift`), `fill`, `focus`, `blur`, `scroll` (the element and everything in it
+scrolled to its end), `wait`, `props` (a vector's props changed), `respond` (a
+scene's answers changed) and `expect`. An element is named by its `part`,
+`text`, `role`, `tag`, `id`, `attributes`, `within` and `index`.
 An expectation names the exact intents reported since the last one, where the
 focus is, what is drawn and what is not, attributes, text, and what is drawn
 outside the application. The interpreter applies each intent to the prop it
@@ -650,7 +798,7 @@ implementation and its version are part of the contract's oracle.
 
 ## How the generation grows
 
-For the life of `ui_react_controls-1`:
+For the life of `ui_react_controls-2`:
 
 - the control set only grows;
 - a prop is added only where an implementation ignoring it still meets the
@@ -658,4 +806,16 @@ For the life of `ui_react_controls-1`:
 - the supplied specifiers only grow.
 
 Anything else — a new value form, a state, a required part, an intent — is
-`ui_react_controls-2`. A renderer may host several generations at once.
+`ui_react_controls-3`. A renderer may host several generations at once; this
+one hosts `ui_react_controls-2` alone.
+
+`ui_react_controls-2` differs from `ui_react_controls-1` in:
+
+- two controls, `Navigation` — a ninth layer control, so a set implementing
+  the eight of generation 1 is refused — and `Tabs`;
+- the parts `navigation`, `nav-toggle`, `nav-item`, `nav-group` (a column's
+  group opened in place) and `nav-panel` (a row's or a rail's group, a layer);
+- four glyph names, `menu`, `more`, `collapse` and `expand`;
+- `Menu`'s entries, which carry no `current`, and its `menu-item`, which
+  carries no `data-current`: a menu node is drawn by `Navigation`;
+- two interpreter terms, the `hover` step and the `tag` of a target.

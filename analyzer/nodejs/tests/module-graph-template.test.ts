@@ -273,7 +273,7 @@ run: !ref chain
       LIBRARY.replace(
         "    job: !ref job\n  - kind: Self.Poller\n    metadata: { name: idle }\n    job: !ref job\n",
         [
-          "    job: { kind: Self.Job, name: poller_job }",
+          "    job: { __ref: true, kind: Self.Job, name: poller_job }",
           "  - kind: Self.Job",
           "    metadata:",
           "      name: poller_job",

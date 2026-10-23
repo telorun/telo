@@ -1,0 +1,28 @@
+# A compact navigation placement of another module's own: a tab bar showing
+# three tabs, declared as a kind extending the compact abstract.
+kind: Telo.Library
+metadata:
+  name: UiReactNavigationPlacements
+  version: 1.0.0
+  description: >-
+    Test fixture declaring a compact navigation placement of its own, which an
+    application names where a compact placement goes with no change to ui.
+imports:
+  Ui: ../../../../../ui
+exports:
+  kinds: [ThreeTabs]
+---
+kind: Telo.Definition
+metadata:
+  name: ThreeTabs
+  description: A bottom tab bar showing three tabs, its groups in a bottom sheet.
+capability: Telo.Provider
+extends: Ui.CompactNavigationPlacement
+schema:
+  type: object
+  additionalProperties: false
+resources:
+  - kind: Ui.TabBarNavigation
+    metadata: { name: bar }
+    visible: 3
+provide: !ref bar

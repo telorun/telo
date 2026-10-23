@@ -501,7 +501,8 @@ title: Semantic search
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Ask
     children:
       - { type: text, text: "Ask your documents", style: heading }
@@ -526,7 +527,8 @@ pages:
                 columns:
                   - value: !cel "row.title"
                   - value: !cel "row.score"
-  - path: /search
+  - kind: Ui.Page
+    path: /search
     title: Search
     children:
       - { type: text, text: "Search by meaning", style: heading }
@@ -545,7 +547,8 @@ pages:
               - value: !cel "row.title"
               - value: !cel "row.id"
               - value: !cel "row.score"
-  - path: /documents
+  - kind: Ui.Page
+    path: /documents
     title: Add a document
     children:
       - { type: text, text: "Add a document", style: heading }

@@ -5,7 +5,7 @@ import {
   rangeAccepts,
   type NeedConstraint,
   type NeedTableEntry,
-  type ReachSite,
+  type ReachSite, isResolvedReference,
 } from "@telorun/analyzer";
 import type { NeedConstraints, NeedObservation } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
@@ -35,12 +35,7 @@ export function observedAt(site: ReachSite): NeedConstraint[] {
 }
 
 function isReference(value: unknown): boolean {
-  return (
-    !!value &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    typeof (value as Record<string, unknown>).name === "string"
-  );
+  return isResolvedReference(value);
 }
 
 /** Every concrete pointer at an observing slot that holds a reference — what

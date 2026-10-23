@@ -76,22 +76,19 @@ import {
   buildPublishedProps,
   diagnoseObservedStateAccess,
 } from "./observed-state.js";
+import { isResolvedReference } from "@telorun/analyzer";
 
 export { resourceKey };
 
 /** An edge in the resource dependency graph: a resolved `!ref` target. */
 type ResourceRef = { kind: string; name: string; alias?: string };
 
-/** A pure resolved reference is a `{ kind, name, alias? }` object and nothing
- *  else — the shape `resolveRefSentinels` produces (Phase 2.5). An inline
- *  definition (`{ kind, ...config }`) carries extra keys and is its own node, so
- *  it is not an edge here; a live `ResourceInstance` (injected at Phase 5) has
- *  methods, never this exact key set. */
+/** A resolved reference — the marked shape `resolveRefSentinels` produces
+ *  (Phase 2.5). An inline definition (`{ kind, ...config }`) carries no marker
+ *  and is its own node, so it is not an edge here; a live `ResourceInstance`
+ *  (injected at Phase 5) carries none either. */
 function isResolvedRef(value: unknown): value is ResourceRef {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const v = value as Record<string, unknown>;
-  if (typeof v.kind !== "string" || typeof v.name !== "string") return false;
-  return Object.keys(v).every((k) => k === "kind" || k === "name" || k === "alias");
+  return isResolvedReference(value);
 }
 
 /** The system kinds whose top-level `schema:` is, by definition, a JSON Schema

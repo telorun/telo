@@ -1,0 +1,5 @@
+modules:
+  modules/ui-react-conformance: Added
+body: "Checks against ui_react_controls-2: a set's nine layer controls, the Navigation
+  and Tabs vectors, and a tooltip opened over a menu node's navigation panel that Escape
+  closes alone."

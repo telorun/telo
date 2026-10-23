@@ -70,24 +70,38 @@ export function refuseMistypedResults(
       continue;
     }
     if (check.isValid(detachSnapshotValue(slot.value))) continue;
-    throw refuse(
-      path,
-      `must be ${expectedOf(slot.schema)}, but the expression produced ${describeProduced(slot.value)}`,
-    );
+    throw refuse(path, resultProblem(check, slot.value, slot.schema));
+  }
+}
+
+/** What a result its slot refuses got wrong. A value of the wrong type says
+ *  which type the slot takes; any other refusal — a value outside an `enum` —
+ *  is worded by the shared renderer, which names the nearest allowed values. */
+function resultProblem(check: DataValidator, value: unknown, schema: Record<string, any>): string {
+  const produced = describeProduced(value);
+  const issues = refusalsOf(check, value);
+  if (issues.length === 0 || issues.every((issue) => issue.keyword === "type")) {
+    return `must be ${expectedOf(schema)}, but the expression produced ${produced}`;
+  }
+  return `${issues.map((issue) => issue.message.replace(/^\/ /, "")).join("; ")} — the expression produced ${produced}`;
+}
+
+function refusalsOf(check: DataValidator, value: unknown): { message: string; keyword?: string }[] {
+  try {
+    check.validate(detachSnapshotValue(value));
+    return [];
+  } catch (error) {
+    if (!(error instanceof SchemaValidationError)) throw error;
+    return error.issues;
   }
 }
 
 /** What a written value's content keywords refuse about it now that the
  *  results inside it exist, in the validator's own words. */
 function contentProblem(check: DataValidator, value: unknown): string | undefined {
-  try {
-    check.validate(detachSnapshotValue(value));
-    return undefined;
-  } catch (error) {
-    if (!(error instanceof SchemaValidationError)) throw error;
-    const problems = error.issues.map((issue) => issue.message.replace(/^\/ /, ""));
-    return `${problems.join("; ")}, once its expressions are evaluated`;
-  }
+  const issues = refusalsOf(check, value);
+  if (issues.length === 0) return undefined;
+  return `${issues.map((issue) => issue.message.replace(/^\/ /, "")).join("; ")}, once its expressions are evaluated`;
 }
 
 function expectedOf(schema: Record<string, any>): string {

@@ -1,3 +1,4 @@
+import { promises as fs } from "fs";
 import * as path from "path";
 import type { Logger } from "@telorun/sdk";
 import * as sdk from "@telorun/sdk";
@@ -204,6 +205,13 @@ function buildEsmShimSource(specifier: string, module: Record<string, unknown>):
  * and NOT remembered: a later load of the same directory tries again, which is
  * what makes a transient failure transient. A slot an installer owns is
  * reported too, but is settled — nothing this kernel does will change it.
+ *
+ * **A remembered directory is still looked at.** A bundle directory is the
+ * cache's to delete: a build superseding it prunes it — another kernel's
+ * sharing the cache, or this one's after an edit — and a later build of the
+ * same key writes the bundle back alone. Trusting the memory then imported a
+ * bundle whose `node_modules/` was gone, so the memory skips only the writes,
+ * never the check that each slot still has its package.
  */
 const preparedBundleDirs = new Set<string>();
 export async function ensureRealmShims(
@@ -211,8 +219,22 @@ export async function ensureRealmShims(
   cacheRoot: string | undefined,
   log?: Logger,
 ): Promise<void> {
-  if (preparedBundleDirs.has(dir)) return;
+  if (preparedBundleDirs.has(dir) && (await shimsPresent(dir, BUNDLE_ENTRIES))) return;
+  preparedBundleDirs.delete(dir);
   if (await writeShims(dir, BUNDLE_ENTRIES, cacheRoot, log)) preparedBundleDirs.add(dir);
+}
+
+/** Whether every entry's package is still in place beside `dir`. */
+async function shimsPresent(dir: string, entries: ReadonlyArray<RealmEntry>): Promise<boolean> {
+  const present = await Promise.all(
+    entries.map((entry) =>
+      fs.access(path.join(dir, "node_modules", ...entry.specifier.split("/"), "package.json")).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  );
+  return present.every(Boolean);
 }
 
 /**

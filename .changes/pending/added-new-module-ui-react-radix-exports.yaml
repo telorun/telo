@@ -3,8 +3,8 @@ modules:
 body: "New module: ui-react-radix exports theme, a UiReact.Theme in Studio's look that
   styles every part light and dark with the brand's token defaults, and controls, a
   UiReact.Controls set drawing Select, MultiSelect, Listbox, Checkbox, Dialog, Drawer,
-  Popover, Confirmation, Menu, Tooltip and Icon on one copy of Radix's primitives and
-  Lucide's icons (browser entry @telorun/ui-react-radix, ui_react_controls-1). An
-  application switches to it with theme: !ref Radix.theme; a theme of another module
-  takes controls whole beside a stylesheet of its own. Its tests hold both to the
-  renderer's contract with UiReactConformance."
+  Popover, Confirmation, Menu, Tooltip, Navigation, Tabs and Icon on one copy of Radix's
+  primitives and Lucide's icons (browser entry @telorun/ui-react-radix,
+  ui_react_controls-2). An application switches to it with theme: !ref Radix.theme; a
+  theme of another module takes controls whole beside a stylesheet of its own. Its tests
+  hold both to the renderer's contract with UiReactConformance."

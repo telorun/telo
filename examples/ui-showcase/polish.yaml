@@ -14,6 +14,7 @@ catalogs:
       - { text: UI showcase, translation: Pokaz interfejsu }
       - { text: UI showcase — Radix, translation: Pokaz interfejsu — Radix }
       - { text: UI showcase — brand, translation: Pokaz interfejsu — marka }
+      - { text: UI showcase — sidebar, translation: Pokaz interfejsu — pasek boczny }
       - { text: Overview, translation: Przegląd }
       - { text: Conditions, translation: Warunki }
       - { text: Data, translation: Dane }
@@ -24,6 +25,9 @@ catalogs:
       - { text: Components, translation: Komponenty }
       - { text: CRUD, translation: CRUD }
       - { text: Themes, translation: Motywy }
+      # The navigation's groups.
+      - { text: Building blocks, translation: Elementy }
+      - { text: Input, translation: Wprowadzanie }
 
       # The header of every application: the mark, the Language and Theme
       # menus and the Theme menu's items. The language names are each written
@@ -34,6 +38,7 @@ catalogs:
       - { text: Default, translation: Domyślny }
       - { text: Radix, translation: Radix }
       - { text: Brand, translation: Marka }
+      - { text: Sidebar, translation: Pasek boczny }
 
       # The overview's nodes evaluated per request.
       - { text: Per request, translation: Na każde żądanie }
@@ -113,6 +118,14 @@ catalogs:
       - { text: A view declared inline at the node that places it., translation: "Widok zadeklarowany w węźle, który go umieszcza." }
       - { text: A callout, translation: Wyróżniona uwaga }
       - { text: "Declared once as a kind that extends Ui.Composite and provides a view, and placed with fields of its own.", translation: "Zadeklarowana raz jako rodzaj rozszerzający Ui.Composite, który dostarcza widok, i umieszczona z własnymi polami." }
+      # The overview's tabs; `Details` and `Notes` are translated with the forms' labels.
+      - { text: Tabs, translation: Karty }
+      - { text: "Content under tabs, one tab at a time. The chosen tab is part of the page's address, so a reload or a shared link opens it again.", translation: "Treść w kartach, jedna karta naraz. Wybrana karta jest częścią adresu strony, więc odświeżenie lub udostępniony odnośnik otwiera ją ponownie." }
+      - { text: Summary, translation: Podsumowanie }
+      - { text: "A tab holds any nodes, as a box does.", translation: "Karta mieści dowolne węzły, tak jak pudełko." }
+      - { text: "Only the chosen tab's nodes are drawn.", translation: "Rysowane są tylko węzły wybranej karty." }
+      - { text: Chosen, translation: Wybrana }
+      - { text: "Each tab is delivered by its own when, as any node is.", translation: "Każda karta jest dostarczana według własnego when, jak każdy węzeł." }
       # The labels of the overview's models.
       - { text: Code, translation: Kod }
       - { text: Name, translation: Nazwa }
@@ -491,14 +504,16 @@ catalogs:
       - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "Nowe zadanie otwiera się w szufladzie od końcowej krawędzi i zostaje otwarte, wyczyszczone, dla następnego. Zadanie zmienia się w panelu obok listy, który jest częścią adresu, a opuszczenie go z niezapisanymi danymi najpierw pyta." }
 
       # Themes.
-      - { text: Three mounts of one design, translation: Trzy punkty montowania jednego projektu }
-      - { text: "The same pages are served three times, each application naming its own theme and brand. The pages are one set of views, placed by reference from all three, so only the look differs.", translation: "Te same strony są serwowane trzy razy, a każda aplikacja nazywa własny motyw i markę. Strony to jeden zestaw widoków umieszczanych przez odwołanie we wszystkich trzech, więc różni się tylko wygląd." }
+      - { text: Four mounts of one design, translation: Cztery punkty montowania jednego projektu }
+      - { text: "The same pages are served four times, each application naming its own theme, brand and navigation. The pages are one set of views, placed by reference from all four, so only the look and the navigation differ.", translation: "Te same strony są serwowane cztery razy, a każda aplikacja nazywa własny motyw, markę i nawigację. Strony to jeden zestaw widoków umieszczanych przez odwołanie we wszystkich czterech, więc różnią się tylko wygląd i nawigacja." }
       - { text: At the root, translation: W katalogu głównym }
       - { text: "The built-in look, this example's own stylesheet over it, and a brand chosen for every request: the Acme token set while a cookie asks for it, the theme's own values otherwise.", translation: "Wbudowany wygląd, nad nim własny arkusz stylów tego przykładu i marka wybierana przy każdym żądaniu: zestaw tokenów Acme, gdy prosi o niego ciasteczko, a w przeciwnym razie wartości samego motywu." }
       - { text: Under /radix, translation: Pod /radix }
-      - { text: "The Radix theme: its stylesheet and its eleven controls — the choice lists, dialogs, drawers, popovers, menus and tooltips — with the brand left to the theme.", translation: "Motyw Radix: jego arkusz stylów i jedenaście kontrolek — listy wyboru, okna, szuflady, dymki, menu i podpowiedzi — z marką pozostawioną motywowi." }
+      - { text: "The Radix theme: its stylesheet and its thirteen controls — the choice lists, dialogs, drawers, popovers, menus and tooltips — with the brand left to the theme.", translation: "Motyw Radix: jego arkusz stylów i trzynaście kontrolek — listy wyboru, okna, szuflady, dymki, menu i podpowiedzi — z marką pozostawioną motywowi." }
       - { text: Under /brand, translation: Pod /brand }
       - { text: "A theme of this example's own: Radix's controls under a stylesheet written here, with token values of its own. The application's brand is one token set, which ships the Inter typeface the theme names.", translation: "Własny motyw tego przykładu: kontrolki Radix pod napisanym tu arkuszem stylów, z własnymi wartościami tokenów. Marka aplikacji to jeden zestaw tokenów, który dostarcza krój Inter nazwany przez motyw." }
+      - { text: Under /sidebar, translation: Pod /sidebar }
+      - { text: "The built-in look with the navigation in a sidebar beside the page, which collapses to a rail and remembers its open groups. On a phone it becomes a tab bar along the bottom edge.", translation: "Wbudowany wygląd z nawigacją w pasku bocznym obok strony, który zwija się do wąskiej szyny i pamięta otwarte grupy. Na telefonie staje się paskiem kart przy dolnej krawędzi." }
       - { text: "A link resolves under the mount it is drawn in, so the links between the mounts and the brand switch are on the root application's Themes page.", translation: "Odnośnik rozwiązuje się pod punktem montowania, w którym go narysowano, więc odnośniki między punktami montowania i przełącznik marki są na stronie motywów aplikacji głównej." }
       - { text: Every design token, translation: Każdy token projektu }
       - { text: "Each token of the closed set as this page's theme and brand give it, read from the custom property the renderer projects it to, with a sample drawn in it. Open another mount, or switch the brand at the root, and the values change.", translation: "Każdy token zamkniętego zestawu tak, jak nadają mu wartość motyw i marka tej strony, odczytany z właściwości CSS, do której rzutuje go renderer, z próbką narysowaną w nim. Otwórz inny punkt montowania albo przełącz markę w aplikacji głównej, a wartości się zmienią." }
@@ -535,6 +550,10 @@ catalogs:
       - { text: Select…, translation: Wybierz… }
       - { text: Choose…, translation: Wskaż… }
       - { text: More, translation: Więcej }
+      - { text: Menu, translation: Menu }
+      - { text: Site, translation: Witryna }
+      - { text: Collapse navigation, translation: Zwiń nawigację }
+      - { text: Expand navigation, translation: Rozwiń nawigację }
       - { text: "Search {$label}", translation: "Szukaj: {$label}" }
       - { text: "Remove {$label}", translation: "Usuń: {$label}" }
       - { text: "Clear {$label}", translation: "Wyczyść: {$label}" }

@@ -15,7 +15,7 @@ exports:
     - specifier: "@fixture/shared-boxes"
       path: ./browser/checkbox.js
       source: ./checkbox.js
-      abi: ui_react_controls-1
+      abi: ui_react_controls-2
       external: [react, react/jsx-runtime, react-dom]
       exports: [Checkbox]
 ---

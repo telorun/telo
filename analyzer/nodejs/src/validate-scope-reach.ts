@@ -15,6 +15,7 @@ import {
 } from "./scope-declarations.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -210,9 +211,7 @@ function localName(source: string): string | undefined {
 
 /** The local name a resolved `{kind, name, alias?}` reference names. */
 function resolvedLocalName(value: unknown): string | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const ref = value as { kind?: unknown; name?: unknown; alias?: unknown };
-  if (typeof ref.kind !== "string" || typeof ref.name !== "string") return undefined;
-  if (typeof ref.alias === "string" && ref.alias !== "Self") return undefined;
-  return ref.name;
+  if (!isResolvedReference(value)) return undefined;
+  if (value.alias !== undefined && value.alias !== "Self") return undefined;
+  return value.name;
 }

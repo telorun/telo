@@ -525,7 +525,8 @@ title: API sync
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Sync
     children:
       - { type: text, text: "Sync now", style: heading }
@@ -549,7 +550,8 @@ pages:
               - value: !cel "row.pages"
               - value: !cel "row.records"
               - value: !cel "row.detail"
-  - path: /posts
+  - kind: Ui.Page
+    path: /posts
     title: Posts
     children:
       - { type: text, text: "Posts in the local copy", style: heading }

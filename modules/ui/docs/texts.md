@@ -76,6 +76,10 @@ required — and name it instead.
 | `select` | Select… |
 | `choose` | Choose… |
 | `more` | More |
+| `menu` | Menu |
+| `siteNavigation` | Site |
+| `collapseNavigation` | Collapse navigation |
+| `expandNavigation` | Expand navigation |
 | `search` | Search {$label} |
 | `remove` | Remove {$label} |
 | `clear` | Clear {$label} |

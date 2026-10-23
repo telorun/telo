@@ -161,18 +161,21 @@ with:
           words: !ref Ui.words
           theme: !ref UiReact.defaultTheme
           pages:
-            - path: /
+            - kind: Ui.Page
+              path: /
               title: Tasks
               children:
                 - type: composite
                   ref: { kind: Crud.Ui, model: !ref taskModel, basePath: /api/tasks }
-            - path: /empty
+            - kind: Ui.Page
+              path: /empty
               title: Tasks
               children:
                 - type: composite
                   ref: { kind: Crud.Ui, model: !ref taskModel, basePath: /api/tasks, create: {} }
             # The declaration under Presentation in `docs/ui.md`.
-            - path: /shown
+            - kind: Ui.Page
+              path: /shown
               title: Tasks
               children:
                 - type: composite
@@ -190,7 +193,8 @@ with:
                     edit:
                       surface: { kind: Ui.Panel, address: { name: task } }
                       unsaved: confirm
-            - path: /one
+            - kind: Ui.Page
+              path: /one
               title: Tasks
               children:
                 - type: composite
@@ -199,7 +203,8 @@ with:
                     model: !ref taskModel
                     basePath: /api/tasks
                     create: { afterSubmit: again }
-            - path: /all
+            - kind: Ui.Page
+              path: /all
               title: Tasks
               children:
                 - type: composite
@@ -229,20 +234,24 @@ with:
           words: !ref Ui.words
           theme: !ref UiReact.defaultTheme
           pages:
-            - path: /
+            - kind: Ui.Page
+              path: /
               title: Tasks
               children:
                 - { type: composite, ref: !ref plainFilters }
             # An empty `create` expands into the same listing as none at all.
-            - path: /empty
+            - kind: Ui.Page
+              path: /empty
               title: Tasks
               children:
                 - { type: composite, ref: !ref plainFilters }
-            - path: /shown
+            - kind: Ui.Page
+              path: /shown
               title: Tasks
               children:
                 - { type: composite, ref: !ref taskFilters }
-            - path: /one
+            - kind: Ui.Page
+              path: /one
               title: Tasks
               children:
                 - type: composite
@@ -261,7 +270,8 @@ with:
                         create: { form: !ref plainCreateForm, afterSubmit: again }
                         edit: { form: !ref plainEditForm }
                         delete: true
-            - path: /all
+            - kind: Ui.Page
+              path: /all
               title: Tasks
               children:
                 - type: composite

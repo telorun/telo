@@ -1,0 +1,20 @@
+kind: Telo.Application
+metadata:
+  name: Sites
+imports:
+  Kinds: ./kinds
+---
+kind: Kinds.Named
+metadata:
+  name: house
+name: house
+---
+kind: Kinds.Holder
+metadata:
+  name: declares
+target: { kind: Kinds.Named, name: house }
+---
+kind: Kinds.Holder
+metadata:
+  name: references
+target: !ref house

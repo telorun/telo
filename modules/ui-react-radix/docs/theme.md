@@ -21,8 +21,9 @@ theme: !ref Radix.theme
 
 `Radix.theme` is Studio's look: neutral surfaces, the brand blue as the
 accent, outlined and slightly raised fields and buttons, bordered popups, a
-quiet header holding the title in the accent colour, and table headings in
-small uppercase letters. It holds:
+quiet header holding the title in the accent colour, a sidebar and a bottom
+tab bar in the header's tint, tabs underlined in the accent, and table
+headings in small uppercase letters. It holds:
 
 - `tokens` — the design tokens' light values, a `Ui.DesignTokens` set;
 - `stylesheets` — one stylesheet, `themes/radix-theme.css`, styling every part
@@ -31,6 +32,11 @@ small uppercase letters. It holds:
   property;
 - `controls` — `Radix.controls`.
 
+On a narrow screen (`data-compact="true"` on the `app` part) the stylesheet
+fits the same parts to the width: the header scrolls away with the page, and
+its menu button, title, start and end share one row; filter bounds and controls shrink and wrap; and a table's frame
+shows a shadow at an edge while more columns lie beyond it.
+
 An application's own `tokens:` apply after all of it, so its brand wins over
 the theme's values in both schemes. The theme's own custom properties are
 `--ui-react-radix-*`, derived from the tokens; `--telo-*` are the design
@@ -38,8 +44,8 @@ tokens only.
 
 ## The controls
 
-`Radix.controls` implements eleven controls of
-[`ui_react_controls-1`](../../ui-react/docs/controls-abi.md) in one browser
+`Radix.controls` implements thirteen controls of
+[`ui_react_controls-2`](../../ui-react/docs/controls-abi.md) in one browser
 entry, `@telorun/ui-react-radix`, which leaves only `react`,
 `react/jsx-runtime` and `react-dom` to the page:
 
@@ -52,21 +58,23 @@ entry, `@telorun/ui-react-radix`, which leaves only `react`,
 | `Dialog`, `Drawer` | Radix's dialog; the mechanics place a drawer at its edge |
 | `Popover` | Radix's popover, placed against the renderer's anchor |
 | `Confirmation` | Radix's alert dialog |
-| `Menu` | Radix's dropdown menu, opened from the renderer's button; an entry given `current` is marked `aria-current` and `data-current` |
+| `Menu` | Radix's dropdown menu, opened from the renderer's button |
 | `Tooltip` | Radix's tooltip |
+| `Navigation` | in a row or a rail, Radix's navigation menu, each open group's panel at the end of `<body>` placed by the primitives' popper, a nested group a submenu of its own; in a column, each group's entries in place beneath its button, with no portal or popper |
+| `Tabs` | Radix's tabs, chosen by Enter, Space or a press |
 | `Icon` | Lucide's glyphs |
 
 Every other control — the text boxes, dates and times, tags, ranges,
 switches, sliders and option groups — is the renderer's built-in. The
-mechanics the eleven need (where a list or a dialog sits, its stacking and
-size) are the stylesheet the entry builds, which the application places in
+mechanics the thirteen need (where a list, a panel or a dialog sits, its
+stacking and size) are the stylesheet the entry builds, which the application places in
 the `telo.control` layer in place of the built-ins' own.
 
 ### One stack of layers
 
-The eight [layer controls](../../ui-react/docs/controls-abi.md#layers) —
+The nine [layer controls](../../ui-react/docs/controls-abi.md#layers) —
 `Select`, `MultiSelect`, `Dialog`, `Drawer`, `Popover`, `Confirmation`,
-`Menu`, `Tooltip` — are all here, drawn by one copy of the primitives, which
+`Menu`, `Tooltip`, `Navigation` — are all here, drawn by one copy of the primitives, which
 keeps one stack of every layer a page opens:
 
 - Escape closes only the top layer.
@@ -113,12 +121,12 @@ The theme's stylesheet styles every part and gives every token a value, as
 any theme's must; nothing of `Radix.theme`'s look is inherited. A set of its
 own may add controls `Radix.controls` does not implement — the entries, the
 switch, the slider, the option group — bundling whatever it uses. It cannot
-replace one of the eight layer controls beside `Radix.controls`: two entries
+replace one of the nine layer controls beside `Radix.controls`: two entries
 of a theme's `controls` implementing one control are refused
 (`UI_THEME_CONTROL_DUPLICATE`), and a set
-implementing one layer control implements all eight
+implementing one layer control implements all nine
 (`UI_CONTROLS_LAYERS_PARTIAL`). A theme wanting other layer controls ships all
-eight in a set of its own and does not list `Radix.controls`.
+nine in a set of its own and does not list `Radix.controls`.
 
 ## Checking it
 

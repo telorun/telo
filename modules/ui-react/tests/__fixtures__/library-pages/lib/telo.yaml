@@ -1,0 +1,20 @@
+# Pages a library ships for whichever application lists them.
+kind: Telo.Library
+metadata:
+  name: UiReactLibraryPages
+  version: 1.0.0
+  description: >-
+    Test fixture exporting a page an application lists and names in its
+    navigation as its own.
+imports:
+  Ui: ../../../../../ui
+exports:
+  resources: [reports]
+---
+kind: Ui.Page
+metadata:
+  name: reports
+path: /reports
+title: Reports
+children:
+  - { type: text, text: Shipped by a library }

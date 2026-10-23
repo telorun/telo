@@ -2,5 +2,5 @@
 import { BUILT_IN_CONTROLS } from "../../../../../ui-react/nodejs/src/browser/controls/index.ts";
 
 export const {
-  TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput, DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Listbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon,
+  TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput, DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Listbox, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon,
 } = BUILT_IN_CONTROLS;

@@ -834,6 +834,471 @@
       }
     ]
   },
+  "Navigation": {
+    "props": {
+      "layout": "horizontal",
+      "items": [
+        { "key": "home", "label": "Home", "href": "/", "current": "page" },
+        {
+          "key": "docs",
+          "label": "Docs",
+          "items": [
+            { "key": "guides", "label": "Guides", "href": "/guides" },
+            { "key": "api", "label": "API", "items": [{ "key": "rest", "label": "REST", "href": "/api/rest" }] }
+          ]
+        },
+        { "key": "about", "label": "About", "href": "/about" }
+      ],
+      "more": { "key": "more", "label": "More" },
+      "open": []
+    },
+    "vectors": [
+      {
+        "name": "is a landmark named by its label, its entries links and its groups buttons that disclose them, naming no entries while closed",
+        "props": { "label": "Site" },
+        "steps": [
+          {
+            "expect": {
+              "present": [{ "tag": "nav", "part": "navigation" }, { "tag": "a", "part": "nav-item", "text": "About" }],
+              "attributes": [
+                { "of": { "part": "navigation" }, "name": "aria-label", "value": "Site" },
+                { "of": { "part": "navigation" }, "name": "data-layout", "value": "horizontal" },
+                { "of": { "part": "nav-item", "text": "Home" }, "name": "href", "value": "/" },
+                { "of": { "part": "nav-item", "text": "Home" }, "name": "aria-current", "value": "page" },
+                { "of": { "part": "nav-item", "text": "Home" }, "name": "data-current", "value": "page" },
+                { "of": { "tag": "button", "part": "nav-toggle", "text": "Docs" }, "name": "aria-expanded", "value": "false" },
+                { "of": { "part": "nav-toggle", "text": "Docs" }, "name": "aria-controls", "value": null },
+                { "of": { "part": "nav-toggle", "text": "Docs" }, "name": "data-state", "value": "closed" }
+              ],
+              "absent": [{ "part": "nav-panel" }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "is no landmark without a label",
+        "steps": [{ "expect": { "present": [{ "part": "navigation" }], "absent": [{ "tag": "nav" }] } }]
+      },
+      {
+        "name": "asks to open a group from its button, and draws its panel outside the application",
+        "steps": [
+          { "click": { "part": "nav-toggle", "text": "Docs" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["docs"]]],
+              "outside": [{ "part": "nav-panel" }],
+              "present": [{ "tag": "a", "part": "nav-item", "text": "Guides", "within": { "part": "nav-panel" } }],
+              "attributes": [
+                { "of": { "part": "nav-toggle", "text": "Docs" }, "name": "aria-expanded", "value": "true" },
+                { "of": { "part": "nav-toggle", "text": "Docs" }, "name": "data-state", "value": "open" }
+              ]
+            }
+          },
+          { "click": { "part": "nav-toggle", "text": "API" } },
+          { "expect": { "intents": [["onOpenChange", ["docs", "api"]]], "present": [{ "part": "nav-item", "text": "REST" }] } },
+          { "click": { "part": "nav-toggle", "text": "Docs" } },
+          { "expect": { "intents": [["onOpenChange", [], "close"]], "absent": [{ "part": "nav-panel" }] } }
+        ]
+      },
+      {
+        "name": "reports the link followed, then asks to close what is open",
+        "props": { "open": ["docs"] },
+        "steps": [
+          { "click": { "part": "nav-item", "text": "Guides" } },
+          { "expect": { "intents": [["onChange", "guides"], ["onOpenChange", [], "close"]], "absent": [{ "part": "nav-panel" }] } },
+          { "click": { "part": "nav-item", "text": "About" } },
+          { "expect": { "intents": [["onChange", "about"]] } }
+        ]
+      },
+      {
+        "name": "moves Tab into an open panel after its button, and on to the entry after the group",
+        "props": { "open": ["docs"] },
+        "steps": [
+          { "focus": { "part": "nav-toggle", "text": "Docs" } },
+          { "key": "Tab" },
+          { "expect": { "focus": { "part": "nav-item", "text": "Guides" } } },
+          { "key": "Tab" },
+          { "expect": { "focus": { "part": "nav-toggle", "text": "API" } } },
+          { "key": "Tab" },
+          { "expect": { "focus": { "part": "nav-item", "text": "About" }, "intents": [], "present": [{ "part": "nav-panel" }] } },
+          { "key": "Tab", "shift": true },
+          { "expect": { "focus": { "part": "nav-toggle", "text": "API" } } },
+          { "key": "Tab", "shift": true },
+          { "key": "Tab", "shift": true },
+          { "expect": { "focus": { "part": "nav-toggle", "text": "Docs" }, "intents": [] } }
+        ]
+      },
+      {
+        "name": "asks to close only the innermost open group on Escape, and stays open until the renderer closes it",
+        "props": { "open": ["docs"] },
+        "steps": [
+          { "click": { "part": "nav-toggle", "text": "API" } },
+          { "expect": { "intents": [["onOpenChange", ["docs", "api"]]] } },
+          { "key": "Escape" },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["docs"], "escape"]],
+              "absent": [{ "part": "nav-item", "text": "REST" }],
+              "present": [{ "part": "nav-item", "text": "Guides" }]
+            }
+          },
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", [], "escape"]], "absent": [{ "part": "nav-panel" }] } }
+        ]
+      },
+      {
+        "name": "gives the focus back to the group's button when Escape closes its panel",
+        "props": { "open": ["docs"] },
+        "steps": [
+          { "focus": { "part": "nav-toggle", "text": "Docs" } },
+          { "key": "Tab" },
+          { "expect": { "focus": { "part": "nav-item", "text": "Guides" } } },
+          { "key": "Escape" },
+          { "expect": { "intents": [["onOpenChange", [], "escape"]], "focus": { "part": "nav-toggle", "text": "Docs" } } }
+        ]
+      },
+      {
+        "name": "asks to close on a press outside it",
+        "props": { "open": ["docs"] },
+        "hold": ["open"],
+        "steps": [
+          { "press": { "element": "body" } },
+          { "expect": { "intents": [["onOpenChange", [], "outside"]], "present": [{ "part": "nav-panel" }] } }
+        ]
+      },
+      {
+        "name": "asks once to close every open group on a press outside them all",
+        "props": { "open": ["docs"] },
+        "steps": [
+          { "click": { "part": "nav-toggle", "text": "API" } },
+          { "expect": { "intents": [["onOpenChange", ["docs", "api"]]] } },
+          { "press": { "element": "body" } },
+          { "expect": { "intents": [["onOpenChange", [], "outside"]], "absent": [{ "part": "nav-panel" }] } }
+        ]
+      },
+      {
+        "name": "asks to close only the inner group on a press in the panel beneath it",
+        "props": { "open": ["docs"] },
+        "steps": [
+          { "click": { "part": "nav-toggle", "text": "API" } },
+          { "expect": { "intents": [["onOpenChange", ["docs", "api"]]] } },
+          { "press": { "part": "nav-item", "text": "Guides" } },
+          { "expect": { "intents": [["onOpenChange", ["docs"], "outside"]], "present": [{ "part": "nav-item", "text": "Guides" }] } }
+        ]
+      },
+      {
+        "name": "draws an entry opening a dialog as a button expanded while its key is open, drawing nothing of its own",
+        "props": {
+          "items": [
+            { "key": "home", "label": "Home", "href": "/" },
+            { "key": "search", "label": "Search", "opens": "dialog" }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "tag": "button", "part": "nav-toggle", "text": "Search" }, "name": "aria-haspopup", "value": "dialog" },
+                { "of": { "part": "nav-toggle", "text": "Search" }, "name": "aria-expanded", "value": "false" },
+                { "of": { "part": "nav-toggle", "text": "Search" }, "name": "data-state", "value": "closed" }
+              ]
+            }
+          },
+          { "click": { "part": "nav-toggle", "text": "Search" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["search"]]],
+              "absent": [{ "part": "nav-panel" }, { "part": "nav-group" }],
+              "attributes": [
+                { "of": { "part": "nav-toggle", "text": "Search" }, "name": "aria-expanded", "value": "true" },
+                { "of": { "part": "nav-toggle", "text": "Search" }, "name": "data-state", "value": "open" },
+                { "of": { "part": "nav-toggle", "text": "Search" }, "name": "aria-controls", "value": null }
+              ]
+            }
+          },
+          { "props": { "layout": "vertical" } },
+          { "click": { "part": "nav-toggle", "text": "Search" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", [], "close"]],
+              "absent": [{ "part": "nav-group" }],
+              "attributes": [{ "of": { "part": "nav-toggle", "text": "Search" }, "name": "aria-expanded", "value": "false" }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "draws an open group of a column in place after its button, inside the navigation and in no layer",
+        "props": { "layout": "vertical" },
+        "steps": [
+          { "click": { "part": "nav-toggle", "text": "Docs" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["docs"]]],
+              "present": [
+                { "part": "nav-group", "within": { "part": "navigation" } },
+                { "tag": "a", "part": "nav-item", "text": "Guides", "within": { "part": "nav-group" } }
+              ],
+              "absent": [{ "part": "nav-panel" }],
+              "attributes": [
+                { "of": { "part": "nav-group" }, "name": "data-telo-layer", "value": null },
+                { "of": { "part": "nav-toggle", "text": "Docs" }, "name": "aria-expanded", "value": "true" }
+              ]
+            }
+          },
+          { "click": { "part": "nav-toggle", "text": "API" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["docs", "api"]]],
+              "present": [{ "part": "nav-item", "text": "REST", "within": { "part": "nav-group", "index": 1 } }],
+              "absent": [{ "part": "nav-panel" }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "keeps groups of a column open beside each other, a press toggling only its own, and draws a listed group once every group holding it is open",
+        "props": {
+          "layout": "vertical",
+          "items": [
+            {
+              "key": "docs",
+              "label": "Docs",
+              "items": [
+                { "key": "guides", "label": "Guides", "href": "/guides" },
+                { "key": "api", "label": "API", "items": [{ "key": "rest", "label": "REST", "href": "/api/rest" }] }
+              ]
+            },
+            { "key": "help", "label": "Help", "items": [{ "key": "faq", "label": "FAQ", "href": "/faq" }] }
+          ],
+          "open": ["docs", "api"]
+        },
+        "steps": [
+          { "click": { "part": "nav-toggle", "text": "Help" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["docs", "api", "help"]]],
+              "present": [{ "part": "nav-item", "text": "REST" }, { "part": "nav-item", "text": "FAQ" }]
+            }
+          },
+          { "click": { "part": "nav-toggle", "text": "Docs" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["api", "help"], "close"]],
+              "absent": [{ "part": "nav-item", "text": "Guides" }, { "part": "nav-item", "text": "REST" }],
+              "present": [{ "part": "nav-item", "text": "FAQ" }]
+            }
+          },
+          { "click": { "part": "nav-toggle", "text": "Docs" } },
+          { "expect": { "intents": [["onOpenChange", ["api", "help", "docs"]]], "present": [{ "part": "nav-item", "text": "REST" }] } }
+        ]
+      },
+      {
+        "name": "asks to close nothing of a column on Escape or a press outside it",
+        "props": { "layout": "vertical", "open": ["docs"] },
+        "steps": [
+          { "focus": { "part": "nav-item", "text": "Guides" } },
+          { "key": "Escape" },
+          { "press": { "element": "body" } },
+          { "expect": { "intents": [], "present": [{ "part": "nav-item", "text": "Guides" }] } }
+        ]
+      },
+      {
+        "name": "reports only the link followed in a column",
+        "props": { "layout": "vertical", "open": ["docs"] },
+        "steps": [
+          { "click": { "part": "nav-item", "text": "Guides" } },
+          { "expect": { "intents": [["onChange", "guides"]], "present": [{ "part": "nav-group" }] } }
+        ]
+      },
+      {
+        "name": "floats a rail's group in a panel outside the application, and a nested group in a panel of its own",
+        "props": { "layout": "rail" },
+        "steps": [
+          { "click": { "part": "nav-toggle", "attributes": { "aria-label": "Docs" } } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["docs"]]],
+              "outside": [{ "part": "nav-panel" }],
+              "absent": [{ "part": "nav-group" }]
+            }
+          },
+          { "click": { "part": "nav-toggle", "text": "API" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["docs", "api"]]],
+              "outside": [{ "part": "nav-panel", "index": 1 }],
+              "present": [{ "part": "nav-item", "text": "REST", "within": { "part": "nav-panel", "index": 1 } }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "draws each top-level entry of a rail by its first letter, named by its label",
+        "props": { "layout": "rail" },
+        "steps": [
+          {
+            "expect": {
+              "text": [
+                { "of": { "part": "nav-item", "attributes": { "aria-label": "Home" } }, "value": "H" },
+                { "of": { "part": "nav-toggle", "attributes": { "aria-label": "Docs" } }, "value": "D" }
+              ],
+              "attributes": [{ "of": { "part": "navigation" }, "name": "data-layout", "value": "rail" }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "draws an entry's icon before its text in a row and in a column, and in a rail in place of its first letter",
+        "props": {
+          "items": [
+            { "key": "home", "label": "Home", "href": "/", "icon": { "element": "span", "attributes": { "data-telo-part": "glyph", "aria-hidden": "true" } } },
+            {
+              "key": "docs",
+              "label": "Docs",
+              "icon": { "element": "span", "attributes": { "data-telo-part": "glyph", "aria-hidden": "true" } },
+              "items": [{ "key": "guides", "label": "Guides", "href": "/guides" }]
+            },
+            { "key": "about", "label": "About", "href": "/about" }
+          ]
+        },
+        "steps": [
+          {
+            "expect": {
+              "present": [
+                { "part": "glyph", "within": { "tag": "a", "part": "nav-item", "text": "Home" } },
+                { "part": "glyph", "within": { "tag": "button", "part": "nav-toggle", "text": "Docs" } }
+              ],
+              "absent": [{ "part": "glyph", "within": { "part": "nav-item", "text": "About" } }]
+            }
+          },
+          { "props": { "layout": "vertical" } },
+          {
+            "expect": {
+              "present": [
+                { "part": "glyph", "within": { "tag": "a", "part": "nav-item", "text": "Home" } },
+                { "part": "glyph", "within": { "tag": "button", "part": "nav-toggle", "text": "Docs" } }
+              ],
+              "attributes": [{ "of": { "part": "navigation" }, "name": "data-layout", "value": "vertical" }]
+            }
+          },
+          { "props": { "layout": "rail" } },
+          {
+            "expect": {
+              "present": [
+                { "part": "glyph", "within": { "part": "nav-item", "attributes": { "aria-label": "Home" } } },
+                { "part": "glyph", "within": { "part": "nav-toggle", "attributes": { "aria-label": "Docs" } } }
+              ],
+              "text": [
+                { "of": { "part": "nav-item", "attributes": { "aria-label": "Home" } }, "value": "" },
+                { "of": { "part": "nav-toggle", "attributes": { "aria-label": "Docs" } }, "value": "" },
+                { "of": { "part": "nav-item", "attributes": { "aria-label": "About" } }, "value": "A" }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "marks the group holding the current entry, and sets the renderer's attributes on its root",
+        "props": {
+          "attributes": { "data-style": "muted" },
+          "items": [
+            {
+              "key": "lang",
+              "label": "Language",
+              "items": [
+                { "key": "en", "label": "English", "href": "/", "current": "true" },
+                { "key": "pl", "label": "Polski", "href": "/?lang=pl" }
+              ]
+            }
+          ]
+        },
+        "steps": [
+          { "click": { "part": "nav-toggle", "text": "Language" } },
+          {
+            "expect": {
+              "intents": [["onOpenChange", ["lang"]]],
+              "attributes": [
+                { "of": { "part": "navigation" }, "name": "data-style", "value": "muted" },
+                { "of": { "part": "nav-item", "text": "English" }, "name": "aria-current", "value": "true" },
+                { "of": { "part": "nav-item", "text": "Polski" }, "name": "aria-current", "value": null }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "Tabs": {
+    "props": {
+      "label": "Sections",
+      "tabs": [
+        { "key": "one", "label": "One" },
+        { "key": "two", "label": "Two" },
+        { "key": "three", "label": "Three" }
+      ],
+      "value": "one",
+      "children": { "element": "p", "attributes": { "id": "content" }, "text": "First" }
+    },
+    "vectors": [
+      {
+        "name": "is a tab list named by its label, the chosen tab selected, its content in the panel",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                { "of": { "part": "tab-list" }, "name": "role", "value": "tablist" },
+                { "of": { "part": "tab-list" }, "name": "aria-label", "value": "Sections" },
+                { "of": { "part": "tab", "text": "One" }, "name": "role", "value": "tab" },
+                { "of": { "part": "tab", "text": "One" }, "name": "aria-selected", "value": "true" },
+                { "of": { "part": "tab", "text": "One" }, "name": "data-state", "value": "active" },
+                { "of": { "part": "tab", "text": "Two" }, "name": "aria-selected", "value": "false" },
+                { "of": { "part": "tab", "text": "Two" }, "name": "data-state", "value": "inactive" },
+                { "of": { "part": "tab-panel" }, "name": "role", "value": "tabpanel" }
+              ],
+              "present": [{ "id": "content" }, { "tag": "p", "within": { "part": "tab-panel" } }]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reports the tab pressed",
+        "steps": [
+          { "click": { "part": "tab", "text": "Two" } },
+          { "expect": { "intents": [["onChange", "two"]], "attributes": [{ "of": { "part": "tab", "text": "Two" }, "name": "aria-selected", "value": "true" }] } },
+          { "click": { "part": "tab", "text": "Two" } },
+          { "expect": { "intents": [] } }
+        ]
+      },
+      {
+        "name": "moves the focus among the tabs with the arrow keys, Home and End, and chooses with Enter",
+        "steps": [
+          { "focus": { "part": "tab", "text": "One" } },
+          { "key": "ArrowRight" },
+          { "expect": { "focus": { "part": "tab", "text": "Two" }, "intents": [] } },
+          { "key": "End" },
+          { "expect": { "focus": { "part": "tab", "text": "Three" } } },
+          { "key": "ArrowRight" },
+          { "expect": { "focus": { "part": "tab", "text": "One" } } },
+          { "key": "ArrowLeft" },
+          { "expect": { "focus": { "part": "tab", "text": "Three" } } },
+          { "key": "Home" },
+          { "expect": { "focus": { "part": "tab", "text": "One" }, "intents": [] } },
+          { "key": "ArrowRight" },
+          { "key": "Enter" },
+          { "expect": { "intents": [["onChange", "two"]] } }
+        ]
+      },
+      {
+        "name": "leaves the tab list for the panel with Tab",
+        "steps": [
+          { "focus": { "part": "tab", "text": "One" } },
+          { "key": "Tab" },
+          { "expect": { "focus": { "part": "tab-panel" } } }
+        ]
+      }
+    ]
+  },
   "Icon": {
     "props": { "name": "add" },
     "vectors": [
@@ -843,10 +1308,14 @@
           { "expect": { "attributes": [{ "of": { "part": "icon" }, "name": "aria-hidden", "value": "true" }] } },
           { "props": { "name": "alert" } },
           { "props": { "name": "close" } },
+          { "props": { "name": "collapse" } },
           { "props": { "name": "delete" } },
           { "props": { "name": "edit" } },
+          { "props": { "name": "expand" } },
           { "props": { "name": "filter" } },
           { "props": { "name": "loading" } },
+          { "props": { "name": "menu" } },
+          { "props": { "name": "more" } },
           { "props": { "name": "next" } },
           { "props": { "name": "previous" } },
           { "props": { "name": "remove" } },

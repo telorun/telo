@@ -504,3 +504,12 @@ failure:
         values: { status: !cel "error.status", code: !cel "error.code" }
       shown: { at: !cel "error", matches: { required: [ status ] } }
     - { type: value, value: !cel "error.message" }
+---
+# The page every application lists at /actions, placing the view.
+kind: Ui.Page
+metadata:
+  name: actionsScreen
+path: /actions
+title: Actions
+children:
+  - { type: composite, ref: !ref actionsPage }

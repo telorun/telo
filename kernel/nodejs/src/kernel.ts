@@ -71,6 +71,7 @@ import {
   textCatalogSetProblems,
   type NamedContractShape,
   type ProjectionScope,
+  isResolvedReference,
 } from "@telorun/analyzer";
 import {
   ControllerContext,
@@ -1379,7 +1380,7 @@ export class Kernel implements IKernel {
             typeof t === "string" ||
             (!!t &&
               typeof t === "object" &&
-              (typeof (t as { name?: unknown }).name === "string" ||
+              (isResolvedReference(t) ||
                 (t as { ref?: unknown }).ref != null ||
                 (t as { invoke?: unknown }).invoke !== undefined));
           if (!ok) {
@@ -3199,13 +3200,8 @@ export class Kernel implements IKernel {
           // `{kind, name}` reference — registering that as a manifest would
           // silently produce a config-less resource, so reject it with an
           // actionable message instead.
-          if (
-            entry &&
-            typeof entry === "object" &&
-            typeof (entry as Record<string, unknown>).kind === "string" &&
-            typeof (entry as Record<string, unknown>).name === "string"
-          ) {
-            const refName = String((entry as Record<string, unknown>).name);
+          if (isResolvedReference(entry)) {
+            const refName = entry.name;
             throw new RuntimeError(
               "ERR_SCOPE_ENTRY_NOT_INLINE",
               `Scope field '${site.path}' on resource '${String(resource.metadata?.name)}' ` +

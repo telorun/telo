@@ -21,6 +21,7 @@ import {
   valueSchemaAnnotations,
   valueSchemaMemberProblem,
 } from "./value-schema-slot.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 export interface ValueSchemaFromProblem {
   /** Where the annotation is written, from the definition document
@@ -51,9 +52,7 @@ export function namedContractShape(
   if (field.schema !== undefined || field.type !== undefined || field.properties !== undefined) {
     return undefined;
   }
-  if (typeof field.name === "string") {
-    return { name: field.name, alias: typeof field.alias === "string" ? field.alias : undefined };
-  }
+  if (isResolvedReference(field)) return { name: field.name, alias: field.alias };
   const canonical = parseCanonicalTypeSchemaId(field.$ref);
   return canonical ? { name: canonical.typeName } : undefined;
 }

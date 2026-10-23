@@ -1,0 +1,25 @@
+# An author-written `__ref` key at a step's target. Only resolution writes the
+# marker, so `telo check` refuses it here, with the `!ref` it means.
+kind: Telo.Library
+metadata:
+  name: RefNameFieldMarkerForm
+  version: 1.0.0
+  description: >-
+    Fixture library whose sequence invokes a value through an object carrying
+    the resolved-reference marker an author never writes.
+imports:
+  Run: ../../../../../../modules/run
+exports:
+  resources: [main]
+---
+kind: Run.Value
+metadata:
+  name: greeting
+value: hello
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: greet
+    invoke: { __ref: true, kind: Run.Value, name: greeting }

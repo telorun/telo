@@ -1,0 +1,6 @@
+modules:
+  modules/ui-react-conformance: Added
+body: A rule setting background, mask, -webkit-mask or -webkit-mask-image on a part is
+  held to that part's reserved background-color or mask-image, and the vector host turns
+  an element spec at any depth of a prop into an element, so a Navigation vector hands
+  an entry its icon.

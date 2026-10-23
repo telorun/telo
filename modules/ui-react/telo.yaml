@@ -19,7 +19,10 @@ requires:
   # of what the server evaluates, nor the `Text` fragment and
   # `x-telo-text-values` an application's titles are typed with. Verified by
   # execution (`check` of this file) against 0.120.1. The `abi` and `external`
-  # a control set's `implements` is checked against ship in the same release.
+  # a control set's `implements` is checked against ship in the same release,
+  # and so does the repeated group of a rule's `in:` pointer
+  # (`/navigation/items(/*/items)*`), which 0.120.1 reads as a field this kind
+  # does not declare (RESOURCE_RULE_INVALID).
   telo: ">=0.121.0"
 imports:
   Ui: ../ui
@@ -33,7 +36,7 @@ exports:
   resources:
     - defaultTheme
   # The renderer's controls contract as data — the parts, the reserved
-  # properties, the controls of `ui_react_controls-1` with their vectors, the
+  # properties, the controls of `ui_react_controls-2` with their vectors, the
   # scenes drawing every part — and the DOM-only interpreter that runs them:
   # what a module checking a theme against the renderer imports.
   code:
@@ -109,11 +112,11 @@ kind: Telo.Definition
 metadata:
   name: App
   description: >-
-    A web application assembled from pages: each page has a path, a title and a
-    tree of layout, text, data grids, forms and custom components, reached
-    through generated navigation. Serves the page shell, the page descriptions,
-    scripts, stylesheets and fonts under one mount, and can vary what a page
-    shows per request — by a header such as a role or a tenant.
+    A web application assembled from pages, each at its own path, reached
+    through a navigation menu with groups, dropdowns and submenus that turns
+    into a menu button and drawer on a phone. Serves the page shell, the page
+    descriptions, scripts, stylesheets and fonts under one mount, and can vary
+    what a page shows per request — by a header such as a role or a tenant.
 capability: Telo.Mount
 controllers:
   - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#AppController
@@ -256,65 +259,38 @@ schema:
                   ip: { type: string }
     pages:
       title: Pages
+      description: >-
+        The pages the application routes to, each served at its own path:
+        written in place, or named by reference — a library's included. No two
+        may share a path.
       type: array
       minItems: 1
       items:
-        type: object
-        additionalProperties: false
-        required: [path, title, children]
-        properties:
-          path:
-            title: Path
-            description: >-
-              The page's address under the mount: `/` followed by anything but
-              `/` or `\`, holding no control character, and not under `/_telo`.
-            type: string
-            pattern: "^/(?!_telo(/|$))([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
-          title:
-            title: Title
-            description: Shown above the page and in the navigation.
-            $ref: "telo://manifest#/$defs/Text"
-            x-telo-text-values: {}
-          query:
-            title: Query
-            description: >-
-              The query parameters the page's nodes read, each a string or a
-              list of strings for a key given more than once. Read as `query`
-              by a condition or a value the browser draws.
-            $ref: "telo://Ui/QueryParameters"
-          children:
-            title: Children
-            description: >-
-              The page's nodes, top to bottom. Each node's `when:` and text
-              values may read the request, evaluated per request; a `shown`
-              condition and a `value` or `list` node read `query` in the
-              browser.
-            type: array
-            items: { $ref: "telo://Ui/Node" }
-            x-telo-context:
-              type: object
-              properties:
-                request:
-                  x-telo-context-eval: runtime
-                  type: object
-                  properties:
-                    headers:
-                      type: object
-                      additionalProperties: { type: string }
-                    ip: { type: string }
-                query:
-                  x-telo-context-eval: accessor
-                  x-telo-context-from: query
-                  type: object
-                  properties: {}
-                  additionalProperties: false
+        x-telo-ref: { kind: Ui.Page, use: call }
+    navigation:
+      title: Navigation
+      description: >-
+        The navigation tree and how it is drawn. Omitted, one entry per page in
+        the order `pages` lists them, in the header and behind a menu button on
+        a narrow viewport. Every page an entry names is one `pages` lists.
+      $ref: "telo://Ui/Navigation"
   x-telo-resource-rules:
-    - in: /pages
+    - resolve: [/pages]
+      in: /pages
       condition: !cel "self.pages.exists_one(p, p.path == this.path)"
       code: UI_PAGE_PATH_DUPLICATE
       message: >-
         declares a path another page already has. Give each page a path of its
         own.
+    # Every depth of the tree: a group's entries, and theirs.
+    - in: /navigation/items(/*/items)*
+      condition: !cel >-
+        this.type != 'page' || self.pages.exists(p, p.name == this.page.name &&
+        p.?alias.orValue('') == this.page.?alias.orValue(''))
+      code: UI_NAVIGATION_PAGE_UNROUTED
+      message: >-
+        names a page the application does not list in its pages, so it leads
+        nowhere. Add the page to pages, or remove the entry.
 ---
 # A theme is the look of every part the renderer draws and, optionally, the
 # controls it draws with; brand values stay a separate `Ui.DesignTokens` set,
@@ -374,17 +350,17 @@ schema:
         each control one implementation.
 ---
 # What a module ships to draw some of the renderer's controls, declared beside
-# the code: its browser entry, written against `ui_react_controls-1`, and the
+# the code: its browser entry, written against `ui_react_controls-2`, and the
 # controls it exports, each under its own name.
 kind: Telo.Definition
 metadata:
   name: Controls
   description: >-
     A set of interactive controls for a web interface — text boxes, selects,
-    multi-selects, checkboxes, dialogs, drawers, menus, tooltips, date pickers
-    and icons — shipped as browser code by a module and drawn in place of the
-    built-in ones by any theme listing it. Checked against the controls
-    contract before the application starts.
+    multi-selects, checkboxes, dialogs, drawers, menus, navigation menus,
+    tabs, tooltips, date pickers and icons — shipped as browser code by a
+    module and drawn in place of the built-in ones by any theme listing it.
+    Checked against the controls contract before the application starts.
 capability: Telo.Provider
 controllers:
   - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ControlsController
@@ -397,7 +373,7 @@ schema:
       title: Entry
       description: >-
         The specifier of one of the declaring module's browser entries,
-        written against `ui_react_controls-1`.
+        written against `ui_react_controls-2`.
       type: string
     implements:
       title: Implements
@@ -411,26 +387,26 @@ schema:
           [
           TextInput, NumberInput, TextArea, DateInput, DateTimeInput, TimeInput, TagsInput,
           DateRangeInput, Checkbox, Switch, Slider, OptionGroup, Select, MultiSelect, Listbox,
-          Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Icon,
+          Dialog, Drawer, Popover, Confirmation, Menu, Tooltip, Navigation, Tabs, Icon,
           ]
         x-telo-browser-export:
           entry: /entry
-          abi: [ui_react_controls-1]
+          abi: [ui_react_controls-2]
           external: [react, react/jsx-runtime, react-dom]
-  # The eight controls drawing a layer at the end of `<body>` are replaced as
+  # The nine controls drawing a layer at the end of `<body>` are replaced as
   # one unit, so every layer on a page comes from one implementation: a layer
   # stack cannot be made to cooperate with another library's.
   x-telo-resource-rules:
     - condition: !cel >-
         !self.implements.exists(n, n in ['Select', 'MultiSelect', 'Dialog',
-        'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip']) ||
+        'Drawer', 'Popover', 'Confirmation', 'Menu', 'Tooltip', 'Navigation']) ||
         ['Select', 'MultiSelect', 'Dialog', 'Drawer', 'Popover', 'Confirmation',
-        'Menu', 'Tooltip'].all(n, n in self.implements)
+        'Menu', 'Tooltip', 'Navigation'].all(n, n in self.implements)
       code: UI_CONTROLS_LAYERS_PARTIAL
       message: >-
         implements some of the layer controls but not all of them. A set
         implementing any of Select, MultiSelect, Dialog, Drawer, Popover,
-        Confirmation, Menu and Tooltip implements all eight.
+        Confirmation, Menu, Tooltip and Navigation implements all nine.
 ---
 # The built-in look: one stylesheet styling every part, with every token's
 # default and its dark-scheme value. It replaces no control.

@@ -1,0 +1,31 @@
+# A kind declaring a `name` field is declared inline like any other — at a
+# reference slot and as a step's target: `{ kind, name }` there is a
+# declaration of that kind, checked against its schema, never a reference.
+kind: Telo.Application
+metadata:
+  name: RefNameFieldInline
+  version: 1.0.0
+requires:
+  telo: ">=0.121.0"
+imports:
+  Names: ./kinds
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: atStep
+    invoke: { kind: Names.Named, name: house }
+  - name: atSlot
+    invoke: { kind: Names.Holder, target: { kind: Names.Named, name: plaza } }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "{'atStep': steps.atStep.result, 'atSlot': steps.atSlot.result}"
+      expected:
+        atStep: { name: house }
+        atSlot: { name: plaza }

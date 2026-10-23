@@ -224,3 +224,18 @@ describe("a Telo format", () => {
     ]);
   });
 });
+
+describe("an enum refusal over a large vocabulary", () => {
+  it("counts the allowed values and names the nearest, alike for a diagnostic and a thrown error", () => {
+    const names = [...Array.from({ length: 40 }, (_, i) => `glyph-${i}`), "house", "mouse"];
+    const validate = createAjv().compile({
+      type: "object",
+      properties: { name: { enum: names } },
+    });
+    const data = { name: "ouse" };
+    expect(validate(data)).toBe(false);
+    const message = "/name must be one of 42 allowed values; did you mean 'house' or 'mouse'?";
+    expect(schemaIssues(validate.errors, data)).toEqual([{ message, path: "name", keyword: "enum" }]);
+    expect(formatAjvErrors(validate.errors, data)).toBe(message);
+  });
+});

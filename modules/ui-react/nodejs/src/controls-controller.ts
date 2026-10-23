@@ -60,7 +60,7 @@ export async function create(resource: ControlsResource, ctx: ResourceContext): 
     const missing = LAYER_CONTROLS.filter((name) => !implemented.includes(name));
     throw new RuntimeError(
       "ERR_UI_CONTROLS_LAYERS_PARTIAL",
-      `UiReact.Controls '${resource.metadata.name}': implements the layer controls ${implemented.join(", ")} but not ${missing.join(", ")}. A set implementing any of the eight layer controls implements all of them.`,
+      `UiReact.Controls '${resource.metadata.name}': implements the layer controls ${implemented.join(", ")} but not ${missing.join(", ")}. A set implementing any of the ${LAYER_CONTROLS.length} layer controls implements all of them.`,
     );
   }
   return new ControlSet(resource, ctx);

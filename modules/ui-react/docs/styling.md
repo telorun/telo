@@ -4,15 +4,16 @@ Everything the renderer draws is an element carrying `data-telo-part`, and
 state is carried in `data-` attributes. The lists below are closed and are the
 contract: a stylesheet written against them keeps working across releases.
 
-Every text box, choice, list, overlay, menu, tooltip and glyph is drawn by a
-control — the built-in one, or a theme's that replaces it — under the
+Every text box, choice, list, overlay, menu, navigation, tooltip and glyph is
+drawn by a control — the built-in one, or a theme's that replaces it — under the
 [controls contract](controls-abi.md), which lists the parts and states each
 control draws. The built-ins are drawn on the DOM itself, each in its role's
 WAI-ARIA pattern, with Lucide's icons; the renderer carries no primitive
-library. A dialog, a drawer, a popover, a confirmation, a choice list, a menu
-and a tooltip are drawn at the end of `<body>`, outside the `app` part, each
-in a layer whose root carries `data-telo-layer`, so select them by their own
-part and never as a descendant of `app`, `table`, `form` or `filters`. A
+library. A dialog, a drawer, a popover, a confirmation, a choice list, a menu,
+a navigation panel of a row or a rail and a tooltip are drawn at the end of `<body>`, outside the
+`app` part, each in a layer whose root carries `data-telo-layer`, so select
+them by their own part and never as a descendant of `app`, `table`, `form`,
+`filters` or `navigation`. A
 built-in's mechanics place its list or its popover through custom properties
 of its own (`--ui-react-control-anchor-width`,
 `--ui-react-control-available-height`, `--ui-react-control-origin`), set on
@@ -22,7 +23,7 @@ control's or a theme's own properties use another prefix.
 
 ```css
 [data-telo-part="table-row"][data-style~="muted"] { opacity: 0.6; }
-[data-telo-part="nav-link"][data-current="page"] { font-weight: 700; }
+[data-telo-part="nav-item"][data-current="page"] { font-weight: 700; }
 ```
 
 ## Layers
@@ -57,6 +58,9 @@ breaks — `UiReact.defaultTheme` declares none.
 | `table` | `display`, `grid-template-columns` | a panel sits beside the frame and the pager |
 | `table-toolbar` | `order` | the toolbar stays above a panel |
 | `surface` | `order` | a panel sits on its side |
+| `app` | `display`, `grid-template-columns` | a sidebar sits beside the page |
+| `tab-bar` | `position`, `bottom` | a tab bar stays at the bottom edge |
+| `glyph` | `background-color`, `mask-image` | a glyph is its file's shape in the colour of the text around it |
 
 ## Tokens
 
@@ -105,15 +109,18 @@ application declares a theme of its own that styles both schemes.
 | Part | Is |
 | --- | --- |
 | `app` | the whole application |
-| `header` | the bar holding the title and the navigation: one row — `header-start`, the title, `nav` taking the room left, `header-end` at its end — while the application is not compact, and wrapping when it is |
+| `header` | the bar holding the title and the navigation: one row — `header-start`, the title, `nav` taking the room left, `header-end` at its end, and `nav-menu` first (or last, for a drawer opening from the end edge) when the navigation is behind a menu button — while the application is not compact, and wrapping when it is |
 | `header-start` | the application's own [header](app.md#header) nodes before the title; drawn only when there are any |
 | `app-title` | the application's title |
-| `nav` | the navigation; its links wrap within it |
-| `nav-link` | a link to a page |
+| `nav` | the slot of a navigation drawn in the header, holding the [`Navigation` control](controls-abi.md#navigation) in a row; what does not fit moves under More |
+| `nav-menu` | the menu button opening a navigation placed behind it: the whole tree, in a column, in the surface it opens; `aria-expanded="true"` while that is open |
 | `header-end` | the application's own header nodes after the navigation; drawn only when there are any |
+| `sidebar` | the column beside `main`, under the header, holding a navigation placed in a sidebar: its `sidebar-toggle` when it has a rail, then the `Navigation` control, in a column whose groups open in place or, collapsed, in a rail; drawn before `main`, or after it on its `data-side` of `end` |
+| `sidebar-toggle` | the button collapsing the sidebar to its rail and expanding it again, an icon; `aria-expanded="true"` while the sidebar is expanded; drawn only when the placement has a rail |
 | `main` | the area below the header |
 | `page` | the current page |
 | `page-title` | the page's title |
+| `tab-bar` | the bar along the bottom edge holding a navigation placed as a tab bar: the `Navigation` control in a row, its top-level entries as tabs and More last when there are more than it shows; a group's tab and More open their entries in a surface, in a column; drawn last in `app` |
 
 ### Structure
 
@@ -126,7 +133,6 @@ application declares a theme of its own that styles both schemes.
 | `text` | a `text` node — `p`, or `h2` / `h3` under `heading` / `subheading` |
 | `badge` | a `badge` node |
 | `link` | a `link` node |
-| `menu-trigger` | a `menu` node: the button opening its links, its text and then an `icon` (`next`, which a theme turns to point down) |
 | `image` | an `image` node |
 | `svg` | an `svg` node, drawn as an image |
 | `value` | a `value` node: one value of a data scope, presented as its schema says — a `format: uri` / `uri-reference` string as a `link` |
@@ -136,10 +142,42 @@ application declares a theme of its own that styles both schemes.
 
 A column of a `list` whose `shown` does not hold is left out, header and cells.
 
-A `menu` node's links are drawn by the `Menu` control: its `menu` and one
-`menu-item` per link, the current choice — a link whose style holds `strong` —
-marked `data-current="true"` by the built-in and the Radix controls. Its
-`style` is on `menu-trigger` as `data-style`.
+A `menu` node is drawn by the `Navigation` control as one group: a
+`navigation` that is no landmark, holding one `nav-toggle` that opens a
+`nav-panel` of `nav-item` links. The current choice — a link whose style holds
+`strong` — carries `aria-current="true"` and `data-current="true"`. Its
+`style` is on `navigation` as `data-style`.
+
+**Changed:** a `menu` node has no `menu-trigger`, and its links are no
+`menu-item`s; a rule written for either selects nothing now.
+
+### Navigation
+
+Drawn by the [`Navigation`](controls-abi.md#navigation) control, which also
+carries the states the controls contract lists for it: `data-layout` on
+`navigation`, `data-state` on `nav-toggle` and `nav-panel`, `data-current` on
+`nav-item` and `nav-toggle`.
+
+| Part | Is |
+| --- | --- |
+| `navigation` | a tree of links: a `nav` when it is named, else no landmark; a `menu` node's one group |
+| `nav-toggle` | a group's button — its `glyph` when the entry has an icon, its text, then an `icon` — opening its `nav-group` or `nav-panel` |
+| `nav-item` | a link: its `glyph` when the entry has an icon, then its text; in a rail its glyph alone, or its text's first letter when it has none |
+| `nav-group` | an open group's entries in a column (`data-layout="vertical"`), drawn in place right after its `nav-toggle`, inside `navigation` |
+| `nav-panel` | an open group's entries in a row or a rail, at the end of `<body>` |
+
+### Tabs
+
+Drawn by the [`Tabs`](controls-abi.md#tabs) control for a [`tabs`
+node](../../ui/docs/nodes.md#tabs), which also carries the states the
+controls contract lists for it: `data-state` on `tab` and `tab-panel`.
+
+| Part | Is |
+| --- | --- |
+| `tabs` | a `tabs` node: its `tab-list`, then the chosen tab's `tab-panel` |
+| `tab-list` | the row of tabs, `role="tablist"` |
+| `tab` | one tab, a button: `aria-selected="true"` and `data-state="active"` on the chosen one |
+| `tab-panel` | the chosen tab's content, `role="tabpanel"`; another tab's is drawn anew when it is chosen |
 
 A `data` part carries `data-state`: `loading` before the first answer, `idle`
 once one is drawn, `error` while its `failure` is drawn. A reload keeps the
@@ -373,6 +411,7 @@ Where each sits:
 | Part | Is |
 | --- | --- |
 | `icon` | every icon: in a button, a choice control, a list entry, an error or loading node |
+| `glyph` | the glyph of an [icon resource](../../ui/docs/icons.md) — a navigation entry's, drawn before its text and alone in a rail: the icon's file as a mask over `currentColor`, so it takes the colour of the text around it; hidden from assistive technology |
 | `select-content` | the open list of a `select` or a `filter-select` |
 | `select-item` | one entry of that list |
 | `menu` | an open list of things to do: the filters `filters-add` offers |
@@ -401,7 +440,7 @@ listed.
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
 | `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `page`, `confirmation` | `surface` |
-| `data-side="…"` | `start`, `end`, `top`, `bottom`: the edge a drawer or a panel sits at, the side of its control a popover opens on; `start` or `end` for the side of its content a filter bar's controls sit at, under `data-placement="aside"` only | `surface`, `filters` |
+| `data-side="…"` | `start`, `end`, `top`, `bottom`: the edge a drawer or a panel sits at, the side of its control a popover opens on; `start` or `end` for the side of its content a filter bar's controls sit at, under `data-placement="aside"` only; `start` or `end` for the side of the page a sidebar sits at | `surface`, `filters`, `sidebar` |
 | `data-placement="…"` | `above`, `aside`, `collapsible`, `overlay`: where the bar's controls sit now — its compact placement's below the application's `compactBelow` | `filters` |
 | `data-active="…"` | `true`, while one of its filters holds a value | `filter`, `filter-chip` |
 | `data-pending="…"` | `true`, while what was entered in a control is not yet applied: typed text not committed, a pause under `apply: typing`, a control changed before Apply under `apply: button` | `filters` |
@@ -409,10 +448,9 @@ listed.
 | `data-align="…"` | `start`, `center`, `end` — a popover's, along its side | `surface` |
 | `data-modal="…"` | `true`, `false` — a dialog's or a drawer's | `surface` |
 | `data-sorted="…"` | `asc`, `desc` | `table-header-cell` |
-| `data-current="…"` | `page` | `nav-link` |
 | `data-style="…"` | the node's or the rule's style names, space-separated | wherever a style applies |
 
-Two parts of the renderer's own carry `data-state` with values of their own,
+Three parts of the renderer's own carry `data-state` with values of their own,
 and every control carries the states the [controls
 contract](controls-abi.md#states) lists for it — `open` / `closed` on a list
 or an overlay, `on` / `off` on an option, `checked` / `unchecked` on a
@@ -423,10 +461,11 @@ folded filter bar alike.
 
 | Values | On |
 | --- | --- |
-| `open`, `closed` | `filters-bar`, `filter-chip` |
+| `open`, `closed` | `filters-bar`, `filter-chip`, `sidebar` |
 
-`filters-bar` carries `open` / `closed` only in a collapsible bar, and a
-`filter-chip` is `open` while its popover is. The element a control opens
+`filters-bar` carries `open` / `closed` only in a collapsible bar, a
+`filter-chip` is `open` while its popover is, and a `sidebar` is `closed`
+while it is collapsed to its rail. The element a control opens
 from — `filters-add`, an icon button — carries no state of the control's: its
 list's is on `menu`, its tooltip's on `tooltip`.
 

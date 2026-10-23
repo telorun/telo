@@ -38,7 +38,7 @@ edit:
 A surface is written in place, as above, or declared once and named with
 `!ref` wherever it is used.
 
-## The two abstracts
+## The abstracts
 
 - **`Ui.Surface`** — any surface. A slot that takes a surface, such as a
   table's `create.surface`, is typed by it, so it accepts all six kinds and a
@@ -46,6 +46,11 @@ A surface is written in place, as above, or declared once and named with
 - **`Ui.Overlay`** — a surface floating over the page: `Ui.Dialog`,
   `Ui.Drawer` and `Ui.Popover` extend it, and it extends `Ui.Surface`. A slot
   typed by it takes only those. It provides a `Ui.OverlaySpec`.
+- **`Ui.ViewportOverlay`** — an overlay placed against the viewport rather
+  than against what opened it: `Ui.Dialog` and `Ui.Drawer` extend it, and it
+  extends `Ui.Overlay`. Every `compact` slot is typed by it, so a kind of your
+  own that extends it is accepted there with no change to `ui`; it provides a
+  `dialog` or `drawer` spec.
 
 A kind at a slot that does not take it is `REFERENCE_KIND_MISMATCH` on the line
 that names it.
@@ -150,8 +155,9 @@ documentation.
 
 `compact` names the surface used instead when the viewport is narrower than
 the application's breakpoint — a panel beside a list has no room on a phone,
-and a popover no control to sit beside. It takes a `Ui.Dialog` or a
-`Ui.Drawer`, by `!ref` or in place. A surface open when the viewport crosses
+and a popover no control to sit beside. It takes a `Ui.ViewportOverlay` — a
+`Ui.Dialog`, a `Ui.Drawer` or a kind of your own extending it — by `!ref` or
+in place. A surface open when the viewport crosses
 the breakpoint is swapped in place: what was entered stays.
 
 The opening keeps the address of the surface that declares `compact`, so a

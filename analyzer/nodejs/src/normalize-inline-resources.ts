@@ -9,7 +9,14 @@ import {
 } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope } from "./module-alias-scope.js";
-import { isInlineResource } from "./reference-field-map.js";
+import {
+  asResolvedReference,
+  declaresNameField,
+  isInlineDeclaration,
+  isLegacyReferenceForm,
+  resolvedReference,
+} from "./resolved-reference.js";
+import { isValueAtSlot } from "./reference-field-map.js";
 import { siteRefEntry, type ReachSite } from "./reference-reach.js";
 import { gatherPropertySchemas } from "./schema-walk.js";
 import {
@@ -114,9 +121,10 @@ interface Origin {
 /**
  * Phase 2 — Inline resource normalization.
  *
- * Every inline declaration (a `{kind, …config}` with no `name`) is extracted as a
- * first-class manifest under a deterministic name and replaced in place with
- * `{kind, name}`. Two kinds of slot carry one:
+ * Every inline declaration (a `{kind, …config}` that is not a resolved reference —
+ * `resolved-reference.ts`) is extracted as a first-class manifest under a
+ * deterministic name and replaced in place with a resolved reference to it. Two
+ * kinds of slot carry one:
  *
  *  - a REFERENCE slot, at a concrete site of the kind's reach
  *    (`reference-reach.ts`), named
@@ -129,6 +137,13 @@ interface Origin {
  * Step slots are found through the kind's step-body annotation and walked with
  * `walkStepArray`: the reach stops at a step body, since a step's target
  * resolves at dispatch rather than by Phase-5 substitution.
+ *
+ * The legacy `{ kind, name }` reference form — an object whose kind declares no
+ * top-level `name` field — at either kind of slot is no inline declaration: it
+ * is marked in place as the resolved reference it means (`resolved-reference.ts`)
+ * and never extracted. Published artifacts carry the spelling, so a dependency's
+ * keeps working; the entry's own modules are refused for writing it
+ * (`INVALID_REFERENCE_FORM`, judged on the raw set before this pass).
  *
  * Every extracted manifest is queued in turn, so an inline declaration nested in
  * another's slots — a handler inside an inline step target — is extracted too.
@@ -168,8 +183,10 @@ export function normalizeInlineResources(
   // this output — never mutate caller-owned manifests. The extractions rewrite
   // slots in place, so without cloning we'd corrupt shared state such as the
   // editor's `LoadedFile.manifests` parse cache (a reused sentinel would be
-  // rewritten to `{kind, name}`, later misread as an authored reference form).
+  // rewritten to a resolved reference, which the raw stage refuses as authored).
   const result = resources.map(cloneForMutation) as ResourceManifest[];
+  const resolveDef: DefResolver = (kind, from) =>
+    definitionInScope<ResourceDefinition>(registry, kind, from?.metadata, aliases, aliasesByModule);
 
   // System kinds join the queue too: their inline-accepting slots are filtered
   // per entry below, so a system document is walked but only its opted-in slots
@@ -260,9 +277,33 @@ export function normalizeInlineResources(
         .filter((scope) => scope.names.length > 0),
     ];
 
+    // Whether a kind spelled in this declaration's module declares a `name`
+    // field — what tells the legacy `{ kind, name }` reference from an inline
+    // declaration of a kind that has one.
+    const legacyReference = (value: unknown) =>
+      isLegacyReferenceForm(value, (kind) => {
+        const definition = definitionInScope<ResourceDefinition>(
+          registry,
+          kind,
+          view.metadata,
+          aliases,
+          aliasesByModule,
+        );
+        return definition ? declaresNameField(definition, resolveDef) : undefined;
+      });
+
     const extractedAt: (readonly (string | number)[])[] = [];
     for (const site of sites) {
       if (site.refs.length === 0) continue;
+      if (
+        site.holder &&
+        site.key !== undefined &&
+        legacyReference(site.data) &&
+        !isValueAtSlot(site.data, site.refs, registry)
+      ) {
+        (site.holder as Record<string | number, unknown>)[site.key] = asResolvedReference(site.data);
+        continue;
+      }
       const entry = siteRefEntry(site);
       if (!acceptsInline(resource.kind, entry)) continue;
       if (current.inBody && entry.uses.includes("schema")) continue;
@@ -286,7 +327,7 @@ export function normalizeInlineResources(
     }
 
     if (SYSTEM_KINDS.has(resource.kind)) continue;
-    extractStepTargets(resource, view, registry, aliases, aliasesByModule, inherit, outsideAt, (m) =>
+    extractStepTargets(resource, view, registry, aliases, aliasesByModule, inherit, outsideAt, legacyReference, (m) =>
       place(m, home, parentModule, current.inBody),
     );
   }
@@ -331,6 +372,7 @@ function extractStepTargets(
   aliasesByModule: Map<string, AliasResolver> | undefined,
   inherit: Provenance,
   outsideAt: (slotKeys: readonly (string | number)[]) => OutsideScope[],
+  legacyReference: (value: unknown) => value is Record<string, unknown> & { kind: string; name: string },
   emit: (manifest: ResourceManifest) => void,
 ): void {
   const definition = definitionInScope<ResourceDefinition>(
@@ -359,7 +401,11 @@ function extractStepTargets(
     forEachStep(body, schema, (step, stepPath) => {
       const target = step[body.invokeField];
       if (!target || typeof target !== "object" || Array.isArray(target)) return;
-      if (!isInlineResource(target as Record<string, unknown>)) return;
+      if (legacyReference(target)) {
+        step[body.invokeField] = asResolvedReference(target);
+        return;
+      }
+      if (!isInlineDeclaration(target)) return;
       // The step grammar requires a name, and a target is named after it; a step
       // without one is reported by schema validation and left as written.
       if (typeof step.name !== "string") return;
@@ -369,7 +415,7 @@ function extractStepTargets(
         typeof declared === "string"
           ? declared
           : inlineStepTargetName(owner, [root, ...stepPathSegments(stepPath).slice(1)], step.name);
-      step[body.invokeField] = { kind: inline.kind, name };
+      step[body.invokeField] = resolvedReference(inline.kind as string, name);
       emit(
         buildManifest(
           inline,
@@ -431,7 +477,7 @@ function stepPathSegments(path: string): string[] {
 
 /**
  * Extracts the inline declaration a reference site holds, replacing it in place
- * with `{kind, name}`. The name follows the site: each key, and each array
+ * with a resolved reference to it. The name follows the site: each key, and each array
  * item's own `name` (its index when it has none).
  */
 function extractInlineAt(
@@ -445,7 +491,7 @@ function extractInlineAt(
 ): ResourceManifest | undefined {
   const inline = site.data;
   if (!inline || typeof inline !== "object" || Array.isArray(inline) || !site.holder) return undefined;
-  if (!isInlineResource(inline as Record<string, unknown>)) return undefined;
+  if (!isInlineDeclaration(inline)) return undefined;
   const nameParts: string[] = [];
   let value: unknown = resource;
   for (const key of site.keys) {
@@ -458,10 +504,7 @@ function extractInlineAt(
     }
   }
   const name = sanitizeName([parentName, ...nameParts].join("_"));
-  (site.holder as Record<string | number, unknown>)[site.key!] = {
-    kind: (inline as Record<string, unknown>).kind,
-    name,
-  };
+  (site.holder as Record<string | number, unknown>)[site.key!] = resolvedReference(inline.kind, name);
   return buildManifest(
     inline as Record<string, unknown>,
     name,

@@ -3,7 +3,7 @@ modules:
 body: "Swappable themes. UiReact.Theme is a look — stylesheets placed in the telo.theme
   layer, token defaults, and UiReact.Controls sets drawn in place of the built-in
   controls they implement — and UiReact.Controls is a set of controls a module ships
-  (entry, implements), checked against ui_react_controls-1 before the application
+  (entry, implements), checked against ui_react_controls-2 before the application
   starts. The built-in look moved out of code into the exported instance
   UiReact.defaultTheme, one stylesheet that now styles every part, the picker, date
   range, field groups and field descriptions included, and declares no reserved

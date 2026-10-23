@@ -50,6 +50,11 @@ its own controller. Among what it exports:
 | `entryAssets(entry)` | Turns a built browser entry — what `ctx.resolveBrowserEntry` / `ctx.resolveControllerBrowserEntry` return — into `{ module, assets }`: the entry file and every file built beside it as `assets`, and the entry's own address as `module`. |
 | `AssetFile` (type) | One file of `assets`: `{ digest, name, file, mediaType }`, as in the table above. |
 | `AssetRef` (type) | An address, `{ digest, name }`. |
+| `isPage(instance)` / `PageInstance` (type) | Recognises a [`Ui.Page`](page.md) an application lists: `invoke({ request }, context?)` answers the page for one request, `snapshot()` its `{ path, title, query }`, `assets()` the files its composites need and `headerReads()` the request headers its expressions read. |
+| `RequestNodes` | `await RequestNodes.prepare(nodes, roots, ctx, where)` prepares nodes delivered per request — an application's own header — as a page prepares its children: every composite resolved and judged once; `.deliver(request)` evaluates and produces them for one request, and `.assets` / `.headerReads` say what they need and read. |
+| `headerReads(...values)` / `unionReads(...reads)` | The request headers the expressions held in a value read — lower-case names, or `*` when any may be read. |
+| `preparedNavigation(navigation, pages, ctx, owner)` / `deliveredNavigation(evaluated)` | An application's [navigation](navigation.md) with every default filled, prepared once; and the entries one request is delivered, after its `when`s are evaluated over the request. |
+| `errorNode(code, message)` | The `error` node standing where one could not be produced. |
 
 What `entryAssets` decides:
 

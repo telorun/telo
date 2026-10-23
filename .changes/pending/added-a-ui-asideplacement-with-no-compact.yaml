@@ -1,0 +1,8 @@
+modules:
+  modules/ui: Added
+body: "A `Ui.AsidePlacement` with no `compact` now folds behind a toggle on a narrow
+  viewport: its `compact` is filled as `{ kind: Ui.CollapsiblePlacement }`, folded, so
+  the `aside` branch a renderer receives always carries `compact`. A pinned field on an
+  aside bar is no longer warned (`UI_FILTER_PINNED_UNUSED`), since such a bar always
+  folds on a narrow viewport; an above placement with no `compact` and an omitted
+  placement are still warned."

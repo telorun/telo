@@ -35,10 +35,10 @@
 body { margin: 0; background: var(--telo-color-background); color: var(--telo-color-text); font-family: var(--telo-font-body); font-size: var(--telo-font-size-md); line-height: var(--telo-line-height-body); }
 
 /* shell */
-[data-telo-part="app"], [data-telo-part="header"], [data-telo-part="header-start"], [data-telo-part="app-title"], [data-telo-part="nav"], [data-telo-part="nav-link"], [data-telo-part="header-end"], [data-telo-part="main"], [data-telo-part="page"], [data-telo-part="page-title"] { gap: var(--telo-space-md); font-family: var(--telo-font-heading); line-height: var(--telo-line-height-heading); }
+[data-telo-part="app"], [data-telo-part="header"], [data-telo-part="header-start"], [data-telo-part="app-title"], [data-telo-part="nav"], [data-telo-part="nav-menu"], [data-telo-part="header-end"], [data-telo-part="sidebar"], [data-telo-part="sidebar-toggle"], [data-telo-part="main"], [data-telo-part="page"], [data-telo-part="page-title"], [data-telo-part="tab-bar"] { gap: var(--telo-space-md); font-family: var(--telo-font-heading); line-height: var(--telo-line-height-heading); }
 
 /* structure */
-[data-telo-part="box"], [data-telo-part="stack"], [data-telo-part="columns"], [data-telo-part="column"], [data-telo-part="text"], [data-telo-part="badge"], [data-telo-part="link"], [data-telo-part="menu-trigger"], [data-telo-part="image"], [data-telo-part="svg"], [data-telo-part="value"], [data-telo-part="list"], [data-telo-part="list-heading"], [data-telo-part="data"] { gap: var(--telo-space-sm); margin: 0; font-size: var(--telo-font-size-md); }
+[data-telo-part="box"], [data-telo-part="stack"], [data-telo-part="columns"], [data-telo-part="column"], [data-telo-part="text"], [data-telo-part="badge"], [data-telo-part="link"], [data-telo-part="navigation"], [data-telo-part="nav-toggle"], [data-telo-part="nav-item"], [data-telo-part="nav-group"], [data-telo-part="nav-panel"], [data-telo-part="tabs"], [data-telo-part="tab-list"], [data-telo-part="tab"], [data-telo-part="tab-panel"], [data-telo-part="image"], [data-telo-part="svg"], [data-telo-part="value"], [data-telo-part="list"], [data-telo-part="list-heading"], [data-telo-part="data"] { gap: var(--telo-space-sm); margin: 0; font-size: var(--telo-font-size-md); }
 
 /* table */
 [data-telo-part="table"], [data-telo-part="table-toolbar"], [data-telo-part="table-create"], [data-telo-part="table-main"], [data-telo-part="table-frame"], [data-telo-part="table-grid"], [data-telo-part="table-head"], [data-telo-part="table-body"], [data-telo-part="table-row"], [data-telo-part="table-header-cell"], [data-telo-part="table-sort"], [data-telo-part="table-cell"], [data-telo-part="row-actions"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"], [data-telo-part="table-detail"], [data-telo-part="table-empty"], [data-telo-part="table-loading"], [data-telo-part="pager"], [data-telo-part="pager-status"], [data-telo-part="pager-prev"], [data-telo-part="pager-next"] { gap: var(--telo-space-sm); padding: var(--telo-space-xs) var(--telo-space-sm); border-color: var(--telo-color-border); font-size: var(--telo-font-size-sm); }
@@ -57,6 +57,9 @@ body { margin: 0; background: var(--telo-color-background); color: var(--telo-co
 
 /* surface */
 [data-telo-part="surface-overlay"], [data-telo-part="surface"], [data-telo-part="surface-header"], [data-telo-part="surface-title"], [data-telo-part="surface-description"], [data-telo-part="surface-body"], [data-telo-part="surface-close"], [data-telo-part="icon"], [data-telo-part="select-content"], [data-telo-part="select-item"], [data-telo-part="menu"], [data-telo-part="menu-item"], [data-telo-part="tooltip"] { border-radius: var(--telo-radius-lg); background: var(--telo-color-surface); box-shadow: var(--telo-shadow-md); padding: var(--telo-space-lg); }
+
+/* An icon resource's glyph: sized, and coloured by its text. */
+[data-telo-part="glyph"] { width: 1rem; height: 1rem; }
 
 [data-telo-part="page-title"] { margin-bottom: var(--telo-space-xl); font-size: var(--telo-font-size-xl); }
 [data-telo-part="submit"], [data-telo-part="table-create"], [data-telo-part="filters-apply"] { background: var(--telo-color-accent); color: var(--telo-color-accent-text); box-shadow: var(--telo-shadow-sm); }

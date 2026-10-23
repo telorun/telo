@@ -3,7 +3,7 @@ metadata:
   name: UiReactConformanceCheckControlsTest
   version: 1.0.0
   description: |
-    A control set is held to its controls' vectors: one implementing the eight
+    A control set is held to its controls' vectors: one implementing the nine
     layer controls whose Select closes on Escape on its own, without asking the
     renderer, fails exactly that vector.
 imports:

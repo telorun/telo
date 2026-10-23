@@ -8,6 +8,7 @@ import {
   evaluateResourceRules,
   validateResourceRuleDeclarations,
 } from "../src/validate-resource-rules.js";
+import { resolvedReference } from "../src/resolved-reference.js";
 
 /** A resource rule's `resolve:` — the condition reads the declarations its own
  *  reference slots name, one level deep, in place of the references. */
@@ -31,7 +32,7 @@ const schema = {
 const language = (name: string, code: string, extra: Record<string, unknown> = {}) =>
   ({ kind: "std.Language", metadata: { name, ...extra }, code }) as unknown as ResourceManifest;
 
-const ref = (name: string) => ({ kind: "std.Language", name });
+const ref = (name: string) => resolvedReference("std.Language", name);
 
 function binderOver(
   declarations: ResourceManifest[],
@@ -233,10 +234,10 @@ describe("resource rules — resolve across references", () => {
     "std.Model": { type: "object", properties: { code: { type: "string" } } },
   };
   const declarations = [
-    { kind: "std.Field", metadata: { name: "f1" }, options: { kind: "std.Options", name: "o1" } },
-    { kind: "std.Field", metadata: { name: "f2" }, options: { kind: "std.Options", name: "o2" } },
-    { kind: "std.Options", metadata: { name: "o1" }, model: { kind: "std.Model", name: "good" } },
-    { kind: "std.Options", metadata: { name: "o2" }, model: { kind: "std.Model", name: "bad" } },
+    { kind: "std.Field", metadata: { name: "f1" }, options: { __ref: true, kind: "std.Options", name: "o1" } },
+    { kind: "std.Field", metadata: { name: "f2" }, options: { __ref: true, kind: "std.Options", name: "o2" } },
+    { kind: "std.Options", metadata: { name: "o1" }, model: { __ref: true, kind: "std.Model", name: "good" } },
+    { kind: "std.Options", metadata: { name: "o2" }, model: { __ref: true, kind: "std.Model", name: "bad" } },
     { kind: "std.Model", metadata: { name: "good" }, code: "good" },
     { kind: "std.Model", metadata: { name: "bad" }, code: "bad" },
   ] as unknown as ResourceManifest[];
@@ -257,7 +258,7 @@ describe("resource rules — resolve across references", () => {
   const form = {
     kind: "std.Form",
     metadata: { name: "form" },
-    fields: ["title", { kind: "std.Field", name: "f1" }, { kind: "std.Field", name: "f2" }],
+    fields: ["title", { __ref: true, kind: "std.Field", name: "f1" }, { __ref: true, kind: "std.Field", name: "f2" }],
   } as unknown as ResourceManifest;
 
   it("reads a declaration two references away, through every entry of a list", () => {

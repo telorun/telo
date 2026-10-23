@@ -15,7 +15,8 @@ title: Off-site path
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: //reports
+  - kind: Ui.Page
+    path: //reports
     title: Reports
     children: []
 ---
@@ -26,7 +27,8 @@ title: Off-site link
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Home
     children:
       - { type: link, text: Elsewhere, href: //evil.example/x }

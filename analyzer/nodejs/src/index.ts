@@ -398,6 +398,15 @@ export type {
   RowKind,
 } from "./module-graph.js";
 export { satisfiesValueBranch } from "./reference-field-map.js";
+export {
+  carriesReferenceMarker,
+  declaresNameField,
+  isInlineDeclaration,
+  isResolvedReference,
+  RESOLVED_REFERENCE_MARKER,
+  resolvedReference,
+} from "./resolved-reference.js";
+export type { ResolvedReference } from "./resolved-reference.js";
 export type { RefFieldEntry, ValueBranchValidator } from "./reference-field-map.js";
 export { reachPositions, reachSites, type ReachPosition } from "./reference-reach.js";
 export {

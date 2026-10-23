@@ -1,0 +1,51 @@
+# An application listing a library's page beside its own and naming it in a
+# group of its navigation, with nothing else written for it.
+kind: Telo.Application
+metadata:
+  name: UiReactLibraryPagesApp
+  version: 1.0.0
+imports:
+  Http: ../../../../http-server
+  Ui: ../../../../ui
+  UiReact: ../../../
+  Lib: ./lib
+ports:
+  http: { env: PORT, default: 19318 }
+targets:
+  - !ref server
+---
+kind: Ui.Page
+metadata:
+  name: home
+path: /
+title: Home
+children: []
+---
+kind: UiReact.App
+metadata:
+  name: admin
+title: Library pages
+words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
+pages:
+  - !ref home
+  - !ref Lib.reports
+navigation:
+  items:
+    - type: page
+      page: !ref home
+    - type: group
+      text: Shipped
+      items:
+        - type: page
+          page: !ref Lib.reports
+---
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /admin
+    mount: !ref admin

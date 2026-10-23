@@ -1,0 +1,26 @@
+kind: Telo.Library
+metadata:
+  name: Kinds
+  version: 1.0.0
+exports:
+  kinds: [Named, Holder]
+---
+kind: Telo.Definition
+metadata:
+  name: Named
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [name]
+  properties:
+    name: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    target:
+      x-telo-ref: { kind: Self.Named, use: call }

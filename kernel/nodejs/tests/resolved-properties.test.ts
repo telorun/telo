@@ -16,7 +16,7 @@ describe("buildResolvedProperties — resolved config for the debug stream", () 
 
   it("renders a resolved !ref as its {kind, name}", () => {
     const props = buildResolvedProperties(
-      { kind: "Sql.Migrations", metadata: { name: "m" }, connection: { kind: "Sql.Connection", name: "Db", alias: "Sql" } } as any,
+      { kind: "Sql.Migrations", metadata: { name: "m" }, connection: { __ref: true, kind: "Sql.Connection", name: "Db", alias: "Sql" } } as any,
       new Set(),
     );
     expect(props.connection).toEqual({ kind: "Sql.Connection", name: "Db" });

@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react-radix: Added
+body: The Radix theme's header spans the full window width with tighter spacing, so the
+  title, the navigation and the header's own nodes fit one row.

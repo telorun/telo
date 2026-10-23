@@ -33,7 +33,7 @@ function moduleContext(): ModuleContext {
 }
 
 /** A ref in the shape Phase 2.5 leaves behind — what `collectResourceRefs` reads. */
-const ref = (name: string) => ({ kind: "Test.Thing", name });
+const ref = (name: string) => ({ __ref: true, kind: "Test.Thing", name });
 
 function manifest(name: string, config: Record<string, unknown> = {}): ResourceManifest {
   return { kind: "Test.Thing", metadata: { name }, ...config } as unknown as ResourceManifest;

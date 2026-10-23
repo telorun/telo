@@ -30,6 +30,7 @@ import {
   type ThrowsCodeMeta,
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
+import { isResolvedReference } from "./resolved-reference.js";
 
 /** One entry of an outcome list, as written. */
 export interface OutcomeEntry {
@@ -332,9 +333,9 @@ function handlerRefOf(sibling: unknown): { kind: string; name?: string } | null 
   if (!sibling) return null;
   if (typeof sibling === "string") return { kind: sibling };
   if (typeof sibling === "object") {
-    const obj = sibling as { kind?: unknown; name?: unknown };
+    const obj = sibling as { kind?: unknown };
     if (typeof obj.kind === "string") {
-      return { kind: obj.kind, name: typeof obj.name === "string" ? obj.name : undefined };
+      return { kind: obj.kind, name: isResolvedReference(sibling) ? sibling.name : undefined };
     }
   }
   return null;

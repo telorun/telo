@@ -576,7 +576,8 @@ title: Purchase requests
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Requests
     children:
       - { type: text, text: "Waiting for review", style: heading }

@@ -25,6 +25,10 @@
     "select": {"message":["Select…"],"lang":"en"},
     "choose": {"message":["Choose…"],"lang":"en"},
     "more": {"message":["More"],"lang":"en"},
+    "menu": {"message":["Menu"],"lang":"en"},
+    "siteNavigation": {"message":["Site"],"lang":"en"},
+    "collapseNavigation": {"message":["Collapse navigation"],"lang":"en"},
+    "expandNavigation": {"message":["Expand navigation"],"lang":"en"},
     "search": {"message":["Search ",{"placeholder":"label"}],"lang":"en"},
     "remove": {"message":["Remove ",{"placeholder":"label"}],"lang":"en"},
     "clear": {"message":["Clear ",{"placeholder":"label"}],"lang":"en"},
@@ -171,13 +175,17 @@
   },
   "scenes": [
     {
-      "name": "every node, a filter bar of every policy, and a table's dialogs",
+      "name": "every node, a filter bar of every policy, and a table's dialogs; a menu node's panel and a tooltip over it, each closing alone",
       "path": "/",
       "app": {
         "specVersion": 1,
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Everything"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"everything","path":"/","text":{"message":["Everything"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "header": {
           "start": [{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],
           "end": [
@@ -993,9 +1001,21 @@
       },
       "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
       "steps": [
-        {"key":"ArrowDown","on":{"part":"menu-trigger"}},
-        {"expect":{"present":[{"part":"menu-item","text":"Polski"}]}},
+        {"click":{"part":"nav-toggle","text":"Language"}},
+        {
+          "expect": {
+            "present": [{"tag":"a","part":"nav-item","text":"Polski","within":{"part":"nav-panel"}}],
+            "absent": [{"tag":"nav","part":"navigation","within":{"part":"header-end"}},{"role":"menuitem"}],
+            "attributes": [{"of":{"part":"nav-item","text":"English"},"name":"aria-current","value":"true"}]
+          }
+        },
+        {"hover":{"part":"row-edit"}},
+        {"wait":400},
+        {"expect":{"present":[{"part":"tooltip"},{"part":"nav-panel"}]}},
         {"key":"Escape"},
+        {"expect":{"absent":[{"part":"tooltip"}],"present":[{"part":"nav-panel"}]}},
+        {"key":"Escape"},
+        {"expect":{"absent":[{"part":"nav-panel"}]}},
         {"key":"ArrowDown","on":{"part":"filters-add"}},
         {"expect":{"present":[{"part":"menu-item"}]}},
         {"key":"Escape"},
@@ -1034,6 +1054,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Inline"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"inline","path":"/","text":{"message":["Inline"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -1176,6 +1200,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Action"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"action","path":"/","text":{"message":["Action"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -1428,6 +1456,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Answers"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"answers","path":"/","text":{"message":["Answers"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -1711,6 +1743,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Data"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"data","path":"/","text":{"message":["Data"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -1878,6 +1914,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Fields"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"fields","path":"/","text":{"message":["Fields"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -2082,6 +2122,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Opened"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"opened","path":"/","text":{"message":["Opened"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -2265,6 +2309,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Slow"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"slow","path":"/","text":{"message":["Slow"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -2422,7 +2470,7 @@
       "steps": [{"expect":{"present":[{"part":"table-loading"}]}}]
     },
     {
-      "name": "every state the renderer sets, below the breakpoint",
+      "name": "every state the renderer sets, below the breakpoint, and the menu button's drawer opening groups in place",
       "path": "/",
       "compact": true,
       "app": {
@@ -2433,6 +2481,18 @@
           {"path":"/","title":{"message":["States"],"lang":"en"}},
           {"path":"/other","title":{"message":["Other"],"lang":"en"}}
         ],
+        "navigation": {
+          "items": [
+            {"type":"page","key":"states","path":"/","text":{"message":["States"],"lang":"en"}},
+            {"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"items":[
+              {"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},
+              {"type":"group","key":"sections/deeper","text":{"message":["Deeper"],"lang":"en"},"items":[
+                {"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}
+              ]}
+            ]}
+          ],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -3263,6 +3323,19 @@
       },
       "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
       "steps": [
+        {"click":{"part":"nav-menu"}},
+        {"click":{"part":"nav-toggle","text":"Sections"}},
+        {"click":{"part":"nav-toggle","text":"Deeper"}},
+        {"expect":{
+          "present":[
+            {"part":"nav-group","within":{"part":"navigation","within":{"part":"surface","attributes":{"data-surface":"drawer"}}}},
+            {"tag":"a","part":"nav-item","text":"Guide","within":{"part":"nav-group","index":1}}
+          ],
+          "absent":[{"part":"nav-panel"}],
+          "attributes":[{"of":{"part":"nav-group"},"name":"data-telo-layer","value":null}]
+        }},
+        {"key":"Escape"},
+        {"expect":{"absent":[{"part":"surface","attributes":{"data-surface":"drawer"}}]}},
         {"click":{"part":"table-sort"}},
         {"fill":{"part":"filter-input"},"value":"the"},
         {"click":{"part":"table-create","index":1}},
@@ -3281,6 +3354,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -3517,6 +3594,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -3757,6 +3838,10 @@
         "title": {"message":["Scenes"],"lang":"en"},
         "lang": "en",
         "pages": [{"path":"/","title":{"message":["Layers"],"lang":"en"}}],
+        "navigation": {
+          "items": [{"type":"page","key":"layers","path":"/","text":{"message":["Layers"],"lang":"en"}}],
+          "placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}
+        },
         "stylesheets": [],
         "controls": {"stylesheets":{},"sets":[]},
         "compactBelow": "40rem"
@@ -4015,6 +4100,169 @@
         },
         {"click":{"part":"surface-close"}},
         {"click":{"part":"submit","within":{"part":"surface","attributes":{"data-surface":"confirmation"}}}},
+        {"expect":{"absent":[{"part":"surface"}]}}
+      ]
+    },
+    {
+      "name": "a sidebar beside the page, its groups opening in place, collapsed to a rail of its entries' icons and back; a tabs node choosing its tab under the address",
+      "path": "/?_telo.open.section=details",
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Home"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
+        "navigation": {
+          "items": [
+            {"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":"/_telo/ui/assets/aa/house.svg"},
+            {
+              "type": "group",
+              "key": "sections",
+              "text": {"message":["Sections"],"lang":"en"},
+              "icon": "/_telo/ui/assets/bb/folder.svg",
+              "items": [
+                {"type":"page","key":"sections/other","path":"/other","text":{"message":["Other"],"lang":"en"}},
+                {"type":"group","key":"sections/deeper","text":{"message":["Deeper"],"lang":"en"},"items":[{"type":"link","key":"sections/deeper/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]}
+              ]
+            }
+          ],
+          "placement": {
+            "type": "sidebar",
+            "side": "start",
+            "rail": {"collapsed":false},
+            "store": {"type":"memory"},
+            "compact": {"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}
+          }
+        },
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Home"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [
+            {
+              "type": "tabs",
+              "tabs": [
+                {"key":"summary","text":{"message":["Summary"],"lang":"en"},"children":[{"type":"text","text":{"message":["The summary"],"lang":"en"}}]},
+                {"key":"details","text":{"message":["Details"],"lang":"en"},"children":[{"type":"text","text":{"message":["The details"],"lang":"en"}}]}
+              ],
+              "address": {"name":"section"}
+            }
+          ]
+        }
+      },
+      "responses": {},
+      "steps": [
+        {"expect":{
+          "present":[
+            {"tag":"nav","part":"navigation","within":{"part":"sidebar"},"attributes":{"data-layout":"vertical"}},
+            {"part":"text","text":"The details","within":{"part":"tab-panel"}}
+          ],
+          "attributes":[
+            {"of":{"part":"tab","text":"Details"},"name":"aria-selected","value":"true"},
+            {"of":{"part":"sidebar"},"name":"data-state","value":"open"},
+            {"of":{"part":"sidebar-toggle"},"name":"aria-expanded","value":"true"}
+          ]
+        }},
+        {"click":{"part":"tab","text":"Summary"}},
+        {"expect":{
+          "present":[{"part":"text","text":"The summary","within":{"part":"tab-panel"}}],
+          "attributes":[{"of":{"part":"tab","text":"Summary"},"name":"aria-selected","value":"true"}]
+        }},
+        {"click":{"part":"nav-toggle","text":"Sections"}},
+        {"click":{"part":"nav-toggle","text":"Deeper"}},
+        {"expect":{
+          "present":[{"tag":"a","part":"nav-item","text":"Guide","within":{"part":"nav-group","index":1}}],
+          "absent":[{"part":"nav-panel"}]
+        }},
+        {"click":{"part":"sidebar-toggle"}},
+        {"expect":{
+          "present":[
+            {"part":"navigation","within":{"part":"sidebar"},"attributes":{"data-layout":"rail"}},
+            {"part":"glyph","within":{"tag":"a","part":"nav-item","text":"","attributes":{"aria-label":"Home"}}},
+            {"part":"glyph","within":{"part":"nav-toggle","attributes":{"aria-label":"Sections"}}}
+          ],
+          "absent":[{"part":"nav-group"}],
+          "attributes":[
+            {"of":{"part":"sidebar"},"name":"data-state","value":"closed"},
+            {"of":{"part":"sidebar-toggle"},"name":"aria-expanded","value":"false"}
+          ]
+        }},
+        {"click":{"part":"nav-toggle","attributes":{"aria-label":"Sections"}}},
+        {"expect":{"present":[{"tag":"a","part":"nav-item","text":"Other","within":{"part":"nav-panel"}}]}},
+        {"key":"Escape"},
+        {"expect":{"absent":[{"part":"nav-panel"}]}},
+        {"click":{"part":"sidebar-toggle"}},
+        {"expect":{
+          "present":[{"tag":"a","part":"nav-item","text":"Guide","within":{"part":"nav-group","index":1}}],
+          "attributes":[{"of":{"part":"sidebar"},"name":"data-state","value":"open"}]
+        }}
+      ]
+    },
+    {
+      "name": "below the breakpoint, a sidebar's tab bar showing its first entries with their icons, More opening the rest in a bottom sheet whose groups open in place",
+      "path": "/",
+      "compact": true,
+      "app": {
+        "specVersion": 1,
+        "title": {"message":["Scenes"],"lang":"en"},
+        "lang": "en",
+        "pages": [{"path":"/","title":{"message":["Home"],"lang":"en"}},{"path":"/other","title":{"message":["Other"],"lang":"en"}}],
+        "navigation": {
+          "items": [
+            {"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"},"icon":"/_telo/ui/assets/aa/house.svg"},
+            {"type":"page","key":"other","path":"/other","text":{"message":["Other"],"lang":"en"}},
+            {"type":"group","key":"sections","text":{"message":["Sections"],"lang":"en"},"items":[{"type":"link","key":"sections/guide","href":"/guide","text":{"message":["Guide"],"lang":"en"}}]},
+            {"type":"link","key":"help","href":"/help","text":{"message":["Help"],"lang":"en"}}
+          ],
+          "placement": {
+            "type": "sidebar",
+            "side": "start",
+            "store": {"type":"memory"},
+            "compact": {"type":"tab-bar","visible":3,"surface":{"type":"drawer","side":"bottom","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}
+          }
+        },
+        "stylesheets": [],
+        "controls": {"stylesheets":{},"sets":[]},
+        "compactBelow": "40rem"
+      },
+      "pages": {
+        "/": {
+          "specVersion": 1,
+          "title": {"message":["Home"],"lang":"en"},
+          "lang": "en",
+          "query": {},
+          "children": [{"type":"text","text":{"message":["The summary"],"lang":"en"}}]
+        }
+      },
+      "responses": {},
+      "steps": [
+        {"expect":{
+          "present":[
+            {"tag":"a","part":"nav-item","text":"Home","within":{"part":"tab-bar"}},
+            {"part":"glyph","within":{"tag":"a","part":"nav-item","text":"Home","within":{"part":"tab-bar"}}},
+            {"tag":"a","part":"nav-item","text":"Other","within":{"part":"tab-bar"}},
+            {"part":"nav-toggle","text":"More","within":{"part":"tab-bar"}}
+          ],
+          "absent":[{"part":"sidebar"},{"part":"nav-menu"},{"part":"nav-toggle","text":"Sections","within":{"part":"tab-bar"}}],
+          "attributes":[
+            {"of":{"part":"nav-toggle","text":"More","within":{"part":"tab-bar"}},"name":"aria-haspopup","value":"dialog"},
+            {"of":{"part":"nav-toggle","text":"More","within":{"part":"tab-bar"}},"name":"aria-expanded","value":"false"}
+          ]
+        }},
+        {"click":{"part":"nav-toggle","text":"More"}},
+        {"expect":{
+          "present":[{"part":"nav-toggle","text":"Sections","within":{"part":"surface","attributes":{"data-surface":"drawer","data-side":"bottom"}}}],
+          "absent":[{"part":"nav-panel"}],
+          "attributes":[{"of":{"part":"nav-toggle","text":"More","within":{"part":"tab-bar"}},"name":"aria-expanded","value":"true"}]
+        }},
+        {"click":{"part":"nav-toggle","text":"Sections"}},
+        {"expect":{"present":[{"tag":"a","part":"nav-item","text":"Guide","within":{"part":"nav-group"}}]}},
+        {"key":"Escape"},
         {"expect":{"absent":[{"part":"surface"}]}}
       ]
     }

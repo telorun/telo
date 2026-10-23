@@ -17,7 +17,7 @@ imports:
 exports:
   resources: [ theme ]
 ---
-# Radix's eleven controls under this library's own stylesheet and token values.
+# Radix's thirteen controls under this library's own stylesheet and token values.
 # The typefaces are named here and shipped by whoever draws with the theme: the
 # example's `/brand` application serves Inter's faces through its own tokens.
 kind: UiReact.Theme

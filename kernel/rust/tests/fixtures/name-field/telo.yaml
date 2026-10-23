@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: NameField
+  version: 1.0.0
+  description: |
+    A resource of a kind whose configuration has a field called `name`: its
+    root holds `kind` and `name`, and it is a declaration like any other — the
+    kernel creates it and dispatches to it.
+targets:
+  - invoke: !ref greeter
+    inputs:
+      output: "named"
+---
+kind: Telo.Definition
+metadata:
+  name: Named
+capability: Telo.Invocable
+controllers:
+  - pkg:cargo/telorun-console?local_path=../../../../../modules/console/rust#writeline_controller
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      output: { type: string }
+    required: [output]
+    additionalProperties: false
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    name: { type: string }
+---
+kind: Self.Named
+metadata:
+  name: greeter
+name: house

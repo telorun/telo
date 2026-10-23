@@ -36,7 +36,7 @@ const itemSchema = {
 const holder = doc({
   kind: "app.Holder",
   metadata: { name: "holder" },
-  items: [{ kind: "lib.Item", name: "item", alias: "Lib" }],
+  items: [{ __ref: true, kind: "lib.Item", name: "item", alias: "Lib" }],
 });
 
 /** The exported declaration as a consumer's analysis holds it: stamped
@@ -70,7 +70,7 @@ function findingsOver(declaration: ResourceManifest, forwardedReference?: Forwar
 
 const inLibraryScope: ForwardedReference = (target, module) =>
   module === "lib" && target.alias === undefined
-    ? { kind: "lib.Table", name: target.name }
+    ? { __ref: true as const, kind: "lib.Table", name: target.name }
     : undefined;
 
 describe("a rule over a declaration another module exported", () => {

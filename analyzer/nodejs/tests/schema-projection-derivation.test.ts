@@ -84,7 +84,7 @@ describe("where a projection pointer finds a reference", () => {
     const consumer = {
       kind: "app.Write",
       metadata: { name: "write", module: "App" },
-      meta: { kind: "kinds.Shape", name: "users" },
+      meta: { __ref: true, kind: "kinds.Shape", name: "users" },
     };
     const slot = { "x-telo-schema-projection-from": "/meta" };
     const { resolved, failures } = project(slot, consumer, [users, consumer], modules());
@@ -103,7 +103,7 @@ describe("where a projection pointer finds a reference", () => {
     const consumer = {
       kind: "app.Write",
       metadata: { name: "write", module: "App" },
-      node: { kind: "kinds.Node", shape: { kind: "kinds.Shape", name: "users" } },
+      node: { kind: "kinds.Node", shape: { __ref: true, kind: "kinds.Shape", name: "users" } },
     };
     const { resolved, failures } = project(
       { "x-telo-schema-projection-from": "/node" },
@@ -147,7 +147,7 @@ describe("a projection hop into a library's internals", () => {
     const writes = ["LibA", "LibB"].map((alias) => ({
       kind: "app.Write",
       metadata: { name: `write${alias}`, module: "App" },
-      node: { kind: "kinds.Node", name: "person", alias },
+      node: { __ref: true, kind: "kinds.Node", name: "person", alias },
     }));
     const projectionModules = modules({
       moduleForAlias: (module, alias) => (module === "App" ? alias : undefined),
@@ -192,7 +192,7 @@ describe("a reference resolves only in its holder's scope", () => {
       metadata: { name: "person", module: "LibA", forwardedExport: true },
       shape: ref("users"),
     };
-    const consumer = write({ kind: "kinds.Node", name: "person", alias: "LibA" });
+    const consumer = write({ __ref: true, kind: "kinds.Node", name: "person", alias: "LibA" });
     const { failures } = project(
       slot,
       consumer,
@@ -222,7 +222,7 @@ describe("a reference resolves only in its holder's scope", () => {
 
   it("does not resolve through an alias the holder's module does not import", () => {
     const person = { kind: "kinds.Node", metadata: { name: "person", module: "App" }, shape: ref("users") };
-    const consumer = write({ kind: "kinds.Node", name: "person", alias: "Missing" });
+    const consumer = write({ __ref: true, kind: "kinds.Node", name: "person", alias: "Missing" });
     const { failures } = project(slot, consumer, [appUsers, person, consumer], modules());
     expect(failures).toEqual([{ reason: "unresolved", pointer: "/node", name: "person" }]);
   });

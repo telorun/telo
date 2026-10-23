@@ -4,7 +4,8 @@ metadata:
   version: 1.0.0
   description: |
     Each placement kind provides where a bar's controls sit, its own members
-    filled and its compact placement as the one it names; each store kind
+    filled and its compact placement as the one it names — an aside one naming
+    none folding behind a toggle; each store kind
     provides where state is kept. A filter bar carries its whole policy to the
     node it provides — what is declared as written, the rest defaulted, an
     omitted placement the same as the above kind with nothing set, an absent
@@ -30,6 +31,10 @@ metadata:
   name: beside
 side: end
 compact: !ref folded
+---
+kind: Ui.AsidePlacement
+metadata:
+  name: besideBare
 ---
 kind: Ui.CollapsiblePlacement
 metadata:
@@ -153,6 +158,8 @@ steps:
     invoke: { kind: Probe.Read, source: !ref above }
   - name: beside
     invoke: { kind: Probe.Read, source: !ref beside }
+  - name: besideBare
+    invoke: { kind: Probe.Read, source: !ref besideBare }
   - name: floating
     invoke: { kind: Probe.Read, source: !ref floating }
   - name: tab
@@ -173,6 +180,7 @@ steps:
       actual:
         above: !cel "steps.above.result"
         beside: !cel "steps.beside.result"
+        besideBare: !cel "steps.besideBare.result"
         floating: !cel "steps.floating.result"
         tab: !cel "steps.tab.result"
         plain: !cel >-
@@ -205,6 +213,7 @@ steps:
       expected:
         above: { type: above }
         beside: { type: aside, side: end, compact: { type: collapsible, open: true } }
+        besideBare: { type: aside, side: start, compact: { type: collapsible, open: false } }
         floating:
           type: overlay
           surface:

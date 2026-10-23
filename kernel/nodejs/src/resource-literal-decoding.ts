@@ -14,7 +14,7 @@
  * is the instance, so a second walk would change nothing and cost a
  * whole-manifest traversal on a request path.
  */
-import { decodePlainLiterals, type AnalysisRegistry } from "@telorun/analyzer";
+import { decodePlainLiterals, isResolvedReference, type AnalysisRegistry } from "@telorun/analyzer";
 import type { EvaluationContext, ResourceManifest } from "@telorun/sdk";
 
 type SchemaResolver = (ref: string) => Record<string, any> | undefined;
@@ -46,12 +46,9 @@ export function decodeResourceLiterals(
     // Declarations, never instances: a call target need not exist yet, and a
     // step's edge is no init-order edge.
     resolveTarget: (ref) => {
-      const target =
-        typeof ref.name === "string"
-          ? (evalContext.resolveDeclaredManifest?.(ref.name, ref.alias) as
-              | Record<string, any>
-              | undefined)
-          : undefined;
+      const target = isResolvedReference(ref)
+        ? (evalContext.resolveDeclaredManifest?.(ref.name, ref.alias) as Record<string, any> | undefined)
+        : undefined;
       if (target === undefined) unresolved = true;
       return target;
     },

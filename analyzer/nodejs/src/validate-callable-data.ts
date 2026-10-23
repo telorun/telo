@@ -54,7 +54,7 @@ import { isModuleKind } from "./module-kinds.js";
 import { injectedNeedOf, needTypeOf, readNeeds } from "./need-type.js";
 import { importAnchoredDiagnostic } from "./reaching-import.js";
 import type { ReachSite } from "./reference-reach.js";
-import { isInlineResource } from "./reference-field-map.js";
+import { isInlineDeclaration } from "./resolved-reference.js";
 import { computedValue } from "./ref-slot-computed.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
 import { declaredScopes, isScopeMember } from "./scope-declarations.js";
@@ -269,7 +269,7 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
       }
       return undefined;
     }
-    if (isPlainContainer(value) && isInlineResource(value as Record<string, unknown>)) {
+    if (isPlainContainer(value) && isInlineDeclaration(value)) {
       const module = moduleOf(holder);
       const inline = {
         ...(value as Record<string, unknown>),
@@ -430,7 +430,7 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
         }
         return undefined;
       }
-      if (path !== "" && isInlineResource(node)) return undefined;
+      if (path !== "" && isInlineDeclaration(node)) return undefined;
       for (const [field, child] of Object.entries(node)) {
         if (path === "" && (field === "kind" || field === "metadata")) continue;
         const found = expression(child, path === "" ? field : `${path}.${field}`);

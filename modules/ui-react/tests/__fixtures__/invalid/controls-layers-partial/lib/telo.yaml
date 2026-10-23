@@ -1,25 +1,26 @@
-# A control set replacing one layer control and not the other seven.
+# A control set replacing the eight layer controls of the first generation and
+# not the navigation, the ninth.
 kind: Telo.Library
 metadata:
   name: UiReactControlsLayersPartial
   version: 1.0.0
   description: >-
-    Test fixture exporting a control set that implements the select alone,
-    without the other layer controls.
+    Test fixture exporting a control set that implements eight of the layer
+    controls, without the navigation.
 imports:
   UiReact: ../../../../../
 exports:
-  resources: [selectOnly]
+  resources: [eightLayers]
   browser:
-    - specifier: "@fixture/select-only"
-      path: ./browser/select.js
-      source: ./select.js
-      abi: ui_react_controls-1
+    - specifier: "@fixture/eight-layers"
+      path: ./browser/eight-layers.js
+      source: ./eight-layers.js
+      abi: ui_react_controls-2
       external: [react, react/jsx-runtime, react-dom]
-      exports: [Select]
+      exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
 ---
 kind: UiReact.Controls
 metadata:
-  name: selectOnly
-entry: "@fixture/select-only"
-implements: [Select]
+  name: eightLayers
+entry: "@fixture/eight-layers"
+implements: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]

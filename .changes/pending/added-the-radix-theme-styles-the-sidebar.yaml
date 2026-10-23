@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react-radix: Added
+body: The Radix theme styles the sidebar, its toggle and its rail, the bottom tab bar,
+  and the tabs of a tabs node.

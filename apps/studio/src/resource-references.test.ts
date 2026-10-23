@@ -127,6 +127,19 @@ describe("referenceSlotsToClear", () => {
     // to report as dangling.
     expect(referenceSlotsToClear(analysed, app(targets.targets, ["z"]), "y")).toEqual([]);
   });
+
+  it("never clears an inline declaration whose kind has a `name` field", () => {
+    // An analysis made while the slot held `!ref house` names it; the slot now
+    // declares an icon inline, which deleting the resource `house` leaves alone.
+    const site: ViewModel = {
+      ...noSites,
+      referenceSites: [{ source: { kind: "demo.Entry", name: "home" }, path: "icon", target: "house" }],
+    };
+    const holding = (icon: unknown) =>
+      manifestOf([{ kind: "demo.Entry", name: "home", fields: { icon } }]);
+    expect(referenceSlotsToClear(site, holding({ kind: "UiLucide.Icon", name: "house" }), "house")).toEqual([]);
+    expect(referenceSlotsToClear(site, holding(ref("house")), "house").map((r) => r.path)).toEqual(["icon"]);
+  });
 });
 
 describe("knownReferences", () => {

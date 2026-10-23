@@ -48,7 +48,7 @@ schema:
 | `condition` | CEL, **TRUE when the rule holds**. Required. |
 | `code` | Names the rule. Reported in the diagnostic's `data.rule`. Required, unique within the kind. |
 | `message` | What the relationship means, written by the kind's author. Required. |
-| `in` | JSON Pointer to the collection to iterate. Optional. |
+| `in` | JSON Pointer to the collection to iterate, with `*` and repeated groups to name several. Optional. |
 | `severity` | `error` (default) or `warning`. |
 
 ### `in:` is the anchor
@@ -63,6 +63,24 @@ reports at the resource, which is what a discouraged-value warning wants:
       severity: warning
       message: sets reclaim.afterDuration to 0ms, switching off the time backstop.
 ```
+
+`in:` may name more than one collection. `*` is every item of a list or value
+of a map, and a group of steps followed by `)*` repeats zero or more times —
+the repeated-group form of the eval-path grammar, spelled as pointer segments,
+with `|` between alternatives. A navigation tree whose groups hold more
+entries is visited at every depth by one rule:
+
+```yaml
+    - in: /navigation/items(/*/items)*
+      condition: !cel "this.type != 'page' || self.pages.exists(p, p.name == this.page.name)"
+```
+
+The rule runs once per entry of `navigation.items`, then of each entry's
+`items`, and so on; a violation is anchored at the entry itself
+(`navigation.items[1].items[0].items[2]`). `telo check` follows the pointer
+through the kind's schema — local and named shapes, union branches — and
+refuses a group that reaches nothing from where it is written. A key holding
+`(`, `)` or `|` cannot be named.
 
 Iterating what the pointer names is what makes a reported path exist. A rule
 cannot instead return a set of offenders: the pointer and the offenders would be

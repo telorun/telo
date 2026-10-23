@@ -71,7 +71,7 @@ describe("what the renderer draws", () => {
 
   it("draws a navigation entry that leaves the application as the error node, beside the others", async () => {
     rendered = await show([{ type: "text", text: "Home page" }], { "//x": { title: "Elsewhere", children: [] } });
-    expect(rendered.parts("nav-link").map((link) => link.getAttribute("href"))).toEqual(["/"]);
+    expect(rendered.parts("nav-item").map((link) => link.getAttribute("href"))).toEqual(["/"]);
     expect(rendered.part("nav").querySelector('[data-telo-part="error-code"]')?.textContent).toBe("ERR_UI_NODE_INVALID");
     expect(texts(rendered)).toEqual(["Home page"]);
   });

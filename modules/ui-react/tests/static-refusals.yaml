@@ -15,8 +15,11 @@ metadata:
     whose `controls` entries implement one control is refused where it is
     declared and by the theme itself — two different sets, two equal
     declarations through two imports, and one shared set through two aliases
-    alike — and so is a control set replacing some of the eight layer controls
-    but not all of them.
+    alike — and so is a control set replacing some of the nine layer controls
+    but not all of them, as the eight of the first generation are. A
+    navigation entry naming a page the application does not list, at any
+    depth of its groups, is refused where it is written and by the
+    application itself.
 imports:
   Probe: ./__fixtures__/probe
   Run: ../../run
@@ -40,6 +43,8 @@ targets:
   - !ref themeControlDisjointAtRuntime
   - !ref controlsLayersPartial
   - !ref controlsLayersPartialAtRuntime
+  - !ref unroutedPage
+  - !ref unroutedPageAtRuntime
 ---
 kind: Assert.Manifest
 metadata:
@@ -48,7 +53,7 @@ source: ./__fixtures__/invalid/computed-children/lib/telo.yaml
 expect:
   errors:
     - code: REF_SLOT_COMPUTED
-      message: "UiReact.App/computed: 'pages[0].children: !cel \"[]\"' computes a value that holds the reference slot"
+      message: "'children: !cel \"[]\"' computes a value that holds the reference slot"
 ---
 kind: Assert.Manifest
 metadata:
@@ -84,9 +89,9 @@ source: ./__fixtures__/invalid/app-relative/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "UiReact.App/offsitePath: /pages/0/path must match pattern"
+      message: "Ui.Page/offsitePath_pages_0: /path must match pattern"
     - code: SCHEMA_VIOLATION
-      message: "UiReact.App/offsiteLink: /pages/0/children/0/href must match pattern"
+      message: "Ui.Page/offsiteLink_pages_0: /children/0/href must match pattern"
 ---
 kind: Run.Sequence
 metadata:
@@ -107,9 +112,9 @@ source: ./__fixtures__/invalid/page-roots/telo.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_IDENTIFIER
-      message: "UiReact.App/mixed: !cel: unknown identifier 'request'"
+      message: "Ui.Page/mixed_pages_0: !cel: unknown identifier 'request'"
     - code: CEL_UNKNOWN_IDENTIFIER
-      message: "UiReact.App/mixed: !cel: unknown identifier 'query'"
+      message: "Ui.Page/mixed_pages_0: !cel: unknown identifier 'query'"
 ---
 kind: Assert.Manifest
 metadata:
@@ -186,7 +191,7 @@ source: ./__fixtures__/invalid/controls-layers-partial/lib/telo.yaml
 expect:
   errors:
     - code: RESOURCE_RULE_VIOLATED
-      message: "UiReact.Controls/selectOnly: implements some of the layer controls but not all of them"
+      message: "UiReact.Controls/eightLayers: implements some of the layer controls but not all of them"
 ---
 kind: Assert.Manifest
 metadata:
@@ -194,7 +199,7 @@ metadata:
 source: ./__fixtures__/invalid/controls-layers-partial/telo.yaml
 expect:
   errors: []
-  runFails: "UiReact.Controls 'selectOnly': implements the layer controls Select but not MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip"
+  runFails: "UiReact.Controls 'eightLayers': implements the layer controls Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip but not Navigation"
 ---
 # Two entries implementing different controls are one theme: nothing refuses it.
 kind: Assert.Manifest
@@ -211,3 +216,20 @@ source: ./__fixtures__/theme-control-disjoint/telo.yaml
 expect:
   errors: []
   runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: unroutedPage
+source: ./__fixtures__/invalid/unrouted-page/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "UiReact.App/deep at 'navigation.items[1].items[0].items[0].items[0]': names a page the application does not list in its pages"
+---
+kind: Assert.Manifest
+metadata:
+  name: unroutedPageAtRuntime
+source: ./__fixtures__/invalid/unrouted-page/telo.yaml
+expect:
+  errors: []
+  runFails: "UiReact.App 'deep': 'navigation.items[1].items[0].items[0].items[0]' names a page the application does not list in its pages ('/hidden')"

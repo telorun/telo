@@ -127,7 +127,7 @@ describe("a case map's selector default is read off the reach", () => {
     schema: { type: "object", $defs: { Holder: holder(true) } },
   };
   const target = { kind: "std.Raise", metadata: { name: "raise" } };
-  const toRaise = { kind: "std.Raise", name: "raise" };
+  const toRaise = makeTaggedSentinel("ref", "raise");
 
   const shapes: Array<[string, Record<string, unknown>, Record<string, unknown>, string]> = [
     ["a plain property", { properties: { body: holder(true) } }, { body: { invoke: toRaise } }, "body.invoke"],

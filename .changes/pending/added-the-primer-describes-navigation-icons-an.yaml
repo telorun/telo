@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer describes navigation icons: an entry's icon: is a Ui.FileIcon or a
+  UiLucide.Icon from ui-lucide, declared inline where one entry uses it and named when
+  several share it, and a collapsed sidebar is a rail of icons."

@@ -1,15 +1,19 @@
 {
-  "generation": "ui_react_controls-1",
+  "generation": "ui_react_controls-2",
   "supplied": ["react", "react/jsx-runtime", "react-dom"],
-  "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current"],
+  "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current", "data-layout"],
   "icons": [
     "add",
     "alert",
     "close",
+    "collapse",
     "delete",
     "edit",
+    "expand",
     "filter",
     "loading",
+    "menu",
+    "more",
     "next",
     "previous",
     "remove",
@@ -295,7 +299,7 @@
     "Menu": {
       "group": "overlay",
       "layer": true,
-      "description": "A list of things to do, opened from the renderer's button: the filters a bar can add, the links of a menu node.",
+      "description": "A list of things to do, opened from the renderer's button: the filters a bar can add.",
       "props": ["open", "items", "onOpenChange", "onChange", "children"],
       "roots": ["menu"],
       "rootProp": null,
@@ -303,8 +307,7 @@
       "intents": { "onOpenChange": "open", "onChange": null },
       "states": [
         { "attribute": "data-state", "values": ["open", "closed"], "on": ["$root"] },
-        { "attribute": "data-highlighted", "values": [""], "on": ["menu-item"] },
-        { "attribute": "data-current", "values": ["true"], "on": ["menu-item"] }
+        { "attribute": "data-highlighted", "values": [""], "on": ["menu-item"] }
       ],
       "semantics": false,
       "portal": ["menu"]
@@ -321,6 +324,39 @@
       "states": [{ "attribute": "data-state", "values": ["closed", "delayed-open", "instant-open"], "on": ["$root"] }],
       "semantics": false,
       "portal": ["tooltip"]
+    },
+    "Navigation": {
+      "group": "navigation",
+      "layer": true,
+      "description": "Links and groups of links, each group opened from its button — in a row or a rail into a panel at the end of the page, in a column in place beneath it: the application's navigation and a menu node's links.",
+      "props": ["label", "layout", "items", "more", "open", "attributes", "onOpenChange", "onChange"],
+      "roots": ["navigation"],
+      "rootProp": null,
+      "subParts": ["nav-item", "nav-toggle", "nav-group", "nav-panel", "icon"],
+      "intents": { "onOpenChange": "open", "onChange": null },
+      "states": [
+        { "attribute": "data-layout", "values": ["horizontal", "vertical", "rail"], "on": ["$root"] },
+        { "attribute": "data-state", "values": ["open", "closed"], "on": ["nav-toggle"] },
+        { "attribute": "data-state", "values": ["open", "closed"], "on": ["nav-panel"] },
+        { "attribute": "data-current", "values": ["page", "true"], "on": ["nav-item", "nav-toggle"] }
+      ],
+      "semantics": false,
+      "portal": ["nav-panel"]
+    },
+    "Tabs": {
+      "group": "navigation",
+      "description": "Content split under tabs, one shown at a time.",
+      "props": ["label", "tabs", "value", "onChange", "children"],
+      "roots": ["tabs"],
+      "rootProp": null,
+      "subParts": ["tab-list", "tab", "tab-panel"],
+      "intents": { "onChange": "value" },
+      "states": [
+        { "attribute": "data-state", "values": ["active", "inactive"], "on": ["tab"] },
+        { "attribute": "data-state", "values": ["active"], "on": ["tab-panel"] }
+      ],
+      "semantics": false,
+      "portal": []
     },
     "Icon": {
       "group": "glyph",

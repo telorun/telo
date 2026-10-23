@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
@@ -29,9 +30,9 @@ describe("SINK_UNATTACHED", () => {
   });
 
   it("is silent for a listed sink, in either entry form", () => {
-    expect(unattached({ sinks: [{ kind: "Telo.LogTraceSink", name: "traces" }] })).toEqual([]);
+    expect(unattached({ sinks: [makeTaggedSentinel("ref", "traces")] })).toEqual([]);
     expect(
-      unattached({ sinks: [{ sink: { kind: "Telo.LogTraceSink", name: "traces" }, when: false }] }),
+      unattached({ sinks: [{ sink: makeTaggedSentinel("ref", "traces"), when: false }] }),
     ).toEqual([]);
   });
 });

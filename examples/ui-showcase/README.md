@@ -22,28 +22,49 @@ file, `./showcase.db` in the working directory by default; a fresh file is
 created and seeded on the first start, and a seeded row edited by hand is
 restored on the next.
 
-The UI modules, `crud`, `font`, `http-server`, `sql` and `sqlite` are imported
-from this workspace by relative path, so the example runs from a checkout.
+The UI modules (`ui-lucide` included), `crud`, `font`, `http-server`, `sql` and
+`sqlite` are imported from this workspace by relative path, so the example runs
+from a checkout.
 
-## Three mounts of one design
+## Four mounts of one design
 
 | Mount | Theme |
 | --- | --- |
 | `/` | the built-in look, the example's own `showcase.css`, and a brand chosen per request: with the cookie `showcase-brand=acme` (set by `/api/brand?set=acme`, cleared by `?set=none`) the Acme tokens apply, without it the theme's own |
 | `/radix` | `UiReactRadix.theme` |
 | `/brand` | the example's own theme from `brand/` — Radix's controls, `brand.css` and token values of its own — under a brand of one token set that serves the bundled Inter typeface |
+| `/sidebar` | the built-in look and `showcase.css`, its navigation in a sidebar instead of the header |
 
-All three place the same pages. Each page's content is one `Ui.View` declared
-once in its `pages-*.yaml` and placed by reference from every application, so
-the three navigations and page bodies are identical. An application's `pages`
-list itself cannot be shared by reference — it is a field of the application —
-so each lists the ten `{ path, title }` entries. Three pages of `/` also carry
-nodes of their own beside the view, because a view is resolved once at start
-and reads neither the request nor the page's own query: the overview's nodes
-evaluated per request, the conditions page's own `query`, and on the themes
-page the links to the other two mounts and the brand switch — a link resolves
-under the mount it is drawn in, so only the root application reaches the
-others.
+All four place the same pages. Each page's content is one `Ui.View`, and
+each page one `Ui.Page` placing it, declared once in its `pages-*.yaml`; every
+application lists the pages by reference, so the four page bodies are
+identical. Three pages of `/` are pages of its own (`rootOverview`,
+`rootConditions`, `rootThemes` in `telo.yaml`), carrying nodes beside the view,
+because a view is resolved once at start and reads neither the request nor the
+page's own query: the overview's nodes evaluated per request, the conditions
+page's own `query`, and on the themes page the links to the other two mounts
+and the brand switch — a link resolves under the mount it is drawn in, so only
+the root application reaches the others.
+
+Every application draws one navigation tree (`UiReact.App.navigation`), naming
+its pages by reference: Overview, a **Building blocks** group holding
+Conditions, Data, Tables, Filters and an **Input** group inside it (Forms,
+Actions), then Components, CRUD and Themes. Every entry and group carries an
+icon, declared once in `telo.yaml` and shared by the four applications: a
+Lucide glyph (`UiLucide.Icon`), and for Overview the example's own mark
+(`Ui.FileIcon` over `icons/mark.svg`) — each drawn in the colour of its entry's
+text, so the current one takes the theme's current colour. Above `compactBelow` it is a menu
+bar whose groups open as a dropdown and a submenu; below it, a menu button
+first in the header opens the tree in a drawer from the start edge.
+
+`/sidebar` draws the same tree with `Ui.SidebarNavigation`: a column beside
+the page whose groups open in place, several at once, and a toggle collapsing
+it to a rail of each entry's icon, whose groups open beside it. Which
+groups are open and whether it is collapsed are kept in local storage, so a
+reload finds it as it was left. Below `compactBelow` it is a
+`Ui.TabBarNavigation` along the bottom edge showing four tabs — Overview, the
+Building blocks group, Components and More, which holds CRUD and Themes — a
+group's tab and More opening their entries in a bottom sheet.
 
 Every application draws the same header around its title and navigation
 (`UiReact.App.header`), on one row while the window is wider than
@@ -53,7 +74,7 @@ two `menu` nodes. **Language** offers English and Polski, each
 clears it for any other value) and goes back to the page it was pressed on —
 the `Referer`'s path and query when the `Referer` is of the request's own
 origin, the mount's home otherwise.
-**Theme** offers the three mounts' home pages — another mount's by an absolute
+**Theme** offers the four mounts' home pages — another mount's by an absolute
 address built from the request's `Host` and `X-Forwarded-Proto` (the function
 `Self.origin`: the first scheme a proxy chain lists, read as `http` unless it
 is `http` or `https`), since an app-relative link resolves
@@ -72,7 +93,7 @@ The pages' request paths are app-relative too: a reader, a table, a form, an
 option source, an action and the task desk component read and write `/api/tasks`
 under the mount they are drawn in. So
 the server serves the API — the guarded `/api/private` routes, the three
-collections and the other routes — under `/`, `/radix` and `/brand` alike,
+collections and the other routes — under `/`, `/radix`, `/brand` and `/sidebar` alike,
 every guarded mount behind the one session check, and the files under each
 mount the same way — the language switch, `/api/lang`, included. Only the
 brand switch, `/api/brand`, is the root's alone.
@@ -81,22 +102,23 @@ brand switch, `/api/brand`, is the root's alone.
 
 | File | Holds |
 | --- | --- |
-| `telo.yaml` | the application, the three `UiReact.App` mounts with their header, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
+| `telo.yaml` | the application, the four `UiReact.App` mounts with their header and navigation, the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
 | `data.yaml` | the SQLite connection, schema, tables with their seed rows, and the projects, tasks and people `Crud.Model`s |
 | `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, the language rule the applications share (`chosenLanguage`), and the request origin and redirect target rules (`origin`, `sameOriginTarget`) |
 | `polish.yaml` | the translator, its Polish catalog and the language negotiator |
-| `pages-*.yaml` | one view per page, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task table, the forms page's team and project option sources, the actions page's assign action) |
+| `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task table, the forms page's team and project option sources, the actions page's assign action) |
 | `showcase.css` | the `/` application's stylesheet |
 | `components/` | a library of the example's own: four browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet` and `typefaceSamples`. Its `nodejs/package.json` exists only to type-check the sources |
 | `brand/` | a library of the example's own exporting the `/brand` theme: `brand.css`, which styles every part of the styling contract, the token values, and Radix's controls |
 | `files/` | the handbook and the image served under each mount |
+| `icons/` | the example's own mark as a glyph, the Overview entry's icon |
 | `fonts/` | Inter 4.1, under the SIL Open Font License (below) |
 
 ## Pages
 
 | Path | Shows |
 | --- | --- |
-| `/` Overview | every node type and style, links of each address form, images and SVG; values presented by their schema, a list, texts with plurals and values over the team record; style rules on the projects table, one word told apart by context in two column headers and in two nodes' own texts; an inline view and the example's own composite kind; on `/`, nodes evaluated per request and an error node |
+| `/` Overview | every node type and style, links of each address form, images and SVG; values presented by their schema, a list, texts with plurals and values over the team record; style rules on the projects table, one word told apart by context in two column headers and in two nodes' own texts; an inline view and the example's own composite kind; tabs whose chosen tab is in the page's address; on `/`, nodes evaluated per request and an error node |
 | `/conditions` | `when` against `shown`, a placement's condition around a composite's own, every keyword of a condition over a project's summary, missing against null, query parameters set by links, and a button enabled by its form's values |
 | `/data` | a reader whose parameter follows the address, with loading and failure trees and a nested reader; readers that fail three ways; a reader read again on focus; a sign-in gate over real sessions |
 | `/tables` | columns derived from the model and written by hand, sorting, style rules on rows and cells, members nested behind references, the pager, a filter from the page address and a fixed one, and create, edit and delete opening on every kind of surface — dialogs of each size, drawers from each edge, popovers, in line, panels and a page of its own — with addresses, compact replacements, `afterSubmit` and `unsaved` |
@@ -105,7 +127,7 @@ brand switch, `/api/brand`, is the root's alone.
 | `/actions` | a bare button; an estimate with grouped fields kept in the address, its answer drawn as sentences, a date and a list; a failure tree of an action's own, and an answer its output model refuses; successes moving to a page by a fixed address and by the answer, to an https address, loading a served file, and going nowhere for an address the rule refuses; a move reading a reader and a table again; comments sent one after another, enabled by the form and clearing their answer; a manager-only action refused with 401 and 403, and one whose route never answers; row actions — plain, confirmed, prompting, enabled per row, and a plain confirmation whose inputs come from the row and the table's query — on tables of tasks and a list of comments |
 | `/components` | a component of the example's own using every field of the host — where the page is, a panel kept in the address, `navigate` and an anchor from `href`, an https address refused, `fetch` reading counts and adding a task, `notifyChanged` reloading the table below, `onChanged` counting every change, a toast in a layer of its own — and a component drawing a table's priority cell; their stylesheet in the `telo.component` layer |
 | `/crud` | a `Crud.Ui` over the tasks collection: a filter bar beside the table showing chosen filters as chips and sharing its state key with a bar on `/filters`, create in a drawer kept open for the next record, edit in an addressed panel asking before unsaved input is dropped |
-| `/themes` | what the three mounts are; every design token as the mount's theme and brand give it, read live with a sample; the body and heading typefaces in each face, with the faces the application serves — Inter's four on `/brand`; on `/`, links to the other two mounts and the brand switch |
+| `/themes` | what the four mounts are; every design token as the mount's theme and brand give it, read live with a sample; the body and heading typefaces in each face, with the faces the application serves — Inter's four on `/brand`; on `/`, links to the other two mounts and the brand switch |
 
 ## Routes
 
@@ -152,8 +174,8 @@ Each test that runs the application gives it a database file of its own under
 
 | Test | Port | Asserts |
 | --- | --- | --- |
-| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all three mounts, in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, and the themes page with the root's links and brand badge — `/radix` and `/brand` placing the same views |
-| `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 envelope, a 401, the session and the brand switch; and under `/radix` and `/brand`, a reader's route, a collection listing, an action's route, the guard's 401 and no brand switch |
+| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s placement with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
+| `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 envelope, a 401, the session and the brand switch; and under `/radix`, `/brand` and `/sidebar`, a reader's route, a collection listing, an action's route, the guard's 401 and no brand switch |
 | `tests/tables-and-filters.yaml` | 8153 | the routes the tables and filter bars call: the tasks a page at a time by cursor, sorted both ways, every filter operator the bars send with `in` repeated, a refused sort and filter, a create / read / replace / delete round trip with refused bodies, and the task board's nested rows and cursor |
 | `tests/forms-and-actions.yaml` | 8154 | the routes the forms and actions call: both forms' writes with the server's refusals on a field, the option sources paged, narrowed by a field, searched and labelling by `in`, every action's success, 400 envelope and `{ code, message }` failures, the answer the days action refuses, and each row action's route |
 | `tests/brand-theme.yaml` | none — it starts no application | the `/brand` theme meets the renderer's contract (`UiReactConformance.CheckTheme`): every part styled, no reserved property set, every token given a value and read, every scene drawn with its controls |
@@ -191,7 +213,7 @@ why it is not shown.
 | A10 | ten pages, one nav link each | every mount; the path refusals are out of scope |
 | A11 | `pages[].query` | `/conditions` on `/` |
 | A12 | `when` and text per request; an error node for an invalid computed `href` | Overview and Themes on `/`; `REF_SLOT_COMPUTED` is out of scope |
-| A13 | mounts at `/radix` and `/brand`; files and the API served under each mount, where each application's `source` paths are read; `fetch` paths from the origin | `telo.yaml`, `/components` |
+| A13 | mounts at `/radix`, `/brand` and `/sidebar`; files and the API served under each mount, where each application's `source` paths are read; `fetch` paths from the origin | `telo.yaml`, `/components` |
 | A14 | `font.*` tokens with faces served as `@font-face` | `/brand`, shown on `/themes`; `ERR_UI_FONT_FORMAT_UNKNOWN` is out of scope |
 | A15 | a guard answering 401; 401 and 403 drawn as `ERR_UI_UNAUTHORIZED` / `ERR_UI_FORBIDDEN`, anything else as `ERR_UI_REQUEST_FAILED` | `/data`, `/actions` |
 | B16–B21 | box, stack, columns, text styles, badge, links of each address form, image, SVG | Overview |

@@ -12,12 +12,14 @@ function placementOf(side: PlacedSide, align: "start" | "center" | "end"): Place
 
 /**
  * Where a layer is placed against what it opens from: beside it, flipped and
- * shifted to stay in the viewport. The placement's own values — the anchor's
- * width, the height left in the viewport, the corner it grows from — are set
- * on the layer as `--ui-react-control-anchor-width`, `--ui-react-control-available-height`
+ * shifted to stay in the viewport. With `anyAxis`, a layer fitting neither
+ * side may also move to the other axis, and is shifted along both, so it never
+ * lands off-screen. The placement's own values — the anchor's width, the
+ * height left in the viewport, the corner it grows from — are set on the layer
+ * as `--ui-react-control-anchor-width`, `--ui-react-control-available-height`
  * and `--ui-react-control-origin` for its mechanics to read.
  */
-export function usePlacement(anchor: Element | null, side: PlacedSide, align: "start" | "center" | "end", gap: number) {
+export function usePlacement(anchor: Element | null, side: PlacedSide, align: "start" | "center" | "end", gap: number, anyAxis = false) {
   const placement = placementOf(side, align);
   const { refs, floatingStyles, placement: placed } = useFloating({
     placement,
@@ -27,8 +29,8 @@ export function usePlacement(anchor: Element | null, side: PlacedSide, align: "s
     whileElementsMounted: autoUpdate,
     middleware: [
       offset(gap),
-      flip({ padding: 8 }),
-      shift({ padding: 8 }),
+      flip(anyAxis ? { padding: 8, fallbackAxisSideDirection: "end" } : { padding: 8 }),
+      shift({ padding: 8, crossAxis: anyAxis }),
       size({
         padding: 8,
         apply({ availableHeight, rects, elements }) {

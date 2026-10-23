@@ -113,8 +113,8 @@ describe("visitManifest", () => {
         metadata: { name: "a" },
         // `backend` is a field-map ref slot; `steps[].invoke` is not (it stands
         // in for a ref nested behind a `$ref` the field map doesn't descend).
-        backend: { kind: "demo.Job", name: "b" },
-        steps: [{ name: "s1", invoke: { kind: "demo.Job", name: "c" } }],
+        backend: { __ref: true, kind: "demo.Job", name: "b" },
+        steps: [{ name: "s1", invoke: { __ref: true, kind: "demo.Job", name: "c" } }],
       },
       { kind: "demo.Job", metadata: { name: "b" } },
       { kind: "demo.Job", metadata: { name: "c" } },
@@ -149,9 +149,9 @@ describe("visitManifest", () => {
         steps: [
           {
             name: "s1",
-            // Inline resource ({kind} without name) with its own nested ref —
-            // that ref belongs to the inline resource, not to `a`.
-            invoke: { kind: "demo.Job", connection: { kind: "demo.Job", name: "deep" } },
+            // Inline resource (no resolved-reference marker) with its own nested
+            // ref — that ref belongs to the inline resource, not to `a`.
+            invoke: { kind: "demo.Job", connection: { __ref: true, kind: "demo.Job", name: "deep" } },
           },
         ],
       },
@@ -165,7 +165,7 @@ describe("visitManifest", () => {
       { onRef: (e) => refs.push(e.concretePath) },
       { aliases: reg._context().aliases, discoverNestedRefs: true },
     );
-    // The inline invoke is skipped (no name) and its `connection` is not surfaced.
+    // The inline invoke is skipped (no marker) and its `connection` is not surfaced.
     expect(refs).toEqual([]);
   });
 

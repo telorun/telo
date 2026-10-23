@@ -47,6 +47,8 @@
 
 body { margin: 0; background: var(--telo-color-background); color: var(--telo-color-text); font-family: var(--telo-font-body); font-size: var(--telo-font-size-md); line-height: var(--telo-line-height-body); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 [data-telo-part="icon"] { width: 1rem; height: 1rem; stroke-width: 1.75; }
+/* An icon resource's glyph takes its colour from the text around it. */
+[data-telo-part="glyph"] { width: 1rem; height: 1rem; }
 
 /* Shell: a quiet bar holding the title in the brand's colour. */
 [data-telo-part="app"] { min-height: 100vh; background: var(--telo-color-background); color: var(--telo-color-text); }
@@ -54,10 +56,29 @@ body { margin: 0; background: var(--telo-color-background); color: var(--telo-co
 [data-telo-part="app-title"] { color: var(--telo-color-accent); font-family: var(--telo-font-heading); font-size: var(--telo-font-size-lg); font-weight: 600; letter-spacing: -0.015em; }
 [data-telo-part="nav"] { gap: var(--telo-space-xs); }
 [data-telo-part="header-start"], [data-telo-part="header-end"] { gap: var(--telo-space-sm); }
-[data-telo-part="nav-link"] { display: inline-flex; align-items: center; height: 2rem; padding: 0 var(--telo-space-sm); border-radius: var(--telo-radius-md); color: var(--telo-color-muted); font-size: var(--telo-font-size-md); font-weight: 500; text-decoration: none; outline: none; transition: background-color 150ms, color 150ms, box-shadow 150ms; }
-[data-telo-part="nav-link"]:hover { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
-[data-telo-part="nav-link"][data-current="page"] { background: var(--ui-react-radix-accent-soft); color: var(--telo-color-accent); }
+/* The menu button opening the navigation on a narrow screen. */
+[data-telo-part="nav-menu"] { width: 2rem; padding: 0; color: var(--telo-color-muted); }
+[data-telo-part="nav-menu"]:hover, [data-telo-part="nav-menu"][aria-expanded="true"] { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
 [data-telo-part="main"] { padding: var(--telo-space-xl) var(--telo-space-xl) calc(2 * var(--telo-space-xl)); }
+/* A sidebar: a chrome column under the sticky header that stays while the
+   page scrolls, its toggle at its top; collapsed, a rail. A tab bar: a chrome
+   row along the bottom edge, its tabs spread across it. */
+[data-telo-part="sidebar"] { position: sticky; top: 3rem; align-self: start; height: calc(100vh - 3rem); box-sizing: border-box; overflow-y: auto; gap: var(--telo-space-sm); width: 16rem; padding: var(--telo-space-md) var(--telo-space-sm); background: var(--ui-react-radix-chrome); border-inline-end: 1px solid var(--telo-color-border); }
+[data-telo-part="sidebar"][data-side="end"] { border-inline-end: none; border-inline-start: 1px solid var(--telo-color-border); }
+[data-telo-part="sidebar"][data-state="closed"] { width: auto; align-items: center; }
+[data-telo-part="sidebar-toggle"] { align-self: flex-end; width: 2rem; padding: 0; border-color: transparent; background: transparent; box-shadow: none; color: var(--telo-color-muted); }
+[data-telo-part="sidebar"][data-state="closed"] > [data-telo-part="sidebar-toggle"] { align-self: center; }
+[data-telo-part="sidebar-toggle"]:hover { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
+[data-telo-part="tab-bar"] { z-index: 10; padding: var(--telo-space-xs) var(--telo-space-sm); background: var(--ui-react-radix-chrome); border-top: 1px solid var(--telo-color-border); }
+[data-telo-part="tab-bar"] [data-telo-part="navigation"] > ul { justify-content: space-around; }
+[data-telo-part="tab-bar"] :is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]) { min-height: 2.5rem; font-size: var(--telo-font-size-sm); }
+[data-telo-part="tab-bar"] [data-telo-part="nav-toggle"] > [data-telo-part="icon"] { display: none; }
+/* Every tab stays in the bar: the tabs share its width, a long label wrapping. */
+[data-telo-part="tab-bar"] [data-telo-part="navigation"] > ul > li { flex: 1 1 0; min-width: 0; }
+[data-telo-part="tab-bar"] :is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]) { justify-content: center; min-width: 0; padding-inline: 0; text-align: center; white-space: normal; overflow-wrap: anywhere; }
+/* A tab with an icon shows it above its text. */
+[data-telo-part="tab-bar"] :is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]):has(> [data-telo-part="glyph"]) { flex-direction: column; justify-content: center; gap: 0.125rem; min-height: 3rem; font-size: 0.6875rem; }
+[data-telo-part="tab-bar"] [data-telo-part="glyph"] { width: 1.25rem; height: 1.25rem; }
 [data-telo-part="page"] { gap: var(--telo-space-xl); width: 100%; max-width: 72rem; margin-inline: auto; box-sizing: border-box; }
 [data-telo-part="page-title"] { margin: 0; font-family: var(--telo-font-heading); font-size: calc(var(--telo-font-size-xl) * 1.25); font-weight: 600; letter-spacing: -0.025em; line-height: var(--telo-line-height-heading); }
 
@@ -85,12 +106,25 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-weight: 60
 
 /* Buttons: an outlined control by default, the brand's colour for what submits. */
 :where(button)[data-telo-part] { gap: var(--telo-space-sm); height: 2.25rem; box-sizing: border-box; padding: 0 var(--telo-space-lg); margin: 0; border: 1px solid transparent; border-radius: var(--telo-radius-md); background: transparent; background-clip: padding-box; color: var(--telo-color-text); font: inherit; font-size: var(--telo-font-size-md); font-weight: 500; line-height: 1; white-space: nowrap; outline: none; user-select: none; transition: background-color 150ms, border-color 150ms, color 150ms, box-shadow 150ms, opacity 150ms; }
-:where(button)[data-telo-part]:focus-visible, [data-telo-part="nav-link"]:focus-visible { border-color: var(--ui-react-radix-ring); box-shadow: var(--ui-react-radix-focus); }
+:where(button)[data-telo-part]:focus-visible { border-color: var(--ui-react-radix-ring); box-shadow: var(--ui-react-radix-focus); }
 :where(button)[data-telo-part]:disabled { pointer-events: none; opacity: 0.5; }
-/* A menu node's trigger: a quiet button, its chevron turned to point down. */
-[data-telo-part="menu-trigger"] { gap: var(--telo-space-xs); height: 2rem; padding: 0 var(--telo-space-xs) 0 var(--telo-space-sm); color: var(--telo-color-muted); }
-[data-telo-part="menu-trigger"]:hover, [data-telo-part="menu-trigger"][aria-expanded="true"] { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
-[data-telo-part="menu-trigger"] > [data-telo-part="icon"] { width: 0.875rem; height: 0.875rem; transform: rotate(90deg); }
+/* Navigation: its entries quiet like the header's links, a group's button
+   showing its chevron; an open group's panel is a list over the page, and in
+   a column an open group's entries hang beneath its button, indented. */
+[data-telo-part="navigation"] > div > ul, [data-telo-part="navigation"] > ul { gap: var(--telo-space-xs); }
+:is([data-telo-part="nav-toggle"], [data-telo-part="nav-item"]) { gap: var(--telo-space-xs); height: 2rem; padding: 0 var(--telo-space-sm); border-radius: var(--telo-radius-md); color: var(--telo-color-muted); font-size: var(--telo-font-size-md); font-weight: 500; text-decoration: none; outline: none; transition: background-color 150ms, color 150ms, box-shadow 150ms; }
+[data-telo-part="nav-toggle"] { padding-inline-end: var(--telo-space-xs); }
+:is([data-telo-part="nav-toggle"], [data-telo-part="nav-item"]):hover, [data-telo-part="nav-toggle"][aria-expanded="true"] { background: var(--ui-react-radix-fill); color: var(--telo-color-text); }
+[data-telo-part="nav-item"]:focus-visible { box-shadow: var(--ui-react-radix-focus); }
+[data-telo-part="nav-item"][data-current="page"] { background: var(--ui-react-radix-accent-soft); color: var(--telo-color-accent); }
+[data-telo-part="nav-toggle"][data-current] { color: var(--telo-color-text); }
+[data-telo-part="nav-toggle"] > [data-telo-part="icon"] { width: 0.875rem; height: 0.875rem; }
+[data-telo-part="navigation"][data-layout="rail"] li > * { justify-content: center; width: 2.25rem; height: 2.25rem; padding: 0; }
+[data-telo-part="navigation"][data-layout="rail"] [data-telo-part="nav-toggle"] > [data-telo-part="icon"] { display: none; }
+[data-telo-part="navigation"][data-layout="rail"] [data-telo-part="glyph"] { width: 1.125rem; height: 1.125rem; }
+[data-telo-part="navigation"][data-layout="vertical"] :is([data-telo-part="nav-toggle"], [data-telo-part="nav-item"]) { gap: var(--telo-space-sm); }
+[data-telo-part="navigation"][data-layout="vertical"] [data-telo-part="nav-toggle"] > [data-telo-part="icon"] { margin-inline-start: auto; }
+[data-telo-part="nav-group"] { gap: var(--telo-space-xs); margin: 0.125rem 0 var(--telo-space-xs); margin-inline-start: var(--telo-space-md); padding-inline-start: var(--telo-space-sm); border-inline-start: 1px solid var(--telo-color-border); }
 [data-telo-part="submit"], [data-telo-part="table-create"], [data-telo-part="filters-apply"] { background: var(--telo-color-accent); color: var(--telo-color-accent-text); box-shadow: var(--ui-react-radix-raised); }
 [data-telo-part="submit"]:hover, [data-telo-part="table-create"]:hover, [data-telo-part="filters-apply"]:hover { background: color-mix(in oklab, var(--telo-color-accent) 90%, var(--telo-color-text)); }
 [data-telo-part="submit"][data-style~="danger"] { background: var(--telo-color-danger); color: oklch(0.985 0 0); }
@@ -211,12 +245,25 @@ button[data-telo-part="filter-chip"] { display: block; max-width: 100%; min-widt
 [data-telo-part="select-content"], [data-telo-part="menu"] { padding: var(--telo-space-xs); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); color: var(--telo-color-text); font-size: var(--telo-font-size-md); box-shadow: var(--telo-shadow-md); animation: ui-react-radix-pop-in 120ms ease-out; }
 [data-telo-part="select-item"], [data-telo-part="menu-item"] { gap: var(--telo-space-sm); padding: 0.375rem 2rem 0.375rem var(--telo-space-sm); border-radius: var(--telo-radius-sm); outline: none; }
 [data-telo-part="menu-item"] { padding-right: var(--telo-space-sm); }
-[data-telo-part="menu-item"][data-current] { color: var(--telo-color-accent); font-weight: 600; }
+[data-telo-part="nav-panel"] { padding: var(--telo-space-xs); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); color: var(--telo-color-text); font-size: var(--telo-font-size-md); box-shadow: var(--telo-shadow-md); animation: ui-react-radix-pop-in 120ms ease-out; }
+[data-telo-part="nav-panel"] :is([data-telo-part="nav-item"], [data-telo-part="nav-toggle"]) { gap: var(--telo-space-sm); height: auto; padding: 0.375rem var(--telo-space-sm); border-radius: var(--telo-radius-sm); color: var(--telo-color-text); }
+[data-telo-part="nav-panel"] [data-telo-part="nav-item"][data-current] { background: none; color: var(--telo-color-accent); font-weight: 600; }
+[data-telo-part="nav-panel"] [data-telo-part="nav-toggle"] > [data-telo-part="icon"] { margin-inline-start: auto; }
 [data-telo-part="select-item"][data-highlighted], [data-telo-part="menu-item"][data-highlighted] { background: var(--ui-react-radix-fill); }
 [data-telo-part="select-item"][data-state="checked"] { font-weight: 500; }
 [data-telo-part="select-item"][data-disabled] { pointer-events: none; opacity: 0.5; }
 [data-telo-part="select-item"] [data-telo-part="icon"] { right: var(--telo-space-sm); color: var(--telo-color-accent); }
 [data-telo-part="tooltip"] { padding: 0.375rem var(--telo-space-md); border-radius: var(--telo-radius-md); background: var(--telo-color-text); color: var(--telo-color-background); font-size: var(--telo-font-size-sm); animation: ui-react-radix-pop-in 120ms ease-out; }
+
+/* Tabs: a row of tabs over a hairline, the chosen one underlined in the brand's colour. */
+[data-telo-part="tabs"] { gap: var(--telo-space-md); }
+[data-telo-part="tab-list"] { gap: var(--telo-space-xs); border-bottom: 1px solid var(--telo-color-border); }
+[data-telo-part="tab"] { height: 2.25rem; margin-bottom: -1px; padding: 0 var(--telo-space-sm); border: none; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; box-shadow: none; color: var(--telo-color-muted); font: inherit; font-weight: 500; cursor: pointer; outline: none; }
+[data-telo-part="tab"]:hover { color: var(--telo-color-text); }
+[data-telo-part="tab"]:focus-visible { box-shadow: var(--ui-react-radix-focus); }
+[data-telo-part="tab"][data-state="active"] { border-bottom-color: var(--telo-color-accent); color: var(--telo-color-text); }
+[data-telo-part="tab-panel"] { display: flex; flex-direction: column; gap: var(--telo-space-md); border-radius: var(--telo-radius-sm); outline: none; }
+[data-telo-part="tab-panel"]:focus-visible { box-shadow: var(--ui-react-radix-focus); }
 
 /* Table */
 [data-telo-part="table"] { gap: var(--telo-space-md); }
@@ -290,6 +337,29 @@ button[data-telo-part="table-sort"] { height: 1.75rem; padding: 0 var(--telo-spa
 [data-telo-part="loading"] { gap: var(--telo-space-sm); color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); }
 [data-telo-part="loading"] > [data-telo-part="icon"] { animation: ui-react-radix-spin 0.8s linear infinite; }
 
+/* Narrow screens (below the application's breakpoint): the header scrolls away
+   with the page, its navigation behind the menu button; filters
+   shrink and wrap rather than widen the page; a table frame shows an edge
+   shadow while more columns lie beyond it — covers that scroll with the
+   content over shadows that stay with the frame. */
+[data-compact="true"] > [data-telo-part="header"] { position: static; row-gap: 0; padding-block: var(--telo-space-xs); }
+/* The menu button, the title, what starts the header and what ends it share
+   one row, the title cut short when they leave it no room. */
+[data-compact="true"] > [data-telo-part="header"] > :is([data-telo-part="header-start"], [data-telo-part="header-end"]) { flex: none; flex-wrap: nowrap; }
+[data-compact="true"] > [data-telo-part="header"] > [data-telo-part="app-title"] { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-compact="true"] :is([data-telo-part="filter"], [data-telo-part="filter-group"], [data-telo-part="filter-bound"]) { min-width: 0; max-width: 100%; }
+[data-compact="true"] :is([data-telo-part="filter-group"], [data-telo-part="filter-bound"], [data-telo-part="filter-options"]) { flex-wrap: wrap; }
+[data-compact="true"] :is([data-telo-part="filter-input"], [data-telo-part="filter-select"], [data-telo-part="filter-tags"], [data-telo-part="filter-options"], [data-telo-part="filter-chip"]) { min-width: 0; max-width: 100%; }
+[data-compact="true"] [data-telo-part="table-frame"] {
+  background:
+    linear-gradient(to right, var(--telo-color-surface) 40%, transparent) left / 2.5rem 100% no-repeat local,
+    linear-gradient(to left, var(--telo-color-surface) 40%, transparent) right / 2.5rem 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, color-mix(in oklab, var(--telo-color-text) 30%, transparent), transparent) left / 0.875rem 100% no-repeat scroll,
+    radial-gradient(farthest-side at 100% 50%, color-mix(in oklab, var(--telo-color-text) 30%, transparent), transparent) right / 0.875rem 100% no-repeat scroll,
+    var(--telo-color-surface);
+}
+[data-compact="true"] [data-telo-part="table-body"] { background: transparent; }
+
 /* Styles */
 [data-style~="muted"] { color: var(--telo-color-muted); }
 [data-style~="strong"] { font-weight: 600; }
@@ -311,5 +381,5 @@ button[data-telo-part="table-sort"] { height: 1.75rem; padding: 0 var(--telo-spa
 @keyframes ui-react-radix-slide-in { from { translate: var(--ui-react-radix-slide-x, 0) var(--ui-react-radix-slide-y, 0); } }
 @keyframes ui-react-radix-slide-out { to { translate: var(--ui-react-radix-slide-x, 0) var(--ui-react-radix-slide-y, 0); } }
 @media (prefers-reduced-motion: reduce) {
-  [data-telo-part="surface-overlay"], [data-telo-part="surface"], [data-telo-part="select-content"], [data-telo-part="menu"], [data-telo-part="tooltip"] { animation: none; }
+  [data-telo-part="surface-overlay"], [data-telo-part="surface"], [data-telo-part="select-content"], [data-telo-part="menu"], [data-telo-part="nav-panel"], [data-telo-part="tooltip"] { animation: none; }
 }

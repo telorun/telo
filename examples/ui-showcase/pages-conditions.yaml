@@ -145,3 +145,12 @@ content:
                 one: "Tagged {$tag}: TEL-42 has {$count} tag now."
                 other: "Tagged {$tag}: TEL-42 has {$count} tags now."
             values: { tag: !cel "result.tag", count: !cel "result.count" }
+---
+# The page every application lists at /conditions, placing the view.
+kind: Ui.Page
+metadata:
+  name: conditionsScreen
+path: /conditions
+title: Conditions
+children:
+  - { type: composite, ref: !ref conditionsPage }

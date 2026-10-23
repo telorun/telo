@@ -30,6 +30,7 @@
 
 import { VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
 import { membersSlotOf, membersValueRefusal } from "./members-value-slot.js";
+import { nearestNames } from "./nearest-name.js";
 import { describeTeloFormatFailure, TELO_FORMATS, teloFormatFailure } from "./telo-format.js";
 
 /** An AJV error object. Structurally typed — the analyzer and the kernel hand
@@ -108,8 +109,13 @@ export function formatSingleError(err: AjvErrorLike): string {
       return `${p} must NOT have additional properties ('${params.additionalProperty}' is not allowed)`;
     case "required":
       return `${p} is missing required property '${params.missingProperty}'`;
-    case "enum":
-      return `${p} ${err.message ?? "is invalid"} (${(params.allowedValues as unknown[])?.join(" | ")})`;
+    case "enum": {
+      const allowed = (params.allowedValues as unknown[] | undefined) ?? [];
+      if (allowed.length <= LISTED_ENUM_VALUES) {
+        return `${p} ${err.message ?? "is invalid"} (${allowed.join(" | ")})`;
+      }
+      return `${p} must be one of ${allowed.length} allowed values${suggestedValues(err.data, allowed)}`;
+    }
     case "type":
       return `${p} must be ${params.type}${describeActual(err)}`;
     // A `false` schema at a property is how a branch forbids a key it otherwise
@@ -125,6 +131,26 @@ export function formatSingleError(err: AjvErrorLike): string {
     default:
       return `${p} ${err.message ?? "is invalid"}`;
   }
+}
+
+/** The most allowed values an enum refusal lists; past it the message says how
+ *  many there are and names the nearest instead, since a closed vocabulary of
+ *  thousands (an icon set) listed whole buries the one line a reader needs. */
+const LISTED_ENUM_VALUES = 20;
+
+/** The most nearest values one refusal names. */
+const SUGGESTED_ENUM_VALUES = 5;
+
+/** `; did you mean 'house'?` — the allowed strings nearest the refused one (the
+ *  first few when many tie), or nothing when the value is not a string or none
+ *  is near. */
+function suggestedValues(value: unknown, allowed: readonly unknown[]): string {
+  if (typeof value !== "string") return "";
+  const near = nearestNames(
+    value,
+    allowed.filter((candidate): candidate is string => typeof candidate === "string"),
+  ).slice(0, SUGGESTED_ENUM_VALUES);
+  return near.length === 0 ? "" : `; did you mean ${near.map((name) => `'${name}'`).join(" or ")}?`;
 }
 
 /** ` (got string)`, or nothing when the value is not in hand. AJV carries
@@ -178,7 +204,12 @@ function describeAlternatives(errors: AjvErrorLike[], unionInstancePath: string)
     if (e.keyword === "required") phrases.push(`one with '${e.params?.missingProperty}'`);
     else if (e.keyword === "type") phrases.push(`a ${e.params?.type}`);
     else if (e.keyword === "enum") {
-      phrases.push(`one of ${(e.params?.allowedValues as unknown[])?.join(" | ")}`);
+      const allowed = (e.params?.allowedValues as unknown[] | undefined) ?? [];
+      phrases.push(
+        allowed.length <= LISTED_ENUM_VALUES
+          ? `one of ${allowed.join(" | ")}`
+          : `one of ${allowed.length} allowed values`,
+      );
     }
   }
   return phrases.length > 0 ? phrases : ["another shape"];
@@ -504,9 +535,11 @@ function taggedReading(candidates: Branch[], occurrence: Occurrence): AjvErrorLi
       for (const value of values) if (!allowed.includes(value)) allowed.push(value);
     }
   }
+  // Without the union node's `data`: the refusal is of the tag, not the node.
+  const { data, ...union } = occurrence.error;
   return [
     {
-      ...occurrence.error,
+      ...union,
       keyword: "enum",
       instancePath: at,
       params: { allowedValues: allowed },
@@ -632,9 +665,28 @@ export function valueTypeRefusalCode(issue: Pick<SchemaIssue, "keyword" | "value
   return VALUE_TYPES.get(issue.valueType)?.acceptsText?.code;
 }
 
+/** An enum refusal carrying the value it refused, read from the validated root
+ *  when AJV did not keep it (`verbose` off), so the nearest allowed values can
+ *  be named. */
+export function withEnumValues(
+  errors: AjvErrorLike[] | null | undefined,
+  data: unknown,
+): AjvErrorLike[] | null | undefined {
+  if (!errors || data === undefined) return errors;
+  return errors.map((err) =>
+    err.keyword === "enum" && !("data" in err) ? { ...err, data: valueAt(data, err.instancePath) } : err,
+  );
+}
+
 /** Both explanations a refusal can take from the validated value. */
 function explained(errors: AjvErrorLike[] | null | undefined, data: unknown): AjvErrorLike[] | null | undefined {
   return explainValueTypeErrors(explainFormatErrors(errors, data), data);
+}
+
+/** The reduced refusals, each enum refusal carrying its value. After reduction,
+ *  because a union read by its tag reports a refusal of its own. */
+function reducedErrors(errors: AjvErrorLike[] | null | undefined, data: unknown): AjvErrorLike[] {
+  return withEnumValues(reduceSchemaErrors(explained(errors, data)), data) ?? [];
 }
 
 /** Reduced, path-anchored issues — what a diagnostic list is built from.
@@ -647,7 +699,7 @@ export function schemaIssues(
   // One finding reached through several union branches sharing a named shape
   // reads identically at one place; it is one finding.
   const seen = new Set<string>();
-  return reduceSchemaErrors(explained(errors, data)).flatMap((err) => {
+  return reducedErrors(errors, data).flatMap((err) => {
     const { missingProperty: missing, valueType } = err.params ?? {};
     const issue: SchemaIssue = {
       message: formatSingleError(err),
@@ -665,7 +717,7 @@ export function schemaIssues(
 
 /** Reduced, rendered as one sentence — what a thrown runtime error carries. */
 export function formatAjvErrors(errors: AjvErrorLike[] | null | undefined, data?: unknown): string {
-  const reduced = reduceSchemaErrors(explained(errors, data));
+  const reduced = reducedErrors(errors, data);
   if (reduced.length === 0) return "Unknown schema error";
   return [...new Set(reduced.map(formatSingleError))].join("; ");
 }

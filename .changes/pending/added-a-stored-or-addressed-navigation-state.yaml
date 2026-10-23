@@ -1,0 +1,10 @@
+modules:
+  modules/ui-react: Added
+body: A stored or addressed navigation state names an entry by its key rather than its
+  position — a sidebar's open groups under telo.ui:<mount path>:n (now v 2, an entry of
+  v 1 ignored), a tab bar's open sheet and a tabs node's chosen tab under
+  _telo.open.<name> — so a saved or shared state keeps naming the same entry when
+  another is gated off or added. A tab bar keeps every tab in the bar however narrow the
+  screen, a group's tab and More being buttons that open its sheet, expanded while it is
+  open. The navigation landmark is named by the siteNavigation word and the sidebar
+  toggle by collapseNavigation, or expandNavigation while collapsed.

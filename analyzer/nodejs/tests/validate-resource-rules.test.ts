@@ -115,6 +115,16 @@ describe("resource rules — evaluation", () => {
     ).toEqual([]);
   });
 
+  it("reports the skip when the collection itself is an expression", () => {
+    const findings = evaluateResourceRules(
+      resource({ columns: { id: {} }, indexes: { __tagged: true, engine: "cel", source: "variables.indexes" } }),
+      TABLE_SCHEMA,
+    );
+    expect(findings).toMatchObject([
+      { kind: "skipped", path: "indexes", dynamic: { path: "indexes", what: "a CEL expression" } },
+    ]);
+  });
+
   it("reports the skip when an element holds CEL, per element rather than per rule", () => {
     const findings = evaluateResourceRules(
       resource({
@@ -285,6 +295,40 @@ describe("resource rules — declaration validation", () => {
     ).toMatch(/not a collection/);
   });
 
+  describe("a pointer repeating a group", () => {
+    /** A navigation tree declared by a named shape whose groups hold more of it. */
+    const ITEM = {
+      oneOf: [
+        { type: "object", properties: { type: { const: "page" }, page: {} } },
+        { type: "object", properties: { type: { const: "group" }, items: { type: "array", items: { $ref: "telo:Nav/Item" } } } },
+      ],
+    };
+    const NAV_SCHEMA = (pointer: string) => ({
+      type: "object",
+      properties: { navigation: { $ref: "telo://Nav/Navigation" } },
+      "x-telo-resource-rules": [{ in: pointer, condition: cel("true"), code: "C", message: "m" }],
+    });
+    const shapes = (ref: string) =>
+      ({
+        "telo://Nav/Navigation": { schema: { type: "object", properties: { items: { type: "array", items: { $ref: "telo:Nav/Item" } } } }, module: "Nav" },
+        "telo:Nav/Item": { schema: ITEM, module: "Nav" },
+      })[ref];
+    const messages = (pointer: string) =>
+      validateResourceRuleDeclarations(definition(NAV_SCHEMA(pointer)), undefined, undefined, undefined, shapes).map((i) => i.message);
+
+    it("is accepted where every repetition reaches a collection, through named shapes and union branches", () => {
+      expect(messages("/navigation/items(/*/items)*")).toEqual([]);
+    });
+
+    it("is refused where the group names nothing", () => {
+      expect(messages("/navigation/items(/*/children)*")[0]).toMatch(/repeats a group that names nothing/);
+    });
+
+    it("is refused where it is not well formed", () => {
+      expect(messages("/navigation/items(/*/items)")[0]).toMatch(/repeated groups/);
+    });
+  });
+
   it("rejects a host-backed function — the analyzer registers a throwing stub", () => {
     expect(
       declarationMessages({
@@ -351,6 +395,48 @@ describe("resource rules — subject resolution", () => {
     ]);
     expect(resolveRuleSubjects({ a: { k: 1 } }, "/a")).toEqual([
       { path: "a.k", value: 1, key: "k" },
+    ]);
+  });
+
+  it("yields every element of every collection a repeated group reaches, at any depth", () => {
+    const tree = {
+      items: [
+        { type: "page", name: "a" },
+        { type: "group", items: [{ type: "group", items: [{ type: "page", name: "b" }] }] },
+      ],
+    };
+    expect(resolveRuleSubjects(tree, "/items(/*/items)*")?.map((subject) => subject.path)).toEqual([
+      "items[0]",
+      "items[1]",
+      "items[1].items[0]",
+      "items[1].items[0].items[0]",
+    ]);
+  });
+
+  it("yields a place two alternatives of a group both reach once", () => {
+    const tree = { items: [{ items: [{ name: "a" }] }] };
+    expect(resolveRuleSubjects(tree, "/items(/*/items|/0/items)*")?.map((subject) => subject.path)).toEqual([
+      "items[0]",
+      "items[0].items[0]",
+    ]);
+  });
+
+  it("does not look inside an expression, at the pointer or on the way to it, and says where it stopped", () => {
+    const cel = { __tagged: true, engine: "cel", source: "variables.items" };
+    expect(resolveRuleSubjects({ items: cel }, "/items")).toEqual([
+      { path: "items", value: cel, dynamic: { path: "items", what: "a CEL expression" } },
+    ]);
+    expect(resolveRuleSubjects({ items: [{ items: cel }] }, "/items(/*/items)*")).toEqual([
+      { path: "items[0]", value: { items: cel } },
+      { path: "items[0].items", value: cel, dynamic: { path: "items[0].items", what: "a CEL expression" } },
+    ]);
+  });
+
+  it("reads a place of a pattern holding no collection as one holding nothing", () => {
+    expect(resolveRuleSubjects({ items: [{ items: "scalar" }, { items: [1] }] }, "/items(/*/items)*")?.map((s) => s.path)).toEqual([
+      "items[0]",
+      "items[1]",
+      "items[1].items[0]",
     ]);
   });
 

@@ -1,0 +1,47 @@
+# An application whose one navigation entry carries a Lucide glyph.
+kind: Telo.Application
+metadata:
+  name: UiLucideIconApp
+  version: 1.0.0
+requires:
+  telo: ">=0.121.0"
+imports:
+  Http: ../../../../http-server
+  Ui: ../../../../ui
+  UiReact: ../../../../ui-react
+  UiLucide: ../../../
+ports:
+  http: { env: PORT, default: 19341 }
+targets:
+  - !ref server
+---
+kind: Ui.Page
+metadata:
+  name: home
+path: /
+title: Home
+children: []
+---
+kind: UiReact.App
+metadata:
+  name: admin
+title: Icons
+words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
+pages:
+  - !ref home
+navigation:
+  items:
+    - type: page
+      page: !ref home
+      icon: { kind: UiLucide.Icon, name: house }
+---
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.http"
+mounts:
+  - path: /admin
+    mount: !ref admin

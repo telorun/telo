@@ -108,7 +108,8 @@ header:
       text: Staff
       when: !cel "'x-role' in request.headers && request.headers['x-role'] == 'staff'"
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Invoices
     children:
       - { type: text, text: Unpaid invoices, style: heading }
@@ -129,7 +130,8 @@ theme: !ref UiReact.defaultTheme
 translator: !ref t
 lang: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=pl') ? 'pl' : 'en'"
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Invoices
     children:
       - { type: text, text: Unpaid invoices }
@@ -144,7 +146,8 @@ theme: !ref UiReact.defaultTheme
 translator: !ref t
 lang: pl
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Invoices
     children:
       - { type: text, text: Unpaid invoices }

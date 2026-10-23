@@ -20,7 +20,8 @@ title: Mixed
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
-  - path: /
+  - kind: Ui.Page
+    path: /
     title: Home
     query:
       tab: { type: string }

@@ -48,7 +48,8 @@ function draw(name: string): unknown[][] {
   opener.focus();
   const { props } = (vectors as Record<string, ControlVectors>)[name];
   const intents: unknown[][] = [];
-  const given: Record<string, unknown> = { ...props, open: true };
+  // A navigation is open with its one top-level group's panel: `open` is the set of open groups.
+  const given: Record<string, unknown> = { ...props, open: name === "Navigation" ? ["docs"] : true };
   if (name === "Popover") given.anchor = opener;
   for (const intent of ["onOpenChange", "onChange", "onEndReached"]) given[intent] = (...args: unknown[]) => intents.push([intent, ...args]);
   if (given.children !== undefined) given.children = children(given.children);

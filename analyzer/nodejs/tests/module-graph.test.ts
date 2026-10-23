@@ -23,6 +23,7 @@ import { collectModuleDocuments } from "../src/index.js";
 import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
 import type { ManifestSource } from "../src/types.js";
+import { resolvedReference } from "../src/resolved-reference.js";
 
 /** Every use the slots at one declared pattern can take — the registry's rule. */
 const usesOf = (entries: DeclaredReference["entries"]) => [
@@ -174,7 +175,7 @@ const applicationDef = {
 const DEFS = [connectionDef, commandDef, apiDef, serverDef, sequenceDef, applicationDef];
 
 function ref(name: string, kind: string): Record<string, unknown> {
-  return { kind, name };
+  return { ...resolvedReference(kind, name) };
 }
 
 /** A node by the name it was declared under. A resource name is module-scoped,
@@ -555,7 +556,7 @@ describe("a declaration written at a dispatch site", () => {
             name: "write",
             invoke: {
               kind: "sql.Command",
-              connection: { kind: "sql.Connection", name: "chatDb" },
+              connection: { __ref: true, kind: "sql.Connection", name: "chatDb" },
             },
           },
         ],
@@ -629,7 +630,7 @@ describe("a declaration written at a dispatch site", () => {
               kind: "cache.View",
               invoke: {
                 kind: "sql.Command",
-                connection: { kind: "sql.Connection", name: "chatDb" },
+                connection: { __ref: true, kind: "sql.Connection", name: "chatDb" },
               },
             },
           },
@@ -670,20 +671,20 @@ describe("where a row's call is written", () => {
           kind: "http.Api",
           metadata: { name: "api" },
           routes: [
-            { path: "/a", method: "GET", handler: { kind: "sql.Command", name: "q" } },
+            { path: "/a", method: "GET", handler: { __ref: true, kind: "sql.Command", name: "q" } },
             { path: "/b", method: "GET" },
           ],
         } as never,
         {
           kind: "run.Sequence",
           metadata: { name: "seq" },
-          steps: [{ name: "one", invoke: { kind: "sql.Command", name: "q" } }, { name: "two" }],
+          steps: [{ name: "one", invoke: { __ref: true, kind: "sql.Command", name: "q" } }, { name: "two" }],
         } as never,
       ],
       {
         kind: "Telo.Application",
         metadata: { name: "app" },
-        targets: [{ kind: "run.Sequence", name: "seq" }],
+        targets: [{ __ref: true, kind: "run.Sequence", name: "seq" }],
       } as never,
     );
 
@@ -701,7 +702,7 @@ describe("where a row's call is written", () => {
         metadata: { name: "api" },
         routes: [
           { path: "/a", method: "GET", handler: { kind: "sql.Command" } },
-          { path: "/b", method: "GET", handler: { kind: "sql.Command", name: "q" } },
+          { path: "/b", method: "GET", handler: { __ref: true, kind: "sql.Command", name: "q" } },
         ],
       } as never,
       {
@@ -709,7 +710,7 @@ describe("where a row's call is written", () => {
         metadata: { name: "seq" },
         steps: [
           { name: "declared", invoke: { kind: "sql.Command" } },
-          { name: "referenced", invoke: { kind: "sql.Command", name: "q" } },
+          { name: "referenced", invoke: { __ref: true, kind: "sql.Command", name: "q" } },
           { name: "empty" },
         ],
       } as never,
@@ -845,8 +846,8 @@ describe("what a statement IS", () => {
           kind: "run.Sequence",
           metadata: { name: "seq" },
           steps: [
-            { name: "plain", invoke: { kind: "sql.Command", name: "q" } },
-            { name: "guarded", invoke: { kind: "sql.Command", name: "q" }, when: "inputs.dry" },
+            { name: "plain", invoke: { __ref: true, kind: "sql.Command", name: "q" } },
+            { name: "guarded", invoke: { __ref: true, kind: "sql.Command", name: "q" }, when: "inputs.dry" },
             { name: "loop", while: "steps.plain.result != 'x'", do: [] },
             { name: "branch", if: "inputs.ok", then: [] },
             { name: "pick", switch: "inputs.mode", cases: {} },
@@ -861,8 +862,8 @@ describe("what a statement IS", () => {
         kind: "Telo.Application",
         metadata: { name: "app" },
         targets: [
-          { kind: "run.Sequence", name: "seq" },
-          { ref: { kind: "run.Sequence", name: "seq" }, when: "variables.migrate" },
+          { __ref: true, kind: "run.Sequence", name: "seq" },
+          { ref: { __ref: true, kind: "run.Sequence", name: "seq" }, when: "variables.migrate" },
         ],
       } as never,
     );

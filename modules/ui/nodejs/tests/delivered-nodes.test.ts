@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { judgedComposite, producedNode, type EvaluatedNode } from "../src/page-nodes.js";
+import { judgedComposite, producedNode, type EvaluatedNode } from "../src/delivered-nodes.js";
 
 /** Refuses a `link` with no `href`, a menu holding one, and an item that
  *  still carries `when`; records everything it was asked about. */
@@ -114,5 +114,27 @@ describe("a page's nodes for a request", () => {
     expect(produce([link("Default"), link("Nowhere", true, null)])).toEqual(
       expect.objectContaining({ type: "error", code: "ERR_UI_NODE_INVALID" }),
     );
+  });
+
+  it("keep a tabs node's tabs delivered for this request, each tab's children produced, and leave out one with none", () => {
+    const check = validator();
+    const composite = { type: "table", columns: [] };
+    const produce = (tabs: Record<string, unknown>[]) =>
+      producedNode({ type: "tabs", tabs, address: { name: "section" } }, () => composite, check, () => {});
+    const produced = produce([
+      { text: "One", children: [{ type: "text", text: "a", when: false }, { type: "composite", ref: 0 }], when: true },
+      { text: "Two", children: [], when: false },
+      { text: "Three", children: [{ type: "link", text: "no address" }] },
+    ]);
+    expect(produced).toEqual({
+      type: "tabs",
+      tabs: [
+        { key: "one", text: "One", children: [composite] },
+        { key: "three", text: "Three", children: [expect.objectContaining({ type: "error", code: "ERR_UI_NODE_INVALID" })] },
+      ],
+      address: { name: "section" },
+    });
+    expect(check.judged.some((node) => JSON.stringify(node).includes("when"))).toBe(false);
+    expect(produce([{ text: "Two", children: [], when: false }])).toBeUndefined();
   });
 });
