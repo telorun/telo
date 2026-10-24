@@ -34,6 +34,35 @@
           },
           "data": {
             "description": "Structured detail."
+          },
+          "displayMessage": {
+            "description": "The text a person is shown for the failure, as its record; its values are `data`.",
+            "type": "object",
+            "properties": {
+              "text": {
+                "description": "The Message in its fragment spelling: a pattern, or a plural selection."
+              },
+              "context": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "lang": {
+                "type": "string",
+                "minLength": 1
+              },
+              "computed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "text",
+              "context",
+              "lang",
+              "computed"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

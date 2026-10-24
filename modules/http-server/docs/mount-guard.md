@@ -25,8 +25,7 @@ mounts:
           headers:
             WWW-Authenticate: Bearer
           content:
-            application/json:
-              body: { error: !cel "error.message", code: !cel "error.code" }
+            application/problem+json: {}
   # No guard: health checks stay reachable.
   - path: /probes
     mount: !ref probes
@@ -55,12 +54,12 @@ steps:
 | --- | --- |
 | `invoke` | The resource called for each request — any invocable or runnable (a `Run.Sequence`, a custom kind). Required. |
 | `inputs` | CEL mapped into the guard's input. The context is `request` with `headers` (lowercase keys), `query`, `path`, `method` and `ip` — no `body` and no `params`, because the guard runs before either exists. Without `inputs:` the guard is called with `{}`. |
-| `catches` | Rendering rules for the guard's structured throws, the same entry shape as a route's `catches:` (`status`, `when`, `headers`, `content`). Entries see `error` and the same `request` as `inputs:`. |
+| `catches` | Rendering rules for the guard's structured throws, the same entry shape as a route's `catches:` (`status`, `when`, `headers`, `content`). Entries see `error`, `problem` and the same `request` as `inputs:`; an entry with no body renders the default problem. |
 
 ## Behaviour
 
 - **A normal return lets the request through** to its route. The returned value is discarded.
-- **A throw refuses the request.** An `InvokeError` is rendered by `guard.catches` first, then by the server's `catches:`. One no entry claims is the built-in `500 { error: { code, message, data } }` envelope, and a plain (non-`InvokeError`) failure is the framework's 500 — a guard that fails never lets a request through.
+- **A throw refuses the request.** An `InvokeError` is rendered by `guard.catches` first, then by the server's `catches:`. One no entry claims is answered `500` with its problem, and a plain (non-`InvokeError`) failure with the bare 500 problem — a guard that fails never lets a request through.
 - **It runs after CORS and before the body is parsed.** A refused request carries the CORS headers, so a browser can read the 401; an unauthenticated request with a malformed body is answered by the guard, not by body parsing.
 - **Preflight never reaches a guard.** An `OPTIONS` preflight is answered by the server's `cors`, so a browser can ask whether it may send `Authorization` before it has one.
 - **Scope is one mount.** A sibling mount without a guard is unaffected, and a request that matches no route goes to the not-found handler (or the 404) unguarded.

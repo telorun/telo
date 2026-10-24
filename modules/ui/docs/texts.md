@@ -139,6 +139,20 @@ required — and name it instead.
 | `minItems` | `one`: Must have at least {$limit} item; `other`: Must have at least {$limit} items — plural over `limit` |
 | `maxItems` | `one`: Must have at most {$limit} item; `other`: Must have at most {$limit} items — plural over `limit` |
 | `uniqueItems` | Must not repeat an item |
+| `minProperties` | `one`: Must have at least {$limit} entry; `other`: Must have at least {$limit} entries — plural over `limit` |
+| `maxProperties` | `one`: Must have at most {$limit} entry; `other`: Must have at most {$limit} entries — plural over `limit` |
+| `format` | Is not a valid {$format} |
+| `additionalProperties` | Is not expected here |
+| `propertyNames` | Has a name that is not allowed: {$propertyName} |
+
+The words from `invalid` to the end are the validation words: what the
+browser's own validation says of a keyword, and what a renderer says of each
+issue of a 400 problem (`data.issues`, `{ pointer, keyword, params }`), so a
+refusal the API finds reads as one the browser finds. Every keyword an
+`Http.Api` issue may carry has one; an issue's `params` are its values —
+`type`'s `types` from `type`, `enum`'s `allowed` from `allowedValues`, `const`'s
+`value` from `allowedValue`, `multipleOf`'s `limit` from `multipleOf`, the
+rest by their own names.
 
 ## What a renderer receives
 

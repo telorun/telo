@@ -43,6 +43,8 @@ import {
   catalogComputedProblem,
   catalogsComputedAbove,
   judgeCatalog,
+  isTextOrRecordUnion,
+  judgeDataValues,
   judgeDeclaredValues,
   judgeMessage,
   judgeText,
@@ -60,6 +62,7 @@ import {
   type KnownValues,
   type TextFragment,
   type TextProblem,
+  type TextSite,
   type TextWalk,
   type TextWalkOptions,
   type ValuePath,
@@ -363,6 +366,7 @@ export function settleResourceTexts(
       origin.lang ?? null,
       origin.computed,
       text.declaredValues,
+      text.valuesFrom,
     );
     if (receivesRecords && settled !== text.value) records.push({ path: text.path, record: settled as TextRecord });
   }
@@ -404,10 +408,12 @@ function settleText(
   lang: string | null,
   computed: boolean,
   declared: Readonly<Record<string, unknown>> | undefined,
+  valuesFrom?: TextSite["valuesFrom"],
 ): unknown {
   const what = fragment === "Message" ? "the message" : "the text";
   const judgeDeclared = (message: Message | undefined) => {
     if (message && declared) refuseFirst(site, judgeDeclaredValues(message, declared), path, what);
+    if (message && valuesFrom) refuseFirst(site, judgeDataValues(message, valuesFrom.schema, valuesFrom.path), path, what);
   };
   if (isTextRecord(value)) {
     judgeDeclared(messageOf(value));
@@ -492,6 +498,7 @@ interface LateText {
   readonly path: ValuePath;
   readonly lang: string | null;
   readonly declaredValues?: Readonly<Record<string, unknown>>;
+  readonly valuesFrom?: TextSite["valuesFrom"];
 }
 
 /** An expression above text: what it produces is walked by the schemas it fills. */
@@ -558,6 +565,7 @@ function lateTextsOf(
       path: text.path,
       lang: provenance.at(text.path).lang ?? null,
       ...(text.declaredValues ? { declaredValues: text.declaredValues } : {}),
+      ...(text.valuesFrom ? { valuesFrom: text.valuesFrom } : {}),
     });
   }
   const pairings: LatePairing[] = [];
@@ -647,10 +655,24 @@ export class LateTexts {
 
   private apply(role: LateText | LateRegion, value: unknown): unknown {
     if (role.role === "text") {
-      return settleText(this.site, role.fragment, value, role.path, role.lang, true, role.declaredValues);
+      return settleText(this.site, role.fragment, value, role.path, role.lang, true, role.declaredValues, role.valuesFrom);
     }
     let out = value;
     const seen = new Set<string>();
+    const options = walkOptions(this.site, isCompiledValue);
+    if (
+      value !== null &&
+      value !== undefined &&
+      !isTextRecord(value) &&
+      role.schemas.some(({ schema, root }) => isTextOrRecordUnion(schema, root, options.resolveRef))
+    ) {
+      throw new RuntimeError(
+        "ERR_TEXT_ARGUMENT_COMPUTED",
+        `${this.site.label}: the value at '${renderValuePath(role.path)}' is computed, and this slot takes a literal ` +
+          `text or the record of a text already shown (\`!cel "error.displayMessage"\`): a text an expression produces can be ` +
+          `neither checked nor translated. Write the text itself, with its values beside it.`,
+      );
+    }
     for (const { schema, root } of role.schemas) {
       const walk = textSites(schema, value, walkOptions(this.site, isCompiledValue), root);
       for (const text of walk.texts) {
@@ -658,7 +680,7 @@ export class LateTexts {
         if (text.fragment === "TextCatalog" || seen.has(at)) continue;
         seen.add(at);
         const path = [...role.path, ...text.path];
-        const settled = settleText(this.site, text.fragment, text.value, path, role.lang, true, text.declaredValues);
+        const settled = settleText(this.site, text.fragment, text.value, path, role.lang, true, text.declaredValues, text.valuesFrom);
         if (settled !== text.value) out = setCopied(out, text.path, settled);
       }
       for (const pairing of walk.values) {

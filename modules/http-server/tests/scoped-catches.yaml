@@ -5,7 +5,7 @@ metadata:
   description: |
     End-to-end: the three rungs of the catch ladder and their precedence. A
     route's own `catches:` are tried first, then its router's, then the server's;
-    a throw no entry claims renders the built-in envelope. Each rendered response
+    a throw no entry claims is answered with its 500 problem. Each rendered response
     carries a `source` field naming the rung that produced it, so a precedence
     mistake shows up as a wrong string rather than as a coincidentally equal
     status code.
@@ -63,7 +63,7 @@ value:
 ---
 # Requires an integer it is handed a non-numeric string for, so the kernel's
 # ambient ERR_INPUT_INVALID is raised — named by no entry at any rung, which is
-# how the built-in envelope is reached.
+# how the last-resort 500 problem is reached.
 kind: Run.Value
 metadata: { name: requiresIntegerInput }
 inputType:
@@ -227,17 +227,23 @@ steps:
         body: { source: server, code: ERR_OUTPUT_INVALID, method: GET }
     invoke: { kind: Assert.Equals }
 
-  # No rung claims it — the built-in envelope, which is byte-identical to what an
-  # unmatched throw produced before the ladder existed.
+  # No rung claims it — the 500 problem, its detail the code's built-in text.
   - name: hitUnclaimed
     inputs: { url: "http://127.0.0.1:8951/unclaimed?id=not-a-number" }
     invoke: !ref fetchJson
-  - name: assertBuiltInEnvelope
+  - name: assertUnclaimedProblem
     inputs:
       actual:
         status: !cel "steps.hitUnclaimed.result.status"
-        code: !cel "steps.hitUnclaimed.result.body.error.code"
+        contentType: !cel "steps.hitUnclaimed.result.headers['content-type']"
+        body: !cel "steps.hitUnclaimed.result.body"
       expected:
         status: 500
-        code: ERR_INPUT_INVALID
+        contentType: application/problem+json; charset=utf-8
+        body:
+          type: about:blank
+          title: Internal Server Error
+          status: 500
+          detail: The request is not valid.
+          code: ERR_INPUT_INVALID
     invoke: { kind: Assert.Equals }

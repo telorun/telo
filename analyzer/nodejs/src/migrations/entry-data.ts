@@ -58,6 +58,7 @@ const OPERATION_KEYS: Record<(typeof MIGRATION_OPS)[number], readonly string[]> 
   "set-value": ["value", "qualify"],
   "set-tag": ["tag", "source"],
   "insert-item": ["value", "at"],
+  "add-key": ["key", "value"],
   "remove-entry": [],
 };
 
@@ -66,30 +67,53 @@ const OPERATION_KEYS: Record<(typeof MIGRATION_OPS)[number], readonly string[]> 
  *  refused" would be true of every level but this one. */
 const ENTRY_KEYS = ["id", "code", "severity", "reason", "rules", "$comment"] as const;
 
-/**
- * A value a patch may write.
- *
- * Scalars only, because "every operation has a known YAML edit form" is what
- * makes a migration applicable to a FILE, and the file applier renders a value
- * by re-quoting it in the author's own style at the node's own span — which has
- * no meaning for a mapping or a sequence. Without this check the limitation is
- * invisible until a user runs `telo migrate` and is told, permanently, to fix
- * it by hand; with it, the entry's author learns at authoring time. Structured
- * values are a vocabulary extension (a block renderer), not a silent gap.
- */
-function requireScalarValue(file: string, index: number, op: string, value: unknown): void {
-  if (
+function isScalar(value: unknown): boolean {
+  return (
     value === null ||
     typeof value === "string" ||
-    typeof value === "number" ||
+    (typeof value === "number" && Number.isFinite(value)) ||
     typeof value === "boolean"
-  ) {
-    return;
-  }
+  );
+}
+
+/**
+ * A value `set-value` / `insert-item` may write.
+ *
+ * Scalars only, because "every operation has a known YAML edit form" is what
+ * makes a migration applicable to a FILE, and those two render a value by
+ * re-quoting it in the author's own style at the node's own span — which has
+ * no meaning for a mapping or a sequence. Without this check the limitation is
+ * invisible until a user runs `telo migrate` and is told, permanently, to fix
+ * it by hand; with it, the entry's author learns at authoring time.
+ */
+function requireScalarValue(file: string, index: number, op: string, value: unknown): void {
+  if (isScalar(value)) return;
   throw new MigrationEntryError(
     file,
     `patch[${index}] ('${op}') value must be a scalar (string, number, boolean or null) — ` +
       `a mapping or sequence has no in-place YAML edit form, so \`telo migrate\` could never apply it`,
+  );
+}
+
+/** Plain JSON data all the way down: scalars, sequences and mappings. */
+function isLiteralData(value: unknown): boolean {
+  if (isScalar(value)) return true;
+  if (Array.isArray(value)) return value.every(isLiteralData);
+  return isPlainObject(value) && Object.values(value).every(isLiteralData);
+}
+
+/**
+ * A value `add-key` may write: a scalar, or a MAPPING of literal data. Unlike
+ * the in-place writes, a new key owns its whole span, so the file applier
+ * renders a mapping fresh beneath it — in the style its new parent is written
+ * in — and nothing of the author's has to be re-quoted.
+ */
+function requireAddedValue(file: string, index: number, value: unknown): void {
+  if (isScalar(value) || (isPlainObject(value) && isLiteralData(value))) return;
+  throw new MigrationEntryError(
+    file,
+    `patch[${index}] ('add-key') value must be a scalar or a mapping of plain data ` +
+      `(mappings, sequences, strings, numbers, booleans, null)`,
   );
 }
 
@@ -154,6 +178,14 @@ function readOperation(file: string, raw: unknown, index: number): MigrationOper
         );
       }
       return at === undefined ? { op, value: raw.value } : { op, value: raw.value, at };
+    }
+    case "add-key": {
+      const key = requireString(file, raw, "key");
+      if (!Object.hasOwn(raw, "value")) {
+        throw new MigrationEntryError(file, `patch[${index}] ('add-key') requires 'value'`);
+      }
+      requireAddedValue(file, index, raw.value);
+      return { op, key, value: raw.value };
     }
     case "remove-entry":
       return { op };

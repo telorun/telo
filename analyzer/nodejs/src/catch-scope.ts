@@ -31,6 +31,11 @@ import {
   type ThrowsUnion,
 } from "./resolve-throws-union.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import {
+  caughtCodeChains,
+  catchListContext,
+  intersectDataSchemas,
+} from "./caught-member.js";
 
 /** One entry of an outcome list, as written. */
 export interface OutcomeEntry {
@@ -69,6 +74,9 @@ export interface CatchList {
   routing: { kind: string; name: string };
   filePath: string | undefined;
   entries: OutcomeEntry[];
+  /** The chains reaching every member the list's context marks
+   *  `x-telo-caught-member: code` — what a proving `when:` compares. */
+  codeChains: string[][];
   readings: CatchEntryReading[];
   /** Concrete path of the list, prefixed for a scoped declaration with its
    *  position in its owner. */
@@ -161,6 +169,7 @@ export function collectOutcomeLists(
     siblingData: Record<string, any>,
     parentPath: string,
     catchesFor: string,
+    listSchema: Record<string, any>,
   ) => void,
 ): void {
   if (!schema) return;
@@ -178,6 +187,7 @@ function walkSchemaData(
     siblingData: Record<string, any>,
     parentPath: string,
     catchesFor: string,
+    listSchema: Record<string, any>,
   ) => void,
 ): void {
   if (!schema || typeof schema !== "object") return;
@@ -205,7 +215,7 @@ function walkSchemaData(
           // The EMPTY pointer names the resource the list is written on, so the
           // test is presence, never truthiness. Reported even when absent, so a
           // site whose union is non-empty but whose list is missing is judged.
-          if (catchesFor !== undefined) onCatches(entries, nextPath, dataObj, path, catchesFor);
+          if (catchesFor !== undefined) onCatches(entries, nextPath, dataObj, path, catchesFor, propSchema);
         }
         continue;
       }
@@ -220,37 +230,42 @@ function walkSchemaData(
   }
 }
 
-/** Parse a `when:` CEL expression and extract the set of `error.code` literals
- *  it covers. Recognised forms: `error.code == 'FOO'`, a disjunction of those
- *  (`||`, parenthesised nestings flattened), and `error.code in ['FOO', 'BAR']`.
- *  Any non-matching sub-expression forfeits coverage for the whole `when:`. */
+/** Parse a `when:` CEL expression and extract the set of code literals it
+ *  covers. A proving `when:` is a disjunction (`||`, parenthesised nestings
+ *  flattened) of `<chain> == 'FOO'` and `<chain> in ['FOO', 'BAR']`, where
+ *  `<chain>` is one of `codeChains` — a member chain reaching a member the
+ *  list's context marks `x-telo-caught-member: code`. Any other sub-expression
+ *  forfeits coverage for the whole `when:`. */
 export function extractCoveredCodes(
   whenExpr: unknown,
   env: CelEnvironment,
+  codeChains: readonly (readonly string[])[],
 ): { proven: boolean; codes: Set<string> } {
   const source =
     isTaggedSentinel(whenExpr) && whenExpr.engine === CEL_ENGINE ? whenExpr.source : undefined;
-  if (!source) return { proven: false, codes: new Set() };
+  if (!source || codeChains.length === 0) return { proven: false, codes: new Set() };
   const parsed = env.parse(source.trim());
   if (parsed.diagnostics.length > 0) return { proven: false, codes: new Set() };
   const codes = new Set<string>();
-  const proven = extractFromNode(parsed.root, codes);
+  const chains = new Set(codeChains.map((chain) => chain.join(".")));
+  const proven = extractFromNode(parsed.root, codes, chains);
   return { proven, codes };
 }
 
-function extractFromNode(node: CelNode, codes: Set<string>): boolean {
+function extractFromNode(node: CelNode, codes: Set<string>, chains: ReadonlySet<string>): boolean {
   if (node.kind !== "binary") return false;
   if (node.operator === "||") {
-    return extractFromNode(node.left, codes) && extractFromNode(node.right, codes);
+    return extractFromNode(node.left, codes, chains) && extractFromNode(node.right, codes, chains);
   }
   if (node.operator === "==") {
-    const lit = readErrorCodeEq(node.left, node.right) ?? readErrorCodeEq(node.right, node.left);
+    const lit =
+      readCodeEq(node.left, node.right, chains) ?? readCodeEq(node.right, node.left, chains);
     if (lit === null) return false;
     codes.add(lit);
     return true;
   }
   if (node.operator === "in") {
-    if (!isErrorCodeRef(node.left) || node.right.kind !== "list") return false;
+    if (!isCodeChain(node.left, chains) || node.right.kind !== "list") return false;
     for (const element of node.right.elements) {
       const text = stringLiteral(element.value);
       if (text === null) return false;
@@ -266,21 +281,33 @@ function stringLiteral(node: CelNode): string | null {
   return node.literal.value;
 }
 
-function readErrorCodeEq(ref: CelNode, lit: CelNode): string | null {
-  return isErrorCodeRef(ref) ? stringLiteral(lit) : null;
+function readCodeEq(ref: CelNode, lit: CelNode, chains: ReadonlySet<string>): string | null {
+  return isCodeChain(ref, chains) ? stringLiteral(lit) : null;
 }
 
-function isErrorCodeRef(node: CelNode): boolean {
-  if (node.kind !== "select" || node.field !== "code") return false;
-  return node.operand.kind === "ident" && node.operand.name === "error";
+/** The member chain a plain `a.b.c` select names, or null for anything else. */
+function selectChain(node: CelNode): string[] | null {
+  if (node.kind === "ident") return [node.name];
+  if (node.kind !== "select" || node.optional) return null;
+  const operand = selectChain(node.operand);
+  return operand ? [...operand, node.field] : null;
+}
+
+function isCodeChain(node: CelNode, chains: ReadonlySet<string>): boolean {
+  const chain = selectChain(node);
+  return chain !== null && chain.length > 1 && chains.has(chain.join("."));
 }
 
 /** What each entry of a list proves. */
-export function readCatchEntries(entries: OutcomeEntry[], env: CelEnvironment): CatchEntryReading[] {
+export function readCatchEntries(
+  entries: OutcomeEntry[],
+  env: CelEnvironment,
+  codeChains: readonly (readonly string[])[],
+): CatchEntryReading[] {
   return entries.map((entry) => {
     if (!entry) return { catchAll: false, proven: true, codes: new Set<string>() };
     if (!entry.when) return { catchAll: true, proven: true, codes: new Set<string>() };
-    const { proven, codes } = extractCoveredCodes(entry.when, env);
+    const { proven, codes } = extractCoveredCodes(entry.when, env, codeChains);
     return { catchAll: false, proven, codes };
   });
 }
@@ -359,6 +386,8 @@ export class CatchLadder {
   private readonly enclosers: Map<ResourceManifest, ResourceManifest[]>;
   private readonly rungs = new Map<string | null, Map<ResourceManifest, ScopeRung>>();
   private readonly unions = new Map<CatchList, ThrowsUnion>();
+  private readonly listsByManifest = new Map<ResourceManifest, CatchList[]>();
+  private readonly caughtData = new Map<CatchList, Array<Record<string, any> | null>>();
 
   constructor(
     manifests: ResourceManifest[],
@@ -407,8 +436,9 @@ export class CatchLadder {
         manifest,
         definition.schema,
         () => {},
-        (entries, arrayPath, siblingData, parentPath, catchesFor) => {
+        (entries, arrayPath, siblingData, parentPath, catchesFor, listSchema) => {
           const isScope = catchesFor === "";
+          const codeChains = caughtCodeChains(catchListContext(listSchema));
           const list: CatchList = {
             manifest,
             definition,
@@ -416,7 +446,8 @@ export class CatchLadder {
             routing,
             filePath,
             entries,
-            readings: readCatchEntries(entries, env),
+            codeChains,
+            readings: readCatchEntries(entries, env, codeChains),
             arrayPath: `${pathPrefix}${arrayPath}`,
             ownPath: arrayPath,
             scopeResolver: this.scopeResolverOf(anchor),
@@ -425,6 +456,9 @@ export class CatchLadder {
             isScope,
           };
           this.lists.push(list);
+          const own = this.listsByManifest.get(manifest);
+          if (own) own.push(list);
+          else this.listsByManifest.set(manifest, [list]);
           if (isScope) this.scopeOf.set(manifest, list);
           else {
             const byPath = this.siteListsOf(manifest);
@@ -504,6 +538,52 @@ export class CatchLadder {
     };
     memo.set(manifest, rung);
     return rung;
+  }
+
+  /**
+   * The data schema a `data`-marked member carries at `path` of `manifest`, when
+   * that path is inside an entry of one of its catch lists: the data of the codes
+   * the entry matches — those its proving `when:` names, or the whole
+   * denominator for a catch-all or an undecided entry — intersected when they
+   * are several. Undefined outside every entry, and where the denominator is
+   * unbounded or empty, or no matched code declares data: the member then keeps
+   * the schema it declares.
+   */
+  caughtDataAt(manifest: ResourceManifest, path: string): Record<string, any> | undefined {
+    for (const list of this.listsByManifest.get(manifest) ?? []) {
+      const prefix = `${list.ownPath}[`;
+      if (!path.startsWith(prefix)) continue;
+      const close = path.indexOf("]", prefix.length);
+      if (close < 0) continue;
+      const after = path[close + 1];
+      if (after !== undefined && after !== ".") continue;
+      const index = Number(path.slice(prefix.length, close));
+      if (!Number.isInteger(index)) continue;
+      return this.caughtDataOf(list, index);
+    }
+    return undefined;
+  }
+
+  private caughtDataOf(list: CatchList, index: number): Record<string, any> | undefined {
+    let byEntry = this.caughtData.get(list);
+    if (!byEntry) this.caughtData.set(list, (byEntry = []));
+    const known = byEntry[index];
+    if (known !== undefined) return known ?? undefined;
+    const reading = list.readings[index];
+    const union = this.unionOf(list);
+    let schema: Record<string, any> | null = null;
+    if (reading && !union.unbounded && union.codes.size > 0) {
+      const codes =
+        reading.catchAll || !reading.proven
+          ? [...union.codes.keys()]
+          : [...reading.codes].filter((code) => union.codes.has(code));
+      const schemas = codes
+        .map((code) => union.codes.get(code)?.data)
+        .filter((data): data is Record<string, any> => !!data && typeof data === "object");
+      if (schemas.length > 0) schema = intersectDataSchemas(schemas);
+    }
+    byEntry[index] = schema;
+    return schema ?? undefined;
   }
 
   /** What a list is checked against: everything its resource drives for a

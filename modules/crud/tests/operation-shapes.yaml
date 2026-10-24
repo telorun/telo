@@ -144,14 +144,14 @@ steps:
         stored: !cel "steps.create.result.body"
         serverSet:
           status: !cel "steps.createServerSet.result.status"
-          details: !cel "steps.createServerSet.result.body.details"
+          issues: !cel "steps.createServerSet.result.body.data.issues"
       expected:
         status: 201
         stored: { id: 1, title: First, body: The long text, author: ada, isPublic: false, createdAt: "2026-10-07" }
         serverSet:
           status: 400
-          details:
-            - { location: body, path: createdAt, message: must NOT have additional properties }
+          issues:
+            - { pointer: /body/createdAt, keyword: additionalProperties, params: { additionalProperty: createdAt } }
 
   # A row holds the list shape; the filter and the sort name properties only a
   # record shows.
@@ -199,15 +199,15 @@ steps:
         stored: !cel "steps.update.result.body"
         author:
           status: !cel "steps.updateAuthor.result.status"
-          details: !cel "steps.updateAuthor.result.body.details"
+          issues: !cel "steps.updateAuthor.result.body.data.issues"
         after: !cel "steps.readUpdated.result.body"
       expected:
         status: 200
         stored: { id: 1, title: First again, author: ada, isPublic: true, createdAt: "2026-10-07" }
         author:
           status: 400
-          details:
-            - { location: body, path: author, message: must NOT have additional properties }
+          issues:
+            - { pointer: /body/author, keyword: additionalProperties, params: { additionalProperty: author } }
         after: { id: 1, title: First again, author: ada, isPublic: true, createdAt: "2026-10-07" }
 
   # The OpenAPI document states each operation's own shape.

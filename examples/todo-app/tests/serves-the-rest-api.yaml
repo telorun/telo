@@ -121,13 +121,17 @@ steps:
       actual:
         backdated:
           status: !cel "steps.backdated.result.status"
-          field: !cel "steps.backdated.result.body.details[0].path"
+          issues: !cel "steps.backdated.result.body.data.issues"
         bornDone:
           status: !cel "steps.bornDone.result.status"
-          field: !cel "steps.bornDone.result.body.details[0].path"
+          issues: !cel "steps.bornDone.result.body.data.issues"
       expected:
-        backdated: { status: 400, field: createdAt }
-        bornDone: { status: 400, field: isDone }
+        backdated:
+          status: 400
+          issues: [ { pointer: /body/createdAt, keyword: additionalProperties, params: { additionalProperty: createdAt } } ]
+        bornDone:
+          status: 400
+          issues: [ { pointer: /body/isDone, keyword: additionalProperties, params: { additionalProperty: isDone } } ]
 
   # `text` is required and may not be empty, so an empty one is refused before the
   # database is touched — and the refusal names the field.
@@ -144,10 +148,17 @@ steps:
     inputs:
       actual:
         status: !cel "steps.emptyText.result.status"
-        field: !cel "steps.emptyText.result.body.details[0].path"
+        body: !cel "steps.emptyText.result.body"
       expected:
         status: 400
-        field: text
+        body:
+          type: about:blank
+          title: Bad Request
+          status: 400
+          detail: The request is not valid.
+          code: ERR_INPUT_INVALID
+          data:
+            issues: [ { pointer: /body/text, keyword: minLength, params: { limit: 1 } } ]
 
   # PUT replaces what a todo's update shape declares, so the body holds both
   # of its properties.

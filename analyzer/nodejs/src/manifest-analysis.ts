@@ -102,7 +102,10 @@ export class ManifestAnalysis {
    *  the whole set, and a host that never opens a CEL body should not pay for
    *  them. */
   get celScope(): CelScopeQuery {
-    return (this.celScopeQuery ??= new CelScopeQuery(this.manifests, this.ctx));
+    return (this.celScopeQuery ??= new CelScopeQuery(this.manifests, {
+      ...this.ctx,
+      caughtDataAt: (m, path) => this.catchLadder.caughtDataAt(m, path),
+    }));
   }
 
   /** What calls what. Built on first use and kept, so the projection and any

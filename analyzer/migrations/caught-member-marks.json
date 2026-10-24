@@ -1,0 +1,87 @@
+{
+  "$comment": "Published catch-list contexts name the caught failure `error` and mark nothing, because the analyzer used to read the binding by name. `ancestor` places the member: the matched key is the `code` / `data` member of the `error` binding of an `x-telo-context` written beside `x-telo-outcome-list: catches`, so a `code` key anywhere else in a kind's schema is out of reach, and `withoutKey` leaves a member that already carries a mark alone. The third rule gives a published `notFoundHandler.catches` — the one catch list http-server published with no context at all — the context http-server 0.39.1 binds there — `request`, and `error` with `code`, `message` and `data`; `withoutKey: x-telo-context` leaves every list that has one alone.",
+  "id": "caught-member-marks",
+  "code": "DEPRECATED_IMPLICIT_CAUGHT_MEMBER",
+  "severity": "warning",
+  "reason": "A catch list's context says which of its members carry the caught failure's code and data with `x-telo-caught-member: code | data`, so a `when:` comparing any marked chain proves coverage and every data-marked member is typed from the codes an entry matches; the analyzer no longer reads a binding named `error`.",
+  "rules": [
+    {
+      "match": {
+        "key": "code",
+        "inKind": ["Telo.Definition", "Telo.Abstract"],
+        "under": ["schema"],
+        "ancestor": {
+          "path": ["x-telo-context", "properties", "error", "properties", "code"],
+          "key": "x-telo-outcome-list",
+          "value": "catches"
+        },
+        "withoutKey": "x-telo-caught-member"
+      },
+      "patch": [{ "op": "add-key", "key": "x-telo-caught-member", "value": "code" }]
+    },
+    {
+      "match": {
+        "key": "data",
+        "inKind": ["Telo.Definition", "Telo.Abstract"],
+        "under": ["schema"],
+        "ancestor": {
+          "path": ["x-telo-context", "properties", "error", "properties", "data"],
+          "key": "x-telo-outcome-list",
+          "value": "catches"
+        },
+        "withoutKey": "x-telo-caught-member"
+      },
+      "patch": [{ "op": "add-key", "key": "x-telo-caught-member", "value": "data" }]
+    },
+    {
+      "match": {
+        "key": "catches",
+        "inKind": ["Telo.Definition"],
+        "under": ["schema"],
+        "ancestor": {
+          "path": ["properties", "notFoundHandler", "properties", "catches"],
+          "key": "type",
+          "value": "object"
+        },
+        "withoutKey": "x-telo-context"
+      },
+      "patch": [
+        {
+          "op": "add-key",
+          "key": "x-telo-context",
+          "value": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "request": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": { "type": "string" },
+                  "host": {
+                    "type": "string",
+                    "description": "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy."
+                  },
+                  "method": { "type": "string" },
+                  "ip": { "type": "string" },
+                  "query": { "type": "object", "additionalProperties": true },
+                  "headers": { "type": "object", "additionalProperties": true },
+                  "params": { "type": "object", "additionalProperties": true }
+                }
+              },
+              "error": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "code": { "type": "string", "x-telo-caught-member": "code" },
+                  "message": { "type": "string" },
+                  "data": { "type": "object", "additionalProperties": true, "x-telo-caught-member": "data" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

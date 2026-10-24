@@ -223,7 +223,7 @@ export async function render(options: {
       });
       return json(answer.body, answer.status);
     }
-    return json({ error: "NotFound", message: "nothing here", status: 404 }, 404);
+    return json({ type: "about:blank", title: "Not Found", status: 404 }, 404);
   }) as typeof fetch;
 
   const mediaQueries: string[] = [];

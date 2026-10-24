@@ -1,0 +1,5 @@
+{
+  "code": "ERR_PREDICATE_NOT_BOOLEAN",
+  "description": "A step or boot target predicate produced something other than a boolean.",
+  "displayMessage": "The service failed to decide how to continue."
+}

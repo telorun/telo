@@ -59,7 +59,8 @@ steps:
           sameShell: !cel "steps.undeclared.result.body == steps.shell.result.body"
         reserved:
           status: !cel "steps.reserved.result.status"
-          error: !cel "steps.reserved.result.body.error"
+          type: !cel "steps.reserved.result.headers['content-type']"
+          body: !cel "steps.reserved.result.body"
       expected:
         shell:
           status: 200
@@ -71,7 +72,10 @@ steps:
           layers: true
           rendererNotMapped: true
         undeclared: { status: 404, sameShell: true }
-        reserved: { status: 404, error: NotFound }
+        reserved:
+          status: 404
+          type: application/problem+json; charset=utf-8
+          body: { type: about:blank, title: Not Found, status: 404 }
 
   - name: components
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19311/admin/_telo/ui/page?path=/components" }
@@ -181,7 +185,7 @@ steps:
         pageAgain: !cel "steps.pageAgain.result.status"
         noPage:
           status: !cel "steps.noPage.result.status"
-          error: !cel "steps.noPage.result.body.error"
+          body: !cel "steps.noPage.result.body"
         stylesheet:
           status: !cel "steps.stylesheet.result.status"
           type: !cel "steps.stylesheet.result.headers['content-type'].startsWith('text/css')"
@@ -231,7 +235,7 @@ steps:
           children: [text, table]
           fixedFilter: { isDone: { value: true } }
         pageAgain: 304
-        noPage: { status: 404, error: NotFound }
+        noPage: { status: 404, body: { type: about:blank, title: Not Found, status: 404 } }
         stylesheet:
           status: 200
           type: true

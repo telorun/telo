@@ -14,7 +14,8 @@ metadata:
 requires:
   # A `Telo.HostPath` variable at `SQLite.Connection.file` is refused before
   # 0.98.0.
-  telo: ">=0.98.0"
+  # 0.123.0: a `throw` step's `displayMessage`, which 0.122.0 drops at dispatch.
+  telo: ">=0.123.0"
 imports:
   Plans:
     source: ./plans
@@ -86,7 +87,8 @@ steps:
       - name: refuse
         throw:
           code: ERR_ORIGIN_NOT_ALLOWED
-          message: !cel "'Origin ' + inputs.origin + ' may not call this server; it only answers pages it serves itself.'"
+          displayMessage: "Origin {$origin} may not call this server; it only answers pages it serves itself."
+          data: { origin: !cel "inputs.origin" }
 ---
 kind: Http.Server
 metadata: { name: server }

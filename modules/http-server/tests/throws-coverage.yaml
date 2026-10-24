@@ -9,6 +9,7 @@ targets:
   - !ref testUncoveredCode
   - !ref testCatchAllNotLast
   - !ref testPassthroughInsideCatch
+  - !ref testRethrowInsideCatch
   - !ref testInheritCycle
   - !ref testRethrowPlain
 ---
@@ -50,6 +51,15 @@ kind: Assert.Manifest
 metadata:
   name: testPassthroughInsideCatch
 source: ./__fixtures__/passthrough-inside-catch.yaml
+expect:
+  errors: []
+---
+# `rethrow: {}` in a catch contributes what the try block throws, as a
+# `code: !cel "error.code"` throw does.
+kind: Assert.Manifest
+metadata:
+  name: testRethrowInsideCatch
+source: ./__fixtures__/rethrow-inside-catch.yaml
 expect:
   errors: []
 ---

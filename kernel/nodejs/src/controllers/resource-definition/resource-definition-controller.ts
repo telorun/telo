@@ -26,6 +26,7 @@ import type { SiblingLibraryMap } from "../../controller-loaders/sibling-librari
 import { ControllerLoader } from "../../controller-loader.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
+import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
 import { createTemplateController } from "./resource-template-controller.js";
 import type { RefPositionHost } from "../../refuse-computed-ref-slots.js";
@@ -144,6 +145,7 @@ class ResourceDefinition implements ResourceInstance {
       : undefined;
     const register = (): void => {
       if (ownFields) this.resource.publishedOwnFields = ownFields;
+      stampDeclaredDisplayMessages(this.resource as ResourceDefinitionManifest, resolveDef);
       ctx.registerDefinition(this.resource);
     };
     if (this.resource.extends) {

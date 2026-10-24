@@ -177,7 +177,7 @@
                 "type": "string"
               },
               "message": {
-                "description": "Human-readable error message.",
+                "description": "The developer's error message.",
                 "type": "string"
               },
               "step": {
@@ -186,6 +186,17 @@
               },
               "data": {
                 "description": "Structured payload from an InvokeError, else undefined."
+              },
+              "displayMessage": {
+                "description": "The text a person is shown for the failure, as its record; null when the failure carries none. Carry it into a new throw with `displayMessage: !cel \"error.displayMessage\"`.",
+                "anyOf": [
+                  {
+                    "$ref": "telo://manifest#/$defs/TextRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "additionalProperties": false
@@ -211,7 +222,7 @@
                 "type": "string"
               },
               "message": {
-                "description": "Human-readable error message.",
+                "description": "The developer's error message.",
                 "type": "string"
               },
               "step": {
@@ -220,6 +231,17 @@
               },
               "data": {
                 "description": "Structured payload from an InvokeError, else undefined."
+              },
+              "displayMessage": {
+                "description": "The text a person is shown for the failure, as its record; null when the failure carries none. Carry it into a new throw with `displayMessage: !cel \"error.displayMessage\"`.",
+                "anyOf": [
+                  {
+                    "$ref": "telo://manifest#/$defs/TextRecord"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "additionalProperties": false
@@ -232,11 +254,11 @@
     },
     {
       "title": "throw",
-      "description": "Throws an InvokeError unconditionally. Works inside catch blocks via CEL (e.g. code set to `!cel \"error.code\"`).",
+      "description": "Throws an InvokeError unconditionally. Inside a catch branch the caught failure becomes the new error's cause.",
       "properties": {
         "throw": {
           "title": "Throw",
-          "description": "InvokeError descriptor; code is required, message/data optional.",
+          "description": "InvokeError descriptor; code is required, message/displayMessage/data optional.",
           "type": "object",
           "properties": {
             "code": {
@@ -246,12 +268,28 @@
             },
             "message": {
               "title": "Message",
-              "description": "Human-readable error message. Defaults to `code` when omitted.",
+              "description": "The developer's message, for logs and traces; never shown to a person. Omitted, it is the display message formatted with `data`, else `code`.",
               "type": "string"
+            },
+            "displayMessage": {
+              "title": "Display message",
+              "description": "The text a person is shown for this failure: a literal text whose placeholders name members of `data`, or the display message a caught error carries (`!cel \"error.displayMessage\"`). Null or omitted, the error carries none.",
+              "anyOf": [
+                {
+                  "$ref": "telo://manifest#/$defs/Text"
+                },
+                {
+                  "$ref": "telo://manifest#/$defs/TextRecord"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "data": {
               "title": "Data",
-              "description": "Optional structured payload attached to the error."
+              "description": "Optional structured payload attached to the error; its members are the values the display message is formatted with.",
+              "x-telo-text-values-for": "/displayMessage"
             }
           },
           "required": [
@@ -261,6 +299,22 @@
       },
       "required": [
         "throw"
+      ]
+    },
+    {
+      "title": "rethrow",
+      "description": "Re-raises the failure the enclosing catch branch caught, unchanged: its code, messages, data, cause and stack. Legal only inside a catch branch.",
+      "properties": {
+        "rethrow": {
+          "title": "Rethrow",
+          "description": "Always an empty object.",
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "rethrow"
       ]
     },
     {

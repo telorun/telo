@@ -1,10 +1,13 @@
 import {
+  builtinErrorCode,
   ERR_INVOKE_CANCELLED,
   InvokeError,
   NOOP_LOGGER,
+  SEVERITY,
   createCancellationSource,
   type CancellationSource,
   type InvokeContext,
+  type Logger,
 } from "@telorun/sdk";
 import net, { type AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
@@ -51,6 +54,15 @@ function expandWith(value: unknown, celCtx: Record<string, unknown>): unknown {
 function testContext(behaviours: Record<string, (inputs: any, context: InvokeContext) => unknown>) {
   const spans: SpanCall[] = [];
   const dispatches: Dispatch[] = [];
+  const logged: Array<{ severity: number; message: string; error: unknown }> = [];
+  const log: Logger = {
+    ...NOOP_LOGGER,
+    enabled: () => true,
+    log: (severity, message, _attributes, options) => {
+      logged.push({ severity, message, error: options?.error });
+    },
+    with: () => log,
+  };
   const inverses: Array<() => unknown> = [];
   const chain = (steps: Array<(input: unknown) => Promise<any>>): any => ({
     effect: (_reason: string, body: (input: unknown) => Promise<any>) => chain([...steps, body]),
@@ -69,7 +81,8 @@ function testContext(behaviours: Record<string, (inputs: any, context: InvokeCon
     return behaviours[name]!(inputs, context);
   };
   const ctx = {
-    log: NOOP_LOGGER,
+    log,
+    declaredDisplayMessage: (code: string) => builtinErrorCode(code)?.record,
     effect: (_reason: string, body: (input: unknown) => Promise<any>) => chain([body]),
     acquireHold: () => () => {},
     emitEvent: async () => {},
@@ -102,7 +115,7 @@ function testContext(behaviours: Record<string, (inputs: any, context: InvokeCon
   const unwind = async () => {
     for (const inverse of inverses.reverse()) await inverse();
   };
-  return { ctx: ctx as never, spans, dispatches, unwind };
+  return { ctx: ctx as never, spans, dispatches, logged, unwind };
 }
 
 const behaviours = {
@@ -318,13 +331,24 @@ describe("Http.Server request span", () => {
     ]);
   });
 
-  it("uncoded error: the framework's 500 fails the span", async () => {
+  it("uncoded error: the bare 500 problem fails the span, its message logged and never sent", async () => {
     const server = await startServer({ notFoundHandler: false });
     running = server;
     const response = await fetch(`${server.url}/api/boom`, {
       headers: { authorization: "Bearer ok" },
     });
     expect(response.status).toBe(500);
+    expect(response.headers.get("content-type")).toBe("application/problem+json; charset=utf-8");
+    expect(await response.json()).toEqual({
+      type: "about:blank",
+      title: "Internal Server Error",
+      status: 500,
+    });
+    expect(server.logged).toContainEqual({
+      severity: SEVERITY.error,
+      message: "uncoded failure",
+      error: expect.objectContaining({ message: "uncoded failure" }),
+    });
     const span = await settledSpan(server.spans);
     expect(span.settled).toEqual([
       {

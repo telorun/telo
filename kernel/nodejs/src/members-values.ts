@@ -29,6 +29,7 @@ import {
   membersEntryOfValue,
   redactedTextsOf,
   RuntimeError,
+  valueIssue,
   X_TELO_TYPE,
 } from "@telorun/sdk";
 import type { SchemaValidator } from "./schema-validator.js";
@@ -182,33 +183,19 @@ export function redactedTextsWithin(value: unknown, entered = new Set<object>())
   return held.flatMap((item) => redactedTextsWithin(item, entered));
 }
 
-/** A refusal's entries as the `issues` an error's data carries: each one's pointer,
- *  code and reason, beside the dotted path and line a transport answers with. */
+/** A refusal's entries as the `issues` an error's data carries: each a finding in the
+ *  issue vocabulary — its pointer (empty for the value itself), `format` naming the
+ *  type — beside the type's code. The reason stays in the message. */
 export function membersIssues(refusals: readonly MembersRefusalEntry[]): Array<{
-  path: string;
-  message: string;
   pointer: string;
+  keyword: string;
+  params: Readonly<Record<string, unknown>>;
   code: string;
-  reason: string;
 }> {
   return refusals.map((entry) => ({
-    path: pointerToDottedPath(entry.pointer),
-    message: membersEntryText(entry),
-    pointer: entry.pointer,
+    ...valueIssue(entry.pointer === "/" ? "" : entry.pointer, "format", { format: entry.type }),
     code: entry.code,
-    reason: entry.reason,
   }));
-}
-
-/** `/a/0/b` → `a[0].b`, the dotted form a schema issue's path takes. */
-function pointerToDottedPath(pointer: string): string {
-  let out = "";
-  for (const raw of pointer.split("/").slice(1)) {
-    if (raw === "") continue;
-    const segment = raw.replace(/~1/g, "/").replace(/~0/g, "~");
-    out += /^\d+$/.test(segment) ? `[${segment}]` : out === "" ? segment : `.${segment}`;
-  }
-  return out;
 }
 
 /** Arrays and plain records copied, every other value shared — what building in place

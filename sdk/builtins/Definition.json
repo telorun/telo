@@ -196,7 +196,12 @@
     },
     "then": {
       "properties": {
-        "throws": false
+        "throws": {
+          "properties": {
+            "inherit": false,
+            "passthrough": false
+          }
+        }
       }
     },
     "additionalProperties": false

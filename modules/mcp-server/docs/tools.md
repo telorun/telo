@@ -51,6 +51,13 @@ Each entry exposes three runtime scopes:
 | `result:`  | `result` (handler output), `request.{name, arguments}`                |
 | `catches:` | `error.{code, message, data}`, `request.{name, arguments}`            |
 
+Inside a `catches:` entry, `error.data` is the `data` the codes the entry matches declare
+(those its `when:` names, or every code the handler throws for an entry without one), so a
+misspelled field is a `CEL_UNKNOWN_FIELD` error. A `when:` comparing `error.code` with code
+literals proves which codes the entry renders. The catch contexts of `Mcp.Tools`,
+`Mcp.Resources` and `Mcp.Prompts` mark `error.code` and `error.data` with
+`x-telo-caught-member`, which is what both readings follow.
+
 `request.session` is per-connection metadata: for `Mcp.HttpEndpoint` it's the
 session ID minted on `initialize`; for `Mcp.StdioServer` it's a synthetic UUID
 minted at process start (stdio has no transport-level session).

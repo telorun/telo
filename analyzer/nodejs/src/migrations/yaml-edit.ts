@@ -148,6 +148,12 @@ export function planTextEdits(
         edits.push(edit);
         break;
       }
+      case "add-key": {
+        const edit = addKeyEdit(doc, text, docPath, effect.key, effect.value);
+        if (!edit) return undefined;
+        edits.push(edit);
+        break;
+      }
       case "remove-entry":
         // Handled above.
         break;
@@ -196,6 +202,138 @@ function insertItemEdit(
     return { start: at, end: at, newText: line };
   }
   return { start: lineStart, end: lineStart, newText: line };
+}
+
+/** YAML 1.2 core-schema words a plain scalar would be read as instead of text. */
+const NON_TEXT_PLAIN = /^(?:true|false|null|~|[-+]?(?:\.inf|\.nan|\d[\d._]*(?:\.\d*)?(?:e[-+]?\d+)?|0x[\da-f]+|0o[0-7]+))$/i;
+
+/** A scalar inside freshly rendered data: plain when it is a bare word that
+ *  reads back as the same string, double-quoted (JSON's escapes are a subset of
+ *  YAML's) otherwise — safe in both block and flow context. */
+function freshScalar(value: unknown): string | undefined {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return String(value);
+  if (typeof value === "number") return Number.isFinite(value) ? String(value) : undefined;
+  if (typeof value !== "string") return undefined;
+  return /^[A-Za-z_$][\w$.\/-]*$/.test(value) && !NON_TEXT_PLAIN.test(value)
+    ? value
+    : JSON.stringify(value);
+}
+
+function isMapping(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** `value` as flow YAML: `{ a: 1, b: [x, y] }`. */
+function flowValue(value: unknown): string | undefined {
+  if (Array.isArray(value)) {
+    const items = value.map(flowValue);
+    return items.some((i) => i === undefined) ? undefined : `[${items.join(", ")}]`;
+  }
+  if (isMapping(value)) {
+    const entries: string[] = [];
+    for (const [k, v] of Object.entries(value)) {
+      const key = freshScalar(k);
+      const rendered = flowValue(v);
+      if (key === undefined || rendered === undefined) return undefined;
+      entries.push(`${key}: ${rendered}`);
+    }
+    return entries.length === 0 ? "{}" : `{ ${entries.join(", ")} }`;
+  }
+  return freshScalar(value);
+}
+
+/** The lines of a block mapping entry `key: value` at column `indent`; a
+ *  sequence is written as block items, an empty collection in flow. */
+function blockEntry(key: string, value: unknown, indent: number): string[] | undefined {
+  const pad = " ".repeat(indent);
+  const renderedKey = freshScalar(key);
+  if (renderedKey === undefined) return undefined;
+  const empty = Array.isArray(value) ? value.length === 0 : isMapping(value) && Object.keys(value).length === 0;
+  if (empty || (!Array.isArray(value) && !isMapping(value))) {
+    const rendered = flowValue(value);
+    return rendered === undefined ? undefined : [`${pad}${renderedKey}: ${rendered}`];
+  }
+  const lines = [`${pad}${renderedKey}:`];
+  if (isMapping(value)) {
+    for (const [k, v] of Object.entries(value)) {
+      const child = blockEntry(k, v, indent + 2);
+      if (!child) return undefined;
+      lines.push(...child);
+    }
+    return lines;
+  }
+  for (const item of value as unknown[]) {
+    if (isMapping(item) && Object.keys(item).length > 0) {
+      const entries: string[] = [];
+      for (const [k, v] of Object.entries(item)) {
+        const child = blockEntry(k, v, indent + 4);
+        if (!child) return undefined;
+        entries.push(...child);
+      }
+      // The first entry moves onto the dash, at the column its siblings keep.
+      entries[0] = `${pad}  - ${entries[0]!.slice(indent + 4)}`;
+      lines.push(...entries);
+    } else {
+      const rendered = flowValue(item);
+      if (rendered === undefined) return undefined;
+      lines.push(`${pad}  - ${rendered}`);
+    }
+  }
+  return lines;
+}
+
+/** A new `key: value` entry in the mapping at `path`: before a flow mapping's
+ *  closing brace, or as lines of its own after a block mapping's last entry,
+ *  at that entry's column. A structured value is rendered fresh, in the style
+ *  of the mapping it joins. */
+function addKeyEdit(
+  doc: Document,
+  text: string,
+  path: MigrationPath,
+  key: string,
+  value: unknown,
+): TextEdit | undefined {
+  const map = nodeAt(doc, path);
+  if (!isMap(map)) return undefined;
+  const range = rangeOf(map);
+  if (!range) return undefined;
+  const structured = typeof value === "object" && value !== null;
+  const renderedKey = renderScalar("", key);
+  if (renderedKey === undefined) return undefined;
+  if (map.flow) {
+    const renderedValue = structured ? flowValue(value) : renderScalar("", value);
+    if (renderedValue === undefined) return undefined;
+    const entry = `${renderedKey}: ${renderedValue}`;
+    const close = text.lastIndexOf("}", range[1]);
+    if (close < range[0]) return undefined;
+    const inside = text.slice(range[0] + 1, close);
+    if (inside.trim() === "") return { start: range[0] + 1, end: close, newText: ` ${entry} ` };
+    const trailing = inside.length - inside.trimEnd().length;
+    const at = close - trailing;
+    return { start: at, end: at, newText: `, ${entry}` };
+  }
+  const last = map.items[map.items.length - 1];
+  const first = map.items[0];
+  if (!isPair(last) || !isPair(first) || !isScalar(first.key)) return undefined;
+  const firstKey = rangeOf(first.key);
+  const lastEnd = rangeOf(last.value as Node)?.[1] ?? rangeOf(last.key as Node)?.[1];
+  if (!firstKey || lastEnd === undefined) return undefined;
+  const { indent } = lineGeometry(text, firstKey[0]);
+  // Only an entry that ends a line has a line to follow: a block scalar's span
+  // already holds the line break, anything else is followed by one.
+  const lineEnd = text[lastEnd - 1] === "\n" ? lastEnd : text.indexOf("\n", lastEnd);
+  const at = lineEnd < 0 ? text.length : text[lastEnd - 1] === "\n" ? lastEnd : lineEnd + 1;
+  const prefix = lineEnd < 0 ? "\n" : "";
+  let lines: string[] | undefined;
+  if (structured) {
+    lines = blockEntry(key, value, indent);
+  } else {
+    const renderedValue = renderScalar("", value);
+    lines = renderedValue === undefined ? undefined : [`${" ".repeat(indent)}${renderedKey}: ${renderedValue}`];
+  }
+  if (!lines) return undefined;
+  return { start: at, end: at, newText: `${prefix}${lines.join("\n")}\n` };
 }
 
 function removeEntryEdit(

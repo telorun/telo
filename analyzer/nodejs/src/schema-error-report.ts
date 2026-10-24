@@ -49,6 +49,9 @@ export interface SchemaIssue {
   message: string;
   /** Dotted path to the field (e.g. "config.handler"). Empty string means root. */
   path: string;
+  /** The same place as a JSON Pointer (RFC 6901), lossless where the dotted
+   *  path is not: a key holding `.` or `[`. */
+  pointer?: string;
   /** The AJV keyword that produced it, so a consumer can key on WHAT failed
    *  rather than on how the sentence reads. Prose is the renderer's to change;
    *  a caller matching on it breaks silently when it does, and mis-fires on any
@@ -597,6 +600,15 @@ export function ajvErrorToPath(err: AjvErrorLike): string {
   return result;
 }
 
+/** {@link ajvErrorToPath}'s place as a JSON Pointer: the instance path, and for
+ *  `required` the missing property beneath it. */
+function ajvErrorToPointer(err: AjvErrorLike): string {
+  const instancePath = err.instancePath ?? "";
+  const missing = err.keyword === "required" ? err.params?.missingProperty : undefined;
+  if (typeof missing !== "string") return instancePath;
+  return `${instancePath}/${missing.replace(/~/g, "~0").replace(/\//g, "~1")}`;
+}
+
 /* ---------------------------------------------------------- telo formats */
 
 /** The value at an AJV `instancePath` under `root`, or undefined. */
@@ -704,6 +716,7 @@ export function schemaIssues(
     const issue: SchemaIssue = {
       message: formatSingleError(err),
       path: ajvErrorToPath(err),
+      pointer: ajvErrorToPointer(err),
       ...(err.keyword ? { keyword: err.keyword } : {}),
       ...(typeof missing === "string" ? { missingProperty: missing } : {}),
       ...(typeof valueType === "string" && valueType !== "" ? { valueType } : {}),

@@ -194,7 +194,12 @@ describe("a deeply nested recursive union", () => {
       // `keyword` is part of the issue now: a consumer keys the inherited-required
       // hint on WHAT failed rather than on how the sentence reads.
       expect(issues).toEqual([
-        { path, message: `/${"stack/0/".repeat(depth)}text must be string`, keyword: "type" },
+        {
+          path,
+          pointer: `/${"stack/0/".repeat(depth)}text`,
+          message: `/${"stack/0/".repeat(depth)}text must be string`,
+          keyword: "type",
+        },
       ]);
     }
   });
@@ -219,6 +224,7 @@ describe("a Telo format", () => {
       {
         message: '/selector must be a css-selector: Expected attribute name at offset 3 of "div["',
         path: "selector",
+        pointer: "/selector",
         keyword: "format",
       },
     ]);
@@ -235,7 +241,7 @@ describe("an enum refusal over a large vocabulary", () => {
     const data = { name: "ouse" };
     expect(validate(data)).toBe(false);
     const message = "/name must be one of 42 allowed values; did you mean 'house' or 'mouse'?";
-    expect(schemaIssues(validate.errors, data)).toEqual([{ message, path: "name", keyword: "enum" }]);
+    expect(schemaIssues(validate.errors, data)).toEqual([{ message, path: "name", pointer: "/name", keyword: "enum" }]);
     expect(formatAjvErrors(validate.errors, data)).toBe(message);
   });
 });

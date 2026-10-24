@@ -1,6 +1,6 @@
 /**
  * The step grammar and its execution: `invoke` / `value` / `if` / `while` /
- * `switch` / `try` / `throw`, the `steps.<name>.result` accumulator, and the
+ * `switch` / `try` / `throw` / `rethrow`, the `steps.<name>.result` accumulator, and the
  * nested-scope walk that resolves an inline `invoke:` into a named resource.
  *
  * WHY THE SDK OWNS THIS. The leaf ({@link executeInvokeStep}) has always lived
@@ -28,7 +28,10 @@ import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.j
 import { isSuspension } from "./durable-suspension.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
+import { formatDisplayMessage } from "./display-message.js";
 import { literalStepValue } from "./literal-step-value.js";
+import { RuntimeError } from "./types.js";
+import { isTextRecord, type TextRecord } from "./text-record.js";
 import { predicateResult } from "./step-predicate.js";
 import type { KindRef, ScopeContext } from "./ref.js";
 
@@ -82,9 +85,19 @@ export interface ThrowStep {
   name: string;
   throw: {
     code: string;
+    /** The developer's message. */
     message?: string;
+    /** A text record by the time it is executed — the kernel settles a literal
+     *  `Text` into one at creation — or null / absent for none. */
+    displayMessage?: TextRecord | null;
     data?: unknown;
   };
+}
+
+/** Re-raises the failure the in-scope `error` names, unchanged. */
+export interface RethrowStep {
+  name: string;
+  rethrow: Record<string, never>;
 }
 
 export interface ValueStep {
@@ -99,6 +112,7 @@ export type Step =
   | SwitchStep
   | TryStep
   | ThrowStep
+  | RethrowStep
   | ValueStep;
 
 /** Code assigned to any caught failure that is not a structured `InvokeError`.
@@ -114,6 +128,20 @@ export interface SequenceError {
   /** Null when the failure carries none — never `undefined`, which is no CEL value. */
   data: unknown;
   step: string;
+  /** The text a person is shown for the failure; null when it carries none. */
+  displayMessage: TextRecord | null;
+}
+
+/** The failure each `catch:` branch's `error` was built from, keyed by that
+ *  `error` object — what `rethrow:` re-raises and a `throw` records as its
+ *  cause. Only the engine's own `catch:` registers one, so `error` in a
+ *  `finally:` or a composer's `catches:` names none. */
+const caughtFailures = new WeakMap<object, unknown>();
+
+function caughtFailureOf(extraCtx: Record<string, unknown>): { failure: unknown } | undefined {
+  const error = extraCtx.error;
+  if (!error || typeof error !== "object" || !caughtFailures.has(error)) return undefined;
+  return { failure: caughtFailures.get(error) };
 }
 
 function isInvokeStep(step: Step): step is InvokeStep {
@@ -133,6 +161,9 @@ function isTryStep(step: Step): step is TryStep {
 }
 function isThrowStep(step: Step): step is ThrowStep {
   return "throw" in step;
+}
+function isRethrowStep(step: Step): step is RethrowStep {
+  return "rethrow" in step;
 }
 function isValueStep(step: Step): step is ValueStep {
   return "value" in step;
@@ -160,7 +191,7 @@ export interface StepBodyOwner {
 }
 
 /** Runs a step list against an `extraCtx` CEL scope, owning the full grammar —
- *  `invoke` / `value` / `if` / `while` / `switch` / `try` / `throw`. A composing
+ *  `invoke` / `value` / `if` / `while` / `switch` / `try` / `throw` / `rethrow`. A composing
  *  kind injects its own scope variables (`item`, `index`, `iteration`,
  *  `previous`, …) through `extraCtx`; the engine knows none of them. */
 export class StepEngine {
@@ -315,6 +346,7 @@ export class StepEngine {
     else if (isTryStep(step))
       await this.executeTryStep(step, steps, scope, extraCtx, invokeCtx, here);
     else if (isThrowStep(step)) this.executeThrowStep(step, steps, extraCtx);
+    else if (isRethrowStep(step)) this.executeRethrowStep(step, extraCtx);
     else if (isValueStep(step)) await this.executeValueStep(step, steps, extraCtx, invokeCtx, here);
     else throw new Error(`Step "${(step as Step).name}" has no recognized type key`);
   }
@@ -473,6 +505,7 @@ export class StepEngine {
     const expanded = this.ctx.expandValue(step.throw, cel) as {
       code: unknown;
       message?: unknown;
+      displayMessage?: unknown;
       data?: unknown;
     };
     const code = expanded?.code;
@@ -486,8 +519,40 @@ export class StepEngine {
         { step: step.name, code },
       );
     }
-    const message = typeof expanded.message === "string" ? expanded.message : code;
-    throw new InvokeError(code, message, expanded.data);
+    const displayMessage = expanded.displayMessage ?? undefined;
+    if (displayMessage !== undefined && !isTextRecord(displayMessage)) {
+      // The kernel settles a literal `Text` into its record at creation and
+      // refuses any other computed value; one reaching here bypassed both.
+      throw new RuntimeError(
+        "ERR_TEXT_ARGUMENT_COMPUTED",
+        `throw.displayMessage of step "${step.name}" must be a literal text or the display message of a caught ` +
+          `error (\`!cel "error.displayMessage"\`); it holds a value of another kind, so it can be neither ` +
+          `checked nor translated.`,
+      );
+    }
+    const message =
+      typeof expanded.message === "string"
+        ? expanded.message
+        : displayMessage
+          ? formatDisplayMessage(displayMessage, expanded.data)
+          : code;
+    const caught = caughtFailureOf(extraCtx);
+    throw new InvokeError(code, message, expanded.data, {
+      ...(displayMessage ? { displayMessage } : {}),
+      ...(caught ? { cause: caught.failure } : {}),
+    });
+  }
+
+  private executeRethrowStep(step: RethrowStep, extraCtx: Record<string, unknown>): never {
+    const caught = caughtFailureOf(extraCtx);
+    if (!caught) {
+      throw new RuntimeError(
+        "ERR_RETHROW_WITHOUT_CAUGHT_ERROR",
+        `Step "${step.name}" is a rethrow with no caught failure to re-raise: rethrow is legal only inside a ` +
+          `catch: branch, never in finally: or outside a try.`,
+      );
+    }
+    throw caught.failure;
   }
 
   private async executeTryStep(
@@ -530,6 +595,7 @@ export class StepEngine {
     if (tryFailed) {
       if (step.catch) {
         const seqErr = toSequenceError(tryError, step.name);
+        caughtFailures.set(seqErr, tryError);
         try {
           await this.executeSteps(
             step.catch,
@@ -624,6 +690,7 @@ function pascalCase(s: string): string {
     .join("");
 }
 
+
 /** Normalize any caught failure to the `error` shape a `catch:` branch reads.
  *  Shared with the composers' whole-operation `catches:`, so one caught failure
  *  has one shape wherever it is read. */
@@ -639,10 +706,16 @@ export function toSequenceError(err: unknown, stepName: string): SequenceError {
     // requires it present and allows null. The replaced engine tolerated `undefined` by
     // rendering it as null, so this restores the shape every `catch:` branch was written
     // against, and `error.data == null` stays the way to ask whether there is any.
-    return { message: err.message || code, code, data: err.data ?? null, step: stepName };
+    return {
+      message: err.message || code,
+      code,
+      data: err.data ?? null,
+      step: stepName,
+      displayMessage: err.displayMessage ?? null,
+    };
   }
   const message = (err instanceof Error ? err.message : String(err)) || "Unknown error";
-  return { message, code: PLAIN_ERROR_CODE, data: null, step: stepName };
+  return { message, code: PLAIN_ERROR_CODE, data: null, step: stepName, displayMessage: null };
 }
 
 /**

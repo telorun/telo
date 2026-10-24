@@ -1,0 +1,75 @@
+# A kind declaring the display message of its code. Its body throws the code
+# three ways, chosen by `mode`: with no display message of its own (`declared`),
+# with one of its own (`own`), and with data the declaration does not admit (`bad`).
+kind: Telo.Library
+metadata:
+  name: DisplayMessageLookup
+  version: 1.0.0
+lang: en
+imports:
+  Run: ../../..
+exports:
+  kinds: [Lookup]
+---
+kind: Telo.Definition
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+schema:
+  type: object
+  additionalProperties: false
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id, mode]
+    properties:
+      id: { type: string }
+      mode: { type: string, enum: [declared, own, bad] }
+    additionalProperties: false
+throws:
+  codes:
+    ITEM_MISSING:
+      description: No item has the id.
+      displayMessage: "Item {$id} does not exist."
+      data:
+        type: object
+        required: [id]
+        properties:
+          id: { type: string }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: body }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [id, mode]
+        properties:
+          id: { type: string }
+          mode: { type: string }
+    steps:
+      - name: choose
+        if: !cel "inputs.mode == 'declared'"
+        then:
+          - name: declared
+            throw:
+              code: ITEM_MISSING
+              data: { id: !cel "inputs.id" }
+        elseif:
+          - if: !cel "inputs.mode == 'own'"
+            then:
+              - name: own
+                throw:
+                  code: ITEM_MISSING
+                  displayMessage: "Nothing is stored under {$id}."
+                  data: { id: !cel "inputs.id" }
+        else:
+          - name: bad
+            throw:
+              code: ITEM_MISSING
+              data: { other: !cel "inputs.id" }
+invoke: !ref body
+inputs:
+  id: !cel "inputs.id"
+  mode: !cel "inputs.mode"

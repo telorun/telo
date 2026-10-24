@@ -103,9 +103,9 @@ steps:
     inputs:
       actual:
         status: !cel "steps.sendOutOfRange.result.status"
-        where: !cel "steps.sendOutOfRange.result.body.details.map(d, d.location + ':' + d.path)"
+        issues: !cel "steps.sendOutOfRange.result.body.data.issues"
       expected:
         status: 400
-        where: ["body:at"]
+        issues: [{ pointer: /body/at, keyword: format, params: { format: Telo.Timestamp } }]
     invoke:
       kind: Assert.Equals

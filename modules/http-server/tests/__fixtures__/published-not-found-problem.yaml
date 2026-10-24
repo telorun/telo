@@ -1,0 +1,30 @@
+# http-server 0.39.1 binds no `problem` in `notFoundHandler.catches`; the
+# migration gives that list only what the published runtime binds.
+kind: Telo.Application
+metadata: { name: PublishedNotFoundProblem }
+imports:
+  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
+  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+---
+kind: Http.Api
+metadata: { name: api }
+routes: []
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 18931 }
+mounts:
+  - path: /v1
+    mount: !ref api
+notFoundHandler:
+  invoke:
+    kind: Run.Sequence
+    steps:
+      - name: missing
+        throw: { code: NOPE }
+  catches:
+    - when: !cel "problem.code == 'NOPE'"
+      status: 404
+      content:
+        application/json:
+          body: { code: !cel "error.code" }

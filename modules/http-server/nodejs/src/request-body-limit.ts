@@ -1,4 +1,3 @@
-import { errorEnvelope } from "@telorun/http-dispatch";
 import { ERR_INVOKE_CANCELLED, InvokeError, type InvokeContext } from "@telorun/sdk";
 import type { IncomingMessage } from "node:http";
 
@@ -29,17 +28,13 @@ export function isRequestBodyOverLimit(error: unknown): boolean {
   );
 }
 
-/** The refusal as it is reported on the request span and rendered in the 413. */
+/** The refusal as it is reported on the request span and rendered as the 413's problem. */
 export function requestBodyTooLarge(maxBodyBytes: number, contentLength?: number): InvokeError {
   return new InvokeError(
     ERR_REQUEST_BODY_TOO_LARGE,
     `Request body exceeds maxBodyBytes (${maxBodyBytes}).`,
     { maxBodyBytes, ...(contentLength === undefined ? {} : { contentLength }) },
   );
-}
-
-export function requestBodyTooLargeEnvelope(refusal: InvokeError) {
-  return errorEnvelope({ code: refusal.code, message: refusal.message, data: refusal.data });
 }
 
 /** The cancellation a streamed body fails with once the server has refused it. */

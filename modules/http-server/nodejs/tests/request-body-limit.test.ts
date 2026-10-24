@@ -138,6 +138,10 @@ async function startServer() {
     moduleContext: { expandWith },
     validateSchema: () => {},
     readPlainEncoded: (value: unknown) => value,
+    declaredDisplayMessage: (code: string) =>
+      code === "ERR_REQUEST_BODY_TOO_LARGE"
+        ? { text: "Over {$maxBodyBytes} bytes.", context: null, lang: "en", computed: false }
+        : undefined,
     createCancellationSource: () => createCancellationSource(),
     rootContext: (opts?: { cancellation?: CancellationSource }) => opts!.cancellation!.context,
     openSpan: async (base: InvokeContext) => {
@@ -362,11 +366,12 @@ async function settledOnce(settled: Settled[]): Promise<Settled> {
 }
 
 const tooLarge = (maxBodyBytes: number, contentLength?: number) => ({
-  error: {
-    code: "ERR_REQUEST_BODY_TOO_LARGE",
-    message: `Request body exceeds maxBodyBytes (${maxBodyBytes}).`,
-    data: { maxBodyBytes, ...(contentLength === undefined ? {} : { contentLength }) },
-  },
+  type: "about:blank",
+  title: "Content Too Large",
+  status: 413,
+  detail: `Over ${maxBodyBytes.toLocaleString("en")} bytes.`,
+  code: "ERR_REQUEST_BODY_TOO_LARGE",
+  data: { maxBodyBytes, ...(contentLength === undefined ? {} : { contentLength }) },
 });
 
 describe("Http.Server request body limit", () => {
@@ -380,7 +385,7 @@ describe("Http.Server request body limit", () => {
     });
     expect(answer.status).toBe(413);
     expect(answer.headers.connection).toBe("close");
-    expect(answer.headers["content-type"]).toBe("application/json; charset=utf-8");
+    expect(answer.headers["content-type"]).toBe("application/problem+json; charset=utf-8");
     expect(JSON.parse(answer.text)).toEqual(tooLarge(MIB));
     expect(server.sockets).toHaveLength(1);
     expect(server.sockets[0]!.bytesRead).toBeLessThanOrEqual(2 * MIB);
@@ -483,7 +488,7 @@ describe("Http.Server request body limit", () => {
     expect(server.dispatched).toEqual([]);
     expect(answer.status).toBe(413);
     expect(answer.headers.connection).toBe("close");
-    expect(answer.headers["content-type"]).toBe("application/json; charset=utf-8");
+    expect(answer.headers["content-type"]).toBe("application/problem+json; charset=utf-8");
     expect(JSON.parse(answer.text)).toEqual(tooLarge(1024));
     expect(await settledOnce(server.settled)).toEqual({
       outcome: "rejected",

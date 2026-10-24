@@ -1404,6 +1404,7 @@ dependencies = [
  "telo-analyzer",
  "telo-templating",
  "telorun-abi",
+ "telorun-message-format",
  "telorun-sdk-core",
  "tempfile",
  "thiserror 1.0.69",

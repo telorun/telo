@@ -4,11 +4,12 @@ import {
   CatchEntry,
   dispatchCatches,
   dispatchReturns,
-  errorEnvelope,
   hostnameClaim,
   hostnameMatcher,
   hostnameMatcherOfOrigin,
   isIpLiteral,
+  PROBLEM_MEDIA_TYPE,
+  problemDetails,
   ReturnEntry,
   type HostnameMatcher,
   type RequestScope,
@@ -56,17 +57,13 @@ import {
   RequestBodyOverLimit,
   requestBodyRefused,
   requestBodyTooLarge,
-  requestBodyTooLargeEnvelope,
 } from "./request-body-limit.js";
 import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import { HostRoutes, publishHostRoutes } from "./host-routes.js";
 import { HostClass, hostClasses, NO_CLASS, type MountHostEntry } from "./host-precedence.js";
 import { publishRequestHost, requestHostReader, type RequestHostReader } from "./request-host.js";
-import {
-  convertFastifyValidationError,
-  requestValidation,
-} from "./request-validation-envelope.js";
+import { fastifyValidationIssues, requestValidation } from "./request-validation-problem.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
  *  live instance into a mount's `mount` slot (x-telo-ref `Telo.Mount`) — cross-module refs
@@ -340,8 +337,8 @@ class HttpServer implements ResourceInstance {
       );
       this.reportDecidingError(request, refusal);
       reply.code(421);
-      reply.header("Content-Type", "application/json; charset=utf-8");
-      return reply.send(errorEnvelope({ code: refusal.code, message: refusal.message, data: refusal.data }));
+      reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+      return reply.send(this.refusalProblem(421, refusal));
     });
   }
 
@@ -548,6 +545,34 @@ class HttpServer implements ResourceInstance {
     });
   }
 
+  /** A refusal this server answers itself, outside any dispatch, as its problem:
+   *  its display message is the one this kind declares for its code. */
+  private refusalProblem(status: number, refusal: InvokeError) {
+    return problemDetails(status, {
+      code: refusal.code,
+      data: refusal.data,
+      displayMessage: refusal.displayMessage ?? this.ctx.declaredDisplayMessage(refusal.code, refusal.data),
+    });
+  }
+
+  /**
+   * A failure carrying no code — a crash, or the framework's own refusal of a
+   * malformed request (an unparseable body, an unsupported media type) — as the
+   * bare problem of its status: the framework's 4xx when it set one, else 500.
+   * Its message goes to the log as the framework's default handler logs it, and
+   * never onto the wire.
+   */
+  private answerUncoded(error: unknown, reply: FastifyReply) {
+    const declared = (error as { statusCode?: unknown } | null)?.statusCode;
+    const status = typeof declared === "number" && declared >= 400 && declared < 600 ? declared : 500;
+    const message = error instanceof Error ? error.message : String(error);
+    if (status >= 500) reply.log.error({ err: error }, message);
+    else reply.log.info({ err: error }, message);
+    reply.code(status);
+    reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+    return reply.send(problemDetails(status));
+  }
+
   /** The error that decided a response, reported to its request's span. An error
    *  raised before the span opened (the span hook's own) has no span to report to. */
   private reportDecidingError(request: FastifyRequest, error: unknown): void {
@@ -708,12 +733,12 @@ class HttpServer implements ResourceInstance {
       raw.destroy();
       return;
     }
-    const body = JSON.stringify(requestBodyTooLargeEnvelope(refusal));
+    const body = JSON.stringify(this.refusalProblem(413, refusal));
     for (const [name, value] of Object.entries(reply.getHeaders())) {
       if (value !== undefined) raw.setHeader(name, value);
     }
     raw.statusCode = 413;
-    raw.setHeader("content-type", "application/json; charset=utf-8");
+    raw.setHeader("content-type", `${PROBLEM_MEDIA_TYPE}; charset=utf-8`);
     raw.setHeader("content-length", Buffer.byteLength(body));
     raw.setHeader("connection", "close");
     raw.end(body);
@@ -728,9 +753,9 @@ class HttpServer implements ResourceInstance {
     );
     this.intakeOf(request).refusal = refusal;
     reply.code(413);
-    reply.header("Content-Type", "application/json; charset=utf-8");
+    reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
     reply.header("Connection", "close");
-    return reply.send(requestBodyTooLargeEnvelope(refusal));
+    return reply.send(this.refusalProblem(413, refusal));
   }
 
   /**
@@ -836,7 +861,7 @@ class HttpServer implements ResourceInstance {
       await this.app.register(cors, corsOptions);
     }
 
-    // The outermost rung of the catch ladder, and the last-resort envelope.
+    // The outermost rung of the catch ladder, and the last-resort problem.
     //
     // A route renders what its own `catches:` claims, then its router's; what
     // neither claims is rethrown and arrives here. That is what makes a
@@ -845,24 +870,29 @@ class HttpServer implements ResourceInstance {
     // render — without widening the mount contract, which could only carry HTTP
     // outcome entries onto seams that have no use for them.
     //
-    // A non-InvokeError has no `error.code` for a `when:` to key on, so the
-    // validation mapping and Fastify's own default keep answering for those.
+    // A non-InvokeError has no `error.code` for a `when:` to key on, so it is
+    // answered as the bare problem of its status.
     this.app.setErrorHandler(async (error, request, reply) => {
       // The server's own answer, ahead of every `catches:` list.
       if (isRequestBodyOverLimit(error)) return this.answerBodyTooLarge(request, reply);
-      const mappedError = convertFastifyValidationError(error);
-      if (mappedError) {
-        this.reportDecidingError(
-          request,
-          new InvokeError(ERR_INPUT_INVALID, (error as Error).message),
-        );
+      const issues = fastifyValidationIssues(error);
+      if (issues) {
+        const refusal = new InvokeError(ERR_INPUT_INVALID, (error as Error).message, { issues });
+        this.reportDecidingError(request, refusal);
+        reply.log.info({ err: refusal }, refusal.message);
         reply.code(400);
-        return reply.send(mappedError);
+        reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+        return reply.send(this.refusalProblem(400, refusal));
       }
       this.reportDecidingError(request, error);
-      if (!isInvokeError(error)) throw error;
+      if (!isInvokeError(error)) return this.answerUncoded(error, reply);
 
-      const invokeError = { code: error.code, message: error.message, data: error.data };
+      const invokeError = {
+        code: error.code,
+        message: error.message,
+        data: error.data,
+        displayMessage: error.displayMessage,
+      };
       const normalizedHeaders: Record<string, any> = {};
       for (const [key, value] of Object.entries(request.headers)) {
         normalizedHeaders[key.toLowerCase()] = value;
@@ -887,13 +917,11 @@ class HttpServer implements ResourceInstance {
       );
       if (rendered) return;
 
-      // No rung claimed it. This envelope is byte-for-byte what http-dispatch
-      // used to render from inside `dispatchCatches`, which is what keeps the
-      // whole ladder a pure addition for a manifest that declares no scope-level
-      // list.
+      // No rung claimed it. The message stays off the wire, so the log keeps it.
+      reply.log.error({ err: error }, error.message);
       reply.code(500);
-      reply.header("Content-Type", "application/json");
-      return reply.send(errorEnvelope(invokeError));
+      reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+      return reply.send(problemDetails(500, invokeError));
     });
     if (this.resource.openapi) {
       // Each route is documented at its full `mount-prefix + path` (see
@@ -937,6 +965,16 @@ class HttpServer implements ResourceInstance {
         { "http.route": skipped.path || "/" },
         { eventName: "http.server.mount.excluded" },
       );
+    }
+    if (!this.resolvedNotFoundHandler) {
+      // No route matched and no handler is declared: the bare 404 problem. Set
+      // before the mounts register, so a mount's own not-found handler for its
+      // prefix (a static SPA fallback) still answers there.
+      this.app.setNotFoundHandler(async (_request, reply) => {
+        reply.code(404);
+        reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+        return reply.send(problemDetails(404));
+      });
     }
     // const resolveSchema = createSchemaResolver(this.ctx);
     for (let index = 0; index < mounts.length; index++) {
@@ -1027,7 +1065,7 @@ class HttpServer implements ResourceInstance {
           // mounted route's throw takes.
           const rendered = await dispatchCatches(
             handler.catches,
-            { code: err.code, message: err.message, data: err.data },
+            { code: err.code, message: err.message, data: err.data, displayMessage: err.displayMessage },
             requestContext,
             acceptHeader,
             this.ctx.moduleContext,
@@ -1067,7 +1105,7 @@ class HttpServer implements ResourceInstance {
    * before the body is parsed; the guard dispatches on the request's context, so
    * it nests under the request span and a client disconnect cancels it. A throw
    * no rung of `guard.catches` claims is rethrown to the server's error handler,
-   * whose `catches:` and 500 envelope follow — so a guard that fails never lets
+   * whose `catches:` and 500 problem follow — so a guard that fails never lets
    * the request through.
    */
   private guardHook(guard: ResolvedGuard) {
@@ -1097,7 +1135,7 @@ class HttpServer implements ResourceInstance {
         trace.reject(err);
         const rendered = await dispatchCatches(
           guard.catches,
-          { code: err.code, message: err.message, data: err.data },
+          { code: err.code, message: err.message, data: err.data, displayMessage: err.displayMessage },
           requestContext,
           request.headers.accept?.toString(),
           this.ctx.moduleContext,

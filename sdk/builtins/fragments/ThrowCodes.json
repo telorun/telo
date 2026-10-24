@@ -13,6 +13,11 @@
       "description": {
         "type": "string"
       },
+      "displayMessage": {
+        "description": "The text a person is shown for this failure, written in the module's `lang:`. Its placeholders may name only the required string or number properties of `data`.",
+        "$ref": "telo://manifest#/$defs/Text",
+        "x-telo-text-values-from": "0/data"
+      },
       "data": {
         "type": "object",
         "additionalProperties": true

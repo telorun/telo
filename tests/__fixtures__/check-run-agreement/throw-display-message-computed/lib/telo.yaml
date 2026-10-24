@@ -1,0 +1,19 @@
+# A throw step whose display message an expression computes: a text built by
+# CEL can be neither checked nor translated, so only a literal text or a caught
+# error's display message is admitted there.
+kind: Telo.Library
+metadata:
+  name: ThrowDisplayMessageComputed
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [refuse]
+---
+kind: Run.Sequence
+metadata:
+  name: refuse
+steps:
+  - name: fail
+    throw:
+      code: ITEM_MISSING
+      displayMessage: !cel "'Item ' + '42' + ' is missing'"

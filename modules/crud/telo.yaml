@@ -22,7 +22,11 @@ requires:
   # written, without its `extends:` parents, and its kernel could not hand a
   # body entry a shape the model references (verified by execution against
   # 0.111.0; not re-run against 0.112.0).
-  telo: ">=0.113.0"
+  # 0.123.0: the reader's `ERR_CRUD_QUERY_INVALID` declares a `displayMessage`,
+  # which 0.122.0 refuses as SCHEMA_VIOLATION, the API's `catches:` entry reads
+  # `problem`, and the reader's controller imports `valueIssue` from the SDK
+  # (verified by execution against 0.122.0).
+  telo: ">=0.123.0"
 imports:
   Http: ../http-server
   Sql: ../sql
@@ -362,18 +366,21 @@ resources:
   - kind: Http.Api
     metadata:
       name: api
-    # A query the reader refuses is the request-validation envelope, whichever
-    # read route it came through.
+    # A query the reader refuses is a 400 problem, whichever read route it came
+    # through, its issues pointing into the request's query.
     catches:
-      - when: !cel "error.code == 'ERR_CRUD_QUERY_INVALID'"
+      - when: !cel "problem.code == 'ERR_CRUD_QUERY_INVALID'"
         status: 400
         content:
-          application/json:
+          application/problem+json:
             body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details: !cel "error.data.details.map(d, {'location': 'query', 'path': d.path, 'message': d.message})"
+              type: !cel "problem.type"
+              title: !cel "problem.title"
+              status: !cel "problem.status"
+              detail: !cel "problem.detail"
+              code: !cel "problem.code"
+              data:
+                issues: !cel "problem.data == null ? [] : problem.data.issues.map(i, {'pointer': '/query' + i.pointer, 'keyword': i.keyword, 'params': i.params})"
     routes:
       # List one page. Every query key but the three typed ones is a filter:
       # `<property>` for equality, `<property>.<operator>` otherwise, which the
@@ -581,8 +588,25 @@ throws:
         whose property and operator are not a declared pair, a sort by a
         property that is not declared, a value that is not of the property's
         type, a limit outside 1–100, more than one sort property, or a cursor
-        that is malformed or was issued for another sort. Carries `details`,
-        one `{ path, message }` per refused parameter.
+        that is malformed or was issued for another sort. Carries `issues`,
+        one `{ pointer, keyword, params }` per refused parameter, its pointer
+        naming the parameter (`/sort`, `/title.contains`).
+      displayMessage: "The list request is not valid."
+      data:
+        type: object
+        additionalProperties: false
+        required: [issues]
+        properties:
+          issues:
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [pointer, keyword, params]
+              properties:
+                pointer: { type: string, description: "A JSON Pointer naming the refused parameter." }
+                keyword: { type: string, description: "The issue keyword: a JSON Schema keyword, or `invalid`." }
+                params: { type: object, description: "The facts the keyword is worded from." }
 inputType:
   kind: Telo.JsonSchema
   schema:

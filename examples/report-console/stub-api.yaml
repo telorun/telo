@@ -363,17 +363,17 @@ routes:
           if: !cel "size(steps.sheet.result) == 0"
           then:
             - name: unknown
-              throw: { code: SHEET_UNKNOWN, message: !interpolate "There is no timesheet '${{ inputs.spreadsheetId }}'." }
+              throw: { code: SHEET_UNKNOWN, displayMessage: "There is no timesheet '{$id}'.", data: { id: !cel "inputs.spreadsheetId" } }
         - name: open
           if: !cel "has(steps.sheet.result[0].closed) && steps.sheet.result[0].closed"
           then:
             - name: closed
-              throw: { code: SHEET_CLOSED, message: !interpolate "The timesheet '${{ steps.sheet.result[0].name }}' is closed for reporting." }
+              throw: { code: SHEET_CLOSED, displayMessage: "The timesheet '{$name}' is closed for reporting.", data: { name: !cel "steps.sheet.result[0].name" } }
         - name: ordered
           if: !cel "inputs.period.from > inputs.period.to"
           then:
             - name: reversed
-              throw: { code: PERIOD_REVERSED, message: must not start after it ends }
+              throw: { code: PERIOD_REVERSED, displayMessage: "The period must not start after it ends." }
         - name: report
           invoke:
             kind: Run.Value
@@ -427,24 +427,15 @@ routes:
       - when: !cel "error.code == 'SHEET_UNKNOWN'"
         status: 404
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
       - when: !cel "error.code == 'SHEET_CLOSED'"
         status: 409
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
-      # The request-validation envelope, so the page marks the period field.
+          application/problem+json: {}
       - when: !cel "error.code == 'PERIOD_REVERSED'"
         status: 400
         content:
-          application/json:
-            body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details:
-                - { location: body, path: period, message: !cel "error.message" }
+          application/problem+json: {}
 
   - request:
       method: POST
@@ -496,7 +487,7 @@ routes:
           if: !cel "size(steps.folder.result) == 0"
           then:
             - name: unknown
-              throw: { code: FOLDER_UNKNOWN, message: !interpolate "There is no Drive folder '${{ inputs.folder }}'." }
+              throw: { code: FOLDER_UNKNOWN, displayMessage: "There is no Drive folder '{$folder}'.", data: { folder: !cel "inputs.folder" } }
       outputs:
         link: !cel "steps.folder.result[0].url + '/' + inputs.from + '_' + inputs.to + '/' + inputs.pdf.split('/')[size(inputs.pdf.split('/')) - 1]"
         target: !cel "steps.folder.result[0].name + ' / ' + inputs.from + ' – ' + inputs.to"
@@ -509,8 +500,7 @@ routes:
       - when: !cel "error.code == 'FOLDER_UNKNOWN'"
         status: 404
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
 
   - request:
       method: POST

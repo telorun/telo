@@ -108,10 +108,13 @@ is written in, so a form and a condition cannot disagree about one. Every
 other keyword — a `pattern` outside `re2-pattern` included — stays legal and is
 left to the API. A field's findings are shown as values are entered, once the
 field has been touched, and every field's on a submission.
-A 400's `details[]` are shown on the fields: a detail whose `path` begins with
-a shown field's property — `period.from` reaches the field entering `period` —
-marks that field with its `message` until it changes again, and every other
-detail is shown under the form as `path` and `message` together.
+A 400's `data.issues` are shown on the fields: an issue whose `pointer`'s first
+segment after `/body` is a shown field's property — `/body/period/from`
+reaches the field entering `period` — marks that field until it changes again,
+worded by its `keyword` and `params` as the browser's own validation words that
+keyword ([`Ui.Words`](texts.md#the-renderers-own-words)), so a refusal the API
+finds reads like one the browser finds. Every other issue is shown under the
+form as its path and that word; a 400 with no issues shows its `detail`.
 
 ## Refused
 

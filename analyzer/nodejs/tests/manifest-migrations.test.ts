@@ -1240,3 +1240,236 @@ describe("reporting scope", () => {
     expect((raw.manifests[0] as any).schema).toEqual({ "x-old-flag": true });
   });
 });
+
+describe("caught-member-marks", () => {
+  const kind = (members: string[], { outcome = "catches", binding = "error" } = {}) =>
+    [
+      "kind: Telo.Definition",
+      "metadata:",
+      "  name: Api",
+      "capability: Telo.Mount",
+      "schema:",
+      "  type: object",
+      "  properties:",
+      "    catches:",
+      `      x-telo-outcome-list: ${outcome}`,
+      "      x-telo-context:",
+      "        type: object",
+      "        properties:",
+      `          ${binding}:`,
+      "            type: object",
+      "            properties:",
+      ...members.map((m) => `              ${m}`),
+    ].join("\n") + "\n";
+  const membersOf = (text: string, binding = "error") =>
+    (parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate: true }).manifests[0] as any).schema.properties
+      .catches["x-telo-context"].properties[binding].properties;
+
+  it("marks the code and data of a catch list's error binding, reported at each member", () => {
+    const text = kind(["code: { type: string }", "message: { type: string }", "data: { type: object }"]);
+    const file = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate: true });
+    const members = (file.manifests[0] as any).schema.properties.catches["x-telo-context"].properties.error.properties;
+    expect(members.code).toEqual({ type: "string", "x-telo-caught-member": "code" });
+    expect(members.data).toEqual({ type: "object", "x-telo-caught-member": "data" });
+    expect(members.message).toEqual({ type: "string" });
+    expect(file.migrations.diagnostics.map((d) => [d.code, (d.data as any).path])).toEqual([
+      ["DEPRECATED_IMPLICIT_CAUGHT_MEMBER", "schema.properties.catches.x-telo-context.properties.error.properties.code"],
+      ["DEPRECATED_IMPLICIT_CAUGHT_MEMBER", "schema.properties.catches.x-telo-context.properties.error.properties.data"],
+    ]);
+  });
+
+  it("reaches no member outside a catch list's error binding, and none already marked", () => {
+    expect(membersOf(kind(["code: { type: string }"], { outcome: "returns" })).code).toEqual({ type: "string" });
+    expect(membersOf(kind(["code: { type: string }"], { binding: "problem" }), "problem").code).toEqual({
+      type: "string",
+    });
+    const marked = kind(["code: { type: string, x-telo-caught-member: code }"]);
+    expect(
+      parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", marked, { migrate: true }).migrations.rewrites,
+    ).toHaveLength(0);
+  });
+
+  it("writes the mark into a flow mapping and a block mapping, and is idempotent", () => {
+    const text = kind(["code: { type: string }", "data:", "                type: object"]);
+    const migrated = migrateFileText({
+      source: "/ws/telo.yaml",
+      text,
+      documents: parseAllDocuments(text, { customTags: defaultCustomTags() }),
+      manifests: parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text).manifests,
+    });
+    expect(migrated!.unwritable).toHaveLength(0);
+    expect(migrated!.text).toBe(
+      kind([
+        "code: { type: string, x-telo-caught-member: code }",
+        "data:",
+        "                type: object",
+        "                x-telo-caught-member: data",
+      ]),
+    );
+    const again = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", migrated!.text, { migrate: true });
+    expect(again.migrations.rewrites).toHaveLength(0);
+  });
+
+  const server = (catches: string[]) =>
+    [
+      "kind: Telo.Definition",
+      "metadata:",
+      "  name: Server",
+      "capability: Telo.Service",
+      "schema:",
+      '  type: "object"',
+      "  properties:",
+      "    notFoundHandler:",
+      "      type: object",
+      "      properties:",
+      "        catches:",
+      ...catches.map((line) => `          ${line}`),
+    ].join("\n") + "\n";
+  const notFoundCatches = (text: string, migrate: boolean) =>
+    (parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate }).manifests as any[]).find(
+      (m) => m?.metadata?.name === "Server",
+    ).schema.properties.notFoundHandler.properties.catches;
+
+  it("gives a notFoundHandler catch list with no context the one http-server 0.39.1 binds, once", () => {
+    const published = server(["x-telo-outcome-list: catches", "x-telo-catches-for: invoke"]);
+    const migrated = migrateFileText({
+      source: "/ws/telo.yaml",
+      text: published,
+      documents: parseAllDocuments(published, { customTags: defaultCustomTags() }),
+      manifests: parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", published).manifests,
+    });
+    expect(migrated!.unwritable).toHaveLength(0);
+    for (const migratedTree of [notFoundCatches(published, true), notFoundCatches(migrated!.text, false)]) {
+      const context = migratedTree["x-telo-context"];
+      expect(Object.keys(context.properties)).toEqual(["request", "error"]);
+      expect(Object.keys(context.properties.request.properties)).toEqual([
+        "path",
+        "host",
+        "method",
+        "ip",
+        "query",
+        "headers",
+        "params",
+      ]);
+      expect(context.properties.error.properties).toEqual({
+        code: { type: "string", "x-telo-caught-member": "code" },
+        message: { type: "string" },
+        data: { type: "object", additionalProperties: true, "x-telo-caught-member": "data" },
+      });
+    }
+    expect(parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", migrated!.text, { migrate: true }).migrations.rewrites).toHaveLength(0);
+    expect(
+      parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", server(["x-telo-outcome-list: catches", "x-telo-context: { type: object }"]), {
+        migrate: true,
+      }).migrations.rewrites,
+    ).toHaveLength(0);
+  });
+});
+
+describe("add-key and the ancestor selector", () => {
+  const entry = (patch: unknown, match: Record<string, unknown> = {}) =>
+    parseMigrationEntry("test.json", {
+      id: "test-add",
+      code: "TEST_ADD",
+      severity: "warning",
+      reason: "r",
+      rules: [{ match: { key: "out", ...TEST_SCOPE, ...match }, patch: [patch] }],
+    });
+
+  it("refuses an occupied key, leaving the mapping as written", () => {
+    const file = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", app(["schema:", "  out: { flag: 1 }"].join("\n")), {
+      migrate: true,
+      migrations: [entry({ op: "add-key", key: "flag", value: 2 })],
+    });
+    expect((file.manifests[0] as any).schema.out).toEqual({ flag: 1 });
+    expect(file.migrations.rewrites).toHaveLength(0);
+  });
+
+  it("refuses at entry-read an ancestor path that does not end at the matched key, and a value that is no mapping of data", () => {
+    expect(() =>
+      entry({ op: "add-key", key: "k", value: 1 }, { ancestor: { path: ["a", "b"], key: "x", value: 1 } }),
+    ).toThrow(/must end at the matched key 'out'/);
+    expect(() => entry({ op: "add-key", key: "k", value: [1] })).toThrow(/must be a scalar or a mapping/);
+    expect(() => entry({ op: "set-value", value: { a: 1 } })).toThrow(/must be a scalar/);
+  });
+
+  const structured = {
+    type: "object",
+    properties: {
+      ref: { $ref: "telo://manifest#/$defs/X" },
+      either: { anyOf: [{ type: "string", enum: ["null", "a: b"] }, { type: "null" }] },
+      empty: {},
+      none: [],
+    },
+  };
+
+  it("writes a mapping under an absent key, into the tree and a block mapping, idempotently", () => {
+    const text = app(["schema:", "  out:", "    keep: 1"].join("\n"));
+    const migrations = [entry({ op: "add-key", key: "added", value: structured })];
+    const tree = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text, { migrate: true, migrations });
+    expect((tree.manifests[0] as any).schema.out).toEqual({ keep: 1, added: structured });
+    expect(tree.migrations.diagnostics.map((d) => d.message)).toEqual([
+      expect.stringContaining("`out` gains `added`."),
+    ]);
+
+    const migrated = migrateFileText({
+      source: "/ws/telo.yaml",
+      text,
+      documents: parseAllDocuments(text, { customTags: defaultCustomTags() }),
+      manifests: parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text).manifests,
+      entries: migrations,
+    });
+    expect(migrated!.unwritable).toHaveLength(0);
+    expect(migrated!.text).toBe(
+      app(
+        [
+          "schema:",
+          "  out:",
+          "    keep: 1",
+          "    added:",
+          "      type: object",
+          "      properties:",
+          "        ref:",
+          '          $ref: "telo://manifest#/$defs/X"',
+          "        either:",
+          "          anyOf:",
+          "            - type: string",
+          "              enum:",
+          '                - "null"',
+          '                - "a: b"',
+          '            - type: "null"',
+          "        empty: {}",
+          "        none: []",
+        ].join("\n"),
+      ),
+    );
+    const again = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", migrated!.text, { migrate: true, migrations });
+    expect(again.migrations.rewrites).toHaveLength(0);
+    expect((again.manifests[0] as any).schema.out.added).toEqual(structured);
+  });
+
+  it("writes a mapping into a flow mapping in flow style", () => {
+    const text = app(["schema:", "  out: { keep: 1 }"].join("\n"));
+    const migrations = [entry({ op: "add-key", key: "added", value: structured })];
+    const migrated = migrateFileText({
+      source: "/ws/telo.yaml",
+      text,
+      documents: parseAllDocuments(text, { customTags: defaultCustomTags() }),
+      manifests: parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text).manifests,
+      entries: migrations,
+    });
+    expect(migrated!.unwritable).toHaveLength(0);
+    expect(migrated!.text).toBe(
+      app(
+        [
+          "schema:",
+          '  out: { keep: 1, added: { type: object, properties: { ref: { $ref: "telo://manifest#/$defs/X" }, ' +
+            'either: { anyOf: [{ type: string, enum: ["null", "a: b"] }, { type: "null" }] }, empty: {}, none: [] } } }',
+        ].join("\n"),
+      ),
+    );
+    const again = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", migrated!.text, { migrate: true, migrations });
+    expect((again.manifests[0] as any).schema.out).toEqual({ keep: 1, added: structured });
+    expect(again.migrations.rewrites).toHaveLength(0);
+  });
+});

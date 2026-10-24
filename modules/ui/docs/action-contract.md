@@ -27,27 +27,35 @@ action whose answer nothing reads may answer with anything, or with nothing. A
 body that is read and is not a JSON object, or that `outputModel` refuses, is a
 failure with `code: ERR_UI_RESPONSE_INVALID`.
 
-**Any other answer** may carry a `{ code, message }` JSON body, which the
+**Any other answer** may carry a problem body (RFC 9457, `application/problem+json`
+— what an `Http.Api` answers every error with), whose `code` and `detail` the
 `failure` tree reads as `error.code` and `error.message` beside `error.status`.
-Without one, `code` is `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a
-403 and `ERR_UI_REQUEST_FAILED` otherwise, with a message saying so. With no
-answer at all `status` is absent and `code` is `ERR_UI_REQUEST_FAILED`.
+Without a `code`, `code` is `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN`
+for a 403 and `ERR_UI_REQUEST_FAILED` otherwise; without a `detail`, `message`
+is the renderer's own word for the status. With no answer at all `status` is
+absent and `code` is `ERR_UI_REQUEST_FAILED`.
 
-**A 400** is the request-validation envelope
-[a collection answers with](collection-contract.md#refusals--400):
+**A 400** is the validation problem
+[a collection answers with](collection-contract.md#refusals--400), its findings
+in `data.issues`:
 
 ```json
 {
-  "error": "ValidationError",
-  "message": "Request validation failed",
+  "type": "about:blank",
+  "title": "Bad Request",
   "status": 400,
-  "details": [ { "location": "body", "path": "month", "message": "must match pattern \"^[0-9]{4}-[0-9]{2}$\"" } ]
+  "detail": "The request is not valid.",
+  "code": "ERR_INPUT_INVALID",
+  "data": { "issues": [ { "pointer": "/body/month", "keyword": "pattern", "params": { "pattern": "^[0-9]{4}-[0-9]{2}$" } } ] }
 }
 ```
 
-A detail whose `path` is exactly a shown field's property marks that field with
-its `message`. Every other detail is shown under the form, and the `failure`
-tree reads the envelope's `message`.
+An issue whose `pointer` names a shown field's property as its first segment
+after `/body` marks that field, worded by the issue's `keyword` and `params`
+in the page's language — with the word the browser's own validation says for
+that keyword ([`Ui.Words`](texts.md#the-renderers-own-words)). Every other
+issue is shown under the form, as its path and that word, and the `failure`
+tree reads the problem's `code` and `detail`.
 
 ## One shape, named twice
 

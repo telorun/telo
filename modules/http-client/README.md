@@ -7,7 +7,7 @@ Outgoing HTTP calls for Telo. Language- and engine-neutral request/response cont
 - **Engine-neutral contract** — `fetch`, `reqwest`, or anything else; the same manifest serializes input and deserializes output the same way.
 - **Shared client defaults** — `Http.Client` defines base URL, headers, timeout, and redirect behaviour once; `Http.Request` overrides per call.
 - **Network vs. HTTP errors** — 4xx/5xx return a normal response object; only true network failures throw a structured `NetworkError`.
-- **JSON-aware** — `content-type: application/json` request bodies are serialized; JSON responses are parsed automatically.
+- **JSON-aware** — `content-type: application/json` request bodies are serialized; JSON responses (`application/json` and every `+json` type, `application/problem+json` included) are parsed automatically.
 - **Buffer or stream** — pick `mode: stream` to receive a readable stream without buffering the response body.
 - **Built-in retries** — `retries: N` retries on network errors only, leaving HTTP responses to manifest logic.
 - **Authentication on the client** — attach an `Http.Credential` and every request through the client is authenticated, with one automatic retry when the server rejects it.
@@ -152,7 +152,7 @@ The output of an `Http.Request` becomes available to the Telo engine (e.g. for m
 
 - **Header normalization:** the module MUST normalize all incoming response headers to lowercase keys.
 - **Body deserialization** is chosen per call by `responseType`:
-  - **`json`** (default): if the response `content-type` includes `application/json`, the module MUST attempt to parse the body as JSON. If the response is empty (0 bytes) but claims to be JSON, the module MUST return `null` rather than throw. For any other content type the `body` is a raw string.
+  - **`json`** (default): if the response media type (`content-type` without its parameters, compared case-insensitively) is `application/json` or carries the `+json` structured-syntax suffix (RFC 6839 — `application/problem+json`, `application/vnd.api+json`), the module MUST attempt to parse the body as JSON. If the response is empty (0 bytes) but claims to be JSON, the module MUST return `null` rather than throw. For any other content type the `body` is a raw string.
   - **`text`**: always a string — the honest name for the old fallback, so a caller that wants text says so rather than getting it by omission.
   - **`bytes`**: the body buffered as raw bytes. Required for any binary payload: reading one as text corrupts it.
   - **`stream`**: a byte stream, returned as `{ output }` without buffering.

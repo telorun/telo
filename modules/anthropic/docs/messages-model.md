@@ -193,7 +193,7 @@ catches:
         body:
           retryAfterSeconds: !cel "has(error.data.retryAfterSeconds) ? error.data.retryAfterSeconds : 0"
   - status: 502
-    content: { application/json: { body: { code: !cel "error.code" } } }
+    content: { application/problem+json: {} }
 ```
 
 The request this kind is handed is asked for its body as text, never as parsed JSON, so a `success:` / `retryOn:` rule on that request sees `body` undecoded.

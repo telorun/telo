@@ -146,8 +146,7 @@ steps:
           body: !cel "steps.run.result.body"
         refused:
           status: !cel "steps.refused.result.status"
-          error: !cel "steps.refused.result.body.error"
-          details: !cel "steps.refused.result.body.details.map(d, d.path)"
+          body: !cel "steps.refused.result.body"
         archive:
           status: !cel "steps.archive.result.status"
           body: !cel "steps.archive.result.body"
@@ -160,8 +159,15 @@ steps:
               - { name: 2026-09.csv, url: /files/2026-09.csv }
         refused:
           status: 400
-          error: ValidationError
-          details: [month]
+          body:
+            type: about:blank
+            title: Bad Request
+            status: 400
+            detail: The request is not valid.
+            code: ERR_INPUT_INVALID
+            data:
+              issues:
+                - { pointer: /body/month, keyword: pattern, params: { pattern: "^[0-9]{4}-[0-9]{2}$" } }
         archive:
           status: 200
           body: { archived: true }

@@ -382,6 +382,28 @@
     },
     {
       "message": "Dispatch.DetachSettle",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "task": "t2",
+        "outcome": "failed",
+        "error": {
+          "code": "ORDER_NOT_FOUND",
+          "message": "Order 42 does not exist.",
+          "data": {
+            "id": "42"
+          },
+          "displayMessage": {
+            "text": "Order {$id} does not exist.",
+            "context": null,
+            "lang": "en",
+            "computed": false
+          }
+        }
+      }
+    },
+    {
+      "message": "Dispatch.DetachSettle",
       "part": "response",
       "body": {}
     },
@@ -1170,6 +1192,34 @@
       "body": {}
     },
     {
+      "message": "Throws.DisplayMessage",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "code": "ERR_REQUEST_BODY_TOO_LARGE",
+        "data": {
+          "maxBodyBytes": 1048576
+        }
+      }
+    },
+    {
+      "message": "Throws.DisplayMessage",
+      "part": "response",
+      "body": {
+        "displayMessage": {
+          "text": "The request body is larger than the {$maxBodyBytes} bytes this server accepts.",
+          "context": null,
+          "lang": "en",
+          "computed": false
+        }
+      }
+    },
+    {
+      "message": "Throws.DisplayMessage",
+      "part": "response",
+      "body": {}
+    },
+    {
       "message": "Value.Decode",
       "part": "request",
       "body": {
@@ -1680,6 +1730,16 @@
         "pointer": "/access"
       },
       "pointer": "/observation"
+    },
+    {
+      "name": "a display message asked for with no code",
+      "message": "Throws.DisplayMessage",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "code": ""
+      },
+      "pointer": "/code"
     }
   ]
 }

@@ -76,6 +76,8 @@ out, and delete from it silently.
 | `valuePattern` / `valueNotPattern` | no | the value must be a string that fully matches / does not fully match this pattern, written in the RE2 subset (no lookaround, no backreference — refused when the entry is read) |
 | `withSibling` | no | a key that must be present in the same mapping |
 | `notUnder` | no | narrows within `under` — the data-bearing JSON Schema keywords |
+| `ancestor` | no | `{ path, key, value }`: the matched path ends in `path` (ending at the matched key), and the mapping holding `path`'s first key holds `key` with the scalar `value` |
+| `withoutKey` | no | the matched value must be a mapping that does not hold this key |
 
 Matching against the *known* legacy values (`valueOneOf`) rather than any value
 is what leaves an unrecognized one alone for the ordinary validator to report,
@@ -84,22 +86,35 @@ instead of silently rewriting it.
 ### `patch` — what the rule does
 
 The closed operation vocabulary — `rename-key`, `set-value`, `set-tag`,
-`insert-item`, `remove-entry` — read by
+`insert-item`, `add-key`, `remove-entry` — read by
 `analyzer/nodejs/src/migrations/entry-data.ts`. Every operation has a known YAML
 edit form, which is what lets `telo migrate` apply one to a file and what lets
 the driver derive whether a quick fix exists, straight off the verb.
 
-A written `value` must be a **scalar** (string, number, boolean, `null`). The
-file applier renders one by re-quoting it in the author's own style at the
-node's own span, which has no meaning for a mapping or a sequence — so a
-structured value is refused when the entry is READ, rather than accepted and
-then reported forever as "fix it by hand" the first time someone runs
-`telo migrate`. Writing a structured value is a vocabulary extension (a block
-renderer), not something an entry can reach for today.
+A value `set-value` or `insert-item` writes must be a **scalar** (string,
+number, boolean, `null`). The file applier renders one by re-quoting it in the
+author's own style at the node's own span, which has no meaning for a mapping or
+a sequence — so a structured value there is refused when the entry is READ,
+rather than accepted and then reported forever as "fix it by hand" the first
+time someone runs `telo migrate`.
 
 `set-tag` takes an optional `source`: `text` (the default — the scalar's text,
 unchanged) or `hole` (the expression of the lone `${{ }}` hole the text is),
 which is legal only on a `scalar: lone-hole` rule.
+
+`add-key` takes `key` and a `value` and writes them into the matched mapping,
+refusing a key the mapping already holds. Its `value` is a scalar or a
+**mapping of plain data** (mappings, sequences and scalars beneath it; a
+sequence or anything else at the top is refused when the entry is read): a new
+key owns its whole span, so nothing of the author's is re-quoted — the file
+applier renders the mapping fresh in the style of the mapping it joins, as
+lines at the entry's column under a block mapping (sequences as block items,
+empty collections as `{}` / `[]`) or inline before a flow mapping's closing
+brace, writing a string plain only when it is a bare word that reads back as
+that string and double-quoted otherwise. `caught-member-marks` is the user: it
+writes a whole `x-telo-context` into a published `notFoundHandler.catches`
+that has none — what http-server 0.39.1 binds there: `request`, and `error`
+with `code`, `message` and `data`.
 
 `reason` is the only prose an entry writes. The driver generates what changed
 and how to apply it identically for every entry.

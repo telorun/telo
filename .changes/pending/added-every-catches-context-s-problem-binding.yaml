@@ -1,0 +1,5 @@
+modules:
+  modules/http-server: Added
+body: Every catches context's problem binding declares title, detail and data nullable,
+  so a member read through one needs a guard, and holds them as null at run time where
+  the problem has none.

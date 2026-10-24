@@ -138,9 +138,9 @@ brand switch, `/api/brand`, is the root's alone.
 | Method | Path | Answers |
 | --- | --- | --- |
 | `GET` | `/api/projects` | the projects collection (`Crud.Resource`): paged, sorted, filtered by what the model declares, `code.in` included |
-| `GET` `POST` `PUT` `DELETE` | `/api/projects/{id}` | one project; a refused body is the 400 envelope |
+| `GET` `POST` `PUT` `DELETE` | `/api/projects/{id}` | one project; a refused body is the 400 validation problem |
 | `GET` | `/api/tasks` | the tasks collection (`Crud.Resource`): paged, sorted by title, status, priority, estimate or due date, and filtered by every operator — `contains`, equality, `gt` / `lt`, `gte` / `lte`, and `in` over status, label and assignee |
-| `GET` `POST` `PUT` `DELETE` | `/api/tasks/{id}` | one task; a refused body is the 400 envelope |
+| `GET` `POST` `PUT` `DELETE` | `/api/tasks/{id}` | one task; a refused body is the 400 validation problem |
 | `GET` | `/api/people` | the people collection (`Crud.Resource`): searched by `name.contains`, narrowed by `role` and `active`, chosen values labelled by `email.in` |
 | `GET` `POST` `PUT` `DELETE` | `/api/people/{id}` | one person |
 | `GET` | `/api/task-board` | every task with its assignee and project nested in it, paged under the collection contract with an offset cursor; no filter or sort |
@@ -179,9 +179,9 @@ Each test that runs the application gives it a database file of its own under
 | Test | Port | Asserts |
 | --- | --- | --- |
 | `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s placement with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
-| `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 envelope, a 401, the session and the brand switch; and under `/radix`, `/brand` and `/sidebar`, a reader's route, a collection listing, an action's route, the guard's 401 and no brand switch |
+| `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 validation problem, a 401, the session and the brand switch; and under `/radix`, `/brand` and `/sidebar`, a reader's route, a collection listing, an action's route, the guard's 401 and no brand switch |
 | `tests/tables-and-filters.yaml` | 8153 | the routes the tables and filter bars call: the tasks a page at a time by cursor, sorted both ways, every filter operator the bars send with `in` repeated, a refused sort and filter, a create / read / replace / delete round trip with refused bodies, and the task board's nested rows and cursor |
-| `tests/forms-and-actions.yaml` | 8154 | the routes the forms and actions call: both forms' writes with the server's refusals on a field, the option sources paged, narrowed by a field, searched and labelling by `in`, every action's success, 400 envelope and `{ code, message }` failures, the answer the days action refuses, and each row action's route |
+| `tests/forms-and-actions.yaml` | 8154 | the routes the forms and actions call: both forms' writes with the server's refusals, the option sources paged, narrowed by a field, searched and labelling by `in`, every action's success, 400 validation problem and other problems, the answer the days action refuses, and each row action's route |
 | `tests/brand-theme.yaml` | none — it starts no application | the `/brand` theme meets the renderer's contract (`UiReactConformance.CheckTheme`): every part styled, no reserved property set, every token given a value and read, every scene drawn with its controls |
 | `tests/components-crud-themes.yaml` | 8156 | the routes the last pages added: the handbook and mirror addresses, the route that never answers, and pausing a project — 401 without a session, 403 with no body for a member who is no manager, the pause, a 404, and a 409 in English and in Polish with `Content-Language` |
 
@@ -243,7 +243,7 @@ why it is not shown.
 | D47 | `Ui.Enablement` with `disabledText`, on an action and on row actions | `/conditions`, `/actions` |
 | E48–E50 | `Ui.View`, a view providing no node, the `Callout` composite kind, nodes carrying their assets | Overview, `/conditions`, `/components`, `/themes` |
 | F51–F55 | readers: params from `query`, `loading`, `failure`, `reloadOn` focus and unauthorized, a refresh by an action, 404 / 401 / refused answers, a sign-in gate, nesting | `/data`, `/actions` |
-| G56–G60 | the collection contract: declared query with every operator, paging, sorting, `in`, the 400 envelope, item routes; a `Crud.Model` at every `collection` slot | `/api/projects`, `/api/tasks`, `/api/people`, `/api/task-board` |
+| G56–G60 | the collection contract: declared query with every operator, paging, sorting, `in`, the 400 validation problem, item routes; a `Crud.Model` at every `collection` slot | `/api/projects`, `/api/tasks`, `/api/people`, `/api/task-board` |
 | G61 | labelling chosen values by `in` | `/forms` |
 | H62–H64, H66–H70 | tables: derived and written columns, headers, presentation by type, sorting, members behind references, `rowStyle` and cell style rules, `pageSize` and the pager, `source.filters` from `query` and fixed, `create` / `edit` / `delete` | Overview, `/tables`, `/filters`, `/crud` |
 | H65 | columns, a component as a `cell` | `/tables`, `/components` |
@@ -252,7 +252,7 @@ why it is not shown.
 | I73–I78, I81–I84 | every surface kind with every key, compact replacements, `afterSubmit`, `unsaved`, surface attributes | `/tables`, `/crud` |
 | I79 | surfaces named by `!ref` and written inline | `/tables`. A surface kind of the example's own is not shown: it is an extension, and none of the pages needs one; the refusals are out of scope |
 | I80 | addressed surfaces, opened cold from a link | `/tables`, `/crud`. A row with an empty key is not shown: every key here is a database id |
-| J85–J93, J95 | forms: derived fields and controls, hints and defaults, what is sent, live validation, 400 details on a field, fields and groups shown on a condition, groups, kept state, write-only properties | `/forms` |
+| J85–J93, J95 | forms: derived fields and controls, hints and defaults, what is sent, live validation, a 400 problem's issues on a field, fields and groups shown on a condition, groups, kept state, write-only properties | `/forms` |
 | J94 | form rules | out of scope |
 | K96–K102 | every field kind and control, option sources | `/forms`, `/actions` |
 | K103 | a field kind of your own | not shown: it is an extension, and the design gives it no page |

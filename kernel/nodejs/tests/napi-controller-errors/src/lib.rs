@@ -1,13 +1,15 @@
 //! A controller probing the SDK's napi bridge: its failures are the controller's
 //! OWN errors, for asserting how the Node kernel raises them — `create` fails
 //! when the resource sets `failCreate: true`, and `invoke` fails with
-//! `ERR_FIXTURE` when its input sets `fail: true`. An input setting
+//! `ERR_FIXTURE` when its input sets `fail: true` — carrying `data` and a display
+//! message as well when it also sets `displayMessage: true`. An input setting
 //! `numbers: true` returns integers on each side of the bounds a JS number holds
 //! exactly, for asserting which reach the kernel as numbers. Otherwise `invoke`
 //! returns the input unchanged.
 
 use telorun_sdk::{
-    controller, Controller, ControllerError, InvokeContext, ResourceContext, Result, Value,
+    controller, Controller, ControllerError, InvokeContext, MessageSource, ResourceContext,
+    Result, TextRecord, Value,
 };
 
 pub struct Probe;
@@ -28,10 +30,18 @@ impl Controller for Probe {
     fn invoke(&self, input: Value, ctx: &InvokeContext) -> Result<Value> {
         let _ = ctx;
         if input.get("fail") == Some(&Value::Bool(true)) {
-            return Err(ControllerError::new(
-                "ERR_FIXTURE",
-                "the probe was asked to fail",
-            ));
+            let error = ControllerError::new("ERR_FIXTURE", "the probe was asked to fail");
+            if input.get("displayMessage") == Some(&Value::Bool(true)) {
+                return Err(error
+                    .with_data(serde_json::json!({ "id": "42" }))
+                    .with_display_message(TextRecord {
+                        text: MessageSource::Pattern("Probe {$id} failed.".into()),
+                        context: None,
+                        lang: "en".into(),
+                        computed: false,
+                    }));
+            }
+            return Err(error);
         }
         if input.get("numbers") == Some(&Value::Bool(true)) {
             return Ok(serde_json::json!({

@@ -372,7 +372,7 @@ unsafe fn write_error(out: *mut TeloBuf, err: &ControllerError) {
     if out.is_null() {
         return;
     }
-    let payload = serde_json::json!({ "code": err.code, "message": err.message });
+    let payload = err.payload();
     let bytes = serde_json::to_vec(&payload).unwrap_or_else(|_| b"{}".to_vec());
     *out = TeloBuf::from_vec(bytes);
 }

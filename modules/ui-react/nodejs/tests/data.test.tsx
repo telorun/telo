@@ -79,7 +79,7 @@ describe("a reader", () => {
   it("never reads again for its own refused read, and draws its failure tree over the error", async () => {
     rendered = await render({
       path: "/",
-      answers: { "/api/account": () => json({ code: "SIGNED_OUT", message: "Your session has ended." }, 401) },
+      answers: { "/api/account": () => json({ type: "about:blank", title: "Unauthorized", status: 401, detail: "Your session has ended.", code: "SIGNED_OUT" }, 401) },
       pages: page(dataNode({ reloadOn: ["unauthorized", "focus"] })),
     });
     expect(reads(rendered)).toBe(1);

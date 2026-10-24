@@ -12,7 +12,7 @@ Every route in an `Http.Api` defines two outcome lists:
 - `returns:` — rendering rules for values the handler resolved with.
 - `catches:` — rendering rules for structured `InvokeError` throws from the handler.
 
-Plain `Error` / `RuntimeError` throws (operational failures) skip `catches:` entirely and are handed to Fastify's default 5xx renderer. This keeps domain failures distinct from infrastructure failures.
+Plain `Error` / `RuntimeError` throws (operational failures) skip `catches:` entirely and are answered with the bare problem of their status (see [Problem details](#problem-details)). This keeps domain failures distinct from infrastructure failures.
 
 ## Per-entry shape
 
@@ -88,24 +88,23 @@ returns:
 
 ```yaml
 catches:
+  # No body: the entry renders its default problem.
   - when: !cel "error.code == 'UNAUTHORIZED'"
     status: 401
     content:
-      application/json:
-        body:
-          error:
-            code: !cel "error.code"
-            message: !cel "error.message"
+      application/problem+json: {}
+  # A body of its own, reshaping the default problem.
   - status: 500 # catch-all for any declared code not matched above
     content:
       application/json:
         body:
-          error:
-            code: !cel "error.code"
-            message: !cel "error.message"
+          message: !cel "problem.detail"
+          code: !cel "problem.code"
 ```
 
 `catches:` are buffer-mode only — by the time a catch fires the response is committed pre-stream and there's no upstream iterable to feed an encoder.
+
+**An entry with no `body:` renders its default problem**, sent as `application/problem+json`. That key is the only one that may omit `body:` — every other key of a `catches:` entry's `content:` must write one, and `telo check` refuses a bodiless `text/plain` or `application/json` entry, since it would claim a media type its default problem does not have. An entry with no `content:` sends no body.
 
 **The key is any media type, and editors suggest the common ones.** The `content:` map declares its known keys as `propertyNames.examples` — `application/json`, `application/problem+json`, `text/plain`, `text/html`, `text/event-stream`, `application/octet-stream`, `application/xml`, `application/x-ndjson`, `text/csv` — so completion offers them without closing the set. Any other valid media type (a vendor type, a parameterised one) is accepted exactly as before; `examples` carries no validation.
 
@@ -119,8 +118,10 @@ When a `returns:` entry's `content:` map has multiple keys, the dispatcher picks
    - Wildcards (`text/*`, `*/*`) supported.
    - Highest q-value wins.
    - Tie-break: declaration order of keys in the `content:` map.
-3. No key matches → `406 Not Acceptable`, body lists available media types.
+3. No key matches → `406 Not Acceptable`, a problem with `code: ERR_NOT_ACCEPTABLE` and the available media types in `data.available`.
 4. No `Accept` header (or only `*/*`) → first key in declaration order.
+
+**An error is never refused for `Accept`.** A `catches:` entry negotiates the same way, but when none of its keys matches the `Accept` header it renders its FIRST key instead of a 406 — a client that asked for `application/json` still learns what went wrong.
 
 **Single-key maps still negotiate.** If the only declared key is `application/json` and the client sends `Accept: image/png`, the response is `406 Not Acceptable` (RFC 9110 §15.5.7). This is a deliberate behaviour change vs. the legacy single-`body` shape, which always sent the response regardless of `Accept`. Authors who want to ignore `Accept` entirely can declare `*/*` as a key — but typically you want the matrix response.
 
@@ -128,14 +129,14 @@ When a `returns:` entry's `content:` map has multiple keys, the dispatcher picks
 
 ## Rules
 
-- **CEL context.** `returns:` entries see `{ result, request }`. `catches:` entries see `{ error, request }`. Cross-channel references (`result.*` in `catches:`, `error.*` in `returns:`) are rejected by the analyzer.
+- **CEL context.** `returns:` entries see `{ result, request }`. `catches:` entries see `{ error, problem, request }` — `error` is `{ code, message, data, displayMessage }`, `displayMessage` the display message's record (`{ text, context, lang, computed }`, unformatted) or null, and `problem` is the default problem that entry would render, readable in its `when:` as well as its body. Cross-channel references (`result.*` in `catches:`, `error.*` in `returns:`) are rejected by the analyzer.
 - **Stream-mode `when:`.** `result.*` is unavailable in stream-mode `when:` — the handler result is an unconsumed `Stream<...>`; iterating it to evaluate the predicate would either fail or consume the stream before bytes flow to the response. Reference only `request.*`. Load-time validator rejects violations.
 - **`Content-Type` is forbidden in `headers:`.** The matched `content[mime]` map key is the only Content-Type source. Declaring it again in `headers:` is rejected at load time (case-insensitive).
 - **`body` and `encoder` are mutually exclusive.** A `content[mime]` value uses `body` (buffer mode) or `encoder` (stream mode), never both.
 - **Matching.** Both lists are scanned top-to-bottom. The first entry whose `when:` evaluates truthy wins. The first entry with no `when:` is the list's catch-all; entries following it are unreachable and rejected by the analyzer.
 - **`returns:` is required.** Every route must define at least one `returns:` entry. `catches:` is optional when the handler's declared throw union is empty, or when a scope list covers it.
 - **Streams on `returns:` only.** `mode: stream` is forbidden on `catches:` entries.
-- **Unmatched `InvokeError`.** When no `catches:` entry at any level matches and no catch-all is present, the server renders `500 application/json { error: { code, message, data } }`.
+- **Unmatched `InvokeError`.** When no `catches:` entry at any level matches and no catch-all is present, the server answers `500` with the error's problem.
 
 ## Scope lists: the router and the server
 
@@ -144,7 +145,7 @@ Error rendering is usually a property of a whole API rather than of one route, s
 with the route's:
 
 **A route's entries are tried first, then its router's, then the server's, and a throw no
-entry claims renders the built-in envelope.**
+entry claims is answered with its 500 problem.**
 
 ```yaml
 kind: Http.Server
@@ -155,9 +156,7 @@ listen:
 catches:
   - when: !cel "error.code == 'UNAUTHORIZED'"
     status: 401
-    content:
-      application/json:
-        body: { error: !cel "error.code" }
+    content: { application/problem+json: {} }
 mounts:
   - mount: !ref ordersApi
 ---
@@ -196,17 +195,26 @@ routes:
   `ip` only — there is no single route to type the rest from, so reaching for
   `request.params.id` there is a `CEL_UNKNOWN_FIELD` error rather than a run-time unknown
   variable.
+- **`error.data` and `problem.data` are typed by the entry.** Inside one entry both are the
+  `data` the codes that entry matches declare — the codes its `when:` names, or every code
+  the list can see for a catch-all or a `when:` that names none — intersected when there are
+  several. A misspelled field is a `CEL_UNKNOWN_FIELD` error, and an editor completes the
+  declared ones. A `when:` proves which codes it renders by comparing `error.code` or
+  `problem.code` with code literals (`==`, `in [...]`, joined by `||`); either spelling
+  covers the code. Every catch list of this module — a route's, a router's, the server's, a
+  guard's and `notFoundHandler`'s — declares these bindings, marked
+  `x-telo-caught-member: code` / `data` in its context, which is what both readings follow.
 - **The server's list reaches every mount**, including an `Mcp.HttpEndpoint` or a
   third-party one, because an unclaimed throw leaves the mount rather than being rendered
   inside it. It also covers `notFoundHandler` and every mount's `guard`, whose own entries
   are tried first.
 - **A mount's `guard.catches` is a rung of its own**, beside the mount rather than above
   its routes: a guard throw is rendered by `guard.catches`, then the server's list, then
-  the built-in envelope — a route's or router's entries never see it, because the route
+  the 500 problem — a route's or router's entries never see it, because the route
   has not run. Its entries see `request.headers` / `query` / `path` / `method` / `ip`. See
   [Mount guards](mount-guard.md).
-- **Non-`InvokeError` failures are untouched.** A catch entry keys on `error.code`; a plain
-  `Error` has none, so those still go to Fastify's default 5xx renderer.
+- **Non-`InvokeError` failures skip every list.** A catch entry keys on `error.code`; a plain
+  `Error` has none, so it is answered with the bare problem of its status.
 - **A body over `maxBodyBytes` is not catchable.** Its 413 (`ERR_REQUEST_BODY_TOO_LARGE`) is
   the server's own answer: no rung of the ladder sees it, a catch-all included, and an entry
   naming the code is `UNDECLARED_THROW_CODE`. See [Request bodies](request-bodies.md).
@@ -225,6 +233,99 @@ throw union; a scope list's is everything that resource drives — its routes' h
 for a server, those of every mount. So an entry naming a code nothing can throw is reported
 at that entry's own path, wherever it is written.
 
+
+## Problem details
+
+Every error response the server builds itself is an RFC 9457 problem, sent as
+`application/problem+json`. A `catches:` entry with its own `body:` renders what it writes
+instead.
+
+| Member | Content |
+|---|---|
+| `type` | Always `"about:blank"`: the `code` is the failure's identity. |
+| `title` | The registered reason phrase of the status (RFC 9110's for the codes it defines, `Not Found`, `Content Too Large`). Never localized; absent for an unregistered status. |
+| `status` | The status code. |
+| `detail` | The error's display message — the `displayMessage` its code declares (`throws.codes.<CODE>.displayMessage`), its `throw` step wrote, or the built-in one of an ambient code — formatted in the language it is written in with the error's `data` as its values. Present only when the error has one. |
+| `code` | The error's code. |
+| `data` | The error's `data`, unchanged. Absent when the error carries none. |
+
+The developer `message` is never part of a problem: it stays in the log record and the
+trace. Members appear in this order.
+
+**When the server answers with a problem:**
+
+- **A throw no rung claims** — `500`, all six members the error has.
+- **A `catches:` entry with no `body:`** — the entry's status, the error's problem.
+- **A body over `maxBodyBytes`** — `413`, code `ERR_REQUEST_BODY_TOO_LARGE`, `data:
+  { maxBodyBytes, contentLength? }` ([Request bodies](request-bodies.md)).
+- **A host no mount serves, under `unknownHosts: reject`** — `421`, code
+  `ERR_HOST_NOT_SERVED`, `data: { host }` ([Host routing](host-routing.md)).
+- **A `returns:` entry no representation of which `Accept` admits** — `406`, code
+  `ERR_NOT_ACCEPTABLE`, `data: { available }`, no `detail`.
+- **A request its route's `request.schema` refuses** — `400`, code `ERR_INPUT_INVALID`,
+  `detail` that code's built-in text, and the findings in `data.issues`, below.
+- **A failure with no code** — a crash, or the framework refusing a malformed request (an
+  unparseable body `400`, an unsupported media type `415`) — exactly `{ type, title,
+  status }`: `500`, or the framework's own 4xx.
+- **A request no route matches**, when the server declares no `notFoundHandler` — `404`,
+  exactly `{ type, title, status }`.
+
+`detail` is the text in its source language; a module with no `lang:` writes in `und`.
+
+**The validation findings.** `data.issues` holds one entry per finding, each exactly
+`{ pointer, keyword, params }`, and no prose:
+
+- `pointer` is a JSON Pointer into the request as CEL reads it: `/body/month`,
+  `/body/items/0/name`, `/query/sort`, `/params/id`, `/headers/x-api-key`. For a missing
+  (`required`) or undeclared (`additionalProperties`) property it names that property.
+- `keyword` and `params` come from one closed vocabulary — the JSON Schema keywords the
+  validators report, each with the names of its params: `type` (`type`), `required`
+  (`missingProperty`), `additionalProperties` (`additionalProperty`), `enum`
+  (`allowedValues`), `const` (`allowedValue`), `format` (`format`), `minimum` / `maximum` /
+  `exclusiveMinimum` / `exclusiveMaximum` (`comparison`, `limit`), `multipleOf`
+  (`multipleOf`), `minLength` / `maxLength` / `minItems` / `maxItems` / `minProperties` /
+  `maxProperties` (`limit`), `pattern` (`pattern`), `uniqueItems` (`i`, `j`),
+  `propertyNames` (`propertyName`). Anything else is `invalid`, with no params. A value of a
+  Telo value type that does not read (`Telo.Timestamp` text that is no instant) is
+  `format`, `params: { format: Telo.Timestamp }`.
+
+The vocabulary is data in `sdk/issue-keywords/`, read by the Node runtime only: the Rust
+kernel hosts no HTTP server, and the `Telo.Builtins` archive does not carry it.
+
+```json
+{
+  "type": "about:blank",
+  "title": "Bad Request",
+  "status": 400,
+  "detail": "The request is not valid.",
+  "code": "ERR_INPUT_INVALID",
+  "data": {
+    "issues": [{ "pointer": "/body/note", "keyword": "maxLength", "params": { "limit": 5 } }]
+  }
+}
+```
+
+**The `problem` binding.** Every catch entry's CEL — its `when:`, its headers and its body —
+reads `problem`: the default problem that entry renders, `status` its own status (an
+integer). `problem.data` is typed from the `data` schemas of the codes the entry matches,
+as `error.data` is, and `problem.code` proves coverage in a `when:` as `error.code` does. A
+custom body reshapes it without losing the text: `body: { message: !cel "problem.detail" }`.
+`title`, `detail` and `data` are `null` in the binding where the problem has none — the wire
+body omits them — and are declared nullable, so a member read through one needs a guard
+(`problem.data != null && problem.data.id`; `telo check` asks for it). A body writing
+`!cel "problem.detail"` for a code with no display message writes `null` there.
+
+```yaml
+catches:
+  - when: !cel "problem.code == 'ORDER_NOT_FOUND'"
+    status: 404
+    content: { application/problem+json: {} }
+```
+
+`GET /orders/42`, its handler throwing `{ code: ORDER_NOT_FOUND, displayMessage: "Order
+{$id} does not exist.", data: { id: "42" } }`, answers `404` with
+`{"type":"about:blank","title":"Not Found","status":404,"detail":"Order 42 does not
+exist.","code":"ORDER_NOT_FOUND","data":{"id":"42"}}`.
 
 ## Stream-mode pipeline
 

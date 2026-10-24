@@ -74,28 +74,45 @@ again from the first page, with no cursor.
 
 ## Refusals — 400
 
-A query the route does not accept is answered with the request-validation
-envelope, each detail naming the parameter that carried the fault:
+A query the route does not accept is answered with a problem
+(`application/problem+json`), one issue in `data.issues` per parameter that
+carried a fault, its `pointer` naming that parameter under `/query`:
 
 ```json
 {
-  "error": "ValidationError",
-  "message": "Request validation failed",
+  "type": "about:blank",
+  "title": "Bad Request",
   "status": 400,
-  "details": [ { "location": "query", "path": "nope", "message": "is not a filter this collection accepts" } ]
+  "detail": "The list request is not valid.",
+  "code": "ERR_CRUD_QUERY_INVALID",
+  "data": {
+    "issues": [ { "pointer": "/query/nope", "keyword": "additionalProperties", "params": { "additionalProperty": "nope" } } ]
+  }
 }
 ```
 
-| `path` | When |
-| --- | --- |
-| the parameter, e.g. `nope`, `text.like`, `text.eq` or `isDone.contains` | its property and operator are not a pair `query.filters` declares — `is not a filter this collection accepts`. Equality has no spelled operator, so `text.eq` is never one |
-| the parameter, e.g. `priority` | the value is not of the property's type, or a parameter other than `.in` was sent more than once |
-| `limit` | not an integer (`must be integer`), below 1 (`must be >= 1`) or above 100 (`must be <= 100`) |
-| `sort` | sent more than once (`must be string`), more than one property (`sort=text,dueOn`), or a property `query.sort` does not list (`is not a property this collection sorts by`) |
-| `cursor` | sent more than once (`must be string`), malformed, or issued for a different `sort` |
+Each issue is `{ pointer, keyword, params }` and carries no prose: whoever shows
+it words it from its keyword and params. A parameter name holding `/` or `~` is
+escaped in the pointer (`~1`, `~0`).
 
-The three typed parameters are judged first, by the route's request schema,
-and the first fault among them is the whole answer. A request wrong in both a
+| `pointer` | `keyword` (`params`) | When |
+| --- | --- | --- |
+| the parameter, e.g. `/query/nope`, `/query/text.like`, `/query/text.eq` or `/query/isDone.contains` | `additionalProperties` (`additionalProperty`: the parameter) | its property and operator are not a pair `query.filters` declares. Equality has no spelled operator, so `text.eq` is never one |
+| the parameter, e.g. `/query/priority` | `type` (`type`) | the value is not of the property's type |
+| the parameter | `maxItems` (`limit: 1`) | a parameter other than `.in` was sent more than once |
+| `/query/sort` | `maxItems` (`limit: 1`) | more than one property (`sort=text,dueOn`) |
+| `/query/sort` | `enum` (`allowedValues`: each listed property, ascending and `-` descending) | a property `query.sort` does not list; `invalid` when it lists none |
+| `/query/cursor` | `invalid` | malformed, or issued for a different `sort` |
+
+The lister reports these as `ERR_CRUD_QUERY_INVALID`, its pointers rooted at
+the parameter (`/nope`), and the route's `catches:` entry builds the 400 from
+the entry's `problem`, adding `/query` to each pointer.
+
+The three typed parameters are judged first, by the route's request schema —
+a fault among them is the server's own validation problem, `code:
+ERR_INPUT_INVALID`, its issues at `/query/limit` (`type`, `minimum`, `maximum`),
+`/query/sort` and `/query/cursor` (`type`, sent more than once) — and that
+answer is the whole answer. A request wrong in both a
 typed parameter and a filter (`?limit=0&nope=1`) is therefore told about the
 typed parameter alone; once that is right, every remaining fault — filters,
 the sort's property, the cursor's content — is reported together.

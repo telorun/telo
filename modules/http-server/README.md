@@ -6,8 +6,9 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 
 - **Framework-neutral** — the underlying engine (Fastify, Actix, …) is an implementation detail; the same manifest runs on any compliant adapter.
 - **OpenAPI-style paths** — `/users/{id}` syntax everywhere; the adapter translates to its native router.
-- **Schema-driven validation** — `request.schema` (`body`, `query`, `params`, `headers`) yields a standardized HTTP 400 with `details[]` on failure.
+- **Schema-driven validation** — `request.schema` (`body`, `query`, `params`, `headers`) yields a standard HTTP 400 whose findings point at the refused field.
 - **Typed returns and catches** — render successful values and structured `InvokeError`s into status + headers + per-MIME bodies via CEL.
+- **Standard error responses** — every error the server builds itself is an RFC 9457 problem (`application/problem+json`) carrying the error's code, data and its display message as `detail`; the developer message never reaches the client.
 - **OpenAPI operation metadata** — a route may declare `operationId`, `summary`, `description`, and `tags`; they are rendered into the generated OpenAPI document.
 - **Composable mounts** — attach `Telo.Mount` resources (HTTP APIs, MCP endpoints, custom mounts) under any path prefix.
 - **Routing by host** — a mount's `hostnames` names the application's public address needs, so one server answers a site, an admin address, tenant subdomains and customers' own domains, with no domain name written in the manifest; `unknownHosts: reject` refuses every other host.
@@ -143,7 +144,7 @@ When an incoming HTTP request is received, the underlying framework must normali
 - `request.body` is **untyped** in a route's `inputs:` until the route's `request.schema.body` declares it, and always untyped in `notFoundHandler.inputs`, which has no route to declare one. A body is whatever the client sent, so an undeclared one passes `telo check` into a handler argument of any type (`items: !cel "request.body"` into an array) and its members are read unchecked; what the handler then receives is held to its `inputType` at dispatch. Declaring `request.schema.body` types `request.body` and everything beneath it, so a misspelled field is `CEL_UNKNOWN_FIELD` and a body wired into an argument of another type is `CEL_TYPE_ERROR`. `request.query`, `request.headers` and `request.params` are maps whether or not a schema is declared.
 - A slot of `request.schema` declaring `type: integer` arrives in CEL as an `int`, whatever number form the client sent it in — `request.body.price + 1` is integer arithmetic.
 - **A part of a request is read as its encoding carries it.** A query, path-parameter or header value is text by transport, so it is read into the type its schema declares: `?limit=5` against `type: integer` arrives as the integer `5`, and text that is no integer is a 400. A body arrives parsed and already typed, so it is validated as the value it is and never converted: `"5"` at a property declared `integer`, or a `null` at one declared `string`, `integer`, `number` or `boolean`, is a 400 naming the property. A property that may be `null` says so in its schema (`type: [string, "null"]`). The same holds for a body a `contentTypeParsers` entry's `parser` produced: it is validated as the value the parser returned.
-- A slot of `request.schema` declaring a value type with a plain encoding (`x-telo-type: Telo.Timestamp`, `Telo.Duration`, `Telo.Bytes`) is validated — and documented in the OpenAPI document — as the text a client sends (`type: string, format: date-time` for a timestamp), and arrives in CEL as the value itself: `request.body.at + duration('1h')` is timestamp arithmetic. Text the type's encoding does not read is a 400 with the envelope below, one detail per refused field, its `path` naming the field inside the location (`at`, `items[0].at`).
+- A slot of `request.schema` declaring a value type with a plain encoding (`x-telo-type: Telo.Timestamp`, `Telo.Duration`, `Telo.Bytes`) is validated — and documented in the OpenAPI document — as the text a client sends (`type: string, format: date-time` for a timestamp), and arrives in CEL as the value itself: `request.body.at + duration('1h')` is timestamp arithmetic. Text the type's encoding does not read is the 400 problem below, one finding per refused field, its `pointer` naming the field inside the request (`/body/at`, `/body/items/0/at`), `keyword: format` and `params: { format: Telo.Timestamp }`.
 
 #### 2.2 Standardized Telo Response Object (output)
 
@@ -167,29 +168,26 @@ A JSON body's reader is not Telo, so a CEL value in it is written in its plain e
 
 ### 3. Validation and error handling
 
-When a request fails schema validation (defined in the `request.schema` of the manifest), the underlying engine (e.g. AJV in Fastify) will generate native errors. These internal errors must not leak to the client. All Telo HTTP modules MUST intercept framework-specific validation errors and return a standardized HTTP 400 Bad Request payload.
+When a request fails schema validation (defined in the `request.schema` of the manifest), the underlying engine (e.g. AJV in Fastify) will generate native errors. These internal errors must not leak to the client. All Telo HTTP modules MUST intercept framework-specific validation errors and answer `400 Bad Request` with the problem of `ERR_INPUT_INVALID` (normative in [Problem details](docs/returns-and-catches.md#problem-details)):
 
 ```json
 {
-  "error": "ValidationError",
-  "message": "Request validation failed",
+  "type": "about:blank",
+  "title": "Bad Request",
   "status": 400,
-  "details": [
-    {
-      "location": "body",
-      "path": "user.age",
-      "message": "must be integer"
-    }
-  ]
+  "detail": "The request is not valid.",
+  "code": "ERR_INPUT_INVALID",
+  "data": {
+    "issues": [{ "pointer": "/body/user/age", "keyword": "type", "params": { "type": "integer" } }]
+  }
 }
 ```
 
-- **A JSON body is not coerced; query, path and header values are.** `{"n": "5"}` or `{"n": null}` against `n: { type: integer }` is refused with `{ "location": "body", "path": "n", "message": "must be integer" }`, while `?n=5` is accepted and read as `5`.
-- **One detail per finding of the validator.** The validator stops at the first part of the request it refuses (path parameters, then the body, then the query, then the headers) and at the first finding in it.
-- **`location`** — the part of the request that was validated: `body` | `query` | `params` | `headers`.
-- **`path`** — the path of the refused value from that part's root: property names joined by `.` (`note`, `address.street`), and a list position written in brackets against the list that holds it, with no dot (`items[0].name`; `[0].name` when the part is itself a list). A query, path or header parameter is its own name (`limit`). A missing required property and a property the schema does not declare are each named themselves — the parent's path plus the name — and a finding about the part as a whole has the empty path.
-- **`message`** — the validator's own sentence, read after the path: `must be integer`, `must NOT have more than 5 characters`, `must match format "date"`, `must NOT have additional properties`. A missing required property reads `is a required property`.
-- **Module responsibility:** the module builds `details` from the validator's structured findings, never from the text of its error message.
+- **A JSON body is not coerced; query, path and header values are.** `{"n": "5"}` or `{"n": null}` against `n: { type: integer }` is refused with `{ "pointer": "/body/n", "keyword": "type", "params": { "type": "integer" } }`, while `?n=5` is accepted and read as `5`.
+- **One finding per finding of the validator.** The validator stops at the first part of the request it refuses (path parameters, then the body, then the query, then the headers) and at the first finding in it.
+- **`pointer`** — a JSON Pointer into the request as CEL reads it: the part (`/body`, `/query`, `/params`, `/headers`), then the refused value's place inside it (`/body/address/street`, `/body/items/0/name`, `/query/limit`). A missing required property and a property the schema does not declare are each named themselves.
+- **`keyword` / `params`** — what was violated, from the closed issue vocabulary (`type`, `required`, `maxLength`, `format`, …, each with its params; anything else `invalid`). A finding carries no prose: the reader words it.
+- **Module responsibility:** the module builds `data.issues` from the validator's structured findings, never from the text of its error message.
 
 ### 4. Manifest schema upgrades
 
@@ -311,8 +309,8 @@ The limit is the one in force for the matched route — the route's
   crosses the limit the implementation cancels the request's own invocation
   with reason `request-body-too-large`, fails the body stream with that
   cancellation without delivering the chunk, and answers at once.
-- **The answer is `413` with `Connection: close`** and the
-  `{error: {code, message, data}}` envelope: code `ERR_REQUEST_BODY_TOO_LARGE`,
+- **The answer is `413` with `Connection: close`** and a problem
+  (`application/problem+json`): code `ERR_REQUEST_BODY_TOO_LARGE`,
   `data: { maxBodyBytes, contentLength? }`. A response that already started is
   cut off by closing the connection instead.
 - **It is never routed through a `catches:` list**, and nothing the handler

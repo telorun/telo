@@ -516,6 +516,14 @@ targets:
   - !ref mapRegionUnknownField
   - !ref mapRegionUnknownFieldAtRuntime
   - !ref inlineContractRecursiveFragment
+  - !ref throwDisplayMessageComputed
+  - !ref throwDisplayMessageComputedAtRuntime
+  - !ref codeDisplayMessagePlaceholder
+  - !ref codeDisplayMessagePlaceholderAtRuntime
+  - !ref rethrowInFinally
+  - !ref rethrowInFinallyAtRuntime
+  - !ref rethrowOutsideCatch
+  - !ref rethrowOutsideCatchAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -5619,3 +5627,81 @@ source: ./__fixtures__/check-run-agreement/text-record-contract/telo.yaml
 expect:
   errors: []
   runs: true
+---
+# A throw step's display message computed by an expression: only a literal text
+# or a caught error's display message is admitted there, since a text CEL builds
+# can be neither checked nor translated. The consumer's analysis is entry-scoped,
+# so the step engine's refusal is what reaches it.
+kind: Assert.Manifest
+metadata:
+  name: throwDisplayMessageComputed
+source: ./__fixtures__/check-run-agreement/throw-display-message-computed/lib/telo.yaml
+expect:
+  errors:
+    - code: TEXT_ARGUMENT_COMPUTED
+      message: "the value at 'steps[0].throw.displayMessage' is computed"
+---
+kind: Assert.Manifest
+metadata:
+  name: throwDisplayMessageComputedAtRuntime
+source: ./__fixtures__/check-run-agreement/throw-display-message-computed/telo.yaml
+expect:
+  errors: []
+  runFails: "Run.Sequence/refuse: the value at 'steps[0].throw.displayMessage' is computed"
+---
+# A code's display message naming a `data` property the error may arrive
+# without: only a required string or number property is a value every such
+# error carries. The kernel judges it when the kind registers.
+kind: Assert.Manifest
+metadata:
+  name: codeDisplayMessagePlaceholder
+source: ./__fixtures__/check-run-agreement/code-display-message-placeholder/lib/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLACEHOLDER_UNBOUND
+      message: "no value is given for id, which the message reads"
+---
+kind: Assert.Manifest
+metadata:
+  name: codeDisplayMessagePlaceholderAtRuntime
+source: ./__fixtures__/check-run-agreement/code-display-message-placeholder/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_MESSAGE_PLACEHOLDER_UNBOUND] RuntimeError: Telo.Abstract/Lookup: the text at 'throws.codes.ITEM_MISSING.displayMessage' is refused: no value is given for id, which the message reads"
+---
+# A rethrow where no caught failure is in scope — in a finally: branch, or
+# outside every catch: — has nothing to re-raise. The consumer's analysis is
+# entry-scoped, so the step engine's refusal is what reaches it.
+kind: Assert.Manifest
+metadata:
+  name: rethrowInFinally
+source: ./__fixtures__/check-run-agreement/rethrow-in-finally/lib/telo.yaml
+expect:
+  errors:
+    - code: RETHROW_WITHOUT_CAUGHT_ERROR
+      message: "re-raises a caught failure where the failure may be absent"
+---
+kind: Assert.Manifest
+metadata:
+  name: rethrowInFinallyAtRuntime
+source: ./__fixtures__/check-run-agreement/rethrow-in-finally/telo.yaml
+expect:
+  errors: []
+  runFails: "Step \"again\" is a rethrow with no caught failure to re-raise"
+---
+kind: Assert.Manifest
+metadata:
+  name: rethrowOutsideCatch
+source: ./__fixtures__/check-run-agreement/rethrow-outside-catch/lib/telo.yaml
+expect:
+  errors:
+    - code: RETHROW_WITHOUT_CAUGHT_ERROR
+      message: "re-raises a caught failure outside every catch: branch"
+---
+kind: Assert.Manifest
+metadata:
+  name: rethrowOutsideCatchAtRuntime
+source: ./__fixtures__/check-run-agreement/rethrow-outside-catch/telo.yaml
+expect:
+  errors: []
+  runFails: "Step \"again\" is a rethrow with no caught failure to re-raise"

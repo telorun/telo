@@ -851,8 +851,12 @@ model never sees `context`, and `parameters` are unchanged by it.
 
 `catches:` is declared per SCOPE, not only per route: `Http.Api` and
 `Http.Server` each take a list of their own, and a route's entries are tried
-first, then its router's, then the server's, then a built-in
-`{error: {code, message, data}}` 500. So write the shared rendering ONCE on the
+first, then its router's, then the server's, then a built-in 500 problem
+(`application/problem+json`: `{ type, title, status, detail?, code, data? }`).
+An entry renders that default problem by omitting `body:`, which only the
+`application/problem+json` key may do — every other content key needs a
+`body:` (`content: { application/problem+json: {} }`, never
+`application/json: {}`). So write the shared rendering ONCE on the
 router — repeating an identical entry on every route is the mistake this
 exists to remove — and put an entry on a route only where that one route
 renders a code differently. Coverage is judged over all three lists, so a route
@@ -861,7 +865,14 @@ is per ENTRY: a route declaring one entry still falls through to its scopes for
 every other code; a route entry with NO `when:` is a deliberate full override
 of them. A router or server entry sees `error` plus `request.path` / `method` /
 `ip` only — `request.query` / `body` / `params` are typed from a single route's
-`request.schema` and exist only in that route's own list.
+`request.schema` and exist only in that route's own list. Inside one entry
+`error.data` and `problem.data` are typed from the `data` of the codes the
+entry matches (those its `when:` names), so read only declared fields;
+`problem.title`, `problem.detail` and `problem.data` are null where the problem
+has none, so guard a member read (`problem.data != null && …`); a
+`when:` proves coverage by comparing `error.code` or `problem.code` with code
+literals. A kind of your own that declares a catch list marks those members in
+its `x-telo-context` with `x-telo-caught-member: code` / `data`.
 
 No more than `maxBodyBytes` of a request body is ever buffered or handed to a
 handler, and a body is handed on only as far as something asks for it: when
@@ -873,8 +884,8 @@ closing is discarded. The limit is `Http.Server.maxBodyBytes`
 least 1 — nothing switches it off — and it covers streamed and multipart bodies
 as well as JSON, so a route that takes an upload over 1 MiB MUST set its own
 `maxBodyBytes`, beside `request:`. A larger body is answered 413 by the server
-itself, with `{error: {code: ERR_REQUEST_BODY_TOO_LARGE, message, data:
-{maxBodyBytes, contentLength?}}}`. That answer is NOT catchable: no `catches:`
+itself, as a problem with `code: ERR_REQUEST_BODY_TOO_LARGE` and `data:
+{maxBodyBytes, contentLength?}`. That answer is NOT catchable: no `catches:`
 list sees it, a catch-all included, and an entry naming the code is
 UNDECLARED_THROW_CODE — never write one. A streamed body that crosses the limit
 while the handler reads it cancels the handler; what the handler already wrote
@@ -899,7 +910,31 @@ you write an engine for an abstract, report each failure under the closest
 code the abstract lists instead of inventing one. A library holding a
 `resources:` input typed by an abstract is checked against that abstract's
 list; an abstract declaring none reads as throwing anything, so such a
-library's `catches:` needs a catch-all.
+library's `catches:` needs a catch-all. A literal `throws: { codes }` is legal on
+a kind of any capability (a server's own refusals), but only an invocable's or a
+runnable's feeds what a caller can catch.
+
+A failure carries two messages: `error.message`, the developer's (logs, traces,
+never shown to a person), and `error.displayMessage`, the text a person is shown
+(a nullable text record). Give a code its display message where it is declared:
+`throws.codes.ITEM_MISSING.displayMessage: "Item {$id} does not exist."`, whose
+placeholders may name only REQUIRED string / number properties of that code's
+`data` schema (else `MESSAGE_PLACEHOLDER_UNBOUND` /
+`MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`); the runtime attaches it to that code
+leaving the kind and refuses data its schema does not admit (`ERR_OUTPUT_INVALID`
+naming the code). A `throw` step is `{ code, message?, displayMessage?, data? }`:
+`message` is a developer string and may be computed; `displayMessage` is a
+LITERAL text whose placeholders name members of its `data` — `throw: { code:
+ITEM_MISSING, displayMessage: "Item {$id} does not exist.", data: { id: !cel
+"inputs.id" } }` — never a sentence built in CEL (`TEXT_ARGUMENT_COMPUTED`).
+Without `message` the developer message is the display message formatted with
+`data`, else the code. Put words meant for a person (a client's refusal) in
+`displayMessage`, never developer detail. Omit `displayMessage` when the kind
+declaring the code already gives it one. To re-raise what a `catch:` caught,
+write `rethrow: {}` — it keeps the code, both messages, data and cause; it is
+legal only inside a `catch:` (`RETHROW_WITHOUT_CAUGHT_ERROR` in `finally:` or
+outside). A new `throw` inside a `catch:` keeps the caught failure as its cause in
+the logs.
 
 Reading text out of an image is OCR: type a slot that should accept any engine
 against `Ocr.Recognizer` (`oci://ghcr.io/telorun/ocr`), and declare
@@ -1580,7 +1615,10 @@ A text a kind's consumer formats itself (a renderer in the browser) carries
 `x-telo-text-values: { limit: { type: integer } }` on its node — `{}` for none —
 and a text written there may read only those placeholders
 (`MESSAGE_PLACEHOLDER_UNBOUND`); on a non-text node, with a non-scalar value
-schema, or beside a values pairing it is `TEXT_VALUES_INVALID`. So a node text
+schema, or beside a values pairing it is `TEXT_VALUES_INVALID`. A text formatted
+with another field's data names that field's schema instead,
+`x-telo-text-values-from: "0/data"`, and may read only its required string /
+number properties. So a node text
 of `Ui` with a placeholder is written `{ text, values }`, never as a plain text.
 A field admitting a text OR another shape (`anyOf`) is judged by the branch the
 value is; a record a kind hands on is typed `telo://manifest#/$defs/TextRecord`
@@ -1866,14 +1904,10 @@ decoder's limits:
       catches:
         - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
           status: 400
-          content:
-            application/json:
-              body: { error: !cel "error.data.reason" }
+          content: { application/problem+json: {} }
         - when: !cel "error.code == 'ERR_MULTIPART_LIMIT_EXCEEDED'"
           status: 413
-          content:
-            application/json:
-              body: { error: !cel "error.data.limit" }
+          content: { application/problem+json: {} }
 
 ## A REST API over a table — the `crud` module
 
@@ -1902,10 +1936,11 @@ back: a column holding NULL is `null` where the property admits it
 (`type: [string, "null"]`, or no `type`), LEFT OUT where the property is
 optional — in step CEL over a fetched row test `has(row.dueOn)`, never
 `row.dueOn == null` — and the type's empty value (`""`, `0`, `false`, `[]`,
-`{}`) where it is required. A refused `POST` or `PUT` body is the
-request-validation envelope with `location: "body"`, `path` the property
-(`text`, `address.street`) and the validator's sentence as `message`
-(`is a required property`, `must NOT have more than 5 characters`).
+`{}`) where it is required. A refused `POST` or `PUT` body is the server's
+400 validation problem (`code: ERR_INPUT_INVALID`), each finding in
+`data.issues` as `{ pointer, keyword, params }` — `pointer` into the request
+(`/body/text`, `/body/address/street`), no prose (`required` with
+`{ missingProperty: text }`, `maxLength` with `{ limit: 5 }`).
 
 **The list route is a collection**, not a bare array:
 
@@ -1920,14 +1955,16 @@ request-validation envelope with `location: "body"`, `path` the property
 - It answers `{ rows, total, next }` — read rows as `result.body.rows`, never
   `result.body[0]`. `total` counts the filtered set; `next` is `null` on the
   last page, otherwise sent back as `cursor`.
-- A bad query is 400 with the request-validation envelope: `{ error:
-  "ValidationError", message: "Request validation failed", status: 400,
-  details: [{ location: "query", path: "<parameter>", message }] }` — for a
-  filter or sort the model does not declare, a value not of its type, a multi-property `sort`, or a cursor that is
+- A bad query is a 400 problem with `code: ERR_CRUD_QUERY_INVALID` and one
+  `data.issues` entry per refused parameter, `pointer` `/query/<parameter>` —
+  `additionalProperties` for a filter the model does not declare, `type` for a
+  value not of its type, `maxItems` for a multi-property `sort` or a repeated
+  filter, `enum` for an unlisted `sort`, `invalid` for a cursor that is
   malformed or from another `sort`. `limit`, `cursor` and `sort` are typed in
   the request schema and judged first: a `limit` that is no integer or outside
-  1–100, or a repeated `sort` / `cursor`, is the only detail of its response
-  (`must be integer`, `must be >= 1`, `must be <= 100`, `must be string`).
+  1–100, or a repeated `sort` / `cursor`, is the server's own
+  `ERR_INPUT_INVALID` problem with only that issue (`type`, `minimum`,
+  `maximum`).
 
 Values come back in the model's declared JSON types on every route: a
 `boolean` property is `true` / `false` (also on SQLite) and is written as one.

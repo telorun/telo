@@ -42,7 +42,14 @@ requires:
   # tarball exports no such name.
   # 0.121.0: `Http.Static.root` declares `entry: directory`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
-  telo: ">=0.121.0"
+  #
+  # 0.123.0: `Http.Server` declares `throws.codes` with a `displayMessage`, which
+  # 0.122.0 rejects on a Service, and the controllers import the problem
+  # renderer's SDK names (`formatDisplayMessage`, `valueIssue`) and call
+  # `ctx.declaredDisplayMessage`, none of which an older runtime has (verified
+  # by execution).
+  telo: ">=0.123.0"
+lang: en
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
   # HttpDispatch.Outcomes/$defs/{Returns,Catches} — Server.notFoundHandler, the
@@ -90,6 +97,34 @@ metadata:
 capability: Telo.Service
 controllers:
   - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpServerController
+# The refusals this server answers itself, before or beside any route — no
+# `catches:` list sees them. Declared for their texts: each is rendered as a
+# problem whose `detail` is the code's display message.
+throws:
+  codes:
+    ERR_REQUEST_BODY_TOO_LARGE:
+      description: >-
+        The request body is larger than `maxBodyBytes` (the route's, else the
+        server's). Answered 413 with `Connection: close`.
+      displayMessage: "The request body is larger than the {$maxBodyBytes} bytes this server accepts."
+      data:
+        type: object
+        additionalProperties: false
+        required: [maxBodyBytes]
+        properties:
+          maxBodyBytes: { type: integer, description: The limit the body exceeded, in bytes. }
+          contentLength: { type: integer, description: The length the request declared, when it declared one. }
+    ERR_HOST_NOT_SERVED:
+      description: >-
+        Under `unknownHosts: reject`, the request's host is one no mount's
+        `hostnames` names. Answered 421 Misdirected Request.
+      displayMessage: "This server does not serve the host {$host}."
+      data:
+        type: object
+        additionalProperties: false
+        required: [host]
+        properties:
+          host: { type: string, description: The host the request was sent to. }
 schema:
   type: "object"
   properties:
@@ -139,8 +174,8 @@ schema:
       description: >-
         What the server does with a request whose host no mount's `hostnames`
         names. `serve` (the default) hands it to the mounts that declare no
-        `hostnames`. `reject` answers it `421 Misdirected Request` with the
-        `{error: {code, message, data}}` envelope, code `ERR_HOST_NOT_SERVED`,
+        `hostnames`. `reject` answers it `421 Misdirected Request` with a
+        problem (`application/problem+json`), code `ERR_HOST_NOT_SERVED`,
         before any guard, route or body read — except a host that is an IP
         literal, which reaches the unrestricted mounts, so a probe sent to the
         server's address keeps working. A hostname is a routing selector, not an
@@ -177,8 +212,8 @@ schema:
         Most of a request body that is buffered or handed to a handler, in
         bytes, for every mount — buffered, streamed and multipart bodies alike.
         A larger one is answered 413 with
-        `Connection: close` and the `{error: {code, message, data}}` envelope,
-        code `ERR_REQUEST_BODY_TOO_LARGE`. The answer is the server's own: no
+        `Connection: close` and a problem (`application/problem+json`), code
+        `ERR_REQUEST_BODY_TOO_LARGE`. The answer is the server's own: no
         `catches:` list sees it. A route's `maxBodyBytes` replaces this value
         for that route. There is no way to switch the limit off.
       type: "integer"
@@ -354,8 +389,8 @@ schema:
                 title: Catches
                 description: >-
                   Rendering rules for the guard's structured throws — a 401 or a
-                  403. Tried before the server's `catches:`. Entries see `error`
-                  and the request's `headers` / `query` / `path` / `method` /
+                  403. Tried before the server's `catches:`. Entries see `error`,
+                  `problem` and the request's `headers` / `query` / `path` / `method` /
                   `ip`.
                 x-telo-outcome-list: catches
                 x-telo-catches-for: invoke
@@ -378,9 +413,23 @@ schema:
                       type: object
                       additionalProperties: false
                       properties:
-                        code: { type: string }
+                        code: { type: string, x-telo-caught-member: code }
                         message: { type: string }
-                        data: { type: object, additionalProperties: true }
+                        displayMessage:
+                          description: The text a person is shown for the failure, as its record; null when it carries none.
+                          anyOf: [{ $ref: "telo://manifest#/$defs/TextRecord" }, { type: "null" }]
+                        data: { type: object, additionalProperties: true, x-telo-caught-member: data }
+                    problem:
+                      type: object
+                      additionalProperties: false
+                      description: The default problem (RFC 9457) this entry would render.
+                      properties:
+                        type: { type: string }
+                        title: { type: [string, "null"] }
+                        status: { type: integer }
+                        detail: { type: [string, "null"] }
+                        code: { type: string, x-telo-caught-member: code }
+                        data: { type: [object, "null"], additionalProperties: true, x-telo-caught-member: data }
           logging:
             title: Logging
             description: >-
@@ -413,10 +462,10 @@ schema:
         Rendering rules for structured (InvokeError) throws that reach the
         server — from any mount, and from `notFoundHandler`. The outermost rung
         of the catch ladder: a route's own entries are tried first, then its
-        router's, then these. A throw no entry claims renders the built-in
-        `{error: {code, message, data}}` envelope with status 500.
+        router's, then these. A throw no entry claims is answered 500 with its
+        problem (`application/problem+json`).
 
-        Entries see `error` and the request's `path` / `method` / `ip`. There is
+        Entries see `error`, `problem` and the request's `path` / `method` / `ip`. There is
         no route here to type `request.query` / `body` / `params` from — those
         belong to a route's own list.
       x-telo-outcome-list: catches
@@ -440,9 +489,23 @@ schema:
             type: object
             additionalProperties: false
             properties:
-              code: { type: string }
+              code: { type: string, x-telo-caught-member: code }
               message: { type: string }
-              data: { type: object, additionalProperties: true }
+              displayMessage:
+                description: The text a person is shown for the failure, as its record; null when it carries none.
+                anyOf: [{ $ref: "telo://manifest#/$defs/TextRecord" }, { type: "null" }]
+              data: { type: object, additionalProperties: true, x-telo-caught-member: data }
+          problem:
+            type: object
+            additionalProperties: false
+            description: The default problem (RFC 9457) this entry would render.
+            properties:
+              type: { type: string }
+              title: { type: [string, "null"] }
+              status: { type: integer }
+              detail: { type: [string, "null"] }
+              code: { type: string, x-telo-caught-member: code }
+              data: { type: [object, "null"], additionalProperties: true, x-telo-caught-member: data }
     contentTypeParsers:
       title: Content Type Parsers
       description: Custom parsers for specific content types.
@@ -624,6 +687,42 @@ schema:
         catches:
           x-telo-outcome-list: catches
           x-telo-catches-for: invoke
+          x-telo-context:
+            type: object
+            additionalProperties: false
+            properties:
+              request:
+                type: object
+                additionalProperties: false
+                properties:
+                  path: { type: string }
+                  host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  method: { type: string }
+                  ip: { type: string }
+                  query: { type: object, additionalProperties: true }
+                  headers: { type: object, additionalProperties: true }
+                  params: { type: object, additionalProperties: true }
+              error:
+                type: object
+                additionalProperties: false
+                properties:
+                  code: { type: string, x-telo-caught-member: code }
+                  message: { type: string }
+                  displayMessage:
+                    description: The text a person is shown for the failure, as its record; null when it carries none.
+                    anyOf: [{ $ref: "telo://manifest#/$defs/TextRecord" }, { type: "null" }]
+                  data: { type: object, additionalProperties: true, x-telo-caught-member: data }
+              problem:
+                type: object
+                additionalProperties: false
+                description: The default problem (RFC 9457) this entry would render.
+                properties:
+                  type: { type: string }
+                  title: { type: [string, "null"] }
+                  status: { type: integer }
+                  detail: { type: [string, "null"] }
+                  code: { type: string, x-telo-caught-member: code }
+                  data: { type: [object, "null"], additionalProperties: true, x-telo-caught-member: data }
           x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
   required: [ "listen", "mounts" ]
   additionalProperties: false
@@ -684,15 +783,15 @@ schema:
       description: >-
         Rendering rules for structured (InvokeError) throws from any route of
         this router. A route's own `catches:` entries are tried first, then
-        these, then the server's; a throw no entry claims renders the built-in
-        `{error: {code, message, data}}` envelope with status 500.
+        these, then the server's; a throw no entry claims is answered 500 with
+        its problem (`application/problem+json`).
 
         This is what lets one route override the rendering of a single code
         without restating every other. A route entry with no `when:` is a
         deliberate full override — it makes these entries unreachable for that
         route alone.
 
-        Entries see `error` and the request's `path` / `method` / `ip`. There is
+        Entries see `error`, `problem` and the request's `path` / `method` / `ip`. There is
         no single route here to type `request.query` / `body` / `params` from —
         those belong to a route's own list.
       x-telo-outcome-list: catches
@@ -716,9 +815,23 @@ schema:
             type: object
             additionalProperties: false
             properties:
-              code: { type: string }
+              code: { type: string, x-telo-caught-member: code }
               message: { type: string }
-              data: { type: object, additionalProperties: true }
+              displayMessage:
+                description: The text a person is shown for the failure, as its record; null when it carries none.
+                anyOf: [{ $ref: "telo://manifest#/$defs/TextRecord" }, { type: "null" }]
+              data: { type: object, additionalProperties: true, x-telo-caught-member: data }
+          problem:
+            type: object
+            additionalProperties: false
+            description: The default problem (RFC 9457) this entry would render.
+            properties:
+              type: { type: string }
+              title: { type: [string, "null"] }
+              status: { type: integer }
+              detail: { type: [string, "null"] }
+              code: { type: string, x-telo-caught-member: code }
+              data: { type: [object, "null"], additionalProperties: true, x-telo-caught-member: data }
     routes:
       title: Routes
       description: HTTP route definitions.
@@ -861,9 +974,23 @@ schema:
                   type: object
                   additionalProperties: false
                   properties:
-                    code: { type: string }
+                    code: { type: string, x-telo-caught-member: code }
                     message: { type: string }
-                    data: { type: object, additionalProperties: true }
+                    displayMessage:
+                      description: The text a person is shown for the failure, as its record; null when it carries none.
+                      anyOf: [{ $ref: "telo://manifest#/$defs/TextRecord" }, { type: "null" }]
+                    data: { type: object, additionalProperties: true, x-telo-caught-member: data }
+                problem:
+                  type: object
+                  additionalProperties: false
+                  description: The default problem (RFC 9457) this entry would render.
+                  properties:
+                    type: { type: string }
+                    title: { type: [string, "null"] }
+                    status: { type: integer }
+                    detail: { type: [string, "null"] }
+                    code: { type: string, x-telo-caught-member: code }
+                    data: { type: [object, "null"], additionalProperties: true, x-telo-caught-member: data }
             x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
         required: [ "request", "returns" ]
         examples:

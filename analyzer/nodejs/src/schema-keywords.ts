@@ -33,6 +33,7 @@ const X_TELO_TEXT_VALUES = "x-telo-text-values" as const;
 const X_TELO_CONTEXT_EVAL = "x-telo-context-eval" as const;
 const X_TELO_CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer" as const;
 const X_TELO_CONTEXT_ITEM_FILLS = "x-telo-context-item-fills" as const;
+const X_TELO_CAUGHT_MEMBER = "x-telo-caught-member" as const;
 import { ANNOTATION_KEYWORDS } from "./value-type-keyword.js";
 import { TOPOLOGY_ROLES } from "./topology-role.js";
 
@@ -74,6 +75,7 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       | typeof X_TELO_CONTEXT_EVAL
       | typeof X_TELO_CONTEXT_FROM_REFERRER
       | typeof X_TELO_CONTEXT_ITEM_FILLS
+      | typeof X_TELO_CAUGHT_MEMBER
     >
   | typeof X_TELO_TYPE,
   Record<string, unknown>
@@ -341,6 +343,20 @@ export const TELO_CONTEXT_BINDING_ANNOTATIONS: Record<
       { type: "string", enum: ["compile", "runtime", "accessor"] },
       { type: "array", minItems: 1, uniqueItems: true, items: { type: "string", enum: ["compile", "runtime", "accessor"] } },
     ],
+  },
+};
+
+/**
+ * Annotations read on a MEMBER of a context binding — a node reached through
+ * `properties` from a binding of an `x-telo-context` — and offered there alone.
+ */
+export const TELO_CONTEXT_MEMBER_ANNOTATIONS: Record<typeof X_TELO_CAUGHT_MEMBER, Record<string, unknown>> = {
+  [X_TELO_CAUGHT_MEMBER]: {
+    title: "Caught member",
+    description:
+      "On a member of a catch list's context binding: this member carries the caught failure's `code` (a string, which a `when:` compares with a code to prove coverage) or its `data` (typed, inside each entry, from the data the codes that entry matches declare). Read only in the `x-telo-context` of a field annotated `x-telo-outcome-list: catches`.",
+    type: "string",
+    enum: ["code", "data"],
   },
 };
 

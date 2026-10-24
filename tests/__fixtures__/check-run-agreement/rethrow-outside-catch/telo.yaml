@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: RethrowOutsideCatchApp
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.refuse

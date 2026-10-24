@@ -9,7 +9,7 @@ metadata:
     operator a bar sends — `contains`, equality, both bounds of a range,
     greater and less than, and `in` repeated per value — and refusing a sort it
     does not declare; a create, read, replace and delete round trip with the
-    400 envelope for a refused record; and the task board, whose rows nest
+    400 validation problem for a refused record; and the task board, whose rows nest
     their assignee and project, paged by its own cursor.
 imports:
   App: ../../../modules/app
@@ -74,7 +74,7 @@ steps:
         dueRest: !cel "steps.lastPageNext.result.body.rows.map(r, r.id)"
         byTitle: !cel "steps.byTitle.result.body.rows.map(r, r.title)"
         byPriority: !cel "steps.byPriority.result.body.rows.map(r, [r.id, r.priority])"
-        unsortable: !cel "[steps.unsortable.result.status, steps.unsortable.result.body.details]"
+        unsortable: !cel "[steps.unsortable.result.status, steps.unsortable.result.body.code, steps.unsortable.result.body.data.issues]"
       expected:
         firstPage: [ 32, [ 1, 2, 3, 4, 5 ], true ]
         secondPage: [ 32, [ 6, 7, 8, 9, 10 ] ]
@@ -105,7 +105,10 @@ steps:
         byPriority: [ [ 5, 5 ], [ 8, 5 ], [ 10, 5 ], [ 21, 5 ] ]
         unsortable:
           - 400
-          - [ { location: query, path: sort, message: is not a property this collection sorts by } ]
+          - ERR_CRUD_QUERY_INVALID
+          - - pointer: /query/sort
+              keyword: enum
+              params: { allowedValues: [ title, -title, status, -status, priority, -priority, estimate, -estimate, dueOn, -dueOn ] }
 
   # ---- Every operator the filter bars send ----
   - name: contains
@@ -154,7 +157,7 @@ steps:
         dueRange: !cel "steps.dueRange.result.body.rows.map(r, [r.id, r.dueOn])"
         estimateBetween: !cel "steps.estimateBetween.result.body.rows.map(r, [r.id, r.estimate])"
         urgent: !cel "steps.urgent.result.body.rows.map(r, r.id)"
-        undeclared: !cel "[steps.undeclared.result.status, steps.undeclared.result.body.details.map(d, d.path)]"
+        undeclared: !cel "[steps.undeclared.result.status, steps.undeclared.result.body.data.issues.map(i, i.pointer)]"
       expected:
         contains: [ Fix duplicate customers, Fix rounding on refunds, Fix the broken pricing link, Fix the crash on rotate, Fix the menu focus trap ]
         statusIs: [ 2, 9, 20 ]
@@ -176,7 +179,7 @@ steps:
           - [ 10, "2026-10-25" ]
         estimateBetween: [ [ 8, 16 ], [ 27, 14 ], [ 9, 12 ], [ 24, 12 ] ]
         urgent: [ 14, 22, 5, 10, 3, 8, 21 ]
-        undeclared: [ 400, [ title, estimate.gte ] ]
+        undeclared: [ 400, [ /query/title, /query/estimate.gte ] ]
 
   # ---- A create, read, replace and delete round trip ----
   - name: create
@@ -218,9 +221,9 @@ steps:
     inputs:
       actual:
         created: !cel "[steps.create.result.status, steps.create.result.body]"
-        refused: !cel "[steps.refusedCreate.result.status, steps.refusedCreate.result.body.error, steps.refusedCreate.result.body.details.map(d, [d.location, d.path])]"
+        refused: !cel "[steps.refusedCreate.result.status, steps.refusedCreate.result.body.code, steps.refusedCreate.result.body.data.issues.map(i, i.pointer)]"
         replaced: !cel "[steps.replace.result.status, steps.replace.result.body]"
-        refusedReplace: !cel "[steps.refusedReplace.result.status, steps.refusedReplace.result.body.details.map(d, [d.location, d.path])]"
+        refusedReplace: !cel "[steps.refusedReplace.result.status, steps.refusedReplace.result.body.data.issues.map(i, i.pointer)]"
         read: !cel "steps.read.result.body"
         listedBlocked: !cel "steps.listedBlocked.result.body.rows.map(r, r.id)"
         removed: !cel "[steps.remove.result.status, steps.gone.result.status, steps.afterRemove.result.body.total]"
@@ -229,14 +232,14 @@ steps:
         created:
           - 201
           - { id: 33, title: Prepare the demo, projectCode: TEL-42, assigneeEmail: liam@northwind.example, status: todo, priority: 3, dueOn: "2026-11-30", label: chore, blocked: false }
-        refused: [ 400, ValidationError, [ [ body, projectCode ] ] ]
+        refused: [ 400, ERR_INPUT_INVALID, [ /body/projectCode ] ]
         # A replace clears what the body leaves out: the assignee, the due date
         # and the label.
         replaced:
           - 200
           - { id: 33, title: Prepare the demo, projectCode: TEL-42, status: doing, priority: 5, estimate: 2.5, blocked: true }
         # A null is refused: a property is cleared by leaving it out.
-        refusedReplace: [ 400, [ [ body, dueOn ] ] ]
+        refusedReplace: [ 400, [ /body/dueOn ] ]
         read: { id: 33, title: Prepare the demo, projectCode: TEL-42, status: doing, priority: 5, estimate: 2.5, blocked: true }
         listedBlocked: [ 5, 33 ]
         removed: [ 204, 404, 32 ]
@@ -260,7 +263,7 @@ steps:
         next: !cel "[steps.boardNext.result.body.next, steps.boardNext.result.body.rows.map(r, r.id)]"
         # The last page ends the walk; a task with no assignee has none nested.
         end: !cel "[steps.boardEnd.result.body.next, steps.boardEnd.result.body.rows.map(r, r.id), steps.boardEnd.result.body.rows.filter(r, !has(r.assignee)).map(r, r.id)]"
-        refused: !cel "[steps.boardRefused.result.status, steps.boardRefused.result.body.details.map(d, [d.location, d.path])]"
+        refused: !cel "[steps.boardRefused.result.status, steps.boardRefused.result.body.data.issues.map(i, i.pointer)]"
       expected:
         first:
           - 32
@@ -271,4 +274,4 @@ steps:
             project: { code: TEL-42, name: Atlas redesign, brief: "/data?project=TEL-42" }
         next: [ "6", [ 4, 5, 6 ] ]
         end: [ null, [ 26, 27, 28, 29, 30, 31, 32 ], [ 29 ] ]
-        refused: [ 400, [ [ query, cursor ] ] ]
+        refused: [ 400, [ /query/cursor ] ]

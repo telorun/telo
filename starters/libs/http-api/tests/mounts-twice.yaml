@@ -56,11 +56,16 @@ steps:
         info: !cel "steps.info.result.body"
         noName: !cel "steps.noName.result.status"
         number: !cel "steps.number.result.status"
-        numberBody: !cel "steps.number.result.body.error"
+        numberBody: !cel "steps.number.result.body"
       expected:
         english: { greeting: "Hello, Ada!" }
         spanish: { greeting: "HOLA, ADA!" }
         info: { service: greeter, greeting: Hola }
         noName: 400
         number: 422
-        numberBody: name_refused
+        numberBody:
+          type: about:blank
+          title: Unprocessable Content
+          status: 422
+          detail: A name is not a number.
+          code: ERR_NAME_REFUSED

@@ -129,12 +129,8 @@ Decoding and encoding run off the event loop. The resize does not: one call hold
 catches:
   - when: !cel "error.code == 'ERR_IMAGE_TOO_LARGE'"
     status: 413
-    content:
-      application/json:
-        body: { error: !cel "error.message" }
+    content: { application/problem+json: {} }
   - when: !cel "error.code == 'ERR_UNSUPPORTED_IMAGE'"
     status: 415
-    content:
-      application/json:
-        body: { error: !cel "error.message" }
+    content: { application/problem+json: {} }
 ```

@@ -1,0 +1,4 @@
+modules:
+  apps/hub: Added
+body: The refusals of an unknown telo version, category or entry type carry their words
+  as a display message, with the values they name in `data`.

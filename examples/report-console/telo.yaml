@@ -16,14 +16,15 @@ metadata:
 requires:
   telo: ">=0.121.0"
 lang: en
-# `ui`, `ui-react` and `i18n` come from this repository while their changes are
-# unreleased; `telo upgrade --pin-local` pins them again once they ship.
+# `http-server`, `run`, `ui`, `ui-react` and `i18n` come from this repository
+# while their changes are unreleased; `telo upgrade --pin-local` pins them again
+# once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
-  I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
-  Ui: oci://ghcr.io/telorun/ui@0.6.0#sha256-mqcJiijmgqdJn8ppG9AWh8TUxSz6ULdlo22E0EqfZko
-  UiReact: oci://ghcr.io/telorun/ui-react@0.7.0#sha256-wqdkNEb_EalmO-nDvoYGbnu-mxzjpReuTHVIynIWbZw
+  Http: ../../modules/http-server
+  Run: ../../modules/run
+  I18n: ../../modules/i18n
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include:
@@ -694,14 +695,13 @@ mounts:
             if: !cel "!Self.signedIn(inputs.cookie)"
             then:
               - name: refuse
-                throw: { code: UNAUTHORIZED, message: Sign in to Google first. }
+                throw: { code: UNAUTHORIZED, displayMessage: Sign in to Google first. }
       inputs:
         cookie: !cel "'cookie' in request.headers ? request.headers['cookie'] : ''"
       catches:
         - when: !cel "error.code == 'UNAUTHORIZED'"
           status: 401
           content:
-            application/json:
-              body: { code: !cel "error.code", message: !cel "error.message" }
+            application/problem+json: {}
   - path: /
     mount: !ref console

@@ -165,7 +165,7 @@ catches:
       application/json:
         body: { unsupported: !cel "error.data.partType" }
   - status: 502
-    content: { application/json: { body: { code: !cel "error.code" } } }
+    content: { application/problem+json: {} }
 ```
 
 A failed status carries the provider's explanation even on a streamed call: the body is read, under a bound, before the error is raised.

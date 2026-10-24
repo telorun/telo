@@ -53,7 +53,9 @@ describe("the roster", () => {
         (d) => d.kind === "Telo.Definition" && d.metadata.name === name,
       )!.schema as Record<string, any>;
       expect(schema.properties.capability.enum).toEqual(declarableCapabilities());
-      expect(schema.if.properties.capability.not.enum).toEqual(throwsAllowedCapabilities());
+      if (name === "Definition") {
+        expect(schema.if.properties.capability.not.enum).toEqual(throwsAllowedCapabilities());
+      }
     }
   });
 

@@ -8,7 +8,7 @@ metadata:
     pages would send: the team record,
     project summaries and their people, the projects collection a page at a
     time, sorted, filtered and labelled by `in`, and a create, read, replace
-    and delete round trip with the 400 envelope for a refused record; tagging a
+    and delete round trip with the 400 validation problem for a refused record; tagging a
     project and its two refusals; the clock; a whole session — refused
     sign-ins, signing in, the guarded routes with and without it, signing out —
     the language switch under each mount, and the brand switch; and a reader's route, a listing, an action's route,
@@ -143,7 +143,7 @@ steps:
           note: null
           lead: { name: Ada Brooks, email: ada@northwind.example, role: manager }
         opsCodename: Ledger
-        unknownSummary: [ 404, { code: PROJECT_UNKNOWN, message: There is no project 'NOPE-1'. } ]
+        unknownSummary: [ 404, { type: about:blank, title: Not Found, status: 404, detail: "There is no project 'NOPE-1'.", code: PROJECT_UNKNOWN, data: { code: NOPE-1 } } ]
         people:
           - [ Ada Brooks, Lead ]
           - [ James Walker, Front end ]
@@ -229,13 +229,13 @@ steps:
     inputs:
       actual:
         created: !cel "[steps.create.result.status, steps.create.result.body.id, steps.create.result.body.featured, steps.create.result.body.open]"
-        refused: !cel "[steps.refusedCreate.result.status, steps.refusedCreate.result.body.error, steps.refusedCreate.result.body.details.map(d, [d.location, d.path])]"
+        refused: !cel "[steps.refusedCreate.result.status, steps.refusedCreate.result.body.code, steps.refusedCreate.result.body.data.issues.map(i, i.pointer)]"
         replaced: !cel "[steps.replace.result.status, steps.replace.result.body.status, steps.replace.result.body.featured, has(steps.replace.result.body.leadEmail)]"
         read: !cel "steps.read.result.body"
         removed: !cel "[steps.remove.result.status, steps.gone.result.status]"
       expected:
         created: [ 201, 7, false, true ]
-        refused: [ 400, ValidationError, [ [ body, code ] ] ]
+        refused: [ 400, ERR_INPUT_INVALID, [ /body/code ] ]
         # A replace clears what the body leaves out: here, the lead.
         replaced: [ 200, paused, true, false ]
         read: { id: 7, code: QA-1, name: Release checklist, status: paused, featured: true, open: false, budget: 3000, velocity: 1 }
@@ -262,12 +262,12 @@ steps:
       actual:
         tag: [ !cel "steps.tag.result.status", !cel "steps.tag.result.body" ]
         tagAgain: [ !cel "steps.tagAgain.result.status", !cel "steps.tagAgain.result.body" ]
-        badTag: !cel "[steps.badTag.result.status, steps.badTag.result.body.details.map(d, [d.location, d.path])]"
+        badTag: !cel "[steps.badTag.result.status, steps.badTag.result.body.data.issues.map(i, i.pointer)]"
         tags: !cel "steps.taggedSummary.result.body.tags"
       expected:
         tag: [ 201, { tag: brand, count: 3 } ]
-        tagAgain: [ 409, { code: TAG_EXISTS, message: TEL-42 is already tagged 'brand'. } ]
-        badTag: [ 400, [ [ body, tag ] ] ]
+        tagAgain: [ 409, { type: about:blank, title: Conflict, status: 409, detail: "TEL-42 is already tagged 'brand'.", code: TAG_EXISTS, data: { tag: brand } } ]
+        badTag: [ 400, [ /body/tag ] ]
         tags: [ brand, design, web ]
 
   # ---- A session ----
@@ -344,11 +344,8 @@ steps:
         anonymousPing: 401
         stranger:
           - 400
-          - error: ValidationError
-            message: Request validation failed
-            status: 400
-            details: [ { location: body, path: email, message: is not the e-mail of anyone on the team } ]
-        formerMember: [ 403, { code: ACCOUNT_INACTIVE, message: tomas@northwind.example has left the team. } ]
+          - { type: about:blank, title: Bad Request, status: 400, detail: "nobody@example.com is not the e-mail of anyone on the team.", code: NOT_A_MEMBER, data: { email: nobody@example.com } }
+        formerMember: [ 403, { type: about:blank, title: Forbidden, status: 403, detail: "tomas@northwind.example has left the team.", code: ACCOUNT_INACTIVE, data: { email: tomas@northwind.example } } ]
         signIn: { status: 200, cookie: true }
         signedIn: { signedIn: true }
         account: { name: Ada Brooks, email: ada@northwind.example, memberSince: "2021-03-01" }

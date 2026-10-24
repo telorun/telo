@@ -1,0 +1,13 @@
+modules:
+  modules/http-dispatch: Added
+body: errorEnvelope is removed; problemDetails(status, failure?) renders an RFC 9457
+  problem from a status and a coded failure ({ code, data?, displayMessage? }) — type
+  about:blank, title the registered reason phrase (httpReasonPhrase), status, detail the
+  display message formatted with data, code and data — with PROBLEM_MEDIA_TYPE
+  (application/problem+json) beside it. dispatchCatches takes the failure's
+  displayMessage, binds problem, the default problem each entry renders under its own
+  status, in every entry's CEL including when:, renders an entry with no body as that
+  problem under application/problem+json, and renders an entry whose content keys Accept
+  refuses under its first key rather than a 406. dispatchReturns answers a refused
+  Accept with a 406 problem whose code is ERR_NOT_ACCEPTABLE (was NOT_ACCEPTABLE,
+  exported) and data.available.

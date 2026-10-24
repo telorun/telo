@@ -70,6 +70,14 @@ sdk/nodejs/src/value-types/entries/
 # `prepare`. Same reason, same mechanism: both kernels read one vocabulary.
 sdk/nodejs/src/zone-attributes/entries/
 
+# Built-in error code entries copied in from sdk/error-codes/ by the root
+# `prepare`. Both kernels attach the same built-in texts.
+sdk/nodejs/src/error-codes/entries/
+
+# Issue keyword entries copied in from sdk/issue-keywords/ by the root
+# `prepare`. One closed vocabulary for every finding about a refused value.
+sdk/nodejs/src/issue-keywords/entries/
+
 # Manifest surface generation, generated from the linked kernel version by the
 # root `prepare`. Committing it would be a second place the version lives.
 analyzer/nodejs/src/telo-version.ts

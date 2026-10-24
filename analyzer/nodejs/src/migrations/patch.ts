@@ -9,7 +9,7 @@
  *  the in-memory rewrite and the on-disk repair cannot disagree about what an
  *  operation means. */
 
-import { makeTaggedSentinel, readInterpolationHoles } from "@telorun/templating";
+import { isTaggedSentinel, makeTaggedSentinel, readInterpolationHoles } from "@telorun/templating";
 import { deepEquals } from "./match.js";
 import type {
   MigrationOperation,
@@ -30,6 +30,7 @@ export type MigrationEffect =
       readonly replaces?: true;
     }
   | { readonly kind: "insert-item"; readonly path: MigrationPath; readonly index: number; readonly value: unknown }
+  | { readonly kind: "add-key"; readonly path: MigrationPath; readonly key: string; readonly value: unknown }
   | { readonly kind: "remove-entry"; readonly path: MigrationPath };
 
 export interface PatchPlan {
@@ -193,6 +194,15 @@ export function planPatch(
         ];
         break;
       }
+      case "add-key": {
+        if (!isPlainObject(currentValue) || isTaggedSentinel(currentValue)) {
+          return { ok: false, refusal: "not-a-mapping" };
+        }
+        if (Object.hasOwn(currentValue, op.key)) return { ok: false, refusal: "destination-occupied" };
+        effects.push({ kind: "add-key", path: currentPath, key: op.key, value: structuredClone(op.value) });
+        currentValue = { ...currentValue, [op.key]: op.value };
+        break;
+      }
       case "remove-entry": {
         effects.push({ kind: "remove-entry", path: currentPath });
         currentValue = undefined;
@@ -246,6 +256,13 @@ export function applyEffectsToTree(root: unknown, effects: readonly MigrationEff
         const target = readAt(root, effect.path).value;
         if (!Array.isArray(target)) continue;
         target.splice(effect.index, 0, effect.value);
+        break;
+      }
+      case "add-key": {
+        const target = readAt(root, effect.path).value;
+        // A copy per write: one plan's value would otherwise be shared by every
+        // tree it is applied to, and later load phases rewrite schema nodes in place.
+        if (isPlainObject(target)) target[effect.key] = structuredClone(effect.value);
         break;
       }
       case "remove-entry": {

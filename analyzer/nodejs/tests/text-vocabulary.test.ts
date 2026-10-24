@@ -268,6 +268,19 @@ catalog:
     );
     expect(await check(files)).toEqual([["MESSAGE_TEXT_UNUSED", "catalog.texts[3].text"]]);
   });
+
+  it("counts the built-in error texts as shown by every module", async () => {
+    const files = app(
+      "en",
+      `kind: Labels.Catalog
+metadata: { name: pl }
+catalog:
+  lang: pl
+  texts:
+    - { text: "The request is not valid.", translation: "Żądanie jest nieprawidłowe." }`,
+    );
+    expect(await check(files)).toEqual([]);
+  });
 });
 
 describe("the text annotations", () => {
@@ -634,5 +647,107 @@ schema:
 `,
       }),
     ).toEqual([["TEXT_VALUES_INVALID", "schema.properties.text.x-telo-text-values"]]);
+  });
+});
+
+describe("a throws code's display message", () => {
+  it("names only the required string or number properties of the code's data", async () => {
+    expect(
+      await check({
+        "/app/telo.yaml": `kind: Telo.Application
+metadata:
+  name: App
+lang: en
+---
+kind: Telo.Definition
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+controllers:
+  - pkg:npm/none@0.0.0
+throws:
+  codes:
+    NOT_FOUND:
+      description: The item does not exist.
+      displayMessage: "Item {$id} of {$owner} is {$flag}"
+      data:
+        type: object
+        required: [id, flag]
+        properties:
+          id: { type: string }
+          owner: { type: string }
+          flag: { type: boolean }
+    FINE:
+      description: Every placeholder is filled.
+      displayMessage: "Item {$id} is missing"
+      data: { type: object, required: [id], properties: { id: { type: integer } } }
+`,
+      }),
+    ).toEqual([
+      ["MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED", "throws.codes.NOT_FOUND.displayMessage.flag"],
+      ["MESSAGE_PLACEHOLDER_UNBOUND", "throws.codes.NOT_FOUND.displayMessage"],
+    ]);
+  });
+});
+
+describe("a throw step's display message", () => {
+  const steps = (body: string) => ({
+    "/app/telo.yaml": `kind: Telo.Application
+metadata:
+  name: App
+lang: en
+---
+kind: Telo.Definition
+metadata:
+  name: Body
+capability: Telo.Runnable
+controllers:
+  - pkg:npm/none@0.0.0
+schema:
+  type: object
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+---
+kind: Self.Body
+metadata:
+  name: body
+steps:
+${body}`,
+  });
+
+  it("takes a literal text whose placeholders its data fills, and a caught error's display message", async () => {
+    expect(
+      await check(
+        steps(`  - name: attempt
+    try:
+      - name: missing
+        throw: { code: MISSING, displayMessage: "Item {$id} is missing", data: { id: "42" } }
+    catch:
+      - name: again
+        throw: { code: !cel "error.code", displayMessage: !cel "error.displayMessage", data: !cel "error.data" }
+`),
+        "/app/telo.yaml",
+        /^(MESSAGE_|TEXT_)/,
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses a text an expression computes, and a placeholder its data does not fill", async () => {
+    expect(
+      await check(
+        steps(`  - name: computed
+    throw: { code: MISSING, displayMessage: !cel "'Item ' + 'missing'" }
+  - name: unbound
+    throw: { code: MISSING, displayMessage: "Item {$id} is missing", data: { other: 1 } }
+`),
+        "/app/telo.yaml",
+        /^(MESSAGE_|TEXT_)/,
+      ),
+    ).toEqual([
+      ["TEXT_ARGUMENT_COMPUTED", "steps[0].throw.displayMessage"],
+      ["MESSAGE_PLACEHOLDER_UNBOUND", "steps[1].throw.data"],
+    ]);
   });
 });

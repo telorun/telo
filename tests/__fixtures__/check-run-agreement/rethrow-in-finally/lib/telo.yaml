@@ -1,0 +1,21 @@
+# A rethrow in a finally: branch, whose error is null when the try succeeded:
+# there is no caught failure to re-raise.
+kind: Telo.Library
+metadata:
+  name: RethrowInFinally
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [refuse]
+---
+kind: Run.Sequence
+metadata:
+  name: refuse
+steps:
+  - name: attempt
+    try:
+      - name: work
+        value: 1
+    finally:
+      - name: again
+        rethrow: {}

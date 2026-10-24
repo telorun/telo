@@ -54,6 +54,10 @@ describe("creating a step", () => {
     expect(newStep(variant("try/catch/finally"), "step1")).toEqual({ name: "step1", try: [] });
   });
 
+  it("seeds a rethrow as the empty object it always is", () => {
+    expect(newStep(variant("rethrow"), "step1")).toEqual({ name: "step1", rethrow: {} });
+  });
+
   it("seeds a case map as a map, not a list", () => {
     expect(newStep(variant("switch/cases/default"), "step1")).toEqual({
       name: "step1",

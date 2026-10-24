@@ -1,0 +1,5 @@
+{
+  "code": "ERR_FUNCTION_FAILED",
+  "description": "A module function an expression called threw.",
+  "displayMessage": "The service failed to compute a value."
+}

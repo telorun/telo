@@ -20,6 +20,7 @@ import { ResourceManifest } from "./resource-manifest.js";
 import { RuntimeResource } from "./runtime-resource.js";
 import type { RuntimeSeam } from "./runtime-seam.js";
 import type { OpenZoneAttributes } from "./zone-attribute.js";
+import type { TextRecord } from "./text-record.js";
 
 export interface LoadOptions {
   /** When true, `${{ }}` templates are replaced with CompiledValue wrappers
@@ -233,6 +234,18 @@ export interface ResourceContext extends ControllerContext {
    * quotes the manifest's own sentence instead of inventing a generic message.
    */
   zoneAttributes(ctx?: InvokeContext): readonly OpenZoneAttributes[];
+  /**
+   * The display message for `code` as this resource's kind declares it —
+   * `throws.codes.<code>.displayMessage`, the nearest along `extends` — or, for
+   * a built-in ambient code, the built-in one; undefined when neither has one.
+   * For a refusal a controller renders outside a dispatch (a request a server
+   * answers before any route runs), where the kernel attaches nothing.
+   *
+   * `data` is the error's data, held to the code's declared `data` schema as
+   * the kernel holds an error leaving a dispatch: a mismatch is
+   * `ERR_OUTPUT_INVALID` naming the code, so the display message always formats.
+   */
+  declaredDisplayMessage(code: string, data?: unknown): TextRecord | undefined;
   /** The root context for runtime-driven inbound work (request, timer, queue
    *  message): inherits nothing from whatever ambient happens to be live at the
    *  registration site — no zones, no trace parent, no caller token. An inbound

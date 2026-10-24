@@ -1,0 +1,5 @@
+{
+  "code": "ERR_INPUT_INVALID",
+  "description": "The inputs a call passed did not satisfy the target's declared input contract.",
+  "displayMessage": "The request is not valid."
+}

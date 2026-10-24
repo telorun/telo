@@ -129,7 +129,7 @@ routes:
           application/json:
             body: { retryAfterSeconds: !cel "has(error.data.retryAfterSeconds) ? error.data.retryAfterSeconds : 0" }
       - status: 502    # every other code the operation and its model declare
-        content: { application/json: { body: { code: !cel "error.code" } } }
+        content: { application/problem+json: {} }
 ```
 
 A list that names some of the codes and has no catch-all is `UNCOVERED_THROW_CODE`, listing what is left — the model's codes included. An entry naming a code no model raises is `UNDECLARED_THROW_CODE`.

@@ -64,6 +64,7 @@ import { spanAttributesOf } from "./instance-span-attributes.js";
 import { censorSensitiveMembers, defineCensoredEntries } from "./sensitive-member-censor.js";
 import { spanRecordOf, type FinishedSpan } from "./span-export.js";
 import type { KernelTracer } from "./tracing.js";
+import { settleDisplayMessage, type ErrorDataValidator } from "./declared-display-messages.js";
 import {
   classifyInitFailures,
   isDeferral,
@@ -762,6 +763,10 @@ export class EvaluationContext implements IEvaluationContext {
    */
   getDefinition?: (kind: string) => ResourceDefinition | undefined;
 
+  /** Holds an error's data to the schema its kind declares for the code, where
+   *  the error leaves a dispatch. Set by the kernel beside `getDefinition`. */
+  errorDataValidator?: ErrorDataValidator;
+
   /**
    * Per-kernel invocation tracer. Set by the kernel on the root context and
    * propagated through spawnChild(); gates invocation-id minting in runInvoke()
@@ -1123,6 +1128,10 @@ export class EvaluationContext implements IEvaluationContext {
     }
     if (this.getDefinition && !child.getDefinition) {
       child.getDefinition = this.getDefinition;
+    }
+    const inheriting = child as unknown as { errorDataValidator?: ErrorDataValidator };
+    if (this.errorDataValidator && !inheriting.errorDataValidator) {
+      inheriting.errorDataValidator = this.errorDataValidator;
     }
     if (this.tracer && !child.tracer) {
       child.tracer = this.tracer;
@@ -2313,14 +2322,24 @@ export class EvaluationContext implements IEvaluationContext {
         throw err;
       }
       if (isInvokeError(err)) {
-        const detail = { inputs, code: err.code, message: err.message, data: err.data };
+        // The code's declared display message, and its data held to the declared schema:
+        // one exit point for both, where the declared codes are checked too.
+        const settled = this.errorDataValidator
+          ? settleDisplayMessage(
+              err,
+              this.getDefinition?.(this.resolveKindSafe(kind)) ?? this.getDefinition?.(kind),
+              this.errorDataValidator,
+              `${kind} '${name}'`,
+            )
+          : err;
+        const detail = { inputs, code: settled.code, message: settled.message, data: settled.data };
         await this.emitSpan(`${name}.InvokeRejected`, () => span("end", "rejected", detail));
         const declaredCodes = this.getDeclaredThrowCodes(kind);
-        if (declaredCodes && !declaredCodes.has(err.code)) {
+        if (declaredCodes && !declaredCodes.has(settled.code)) {
           await this.emitSpan(`${name}.InvokeRejected.Undeclared`, () => span("end", "rejected", detail));
         }
-        finish("rejected", { errorType: err.code });
-        throw err;
+        finish("rejected", { errorType: settled.code });
+        throw settled;
       }
       if (err instanceof Error) {
         await this.emitSpan(

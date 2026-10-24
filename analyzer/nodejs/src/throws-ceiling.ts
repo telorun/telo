@@ -1,4 +1,5 @@
 import type { ResourceDefinition } from "@telorun/sdk";
+import { isCapabilityRole, throwsAllowedCapabilities } from "./capability-roster.js";
 import { ancestorChain, type DefResolver } from "./extends-resolution.js";
 
 /**
@@ -36,6 +37,21 @@ const declaresLiteral = (def: ResourceDefinition): boolean => {
   return block !== undefined && !isDynamic(block);
 };
 
+/**
+ * True when `def`'s codes describe what a CALLER can catch: its effective
+ * capability (its own, else the nearest along `extends`) is one the roster marks
+ * `throwsAllowed`. A kind of any other role may declare `throws.codes` — the
+ * failures it answers with, and their texts — but they feed no throw union and no
+ * ceiling, since nothing dispatches it and catches.
+ */
+export function dispatchesThrows(def: ResourceDefinition, resolveDef: DefResolver): boolean {
+  const capability = [def, ...ancestorChain(def, resolveDef)]
+    .map((d) => d.capability)
+    .find((c): c is string => typeof c === "string");
+  if (capability === undefined || !isCapabilityRole(capability)) return true;
+  return throwsAllowedCapabilities().includes(capability);
+}
+
 /** The nearest ANCESTOR declaring a literal list; none bounds nothing. */
 export function throwsCeiling(
   def: ResourceDefinition,
@@ -56,7 +72,7 @@ export function codesOutsideCeiling(
   resolveDef: DefResolver,
 ): { ceiling: ThrowsCeiling; outside: string[] } | undefined {
   const own = throwsOf(def);
-  if (!own || isDynamic(own)) return undefined;
+  if (!own || isDynamic(own) || !dispatchesThrows(def, resolveDef)) return undefined;
   const ceiling = throwsCeiling(def, resolveDef);
   if (!ceiling) return undefined;
   const outside = Object.keys(own.codes ?? {}).filter((code) => !ceiling.codes.has(code));

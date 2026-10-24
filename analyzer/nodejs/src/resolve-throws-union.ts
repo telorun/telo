@@ -6,7 +6,7 @@ import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isInjectedDeclaration } from "./resource-input.js";
-import { kindThrowsDeclarer } from "./throws-ceiling.js";
+import { dispatchesThrows, kindThrowsDeclarer } from "./throws-ceiling.js";
 import {
   hasDeclaredUse,
   possibleUses,
@@ -206,8 +206,22 @@ function definitionFor(
   return resolved ? defs.resolve(resolved) : undefined;
 }
 
-function codesFromDefinition(definition: ResourceDefinition): Map<string, ThrowsCodeMeta> {
+/** Resolves a kind written in a definition's own module, for the `extends` walk. */
+function defResolverFor(ctx: ResolveCtx): DefResolver {
+  return (kind, from) =>
+    definitionFor(
+      kind,
+      ctx.defs,
+      ctx.aliases,
+      scopeResolverFor(ctx, (from?.metadata as { module?: string } | undefined)?.module),
+    );
+}
+
+/** The codes a definition contributes to a union: none for a kind no caller
+ *  dispatches and catches, whose `throws.codes` only name what it answers with. */
+function codesFromDefinition(definition: ResourceDefinition, ctx: ResolveCtx): Map<string, ThrowsCodeMeta> {
   const out = new Map<string, ThrowsCodeMeta>();
+  if (!dispatchesThrows(definition, defResolverFor(ctx))) return out;
   const raw = definition.throws?.codes ?? {};
   for (const [code, meta] of Object.entries(raw)) {
     out.set(code, { data: (meta as { data?: Record<string, any> }).data });
@@ -254,7 +268,7 @@ export function resolveThrowsUnion(
       );
     const declarer = kindThrowsDeclarer(definition, resolveDef);
     const u: ThrowsUnion = declarer
-      ? { codes: codesFromDefinition(declarer), unbounded: false }
+      ? { codes: codesFromDefinition(declarer, ctx), unbounded: false }
       : { codes: new Map(), unbounded: true };
     if (name) ctx.memo.set(name, u);
     return u;
@@ -271,7 +285,7 @@ export function resolveThrowsUnion(
   try {
     const result: ThrowsUnion = { codes: new Map(), unbounded: false };
 
-    for (const [code, meta] of codesFromDefinition(definition)) {
+    for (const [code, meta] of codesFromDefinition(definition, ctx)) {
       result.codes.set(code, meta);
     }
 
@@ -476,6 +490,12 @@ function collectStepThrows(
     return resolveThrowStepCode(step.throw as Record<string, any>, enclosingTryCodes);
   }
 
+  // A rethrow re-raises the caught failure: the enclosing try's propagated
+  // union, exactly what a `code: !cel "error.code"` throw resolves to.
+  if (step.rethrow && typeof step.rethrow === "object") {
+    return caughtCodesUnion(enclosingTryCodes);
+  }
+
   if (Array.isArray(step.try)) {
     const tryUnion = collectStepArrayThrows(step.try, invokeField, enclosingTryCodes, ctx, ownerModule);
     let propagated: ThrowsUnion;
@@ -618,7 +638,7 @@ function resolveRefTargetThrows(
   // Fall back to the definition's own explicit codes. Mark unbounded when the
   // definition depends on call-site or transitive resolution we couldn't
   // perform (no specific target manifest to recurse into).
-  const codes = codesFromDefinition(definition);
+  const codes = codesFromDefinition(definition, ctx);
   const unbounded =
     definition.throws?.inherit === true || definition.throws?.passthrough === true;
   return { codes, unbounded };
@@ -708,14 +728,16 @@ function resolveCodeExpression(
     return { codes: new Map([[code, {}]]), unbounded: false };
   }
 
-  if (expr === "error.code") {
-    if (enclosingTryCodes) {
-      const codes = new Map<string, ThrowsCodeMeta>();
-      for (const c of enclosingTryCodes) codes.set(c, {});
-      return { codes, unbounded: false };
-    }
-    return { codes: new Map(), unbounded: true };
-  }
+  if (expr === "error.code") return caughtCodesUnion(enclosingTryCodes);
 
   return { codes: new Map(), unbounded: true };
+}
+
+/** The codes a caught failure may carry: the enclosing try's, or unbounded
+ *  outside any catch. */
+function caughtCodesUnion(enclosingTryCodes: Set<string> | undefined): ThrowsUnion {
+  if (!enclosingTryCodes) return { codes: new Map(), unbounded: true };
+  const codes = new Map<string, ThrowsCodeMeta>();
+  for (const c of enclosingTryCodes) codes.set(c, {});
+  return { codes, unbounded: false };
 }

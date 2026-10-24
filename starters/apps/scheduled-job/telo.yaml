@@ -32,20 +32,22 @@ metadata:
 requires:
   telo: ">=0.121.0"
 lang: en
-# `ui` and `ui-react` come from this repository while their changes are
-# unreleased; `telo upgrade --pin-local` pins them again once they ship.
+# Every module comes from this repository while the error responses of
+# `http-server` are unreleased, since a published module beside a workspace
+# one would load a second copy of what they share; `telo upgrade --pin-local`
+# pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Ui: oci://ghcr.io/telorun/ui@0.6.0#sha256-mqcJiijmgqdJn8ppG9AWh8TUxSz6ULdlo22E0EqfZko
-  UiReact: oci://ghcr.io/telorun/ui-react@0.7.0#sha256-wqdkNEb_EalmO-nDvoYGbnu-mxzjpReuTHVIynIWbZw
-  Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
-  KvStore: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
-  Fs: oci://ghcr.io/telorun/fs@0.15.0#sha256-H4NxPag-G5AFKLIAZBTxxx1u2KgmmF2v4gqJnfCM9CQ
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
-  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+  Http: ../../../modules/http-server
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
+  Schedule: ../../../modules/scheduler
+  Lease: ../../../modules/lease
+  KvStore: ../../../modules/kv-store-memory
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  Fs: ../../../modules/fs
+  Run: ../../../modules/run
+  Console: ../../../modules/console
 targets:
   - !ref migrate
   - !ref server
@@ -295,10 +297,7 @@ routes:
     catches:
       - status: 500
         content:
-          application/json:
-            body:
-              error: !cel "error.code"
-              message: !cel "error.message"
+          application/problem+json: {}
 
   - request:
       path: /runs

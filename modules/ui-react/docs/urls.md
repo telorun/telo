@@ -7,11 +7,11 @@ Everything is under the mount path. With the application mounted at `/admin`,
 | --- | --- | --- |
 | any page path, and any other path not under `_telo` | the shell; status 404 when no page declares the path | `no-cache` |
 | `_telo/ui/app` | the application document | `private, no-cache`, `ETag` |
-| `_telo/ui/page?path=<page path>` | a page document; a JSON 404 for an unknown path | `private, no-cache`, `ETag` |
+| `_telo/ui/page?path=<page path>` | a page document; a 404 problem (`{ type, title, status }`, `application/problem+json`) for an unknown path | `private, no-cache`, `ETag` |
 | `_telo/ui/events` | server-sent events | — |
 | `_telo/ui/assets/<sha256>/<name>` | a file by content address | `public, max-age=31536000, immutable` |
 
-Anything else under `_telo` is a JSON 404. Query keys beginning `_telo` are
+Anything else under `_telo`, and an asset no address names, is the same 404 problem. Query keys beginning `_telo` are
 reserved to the renderer.
 
 ## The open key

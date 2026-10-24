@@ -238,7 +238,8 @@ schema:
         - minLength: 1
 ---
 # What a request that did not succeed reads as: `status` absent when nothing
-# answered, `code` and `message` from a `{ code, message }` body.
+# answered; `code` the problem body's `code`, else the renderer's own code for
+# the status; `message` the problem's `detail`, else the renderer's own word.
 kind: Telo.JsonSchema
 metadata:
   name: RequestError
@@ -1004,7 +1005,7 @@ schema:
       additionalProperties: false
       required: [word]
       properties:
-        word: { enum: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems] }
+        word: { enum: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames] }
     # A text, or none.
     Description:
       anyOf:
@@ -4495,7 +4496,7 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems]
+  required: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames]
   properties:
     loading: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     noRows: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
@@ -4582,6 +4583,11 @@ schema:
     minItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
     maxItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
     uniqueItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    minProperties: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
+    maxProperties: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
+    format: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"format": {"type": "string"}} }
+    additionalProperties: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"additionalProperty": {"type": "string"}} }
+    propertyNames: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"propertyName": {"type": "string"}} }
 ---
 kind: Self.Words
 metadata:
@@ -4671,3 +4677,8 @@ multipleOf: "Must be a multiple of {$limit}"
 minItems: {"plural": "limit", "cases": {"one": "Must have at least {$limit} item", "other": "Must have at least {$limit} items"}}
 maxItems: {"plural": "limit", "cases": {"one": "Must have at most {$limit} item", "other": "Must have at most {$limit} items"}}
 uniqueItems: "Must not repeat an item"
+minProperties: {"plural": "limit", "cases": {"one": "Must have at least {$limit} entry", "other": "Must have at least {$limit} entries"}}
+maxProperties: {"plural": "limit", "cases": {"one": "Must have at most {$limit} entry", "other": "Must have at most {$limit} entries"}}
+format: "Is not a valid {$format}"
+additionalProperties: "Is not expected here"
+propertyNames: "Has a name that is not allowed: {$propertyName}"

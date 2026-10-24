@@ -10,6 +10,10 @@
 pub struct KernelError {
     pub code: String,
     pub message: String,
+    /// A controller's structured payload, when it carries one.
+    pub data: Option<serde_json::Value>,
+    /// The text a person is shown for the failure, as its record.
+    pub display_message: Option<serde_json::Value>,
 }
 
 impl KernelError {
@@ -17,6 +21,8 @@ impl KernelError {
         Self {
             code: code.into(),
             message: message.into(),
+            data: None,
+            display_message: None,
         }
     }
 

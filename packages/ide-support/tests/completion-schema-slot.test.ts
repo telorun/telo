@@ -97,4 +97,24 @@ describe("buildCompletions — JSON Schema slots", () => {
       "x-telo-context-item-fills",
     ]);
   });
+
+  it("offers the caught-member mark on a member of a binding, at any depth", async () => {
+    const labels = await completeAt([
+      ...DEFINITION_DOC,
+      "schema:",
+      "  type: object",
+      "  properties:",
+      "    catches:",
+      "      x-telo-context:",
+      "        type: object",
+      "        properties:",
+      "          error:",
+      "            type: object",
+      "            properties:",
+      "              code:",
+      "                type: string",
+      "                ",
+    ]);
+    expect(labels).toEqual(["x-telo-caught-member"]);
+  });
 });

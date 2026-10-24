@@ -559,11 +559,17 @@ as the type's own: the type's code (its `acceptsText.code`, `ERR_`-prefixed, e.g
 `ERR_URL_INVALID`) is data an entry declares, and raising it at dispatch would widen
 what every dispatch can throw with every new value type, beyond what any `catches:`
 list, coverage check or retry exclusion can model. The error's data MUST carry one
-entry per value that did not build, under `issues`, each holding its `pointer` (a
-JSON Pointer into the inputs or the result, `/url`), the type's `code` and its
-`reason`, and — for a transport's answer — the dotted `path` and a `message`; the
-rendered text MUST carry the same entries (`/url: ERR_URL_INVALID: not a Telo.Url —
-<reason>`). Neither MAY quote the value, which may hold a credential. The same
+entry per value that did not build, under `issues`, each a finding in the issue
+vocabulary (`sdk/issue-keywords/`) — its `pointer` (a JSON Pointer into the inputs or
+the result, `/url`; the empty pointer for the value itself), `keyword: format` and
+`params: { format: <the type's name> }` — beside the type's `code`; the reason is no
+member of an entry, and the rendered text MUST carry each entry with its reason
+(`/url: ERR_URL_INVALID: not a Telo.Url — <reason>`). Neither MAY quote the value,
+which may hold a credential. A transport's inbound value that its slot's schema
+refuses (`readPlainEncoded`) carries its findings under `issues` the same way: a
+value type that does not read is `format` / `{ format }`, a missing property
+`required` / `{ missingProperty }` (its pointer naming the property), anything else
+`invalid` with no params — so one `issues` list never holds two shapes. The same
 entry is what an application's `ERR_MANIFEST_VALIDATION_FAILED` carries for an
 environment value or a `default:` of the type; at a resource's creation, at an
 import's field-by-field need supply and at an import's `variables:` / `secrets:`
@@ -592,8 +598,10 @@ raised by the runtime for every kind alike, not declared by any kind.
 
 A kind's `throws:` is the third part of its contract. A `Telo.Abstract` MAY
 declare one, as a literal `codes` list only (`inherit` and `passthrough` need a
-body, which an abstract does not have, so neither key is admitted), and only
-where its capability is dispatchable.
+body, which an abstract does not have, so neither key is admitted). A literal
+`codes` list is legal on a kind of every declarable capability — a Service
+declares the refusals it answers with, and their display messages (§5.4) — but only a kind
+whose effective capability is dispatchable feeds a throw union or a ceiling.
 
 - The nearest ancestor along `extends` that declares a literal `codes` list,
   abstract or concrete, is the **ceiling**. A definition whose literal codes
@@ -607,14 +615,62 @@ where its capability is dispatchable.
   own and is looked past, so a literal list above it still bounds everything
   below it. A definition whose own block is one of them is not judged at
   registration.
-- The shape of a `throws:` block, and which declared capabilities may carry one
-  (`Telo.Invocable` and `Telo.Runnable`; any other declared capability, a
-  third party's included, may not), MUST be the same rule for a checker and a
-  runtime.
+- The shape of a `throws:` block, and which declared capabilities may carry
+  `inherit` / `passthrough` and contribute to unions and ceilings (the roster's
+  `throwsAllowed` roles, `Telo.Invocable` and `Telo.Runnable`; any other
+  declared capability may carry a literal `codes` list only), MUST be the same
+  rule for a checker and a runtime.
 - A checker resolving what a dispatch MAY throw through a target known only by
   its kind (a library's resource input) MUST read the nearest declared list along
   that kind's chain, and MUST treat a chain declaring none as unbounded, never
   as empty.
+
+### 5.4 Display messages
+
+A structured error carries two messages. `message` is the developer's, for logs
+and traces. `displayMessage`, when present, is the text a person is shown for
+the failure, as a text record (`{ text, context, lang, computed }`) in the
+language it was written in, whose values are its `data`. A code's entry in
+`throws.codes` MAY declare `displayMessage`, a `Text` in the declaring module's
+`lang:` whose placeholders name only required string or number properties of the
+entry's `data` schema (`MESSAGE_PLACEHOLDER_UNBOUND` /
+`MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`, the runtime refusing the same at
+registration as `ERR_<code>`). The ambient codes (§5.2) carry built-in English
+display messages, the `errorCodes` section of the built-in vocabulary.
+
+Where a structured error leaves a dispatch, a runtime:
+
+- MUST, when the dispatched kind declares the error's code with a
+  `displayMessage` (the nearest declaration along `extends`) or the code is
+  ambient, first validate the error's `data` (absent read as `null`) against that
+  entry's `data` schema when it declares one, and on a mismatch raise
+  `ERR_OUTPUT_INVALID` instead, with `data` `{ code, data, issues }` naming the
+  original code — so rendering a display message never fails;
+- MUST then attach the entry's display message, unless the error already
+  carries one: one attached nearer the failure is never replaced;
+- MUST NOT validate the data of a code no entry gives a `displayMessage`.
+
+A `throw` step is `{ code, message?, displayMessage?, data? }`. `message` is a
+string and may be computed. `displayMessage` is a literal `Text` with values from
+`data`, a caught error's display message, or null; any other expression there is
+refused (`TEXT_ARGUMENT_COMPUTED` / `ERR_TEXT_ARGUMENT_COMPUTED`). The error's
+developer message is `message` when given, else the display message formatted in
+its own language with `data`, else the code. A `throw` running inside a `catch:`
+branch records the caught failure as the new error's `cause`, which the log
+record's cause chain writes and which no catch context, controller-protocol
+payload or durable record carries.
+
+A `rethrow: {}` step re-raises the failure the in-scope `error` names unchanged —
+its code, both messages, data, cause and stack. It is legal only where the
+nearest `x-telo-error-context` region enclosing it binds an `error` that cannot
+be null (a `catch:` branch at any depth); in a `finally:` or outside every
+region a checker MUST report `RETHROW_WITHOUT_CAUGHT_ERROR` and a runtime MUST
+raise `ERR_RETHROW_WITHOUT_CAUGHT_ERROR`. Its contribution to a throw union is
+the enclosing `try`'s propagated union, as for `code: !cel "error.code"`.
+
+A controller rethrowing a failure MUST carry its `displayMessage` unchanged; one
+rendering a refusal outside any dispatch reads its kind's entry through
+`ctx.declaredDisplayMessage(code, data)`, which applies the same validation.
 
 ## 6. Conformance
 
@@ -634,7 +690,9 @@ A conforming runtime:
 10. raises rather than silently skipping when a declared contract resolves to no
     schema (§5.1);
 11. refuses a definition whose literal throw codes exceed its ancestor's
-    ceiling (§5.3);
+    ceiling (§5.3), attaches declared display messages and validates their data
+    where an error leaves a dispatch, and refuses a `rethrow` with no caught
+    failure in scope (§5.4);
 12. binds module calls per module scope at creation, refusing and deferring as
     §7.1 states, and evaluates them as §7.2 and §7.3 state;
 13. binds every function's `call` and hands a native function's controller the

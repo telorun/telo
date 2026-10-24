@@ -131,6 +131,20 @@ export interface MigrationMatch {
    *  makes their wildcard forms safe, and it narrows an enumerated region just as
    *  usefully. See the file header for why an annotation rename needs it. */
   readonly inSchema?: boolean;
+  /** A fixed suffix of the matched path, ending at the matched key, whose HEAD
+   *  (its first segment) sits in a mapping holding `key` with `value` — what
+   *  places a member by a structure it is written in when a key name alone would
+   *  reach every mapping spelling that key. */
+  readonly ancestor?: MatchAncestor;
+  /** The matched value must be a mapping that does not hold this key — the rule
+   *  rewrites only a node the current spelling has not already reached. */
+  readonly withoutKey?: string;
+}
+
+export interface MatchAncestor {
+  readonly path: readonly string[];
+  readonly key: string;
+  readonly value: unknown;
 }
 
 export const MATCH_KEYS = [
@@ -145,6 +159,8 @@ export const MATCH_KEYS = [
   "withSibling",
   "notUnder",
   "inSchema",
+  "ancestor",
+  "withoutKey",
 ] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -242,6 +258,15 @@ export function readMigrationMatch(
   if (Object.hasOwn(raw, "inSchema") && typeof raw.inSchema !== "boolean") {
     throw new Error(`${describe}: 'match.inSchema' must be a boolean`);
   }
+  if (Object.hasOwn(raw, "withoutKey") && (typeof raw.withoutKey !== "string" || raw.withoutKey.length === 0)) {
+    throw new Error(`${describe}: 'match.withoutKey' must be a non-empty string`);
+  }
+  if (Object.hasOwn(raw, "ancestor")) {
+    if (bySelector !== "key") {
+      throw new Error(`${describe}: 'match.ancestor' applies only to a 'key' rule`);
+    }
+    readAncestor(describe, raw.ancestor, raw.key as string);
+  }
 
   // The two conditions that make a wildcard safe, refused here rather than
   // narrowed later: a rule the reader accepts is a rule the driver will run, and
@@ -289,6 +314,8 @@ export function readMigrationMatch(
     withSibling?: string;
     notUnder?: readonly string[];
     inSchema?: boolean;
+    ancestor?: MatchAncestor;
+    withoutKey?: string;
   } = {
     ...(bySelector === "key" ? { key: raw.key as string } : { scalar: raw.scalar as ScalarShape }),
     inKind: requireStringList(describe, raw, "inKind"),
@@ -301,7 +328,61 @@ export function readMigrationMatch(
   if (Object.hasOwn(raw, "withSibling")) match.withSibling = raw.withSibling as string;
   if (Object.hasOwn(raw, "notUnder")) match.notUnder = raw.notUnder as string[];
   if (raw.inSchema === true) match.inSchema = true;
+  if (Object.hasOwn(raw, "ancestor")) match.ancestor = readAncestor(describe, raw.ancestor, raw.key as string);
+  if (Object.hasOwn(raw, "withoutKey")) match.withoutKey = raw.withoutKey as string;
   return match;
+}
+
+const ANCESTOR_KEYS = ["path", "key", "value"] as const;
+
+/** Read `match.ancestor`: a non-empty suffix of mapping keys ending at the
+ *  matched key, and the scalar sibling its head's mapping must hold. */
+function readAncestor(describe: string, raw: unknown, matchedKey: string): MatchAncestor {
+  if (!isPlainObject(raw)) throw new Error(`${describe}: 'match.ancestor' must be a mapping`);
+  for (const key of Object.keys(raw)) {
+    if (!(ANCESTOR_KEYS as readonly string[]).includes(key)) {
+      throw new Error(
+        `${describe}: 'match.ancestor' has no key '${key}'. Known keys: ${ANCESTOR_KEYS.join(", ")}.`,
+      );
+    }
+  }
+  const path = raw.path;
+  if (!Array.isArray(path) || path.length === 0 || path.some((s) => typeof s !== "string" || s.length === 0)) {
+    throw new Error(`${describe}: 'match.ancestor.path' must be a non-empty sequence of keys`);
+  }
+  if (path[path.length - 1] !== matchedKey) {
+    throw new Error(`${describe}: 'match.ancestor.path' must end at the matched key '${matchedKey}'`);
+  }
+  if (typeof raw.key !== "string" || raw.key.length === 0) {
+    throw new Error(`${describe}: 'match.ancestor.key' must be a non-empty string`);
+  }
+  const value = raw.value;
+  if (!(value === null || ["string", "number", "boolean"].includes(typeof value))) {
+    throw new Error(`${describe}: 'match.ancestor.value' must be a scalar`);
+  }
+  return { path: path as string[], key: raw.key, value };
+}
+
+/** Whether `site` ends in the ancestor's path suffix and its head sits in a
+ *  mapping holding the ancestor's key and value. */
+function ancestorMatches(document: unknown, site: MigrationPath, ancestor: MatchAncestor): boolean {
+  const offset = site.length - ancestor.path.length;
+  if (offset < 0) return false;
+  for (let i = 0; i < ancestor.path.length; i++) {
+    if (site[offset + i] !== ancestor.path[i]) return false;
+  }
+  let holder: unknown = document;
+  for (let i = 0; i < offset; i++) {
+    const segment = site[i]!;
+    if (typeof segment === "number") {
+      if (!Array.isArray(holder)) return false;
+      holder = holder[segment];
+    } else {
+      if (!isPlainObject(holder)) return false;
+      holder = holder[segment];
+    }
+  }
+  return isPlainObject(holder) && Object.hasOwn(holder, ancestor.key) && deepEquals(holder[ancestor.key], ancestor.value);
 }
 
 /** Only a string holding the hole opener can have a hole shape, so no other
@@ -549,6 +630,13 @@ export function selectMatches(
     }
     if (!valueMatches(match, site.value)) continue;
     if (match.withSibling !== undefined && !Object.hasOwn(site.parent, match.withSibling)) continue;
+    if (
+      match.withoutKey !== undefined &&
+      (!isPlainObject(site.value) || isTaggedSentinel(site.value) || Object.hasOwn(site.value, match.withoutKey))
+    ) {
+      continue;
+    }
+    if (match.ancestor && !ancestorMatches(document, site.path, match.ancestor)) continue;
     out.push(site.path);
   }
   return out;

@@ -2,6 +2,7 @@ import {
   manifestFragmentOf,
   TELO_SCHEMA_ANNOTATIONS,
   TELO_CONTEXT_BINDING_ANNOTATIONS,
+  TELO_CONTEXT_MEMBER_ANNOTATIONS,
   TELO_DATA_SCHEMA_ANNOTATIONS,
   type AnalysisRegistry,
 } from "@telorun/analyzer";
@@ -63,6 +64,15 @@ export function propKeyCompletions(
     yamlPath[yamlPath.length - 2] === "properties"
   ) {
     return buildItems(TELO_CONTEXT_BINDING_ANNOTATIONS, existingKeys, new Set<string>());
+  }
+  // A member of such a binding, at any depth through `properties`, takes the
+  // member vocabulary.
+  if ((kind === "Telo.Definition" || kind === "Telo.Abstract") && yamlPath[0] === "schema") {
+    const context = yamlPath.lastIndexOf("x-telo-context");
+    const tail = context < 0 ? [] : yamlPath.slice(context + 1);
+    if (tail.length >= 4 && tail.length % 2 === 0 && tail.every((segment, i) => i % 2 !== 0 || segment === "properties")) {
+      return buildItems(TELO_CONTEXT_MEMBER_ANNOTATIONS, existingKeys, new Set<string>());
+    }
   }
 
   const targetSchema = yamlPath.length === 0

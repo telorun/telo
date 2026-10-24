@@ -1,0 +1,5 @@
+{
+  "code": "ERR_SCHEMA_PROJECTION_UNRESOLVED",
+  "description": "A contract slot projecting a referenced declaration could not be projected.",
+  "displayMessage": "The service is misconfigured."
+}

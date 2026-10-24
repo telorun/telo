@@ -1,0 +1,244 @@
+kind: Telo.Application
+metadata:
+  name: ProblemDetailsTest
+  version: 1.0.0
+  description: |
+    Every error the server builds itself is an RFC 9457 problem sent as
+    `application/problem+json`: a catch entry with no body renders the default
+    problem — `detail` the thrown code's display message — whatever `Accept`
+    says; a custom body and a `when:` read the entry's own `problem`, whose
+    `title`, `detail` and `data` are null where the problem has none and must be
+    guarded before a member is read, and a body
+    reads the display message's record as `error.displayMessage`; a `returns:`
+    list no representation of which `Accept` admits answers a 406 problem; and a
+    failure with no code — a crash, or the framework refusing an unparseable
+    body — is the bare problem of its status.
+lang: en
+imports:
+  Http: ../
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+  - !ref unguardedProblemMember
+---
+kind: Assert.Manifest
+metadata: { name: unguardedProblemMember }
+source: ./__fixtures__/problem-nullable-member.yaml
+expect:
+  errors:
+    - code: CEL_NULLABLE_ACCESS
+      message: "'problem.data' may be null"
+---
+kind: Run.Sequence
+metadata: { name: failBare }
+steps:
+  - name: bare
+    throw: { code: BARE_FAILURE, message: no display message and no data }
+---
+kind: Run.Sequence
+metadata: { name: findOrder }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties:
+      id: { type: string }
+steps:
+  - name: missing
+    throw:
+      code: ORDER_NOT_FOUND
+      message: !cel "'no row for order ' + inputs.id"
+      displayMessage: "Order {$id} does not exist."
+      data: { id: !cel "inputs.id" }
+---
+kind: Http.Api
+metadata: { name: ordersApi }
+routes:
+  - request: { path: "/orders/{id}", method: GET }
+    inputs: { id: !cel "request.params.id" }
+    handler: !ref findOrder
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - when: !cel "problem.code == 'ORDER_NOT_FOUND'"
+        status: 404
+        content: { application/problem+json: {} }
+
+  - request: { path: "/reshaped/{id}", method: GET }
+    inputs: { id: !cel "request.params.id" }
+    handler: !ref findOrder
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      # Its own problem is a 409, so this entry does not match.
+      - when: !cel "problem.status == 404"
+        status: 409
+        content: { application/json: { body: { wrong: true } } }
+      - status: 404
+        content:
+          application/json:
+            body:
+              message: !cel "problem.detail"
+              order: !cel "problem.data != null ? problem.data.id : ''"
+              status: !cel "problem.status"
+              # The record itself, unformatted: its source text and language.
+              source: !cel "error.displayMessage != null ? error.displayMessage.text : ''"
+              lang: !cel "error.displayMessage != null ? error.displayMessage.lang : ''"
+
+  - request: { path: /bare, method: GET }
+    handler: !ref failBare
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - status: 599
+        content:
+          application/json:
+            body:
+              title: !cel "problem.title"
+              detail: !cel "problem.detail"
+              data: !cel "problem.data"
+
+  - request: { path: /html, method: GET }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - status: 200
+        content: { text/html: { body: "<p>hello</p>" } }
+
+  # The only entry needs `ok`, which the handler never returns: no entry matches,
+  # and the server is left with a failure that carries no code.
+  - request: { path: /crash, method: GET }
+    handler: { kind: Run.Value, value: { ok: false } }
+    returns:
+      - status: 200
+        when: !cel "result.ok == true"
+        content: { application/json: { body: { ok: true } } }
+
+  - request:
+      path: /documents
+      method: POST
+      schema:
+        body: { type: object }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - status: 201
+        content: { application/json: { body: { ok: true } } }
+---
+kind: HttpClient.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:8981
+throwOnHttpError: false
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: !ref client
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen:
+      address: 127.0.0.1
+      port: 8981
+    mounts:
+      - mount: !ref ordersApi
+targets:
+  - !ref server
+steps:
+  - name: notFound
+    invoke: !ref call
+    inputs:
+      url: /orders/42
+      headers: { accept: application/json }
+  - name: reshaped
+    invoke: !ref call
+    inputs: { url: /reshaped/42 }
+  - name: bare
+    invoke: !ref call
+    inputs: { url: /bare }
+  - name: notAcceptable
+    invoke: !ref call
+    inputs:
+      url: /html
+      headers: { accept: application/json }
+  - name: crash
+    invoke: !ref call
+    inputs: { url: /crash }
+  - name: unparseable
+    invoke: !ref call
+    inputs:
+      url: /documents
+      method: POST
+      headers: { content-type: application/json }
+      body: "{not json"
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        notFound:
+          status: !cel "steps.notFound.result.status"
+          contentType: !cel "steps.notFound.result.headers['content-type']"
+          body: !cel "steps.notFound.result.body"
+        reshaped:
+          status: !cel "steps.reshaped.result.status"
+          body: !cel "steps.reshaped.result.body"
+        bare:
+          status: !cel "steps.bare.result.status"
+          body: !cel "steps.bare.result.body"
+        notAcceptable:
+          status: !cel "steps.notAcceptable.result.status"
+          contentType: !cel "steps.notAcceptable.result.headers['content-type']"
+          body: !cel "steps.notAcceptable.result.body"
+        crash:
+          status: !cel "steps.crash.result.status"
+          contentType: !cel "steps.crash.result.headers['content-type']"
+          body: !cel "steps.crash.result.body"
+        unparseable:
+          status: !cel "steps.unparseable.result.status"
+          contentType: !cel "steps.unparseable.result.headers['content-type']"
+          body: !cel "steps.unparseable.result.body"
+      expected:
+        notFound:
+          status: 404
+          contentType: application/problem+json; charset=utf-8
+          body:
+            type: about:blank
+            title: Not Found
+            status: 404
+            detail: Order 42 does not exist.
+            code: ORDER_NOT_FOUND
+            data: { id: "42" }
+        reshaped:
+          status: 404
+          body:
+            message: Order 42 does not exist.
+            order: "42"
+            status: 404
+            source: "Order {$id} does not exist."
+            lang: en
+        bare:
+          status: 599
+          body: { title: null, detail: null, data: null }
+        notAcceptable:
+          status: 406
+          contentType: application/problem+json; charset=utf-8
+          body:
+            type: about:blank
+            title: Not Acceptable
+            status: 406
+            code: ERR_NOT_ACCEPTABLE
+            data: { available: [text/html] }
+        crash:
+          status: 500
+          contentType: application/problem+json; charset=utf-8
+          body: { type: about:blank, title: Internal Server Error, status: 500 }
+        unparseable:
+          status: 400
+          contentType: application/problem+json; charset=utf-8
+          body: { type: about:blank, title: Bad Request, status: 400 }

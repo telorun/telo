@@ -193,10 +193,10 @@ describe("a form's values", () => {
 });
 
 describe("live validation", () => {
-  it("reports a field's own finding once it is touched, then the server's detail on that field", async () => {
+  it("reports a field's own finding once it is touched, then the server's issue on that field", async () => {
     rendered = await show([action([input("month", "Month")])], {
       "/api/tasks": () =>
-        new Response(JSON.stringify({ message: "Refused", details: [{ path: "month", message: "No report for that month" }] }), {
+        new Response(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues: [{ pointer: "/body/month", keyword: "pattern", params: { pattern: "^[0-9]{4}-[0-9]{2}$" } }] } }), {
           status: 400,
           headers: { "content-type": "application/json" },
         }),
@@ -207,14 +207,14 @@ describe("live validation", () => {
     await rendered.enter(rendered.part("input"), "2026-05");
     expect(rendered.parts("field-error")).toEqual([]);
     await rendered.click(rendered.part("submit"));
-    expect(rendered.part("field-error").textContent).toBe("No report for that month");
+    expect(rendered.part("field-error").textContent).toBe("Is not in the expected format");
   });
 
-  it("lands a detail about a member of a property on the field entering it", async () => {
+  it("lands an issue about a member of a property on the field entering it", async () => {
     const range = { type: "dateRange", property: "period", label: "Period", presets: [], weekStart: "monday" };
     rendered = await show([action([range])], {
       "/api/tasks": () =>
-        new Response(JSON.stringify({ message: "Refused", details: [{ path: "period.from", message: "Too early" }] }), {
+        new Response(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues: [{ pointer: "/body/period/from", keyword: "format", params: { format: "date" } }] } }), {
           status: 400,
           headers: { "content-type": "application/json" },
         }),
@@ -226,7 +226,7 @@ describe("live validation", () => {
     expect(rendered.requests.some((request) => request.startsWith("POST"))).toBe(false);
     await rendered.enter(rendered.part("date-range-to"), "2026-01-31");
     await rendered.click(rendered.part("submit"));
-    expect(rendered.part("field-error").textContent).toBe("Too early");
+    expect(rendered.part("field-error").textContent).toBe("Is not a valid date");
     expect(rendered.parts("form-error")).toEqual([]);
   });
 });

@@ -1,0 +1,5 @@
+modules:
+  modules/run: Added
+body: The error context of `Run.Iteration`, `Run.Projection` and `Run.Loop` reads
+  `error.displayMessage`, the text a person is shown for the failure as its record, or
+  null when it carries none, beside `error.message`, as every step `catch:` does.

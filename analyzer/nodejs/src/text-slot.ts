@@ -22,6 +22,12 @@
  *   values its reader formats it with (`{}` for none), so a placeholder no reader
  *   binds is refused where the text is written.
  *
+ * - `x-telo-text-values-from: "<relative JSON pointer>"` on a `Text` / `Message`
+ *   node — the values are the REQUIRED string or number properties of the JSON
+ *   Schema the pointer names in the value (`0/data`, the sibling `data` of the
+ *   object holding the text): a throws code's display message is formatted with the
+ *   error's data, and only a property every error carries can fill it.
+ *
  * A fourth fragment, `telo://manifest#/$defs/TextRecord`, types a text as a
  * controller already received it; it is opaque here — the walk never enters one.
  *
@@ -37,6 +43,7 @@ export const TEXT_CATALOG_FRAGMENT = "TextCatalog";
 export const TEXT_CONTEXT_ANNOTATION = "x-telo-text-context";
 export const TEXT_VALUES_FOR_ANNOTATION = "x-telo-text-values-for";
 export const TEXT_VALUES_ANNOTATION = "x-telo-text-values";
+export const TEXT_VALUES_FROM_ANNOTATION = "x-telo-text-values-from";
 export const TEXT_RECORD_FRAGMENT = "TextRecord";
 
 /** The language a module writes in when it declares no `lang:`. */
@@ -47,6 +54,7 @@ export const UNDETERMINED_LANGUAGE = "und";
 export const TEXT_ANNOTATION_VALUE_SCHEMAS: Readonly<Record<string, Record<string, unknown>>> = {
   [TEXT_CONTEXT_ANNOTATION]: { type: "string", minLength: 1 },
   [TEXT_VALUES_FOR_ANNOTATION]: { type: "string", pattern: "^/" },
+  [TEXT_VALUES_FROM_ANNOTATION]: { type: "string", pattern: "^(0|[1-9][0-9]*)(/.*)?$" },
 };
 
 export type TextFragment = typeof MESSAGE_FRAGMENT | typeof TEXT_FRAGMENT | typeof TEXT_CATALOG_FRAGMENT;
@@ -67,6 +75,61 @@ export function isTextRecordSchema(schema: unknown): boolean {
 /** True when `schema` is a slot typed by the `Text` fragment. */
 export function isTextSchema(schema: unknown): boolean {
   return textFragmentOf(schema) === TEXT_FRAGMENT;
+}
+
+/**
+ * True when `schema` is a union offering both a `Text` and a `TextRecord`
+ * branch: a slot that takes a text as written OR the record of one already
+ * shown. An expression there is admitted by the record branch alone — its value
+ * must be a record, never a text it computes (`TEXT_ARGUMENT_COMPUTED` /
+ * `ERR_TEXT_ARGUMENT_COMPUTED`), since a computed text can be neither checked
+ * nor translated.
+ */
+export function isTextOrRecordUnion(
+  schema: unknown,
+  root: Record<string, any>,
+  resolveRef?: TextWalkOptions["resolveRef"],
+): boolean {
+  if (!isPlainObject(schema)) return false;
+  const branches = [...(Array.isArray(schema.anyOf) ? schema.anyOf : []), ...(Array.isArray(schema.oneOf) ? schema.oneOf : [])];
+  let text = false;
+  let record = false;
+  for (const branch of branches) {
+    let node: unknown = branch;
+    if (isPlainObject(node) && typeof node.$ref === "string" && textFragmentOf(node) === undefined && !isTextRecordSchema(node)) {
+      node = node.$ref.startsWith("#") ? resolveSchemaPointer(root, node.$ref) : resolveRef?.(node.$ref)?.schema;
+    }
+    if (textFragmentOf(node) === TEXT_FRAGMENT) text = true;
+    if (isTextRecordSchema(node)) record = true;
+  }
+  return text && record;
+}
+
+/** True when a schema a value is produced from can only hold a text record or
+ *  null: the `TextRecord` fragment, or a union of it with `null`. */
+export function producesTextRecord(
+  schema: unknown,
+  root: Record<string, any> = isPlainObject(schema) ? schema : {},
+  resolveRef?: TextWalkOptions["resolveRef"],
+): boolean {
+  const resolved = (node: unknown): unknown =>
+    isPlainObject(node) && typeof node.$ref === "string" && !isTextRecordSchema(node)
+      ? node.$ref.startsWith("#")
+        ? resolveSchemaPointer(root, node.$ref)
+        : resolveRef?.(node.$ref)?.schema
+      : node;
+  const node = resolved(schema);
+  if (isTextRecordSchema(node)) return true;
+  if (!isPlainObject(node)) return false;
+  const branches = [...(Array.isArray(node.anyOf) ? node.anyOf : []), ...(Array.isArray(node.oneOf) ? node.oneOf : [])];
+  if (branches.length === 0) return false;
+  let record = false;
+  for (const branch of branches) {
+    const at = resolved(branch);
+    if (isTextRecordSchema(at)) record = true;
+    else if (!(isPlainObject(at) && at.type === "null")) return false;
+  }
+  return record;
 }
 
 /** A path into a value: property names and array indices. */
@@ -90,6 +153,10 @@ export interface TextSite {
   /** What `x-telo-text-values` declares at the slot: the values its reader
    *  formats the text with. Absent when the slot declares nothing. */
   readonly declaredValues?: Readonly<Record<string, unknown>>;
+  /** What `x-telo-text-values-from` names: the schema the values are the
+   *  required properties of (`undefined` when nothing is written there), and
+   *  where it lies in the walked value. */
+  readonly valuesFrom?: { readonly path: ValuePath; readonly schema: unknown };
 }
 
 /** One node holding a message's values, paired with the text it names. */
@@ -277,6 +344,35 @@ function branchExcludes(
   return excludes(branch, root);
 }
 
+/** The object a walked field sits in, and the ones enclosing it. */
+interface Holder {
+  readonly value: Record<string, unknown>;
+  readonly path: ValuePath;
+  readonly outer?: Holder;
+}
+
+/** A relative JSON pointer's parts, or undefined for a value that is none. */
+export function relativePointerOf(pointer: unknown): { up: number; segments: string[] } | undefined {
+  if (typeof pointer !== "string") return undefined;
+  const match = /^(0|[1-9][0-9]*)(\/.*)?$/.exec(pointer);
+  if (!match) return undefined;
+  return { up: Number(match[1]), segments: match[2] ? pointerSegments(match[2])! : [] };
+}
+
+/** What `x-telo-text-values-from` names from the object holding the text: `up`
+ *  levels out, then the pointer. Undefined when there is no annotation, or it
+ *  climbs past what the walk holds. */
+function valuesFromAt(pointer: unknown, holder: Holder | undefined): TextSite["valuesFrom"] {
+  const relative = relativePointerOf(pointer);
+  if (!relative) return undefined;
+  let at = holder;
+  for (let level = 0; level < relative.up && at; level++) at = at.outer;
+  if (!at) return undefined;
+  let schema: unknown = at.value;
+  for (const segment of relative.segments) schema = isPlainObject(schema) ? schema[segment] : undefined;
+  return { path: [...at.path, ...relative.segments], schema };
+}
+
 /**
  * Every text site and every values pairing `data` holds, found by walking `schema`
  * and the value in tandem: through `properties`, a map's `additionalProperties` /
@@ -311,8 +407,9 @@ export function textSites(
     root: Record<string, any>,
     value: unknown,
     path: ValuePath,
-    holder: { value: Record<string, unknown>; path: ValuePath } | undefined,
+    holder: Holder | undefined,
     inheritedValues?: Readonly<Record<string, unknown>>,
+    inheritedFrom?: unknown,
   ): void => {
     if (!node || typeof node !== "object" || Array.isArray(node) || value === undefined) return;
     const declared = node as Record<string, any>;
@@ -329,7 +426,14 @@ export function textSites(
         fragmentAdmits(declared, path.length === 0 ? siteValueOf({ path, value }) : value, root, options.resolveRef);
       if (admitted && !texts.has(at)) {
         const declaredValues = declaredTextValuesOf(declared) ?? inheritedValues;
-        texts.set(at, { fragment, path, value, ...(declaredValues ? { declaredValues } : {}) });
+        const valuesFrom = valuesFromAt(declared[TEXT_VALUES_FROM_ANNOTATION] ?? inheritedFrom, holder);
+        texts.set(at, {
+          fragment,
+          path,
+          value,
+          ...(declaredValues ? { declaredValues } : {}),
+          ...(valuesFrom ? { valuesFrom } : {}),
+        });
       }
       return;
     }
@@ -351,11 +455,12 @@ export function textSites(
 
     if (typeof declared.$ref === "string") {
       const carried = declaredTextValuesOf(declared) ?? inheritedValues;
+      const carriedFrom = declared[TEXT_VALUES_FROM_ANNOTATION] ?? inheritedFrom;
       if (declared.$ref.startsWith("#")) {
-        walk(resolveSchemaPointer(root, declared.$ref), root, value, path, holder, carried);
+        walk(resolveSchemaPointer(root, declared.$ref), root, value, path, holder, carried, carriedFrom);
       } else {
         const named = options.resolveRef?.(declared.$ref);
-        if (named) walk(named.schema, named.root, value, path, holder, carried);
+        if (named) walk(named.schema, named.root, value, path, holder, carried, carriedFrom);
       }
     }
     for (const union of ["oneOf", "anyOf", "allOf"] as const) {
@@ -375,7 +480,7 @@ export function textSites(
     if (!isPlainObject(value)) return;
     const properties = isPlainObject(declared.properties) ? declared.properties : {};
     const patterns = isPlainObject(declared.patternProperties) ? declared.patternProperties : {};
-    const here = { value, path };
+    const here: Holder = { value, path, outer: holder };
     for (const [name, child] of Object.entries(value)) {
       const childPath = [...path, name];
       if (name in properties) {

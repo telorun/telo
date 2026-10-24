@@ -133,12 +133,15 @@ pub fn load_module(
 
     let imports = load_imports(env, module_doc, &loaded.source)?;
 
+    // The language the module's texts are written in, which a kind's declared
+    // error texts are read in.
+    let lang = module_doc.get("lang").and_then(Value::as_str);
     let mut definitions = HashMap::new();
     for document in documents.iter().skip(1) {
         if kind_of(document) != Some(DEFINITION) {
             continue;
         }
-        let definition = register_definition(&module_name, &loaded.source, &policy, document)?;
+        let definition = register_definition(&module_name, &loaded.source, &policy, document, lang)?;
         env.registry.register(Rc::clone(&definition))?;
         definitions.insert(definition.name.clone(), definition);
     }

@@ -8,12 +8,13 @@ metadata:
     transaction; an order for nothing is refused after the audit entry was
     written, which is what shows the two share a transaction.
 imports:
-  # Published throughout, like the library's own imports: a workspace copy of
-  # one module beside the published copy of the same one is two modules.
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  # The workspace copies throughout, like the library's own imports, while the
+  # error responses of `http-server` are unreleased: a workspace copy of one
+  # module beside the published copy of the same one is two modules.
+  Http: ../../../../../modules/http-server
+  SQLite: ../../../../../modules/sqlite
+  Sql: ../../../../../modules/sql
+  Run: ../../../../../modules/run
   Audit:
     source: ../..
     resources:
@@ -88,7 +89,7 @@ steps:
       - name: refuse
         throw:
           code: ERR_EMPTY_ORDER
-          message: an order needs at least one item
+          displayMessage: An order needs at least one item.
 ---
 kind: Sql.Transaction
 metadata: { name: placeOrder }
@@ -134,9 +135,7 @@ routes:
     catches:
       - status: 422
         content:
-          application/json:
-            body:
-              error: !cel "error.code"
+          application/problem+json: {}
 
   - request:
       path: /orders

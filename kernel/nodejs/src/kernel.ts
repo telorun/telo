@@ -95,6 +95,7 @@ import {
   type TraceSinkInstance,
   type BrowserEntryFiles,
 } from "@telorun/sdk";
+import type { TextRecord } from "@telorun/sdk";
 import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 import { ControllerRegistry } from "./controller-registry.js";
 import { loadBuiltinControllers } from "./builtin-controllers.js";
@@ -233,6 +234,7 @@ import {
 import type { ApplicationInputResolver } from "./unresolved-inputs.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
+import { declaredDisplayMessageOf, errorDataRefusal, errorDataValidatorOver } from "./declared-display-messages.js";
 import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
 import { importLoadFailure } from "./import-load-failure.js";
 import { needRefusalError } from "./need-refusals.js";
@@ -761,6 +763,7 @@ export class Kernel implements IKernel {
     // InvokeError.code against the declared throw union (rule 9). Propagates
     // through spawnChild() to module imports and scoped handles.
     this.rootContext.getDefinition = (kind) => this.controllers.getDefinition(kind);
+    this.rootContext.errorDataValidator = errorDataValidatorOver(this.sharedSchemaValidator);
 
     // Kept so `reconcile()` re-produces against the same directories and cache
     // policy this load used — a second load resolving them again could differ.
@@ -2194,6 +2197,16 @@ export class Kernel implements IKernel {
    *  when it declares none. */
   moduleLang(source: string | undefined): string | null {
     return source ? this.moduleLangs.get(source) ?? null : null;
+  }
+
+  /** The display message `resolvedKind` declares for `code` (or the built-in one), its
+   *  `data` held to the declared schema — `ctx.declaredDisplayMessage`. */
+  declaredDisplayMessage(resolvedKind: string | undefined, code: string, data: unknown, where: string): TextRecord | undefined {
+    const entry = declaredDisplayMessageOf(resolvedKind ? this.controllers.getDefinition(resolvedKind) : undefined, code);
+    if (!entry) return undefined;
+    const refusal = errorDataRefusal(entry, code, data, errorDataValidatorOver(this.sharedSchemaValidator), where);
+    if (refusal) throw refusal;
+    return entry.record;
   }
 
   /** The module that declared `resolvedKind`, whose files its controller reaches. */

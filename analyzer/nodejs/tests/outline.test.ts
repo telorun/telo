@@ -73,7 +73,7 @@ schema:
       x-telo-context:
         type: object
         properties:
-          error: { type: object, properties: { code: { type: string } } }
+          error: { type: object, properties: { code: { type: string, x-telo-caught-member: code } } }
       items: { type: object, properties: { when: { type: boolean }, status: { type: integer } } }
 ---
 kind: Telo.Definition
@@ -101,7 +101,7 @@ schema:
             x-telo-context:
               type: object
               properties:
-                error: { type: object, properties: { code: { type: string } } }
+                error: { type: object, properties: { code: { type: string, x-telo-caught-member: code } } }
             items: { type: object, properties: { when: { type: boolean }, status: { type: integer } } }
 ---
 kind: Telo.Definition

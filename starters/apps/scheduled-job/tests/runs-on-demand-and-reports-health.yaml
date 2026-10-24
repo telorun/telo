@@ -130,9 +130,10 @@ steps:
     inputs:
       actual:
         runStatus: !cel "steps.run.result.status"
-        error: !cel "steps.run.result.body.error"
+        body: !cel "steps.run.result.body"
         history: !cel "steps.runs.result.body.map(r, r.outcome)"
       expected:
         runStatus: 500
-        error: ERR_JOB_FAILED
+        # The failure's words are the developer's, so the problem has no `detail`.
+        body: { type: about:blank, title: Internal Server Error, status: 500, code: ERR_JOB_FAILED }
         history: [ failed ]

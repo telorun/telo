@@ -1,27 +1,10 @@
+import { jsonPointerSegment, valueIssue, type ValueIssue } from "@telorun/sdk";
 import { Ajv, type AnySchema } from "ajv";
 import addFormats from "ajv-formats";
 import type { FastifyServerOptions } from "fastify";
 
-/** Where in a request a refused value arrived. */
+/** Where in a request a refused value arrived — its member of `request` in CEL. */
 export type RequestLocation = "query" | "params" | "body" | "headers";
-
-export interface RequestValidationDetail {
-  location: RequestLocation;
-  path: string;
-  message: string;
-}
-
-/** The 400 body for a request its route's declared schema refuses — one shape,
- *  whether Fastify's validator refused the text or a plain-encoded slot could
- *  not be decoded from it. */
-export function requestValidationEnvelope(details: RequestValidationDetail[]): Record<string, unknown> {
-  return {
-    error: "ValidationError",
-    message: "Request validation failed",
-    status: 400,
-    details,
-  };
-}
 
 /** A validator over the schemas the server shares; `coerceTypes` as Ajv reads it. */
 function validatorOver(sharedSchemas: Record<string, unknown>, coerceTypes: false | "array"): Ajv {
@@ -70,36 +53,9 @@ const VALIDATED_PARTS: Record<string, RequestLocation> = {
   headers: "headers",
 };
 
-const LIST_POSITION = /^\d+$/;
-
-/**
- * The grammar of `details[].path`, from the validated part's root: property
- * names joined by `.`, and a list position — a segment made only of digits —
- * written `[n]` against what holds it, with no dot (`items[0].name`, `[0].name`
- * for a list at the root). A plain-encoded slot's refusal arrives from the
- * kernel already spelled this way.
- */
-export function detailPath(segments: string[]): string {
-  let path = "";
-  for (const segment of segments) {
-    if (LIST_POSITION.test(segment)) path += `[${segment}]`;
-    else path += path === "" ? segment : `.${segment}`;
-  }
-  return path;
-}
-
-/** The segments of a JSON Pointer, unescaped. */
-function pointerSegments(pointer: string): string[] {
-  return pointer
-    .split("/")
-    .slice(1)
-    .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
-}
-
 interface ValidatorFinding {
   instancePath?: string;
   keyword?: string;
-  message?: string;
   params?: Record<string, unknown>;
 }
 
@@ -111,24 +67,41 @@ function namedProperty(finding: ValidatorFinding): unknown {
   return undefined;
 }
 
-/** The 400 body for a request Fastify's validator refused, one detail per finding
- *  the validator reported; `null` for any other error, and for a validation error
- *  carrying no findings, which Fastify's own default then answers. */
-export function convertFastifyValidationError(error: any): Record<string, unknown> | null {
-  if (!error || typeof error !== "object" || error.code !== "FST_ERR_VALIDATION") {
-    return null;
-  }
-  const location = VALIDATED_PARTS[error.validationContext as string];
-  if (!location || !Array.isArray(error.validation)) return null;
-  const details: RequestValidationDetail[] = error.validation.map((finding: ValidatorFinding) => {
-    const segments = pointerSegments(finding.instancePath ?? "");
+/**
+ * The findings of a request Fastify's validator refused, one per finding it
+ * reported, each `{ pointer, keyword, params }`: the pointer into the request as
+ * CEL reads it (`/body/items/0/name`, `/query/limit`) — naming the property for
+ * one that is missing or undeclared — and the keyword and params in the issue
+ * vocabulary. `null` for any other error, and for a validation error carrying no
+ * findings, which then answers as an uncoded 400.
+ */
+export function fastifyValidationIssues(error: unknown): ValueIssue[] | null {
+  const refusal = error as { code?: unknown; validationContext?: unknown; validation?: unknown } | null;
+  if (!refusal || typeof refusal !== "object" || refusal.code !== "FST_ERR_VALIDATION") return null;
+  const location = VALIDATED_PARTS[refusal.validationContext as string];
+  if (!location || !Array.isArray(refusal.validation) || refusal.validation.length === 0) return null;
+  return (refusal.validation as ValidatorFinding[]).map((finding) => {
     const named = namedProperty(finding);
-    if (typeof named === "string") segments.push(named);
-    const message =
-      finding.keyword === "required" && typeof named === "string"
-        ? "is a required property"
-        : (finding.message ?? "is invalid");
-    return { location, path: detailPath(segments), message };
+    const pointer =
+      `/${location}${finding.instancePath ?? ""}` +
+      (typeof named === "string" ? `/${jsonPointerSegment(named)}` : "");
+    return valueIssue(pointer, finding.keyword, finding.params);
   });
-  return requestValidationEnvelope(details);
+}
+
+/**
+ * The findings of a value `ctx.readPlainEncoded` refused at `location`, rebuilt
+ * as exactly `{ pointer, keyword, params }` with the pointer from the request's
+ * root; the value itself when the refusal names no finding.
+ */
+export function plainEncodedIssues(location: RequestLocation, data: unknown): ValueIssue[] {
+  const issues = (data as { issues?: unknown } | null | undefined)?.issues;
+  if (!Array.isArray(issues) || issues.length === 0) return [valueIssue(`/${location}`, undefined)];
+  return issues.map((issue: { pointer?: unknown; keyword?: unknown; params?: unknown }) =>
+    valueIssue(
+      `/${location}${typeof issue.pointer === "string" ? issue.pointer : ""}`,
+      typeof issue.keyword === "string" ? issue.keyword : undefined,
+      issue.params && typeof issue.params === "object" ? (issue.params as Record<string, unknown>) : undefined,
+    ),
+  );
 }

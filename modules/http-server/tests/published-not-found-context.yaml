@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata:
+  name: HttpPublishedNotFoundContextTest
+  version: 1.0.0
+  description: |
+    A published http-server 0.39.1 declares no context on `notFoundHandler.catches`.
+    The `caught-member-marks` migration gives it what that runtime binds — `request`
+    and `error` — so `problem`, which only a newer http-server binds, is refused
+    by `telo check` while `error.code` checks clean.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref problemRefused
+  - !ref errorAccepted
+---
+kind: Assert.Manifest
+metadata: { name: problemRefused }
+source: ./__fixtures__/published-not-found-problem.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "unknown identifier 'problem'"
+---
+kind: Assert.Manifest
+metadata: { name: errorAccepted }
+source: ./__fixtures__/published-not-found-error.yaml
+expect: {}

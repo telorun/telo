@@ -21,11 +21,12 @@ metadata:
 requires:
   telo: ">=0.121.0"
 lang: en
-# `ui`, `ui-react` and `i18n` come from this repository while their changes are
-# unreleased; `telo upgrade --pin-local` pins them again once they ship.
+# `http-server`, `run`, `ui`, `ui-react` and `i18n` come from this repository
+# while their changes are unreleased; `telo upgrade --pin-local` pins them again
+# once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  Http: ../../../../../modules/http-server
+  Run: ../../../../../modules/run
   I18n: ../../../../../modules/i18n
   Ui: ../../../../../modules/ui
   UiReact: ../../../../../modules/ui-react
@@ -700,14 +701,13 @@ mounts:
             if: !cel "!Self.signedIn(inputs.cookie)"
             then:
               - name: refuse
-                throw: { code: UNAUTHORIZED, message: Sign in to Google first. }
+                throw: { code: UNAUTHORIZED, displayMessage: Sign in to Google first. }
       inputs:
         cookie: !cel "'cookie' in request.headers ? request.headers['cookie'] : ''"
       catches:
         - when: !cel "error.code == 'UNAUTHORIZED'"
           status: 401
           content:
-            application/json:
-              body: { code: !cel "error.code", message: !cel "error.message" }
+            application/problem+json: {}
   - path: /
     mount: !ref console

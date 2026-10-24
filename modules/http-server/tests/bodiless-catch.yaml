@@ -1,0 +1,19 @@
+kind: Telo.Application
+metadata:
+  name: HttpBodilessCatchTest
+  version: 1.0.0
+  description: |
+    A `catches:` entry may omit `body:` only under `application/problem+json`;
+    `telo check` refuses one under any other key where it is written.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref refusedWhereWritten
+---
+kind: Assert.Manifest
+metadata: { name: refusedWhereWritten }
+source: ./__fixtures__/bodiless-catch.yaml
+expect:
+  errors:
+    - code: DEPENDENT_SCHEMA_MISMATCH
+      message: "/0/content/text/plain is missing required property 'body'"

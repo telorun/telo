@@ -4,6 +4,8 @@ import {
   ContentEntry,
   dispatchCatches,
   dispatchReturns,
+  PROBLEM_MEDIA_TYPE,
+  problemDetails,
   ReturnEntry,
   type RequestScope,
   validateNoContentTypeHeader,
@@ -30,7 +32,7 @@ import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { requestBag } from "./request-binding.js";
 import { requestBodyRefused } from "./request-body-limit.js";
 import { requestHostOf } from "./request-host.js";
-import { requestValidationEnvelope, type RequestLocation } from "./request-validation-envelope.js";
+import { plainEncodedIssues, type RequestLocation } from "./request-validation-problem.js";
 
 const HttpApiRouteManifest = Type.Object({
   request: Type.Object({
@@ -189,15 +191,15 @@ export class HttpServerApi implements ResourceInstance {
           } catch (err) {
             if (!isInvokeError(err) || err.code !== ERR_INPUT_INVALID) throw err;
             trace.reject(err);
-            const issues = (err.data as { issues?: Array<{ path: string; message: string }> } | undefined)
-              ?.issues;
+            const data = { issues: plainEncodedIssues(location, err.data) };
             reply.code(400);
+            reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
             return reply.send(
-              requestValidationEnvelope(
-                issues?.length
-                  ? issues.map(({ path, message }) => ({ location, path, message }))
-                  : [{ location, path: "", message: err.message }],
-              ),
+              problemDetails(400, {
+                code: ERR_INPUT_INVALID,
+                data,
+                displayMessage: this.ctx.declaredDisplayMessage(ERR_INPUT_INVALID, data),
+              }),
             );
           }
         }
@@ -261,9 +263,14 @@ export class HttpServerApi implements ResourceInstance {
           trace.reject(err);
           // The route's own entries, then this router's. An unmatched throw
           // leaves the router entirely, so the server's list — and, failing
-          // that, the transport's envelope — renders it. Rendering it here
+          // that, the transport's 500 problem — renders it. Rendering it here
           // would make every outer rung of the ladder unreachable.
-          const invokeError = { code: err.code, message: err.message, data: err.data };
+          const invokeError = {
+            code: err.code,
+            message: err.message,
+            data: err.data,
+            displayMessage: err.displayMessage,
+          };
           const dispatchArgs = [
             invokeError,
             requestContext,

@@ -25,13 +25,15 @@ Accept: application/json
 | --- | --- | --- |
 | 2xx | a JSON object valid against the reader's `model` | `content`, over `data` |
 | 2xx | anything else — not JSON, not an object, or refused by the model's keywords in the [interpreted profile](conditions.md#the-interpreted-profile) | `failure`, `error.code` `ERR_UI_RESPONSE_INVALID` |
-| 401, 403 | optionally `{ code, message }` | `failure`; without a body, `error.code` is `ERR_UI_UNAUTHORIZED` / `ERR_UI_FORBIDDEN` |
-| anything else | optionally `{ code, message }` | `failure`, `error.code` `ERR_UI_REQUEST_FAILED` when the body names none |
+| 401, 403 | optionally a problem | `failure`; without a `code`, `error.code` is `ERR_UI_UNAUTHORIZED` / `ERR_UI_FORBIDDEN` |
+| anything else | optionally a problem | `failure`, `error.code` `ERR_UI_REQUEST_FAILED` when the body names none |
 | no answer at all | — | `failure`, `error.status` absent, `error.code` `ERR_UI_REQUEST_FAILED` |
 
-`error` is a `Ui.RequestError`: `status` the response's status, `code` and
-`message` read from a `{ code, message }` body when it has them. Keywords of the
-model outside the profile are left to the API.
+`error` is a `Ui.RequestError`: `status` the response's status, `code` the
+problem body's `code` (RFC 9457, `application/problem+json`, what an `Http.Api`
+answers every error with) and `message` its `detail`; without a `detail`,
+`message` is the renderer's own word for the status. Keywords of the model
+outside the profile are left to the API.
 
 A 401 or 403 to a request made *inside* the content — a table's page, a form's
 save — is shown where it happened, not by the reader; with `reloadOn:

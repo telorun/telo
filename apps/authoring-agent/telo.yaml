@@ -32,8 +32,12 @@ metadata:
     spans are written as log records.
 # The chat library's agent takes a content `resolver`, whose `context` an older
 # runtime cannot type (it reports the mapping as never evaluated).
+#
+# 0.123.0: the chat library re-raises with `rethrow: {}`, which 0.122.0 cannot
+# read, so it loses the codes a route here catches (`ERR_TURN_IN_PROGRESS`,
+# `ERR_CONVERSATION_CHANGED`) and refuses those entries.
 requires:
-  telo: ">=0.122.0"
+  telo: ">=0.123.0"
 imports:
   Chat:
     source: ./chat
@@ -1549,7 +1553,8 @@ mounts:
               - name: refuseOrigin
                 throw:
                   code: ERR_ORIGIN_NOT_ALLOWED
-                  message: !cel "'Origin ' + inputs.origin + ' is not allowed to call this agent.'"
+                  displayMessage: "Origin {$origin} is not allowed to call this agent."
+                  data: { origin: !cel "inputs.origin" }
           # Compared as HMACs keyed by the token, so the comparison's timing
           # says nothing about how much of a guess was right. The scheme is
           # case-insensitive, as RFC 9110 has it.
