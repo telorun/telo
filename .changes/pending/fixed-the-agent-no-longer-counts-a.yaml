@@ -1,5 +1,0 @@
-modules:
-  apps/authoring-agent: Fixed
-body: "The agent no longer counts a new application as finished without its
-  apps/<slug>/telo.yaml: a feature library and its tests are not the application, and
-  with no server the application's targets run what the request asked for."
