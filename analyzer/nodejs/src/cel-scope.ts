@@ -35,6 +35,8 @@ import {
   registerModuleNamespaces,
 } from "./cel-environment.js";
 import { DefinitionRegistry } from "./definition-registry.js";
+import { isKindDocument } from "./kind-declaration.js";
+import { isModuleKind } from "./module-kinds.js";
 import { celEvalModeAt, celEvalSites, type CelEvalMode, type CelEvalSites, kindCelEvalSites } from "./eval-paths.js";
 import { ELEMENT_FROM_ITEM, itemTargetPath, readRelativePointer } from "./element-from-item.js";
 import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
@@ -614,6 +616,11 @@ const NO_MODULE_CALL_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map()
 
 export class CelScopeResolver {
   private readonly typedEnvByManifest = new Map<ResourceManifest, CelEnvironment>();
+  /** The context standing in where no `x-telo-context` matched, one per
+   *  module's globals. It binds nothing the environment lacks, so a site read
+   *  against it shares the manifest's cached environment. */
+  private readonly fallbackContexts = new WeakMap<Record<string, any>, Record<string, any>>();
+  private readonly fallbackContextSet = new WeakSet<Record<string, any>>();
 
   /** Per-resource state, replaced at each `enterResource`. */
   private stepContext: Record<string, any> | undefined;
@@ -887,8 +894,9 @@ export class CelScopeResolver {
     // startup field — `resources` included — unlike its config-only
     // `variables:` / `secrets:`, so the two never share an environment.
     const importNeeds = m.kind === "Telo.Import" && site.path.startsWith("needs.");
-    const cached =
-      contextSchema === null && !importNeeds ? this.typedEnvByManifest.get(m) : undefined;
+    const envFromManifest =
+      (contextSchema === null || this.fallbackContextSet.has(contextSchema)) && !importNeeds;
+    const cached = envFromManifest ? this.typedEnvByManifest.get(m) : undefined;
     let env: CelEnvironment;
     if (cached) {
       env = cached;
@@ -920,7 +928,7 @@ export class CelScopeResolver {
           celType: entry.function.celType,
         })),
       );
-      if (contextSchema === null && !importNeeds) this.typedEnvByManifest.set(m, env);
+      if (envFromManifest) this.typedEnvByManifest.set(m, env);
     }
 
     return {
@@ -1006,11 +1014,29 @@ export class CelScopeResolver {
     }
 
     if (!matched) {
-      // No `x-telo-context` matched, so nothing was chain-validated here before.
-      // Validate the observed-state segment alone rather than merging the kernel
-      // globals, whose closed `variables` / `ports` nodes would newly reject
-      // reads that pass today.
-      return this.inputs.observedStateContext;
+      // No `x-telo-context` matched: the kernel globals alone, as every other
+      // context merges them, so `resources` is checked against the names the
+      // module declares — a read of one it does not declare fails at run time.
+      // A kind document's CEL is written for a consumer or a template body,
+      // whose resources these names do not describe, so it keeps the
+      // observed-state segment alone.
+      if (isKindDocument(m)) return this.inputs.observedStateContext;
+      // An `imports:` entry's expressions are its desugared `Telo.Import`'s,
+      // judged there in the import's own config-only scope.
+      if (isModuleKind(m.kind) && path.startsWith("imports.")) {
+        return this.inputs.observedStateContext;
+      }
+      const globals = this.inputs.kernelGlobals.forResource(m);
+      let fallback = this.fallbackContexts.get(globals);
+      if (!fallback) {
+        fallback = mergeKernelGlobalsIntoContext(
+          { type: "object", additionalProperties: true, properties: {} },
+          globals,
+        );
+        this.fallbackContexts.set(globals, fallback);
+        this.fallbackContextSet.add(fallback);
+      }
+      return fallback;
     }
 
     const { defs, aliases, scopes, allManifests, kernelGlobals } = this.inputs;

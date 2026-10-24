@@ -1,0 +1,8 @@
+# Imports the run module, so its kinds are loaded into the importer's graph.
+kind: Telo.Library
+metadata:
+  name: KindThroughResolvedAliasDeps
+  version: 1.0.0
+  description: Fixture library importing the run module for its importer's graph.
+imports:
+  Run: ../../../../../modules/run

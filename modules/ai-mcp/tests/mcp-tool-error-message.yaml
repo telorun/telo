@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: AiMcpToolErrorMessageTest
+  version: 1.0.0
+  description: |
+    A tool call the MCP server answers with `isError: true` raises
+    ERR_MCP_TOOL_ERROR whose message carries what the server said, so the model
+    reading the error learns why the call failed and how to repair it.
+imports:
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiMcp: ../
+  Stub: ./__fixtures__/stub-mcp.yaml
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref testToolErrorMessage
+---
+kind: Ai.Agent
+metadata:
+  name: assistant
+model:
+  kind: AiEcho.EchoModel
+  emitToolCall:
+    name: fail_with_message
+onToolError: throw
+toolProviders:
+  - provider:
+      kind: AiMcp.ToolProvider
+      client: { kind: Stub.StubClient }
+---
+kind: Run.Sequence
+metadata:
+  name: testToolErrorMessage
+steps:
+  - name: call
+    try:
+      - name: run
+        invoke: !ref assistant
+        inputs: { prompt: "fail please" }
+      - name: unreachable
+        throw: { code: ERR_TEST_UNREACHABLE, message: "a failing tool call completed the turn" }
+    catch:
+      - name: carriesServerText
+        invoke: !ref Assert.equals
+        inputs:
+          actual:
+            code: !cel "error.code"
+            message: !cel "error.message"
+          expected:
+            code: ERR_MCP_TOOL_ERROR
+            message: >-
+              AiMcp.ToolProvider "assistant_toolProviders_0_provider":
+              MCP tool "fail_with_message" returned an error: pkg 'demo' is not
+              tracked; try version 1.2.0

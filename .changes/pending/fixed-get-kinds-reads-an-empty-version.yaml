@@ -1,0 +1,7 @@
+modules:
+  apps/hub: Fixed
+body: get_kinds reads an empty version as the latest, as it already did an omitted one,
+  so a model that fills every tool argument with an empty string gets the definitions
+  instead of being told the ref is not tracked; a ref the hub tracks, asked for at a
+  version it does not hold, is now answered with its latest version and the versions it
+  does hold rather than as an untracked ref.

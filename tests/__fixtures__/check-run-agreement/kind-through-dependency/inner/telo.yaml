@@ -1,0 +1,9 @@
+# Imports the HTTP server module and nothing else, so `HttpServer` is a module
+# the graph loads that only this library names.
+kind: Telo.Library
+metadata:
+  name: KindThroughDependencyInner
+  version: 1.0.0
+  description: Fixture library that imports the HTTP server module for its importer's graph.
+imports:
+  HttpServer: ../../../../../modules/http-server

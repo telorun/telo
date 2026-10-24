@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Fixed
+body: The agent reads a hub tool's error and acts on it before falling back to the CLI,
+  and takes an import pin from the integrity field of telo module manifest -o json
+  rather than from telo module digest, whose registry digest is never a pin.

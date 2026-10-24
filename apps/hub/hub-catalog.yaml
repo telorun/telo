@@ -359,10 +359,29 @@ steps:
             invoke: !ref vocabularyNames
             inputs:
               texts: !cel "[json(steps.parsed.result.docs)]"
+  # Not at that version: whether the hub tracks the module at all, so the answer
+  # can tell an unknown ref from an unknown version of a known one.
+  - name: untracked
+    if: !cel "steps.meta.result.rows.size() == 0"
+    then:
+      - name: versions
+        invoke: !ref query
+        inputs:
+          sql: >-
+            SELECT mv.version
+            FROM module_versions mv
+            JOIN modules m ON m.id = mv.module_id
+            WHERE m.ref = $1
+            ORDER BY version_sort_key(mv.version) DESC NULLS LAST, mv.version ASC
+          bindings:
+            - !cel "inputs.ref"
 outputs:
   ref: !cel "inputs.ref"
   found: !cel "'selected' in steps"
   asked: !cel "inputs.names"
+  askedVersion: !cel "inputs.version"
+  # Newest first; empty unless the module is tracked but not at the asked version.
+  trackedVersions: !cel "'versions' in steps ? steps.versions.result.rows.map(r, r.version) : []"
   version: !cel "'selected' in steps ? steps.meta.result.rows[0].version : ''"
   name: !cel "'selected' in steps ? steps.meta.result.rows[0].module_name : ''"
   application: !cel "'selected' in steps && steps.meta.result.rows[0].root_kind == 'Application'"
@@ -434,6 +453,8 @@ outputs:
   ref: !cel "steps.module.result.ref"
   found: !cel "steps.module.result.found"
   asked: !cel "steps.module.result.asked"
+  askedVersion: !cel "steps.module.result.askedVersion"
+  trackedVersions: !cel "steps.module.result.trackedVersions"
   version: !cel "steps.module.result.version"
   name: !cel "steps.module.result.name"
   application: !cel "steps.module.result.application"
@@ -531,7 +552,8 @@ steps:
           'ref': ref,
           'version': ref == variables.builtinsRef
             ? (steps.telo.result != '' ? steps.telo.result : 'latest')
-            : inputs.kinds.filter(k, k.ref == ref)[0].?version.orValue('latest'),
+            : cel.bind(v, inputs.kinds.filter(k, k.ref == ref)[0].?version.orValue(''),
+                v == '' ? 'latest' : v),
           'implementation': inputs.implementation,
           'names': distinct(inputs.kinds.filter(k, k.ref == ref)
                               .map(k, regexReplace(k.kind, '^.*\\.', '')))})
@@ -592,6 +614,11 @@ outputs:
             ? (e.m.ref == variables.builtinsRef
                 ? '# The built-in vocabulary (' + e.m.ref + ') is not tracked by this hub yet (asked for: '
                     + join(e.m.asked, ', ') + ').\n'
+                : size(e.m.trackedVersions) > 0
+                ? '# ' + e.m.ref + ' is tracked by the hub, but not at version ' + e.m.askedVersion
+                    + ' (asked for: ' + join(e.m.asked, ', ') + '). Its latest version is '
+                    + e.m.trackedVersions[0] + '; omit `version` to read the latest, or pass one of: '
+                    + join(e.m.trackedVersions, ', ') + '.\n'
                 : '# ' + e.m.ref + ' is not tracked by the hub (asked for: ' + join(e.m.asked, ', ')
                     + '). Resolve the ref with suggest_module_refs.\n')
           : e.m.application

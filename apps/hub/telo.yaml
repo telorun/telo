@@ -1396,7 +1396,7 @@ entries:
             properties:
               ref: { type: string, description: "Location ref of the module owning the kind, exactly as search_resources returned it." }
               kind: { type: string, description: "The kind's name within that module, e.g. Server." }
-              version: { type: string, description: "Exact version, or omit for the latest tracked one. One version is read per module." }
+              version: { type: string, description: "Exact version, or omit (or pass an empty string) for the latest tracked one. One version is read per module; a version the hub does not track is answered with the ones it does." }
             required: [ref, kind]
             additionalProperties: false
         telo:

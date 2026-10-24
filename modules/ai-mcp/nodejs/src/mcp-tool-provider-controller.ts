@@ -2,7 +2,7 @@ import type { AiToolProviderInstance, ToolDescriptor } from "@telorun/ai";
 import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import { liveMcpClient, type McpClientInstance } from "./mcp-client-instance.js";
-import { normalizeMcpContent } from "./mcp-content.js";
+import { mcpErrorText, normalizeMcpContent } from "./mcp-content.js";
 import { untilTurnCancelled } from "./turn-cancellation.js";
 
 /**
@@ -74,9 +74,12 @@ class McpToolProvider implements ResourceInstance, AiToolProviderInstance {
       attributes: { "mcp.tool.name": name },
     })) as McpToolCallResult;
     if (result?.isError) {
+      const said = mcpErrorText(result.structuredContent ?? result.content);
       throw new InvokeError(
         "ERR_MCP_TOOL_ERROR",
-        `AiMcp.ToolProvider "${this.resource.metadata.name}": MCP tool "${name}" returned an error.`,
+        `AiMcp.ToolProvider "${this.resource.metadata.name}": MCP tool "${name}" returned an error` +
+          (said ? `: ${said}` : "."),
+        { content: result.content, structuredContent: result.structuredContent },
       );
     }
     if (result?.structuredContent !== undefined) return result.structuredContent;

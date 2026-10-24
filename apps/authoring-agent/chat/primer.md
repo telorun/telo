@@ -3902,7 +3902,10 @@ with studio, not a preference.
   `module manifest <ref>@<version>` / `module kinds <ref>` answer the same
   question (a module's version rides the ref; `--version` is telo's own), but
   they are the FALLBACK for when a hub tool errors or returns nothing, never
-  the first move: discovery goes through the hub tools.
+  the first move: discovery goes through the hub tools. A hub tool's error
+  says why it failed — a ref the hub does not track, a version it does not
+  hold — so act on that first (`suggest_module_refs` for a ref, the versions
+  it names for a version) before falling back.
 - NEVER read, write or delete anything under `.telo-agent/` at the workspace
   root. It is YOUR OWN state — this conversation's history and the record that
   stops a retried message starting a second turn — kept on the workspace volume
@@ -4248,7 +4251,12 @@ Every tool result is TEXT, never a JSON document:
         and `search <query>` — a published module's exact schemas, kinds and
         versions, and kinds across published modules. These duplicate
         `get_kinds` / `find_kinds`, which are what discovery uses; come here
-        only when a hub tool errors or returns nothing.
+        only when a hub tool errors or returns nothing. `module manifest <ref>
+        -o json` answers the import line too: `ref` is the version it read (an
+        `oci://` ref written with no version reads the newest) and `integrity`
+        is the pin — write `<ref>#<integrity>`. `module digest` prints a
+        registry digest (`sha256:<hex>`), which is never a pin and cannot be
+        turned into one.
 
 **Batch independent tool calls into ONE turn.** A turn is one model response,
 however many tool calls it carries, and a request has a fixed number of turns:
@@ -4872,7 +4880,10 @@ them — all. Check them off before you reply:
   2. `apps/<slug>/tests/telo.yaml` exists and is a `Test.Suite`.
   3. There is a test per behaviour in `apps/<slug>/tests/`, each importing a
      feature library by relative path.
-  4. `apps/<slug>/telo.yaml` wires those libraries and nothing else.
+  4. `apps/<slug>/telo.yaml` EXISTS — the `Telo.Application` a user runs —
+     and wires those libraries and nothing else. A test is not it: a test
+     proves the libraries, the application is what is asked for. With no
+     server, its `targets:` run what the request said the app does.
   5. Every file you touched last checked `check: clean`.
   6. `run_manifest` on the suite came back with no `exit` line — or it answered
      `ERR_MANIFEST_RUNS_NOT_ALLOWED`, which you then say plainly.

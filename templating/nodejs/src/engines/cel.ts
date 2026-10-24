@@ -1,5 +1,7 @@
 import { formatType, qualifiedCalls, type CelNode } from "@telorun/cel";
 import {
+  chainFailureAgainstSchema,
+  chainsRefusedAt,
   extractAccessChains,
   extractCallResultAccesses,
   findNullableAccessIssues,
@@ -185,9 +187,17 @@ export function analyzeCelWithTree(
 
   if (env.contextSchema) {
     const contextSchema = env.contextSchema as Record<string, any>;
+    // A member of a closed record the type checker refused is its verdict already.
+    const refusedByChecker = chainsRefusedAt(
+      ast,
+      checked.valid
+        ? []
+        : checked.diagnostics.filter((d) => d.code === "CEL_UNKNOWN_FIELD").map((d) => d.range),
+    );
     for (const chain of extractAccessChains(ast)) {
-      const err = validateChainAgainstSchema(chain, contextSchema);
-      if (err && !explained.has(err)) out.push({ code: "CEL_UNKNOWN_FIELD", message: err });
+      const failure = chainFailureAgainstSchema(chain, contextSchema);
+      if (!failure || explained.has(failure.message) || refusedByChecker.has(failure.path)) continue;
+      out.push({ code: "CEL_UNKNOWN_FIELD", message: failure.message });
     }
 
     for (const issue of findNullableAccessIssues(ast, contextSchema)) {

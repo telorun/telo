@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { readVersionDigests } from "../src/commands/module.js";
+import {
+  newestPublishedVersion,
+  readVersionDigests,
+  versionlessOciRepository,
+} from "../src/commands/module.js";
 
 /** `telo module versions --digests` — what the hub's reconcile pass reads, one
  *  process per module instead of one per version. */
@@ -45,5 +49,30 @@ describe("readVersionDigests", () => {
     });
 
     expect(peak).toBe(8);
+  });
+});
+
+/** `telo module manifest <oci ref>` with no version reads the newest published
+ *  one: no telo module publishes a `latest` tag, so asking for it only failed. */
+describe("versionlessOciRepository", () => {
+  it("answers the repository of an oci ref written with no version", () => {
+    expect(versionlessOciRepository("oci://ghcr.io/telorun/http-server")).toBe(
+      "oci://ghcr.io/telorun/http-server",
+    );
+  });
+
+  it("leaves a versioned, a pinned, a digest and a non-oci ref alone", () => {
+    expect(versionlessOciRepository("oci://ghcr.io/telorun/http-server@0.39.1")).toBeNull();
+    expect(versionlessOciRepository("oci://ghcr.io/telorun/http-server#sha256-abc")).toBeNull();
+    expect(versionlessOciRepository("oci://ghcr.io/telorun/x@sha256:0123")).toBeNull();
+    expect(versionlessOciRepository("https://example.test/telo.yaml")).toBeNull();
+    expect(versionlessOciRepository("./modules/run")).toBeNull();
+  });
+});
+
+describe("newestPublishedVersion", () => {
+  it("chooses the highest SemVer version, never a tag that is no version", () => {
+    expect(newestPublishedVersion(["latest", "0.9.0", "0.10.1", "0.10.0"])).toBe("0.10.1");
+    expect(newestPublishedVersion(["latest", "sha256:0123"])).toBeUndefined();
   });
 });

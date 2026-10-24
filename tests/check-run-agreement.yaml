@@ -105,6 +105,14 @@ targets:
   - !ref hostPathInterpolatedAtRuntime
   - !ref dependencyCycle
   - !ref dependencyCycleAtRuntime
+  - !ref kindThroughDependency
+  - !ref kindThroughDependencyAtRuntime
+  - !ref undeclaredResourceRead
+  - !ref undeclaredResourceReadAtRuntime
+  - !ref kindThroughResolvedAlias
+  - !ref kindThroughResolvedAliasAtRuntime
+  - !ref templateForwardUnimportedEntry
+  - !ref templateForwardUnimportedEntryAtRuntime
   - !ref providerStatusAtStartup
   - !ref serviceStatusAtStartup
   - !ref serviceStatusAtStartupAtRuntime
@@ -920,6 +928,93 @@ metadata:
 source: ./__fixtures__/check-run-agreement/dependency-cycle/telo.yaml
 expect:
   runFails: "ERR_CIRCULAR_DEPENDENCY"
+---
+# A kind spelled by the name of a module only a dependency imports. The graph
+# holds that module's definitions, which the analyzer used to resolve by their
+# canonical name from anywhere, while the kernel resolves a kind through the
+# declaring module's own aliases — reported where it is written…
+kind: Assert.Manifest
+metadata:
+  name: kindThroughDependency
+source: ./__fixtures__/check-run-agreement/kind-through-dependency/lib/telo.yaml
+expect:
+  errors:
+    - code: UNDEFINED_KIND
+      message: "Kind 'HttpServer.Server': no module imported with alias 'HttpServer' in this module"
+---
+# …and refused by the kernel from a consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: kindThroughDependencyAtRuntime
+source: ./__fixtures__/check-run-agreement/kind-through-dependency/telo.yaml
+expect:
+  errors: []
+  runFails: "no module imported with alias 'HttpServer'"
+---
+# An alias that resolves names the only kind the kernel looks up: a module the
+# graph holds under the same name as the alias does not stand in for the one
+# the alias names — reported where the kind is written…
+kind: Assert.Manifest
+metadata:
+  name: kindThroughResolvedAlias
+source: ./__fixtures__/check-run-agreement/kind-through-resolved-alias/lib/telo.yaml
+expect:
+  errors:
+    - code: UNDEFINED_KIND
+      message: "No Telo.Definition found for kind 'Run.Sequence'."
+---
+# …and refused by the kernel from a consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: kindThroughResolvedAliasAtRuntime
+source: ./__fixtures__/check-run-agreement/kind-through-resolved-alias/telo.yaml
+expect:
+  errors: []
+  runFails: "No controller registered for kind 'Run.Sequence'"
+---
+# A forward view is spelled by its entry's canonical kind, which the module
+# declaring the consumer need not import: the view is still checked as the
+# entry's own declaration — reported at the route the consumer wrote…
+kind: Assert.Manifest
+metadata:
+  name: templateForwardUnimportedEntry
+source: ./__fixtures__/check-run-agreement/template-forward-unimported-entry/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/routes/0 must NOT have additional properties ('bogus' is not allowed)"
+---
+# …and refused by the router's own validation from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: templateForwardUnimportedEntryAtRuntime
+source: ./__fixtures__/check-run-agreement/template-forward-unimported-entry/telo.yaml
+expect:
+  errors: []
+  runFails: "/routes/0 must NOT have additional properties ('bogus' is not allowed)"
+---
+# A read of a resource the module never declares, in a startup field no CEL
+# context covers — where `resources` was an open map — reported where it is
+# written…
+kind: Assert.Manifest
+metadata:
+  name: undeclaredResourceRead
+source: ./__fixtures__/check-run-agreement/undeclared-resource-read/lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.listenPort' is not defined (available: server, Http)"
+---
+# …and failing in the kernel when it creates the reader, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: undeclaredResourceReadAtRuntime
+source: ./__fixtures__/check-run-agreement/undeclared-resource-read/telo.yaml
+expect:
+  errors: []
+  runFails: 'Expression !cel "resources.listenPort" failed: no such key: "listenPort"'
 ---
 # A provider reports observed state from `init()`, so its status is readable in
 # another resource's startup field: clean at check, and the value is there at run.

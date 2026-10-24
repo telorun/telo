@@ -55,6 +55,26 @@ describe("celEngine.analyze", () => {
     expect(findings[0].message).toContain("missing");
   });
 
+  it("reports a member the type checker refused once, not again off the context", () => {
+    const typed = celEnv.clone();
+    typed.registerVariable("variables", { fields: { db: "string" } });
+    const closed = {
+      type: "object",
+      properties: {
+        variables: { type: "object", properties: { db: { type: "string" } }, additionalProperties: false },
+        resources: { type: "object", properties: { db: { type: "object" } }, additionalProperties: false },
+      },
+    };
+    const findings = celEngine.analyze("variables.dbb + string(resources.nope)", {
+      celEnv: typed,
+      contextSchema: closed,
+    }).diagnostics;
+    expect(findings.map((d) => d.message)).toEqual([
+      '"dbb" is not declared here (declared: db)',
+      "'resources.nope' is not defined (available: db)",
+    ]);
+  });
+
   it("ignores well-formed chains against an open `additionalProperties: true` schema", () => {
     const open = { type: "object", properties: {}, additionalProperties: true };
     expect(celEngine.analyze("anything.goes.here", { celEnv, contextSchema: open }).diagnostics).toEqual([]);

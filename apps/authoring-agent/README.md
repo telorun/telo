@@ -1096,8 +1096,9 @@ built — since a module loaded both from the checkout and from a published
 version is two identities for one kind. `reads-ui-guide.yaml` fails until the
 hub serving the guide tools is deployed: the agent's hub tools leave out a name
 the hub does not serve. Live cases skip themselves when `OPENAI_API_KEY` is
-unset. CI never runs it on its own: it is the `Authoring Agent E2E` workflow,
-started by hand against a chosen branch.
+unset. CI runs it as the `Authoring Agent E2E` workflow on every pull request
+touching the agent or the checkout's `telo` (never a fork's, which holds no
+API key), and it can be started by hand against any branch.
 
 The offline cases run whole turns against `chat/tests/__fixtures__/provider-stub`,
 a local stand-in for the responses endpoint reached through `MODEL_ENDPOINT`: it replies, calls one tool, refuses, or holds a reply until a test calls its `POST /release` (an aborted turn's request ends with the abort) depending on the message, and keeps every request it was sent for a test to read.
