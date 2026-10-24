@@ -1,20 +1,29 @@
-import Fastify, { type FastifyBaseLogger, type FastifyInstance } from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 
 import type { RunnerBackend } from "./backend.js";
 import { RunnerConfigError, type ResolvedRunnerApp, type RunnerCoreConfig } from "./config.js";
-import type { RunnerAppDescriptor, RunnerCapabilities } from "./contract.js";
-import { appsRoute } from "./routes/apps.js";
+import type { RunnerCapabilities } from "./contract.js";
 import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
 import { ioRoute } from "./routes/io.js";
 import { probeRoute } from "./routes/probe.js";
 import { engineRoute } from "./routes/engine.js";
+import { IdentityVerifier } from "./identity/identity-verifier.js";
+import {
+  dpopChallenge,
+  protectedResourceMetadata,
+  protectedResourceMetadataRoute,
+  protectedResourceMetadataUrl,
+} from "./identity/protected-resource-metadata.js";
 import { sessionsRoute, type ConfigGate } from "./routes/sessions.js";
 import { SessionContainers } from "./session-containers/session-containers.js";
+import type { SessionStore } from "./session-store/session-store.js";
+import { IoTickets } from "./session/io-tickets.js";
 import { SessionRegistry } from "./session/registry.js";
-import { WatchSupervisor } from "./session/watch-supervisor.js";
+import { callerResolver, type CallerResolver } from "./session/session-credentials.js";
+import { SessionLifecycle } from "./session/session-lifecycle.js";
 
 export interface ServerDeps {
   backend: RunnerBackend;
@@ -26,27 +35,34 @@ export interface ServerDeps {
    *  getter is re-resolved per request — use it when the config surface changes
    *  at runtime (e.g. a base-image catalog refreshed from a registry). */
   capabilities: RunnerCapabilities | (() => RunnerCapabilities);
-  /** Backend config gate, enforced on `POST /v1/sessions` before the workload
-   *  starts (e.g. an `image` allowlist). Rejects with `400 invalid_config`.
-   *  Not consulted for app sessions — their image comes from `apps`. */
+  /** Backend config gate, enforced on `POST /v1/sessions` and `PUT …/apps`
+   *  (e.g. an `image` allowlist). Rejects with `400 invalid_config`. */
   validateConfig?: ConfigGate;
-  /** Operator-predefined applications launchable by name (usually
-   *  `loadResolvedApps(process.env)`). Advertised on /v1/capabilities as
-   *  `apps` descriptors; sessions of them are created via
-   *  `POST /v1/apps/:name/sessions`. */
+  /** The operator's agent catalog (usually `loadResolvedApps(process.env)`),
+   *  which a session's `agent` is resolved against. */
   apps?: Record<string, ResolvedRunnerApp>;
-  registry?: SessionRegistry;
+  /** Where session records are kept (`openSessionStore`). Owned by the caller,
+   *  who closes it after the server. */
+  store: SessionStore;
+  /** Who a request is, from its credentials — every session route asks it.
+   *  Defaults to resume secrets (`Authorization: Bearer`), plus DPoP-bound
+   *  identities when `config.identity` is set. */
+  resolveCaller?: CallerResolver;
   /** Where the runner's own log goes. Defaults to pino's own destination
    *  (stdout), which is right for a container whose stdout IS its log — and
    *  wrong for a runner hosted inside a CLI, where stdout is the machine
    *  surface and a request line written onto it is corruption rather than
    *  noise. */
   logStream?: NodeJS.WritableStream;
+  /** The waits between attempts of one session record write, after which the
+   *  session is failed with the store's error. Defaults to 100 ms, 500 ms, 2 s. */
+  storeRetryDelaysMs?: readonly number[];
 }
 
 export interface ServerHandle {
   app: FastifyInstance;
   registry: SessionRegistry;
+  lifecycle: SessionLifecycle;
 }
 
 export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
@@ -63,6 +79,8 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   await app.register(cors, {
     origin: deps.config.corsOrigins,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    // A browser client reads the DPoP challenge off a 401.
+    exposedHeaders: ["WWW-Authenticate"],
   });
 
   // **A narrowed origin list is enforced on the server, not just advertised.**
@@ -97,43 +115,31 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
 
   await app.register(websocket);
 
-  const registry =
-    deps.registry ??
-    new SessionRegistry({
-      maxSessions: deps.config.maxSessions,
-      exitTtlMs: deps.config.exitTtlMs,
-      replayBufferBytes: deps.config.replayBufferBytes,
-      suspendedTtlMs: deps.config.watch.suspendedTtlMs,
+  const registry = new SessionRegistry({ replayBufferBytes: deps.config.replayBufferBytes });
+  const tickets = new IoTickets();
+
+  // Identity is advertised from the same configuration that verifies it, so
+  // the document a client reads and the check the runner makes are one
+  // statement — core adds it to whatever the backend describes.
+  const identityConfig = deps.config.identity;
+  const identityMetadata = identityConfig ? protectedResourceMetadata(identityConfig) : undefined;
+  const backendCapabilities = deps.capabilities;
+  const describe =
+    typeof backendCapabilities === "function" ? backendCapabilities : () => backendCapabilities;
+  const capabilitiesGetter = (): RunnerCapabilities => {
+    const document = { ...describe() };
+    delete document.identity;
+    return identityMetadata ? { ...document, identity: identityMetadata } : document;
+  };
+  const capabilitiesValue = capabilitiesGetter();
+  const resolveCaller =
+    deps.resolveCaller ??
+    callerResolver({
+      identity: identityConfig
+        ? new IdentityVerifier({ config: identityConfig, store: deps.store, log: app.log })
+        : undefined,
     });
-
-  // The checkpoint timer and the idle reaper. Started unconditionally: it walks
-  // watch sessions only, and with watch disabled there are none.
-  const supervisor = new WatchSupervisor({
-    registry,
-    idleMs: deps.config.watch.idleMs,
-    checkpointMs: deps.config.watch.checkpointMs,
-    log: app.log,
-  });
-  supervisor.start();
-  app.addHook("onClose", async () => supervisor.stop());
-
-  // The app catalog is injected into the served capabilities document here, so
-  // what /v1/capabilities advertises and what the session route accepts can
-  // never drift — both come from `deps.apps`.
-  const appDescriptors: RunnerAppDescriptor[] = Object.values(deps.apps ?? {}).map(
-    ({ name, title, description }) => ({ name, title, description }),
-  );
-  const withApps = (caps: RunnerCapabilities): RunnerCapabilities =>
-    appDescriptors.length > 0 ? { ...caps, apps: appDescriptors } : caps;
-  const capabilitiesGetter =
-    typeof deps.capabilities === "function"
-      ? () => withApps((deps.capabilities as () => RunnerCapabilities)())
-      : withApps(deps.capabilities);
-
-  // Terms are stable across the process — resolve the capabilities once for them
-  // even when `capabilities` is a getter (the route still re-resolves per request).
-  const capabilitiesValue =
-    typeof capabilitiesGetter === "function" ? capabilitiesGetter() : capabilitiesGetter;
+  const agents = deps.apps ?? {};
 
   // The advertised feature and the backend seam are one statement: a runner
   // that says it honours a telo version over a backend that cannot be asked
@@ -160,6 +166,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     containers = new SessionContainers({
       engine: deps.backend.containers,
       registry,
+      store: deps.store,
       max: containerSettings.max,
       internalUrl: containerSettings.internalUrl,
       log: app.log,
@@ -167,71 +174,57 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     await app.register(engineRoute(containers));
   }
 
+  const lifecycle = new SessionLifecycle({
+    backend: deps.backend,
+    store: deps.store,
+    registry,
+    tickets,
+    containers,
+    agents,
+    settings: deps.config.sessions,
+    maxSessions: deps.config.maxSessions,
+    log: app.log,
+    ...(deps.storeRetryDelaysMs ? { storeRetryDelaysMs: deps.storeRetryDelaysMs } : {}),
+  });
+
   await app.register(healthRoute(deps.version));
   await app.register(capabilitiesRoute(capabilitiesGetter));
+  if (identityMetadata) await app.register(protectedResourceMetadataRoute(identityMetadata));
   await app.register(probeRoute({ backend: deps.backend }));
   await app.register(
     sessionsRoute({
       backend: deps.backend,
       registry,
-      containers,
+      lifecycle,
+      tickets,
+      resolveCaller,
+      authChallenge: identityConfig
+        ? dpopChallenge(protectedResourceMetadataUrl(identityConfig.audience))
+        : undefined,
       corsOrigins: deps.config.corsOrigins,
       validateConfig: deps.validateConfig,
       // The capabilities document is the single source of the runner's terms;
-      // every session-creating route enforces what /v1/capabilities advertises.
+      // the create route enforces what /v1/capabilities advertises.
       terms: capabilitiesValue.terms,
-      // A co-resident agent IS an operator-predefined application — one that
-      // happens to share a pod — so it resolves against the same catalog.
-      apps: deps.apps,
-      watch: {
-        enabled: deps.config.watch.enabled,
-        maxSessions: deps.config.watch.maxSessions,
-        reloadLimitPerMinute: deps.config.watch.reloadLimitPerMinute,
-      },
+      agents,
+      reloadLimitPerMinute: deps.config.sessions.reloadLimitPerMinute,
       // Read from the advertised capabilities for the same reason terms are:
       // the document a client reads and the rule the route enforces have to be
-      // one statement. A runner advertising `["streams"]` refuses an explicit
-      // `io: "tty"` here, rather than handing back a session that says it has a
-      // terminal and does not.
+      // one statement.
       io: capabilitiesValue.features.io,
       teloVersions: capabilitiesValue.features.teloVersions === true,
     }),
   );
   await app.register(
-    appsRoute({
-      backend: deps.backend,
-      registry,
-      containers,
-      terms: capabilitiesValue.terms,
-      apps: deps.apps,
-      io: capabilitiesValue.features.io,
-    }),
+    ioRoute({ registry, lifecycle, tickets, corsOrigins: deps.config.corsOrigins }),
   );
-  await app.register(ioRoute({ registry, corsOrigins: deps.config.corsOrigins }));
 
-  return { app, registry };
-}
+  // Every stored session is loaded and every running one adopted before the
+  // runner answers; then the idle, running-limit and retention sweep starts.
+  // Closing detaches workloads and stops nothing that outlives the runner.
+  await lifecycle.boot();
+  lifecycle.start();
+  app.addHook("onClose", async () => lifecycle.close());
 
-/**
- * Stop every live session. Used by graceful shutdown — marks each entry
- * userStopped and stops its backend workload so nothing leaks past process
- * exit. Backend-neutral: it only touches the abstract `BackendSession`.
- */
-export async function stopAllSessions(
-  registry: SessionRegistry,
-  log: Pick<FastifyBaseLogger, "info" | "warn">,
-): Promise<void> {
-  const live = registry.list().filter((e) => e.session !== null && e.exitedAt === null);
-  if (live.length === 0) return;
-  log.info({ count: live.length }, "stopping live sessions before shutdown");
-  await Promise.all(
-    live.map(async (entry) => {
-      entry.userStopped = true;
-      try {
-        await entry.session?.stop();
-      } catch (err) {
-        log.warn({ err, sessionId: entry.sessionId }, "failed to stop session during shutdown");
-      }
-    }),
-  );
+  return { app, registry, lifecycle };
 }

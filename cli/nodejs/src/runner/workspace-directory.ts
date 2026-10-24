@@ -6,7 +6,6 @@ import * as path from "node:path";
 import type {
   WorkspaceAccess,
   WorkspaceChangeSet,
-  WorkspaceCheckpointFile,
   WorkspaceTree,
 } from "@telorun/runner-core";
 import { normalizeBundlePath, WORKSPACE_EXCLUDED_DIRECTORIES } from "@telorun/runner-core";
@@ -75,25 +74,6 @@ export class WorkspaceDirectory implements WorkspaceAccess {
       }
     }
     return { written, deleted };
-  }
-
-  async snapshot(): Promise<WorkspaceCheckpointFile[]> {
-    const files = await this.walk();
-    return Promise.all(
-      files.map(async (relative) => {
-        const bytes = await fs.readFile(this.resolve(relative));
-        return {
-          path: relative,
-          hash: createHash("sha256").update(bytes).digest("hex"),
-          // Always base64, as the workspace application's snapshot is: a
-          // checkpoint has to round-trip a workspace exactly, and deciding text
-          // versus binary per file is a guess that corrupts whichever file it
-          // gets wrong.
-          content: bytes.toString("base64"),
-          encoding: "base64" as const,
-        };
-      }),
-    );
   }
 
   /** Re-run one app with no file change: rewrite its entry manifest with the

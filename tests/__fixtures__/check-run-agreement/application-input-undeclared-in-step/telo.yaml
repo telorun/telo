@@ -1,0 +1,26 @@
+# Supplies an undeclared variable to a child application declared in a scope
+# of a sequence written inline in a step.
+kind: Telo.Application
+metadata:
+  name: ApplicationInputUndeclaredInStep
+  version: 1.0.0
+imports:
+  App: ../../../../modules/app
+  Run: ../../../../modules/run
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: started
+    invoke:
+      kind: Run.Sequence
+      with:
+        - kind: App.Instance
+          metadata: { name: child }
+          source: ../application-input-undeclared/child/telo.yaml
+          variables:
+            whom: the parent
+      targets: [ !ref child ]
+      steps: []

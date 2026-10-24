@@ -2,16 +2,14 @@ import type { DebugFrame } from "@telorun/debug-wire";
 import { DebugPanel } from "@telorun/debug-ui/components";
 import { useRef, useState, type ReactElement } from "react";
 
-import { Button } from "../../components/ui/button";
 import { useColorMode } from "../../theme/color-mode";
-import { useRun } from "../context";
+import { isRunLive, useRun } from "../context";
 import type { RunBlocker, RunRecord } from "../context";
 import type { TerminalBuffer } from "../terminal-buffer";
-import { isTerminal } from "../types";
 import { AdapterUnavailable } from "./AdapterUnavailable";
 import { EnvFilesNotice } from "./EnvFilesNotice";
-import { LogStream } from "./LogStream";
 import { MissingConfigNotice } from "./MissingConfigNotice";
+import { OutsideWorkspaceNotice } from "./OutsideWorkspaceNotice";
 import { TerminalView } from "./TerminalView";
 
 interface RunOutputProps {
@@ -25,8 +23,7 @@ interface RunOutputProps {
  *  started. The status header, resize and collapse live in the dock frame — this
  *  renders what happened, never the chrome around it. */
 export function RunOutput({ appPath, onOpenConfig }: RunOutputProps) {
-  const { selectedRunForApp, blockerForApp, isStartingApp, clearBlocker, removeRun, getTerminal } =
-    useRun();
+  const { selectedRunForApp, blockerForApp, clearBlocker, getTerminal } = useRun();
 
   const blocker = blockerForApp(appPath);
   if (blocker) {
@@ -39,18 +36,6 @@ export function RunOutput({ appPath, onOpenConfig }: RunOutputProps) {
     );
   }
 
-  if (isStartingApp(appPath)) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
-        <span
-          className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent"
-          aria-hidden
-        />
-        <span>Starting run…</span>
-      </div>
-    );
-  }
-
   const selectedRun = selectedRunForApp(appPath);
   if (!selectedRun) {
     return (
@@ -60,7 +45,7 @@ export function RunOutput({ appPath, onOpenConfig }: RunOutputProps) {
     );
   }
 
-  const terminal = selectedRun.hasTerminal ? getTerminal(selectedRun.id) : null;
+  const terminal = getTerminal(selectedRun.id);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -97,17 +82,6 @@ export function RunOutput({ appPath, onOpenConfig }: RunOutputProps) {
             ))}
         </div>
       )}
-      {selectedRun.historyUnavailable && (
-        <div className="flex shrink-0 items-center gap-3 border-b border-amber-300 bg-amber-50 px-3 py-1.5 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
-          <span className="flex-1">
-            This run's history is no longer available on the runner — it expired or the runner
-            restarted.
-          </span>
-          <Button size="sm" variant="outline" onClick={() => removeRun(selectedRun.id)}>
-            Remove from history
-          </Button>
-        </div>
-      )}
       <RunDebugPanel run={selectedRun} terminal={terminal} />
     </div>
   );
@@ -139,6 +113,15 @@ function RunBlockerBody({
           onDismiss={onDismiss}
         />
       );
+    case "outside-workspace":
+      return (
+        <OutsideWorkspaceNotice
+          importer={blocker.importer}
+          source={blocker.source}
+          target={blocker.target}
+          onDismiss={onDismiss}
+        />
+      );
     case "unavailable":
       return (
         <AdapterUnavailable
@@ -154,8 +137,8 @@ function RunBlockerBody({
 }
 
 /** The run body is the shared debug-ui panel: its Logs tab hosts the run's own
- *  interactive terminal (xterm + stdin) — or, for log-only adapters, the read-only
- *  LogStream — and its Events tab shows the relayed kernel events. Pause freezes
+ *  interactive terminal (xterm + stdin), and its Events tab shows the relayed
+ *  kernel events. Pause freezes
  *  the events view against a snapshot; clear hides frames seen so far. (Blob
  *  payloads aren't resolvable in the embed yet — the workload's blob endpoint
  *  isn't reachable from the editor; events + logs work.) */
@@ -169,8 +152,8 @@ function RunDebugPanel({ run, terminal }: { run: RunRecord; terminal: TerminalBu
   const colorMode = useColorMode();
 
   const status: "connecting" | "open" | "closed" =
-    run.status.kind === "running" ? "open" : isTerminal(run.status) ? "closed" : "connecting";
-  const endpoints = run.status.kind === "running" ? run.status.endpoints : undefined;
+    run.status.kind === "running" ? "open" : isRunLive(run.status) ? "connecting" : "closed";
+  const endpoints = run.status.kind === "running" ? run.endpoints : undefined;
 
   // Map the cleared sequence to an offset into the current (possibly-evicted)
   // window. `firstSeq` is the sequence of `debugFrames[0]`; clamp to 0 so a
@@ -182,9 +165,11 @@ function RunDebugPanel({ run, terminal }: { run: RunRecord; terminal: TerminalBu
   const frames = paused ? snapshot.current : liveFrames;
 
   const logsSlot = terminal ? (
-    <TerminalView key={run.id} terminal={terminal} inputDisabled={isTerminal(run.status)} />
+    <TerminalView key={run.id} terminal={terminal} inputDisabled={!isRunLive(run.status)} />
   ) : (
-    <LogStream lines={run.lines} truncated={run.truncated} />
+    <div className="flex flex-1 items-center justify-center text-sm text-zinc-400 dark:text-zinc-600">
+      {isRunLive(run.status) ? "The run's output appears here once it starts." : "This run produced no output here."}
+    </div>
   );
 
   return (

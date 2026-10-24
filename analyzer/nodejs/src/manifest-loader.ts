@@ -1,7 +1,12 @@
 import type { CelEnvironment } from "@telorun/cel";
 import type { ResourceManifest } from "@telorun/sdk";
 import { buildCelEnvironment } from "./cel-environment.js";
+import {
+  applicationSourceCandidates,
+  applicationSourceFieldOf,
+} from "./application-source-slot.js";
 import type {
+  ApplicationSourceLoad,
   GraphLoadError,
   ImportEdge,
   LoadedFile,
@@ -14,6 +19,7 @@ import {
   isBuiltinVocabularyRoot,
 } from "./builtin-vocabulary.js";
 import { desugarLoadedFile } from "./inline-imports.js";
+import type { LoadedKindScope } from "./loaded-kind-scope.js";
 import type { MigrationEntry } from "./migrations/types.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
 import { collectLocalModuleFileDiagnostics } from "./module-file-existence.js";
@@ -555,6 +561,16 @@ export class Loader {
    *  `importEdges` mapping each importing file's PascalCase aliases to their
    *  target's canonical source. */
   async loadGraph(entryUrl: string, options?: LoadOptions): Promise<LoadedGraph> {
+    return this.loadGraphWith(entryUrl, options, true);
+  }
+
+  /** `loadGraph`, following the entry's child applications only when asked: a
+   *  child's graph is loaded for its declarations, never for children of its own. */
+  private async loadGraphWith(
+    entryUrl: string,
+    options: LoadOptions | undefined,
+    followApplications: boolean,
+  ): Promise<LoadedGraph> {
     const entry = await this.loadModule(entryUrl, options);
     const rootSource = entry.owner.source;
 
@@ -576,6 +592,7 @@ export class Loader {
         moduleFileDiagnostics: [],
         parseDiagnostics: [...collectParseDiagnostics(modules), refusal],
         errors: [],
+        applicationSources: new Map(),
       };
     }
     const importEdges = new Map<string, Map<string, ImportEdge>>();
@@ -668,7 +685,92 @@ export class Loader {
       ),
       parseDiagnostics: collectParseDiagnostics(modules),
       errors,
+      applicationSources: followApplications
+        ? await this.loadApplicationSources(entry, { modules, importEdges }, options)
+        : new Map(),
     };
+  }
+
+  /** Every child application a resource of the entry's own files names at an
+   *  annotated field, by declaring file and source as written — each resource's
+   *  kind resolved through the entry's own import edges. */
+  private async loadApplicationSources(
+    entry: LoadedModule,
+    graph: LoadedKindScope,
+    options: LoadOptions | undefined,
+  ): Promise<Map<string, Map<string, ApplicationSourceLoad>>> {
+    const out = new Map<string, Map<string, ApplicationSourceLoad>>();
+    const fields = new Map<string, string | undefined>();
+    const fieldOf = (kind: string): string | undefined => {
+      if (!fields.has(kind)) fields.set(kind, applicationSourceFieldOf(graph, entry, kind));
+      return fields.get(kind);
+    };
+    for (const file of [entry.owner, ...entry.partials]) {
+      const sources = applicationSourceCandidates(file.manifests, fieldOf);
+      if (sources.size === 0) continue;
+      const loads = new Map<string, ApplicationSourceLoad>();
+      for (const source of sources) {
+        loads.set(source, await this.loadApplicationSource(file.source, source, options));
+      }
+      out.set(file.source, loads);
+    }
+    return out;
+  }
+
+  /** One child application: resolved like an import's source, loaded with its
+   *  imports, and refused unless its module document is a `Telo.Application`. */
+  private async loadApplicationSource(
+    fromSource: string,
+    source: string,
+    options: LoadOptions | undefined,
+  ): Promise<ApplicationSourceLoad> {
+    const failure = (
+      url: string,
+      error: unknown,
+      reason?: GraphLoadError["reason"],
+    ): ApplicationSourceLoad => ({
+      failure: {
+        url,
+        source,
+        fromSource,
+        ...(reason ? { reason } : {}),
+        error: error instanceof Error ? error : new Error(String(error)),
+      },
+    });
+    let url: string;
+    try {
+      url = this.resolveImportUrl(fromSource, source);
+    } catch (err) {
+      return failure(source, err);
+    }
+    let graph: LoadedGraph;
+    try {
+      graph = await this.loadGraphWith(url, options, false);
+    } catch (err) {
+      return failure(url, err);
+    }
+    const manifests = graph.entry.owner.manifests;
+    const moduleDoc = manifests.find((m) => m && isModuleKind(m.kind));
+    if (isBuiltinVocabularyRoot(manifests[0])) {
+      return failure(
+        graph.rootSource,
+        new Error(`it is the built-in vocabulary archive, which is read, never run.`),
+        "unusable-target",
+      );
+    }
+    if (moduleDoc?.kind !== "Telo.Application") {
+      return failure(
+        graph.rootSource,
+        new Error(
+          moduleDoc
+            ? `it is a ${moduleDoc.kind}, which is imported, never run. Name the source of a ` +
+                `Telo.Application.`
+            : `it holds no Telo.Application document. Fetched from: ${graph.rootSource}.`,
+        ),
+        "unusable-target",
+      );
+    }
+    return { graph };
   }
 
   /** Resolve an `import` URL against the file it appears in. Relative /

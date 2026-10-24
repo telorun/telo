@@ -1,11 +1,5 @@
 import type { RunnerCapabilities, SessionConfig } from "@telorun/runner-core";
 
-export interface LocalCapabilitiesOptions {
-  /** Whether watch sessions are offered (`telo runner --no-watch-sessions`
-   *  turns them off). Advertised and enforced from this one answer. */
-  watch: boolean;
-}
-
 /**
  * What `telo runner` says about itself on `GET /v1/capabilities`.
  *
@@ -20,9 +14,11 @@ export interface LocalCapabilitiesOptions {
  * nothing.
  *
  * `teloVersions` is advertised because an application may name the telo it runs
- * on: this one as itself, any other as that release's own binary.
+ * on: this one as itself, any other as that release's own binary. No agent
+ * catalog is passed to the server, so `features.agents` is absent: this runner
+ * runs no co-resident agent.
  */
-export function localRunnerCapabilities(opts: LocalCapabilitiesOptions): RunnerCapabilities {
+export function localRunnerCapabilities(): RunnerCapabilities {
   return {
     displayName: "Local (telo CLI)",
     description:
@@ -42,7 +38,6 @@ export function localRunnerCapabilities(opts: LocalCapabilitiesOptions): RunnerC
       // a terminal it does not have.
       io: ["streams"],
       ports: true,
-      watch: opts.watch,
       teloVersions: true,
     },
   };

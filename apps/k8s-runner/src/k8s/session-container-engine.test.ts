@@ -6,7 +6,10 @@ import { loadK8sRunnerConfig } from "../config.js";
 import type { KubeClient } from "./client.js";
 import { createKubernetesSessionContainerEngine } from "./session-container-engine.js";
 
-const config = loadK8sRunnerConfig({ RUNNER_SELF_URL: "http://k8s-runner.telo-runner.svc:8062" });
+const config = loadK8sRunnerConfig({
+  RUNNER_SUPERVISOR_IMAGE: "telorun/k8s-runner:test",
+  RUNNER_STATE_DIR: "/var/lib/telo-runner",
+});
 
 const SPEC = {
   image: "pgvector/pgvector:pg18",

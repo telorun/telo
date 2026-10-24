@@ -43,9 +43,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
+    needs:
+      agentState: { path: !cel "variables.stateDir" }
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      stateDir: !cel "variables.stateDir"
       # The agent's commands run from the workspace, two levels below the root.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
   Fs: ../../../../modules/fs

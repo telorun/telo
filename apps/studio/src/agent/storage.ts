@@ -19,7 +19,7 @@ const SETTINGS_KEY = LOCAL_KEYS.agentSettings;
 
 export interface AgentSettings {
   /** Dev override — a manually-run agent URL. When empty (the default) the
-   *  editor launches a per-session agent instance on the active runner. */
+   *  editor talks to the co-resident agent of the workspace's session. */
   overrideUrl: string;
   /** Chat side-panel open state. */
   panelOpen: boolean;

@@ -23,8 +23,9 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # The runner reaches session pods; deny pod-to-pod traffic between sessions
-    # (no podSelector peer is allowed).
+    # The runner reaches session pods on every port — the workspace surface,
+    # each app's session supervisor and kernel debug stream; deny pod-to-pod
+    # traffic between sessions (no podSelector peer is allowed).
     - from:
         - namespaceSelector:
             matchLabels:
@@ -56,8 +57,9 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # The runner Service (bundle fetch) — explicit carve-out of the
-    # cluster-internal block.
+    # The runner Service (a session's container engine, when
+    # session.containers.enabled) — explicit carve-out of the cluster-internal
+    # block.
     - to:
         - namespaceSelector:
             matchLabels:

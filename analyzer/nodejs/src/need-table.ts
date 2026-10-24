@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AnalysisRegistry } from "./analysis-registry.js";
+import { readApplicationSourceSlot } from "./application-source-slot.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { LoadedGraph } from "./loaded-types.js";
 import { flattenLoadedModule } from "./flatten-for-analyzer.js";
@@ -95,6 +96,9 @@ export interface NeedGraphReference {
   path: string;
   target: { name: string; alias?: string };
   observes: NeedConstraint[];
+  /** Set when the site supplies a need of a child application the holding
+   *  resource runs: that resource's name and the child's need. */
+  childNeed?: { holder: string; need: string };
 }
 
 export interface NeedGraphImport {
@@ -794,7 +798,46 @@ function checkEnvNames(
   }
 }
 
+/** One refusal of a supply, before it is anchored: its code, message and path. */
+export interface SupplyFinding {
+  code: string;
+  message: string;
+  path: string;
+}
+
 /** Every key of `written` a field of the type, every required field present. */
+function fieldsFindings(
+  written: Record<string, unknown>,
+  shape: NeedTypeShape,
+  subject: string,
+  type: string,
+  at: string,
+): SupplyFinding[] {
+  const out: SupplyFinding[] = [];
+  for (const key of Object.keys(written)) {
+    if (key in shape.fields) continue;
+    out.push({
+      code: "NEED_FIELD_UNDECLARED",
+      message:
+        `${subject}: field '${key}' is not declared by need type '${type}'. Fields: ` +
+        `${list(Object.keys(shape.fields))}.`,
+      path: `${at}.${key}`,
+    });
+  }
+  const missing = shape.required.filter((field) => !(field in written));
+  if (missing.length > 0) {
+    out.push({
+      code: "NEED_SLOT_MISMATCH",
+      message:
+        `${subject} does not yield ${missing.length === 1 ? "the required field" : "the required fields"} ` +
+        `${missing.map((f) => `'${f}'`).join(", ")} of need type '${type}' — a fulfilment is every ` +
+        `required field of its type.`,
+      path: at,
+    });
+  }
+  return out;
+}
+
 function checkFields(
   module: NeedGraphModule,
   written: Record<string, unknown>,
@@ -805,26 +848,126 @@ function checkFields(
   anchor: { manifest?: ResourceManifest; resource?: { kind: string; name: string } },
   report: Report,
 ): void {
-  for (const key of Object.keys(written)) {
-    if (key in shape.fields) continue;
-    report(
-      module,
-      "NEED_FIELD_UNDECLARED",
-      `${subject}: field '${key}' is not declared by need type '${type}'. Fields: ` +
-        `${list(Object.keys(shape.fields))}.`,
-      { ...anchor, path: `${at}.${key}` },
+  for (const finding of fieldsFindings(written, shape, subject, type, at)) {
+    report(module, finding.code, finding.message, { ...anchor, path: finding.path });
+  }
+}
+
+/**
+ * What is wrong with a need supplied field by field (`subject` names the supply,
+ * `<who>: need '<name>'`): every key a field of the type, every required field
+ * present, and each literal held to its field's schema — an expression is held
+ * to it when the supplier evaluates it.
+ */
+export function fieldSupplyFindings(
+  fields: Record<string, unknown>,
+  shape: NeedTypeShape,
+  subject: string,
+  type: string,
+  path: string,
+): SupplyFinding[] {
+  const out = fieldsFindings(fields, shape, subject, type, path);
+  for (const [field, written] of Object.entries(fields)) {
+    const schema = shape.fields[field];
+    if (!schema) continue;
+    // A value type with members reads its text, or an object of its members
+    // whose expressions stand in as their members: a literal that does not
+    // build, or that an argument refuses, is the type's own refusal.
+    const members = membersSlotOf(schema);
+    if (members) {
+      const standIns: StandIns = new Map();
+      const value = substituteDecodedCelFields(written, schema, undefined, { standIns });
+      if (standIns.has("")) continue;
+      const [issue] = validateAgainstSchema(value, schema);
+      if (!issue) continue;
+      out.push({
+        code: valueTypeRefusalCode(issue) ?? "SCHEMA_VIOLATION",
+        message: `${subject}: field '${field}' ${issue.message.replace(/^\/\s*/, "")}.`,
+        path: `${path}.${field}`,
+      });
+      continue;
+    }
+    if (findDynamicLeaf(written)) continue;
+    const [issue] = validateAgainstSchema(written, schema);
+    if (!issue) continue;
+    out.push({
+      code: "SCHEMA_VIOLATION",
+      message:
+        `${subject}: field '${field}' does not match need type '${type}' — ` +
+        `${issue.message.replace(/^\/\s*/, "")}.`,
+      path: `${path}.${field}`,
+    });
+  }
+  return out;
+}
+
+/** A need as a whole forward compares it: what it states and whether it may be absent. */
+export interface ForwardedNeed {
+  optional: boolean;
+  type?: string;
+  version?: unknown;
+  features?: unknown;
+  parameters?: unknown;
+}
+
+/**
+ * Why `ownNeed`, forwarded whole, cannot supply `need` (`subject` names the
+ * supply; `target` the module or application declaring `need`): an optional
+ * need supplying a required one, or a need stating less than the one it
+ * supplies — no version range or one not within the target's, fewer features, a
+ * durable directory's weaker access or smaller size. Each a
+ * `NEED_FORWARD_INCOMPATIBLE` message.
+ */
+export function wholeForwardRefusals(
+  subject: string,
+  key: string,
+  target: string,
+  source: string,
+  need: ForwardedNeed,
+  ownNeed: ForwardedNeed,
+  shape: NeedTypeShape | undefined,
+): string[] {
+  const out: string[] = [];
+  if (ownNeed.optional && !need.optional) {
+    out.push(
+      `${subject}: need '${key}' is required by ${target}, and '${source}' is an optional need, ` +
+        `which may be absent. Make '${source}' required, or supply '${key}' another way.`,
     );
   }
-  const missing = shape.required.filter((field) => !(field in written));
-  if (missing.length === 0) return;
-  report(
-    module,
-    "NEED_SLOT_MISMATCH",
-    `${subject} does not yield ${missing.length === 1 ? "the required field" : "the required fields"} ` +
-      `${missing.map((f) => `'${f}'`).join(", ")} of need type '${type}' — a fulfilment is every ` +
-      `required field of its type.`,
-    { ...anchor, path: at },
-  );
+  // A need forwarded whole is compared against at its outermost link, so it
+  // must state at least what the need it supplies does.
+  const wanted = needVersionRange(need);
+  if (wanted) {
+    const stated = needVersionRange(ownNeed);
+    if (!stated || !rangeWithin(stated, wanted)) {
+      out.push(
+        `${subject}: need '${key}' of ${target} requires version ` +
+          `'${wanted.raw}', and '${source}' ${stated ? `states '${stated.raw}', which is not within it` : "states no version"}. ` +
+          `Give '${source}' a 'version:' within '${wanted.raw}'.`,
+      );
+    }
+  }
+  const missing = needFeatures(need).filter((f) => !needFeatures(ownNeed).includes(f));
+  if (missing.length > 0) {
+    out.push(
+      `${subject}: need '${key}' of ${target} requires the features ` +
+        `${needFeatures(need).map((f) => `'${f}'`).join(", ")}, and '${source}' does not ask for ` +
+        `${missing.map((f) => `'${f}'`).join(", ")}. Add ${missing.length === 1 ? "it" : "them"} to its 'features:'.`,
+    );
+  }
+  if (need.type === DURABLE_DIRECTORY_TYPE) {
+    const why = directoryForwardRefusal(
+      durableDirectoryParameters(shape, ownNeed.parameters),
+      durableDirectoryParameters(shape, need.parameters),
+    );
+    if (why) {
+      out.push(
+        `${subject}: need '${key}' of ${target} cannot be supplied by ` +
+          `'${source}': ${why}. Change the parameters of '${source}', or supply '${key}' another way.`,
+      );
+    }
+  }
+  return out;
 }
 
 function checkSupply(
@@ -876,50 +1019,14 @@ function checkSupply(
         );
         continue;
       }
-      checkFields(
-        module,
+      for (const finding of fieldSupplyFindings(
         supply.fields,
         shape,
         `Import '${imp.alias}': need '${key}'`,
         need.type!,
         path,
-        anchor,
-        report,
-      );
-      // A literal is held to its field's schema here, since nothing validates an
-      // import's `needs:` against the type; an expression is held to it when the
-      // import evaluates it.
-      for (const [field, written] of Object.entries(supply.fields)) {
-        const schema = shape.fields[field];
-        if (!schema) continue;
-        // A value type with members reads its text, or an object of its members
-        // whose expressions stand in as their members: a literal that does not
-        // build, or that an argument refuses, is the type's own refusal.
-        const members = membersSlotOf(schema);
-        if (members) {
-          const standIns: StandIns = new Map();
-          const value = substituteDecodedCelFields(written, schema, undefined, { standIns });
-          if (standIns.has("")) continue;
-          const [issue] = validateAgainstSchema(value, schema);
-          if (!issue) continue;
-          report(
-            module,
-            valueTypeRefusalCode(issue) ?? "SCHEMA_VIOLATION",
-            `Import '${imp.alias}': need '${key}': field '${field}' ${issue.message.replace(/^\/\s*/, "")}.`,
-            { ...anchor, path: `${path}.${field}` },
-          );
-          continue;
-        }
-        if (findDynamicLeaf(written)) continue;
-        const [issue] = validateAgainstSchema(written, schema);
-        if (!issue) continue;
-        report(
-          module,
-          "SCHEMA_VIOLATION",
-          `Import '${imp.alias}': need '${key}': field '${field}' does not match need type ` +
-            `'${need.type}' — ${issue.message.replace(/^\/\s*/, "")}.`,
-          { ...anchor, path: `${path}.${field}` },
-        );
+      )) {
+        report(module, finding.code, finding.message, { ...anchor, path: finding.path });
       }
       continue;
     }
@@ -956,70 +1063,43 @@ function checkSupply(
       );
       continue;
     }
-    if (ownNeed?.optional && !need.optional) {
-      report(
-        module,
-        "NEED_FORWARD_INCOMPATIBLE",
-        `Import '${imp.alias}': need '${key}' is required by module '${target.name}', and ` +
-          `'${source}' is an optional need, which may be absent. Make '${source}' required, or ` +
-          `supply '${key}' another way.`,
-        { ...anchor, path },
-      );
-    }
     if (!ownNeed) continue;
-    // A need forwarded whole is compared against at its outermost link, so it
-    // must state at least what the need it supplies does.
-    const wanted = needVersionRange(need);
-    if (wanted) {
-      const stated = needVersionRange(ownNeed);
-      if (!stated || !rangeWithin(stated, wanted)) {
-        report(
-          module,
-          "NEED_FORWARD_INCOMPATIBLE",
-          `Import '${imp.alias}': need '${key}' of module '${target.name}' requires version ` +
-            `'${wanted.raw}', and '${source}' ${stated ? `states '${stated.raw}', which is not within it` : "states no version"}. ` +
-            `Give '${source}' a 'version:' within '${wanted.raw}'.`,
-          { ...anchor, path },
-        );
-      }
-    }
-    const missing = needFeatures(need).filter((f) => !needFeatures(ownNeed).includes(f));
-    if (missing.length > 0) {
-      report(
-        module,
-        "NEED_FORWARD_INCOMPATIBLE",
-        `Import '${imp.alias}': need '${key}' of module '${target.name}' requires the features ` +
-          `${needFeatures(need).map((f) => `'${f}'`).join(", ")}, and '${source}' does not ask for ` +
-          `${missing.map((f) => `'${f}'`).join(", ")}. Add ${missing.length === 1 ? "it" : "them"} to its 'features:'.`,
-        { ...anchor, path },
-      );
-    }
-    if (need.type === DURABLE_DIRECTORY_TYPE) {
-      const why = directoryForwardRefusal(
-        durableDirectoryParameters(shape, ownNeed.parameters),
-        durableDirectoryParameters(shape, need.parameters),
-      );
-      if (why) {
-        report(
-          module,
-          "NEED_FORWARD_INCOMPATIBLE",
-          `Import '${imp.alias}': need '${key}' of module '${target.name}' cannot be supplied by ` +
-            `'${source}': ${why}. Change the parameters of '${source}', or supply '${key}' another way.`,
-          { ...anchor, path },
-        );
-      }
+    for (const message of wholeForwardRefusals(
+      `Import '${imp.alias}'`,
+      key,
+      `module '${target.name}'`,
+      source,
+      need,
+      ownNeed,
+      shape,
+    )) {
+      report(module, "NEED_FORWARD_INCOMPATIBLE", message, { ...anchor, path });
     }
   }
 }
 
 /**
  * One durable directory — a need or a fulfilment of the module — forwarded whole
- * to two or more needs would have two libraries writing over each other's files,
- * so it is refused at every supply after the first, each naming every target. A
- * `shared` library's need is one need however many imports reach it.
+ * to two or more needs would have two writers over each other's files, so it is
+ * refused at every supply after the first, each naming every target: a library's
+ * need at an import (a `shared` library's is one need however many imports reach
+ * it) and a child application's need, supplied by the resource that runs it.
  */
 function checkDirectoriesForwardedOnce(graph: NeedGraph, module: NeedGraphModule, report: Report): void {
-  const forwards = new Map<string, Array<{ imp: NeedGraphImport; key: string; target: string }>>();
+  type Site = {
+    target: string;
+    anchor: { manifest: ResourceManifest; resource: { kind: string; name: string }; path: string };
+  };
+  const forwards = new Map<string, Site[]>();
+  const isDirectory = (name: string) =>
+    (module.needs.find((n) => n.name === name)?.type ??
+      module.declarations?.find((d) => d.name === name)?.type) === DURABLE_DIRECTORY_TYPE;
+  const add = (name: string, site: Site) => {
+    if (!isDirectory(name)) return;
+    const sites = forwards.get(name) ?? [];
+    if (!sites.some((s) => s.target === site.target)) sites.push(site);
+    forwards.set(name, sites);
+  };
   for (const imp of module.imports) {
     const target = imp.target ? graph.modules.get(imp.target) : undefined;
     if (!target) continue;
@@ -1027,16 +1107,24 @@ function checkDirectoriesForwardedOnce(graph: NeedGraph, module: NeedGraphModule
       const supply = needSupplyOf(value);
       if (supply.form !== "whole") continue;
       if (supply.target.alias !== undefined && supply.target.alias !== "Self") continue;
-      const name = supply.target.name;
-      const type =
-        module.needs.find((n) => n.name === name)?.type ??
-        module.declarations?.find((d) => d.name === name)?.type;
-      if (type !== DURABLE_DIRECTORY_TYPE) continue;
-      const label = target.shared ? `${target.name}.${key}` : `${imp.alias}.${key}`;
-      const sites = forwards.get(name) ?? [];
-      if (!sites.some((site) => site.target === label)) sites.push({ imp, key, target: label });
-      forwards.set(name, sites);
+      add(supply.target.name, {
+        target: target.shared ? `${target.name}.${key}` : `${imp.alias}.${key}`,
+        anchor: { manifest: imp.manifest, resource: { kind: "Telo.Import", name: imp.alias }, path: `needs.${key}` },
+      });
     }
+  }
+  for (const reference of module.references ?? []) {
+    if (!reference.childNeed) continue;
+    if (reference.target.alias !== undefined && reference.target.alias !== "Self") continue;
+    const { declaration } = reference;
+    add(reference.target.name, {
+      target: `${reference.childNeed.holder}.${reference.childNeed.need}`,
+      anchor: {
+        manifest: declaration.manifest,
+        resource: { kind: declaration.kind, name: declaration.name },
+        path: reference.path,
+      },
+    });
   }
   for (const [name, sites] of forwards) {
     if (sites.length < 2) continue;
@@ -1048,11 +1136,7 @@ function checkDirectoriesForwardedOnce(graph: NeedGraph, module: NeedGraphModule
         `Durable directory '${name}' is forwarded whole to ${sites.length} needs — ${targets} — and ` +
           `each would write over the others' files. Give each its own directory; a library that ` +
           `must share one with another declares that in one library, not by forwarding.`,
-        {
-          manifest: site.imp.manifest,
-          resource: { kind: "Telo.Import", name: site.imp.alias },
-          path: `needs.${site.key}`,
-        },
+        site.anchor,
       );
     }
   }
@@ -1304,6 +1388,9 @@ export interface NeedGraphScope {
   /** The concrete reference sites of a declaration whose kind is canonical —
    *  the registry's one reach. Absent: the graph sees no reference sites. */
   referenceSites?(manifest: ResourceManifest): readonly ReachSite[];
+  /** For a canonical kind running a child application, the keys of the field
+   *  feeding the child's `needs:` (`x-telo-application-source`). */
+  applicationNeedsFeed?(kind: string): readonly string[] | undefined;
 }
 
 /**
@@ -1321,6 +1408,11 @@ export function needGraphScopeOf(
     needType: (kind) => needTypeOf(registry.resolveDefinition(kind)),
     isKind: (kind) => registry.resolveDefinition(kind) !== undefined,
     referenceSites: (manifest) => registry.referenceSitesOf(manifest),
+    applicationNeedsFeed: (kind) => {
+      const { definitions } = registry._context();
+      const definition = registry.resolveDefinition(kind);
+      return definition ? readApplicationSourceSlot(definitions?.effectiveSchemaOf(definition))?.feeds.needs : undefined;
+    },
   };
 }
 
@@ -1384,7 +1476,11 @@ function moduleUnit(
     resourceInputs,
     declarations,
     ...(scope.referenceSites
-      ? { references: referencesOf(declarations, bodies, resolve, scope.referenceSites) }
+      ? {
+          references: referencesOf(declarations, bodies, resolve, scope.referenceSites, (kind) =>
+            scope.applicationNeedsFeed?.(kind),
+          ),
+        }
       : {}),
     needTypes,
     otherNames,
@@ -1425,6 +1521,7 @@ function referencesOf(
   bodies: readonly TemplateBodyDeclaration[],
   resolve: (kind: string) => string | undefined,
   sitesOf: (manifest: ResourceManifest) => readonly ReachSite[],
+  needsFeedOf: (kind: string) => readonly string[] | undefined,
 ): NeedGraphReference[] {
   const out: NeedGraphReference[] = [];
   const visit = (
@@ -1436,6 +1533,8 @@ function referencesOf(
   ): void => {
     if (!type) return;
     const view = manifest.kind === type ? manifest : ({ ...manifest, kind: type } as ResourceManifest);
+    const feed = needsFeedOf(type);
+    const holder = manifest.metadata?.name;
     for (const site of sitesOf(view)) {
       const at = prefix ? `${prefix}.${site.path}` : site.path;
       const nested = (value: unknown, path: string) => {
@@ -1457,7 +1556,12 @@ function referencesOf(
       if (local && siblings?.has(target.name)) continue;
       const observes = new Set<NeedConstraint>();
       for (const ref of site.refs) for (const c of ref.slot.observes ?? []) observes.add(c);
-      out.push({ declaration, path: at, target, observes: [...observes] });
+      const childNeed =
+        feed && typeof holder === "string" && site.keys.length === feed.length + 1 &&
+        feed.every((key, i) => site.keys[i] === key)
+          ? { holder, need: String(site.keys[feed.length]) }
+          : undefined;
+      out.push({ declaration, path: at, target, observes: [...observes], ...(childNeed ? { childNeed } : {}) });
     }
   };
   for (const declaration of declarations) {

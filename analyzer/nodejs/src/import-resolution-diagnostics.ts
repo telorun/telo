@@ -19,9 +19,10 @@ function isRecognizedSourceShape(source: string): boolean {
 }
 
 /** Which of the three failures this is. Kept as one function so the code and
- *  the sentence can never disagree about which cause was established. */
-function classify(
-  e: GraphLoadError,
+ *  the sentence can never disagree about which cause was established — shared
+ *  with a child application's source, which fails the same three ways. */
+export function importFailureCode(
+  e: Pick<GraphLoadError, "reason" | "source" | "url">,
 ): "INVALID_IMPORT_TARGET" | "INVALID_IMPORT_SOURCE" | "IMPORT_UNRESOLVED" | "KIND_PREFIX_RESERVED" {
   if (e.reason === "reserved-prefix") return "KIND_PREFIX_RESERVED";
   if (e.reason === "unusable-target") return "INVALID_IMPORT_TARGET";
@@ -43,7 +44,7 @@ function isRemovedBareRef(source: string): boolean {
   );
 }
 
-function messageFor(e: GraphLoadError, code: ReturnType<typeof classify>): string {
+function messageFor(e: GraphLoadError, code: ReturnType<typeof importFailureCode>): string {
   const authored = e.source ?? e.url;
   const via = e.alias ? `import '${e.alias}' → '${authored}'` : `'${authored}'`;
   if (code === "INVALID_IMPORT_SOURCE") {
@@ -106,7 +107,7 @@ export function importFailureDiagnostics(
 ): AnalysisDiagnostic[] {
   return errors.map((e) => {
     const filePath = e.fromSource ?? entrySource;
-    const code = classify(e);
+    const code = importFailureCode(e);
     const data: { filePath: string; path?: string; sourceLine?: number } = { filePath };
     if (e.alias) data.path = `imports.${e.alias}`;
     if (e.sourceLine !== undefined) data.sourceLine = e.sourceLine;

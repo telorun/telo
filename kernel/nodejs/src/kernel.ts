@@ -8,6 +8,7 @@ import {
   buildEvalPaths,
   evaluatedField,
   extractCelRegionScopes,
+  collectApplicationSources,
   collectModuleDocuments,
   declarationSignature,
   diffManifests,
@@ -222,10 +223,12 @@ import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
   collectDeclaredEnvKeys,
   type ApplicationInputs,
+  inputSupplier,
   precompileApplicationEnvSchemas,
   precompileDefinitionSchemas,
   precompileTypeSchemas,
   resolveApplicationInputs,
+  suppliedNeedEntries,
 } from "./application-env.js";
 import type { ApplicationInputResolver } from "./unresolved-inputs.js";
 import { policyFingerprint } from "./runtime-registry.js";
@@ -274,8 +277,8 @@ export interface KernelOptions {
    *  earlier ones (sources are unshifted onto the dispatch chain). */
   sources: ManifestSource[];
   /** Values for the root Application's declared `variables` / `secrets` /
-   *  `ports`, supplied by whoever started this kernel instead of read from
-   *  `env`. Set when one application runs another as a resource; see
+   *  `ports` / `needs`, supplied by whoever started this kernel instead of read
+   *  from `env`. Set when one application runs another as a resource; see
    *  {@link ApplicationInputs}. */
   inputs?: ApplicationInputs;
 }
@@ -587,7 +590,11 @@ export class Kernel implements IKernel {
       loadLibrary: async (url) => {
         const graph = await this.loader.loadGraph(url, { desugarImports: true, migrate: true });
         if (graph.errors.length > 0) throw importLoadFailure(graph);
-        return { manifests: flattenForAnalyzer(graph), moduleDocuments: collectModuleDocuments(graph) };
+        return {
+          manifests: flattenForAnalyzer(graph),
+          moduleDocuments: collectModuleDocuments(graph),
+          applicationSources: collectApplicationSources(graph),
+        };
       },
     };
   }
@@ -1184,6 +1191,7 @@ export class Kernel implements IKernel {
       {
         skipValidation,
         moduleDocuments: collectModuleDocuments(analysisGraph),
+        applicationSources: collectApplicationSources(analysisGraph),
         hostVersions: nodeHostVersions(),
       },
       this.registry,
@@ -1462,7 +1470,10 @@ export class Kernel implements IKernel {
       // Every durable directory read from the environment is checked before any
       // resource initializes: first that the state directory strands no files a
       // fresh directory would replace, then that each one is usable.
-      const stateAnswers = stateDirectoryAnswers(environment, this.env);
+      // A need supplied by name is no host value's to answer.
+      const supplied = suppliedNeedEntries(environment, this._inputs);
+      const unsupplied = environment.filter((entry) => !supplied.has(entry));
+      const stateAnswers = stateDirectoryAnswers(unsupplied, this.env);
       const { orphans } = scanStateDirectory(this.env, stateAnswers, this._needTable?.entries ?? []);
       for (const orphan of orphans) {
         this.logging.kernelLogger().warn(
@@ -1472,7 +1483,13 @@ export class Kernel implements IKernel {
           { "telo.diagnostic.code": "NEED_ORPHANED" },
         );
       }
-      refuseUnusableDirectories(environmentDirectories(environment, fromEnvironment, stateAnswers));
+      refuseUnusableDirectories([
+        ...environmentDirectories(unsupplied, fromEnvironment, stateAnswers),
+        ...environmentDirectories([...supplied], fromEnvironment, new Map()).map((directory) => ({
+          ...directory,
+          source: `the value supplied by name by ${inputSupplier(this._inputs)}`,
+        })),
+      ]);
       // A library's need is bound by the import that reaches it; the root's own
       // are bound here, before anything that could read or forward one exists.
       setEnvironmentNeeds(this.rootContext, fromEnvironment);

@@ -209,10 +209,16 @@ importers:
       fastify:
         specifier: ^5.12.1
         version: 5.12.1
+      pino:
+        specifier: ^9.14.0
+        version: 9.14.0
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
+      '@types/ws':
+        specifier: ^8.5.13
+        version: 8.18.1
       tsx:
         specifier: ^4.19.2
         version: 4.21.0
@@ -222,6 +228,9 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      ws:
+        specifier: ^8.18.0
+        version: 8.19.0
 
   apps/plan-approval-web:
     dependencies:
@@ -467,6 +476,9 @@ importers:
       eslint:
         specifier: ^9
         version: 9.39.4(jiti@2.6.1)
+      fake-indexeddb:
+        specifier: ^6.2.6
+        version: 6.2.6
       jsdom:
         specifier: ^25.0.1
         version: 25.0.1
@@ -3026,6 +3038,15 @@ importers:
       fastify:
         specifier: ^5.12.1
         version: 5.12.1
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
+      pg:
+        specifier: ^8.20.0
+        version: 8.20.0
+      ws:
+        specifier: ^8.18.0
+        version: 8.19.0
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
@@ -3033,6 +3054,9 @@ importers:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.30
+      '@types/pg':
+        specifier: ^8.0.0
+        version: 8.18.0
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
@@ -3042,9 +3066,6 @@ importers:
       vitest:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
-      ws:
-        specifier: ^8.18.0
-        version: 8.19.0
 
   pages:
     dependencies:
@@ -8892,6 +8913,10 @@ packages:
   extendable-error@0.1.7:
     resolution: {integrity: sha512-UOiS2in6/Q0FK0R0q6UY9vYpQ21mr/Qn1KOnte7vsACuNJf514WvCCUHSRCPcgjPT2bAhNIJdlE6bVap1GKmeg==}
 
+  fake-indexeddb@6.2.6:
+    resolution: {integrity: sha512-ihhmr0KoET51jT8R4YhbUYuLLvr1qqO6INISygtN16i8loR8kAxtAUr4+EKHTSMjL+lggaAn4OC7DRqzrNgnuQ==}
+    engines: {node: '>=18'}
+
   fast-decode-uri-component@1.0.1:
     resolution: {integrity: sha512-WKgKWg5eUxvRZGwW8FvfbaH7AXSh2cL+3j5fMGzUMCxWBJ3dV3a7Wz8y2f/uQ0e3B6WmodD3oS54jTQ9HVTIIg==}
 
@@ -11402,9 +11427,6 @@ packages:
 
   process-warning@4.0.1:
     resolution: {integrity: sha512-3c2LzQ3rY9d0hc1emcsHhfT9Jwz0cChib/QN89oME2R451w5fy3f0afAhERFZAwrbDU43wk12d0ORBpDVME50Q==}
-
-  process-warning@5.0.0:
-    resolution: {integrity: sha512-a39t9ApHNx2L4+HBnQKqxxHNs1r7KF+Intd8Q/g1bUh6q0WIp9voPXJ/x0j+ZL45KF1pJd9+q2jLIRMfvEshkA==}
 
   process-warning@5.1.0:
     resolution: {integrity: sha512-jQSaVHsPgtyw60e1rQ/A+/ArPEj/S8pS/vFnyGa/gYFXrKk/6RuDkoqVDQ5NI5MmS01698ltlAk0NoDBNLujRw==}
@@ -20181,6 +20203,8 @@ snapshots:
 
   extendable-error@0.1.7: {}
 
+  fake-indexeddb@6.2.6: {}
+
   fast-decode-uri-component@1.0.1: {}
 
   fast-deep-equal@3.1.3: {}
@@ -22600,7 +22624,7 @@ snapshots:
       on-exit-leak-free: 2.1.2
       pino-abstract-transport: 2.0.0
       pino-std-serializers: 7.1.0
-      process-warning: 5.0.0
+      process-warning: 5.1.0
       quick-format-unescaped: 4.0.4
       real-require: 0.2.0
       safe-stable-stringify: 2.5.0
@@ -23143,8 +23167,6 @@ snapshots:
   process-nextick-args@2.0.1: {}
 
   process-warning@4.0.1: {}
-
-  process-warning@5.0.0: {}
 
   process-warning@5.1.0: {}
 

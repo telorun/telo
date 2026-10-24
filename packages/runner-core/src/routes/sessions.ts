@@ -1,136 +1,131 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 
-import type { BackendAppSpec, RunnerBackend } from "../backend.js";
-import type { ResolvedRunnerApp, WatchSessionConfig } from "../config.js";
+import type { RunnerBackend } from "../backend.js";
+import type { ResolvedRunnerApp } from "../config.js";
 import {
-  DEFAULT_APP_NAME,
+  ACCEPTED_TERMS_HEADER,
+  type AdoptSessionRequest,
+  type CreateSessionRequest,
+  type CreateSessionResponse,
   type IoMode,
-  type PortMapping,
+  type RunAppRequest,
   type RunnerTerms,
   type SessionAppSpec,
   type SessionConfig,
-  type StartSessionRequest,
-  TELO_VERSION_PATTERN,
-  unsupervisableTelo,
+  type SessionList,
   type WorkspaceChangeSet,
 } from "../contract.js";
+import {
+  admitAgent,
+  refuseReservedPorts,
+  resolveApps,
+  supplyTeloVersions,
+} from "../session/app-set.js";
 import { BundlePathError, normalizeBundlePath } from "../session/bundle-path.js";
+import type { IoTickets } from "../session/io-tickets.js";
 import type { SessionEntry, SessionRegistry } from "../session/registry.js";
-import { generateWorkloadToken } from "../session/workload-token.js";
-import { enforceTerms, launchWorkload, portsSchema, startWorkloadSession } from "./session-start.js";
+import {
+  mintResumeSecret,
+  ownsSession,
+  resumeSecretHash,
+  type CallerResolver,
+} from "../session/session-credentials.js";
+import type { SessionOwner } from "../session-store/session-store.js";
+import type { SessionLifecycle } from "../session/session-lifecycle.js";
+import { SessionRefusal } from "../session/session-refusal.js";
 import { streamSessionEvents } from "../sse/channel.js";
-import type { SessionContainers } from "../session-containers/session-containers.js";
-
-/** The part of the operator's watch settings this route enforces. A projection
- *  of `WatchSessionConfig` rather than a second shape, so the two cannot
- *  disagree about what a field means. */
-export type WatchConfig = Pick<
-  WatchSessionConfig,
-  "enabled" | "maxSessions" | "reloadLimitPerMinute"
->;
 
 export interface SessionsRouteDeps {
   backend: RunnerBackend;
   registry: SessionRegistry;
-  /** Present when the runner serves sessions a container engine. */
-  containers?: SessionContainers;
+  lifecycle: SessionLifecycle;
+  tickets: IoTickets;
+  /** Who a request is, from its credentials. */
+  resolveCaller: CallerResolver;
+  /** `WWW-Authenticate` on a 401 for a missing credential, on a runner that
+   *  takes identity. */
+  authChallenge?: string;
   corsOrigins: string[] | "*";
-  /** When set, a session may only start if the client acknowledges this exact
-   *  terms version via the `x-telo-accepted-terms` header. */
+  /** When set, a session may only be created if the client acknowledges this
+   *  exact terms version via the `x-telo-accepted-terms` header. */
   terms?: RunnerTerms;
   /** Backend-supplied config gate. Returns an error message to reject the
-   *  request with `400 invalid_config`, or `undefined` to accept. The runner is
-   *  the source of truth, so this re-checks what `/v1/capabilities` advertises
-   *  (e.g. an `image` allowlist) against a client that skipped the editor. */
+   *  request with `400 invalid_config`, or `undefined` to accept. */
   validateConfig?: ConfigGate;
   /** Whether an application's `telo` version is honoured — what
-   *  `/v1/capabilities` advertises as `features.teloVersions`. A request naming
-   *  one to a runner that does not is refused, by the rule `io` and `watch`
-   *  already follow. */
+   *  `/v1/capabilities` advertises as `features.teloVersions`. */
   teloVersions: boolean;
-  /** The operator catalog a session's `agent` is resolved against — the same
-   *  catalog `POST /v1/apps/:name/sessions` uses, because a co-resident agent IS
-   *  an operator-predefined application, just one sharing a pod. */
-  apps?: Record<string, ResolvedRunnerApp>;
-  watch: WatchConfig;
-  /** The byte-channel modes this runner offers, in preference order — the same
-   *  list `/v1/capabilities` advertises as `features.io`, passed in so the route
-   *  enforces exactly what the runner claims. The first entry is what an app
-   *  that declares no `io` gets. A backend with no PTY offers `["streams"]`
-   *  alone, and an explicit `io: "tty"` is then REFUSED rather than quietly
-   *  downgraded: `isatty()` is observable to the application, so a silent
-   *  downgrade hands it a terminal it can detect it does not have. */
+  /** The operator catalog a session's `agent` is resolved against. */
+  agents: Record<string, ResolvedRunnerApp>;
+  /** `SessionLifecycleConfig.reloadLimitPerMinute`. */
+  reloadLimitPerMinute: number;
+  /** The byte-channel modes this runner offers — the same list
+   *  `/v1/capabilities` advertises as `features.io`. A Run asking for another
+   *  is REFUSED rather than downgraded: `isatty()` is observable to the
+   *  application. */
   io: IoMode[];
 }
 
 /**
  * The runner's own answer to "is this session config acceptable". `telo` says
- * whether the request names a telo version for any application: a backend whose
- * config can also choose what runs (an image) refuses the two together, since
- * picking either silently is a run on a version nobody chose.
+ * whether the app set names a telo version for any application: a backend whose
+ * config can also choose what runs (an image) refuses the two together.
  */
 export type ConfigGate = (
   config: SessionConfig,
   request: { telo: boolean },
 ) => string | undefined;
 
+const portsSchema = {
+  type: "array",
+  items: {
+    type: "object",
+    required: ["port", "protocol"],
+    properties: {
+      port: { type: "integer", minimum: 1, maximum: 65535 },
+      protocol: { type: "string", enum: ["tcp", "udp"] },
+    },
+  },
+} as const;
+
 const appsSchema = {
   type: "array",
-  minItems: 1,
   items: {
     type: "object",
     required: ["name", "entryRelativePath"],
+    additionalProperties: false,
     properties: {
       name: { type: "string", minLength: 1, maxLength: 63 },
       entryRelativePath: { type: "string", minLength: 1 },
       ports: portsSchema,
-      io: { type: "string", enum: ["tty", "streams"] },
       telo: { type: "string", minLength: 1 },
     },
   },
 } as const;
 
-const startBodySchema = {
+const createBodySchema = {
   type: "object",
-  // `config` is no longer required: a runner may advertise no editable fields at
-  // all, and demanding an empty object from such a client is a ceremony with
-  // nothing behind it.
-  required: ["bundle", "env"],
+  required: ["workspace", "apps"],
+  additionalProperties: false,
   properties: {
-    bundle: {
-      type: "object",
-      required: ["entryRelativePath", "files"],
-      properties: {
-        entryRelativePath: { type: "string", minLength: 1 },
-        files: {
-          type: "array",
-          items: {
-            type: "object",
-            required: ["relativePath", "contents"],
-            properties: {
-              relativePath: { type: "string", minLength: 1 },
-              contents: { type: "string" },
-              encoding: { type: "string", enum: ["utf8", "base64"] },
-            },
-          },
-        },
-      },
-    },
-    env: {
-      type: "object",
-      additionalProperties: { type: "string" },
-    },
-    ports: portsSchema,
-    telo: { type: "string", minLength: 1 },
-    // Opaque here, on purpose: what a session config may contain is the
-    // runner's own answer (`/v1/capabilities`), enforced by `validateConfig`.
-    // A runner that names an image and one that runs a local process cannot
-    // share a field list, and core is the wrong place to hold either.
-    config: { type: "object" },
-    inspect: { type: "boolean" },
-    mode: { type: "string", enum: ["run", "watch"] },
+    workspace: { type: "string", minLength: 1, maxLength: 512 },
     agent: { type: "string", minLength: 1 },
     apps: appsSchema,
+    // Opaque here, on purpose: what a session config may contain is the
+    // runner's own answer (`/v1/capabilities`), enforced by `validateConfig`.
+    config: { type: "object" },
+  },
+} as const;
+
+const runBodySchema = {
+  type: "object",
+  required: ["env", "io"],
+  additionalProperties: false,
+  properties: {
+    env: { type: "object", additionalProperties: { type: "string" } },
+    io: { type: "string", enum: ["tty", "streams"] },
+    cols: { type: "integer", minimum: 1, maximum: 10_000 },
+    rows: { type: "integer", minimum: 1, maximum: 10_000 },
   },
 } as const;
 
@@ -153,717 +148,500 @@ const changeSetSchema = {
   },
 } as const;
 
-/** A DNS label — the app name appears in a container name and in every run
- *  event, so it has to survive both. */
-const APP_NAME_PATTERN = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
-
-/** Names a session's own containers already use. The docker backend keys every
- *  container of a session in one map, so an app called `workspace` would
- *  overwrite the workspace handle — leaking the real container, since
- *  `AutoRemove` only fires on stop. Reserved in core so one rule covers both
- *  backends rather than k8s being safe only by its `app-` prefix. */
-const RESERVED_APP_NAMES = new Set(["workspace", "agent"]);
+type IdParams = { Params: { id: string } };
+type AppParams = { Params: { id: string; app: string } };
 
 export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
   return async (app: FastifyInstance) => {
-    app.post<{ Body: StartSessionRequest }>(
+    // Every refusal the lifecycle or the app-set rules throw is answered as is.
+    app.setErrorHandler(async (err, req, reply) => {
+      if (err instanceof SessionRefusal) {
+        await reply.code(err.status).send(err.body);
+        return;
+      }
+      throw err;
+    });
+
+    app.post<{ Body: CreateSessionRequest }>(
       "/v1/sessions",
-      { schema: { body: startBodySchema } },
+      { schema: { body: createBodySchema } },
       async (req, reply) => {
-        if (!enforceTerms(req, reply, deps.terms)) return;
-        return startSession(app, deps, req.body, reply);
+        if (!acceptsTerms(req, reply, deps.terms)) return;
+        const resolved = await deps.resolveCaller(req);
+        if ("refusal" in resolved) return refuse(reply, resolved.refusal);
+        if (resolved.caller.kind === "owner" && resolved.caller.owner.kind === "secret") {
+          throw new SessionRefusal(
+            400,
+            "resume_secret_on_create",
+            "a resume secret names one session — create a session without one, and keep the " +
+              "secret its answer carries",
+          );
+        }
+        const body = req.body;
+        const config = body.config ?? {};
+        const apps = resolveApps(body.apps, deps.teloVersions);
+        refuseReservedPorts(deps.backend, apps);
+        gateConfig(deps, config, apps.some((a) => a.telo !== undefined));
+        await supplyTeloVersions(deps.backend, apps, config);
+        const { agent, notice } = admitAgent(body.agent, deps.agents, apps, "drop");
+
+        // No identity: the session is owned by a resume secret, answered once.
+        const minted = resolved.caller.kind === "anonymous" ? mintResumeSecret() : undefined;
+        const owner = resolved.caller.kind === "owner" ? resolved.caller.owner : minted!.owner;
+        const outcome = await deps.lifecycle.create({
+          owner,
+          workspace: body.workspace,
+          apps,
+          agent,
+          config,
+          notices: notice ? [notice] : [],
+        });
+        if (outcome.kind === "exists") {
+          throw new SessionRefusal(
+            409,
+            "session_exists",
+            `this owner already has a session for workspace '${body.workspace}'`,
+            { sessionId: outcome.id },
+          );
+        }
+        const sessionId = outcome.entry.sessionId;
+        const response: CreateSessionResponse = {
+          sessionId,
+          streamUrl: `/v1/sessions/${sessionId}/events`,
+          createdAt: outcome.entry.record.createdAt.toISOString(),
+          ...(minted ? { resumeSecret: minted.secret } : {}),
+        };
+        reply.code(201).send(response);
       },
     );
 
-    app.get<{ Params: { id: string } }>("/v1/sessions/:id", async (req, reply) => {
-      const entry = deps.registry.get(req.params.id);
-      if (!entry) {
-        reply.code(404).send({ error: "not_found", message: `session '${req.params.id}' not in registry` });
-        return;
-      }
-      reply.send({
-        sessionId: entry.sessionId,
-        status: entry.status,
-        mode: entry.mode,
-        agent: entry.agent,
-        apps: [...entry.apps.values()].map((a) => ({
-          name: a.name,
-          io: a.io,
-          generation: a.generation,
-          ports: a.ports,
-        })),
-        createdAt: entry.createdAt.toISOString(),
-        exitedAt: entry.exitedAt?.toISOString(),
-      });
-    });
+    app.get<{ Querystring: { workspace?: string } }>(
+      "/v1/sessions",
+      {
+        schema: {
+          querystring: {
+            type: "object",
+            additionalProperties: false,
+            properties: { workspace: { type: "string", minLength: 1, maxLength: 512 } },
+          },
+        },
+      },
+      async (req, reply) => {
+        const owner = await identityOwner(deps, req, reply, "a session list");
+        if (!owner) return;
+        const workspace = req.query.workspace;
+        const list: SessionList = {
+          sessions: deps.registry
+            .list()
+            .filter((e) => ownsSession(owner, e.record.owner))
+            .filter((e) => workspace === undefined || e.record.workspace === workspace)
+            .sort((a, b) => b.record.lastActiveAt.getTime() - a.record.lastActiveAt.getTime())
+            .map((e) => ({
+              sessionId: e.sessionId,
+              workspace: e.record.workspace,
+              status: e.status.kind,
+              lastActiveAt: e.record.lastActiveAt.toISOString(),
+            })),
+        };
+        reply.send(list);
+      },
+    );
 
-    app.delete<{ Params: { id: string } }>("/v1/sessions/:id", async (req, reply) => {
-      const entry = deps.registry.get(req.params.id);
-      if (!entry) {
-        reply.code(204).send();
-        return;
-      }
-      entry.userStopped = true;
-      if (entry.session) {
-        try {
-          await entry.session.stop();
-        } catch (err) {
-          app.log.error({ err, sessionId: entry.sessionId }, "failed to stop session");
-          reply.code(500).send({ error: "stop_failed", message: (err as Error).message });
+    // Adoption: the resume secret travels in the body, because `Authorization`
+    // carries the identity it is handed to.
+    app.post<IdParams & { Body: AdoptSessionRequest }>(
+      "/v1/sessions/:id/owner",
+      {
+        schema: {
+          body: {
+            type: "object",
+            required: ["resumeSecret"],
+            additionalProperties: false,
+            properties: { resumeSecret: { type: "string", minLength: 1 } },
+          },
+        },
+      },
+      async (req, reply) => {
+        const owner = await identityOwner(deps, req, reply, "adopting a session");
+        if (!owner) return;
+        const entry = deps.registry.get(req.params.id);
+        const secretOwner: SessionOwner = {
+          kind: "secret",
+          secretHash: resumeSecretHash(req.body.resumeSecret),
+        };
+        if (!entry || !ownsSession(secretOwner, entry.record.owner)) {
+          reply.code(404).send({ error: "not_found", message: `no session '${req.params.id}'` });
           return;
         }
-      }
+        const result = await deps.lifecycle.changeOwner(entry, owner);
+        if (result.kind === "exists") {
+          throw new SessionRefusal(
+            409,
+            "session_exists",
+            `this identity already has a session for workspace '${entry.record.workspace}'`,
+            { sessionId: result.id },
+          );
+        }
+        if (result.kind === "not_found") {
+          reply.code(404).send({ error: "not_found", message: `no session '${req.params.id}'` });
+          return;
+        }
+        reply.send({ sessionId: entry.sessionId });
+      },
+    );
+
+    app.get<IdParams>("/v1/sessions/:id", async (req, reply) => {
+      const entry = await ownedSession(deps, req, reply);
+      if (!entry) return;
+      reply.send(sessionDocument(entry));
+    });
+
+    app.delete<IdParams>("/v1/sessions/:id", async (req, reply) => {
+      const entry = await ownedSession(deps, req, reply);
+      if (!entry) return;
+      await deps.lifecycle.delete(entry);
       reply.code(204).send();
     });
 
-    app.get<{ Params: { id: string }; Querystring: { lastEventId?: string } }>(
+    app.get<IdParams & { Querystring: { lastEventId?: string } }>(
       "/v1/sessions/:id/events",
-      async (req, reply) =>
-        streamSessionEvents({
+      async (req, reply) => {
+        const entry = await ownedSession(deps, req, reply);
+        if (!entry) return;
+        return streamSessionEvents({
           registry: deps.registry,
           req,
           reply,
-          sessionId: req.params.id,
+          sessionId: entry.sessionId,
           corsOrigins: deps.corsOrigins,
-        }),
+        });
+      },
+    );
+
+    app.put<IdParams & { Body: { apps: SessionAppSpec[] } }>(
+      "/v1/sessions/:id/apps",
+      {
+        schema: {
+          body: {
+            type: "object",
+            required: ["apps"],
+            additionalProperties: false,
+            properties: { apps: appsSchema },
+          },
+        },
+      },
+      async (req, reply) => {
+        const entry = await ownedSession(deps, req, reply);
+        if (!entry) return;
+        const apps = resolveApps(req.body.apps, deps.teloVersions);
+        refuseReservedPorts(deps.backend, apps);
+        // The session's config was accepted for the apps it started with; a new
+        // set must not change who chooses what runs out from under it.
+        gateConfig(deps, entry.record.config, apps.some((a) => a.telo !== undefined));
+        await supplyTeloVersions(deps.backend, apps, entry.record.config);
+        await deps.lifecycle.setApps(entry, apps);
+        reply.code(202).send({ apps: apps.map((a) => a.name) });
+      },
+    );
+
+    app.put<IdParams & { Body: { name: string | null } }>(
+      "/v1/sessions/:id/agent",
+      {
+        schema: {
+          body: {
+            type: "object",
+            required: ["name"],
+            additionalProperties: false,
+            properties: { name: { type: ["string", "null"], minLength: 1 } },
+          },
+        },
+      },
+      async (req, reply) => {
+        const entry = await ownedSession(deps, req, reply);
+        if (!entry) return;
+        const { agent } = admitAgent(req.body.name, deps.agents, entry.record.apps, "refuse");
+        await deps.lifecycle.setAgent(entry, agent);
+        reply.code(202).send({ agent: agent?.name ?? null });
+      },
+    );
+
+    app.post<AppParams & { Body: RunAppRequest }>(
+      "/v1/sessions/:id/apps/:app/run",
+      { schema: { body: runBodySchema } },
+      async (req, reply) => {
+        const entry = await ownedSession(deps, req, reply);
+        if (!entry) return;
+        if (!deps.io.includes(req.body.io)) {
+          throw new SessionRefusal(
+            400,
+            "io_unsupported",
+            `this runner does not offer io mode '${req.body.io}' (see /v1/capabilities) — ` +
+              `it serves ${deps.io.join(", ")}`,
+          );
+        }
+        const { runId } = await deps.lifecycle.run(entry, req.params.app, req.body);
+        reply.code(202).send({ runId });
+      },
+    );
+
+    app.post<AppParams>("/v1/sessions/:id/apps/:app/stop", async (req, reply) => {
+      const entry = await ownedSession(deps, req, reply);
+      if (!entry) return;
+      const runId = await deps.lifecycle.stop(entry, req.params.app);
+      reply.code(202).send({ runId: runId ?? null });
+    });
+
+    app.post<IdParams>("/v1/sessions/:id/suspend", async (req, reply) => {
+      const entry = await ownedSession(deps, req, reply);
+      if (!entry) return;
+      await deps.lifecycle.suspend(entry);
+      reply.code(202).send({ sessionId: entry.sessionId });
+    });
+
+    app.post<IdParams>("/v1/sessions/:id/resume", async (req, reply) => {
+      const entry = await ownedSession(deps, req, reply);
+      if (!entry) return;
+      await deps.lifecycle.resume(entry);
+      reply.code(202).send({ sessionId: entry.sessionId });
+    });
+
+    app.post<IdParams & { Body: { app: string } }>(
+      "/v1/sessions/:id/io-tickets",
+      {
+        schema: {
+          body: {
+            type: "object",
+            required: ["app"],
+            additionalProperties: false,
+            properties: { app: { type: "string", minLength: 1 } },
+          },
+        },
+      },
+      async (req, reply) => {
+        const entry = await ownedSession(deps, req, reply);
+        if (!entry) return;
+        if (!entry.apps.has(req.body.app)) {
+          throw new SessionRefusal(404, "unknown_app", `session runs no app named '${req.body.app}'`);
+        }
+        reply.code(201).send(deps.tickets.mint(entry.sessionId, req.body.app));
+      },
     );
 
     // ---- Workspace surface -------------------------------------------------
-    // Every write from OUTSIDE the pod goes through these; the co-resident agent
-    // writes the same volume directly with its own filesystem tools. Two writers,
-    // N watchers, one directory — which is what replaces three delivery paths.
+    // Every write from OUTSIDE the workload goes through these; the co-resident
+    // agent writes the same files directly with its own filesystem tools.
 
-    app.get<{ Params: { id: string } }>("/v1/sessions/:id/workspace", async (req, reply) => {
-      const ws = resolveWorkspace(deps, req.params.id, reply);
-      if (!ws) return;
-      reply.send(await ws.tree());
+    app.get<IdParams>("/v1/sessions/:id/workspace", async (req, reply) => {
+      const entry = await ownedSession(deps, req, reply);
+      if (!entry) return;
+      reply.send(await liveWorkspace(entry).tree());
     });
 
-    app.post<{ Params: { id: string }; Body: WorkspaceChangeSet }>(
+    app.post<IdParams & { Body: WorkspaceChangeSet }>(
       "/v1/sessions/:id/workspace",
       { schema: { body: changeSetSchema } },
       async (req, reply) => {
-        const entry = requireWatchSession(deps, req.params.id, reply);
+        const entry = await ownedSession(deps, req, reply);
         if (!entry) return;
-        // The reload budget belongs on the route that CAUSES reloads. Guarding
-        // `POST /reload` alone left the editor's save path — one write per save,
-        // each triggering a kernel reload — unbounded, which is the shape the
-        // budget exists to prevent.
-        if (!admitReload(entry, deps.watch.reloadLimitPerMinute)) {
-          reply.code(429).send({
-            error: "reload_rate_limited",
-            message: `more than ${deps.watch.reloadLimitPerMinute} workspace writes in the last minute`,
-          });
-          return;
-        }
-        const ws = entry.session?.workspace;
-        if (!ws) {
-          reply.code(409).send({ error: "not_running", message: "session has no live workspace" });
-          return;
-        }
-        try {
-          for (const w of req.body.write ?? []) normalizeBundlePath(w.path);
-          for (const p of req.body.delete ?? []) normalizeBundlePath(p);
-        } catch (err) {
-          if (err instanceof BundlePathError) {
-            reply.code(400).send({ error: "invalid_path", message: err.message });
-            return;
-          }
-          throw err;
-        }
-        reply.send(await ws.apply(req.body));
+        const workspace = liveWorkspace(entry);
+        // The reload budget belongs on the route that CAUSES reloads: one write
+        // per save, each triggering a kernel reload.
+        admitReload(entry, deps.reloadLimitPerMinute, "workspace writes");
+        for (const w of req.body.write ?? []) checkedPath(w.path);
+        for (const p of req.body.delete ?? []) checkedPath(p);
+        reply.send(await workspace.apply(req.body));
       },
     );
 
-    app.get<{ Params: { id: string }; Querystring: { path?: string } }>(
+    app.get<IdParams & { Querystring: { path?: string } }>(
       "/v1/sessions/:id/workspace/file",
       async (req, reply) => {
-        const ws = resolveWorkspace(deps, req.params.id, reply);
-        if (!ws) return;
+        const entry = await ownedSession(deps, req, reply);
+        if (!entry) return;
+        const workspace = liveWorkspace(entry);
         const path = req.query.path?.trim();
-        if (!path) {
-          reply.code(400).send({ error: "invalid_path", message: "?path= is required" });
-          return;
-        }
-        try {
-          normalizeBundlePath(path);
-        } catch (err) {
-          if (err instanceof BundlePathError) {
-            reply.code(400).send({ error: "invalid_path", message: err.message });
-            return;
-          }
-          throw err;
-        }
-        reply.send(await ws.readFile(path));
+        if (!path) throw new SessionRefusal(400, "invalid_path", "?path= is required");
+        checkedPath(path);
+        reply.send(await workspace.readFile(path));
       },
     );
 
-    // `--watch` reloads on change, and pressing Run again after a one-shot app
-    // completed is not a change. This touches the named app's entry manifest
-    // through the same write path everything else uses — no signalling into the
-    // container, no shared PID namespace, no `exec`.
-    app.post<{ Params: { id: string }; Querystring: { app?: string } }>(
+    // Re-runs a live app with no file change, by touching its entry manifest
+    // through the same write path everything else uses.
+    app.post<IdParams & { Querystring: { app?: string } }>(
       "/v1/sessions/:id/reload",
       async (req, reply) => {
-        const entry = requireWatchSession(deps, req.params.id, reply);
+        const entry = await ownedSession(deps, req, reply);
         if (!entry) return;
-        const session = entry.session;
-        if (!session?.reload) {
-          reply.code(409).send({ error: "not_running", message: "session has no live workload" });
-          return;
+        const workload = entry.workload;
+        if (entry.status.kind !== "running" || !workload) {
+          throw new SessionRefusal(409, "not_running", "session has no live workload");
         }
-        if (!admitReload(entry, deps.watch.reloadLimitPerMinute)) {
-          reply.code(429).send({
-            error: "reload_rate_limited",
-            message: `more than ${deps.watch.reloadLimitPerMinute} reloads in the last minute`,
-          });
-          return;
-        }
+        admitReload(entry, deps.reloadLimitPerMinute, "reloads");
         // Omitting `app` reloads every app in the session.
         const requested = req.query.app?.trim();
         if (requested && !entry.apps.has(requested)) {
-          reply.code(404).send({
-            error: "unknown_app",
-            message: `session runs no app named '${requested}'`,
-          });
-          return;
+          throw new SessionRefusal(404, "unknown_app", `session runs no app named '${requested}'`);
         }
         const targets = requested ? [requested] : [...entry.apps.keys()];
         for (const name of targets) entry.attribution?.expect(name, "manual");
-        for (const name of targets) await session.reload(name);
+        for (const name of targets) await workload.reload(name);
         reply.code(202).send({ reloaded: targets });
       },
     );
-
-    // A pod's container list is fixed at creation, so changing WHICH apps run
-    // costs a checkpoint and a pod recreate — the suspend/resume path, reused.
-    // Editing a file stays free; this is the rare action that pays.
-    app.put<{ Params: { id: string }; Body: { apps: SessionAppSpec[] } }>(
-      "/v1/sessions/:id/apps",
-      { schema: { body: { type: "object", required: ["apps"], properties: { apps: appsSchema } } } },
-      async (req, reply) => {
-        const entry = requireWatchSession(deps, req.params.id, reply);
-        if (!entry) return;
-        const session = entry.session;
-        if (!session?.setApps) {
-          reply.code(409).send({ error: "not_running", message: "session has no live workload" });
-          return;
-        }
-        const resolved = resolveApps(req.body.apps, undefined, [], deps.io, deps.teloVersions);
-        if ("error" in resolved) {
-          reply.code(400).send(resolved.error);
-          return;
-        }
-        // The session's config was accepted for the apps it started with; a new
-        // set must not change who chooses what runs out from under it.
-        const sessionConfig = entry.launch?.config ?? {};
-        const invalid = deps.validateConfig?.(sessionConfig, {
-          telo: resolved.apps.some((a) => a.telo !== undefined),
-        });
-        if (invalid) {
-          reply.code(400).send({ error: "invalid_config", message: invalid });
-          return;
-        }
-        if (!(await supplyTeloVersions(deps, resolved.apps, sessionConfig, reply))) return;
-        // Channels for the NEW apps go in first — the backend starts emitting
-        // output as soon as a container is up, and a push to an unknown app is
-        // silently dropped. Removals wait until the backend has succeeded, so a
-        // failed recreate leaves the session describing what is still running.
-        for (const spec of resolved.apps) {
-          if (!entry.apps.has(spec.name)) {
-            deps.registry.addApp(entry, { name: spec.name, io: spec.io, ports: spec.ports });
-          }
-        }
-        entry.attribution?.expectAll("resume");
-        // The applications that started containers are replaced, and nothing of
-        // theirs survives to remove what they started.
-        await deps.containers?.release(entry.sessionId, { close: false });
-        try {
-          await session.setApps(resolved.apps);
-        } catch (err) {
-          // `setApps` recreates the workload, so rejecting is a normal outcome
-          // (pod create, start deadline, workspace never ready). Undo the
-          // channels we added and fail the session rather than leaving it
-          // `running` with nothing behind it.
-          for (const spec of resolved.apps) {
-            if (!entry.launch?.apps.some((a) => a.name === spec.name)) {
-              entry.apps.delete(spec.name);
-            }
-          }
-          const message = err instanceof Error ? err.message : String(err);
-          deps.registry.emit(entry.sessionId, {
-            type: "status",
-            status: { kind: "failed", message: `changing the app set failed: ${message}` },
-          });
-          reply.code(500).send({ error: "set_apps_failed", message });
-          return;
-        }
-        for (const name of [...entry.apps.keys()]) {
-          if (!resolved.apps.some((a) => a.name === name)) entry.apps.delete(name);
-        }
-        // The retained launch is what `resume` rebuilds from. Leaving it stale
-        // would rebuild the ORIGINAL app set under a registry holding the new
-        // one: output for the running containers dropped, and a session document
-        // listing apps that are not running.
-        if (entry.launch) entry.launch = { ...entry.launch, apps: resolved.apps };
-        reply.code(202).send({ apps: resolved.apps.map((a) => a.name) });
-      },
-    );
-
-    // A suspended session is best-effort by design: the checkpoint lives in the
-    // runner's memory, so a restart loses it and this answers 404. The editor
-    // holds the authoritative workspace and re-seeds from its own copy — which
-    // is a requirement ON the editor, not an observation about it.
-    app.post<{ Params: { id: string } }>("/v1/sessions/:id/resume", async (req, reply) => {
-      const entry = deps.registry.get(req.params.id);
-      if (!entry || entry.status.kind !== "suspended") {
-        reply.code(404).send({
-          error: "not_suspended",
-          message: `session '${req.params.id}' is not suspended`,
-        });
-        return;
-      }
-      const checkpoint = entry.checkpoint;
-      const launch = entry.launch;
-      if (!checkpoint || !launch) {
-        reply.code(409).send({
-          error: "no_checkpoint",
-          message: "session was suspended before a workspace checkpoint was taken",
-        });
-        return;
-      }
-      entry.attribution?.expectAll("resume");
-      entry.session = null;
-      deps.registry.emit(entry.sessionId, { type: "status", status: { kind: "starting" } });
-      // The checkpoint IS the bundle for the new pod — a cold pod re-downloads
-      // its module closure, and only the workspace is checkpointed, never the
-      // cache.
-      launchWorkload(
-        app,
-        deps,
-        {
-          ...launch,
-          bundle: {
-            entryRelativePath: launch.apps[0]?.entryRelativePath ?? "telo.yaml",
-            files: checkpoint.files.map((f) => ({
-              relativePath: f.path,
-              contents: f.content,
-              encoding: f.encoding,
-            })),
-          },
-        },
-        entry,
-      );
-      reply.code(202).send({ sessionId: entry.sessionId });
-    });
   };
 }
 
-/** Reject anything but a live watch session, with the reason. */
-function requireWatchSession(
+/**
+ * The session a request may act on: its credentials must own it. A missing
+ * credential is `401 session_auth_required`; a session that does not exist and
+ * one another owner holds are the same `404`, so an id reveals nothing.
+ */
+async function ownedSession(
   deps: SessionsRouteDeps,
-  sessionId: string,
+  req: FastifyRequest<{ Params: { id: string } }>,
   reply: FastifyReply,
-): SessionEntry | undefined {
-  const entry = deps.registry.get(sessionId);
-  if (!entry) {
-    reply.code(404).send({ error: "not_found", message: `session '${sessionId}' not in registry` });
+): Promise<SessionEntry | undefined> {
+  const resolved = await deps.resolveCaller(req);
+  if ("refusal" in resolved) {
+    refuse(reply, resolved.refusal);
     return undefined;
   }
-  if (entry.mode !== "watch") {
-    reply.code(409).send({
-      error: "not_a_watch_session",
-      message: "this surface exists only on a watch session",
-    });
+  if (resolved.caller.kind === "anonymous") {
+    authRequired(deps, reply, "this route takes the session's credentials");
+    return undefined;
+  }
+  const entry = deps.registry.get(req.params.id);
+  if (!entry || !ownsSession(resolved.caller.owner, entry.record.owner)) {
+    reply.code(404).send({ error: "not_found", message: `no session '${req.params.id}'` });
     return undefined;
   }
   return entry;
 }
 
-function resolveWorkspace(
+/**
+ * The identity a request carries, for a route only an identity may use. No
+ * credential is `401 session_auth_required`; a resume secret is
+ * `403 identity_required`, since it names one session rather than an owner.
+ */
+async function identityOwner(
   deps: SessionsRouteDeps,
-  sessionId: string,
+  req: FastifyRequest,
   reply: FastifyReply,
-): NonNullable<SessionEntry["session"]>["workspace"] | undefined {
-  const entry = requireWatchSession(deps, sessionId, reply);
-  if (!entry) return undefined;
-  const workspace = entry.session?.workspace;
-  if (!workspace) {
-    reply.code(409).send({ error: "not_running", message: "session has no live workspace" });
+  what: string,
+): Promise<SessionOwner | undefined> {
+  const resolved = await deps.resolveCaller(req);
+  if ("refusal" in resolved) {
+    refuse(reply, resolved.refusal);
     return undefined;
   }
-  return workspace;
-}
-
-/** Sliding one-minute window. Recorded only on an ADMITTED reload, so a client
- *  hammering a rate-limited endpoint cannot extend its own penalty. */
-function admitReload(entry: SessionEntry, limitPerMinute: number): boolean {
-  const now = Date.now();
-  entry.reloads = entry.reloads.filter((t) => now - t < 60_000);
-  if (entry.reloads.length >= limitPerMinute) return false;
-  entry.reloads.push(now);
-  return true;
-}
-
-type ResolvedApps = { apps: BackendAppSpec[] } | { error: { error: string; message: string } };
-
-/**
- * Normalize the declared app set. Omitted, it defaults to a single app named
- * `app` taking the bundle's own entry and the request's `ports` — so a
- * single-app session is written exactly as it is today.
- *
- * Ports are unique across the WHOLE session, not per app: session hosts are
- * `<port>-<sessionId>.<base-domain>`, a single label, so two apps both listening
- * on 3000 collide with nothing to distinguish them. Rejecting at create is a
- * better outcome than a URL that silently reaches the wrong app — the user
- * controls both manifests.
- */
-function resolveApps(
-  declared: SessionAppSpec[] | undefined,
-  bundleEntry: string | undefined,
-  fallbackPorts: PortMapping[],
-  io: IoMode[],
-  teloVersions: boolean,
-  fallbackTelo?: string,
-): ResolvedApps {
-  const specs: SessionAppSpec[] = declared ?? [
-    {
-      name: DEFAULT_APP_NAME,
-      entryRelativePath: bundleEntry ?? "",
-      ports: fallbackPorts,
-      ...(fallbackTelo !== undefined ? { telo: fallbackTelo } : {}),
-    },
-  ];
-
-  const seenNames = new Set<string>();
-  const portOwner = new Map<string, string>();
-  const apps: BackendAppSpec[] = [];
-
-  for (const spec of specs) {
-    if (!APP_NAME_PATTERN.test(spec.name)) {
-      return {
-        error: {
-          error: "invalid_app_name",
-          message: `app name '${spec.name}' must be a DNS label (lowercase alphanumeric and '-')`,
-        },
-      };
-    }
-    if (RESERVED_APP_NAMES.has(spec.name)) {
-      return {
-        error: {
-          error: "reserved_app_name",
-          message: `app name '${spec.name}' is reserved — a session's own containers use it`,
-        },
-      };
-    }
-    if (seenNames.has(spec.name)) {
-      return {
-        error: { error: "duplicate_app_name", message: `app '${spec.name}' is declared twice` },
-      };
-    }
-    seenNames.add(spec.name);
-
-    let entryRelativePath: string;
-    try {
-      entryRelativePath = normalizeBundlePath(spec.entryRelativePath);
-    } catch (err) {
-      if (err instanceof BundlePathError) {
-        return { error: { error: "invalid_bundle", message: err.message } };
-      }
-      throw err;
-    }
-
-    const ports = spec.ports ?? [];
-    for (const port of ports) {
-      const key = `${port.protocol}/${port.port}`;
-      const owner = portOwner.get(key);
-      if (owner) {
-        return {
-          error: {
-            error: "port_conflict",
-            message: `apps '${owner}' and '${spec.name}' both declare ${port.protocol} port ${port.port}; session hosts carry no app name, so the two would be indistinguishable`,
-          },
-        };
-      }
-      portOwner.set(key, spec.name);
-    }
-
-    // Declared, it must be one this runner serves; omitted, it is the runner's
-    // own default — the first mode it advertises.
-    if (spec.io && !io.includes(spec.io)) {
-      return {
-        error: {
-          error: "io_unsupported",
-          message:
-            `this runner does not offer io mode '${spec.io}' (see /v1/capabilities) — ` +
-            `it serves ${io.join(", ")}`,
-        },
-      };
-    }
-
-    if (spec.telo !== undefined) {
-      if (!teloVersions) {
-        return {
-          error: {
-            error: "telo_version_unsupported",
-            message:
-              `app '${spec.name}' names telo ${spec.telo}, and this runner does not choose a telo ` +
-              `version per application (see /v1/capabilities)`,
-          },
-        };
-      }
-      if (!TELO_VERSION_PATTERN.test(spec.telo)) {
-        return {
-          error: {
-            error: "invalid_telo_version",
-            message: `app '${spec.name}' names telo '${spec.telo}', which is not a release version`,
-          },
-        };
-      }
-    }
-
-    apps.push({
-      name: spec.name,
-      entryRelativePath,
-      ports,
-      io: spec.io ?? io[0] ?? "tty",
-      ...(spec.telo !== undefined ? { telo: spec.telo } : {}),
+  if (resolved.caller.kind === "anonymous") {
+    authRequired(deps, reply, `${what} takes an identity`);
+    return undefined;
+  }
+  if (resolved.caller.owner.kind !== "identity") {
+    reply.code(403).send({
+      error: "identity_required",
+      message: deps.authChallenge
+        ? `${what} takes an identity — \`Authorization: DPoP <access token>\` with a \`DPoP\` proof — ` +
+          "not a resume secret"
+        : `${what} takes an identity, and this runner accepts none (see /v1/capabilities)`,
     });
+    return undefined;
   }
-
-  // One answer per session to "who chooses what runs": every application names
-  // its telo version, or none does and the runner's own config chooses. A
-  // session of both would need a config that is at once required and refused.
-  const naming = apps.filter((a) => a.telo !== undefined).length;
-  if (naming !== 0 && naming !== apps.length) {
-    return {
-      error: {
-        error: "invalid_telo_version",
-        message: "either every app of a session names its `telo` version, or none does",
-      },
-    };
-  }
-
-  return { apps };
+  return resolved.caller.owner;
 }
 
-/**
- * Have the backend make every telo version the apps name runnable, before the
- * session exists. Sends the `400 telo_version_unavailable` and returns false on
- * the first one it cannot supply — nothing has been started, so there is
- * nothing to undo.
- */
-async function supplyTeloVersions(
-  deps: SessionsRouteDeps,
-  apps: BackendAppSpec[],
-  config: SessionConfig,
+function authRequired(deps: SessionsRouteDeps, reply: FastifyReply, what: string): void {
+  if (deps.authChallenge) reply.header("www-authenticate", deps.authChallenge);
+  reply.code(401).send({
+    error: "session_auth_required",
+    message: deps.authChallenge
+      ? `${what}: \`Authorization: Bearer <resume secret>\`, or \`Authorization: DPoP <access token>\` ` +
+        "with a `DPoP` proof"
+      : `${what}: \`Authorization: Bearer <resume secret>\``,
+  });
+}
+
+function refuse(
   reply: FastifyReply,
-): Promise<boolean> {
-  // Present on every backend whose runner advertises the feature — `buildServer`
-  // refuses the pairing otherwise — and a version only reaches here when it does.
-  const supply = deps.backend.supplyTelo?.bind(deps.backend);
-  if (!supply) return true;
-  const asked = new Map<string, string>();
-  for (const app of apps) {
-    if (app.telo !== undefined && !asked.has(app.telo)) asked.set(app.telo, app.name);
-  }
-  for (const [version, app] of asked) {
-    // The floor is core's: what a runner asks of a telo — its flags, its debug
-    // stream — is the contract's, the same on every backend.
-    const reason = unsupervisableTelo(version) ?? (await supply(version, config));
-    if (reason !== undefined) {
-      reply.code(400).send({
-        error: "telo_version_unavailable",
-        message: `telo ${version} cannot be run for app '${app}': ${reason}`,
-        app,
-        version,
-        reason,
-      });
-      return false;
-    }
+  refusal: { status: number; error: string; message: string; headers?: Record<string, string> },
+): void {
+  if (refusal.headers) reply.headers(refusal.headers);
+  reply.code(refusal.status).send({ error: refusal.error, message: refusal.message });
+}
+
+/** Terms are enforced server-side: a client that skips the editor gate still
+ *  cannot create a session without acknowledging the current version. */
+function acceptsTerms(req: FastifyRequest, reply: FastifyReply, terms: RunnerTerms | undefined): boolean {
+  if (!terms) return true;
+  const raw = req.headers[ACCEPTED_TERMS_HEADER];
+  const accepted = Array.isArray(raw) ? raw[0] : raw;
+  if (accepted !== terms.version) {
+    reply.code(428).send({ error: "terms_required", terms });
+    return false;
   }
   return true;
 }
 
-async function startSession(
-  app: FastifyInstance,
-  deps: SessionsRouteDeps,
-  body: StartSessionRequest,
-  reply: FastifyReply,
-): Promise<void> {
-  let entryRelative: string;
+function gateConfig(deps: SessionsRouteDeps, config: SessionConfig, telo: boolean): void {
+  const message = deps.validateConfig?.(config, { telo });
+  if (message) throw new SessionRefusal(400, "invalid_config", message);
+}
+
+function liveWorkspace(entry: SessionEntry) {
+  if (entry.status.kind !== "running" || !entry.workload) {
+    throw new SessionRefusal(409, "not_running", "session has no live workspace");
+  }
+  return entry.workload.workspace;
+}
+
+function checkedPath(path: string): void {
   try {
-    // Traversal guard for the entry path and every bundle file — a `../foo`
-    // would let the workload read or execute paths outside its session dir.
-    // Validated here (backend-neutral) so a bad path is a 400, not a backend
-    // 500, regardless of how the backend ultimately delivers the bundle.
-    entryRelative = normalizeBundlePath(body.bundle.entryRelativePath);
-    for (const file of body.bundle.files) normalizeBundlePath(file.relativePath);
+    normalizeBundlePath(path);
   } catch (err) {
-    if (err instanceof BundlePathError) {
-      reply.code(400).send({ error: "invalid_bundle", message: err.message });
-      return;
-    }
+    if (err instanceof BundlePathError) throw new SessionRefusal(400, "invalid_path", err.message);
     throw err;
   }
+}
 
-  // The advertised capabilities constrain the editor; the gate below enforces
-  // the same against any client.
-  const config = body.config ?? {};
-  if (body.telo !== undefined && body.apps !== undefined) {
-    reply.code(400).send({
-      error: "invalid_telo_version",
-      message: "a request declaring `apps` names each app's `telo` on the app, not on the request",
-    });
-    return;
-  }
-
-  const mode = body.mode ?? "run";
-  if (mode === "watch" && !deps.watch.enabled) {
-    reply.code(400).send({
-      error: "watch_disabled",
-      message: "this runner does not offer watch sessions (see /v1/capabilities)",
-    });
-    return;
-  }
-
-  // An agent with nothing watching its writes is a silent no-op, so the pairing
-  // is enforced rather than tolerated.
-  let agent: ResolvedRunnerApp | undefined;
-  if (body.agent) {
-    if (mode !== "watch") {
-      reply.code(400).send({
-        error: "agent_requires_watch",
-        message: "`agent` requires `mode: \"watch\"` — nothing would observe the agent's writes",
-      });
-      return;
-    }
-    agent = deps.apps?.[body.agent];
-    if (!agent) {
-      const offered = Object.keys(deps.apps ?? {});
-      reply.code(400).send({
-        error: "unknown_agent",
-        message:
-          `agent '${body.agent}' is not offered by this runner` +
-          (offered.length > 0 ? ` — offered: ${offered.join(", ")}` : ""),
-      });
-      return;
-    }
-    // An agent nothing can reach is the same silent no-op as an agent nothing
-    // watches, one layer down: it would write the volume and never be asked to.
-    // The port is the operator's to declare, so the failure names their config
-    // rather than anything the caller can change.
-    if (agent.port === undefined) {
-      reply.code(400).send({
-        error: "agent_port_undeclared",
-        message:
-          `agent '${body.agent}' declares no port, so this runner cannot route it — ` +
-          `set RUNNER_APPS.${body.agent}.port to the port its image listens on`,
-      });
-      return;
-    }
-  }
-
-  if (mode === "watch") {
-    // A suspended session holds no pod, so it does not consume the resource the
-    // ceiling exists to bound — and it is reclaimable, so counting it would let
-    // a few visitors who left hold every slot for the whole suspended TTL.
-    const live = deps.registry
-      .list()
-      .filter(
-        (e) => e.mode === "watch" && e.exitedAt === null && e.status.kind !== "suspended",
-      ).length;
-    if (live >= deps.watch.maxSessions) {
-      reply.code(409).send({
-        error: "too_many_watch_sessions",
-        message: `runner is at its configured max of ${deps.watch.maxSessions} concurrent watch sessions`,
-      });
-      return;
-    }
-  }
-
-  const resolved = resolveApps(
-    body.apps,
-    entryRelative,
-    body.ports ?? [],
-    deps.io,
-    deps.teloVersions,
-    body.telo,
-  );
-  if ("error" in resolved) {
-    reply.code(400).send(resolved.error);
-    return;
-  }
-
-  // Backend config gate (e.g. an image allowlist, or a required field core no
-  // longer knows about), asked AFTER the apps are resolved: whether the request
-  // names a telo version is something only a resolved, admitted app set says —
-  // a runner that does not offer versions has already answered
-  // `telo_version_unsupported`, not a complaint about a config beside one.
-  if (deps.validateConfig) {
-    const message = deps.validateConfig(config, {
-      telo: resolved.apps.some((a) => a.telo !== undefined),
-    });
-    if (message) {
-      reply.code(400).send({ error: "invalid_config", message });
-      return;
-    }
-  }
-  if (!(await supplyTeloVersions(deps, resolved.apps, config, reply))) return;
-
-  // The agent's port shares the session's port space with the apps' — on
-  // kubernetes literally (the pod's containers share one network namespace, so
-  // two of them cannot bind the same port at all), and on docker because a
-  // no-proxy runner publishes both to the same host.
-  //
-  // The MANIFEST WINS. A client asks for an agent as a convenience, and on the
-  // editor's path does so on every run without the user choosing; refusing the
-  // whole session would mean an application that declares the operator's agent
-  // port — 8080, which applications routinely declare — could not be run at all,
-  // for a reason naming a container the user never requested and cannot decline.
-  // So the agent is dropped and the session starts without one, reported rather
-  // than silent: a client sees no `agent` endpoint on `running`, and the notice
-  // below says why.
-  let agentNotice: string | undefined;
-  if (agent?.port !== undefined) {
-    const clash = resolved.apps.find((a) =>
-      a.ports.some((p) => p.protocol === "tcp" && p.port === agent!.port),
+/** Sliding one-minute window. Recorded only on an ADMITTED request, so a client
+ *  hammering a rate-limited endpoint cannot extend its own penalty. */
+function admitReload(entry: SessionEntry, limitPerMinute: number, what: string): void {
+  const now = Date.now();
+  entry.reloads = entry.reloads.filter((t) => now - t < 60_000);
+  if (entry.reloads.length >= limitPerMinute) {
+    throw new SessionRefusal(
+      429,
+      "reload_rate_limited",
+      `more than ${limitPerMinute} ${what} in the last minute`,
     );
-    if (clash) {
-      agentNotice =
-        `co-resident agent '${agent.name}' was not started: it listens on tcp port ${agent.port}, ` +
-        `which app '${clash.name}' declares`;
-      agent = undefined;
-    }
   }
+  entry.reloads.push(now);
+}
 
-  // The agent's token rides its operator env — the one channel that reaches the
-  // agent container and nothing else — on this session's copy of the entry, so
-  // the retained launch carries it through suspend and resume.
-  let agentToken: string | undefined;
-  if (agent?.tokenEnv !== undefined) {
-    agentToken = generateWorkloadToken();
-    agent = { ...agent, env: { ...agent.env, [agent.tokenEnv]: agentToken } };
-  }
-
-  return startWorkloadSession(
-    app,
-    deps,
-    {
-      bundle: body.bundle,
-      env: body.env,
-      config,
-      selfContained: false,
-      // A watch session always runs with the kernel debug stream on: that stream
-      // is the only place run outcomes exist, and parsing the merged PTY output
-      // would not be a contract.
-      inspect: mode === "watch" ? true : (body.inspect ?? false),
-      mode,
-      apps: resolved.apps,
-      agent,
-      ...(agentToken !== undefined ? { tokens: { agent: agentToken } } : {}),
-    },
-    reply,
-    agentNotice ? [agentNotice] : undefined,
-  );
+function sessionDocument(entry: SessionEntry) {
+  const record = entry.record;
+  return {
+    sessionId: entry.sessionId,
+    workspace: record.workspace,
+    status: entry.status,
+    agent: record.agent,
+    config: record.config,
+    apps: record.apps.map((a) => {
+      const channel = entry.apps.get(a.name);
+      return {
+        name: a.name,
+        entryRelativePath: a.entryRelativePath,
+        ports: channel?.ports ?? a.ports,
+        ...(a.telo !== undefined ? { telo: a.telo } : {}),
+        state: channel?.state ?? "pending",
+        ...(channel?.run ? { runId: channel.run.runId, io: channel.run.io } : {}),
+        generation: channel?.generation ?? 0,
+      };
+    }),
+    createdAt: record.createdAt.toISOString(),
+    lastActiveAt: record.lastActiveAt.toISOString(),
+    suspendedAt: record.suspendedAt?.toISOString() ?? null,
+  };
 }

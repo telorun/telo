@@ -3,6 +3,10 @@
 .git
 .github
 apps/studio/src-tauri/target
+# Cargo's build output, wherever a workspace or cache puts it, and other
+# branches' checkouts: together they made the context tens of gigabytes.
+**/target
+.claude/worktrees
 # The `telo` sidecar staged for a desktop build: ~140MB of binary that no image
 # builds from, and `COPY . .` would otherwise put it in every runner image.
 apps/studio/src-tauri/binaries

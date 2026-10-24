@@ -1,15 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import type { RunBundle } from "../contract.js";
+import type { WorkspaceTree } from "../contract.js";
 import {
   WORKSPACE_MARKER_CONTENTS,
   WORKSPACE_MARKER_FILENAME,
   workspaceMarkerWrite,
 } from "./workspace-marker.js";
 
-const bundle = (paths: string[]): RunBundle => ({
-  entryRelativePath: "telo.yaml",
-  files: paths.map((relativePath) => ({ relativePath, contents: "x" })),
+const bundle = (paths: string[]): WorkspaceTree => ({
+  files: paths.map((path) => ({ path, hash: "x" })),
 });
 
 describe("workspaceMarkerWrite", () => {

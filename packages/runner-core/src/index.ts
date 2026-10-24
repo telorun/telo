@@ -16,17 +16,76 @@ export {
 
 export {
   SessionRegistry,
-  SessionLimitError,
   SessionEvictedError,
   UnknownAppError,
   type AppChannel,
+  type AppRunState,
   type RunAttribution,
   type SessionEntry,
-  type RegisterArgs,
   type RegistryDeps,
-  type WorkspaceCheckpoint,
 } from "./session/registry.js";
-export { WatchSupervisor, type WatchSupervisorDeps } from "./session/watch-supervisor.js";
+export {
+  SessionLifecycle,
+  STOP_GRACE_MS,
+  type CreateArgs,
+  type CreateOutcome,
+  type RunArgs,
+  type SessionLifecycleDeps,
+} from "./session/session-lifecycle.js";
+export { SessionRefusal } from "./session/session-refusal.js";
+export {
+  callerResolver,
+  mintResumeSecret,
+  ownsSession,
+  resumeSecretHash,
+  type Caller,
+  type CallerResolver,
+  type CallerResolverOptions,
+  type CallerResult,
+  type CredentialRefusal,
+} from "./session/session-credentials.js";
+export { IoTickets } from "./session/io-tickets.js";
+export {
+  IdentityVerifier,
+  type IdentityRequest,
+  type IdentityVerifierDeps,
+} from "./identity/identity-verifier.js";
+export {
+  IdentityProviderUnavailable,
+  IdentityRefusal,
+  type IdentityErrorCode,
+} from "./identity/identity-refusal.js";
+export {
+  DPOP_SIGNING_ALGS,
+  protectedResourceMetadata,
+  protectedResourceMetadataUrl,
+} from "./identity/protected-resource-metadata.js";
+export {
+  SESSION_STORE_SCHEMA_VERSION,
+  STORED_SESSION_STATUSES,
+  SessionStoreSchemaError,
+  type ChangeOwnerResult,
+  type CreateSessionResult,
+  type SessionOwner,
+  type SessionRecord,
+  type SessionRecordUpdate,
+  type SessionStore,
+  type StoredSessionApp,
+  type StoredSessionPort,
+  type StoredSessionStatus,
+} from "./session-store/session-store.js";
+export {
+  SqliteSessionStore,
+  SQLITE_SESSION_STORE_FILENAME,
+} from "./session-store/sqlite-session-store.js";
+export {
+  PostgresSessionStore,
+  type PostgresSessionStoreOptions,
+} from "./session-store/postgres-session-store.js";
+export {
+  openSessionStore,
+  type OpenSessionStoreOptions,
+} from "./session-store/open-session-store.js";
 export {
   SESSION_CONTAINER_LABEL,
   SessionContainerFieldRefused,
@@ -52,6 +111,35 @@ export { ByteRingBuffer, type BufferedBytes } from "./session/byte-ring-buffer.j
 export { normalizeBundlePath, validateSessionId, BundlePathError } from "./session/bundle-path.js";
 export { WorkspaceClient } from "./session/workspace-client.js";
 export {
+  SupervisorClient,
+  SupervisorRunFailed,
+  SupervisorTerminated,
+  type SupervisorClientOptions,
+  type SupervisorListener,
+  type SupervisorRunEnding,
+  type SupervisorTermination,
+} from "./supervisor/supervisor-client.js";
+export {
+  SUPERVISOR_CLOSE,
+  SUPERVISOR_GENERATION,
+  SUPERVISOR_PATH,
+  SupervisorGenerationMismatch,
+  SupervisorProtocolError,
+  decodeOutputFrame,
+  decodeSupervisorMessage,
+  encodeRunnerMessage,
+  type OutputFrame,
+  type RunnerMessage,
+  type SupervisorHello,
+  type SupervisorMessage,
+} from "./supervisor/supervisor-protocol.js";
+export {
+  SupervisedApp,
+  isGenerationMismatch,
+  type SupervisedAppAddress,
+  type SupervisedAppEvents,
+} from "./supervisor/supervised-app.js";
+export {
   workspaceAppManifest,
   WORKSPACE_APP_FILENAME,
   WORKSPACE_EXCLUDED_DIRECTORIES,
@@ -65,8 +153,7 @@ export { streamSessionEvents, type SseStreamArgs } from "./sse/channel.js";
 export { healthRoute } from "./routes/health.js";
 export { capabilitiesRoute } from "./routes/capabilities.js";
 export { probeRoute, type ProbeRouteDeps } from "./routes/probe.js";
-export { sessionsRoute, type ConfigGate, type SessionsRouteDeps, type WatchConfig } from "./routes/sessions.js";
-export { appsRoute, type AppsRouteDeps } from "./routes/apps.js";
+export { sessionsRoute, type ConfigGate, type SessionsRouteDeps } from "./routes/sessions.js";
 export { ioRoute, type IoRouteDeps } from "./routes/io.js";
 export { relayDebugStream, type DebugRelayOptions } from "./debug/relay.js";
 export {

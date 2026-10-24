@@ -16,16 +16,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, Manager, State};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Child;
 
 use crate::background_command::background_command;
 
-/// Where session workspaces are staged, under the OS temp directory. Named so a
-/// leftover from a crashed editor is identifiable rather than anonymous; the
-/// runner owns a PID-named subdirectory inside it and reclaims dead ones.
-const STATE_DIR_NAME: &str = "telo-studio-runner";
+/// The runner's state root, under the app's local data directory: its session
+/// store and every session's directory live there, kept across editor launches
+/// so a suspended workspace resumes with its files and module cache. The
+/// runner sweeps only the session directories its store does not know.
+const STATE_DIR_NAME: &str = "runner";
 
 /// The origins this editor's webview sends, and the only ones the runner it
 /// starts will accept.
@@ -177,6 +178,7 @@ pub async fn cli_runner_status(state: State<'_, CliRunnerState>) -> Result<CliRu
 
 #[tauri::command]
 pub async fn cli_runner_ensure(
+    app: AppHandle,
     state: State<'_, CliRunnerState>,
     executable: Option<String>,
 ) -> Result<CliRunnerStatus, String> {
@@ -200,7 +202,10 @@ pub async fn cli_runner_ensure(
         inner.starting = true;
     }
 
-    let result = start(executable).await;
+    let result = match state_dir(&app) {
+        Ok(state_dir) => start(executable, state_dir).await,
+        Err(e) => Err(e),
+    };
     let mut inner = state.inner.lock().unwrap();
     inner.starting = false;
     match result {
@@ -239,9 +244,10 @@ pub async fn cli_runner_teardown(state: State<'_, CliRunnerState>) -> Result<(),
     Ok(())
 }
 
-/// Hook for Tauri's `WindowEvent::CloseRequested`. The runner stops every live
-/// session on SIGTERM, so killing it is what keeps a `telo run --watch` from
-/// outliving the editor holding a port.
+/// Hook for Tauri's `WindowEvent::CloseRequested`. The runner ends every live
+/// run on SIGTERM (its sessions stay, suspended, for the next launch), so
+/// stopping it is what keeps a `telo run --watch` from outliving the editor
+/// holding a port.
 pub fn teardown_on_close(state: CliRunnerState) {
     let child = {
         let mut inner = state.inner.lock().unwrap();
@@ -264,11 +270,17 @@ struct Started {
     executable: String,
 }
 
-async fn start(executable: Option<String>) -> Result<Started, String> {
+fn state_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_local_data_dir()
+        .map(|dir| dir.join(STATE_DIR_NAME))
+        .map_err(|e| format!("The app's data directory, where the local runner keeps its sessions, is unknown: {e}"))
+}
+
+async fn start(executable: Option<String>, state_dir: PathBuf) -> Result<Started, String> {
     let (program, prefix) = resolve_executable(executable)?;
     let port = pick_free_loopback_port()
         .ok_or_else(|| "Could not allocate a free loopback port.".to_string())?;
-    let state_dir = std::env::temp_dir().join(STATE_DIR_NAME);
 
     let mut command = background_command(&program);
     command
@@ -323,8 +335,8 @@ async fn start(executable: Option<String>) -> Result<Started, String> {
 
 /// Stop the runner in the way that leaves nothing behind.
 ///
-/// This matters more than it looks: the runner's own SIGTERM handler stops every
-/// live session, and each session is a `telo run --watch` CHILD of the runner.
+/// This matters more than it looks: the runner's own SIGTERM handler ends every
+/// live run, and each run is a `telo run --watch` CHILD of the runner.
 /// A plain `kill()` is SIGKILL, which skips that handler and orphans those
 /// children — still running, still holding the ports the user's applications
 /// bound, with nothing left that knows about them.

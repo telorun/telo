@@ -7,6 +7,21 @@ logs `session routing disabled (logs-only)` at warn, and drops every session URL
 — the exact silent failure the routing work exists to close, moved into the
 upgrade path. A rename is only a breaking change if something refuses it.
 */}}
+{{- if .Values.session.initImage }}
+{{- fail "session.initImage is gone: the bundle-fetch init container it ran was removed. A session pod's init container now runs the runner's own image (image.*); unset session.initImage." }}
+{{- end }}
+{{- if not (has .Values.sessionStore.kind (list "sqlite" "postgres")) }}
+{{- fail (printf "sessionStore.kind must be sqlite or postgres, got %q" .Values.sessionStore.kind) }}
+{{- end }}
+{{- if and (eq .Values.sessionStore.kind "postgres") (not (or .Values.sessionStore.url .Values.sessionStore.existingSecret)) }}
+{{- fail "sessionStore.kind=postgres needs sessionStore.url or sessionStore.existingSecret (a Secret holding the connection URL under sessionStore.existingSecretKey)." }}
+{{- end }}
+{{- if and (eq .Values.sessionStore.kind "postgres") .Values.sessionStore.url .Values.sessionStore.existingSecret }}
+{{- fail "set one of sessionStore.url and sessionStore.existingSecret, not both." }}
+{{- end }}
+{{- if ne (empty .Values.identity.audience) (empty .Values.identity.issuers) }}
+{{- fail "identity.audience and identity.issuers are set together or not at all: the audience is what a token must be minted for, the issuers who may mint it." }}
+{{- end }}
 {{- if .Values.sessionIngress }}
 {{- fail (printf "sessionIngress.* was renamed to sessionRouting.*: baseDomain stays, className and tls move under sessionRouting.ingress, controllerNamespace becomes sessionRouting.dataPlaneNamespace (it must name the routing DATA PLANE, which is not an ingress controller under Gateway API). See apps/k8s-runner/README.md.") }}
 {{- end }}

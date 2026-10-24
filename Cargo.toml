@@ -18,4 +18,5 @@ members = [
     "modules/console/rust",
     "modules/starlark/rust",
     "examples/local-modules/pow-rust/rust",
+    "packages/runner-core/supervisor",
 ]

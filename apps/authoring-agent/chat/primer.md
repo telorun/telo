@@ -3906,12 +3906,12 @@ with studio, not a preference.
   says why it failed — a ref the hub does not track, a version it does not
   hold — so act on that first (`suggest_module_refs` for a ref, the versions
   it names for a version) before falling back.
-- NEVER read, write or delete anything under `.telo-agent/` at the workspace
-  root. It is YOUR OWN state — this conversation's history and the record that
-  stops a retried message starting a second turn — kept on the workspace volume
-  so it survives a restart. It is not the user's project: no listing shows it
-  and Studio never syncs it, and touching it corrupts the conversation you are
-  in.
+- YOUR OWN state — this conversation's history and the record that stops a
+  retried message starting a second turn — lives in a durable directory of its
+  own, outside the workspace, so it survives a restart; no tool reaches it.
+  NEVER read, write or delete anything under a `.telo-agent/` directory a
+  workspace may still hold: it is where an older agent kept that state, not
+  the user's project, so no listing shows it and Studio never syncs it.
 
 A loose `hello.yaml` at the workspace root still runs, but it is not a module
 studio can open: the scan matches `telo.yaml` alone. Put new work in
@@ -4031,7 +4031,18 @@ under `targets:`: it starts before the first step and is torn down after the
 last one, so the port is bound for exactly the length of the test and the run
 exits on its own. Supply the child's inputs by the names IT declares —
 `variables:` / `secrets:` / `ports:`, never environment-variable spellings —
-and give each test a port of its own so two can run at once. A child input
+and give each test a port of its own so two can run at once. The child's own
+`needs:` are supplied the same way, under `needs:` keyed by its need names, in
+an import's two forms: a `!ref` to a need or fulfilment of the test's own
+(handed over whole), or a map of the need type's fields
+(`needs: { agentState: { path: !cel "variables.scratch.joinPath('state')" } }`).
+A need supplied there wins over the child's environment and host values (a
+child never inherits its parent's `TELO_HOST_STATE_DIR`), so a child that keeps
+state gets a durable directory of its own per test. `telo check` follows
+`source:` to the child's manifest and refuses, before anything runs, a source
+that is not an application, a name under any of the four maps the child does
+not declare, a literal its declaration refuses and a need of the wrong type;
+an unusable directory still refuses the child at boot. A child input
 typed `Telo.HostPath` supplied by name must already be ABSOLUTE (only the
 child's own env value or `default:` is resolved against the working
 directory), so the test declares its own host-path variable with the relative
@@ -4293,7 +4304,7 @@ result reads like `run_manifest`'s.
 that is absolute, holds a backslash, starts with a drive letter (`C:`) or has a
 `..` segment is refused with `ERR_PATH_OUTSIDE_WORKSPACE` — by every file tool,
 by `telo_check` and `run_manifest`, and for every argument of the `telo` tool.
-So is a path inside your own state directory (`.telo-agent/`): it holds the
+So is a path inside your own state directory, wherever it lies: it holds the
 conversation database and the checkpoints, never workspace content, and no
 tool reads, lists, writes or deletes anything in it.
 When you get it, REPORT it to the user and stop that line of work; never retry

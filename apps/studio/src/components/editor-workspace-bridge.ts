@@ -1,5 +1,5 @@
 import type { WorkspaceBridge } from "../agent";
-import { sha256Hex } from "../agent/hash";
+import { sha256HexOfBytes } from "../agent/hash";
 import { SYNC_EXCLUDED_DIRS } from "../agent/sync";
 import { pathJoin } from "../loader/paths";
 import { workspaceFileRead } from "../loader/workspace-file-read";
@@ -34,7 +34,7 @@ export function editorWorkspaceBridge({
           if (SYNC_EXCLUDED_DIRS.has(entry.name)) continue;
           const childRel = rel ? `${rel}/${entry.name}` : entry.name;
           if (entry.isDirectory) await walk(childRel);
-          else out.set(childRel, await sha256Hex(await workspace.readFile(abs(childRel))));
+          else out.set(childRel, await sha256HexOfBytes(await workspace.readBytes(abs(childRel))));
         }
       };
       await walk("");
@@ -44,6 +44,11 @@ export function editorWorkspaceBridge({
       const workspace = adapter();
       if (!workspace) throw new Error("no workspace open");
       return workspace.readFile(abs(rel));
+    },
+    async readBytes(rel) {
+      const workspace = adapter();
+      if (!workspace) throw new Error("no workspace open");
+      return workspace.readBytes(abs(rel));
     },
     async probeFile(rel) {
       const workspace = adapter();

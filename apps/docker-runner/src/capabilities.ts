@@ -7,8 +7,6 @@ import { DEFAULT_KERNEL_IMAGE } from "./config.js";
 export const DEFAULT_SESSION_IMAGE = DEFAULT_KERNEL_IMAGE;
 
 export interface DockerRunnerCapabilitiesOptions {
-  /** Whether the operator enabled watch sessions. */
-  watch: boolean;
   /** Catalog names admissible as a session's co-resident `agent`. */
   agents?: string[];
 }
@@ -28,12 +26,9 @@ export function dockerRunnerCapabilities(
       supersededByTelo: SUPERSEDED_BY_TELO,
     },
     features: {
-      // Both attach modes: docker's non-TTY attach already returns a
-      // multiplexed stream carrying a per-frame stream id, so `streams` invents
-      // nothing at the transport layer — the TTY is what collapses it.
+      // The session supervisor gives each run a fresh pty or separate pipes.
       io: ["tty", "streams"],
       ports: true,
-      watch: opts.watch,
       teloVersions: true,
       ...(opts.agents && opts.agents.length > 0 ? { agents: opts.agents } : {}),
     },

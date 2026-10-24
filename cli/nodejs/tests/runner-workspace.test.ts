@@ -42,17 +42,11 @@ describe("WorkspaceDirectory", () => {
     expect((await ws.tree()).files.map((f) => f.path)).toEqual(["telo.yaml"]);
   });
 
-  it("round-trips binary content through base64", async () => {
+  it("writes base64 content as the bytes it encodes", async () => {
     const ws = new WorkspaceDirectory(root);
     const bytes = Buffer.from([0, 1, 2, 250, 251, 252]);
     await ws.apply({ write: [{ path: "asset.bin", content: bytes.toString("base64"), encoding: "base64" }] });
-
-    const snapshot = await ws.snapshot();
-    expect(snapshot).toHaveLength(1);
-    // A checkpoint re-seeds a resumed session, so it must carry bytes a text
-    // encoding would corrupt — always base64, never a per-file guess.
-    expect(snapshot[0]!.encoding).toBe("base64");
-    expect(Buffer.from(snapshot[0]!.content, "base64")).toEqual(bytes);
+    expect(fs.readFileSync(path.join(root, "asset.bin"))).toEqual(bytes);
   });
 
   it("skips the caches a workspace can rebuild", async () => {

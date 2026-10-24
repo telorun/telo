@@ -7,6 +7,8 @@ import { parseRefValue } from "./resource-schema-form/ref-candidates";
 import { ReferencesBlockedDialog } from "./views/topology/ReferencesBlockedDialog";
 import { File as FileIcon, Lock } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast as sonnerToast } from "sonner";
+import { accountsOriginForThisPage } from "../products/page-products";
 import { isModuleRootKind, moduleRootResource } from "../application-adapter";
 import { HistoryManager } from "../history/manager";
 import { LocalStorageHistoryStore } from "../history/store";
@@ -57,19 +59,27 @@ import { DEFAULT_SETTINGS } from "../model";
 import { envFileProblems, resolveApplicationEnv } from "../run/application-env";
 import { resolveDeclaredPorts } from "./views/run/declared-ports";
 import {
-  buildRunBundle,
-  bundleFiles,
-  diffBundle,
-  isEmptyChangeSet,
+  AGENT_APP_NAME,
+  desiredAppSet,
+  adoptDeviceSessions,
+  desktopResumeSecretStore,
+  entryResumeSecretStore,
+  forgetIdentitySessions,
+  listWorkspaceSessionEntries,
+  loadWorkspaceSessionEntry,
+  pageDpopKeyStore,
+  pageWorkspaceIdentity,
+  referenceOutsideWorkspace,
   registry as runRegistry,
   runVersionFor,
-  SessionGoneError,
-  TeloVersionRefusedError,
-  TermsRequiredError,
+  saveWorkspaceSessionEntry,
   useRun,
-  type SyncedFiles,
+  type DesiredAppSet,
+  type RunAppRequest,
+  type RunnerTerms,
+  type SessionPort,
+  type WorkspaceApplication,
 } from "../run";
-import type { RunnerCapabilities, RunnerTerms } from "../run";
 import { buildProgress, isFocusComposerShortcut, useAgent } from "../agent";
 import { isTauri } from "@tauri-apps/api/core";
 import { useCloud } from "../cloud/context";
@@ -83,12 +93,11 @@ import {
   type ProjectLink,
 } from "../cloud/project-link";
 import { cloudProjectIdOf, cloudWorkspaceRoot } from "../cloud/working-copy-adapter";
+import { useWorkspaceMode } from "../hooks/useWorkspaceMode";
 import { findWorkingCopy } from "../cloud/working-copy-index";
 import { CloudProjectBar } from "./cloud/CloudProjectBar";
 import type { OpenWorkspaceKind } from "./WorkspaceSwitcher";
 import type { WorkspaceBridge } from "../agent";
-import { sessionWorkspace } from "../agent/agent-workspace";
-import { AGENT_APP_NAME } from "../agent/launch";
 import { editorWorkspaceBridge } from "./editor-workspace-bridge";
 import { AgentPanel } from "./agent/AgentPanel";
 import { EmptyWorkspacePanel } from "./EmptyWorkspacePanel";
@@ -131,6 +140,7 @@ import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
 import { TermsGateDialog } from "./TermsGateDialog";
+import { WorkspaceModeDialog } from "./WorkspaceModeDialog";
 import { TopBar } from "./TopBar";
 import { acceptTermsFor, isTermsAcceptedFor } from "../storage";
 import { ViewContainer } from "./views/ViewContainer";
@@ -203,6 +213,8 @@ export function Editor() {
     DEFAULT_SETTINGS,
   );
   const runContext = useRun();
+  const runContextRef = useRef(runContext);
+  runContextRef.current = runContext;
   // Whether this environment can offer a CHOICE of workspace. Fixed for the
   // session — it is a property of the host, not of what is open.
   const openMode = workspaceOpenMode();
@@ -241,12 +253,12 @@ export function Editor() {
   // The sidebar as a drawer; read at phone width only.
   const [navDrawerOpen, setNavDrawerOpen] = useState(false);
   // The pending terms gate: the runner's terms, the runner they belong to, and
-  // what to resume once accepted — the run that was blocked, or the agent turn
-  // whose launch was refused. Null when no gate is shown.
+  // what to resume once accepted — the run that was blocked, or the session
+  // waiting to be created. Null when no gate is shown.
   const [termsGate, setTermsGate] = useState<{
     terms: RunnerTerms;
     runnerId: string;
-    resume: { kind: "run"; filePath: string } | { kind: "agent" };
+    resume: { kind: "run"; filePath: string } | { kind: "session" };
   } | null>(null);
   const [createResourceOpen, setCreateResourceOpen] = useState(false);
   const [createModuleKind, setCreateModuleKind] = useState<ModuleKind | null>(null);
@@ -300,11 +312,7 @@ export function Editor() {
   const {
     registerWorkspace: registerAgentWorkspace,
     setConversation: setAgentConversation,
-    setRunner: setAgentRunner,
-    setCoResidentAgent,
-    setRunnerAcceptedTerms: setAgentRunnerTerms,
-    registerTermsGate: registerAgentTermsGate,
-    retry: agentRetry,
+    setSessionAgent,
   } = agent;
   // The agent keeps the registered bridge as state, so its identity must follow
   // the workspace root alone: `afterFileMutation` is a new function every
@@ -329,107 +337,241 @@ export function Editor() {
     setAgentConversation(agentRootDir);
   }, [setAgentConversation, agentRootDir]);
 
-  // A terms-enforcing runner refuses the agent launch with the same agreement it
-  // refuses a run with, so it gets the same gate: the dialog lives here, and
-  // accepting resumes the turn that was blocked.
-  useEffect(() => {
-    registerAgentTermsGate((terms) =>
-      setTermsGate({ terms, runnerId: settings.activeRunnerId, resume: { kind: "agent" } }),
-    );
-    return () => registerAgentTermsGate(null);
-  }, [registerAgentTermsGate, settings.activeRunnerId]);
+  // ---------------------------------------------------------------------------
+  // The workspace's mode and its runner session
+  // ---------------------------------------------------------------------------
 
-  // Hand the chat panel the agent riding inside a live watch session, so it
-  // talks to that one instead of launching a session of the agent's own. The
-  // session's workspace surface comes with it: a co-resident agent writes the
-  // shared volume directly, so `/v1/sessions/:id/workspace` — not the agent's
-  // own routes — is where the editor sees what it wrote. Null whenever no such
-  // session is up, which is what makes the panel fall back to a standalone
-  // launch rather than going dead.
-  const { coResidentAgent } = runContext;
-  useEffect(() => {
-    const live = coResidentAgent();
-    const workspace = live ? sessionWorkspace(live.session) : null;
-    setCoResidentAgent(
-      live && workspace
-        ? { runId: live.runId, baseUrl: live.baseUrl, token: live.token, workspace }
-        : null,
-    );
-  }, [coResidentAgent, setCoResidentAgent]);
+  // How the open workspace is used, chosen the first time it opens and
+  // remembered per workspace; null while the choice is still to be made.
+  const { workspaceMode, chooseWorkspaceMode, openingModeRef } = useWorkspaceMode(agentRootDir);
 
-  // The active runner is where a per-session agent instance is launched. The
-  // agent entry point shows only when the runner offers the authoring agent as
-  // a predefined app on /v1/capabilities — the runner resolves the image and
-  // injects the operator secrets server-side; the editor only asks by name.
-  const [agentSupported, setAgentSupported] = useState(false);
-  // The catalog name to request as a watch session's co-resident agent, or null
-  // when this runner offers none. A separate capability from `apps` above: that
-  // one says the agent can be launched as a session of its own, this one that
-  // it may ride inside another session, and an operator can enable either.
-  const [coResidentAgentName, setCoResidentAgentName] = useState<string | null>(null);
+  // The resume secret's home: the web build keeps it in the workspace's entry;
+  // the desktop build in the OS credential store, through the shell.
+  const resumeSecrets = useMemo(() => (isTauri() ? desktopResumeSecretStore() : entryResumeSecretStore()), []);
+
+  const activeRunner = settings.runners.find((r) => r.id === settings.activeRunnerId) ?? null;
+  const activeRunnerAdapter = activeRunner ? runRegistry.get(activeRunner.adapterId) : undefined;
+  const { bindWorkspace } = runContext;
+
+  // The signed-in identity as runner sessions use it — one per sign-in, so a
+  // session is rebound exactly when who is signed in changes. Nothing is bound
+  // until Studio knows whether anyone is signed in and who its identity
+  // provider is: a session created with a resume secret a moment before the
+  // answer would only be adopted at once.
+  const signedInUser = cloud.session.status === "signedIn" ? cloud.session.identity.user.id : null;
+  const [issuer, setIssuer] = useState<string | null>(null);
   useEffect(() => {
-    const runner = settings.runners.find((r) => r.id === settings.activeRunnerId);
-    const config = runner?.config as { baseUrl?: string } | undefined;
-    const adapter = runner ? runRegistry.get(runner.adapterId) : undefined;
-    let cancelled = false;
-    // The runner's dialable URL isn't always a config field — the local-docker
-    // adapter resolves it from its supervisor — so ask the adapter.
-    if (adapter?.resolveBaseUrl && runner) {
-      adapter
-        .resolveBaseUrl(runner.config)
-        .then((baseUrl) => {
-          if (!cancelled) setAgentRunner(baseUrl);
-        })
-        .catch(() => {
-          if (!cancelled) setAgentRunner(null);
+    let live = true;
+    void accountsOriginForThisPage().then((origin) => {
+      if (live) setIssuer(origin);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const identityKnown = cloud.session.status !== "loading" && issuer !== null;
+  const workspaceIdentity = useMemo(
+    () => (signedInUser !== null && issuer !== null ? pageWorkspaceIdentity(issuer, signedInUser) : null),
+    [signedInUser, issuer],
+  );
+  // A DPoP key belongs to the sign-in its runner grants were issued to: signed
+  // out, every key goes; signed in, every other subject's.
+  const keySubject =
+    cloud.session.status === "signedIn" ? signedInUser : cloud.session.status === "anonymous" ? null : undefined;
+  useEffect(() => {
+    if (keySubject === undefined) return;
+    pageDpopKeyStore()
+      .forgetAllBut(keySubject)
+      .catch((err: unknown) => {
+        sonnerToast.error("A runner sign-in key of an earlier sign-in could not be deleted", {
+          description: err instanceof Error ? err.message : String(err),
+          duration: 10_000,
         });
-    } else {
-      setAgentRunner(config?.baseUrl ?? null);
+      });
+  }, [keySubject]);
+  // Signing out (or in as someone else) leaves the identity's sessions with
+  // it on their runners, and this device forgets them. Before the binding
+  // below, so a rebind never reads an id the identity owns.
+  const previousUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousUserRef.current;
+    previousUserRef.current = signedInUser;
+    if (previous !== null && previous !== signedInUser) forgetIdentitySessions();
+  }, [signedInUser]);
+  // Signing in adopts every other workspace's resume-secret session on a
+  // runner that accepts the identity; the open one is adopted as it rebinds.
+  const adoptionScopeRef = useRef({ openWorkspace: agentRootDir, runners: settings.runners });
+  adoptionScopeRef.current = { openWorkspace: agentRootDir, runners: settings.runners };
+  useEffect(() => {
+    if (!workspaceIdentity) return;
+    const { openWorkspace, runners } = adoptionScopeRef.current;
+    const targets = listWorkspaceSessionEntries().flatMap(({ workspaceKey, entry }) => {
+      if (workspaceKey === openWorkspace) return [];
+      const runner = runners.find((r) => r.id === entry.runner);
+      const adapter = runner ? runRegistry.get(runner.adapterId) : undefined;
+      if (!runner || !adapter) return [];
+      return [{ workspaceKey, entry, runner: { id: runner.id, adapter, config: runner.config ?? adapter.defaultConfig } }];
+    });
+    if (targets.length === 0) return;
+    void adoptDeviceSessions({
+      targets,
+      secrets: resumeSecrets,
+      identity: workspaceIdentity,
+      saveEntry: saveWorkspaceSessionEntry,
+    }).then((outcomes) => {
+      for (const outcome of outcomes) {
+        if (outcome.kind !== "failed") continue;
+        sonnerToast.error("A workspace's session could not be moved to your sign-in", {
+          description: `${outcome.workspaceKey}: ${outcome.error.message}`,
+          duration: 10_000,
+        });
+      }
+    });
+  }, [workspaceIdentity, resumeSecrets]);
+  // Agent or Manual binds the workspace to its session on the active runner;
+  // Only on this device, an undecided mode, or no runner binds nothing — and
+  // so contacts no runner at all.
+  const sessionMode = workspaceMode === "agent" || workspaceMode === "manual" ? workspaceMode : null;
+  const prepareRunRef = useRef<(appPath: string) => Promise<RunAppRequest | null>>(async () => null);
+  useEffect(() => {
+    if (!agentRootDir || !sessionMode || !activeRunner || !activeRunnerAdapter || !workspaceBridge || !identityKnown) {
+      bindWorkspace(null);
+      return;
     }
-    setAgentSupported(false);
-    setCoResidentAgentName(null);
-    setAgentRunnerTerms(null);
-    const cancel = () => {
+    const entry = loadWorkspaceSessionEntry(agentRootDir);
+    if (!entry) return;
+    bindWorkspace({
+      workspaceKey: agentRootDir,
+      entry,
+      mode: sessionMode,
+      runner: {
+        id: activeRunner.id,
+        name: activeRunner.name,
+        adapter: activeRunnerAdapter,
+        config: activeRunner.config ?? activeRunnerAdapter.defaultConfig,
+      },
+      termsAccepted: (terms) => isTermsAcceptedFor(activeRunner.id, terms.version),
+      secrets: resumeSecrets,
+      identity: workspaceIdentity,
+      saveEntry: (next) => saveWorkspaceSessionEntry(agentRootDir, next),
+      bridge: workspaceBridge,
+      prepareRun: (appPath) => prepareRunRef.current(appPath),
+    });
+  }, [
+    agentRootDir,
+    sessionMode,
+    activeRunner,
+    activeRunnerAdapter,
+    workspaceBridge,
+    bindWorkspace,
+    resumeSecrets,
+    identityKnown,
+    workspaceIdentity,
+  ]);
+
+  // The ports each Application declares, resolved against its env files —
+  // read again when a manifest or an env file changes.
+  const [appPorts, setAppPorts] = useState<Map<string, SessionPort[]> | null>(null);
+  const [envEpoch, setEnvEpoch] = useState(0);
+  useEffect(
+    () =>
+      workspaceChanges.subscribe((change) => {
+        const envPath = (path: string) => /(^|[\\/])(\.env[^\\/]*|telo-workspace\.yaml)$/.test(path);
+        if (change.kind === "workspace" || change.paths.some(envPath)) setEnvEpoch((e) => e + 1);
+      }),
+    [workspaceChanges],
+  );
+  const sessionWorkspaceModules = sessionMode ? (state.workspace ?? null) : null;
+  useEffect(() => {
+    const workspace = sessionWorkspaceModules;
+    const adapter = workspaceAdapterRef.current;
+    if (!workspace || !adapter) {
+      setAppPorts(null);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const ports = new Map<string, SessionPort[]>();
+      for (const manifest of workspace.modules.values()) {
+        if (manifest.kind !== "Application") continue;
+        let env: Record<string, string> = {};
+        try {
+          env = (await resolveApplicationEnv(adapter, workspace.rootDir, manifest.filePath)).values;
+        } catch (err) {
+          // The set takes the declared defaults; Run reads the files again and
+          // shows this failure as the app's blocker.
+          console.warn(`Couldn't read the env files of ${manifest.filePath}:`, err);
+        }
+        ports.set(manifest.filePath, resolveDeclaredPorts(manifest, env));
+      }
+      if (!cancelled) setAppPorts(ports);
+    })();
+    return () => {
       cancelled = true;
     };
-    if (!runner || !adapter?.fetchCapabilities) return cancel;
-    adapter
-      .fetchCapabilities(runner.config as never)
+  }, [sessionWorkspaceModules, workspaceAdapterRef, envEpoch]);
+
+  // Every write to the workspace — a save, a form edit, a file operation, the
+  // agent's own sync — reaches its session, which a running app reads.
+  const { syncWorkspace: syncSession } = runContext;
+  useEffect(() => workspaceChanges.subscribe(() => syncSession()), [workspaceChanges, syncSession]);
+
+  // The session's agent is the panel's.
+  const { sessionAgent } = runContext;
+  useEffect(() => {
+    setSessionAgent(sessionAgent);
+  }, [sessionAgent, setSessionAgent]);
+
+  // An app-set change waits for an agent turn to end.
+  const { setTurnActive } = runContext;
+  useEffect(() => {
+    setTurnActive(agentLocked);
+  }, [agentLocked, setTurnActive]);
+
+  // The runner's terms gate a session's create: shown here, accepted per
+  // runner and version.
+  const sessionTerms = runContext.session?.phase === "terms" ? runContext.session.terms : null;
+  useEffect(() => {
+    if (!sessionTerms || !activeRunner) return;
+    setTermsGate({ terms: sessionTerms, runnerId: activeRunner.id, resume: { kind: "session" } });
+  }, [sessionTerms, activeRunner]);
+
+  // With no workspace open, the closed-workspace screen takes a request when
+  // the active runner offers the agent: asked of the runner only then.
+  const [closedScreenAgent, setClosedScreenAgent] = useState(false);
+  useEffect(() => {
+    setClosedScreenAgent(false);
+    if (agentRootDir || !activeRunner || !activeRunnerAdapter?.fetchCapabilities) return;
+    let cancelled = false;
+    activeRunnerAdapter
+      .fetchCapabilities(activeRunner.config as never)
       .then((caps) => {
-        if (cancelled) return;
-        setAgentSupported(caps?.apps?.some((a) => a.name === AGENT_APP_NAME) === true);
-        setCoResidentAgentName(
-          caps?.features?.agents?.includes(AGENT_APP_NAME) ? AGENT_APP_NAME : null,
-        );
-        // A terms-enforcing runner 428s the agent launch without the accepted
-        // version header; the run flow's acceptance (per runner + version)
-        // carries over to agent sessions.
-        setAgentRunnerTerms(
-          caps?.terms && isTermsAcceptedFor(runner.id, caps.terms.version)
-            ? caps.terms.version
-            : null,
-        );
+        if (!cancelled) setClosedScreenAgent(caps?.features?.agents?.includes(AGENT_APP_NAME) === true);
       })
-      .catch(() => {
-        // Unreachable / malformed — the run UI surfaces the fault; here the
-        // app just stays unoffered, hiding the agent entry point.
+      .catch((err: unknown) => {
+        // Unreachable or malformed: no request is offered, and the run UI
+        // reports the runner's fault when a workspace opens.
         if (!cancelled) {
-          setAgentSupported(false);
-          setCoResidentAgentName(null);
+          setClosedScreenAgent(false);
+          console.warn("Couldn't read the runner's capabilities:", err);
         }
       });
-    return cancel;
-  }, [setAgentRunner, setAgentRunnerTerms, settings.runners, settings.activeRunnerId]);
-  // The dev override URL bypasses the runner entirely, so it keeps the agent
-  // reachable (and its settings editable) regardless of the capability. Either
-  // capability is enough to offer the panel: a runner may enable the agent as a
-  // co-resident only, and hiding the entry point there would make the operator's
-  // configuration have no effect.
-  // A viewer of a Telo Cloud project cannot change it, so the agent — which
-  // exists to change it — is not offered there.
+    return () => {
+      cancelled = true;
+    };
+  }, [agentRootDir, activeRunner, activeRunnerAdapter]);
+
+  // Agent mode offers the agent — unless the runner turns out to offer none and
+  // no agent URL is set; Manual and Only on this device hide it, as does a
+  // viewer of a Telo Cloud project, who cannot change it. The user-set agent
+  // URL applies in Agent mode, and keeps the closed-workspace screen's request
+  // offered.
+  const overridden = agent.overrideUrl.trim() !== "";
   const agentVisible =
     cloudLock !== "viewer" &&
-    (agentSupported || coResidentAgentName !== null || agent.overrideUrl.trim() !== "");
+    (agentRootDir
+      ? workspaceMode === "agent" && (overridden || runContext.session?.agentOffered !== false)
+      : closedScreenAgent || overridden);
   // Every way into the composer is offered exactly where the panel's toggle is.
   const { setPanelAvailable: setAgentPanelAvailable, focusComposer: focusAgentComposer } = agent;
   useEffect(() => {
@@ -547,8 +689,6 @@ export function Editor() {
     // dock, blocker and selection would outlive it — a session still running
     // for an application that is gone, and all of it inherited by a module
     // later created at the same path.
-    syncedFilesRef.current.delete(filePath);
-    syncQueueRef.current.delete(filePath);
     runContext.forgetApp(filePath);
     setState((s) => {
       const openTabs = closeTab(s.openTabs, filePath);
@@ -582,51 +722,129 @@ export function Editor() {
   }
 
   /**
-   * Start an Application. There is ONE way to run: a watch session, where the
-   * app keeps running and a save reloads it. The mode is not a choice the user
-   * makes — it is the runner's capability, so a runner (or a docker daemon) too
-   * old for watch sessions degrades to a plain run rather than rejecting every
-   * Run with a mode it was never offered.
+   * The Run request for an Application, read fresh: its env files are the
+   * run's whole environment, and every refusal a run can be told before it
+   * starts is shown as its dock's blocker (null then). Used by Run and by the
+   * session starting an app again after its pod was recreated.
+   */
+  async function prepareRun(filePath: string): Promise<RunAppRequest | null> {
+    const workspace = state.workspace;
+    const workspaceAdapter = workspaceAdapterRef.current;
+    if (!workspace || !workspaceAdapter) return null;
+    const runnerLabel = activeRunner?.name ?? "Runner";
+
+    // A session holds the opened folder's tree and nothing above it.
+    const outside = referenceOutsideWorkspace(workspace, filePath);
+    if (outside) {
+      const relative = (path: string) => path.replace(/\\/g, "/").replace(`${workspace.rootDir.replace(/\\/g, "/").replace(/\/+$/, "")}/`, "");
+      runContext.showBlocker(filePath, {
+        kind: "outside-workspace",
+        importer: relative(outside.importer),
+        source: outside.source,
+        target: outside.target,
+      });
+      return null;
+    }
+
+    // The version this module is edited against is the version it runs on; a
+    // module with no engine has no version, and the status that explains why
+    // is the reason shown.
+    const versioned = runContext.session?.capabilities?.features.teloVersions === true;
+    const version = versioned ? runVersionFor(teloLanguage, filePath) : null;
+    if (version && "refusal" in version) {
+      runContext.showBlocker(filePath, {
+        kind: "unavailable",
+        adapterId: activeRunner?.adapterId ?? "",
+        adapterDisplayName: runnerLabel,
+        message: version.refusal,
+        remediation: "Resolve the telo version shown in the top bar, then run again.",
+      });
+      return null;
+    }
+
+    // The workspace's env files are the run's whole environment, read fresh
+    // now: Studio has no shell to fall back on, so a file it cannot read — or a
+    // marker that bounds them wrongly — refuses the run rather than leaving a
+    // value out.
+    let environment;
+    try {
+      environment = await resolveApplicationEnv(workspaceAdapter, workspace.rootDir, filePath);
+    } catch (err) {
+      setError(`Failed to read the env files: ${err instanceof Error ? err.message : String(err)}`);
+      return null;
+    }
+    const envProblems = envFileProblems(environment, workspace.rootDir);
+    if (envProblems.length > 0) {
+      runContext.showBlocker(filePath, { kind: "env-files", problems: envProblems });
+      return null;
+    }
+    const env = { ...environment.values };
+
+    // Pre-flight required variables/secrets so a missing value sends the user to
+    // the Variables tab instead of failing at boot with a validation error.
+    const manifest = workspace.modules.get(filePath) ?? null;
+    const missing = findMissingRequiredEnv(manifest, env);
+    if (missing.length > 0) {
+      runContext.showBlocker(filePath, {
+        kind: "missing-config",
+        entries: missing.map((entry) => ({ name: entry.name, envVar: entry.envVar, secret: entry.secret })),
+      });
+      return null;
+    }
+    return { env, io: runContext.runIo() };
+  }
+  prepareRunRef.current = prepareRun;
+
+  /**
+   * Run an Application in the workspace's session: a process start in the
+   * app's existing container. An app the session does not hold yet (its set
+   * waits for an agent turn to end) waits and runs once it is applied.
    */
   async function handleRunModule(filePath: string) {
     setError(null);
     // The dock states why the LAST press failed, so it is cleared with the same
-    // gesture that clears the error banner. Every early return below reports
-    // through `setError` / Settings instead, and a blocker left standing would
-    // have the dock name a cause that is not this press's.
+    // gesture that clears the error banner.
     runContext.clearBlocker(filePath);
-    // A run lives in its own Application's pane — the dock and the Variables tab are
-    // that module's. Running one from the sidebar therefore brings it forward,
-    // or the output would stream into a pane nobody is looking at.
+    // A run lives in its own Application's pane, so running one from the
+    // sidebar brings it forward.
     if (state.activeModulePath !== filePath) handleOpenModule(filePath);
     if (!state.workspace) return;
-    const workspace = state.workspace;
-    const workspaceAdapter = workspaceAdapterRef.current;
-    if (!workspaceAdapter) {
-      setError("No workspace adapter available.");
-      return;
-    }
+    if (!sessionMode) return;
 
-    const runner = settings.runners.find((r) => r.id === settings.activeRunnerId);
+    const runner = activeRunner;
     if (!runner) {
       setError("No runner selected. Add or select a runner in Settings.");
       setSettingsOpen(true);
       return;
     }
-
-    const adapter = runRegistry.get(runner.adapterId);
+    const adapter = activeRunnerAdapter;
     if (!adapter) {
       setError(`Runner "${runner.name}" uses an unavailable adapter "${runner.adapterId}".`);
       setSettingsOpen(true);
       return;
     }
-
     const config = runner.config ?? adapter.defaultConfig;
-
-    const syncIssues = adapter.validateConfig(config);
-    if (syncIssues.length > 0) {
-      // PR 5 wires these into the Run settings row; for now open Settings.
+    if (adapter.validateConfig(config).length > 0) {
       setSettingsOpen(true);
+      return;
+    }
+
+    const session = runContext.session;
+    if (session?.phase === "failed") {
+      runContext.showBlocker(filePath, {
+        kind: "unavailable",
+        adapterId: adapter.id,
+        adapterDisplayName: runner.name,
+        message: session.problem ?? "The workspace's session could not be opened.",
+        recheck: async () => {
+          runContext.clearBlocker(filePath);
+          runContext.retrySession();
+        },
+      });
+      return;
+    }
+    if (session?.phase === "terms" && session.terms) {
+      setTermsGate({ terms: session.terms, runnerId: runner.id, resume: { kind: "session" } });
       return;
     }
 
@@ -634,9 +852,7 @@ export function Editor() {
     try {
       availability = await adapter.isAvailable(config);
     } catch (err) {
-      setError(
-        `Failed to probe ${adapter.displayName}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      setError(`Failed to probe ${adapter.displayName}: ${err instanceof Error ? err.message : String(err)}`);
       return;
     }
     if (availability.status === "needs-setup") {
@@ -655,6 +871,7 @@ export function Editor() {
           const again = await adapter.isAvailable(config);
           if (again.status === "ready") {
             runContext.clearBlocker(filePath);
+            runContext.retrySession();
             void handleRunModuleRef.current(filePath);
           }
         },
@@ -662,51 +879,13 @@ export function Editor() {
       return;
     }
 
-    // The runner is the authority on two things this run needs: whether an
-    // agreement must be accepted first, and whether it can host a watch session.
-    // Both are read from one fresh capabilities fetch rather than from the state
-    // the header keeps — that state is filled asynchronously, so a Run clicked
-    // before it lands would silently start a plain run, which is exactly the
-    // difference the single Run control exists to stop the user reasoning about.
-    let capabilities: RunnerCapabilities | null = null;
-    try {
-      capabilities = (await adapter.fetchCapabilities?.(config)) ?? null;
-    } catch (err) {
-      setError(
-        `Failed to read runner capabilities: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return;
-    }
-    const terms: RunnerTerms | null = capabilities?.terms ?? null;
-    // A runner too old for watch sessions — or a docker runner on a daemon that
-    // cannot scope a mount — degrades to a plain run rather than having every
-    // Run rejected for a mode it never offered.
-    const mode: "run" | "watch" = capabilities?.features?.watch === true ? "watch" : "run";
-    // From the SAME fetch, for the same reason: read from the header's state and
-    // a Run clicked before it lands starts a watch session with no agent, and
-    // the panel quietly launches a standalone one instead.
-    const agentName = capabilities?.features?.agents?.includes(AGENT_APP_NAME)
-      ? AGENT_APP_NAME
-      : null;
-    if (terms && !isTermsAcceptedFor(runner.id, terms.version)) {
-      setTermsGate({ terms, runnerId: runner.id, resume: { kind: "run", filePath } });
-      return;
-    }
-    const acceptedTermsVersion = terms?.version;
-
-    // The version this module is edited against is the version it runs on. A
-    // runner that aligns versions is asked for exactly it; a module with no
-    // engine has no version to ask for, and the status that already explains
-    // why is the reason shown.
-    const versioned = capabilities?.features?.teloVersions === true;
-    const alignedRun = versioned ? runVersionFor(teloLanguage, filePath) : null;
-    if (alignedRun && "refusal" in alignedRun) {
+    if (runContext.appNameOf(filePath) === null) {
       runContext.showBlocker(filePath, {
         kind: "unavailable",
         adapterId: adapter.id,
-        adapterDisplayName: adapter.displayName,
-        message: alignedRun.refusal,
-        remediation: "Resolve the telo version shown in the top bar, then run again.",
+        adapterDisplayName: runner.name,
+        message: "This application is not part of the workspace's session yet.",
+        remediation: "Its telo version is still being resolved — run again in a moment.",
       });
       return;
     }
@@ -718,120 +897,12 @@ export function Editor() {
       await runContext.stopRun(liveRun.id);
     }
 
-    // save-before-run is a no-op today: every mutation in the editor persists
-    // eagerly via `persistModule`. The only exception is the SourceView
-    // Monaco debounce (~500ms); if the user clicks Run within that window the
-    // unflushed edit runs one revision behind. Acceptable for v1; revisit if
-    // it bites.
-
-    // The workspace's env files are the run's whole environment, read fresh
-    // now: Studio has no shell to fall back on, so a file it cannot read — or a
-    // marker that bounds them wrongly — refuses the run rather than leaving a
-    // value out.
-    let environment;
+    const request = await prepareRun(filePath);
+    if (!request) return;
     try {
-      environment = await resolveApplicationEnv(workspaceAdapter, workspace.rootDir, filePath);
+      await runContext.runApp(filePath, request);
     } catch (err) {
-      setError(`Failed to read the env files: ${err instanceof Error ? err.message : String(err)}`);
-      return;
-    }
-    const envProblems = envFileProblems(environment, workspace.rootDir);
-    if (envProblems.length > 0) {
-      runContext.showBlocker(filePath, { kind: "env-files", problems: envProblems });
-      return;
-    }
-    const env = { ...environment.values };
-
-    // Pre-flight required variables/secrets so a missing value sends the user to
-    // the Variables tab instead of failing at boot with a validation error.
-    const manifest =
-      activeManifest?.filePath === filePath
-        ? activeManifest
-        : ([...workspace.modules.values()].find((m) => m.filePath === filePath) ?? null);
-    const missing = findMissingRequiredEnv(manifest, env);
-    if (missing.length > 0) {
-      runContext.showBlocker(filePath, {
-        kind: "missing-config",
-        entries: missing.map((entry) => ({
-          name: entry.name,
-          envVar: entry.envVar,
-          secret: entry.secret,
-        })),
-      });
-      return;
-    }
-
-    let bundle;
-    try {
-      bundle = await buildRunBundle(workspace, filePath, workspaceAdapter);
-    } catch (err) {
-      setError(
-        `Failed to build run bundle: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return;
-    }
-
-    try {
-      await runContext.startRun({
-        appPath: filePath,
-        adapter,
-        config,
-        request: {
-          bundle,
-          env,
-          ports: resolveDeclaredPorts(manifest, env),
-          acceptedTermsVersion,
-          mode,
-          ...(alignedRun
-            ? {
-                telo: alignedRun.version,
-                // Exactly what the runner says a version supersedes — not
-                // everything it deprecates, which may be on its way out for a
-                // reason that has nothing to do with versions.
-                withheldConfig: capabilities?.config.supersededByTelo ?? [],
-              }
-            : {}),
-          // A watch session is where the authoring agent belongs: co-resident,
-          // it writes the very volume these containers watch, so its edits
-          // reload the app the user is looking at. Requested whenever the
-          // runner offers one, rather than when the chat panel happens to be
-          // open — an agent that depends on panel state at start time would
-          // make one button mean two things, and a session's container set is
-          // fixed once it is created.
-          ...(mode === "watch" && agentName ? { agent: agentName } : {}),
-        },
-      });
-      if (mode === "watch") {
-        // The bundle we just sent IS the workspace's contents, so the first
-        // diff after this is exactly the user's next edit.
-        syncedFilesRef.current.set(filePath, bundleFiles(bundle));
-      }
-    } catch (err) {
-      // Safety net: the runner enforces terms server-side, so even if the gate
-      // was skipped (e.g. the version changed since we fetched it) it can reject
-      // with the current terms — surface the gate and let the user retry.
-      if (err instanceof TermsRequiredError) {
-        setTermsGate({ terms: err.terms, runnerId: runner.id, resume: { kind: "run", filePath } });
-        return;
-      }
-      // Nothing was started: the runner could not run this module's telo
-      // version, and its own account of why is what the user reads.
-      if (err instanceof TeloVersionRefusedError) {
-        runContext.showBlocker(filePath, {
-          kind: "unavailable",
-          adapterId: adapter.id,
-          adapterDisplayName: adapter.displayName,
-          message: `Telo ${err.version} cannot be run here: ${err.reason}`,
-          remediation:
-            err.code === "telo_version_unavailable"
-              ? "Pick another telo version in the top bar, or another runner."
-              : undefined,
-        });
-        return;
-      }
-      setError(
-        `Failed to start run: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      setError(`Failed to start run: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
@@ -851,81 +922,6 @@ export function Editor() {
    *  Records a history snapshot for every file actually written, unless
    *  `skipHistory` is set (true during undo/redo to avoid re-recording the
    *  restore itself, which would shadow the redo tail). */
-  // What the editor last pushed into each app's live watch workspace, by app
-  // path. Diffing against it is what keeps a save from reloading every app: the
-  // kernel's watcher fires on a write, so an unconditional re-push would reload
-  // apps that never read the saved file.
-  const syncedFilesRef = useRef<Map<string, SyncedFiles>>(new Map());
-  // One in-flight sync per app. Two rapid saves must not interleave writes into
-  // one workspace, and the later one must still land.
-  const syncQueueRef = useRef<Map<string, Promise<void>>>(new Map());
-  // Syncs not yet settled, so a Cloud update can wait for a quiet workspace.
-  const syncsInFlightRef = useRef(0);
-
-  /** Push what changed into every live watch session, after a save. A no-op when
-   *  the app has no watch session, so the save path calls it unconditionally. */
-  function syncWatchSessions(workspace: Workspace): void {
-    const adapter = workspaceAdapterRef.current;
-    if (!adapter) return;
-    const live = runContext.watchRuns();
-    const liveApps = new Set(live.map((r) => r.appPath));
-    for (const appPath of [...syncedFilesRef.current.keys()]) {
-      // The session ended — drop the snapshot so a later one starts clean.
-      if (!liveApps.has(appPath)) syncedFilesRef.current.delete(appPath);
-    }
-    for (const run of live) {
-      const appPath = run.appPath;
-      // An application removed by something other than the editor's own delete
-      // — the agent, a file gone from disk — still has its session. There is no
-      // module left to sync into it, so it ends here rather than failing every
-      // save with an error about an app the user no longer has.
-      if (!workspace.modules.has(appPath)) {
-        syncedFilesRef.current.delete(appPath);
-        syncQueueRef.current.delete(appPath);
-        runContext.forgetApp(appPath);
-        continue;
-      }
-      const queued = (syncQueueRef.current.get(appPath) ?? Promise.resolve()).then(async () => {
-        // No snapshot means this session was re-attached after a page reload, so
-        // what the workspace holds is unknown: push everything once and diff from
-        // there. Costs one extra reload after a refresh; the alternative is a
-        // refreshed tab silently disconnecting saves from a running workspace.
-        const previous: SyncedFiles = syncedFilesRef.current.get(appPath) ?? new Map();
-        const bundle = await buildRunBundle(workspace, appPath, adapter);
-        const next = bundleFiles(bundle);
-        const changes = diffBundle(previous, next);
-        if (isEmptyChangeSet(changes)) return;
-        await runContext.syncWorkspace(run.id, changes);
-        // Recorded only AFTER the write lands: a failed sync must re-send on the
-        // next save rather than believing the workspace already has the edit.
-        syncedFilesRef.current.set(appPath, next);
-      });
-      syncsInFlightRef.current += 1;
-      syncQueueRef.current.set(
-        appPath,
-        queued
-          .finally(() => {
-            syncsInFlightRef.current -= 1;
-          })
-          .catch((err) => {
-          // The runner lost the session (a restart drops every checkpoint). The
-          // editor holds the authoritative workspace, so the remedy is to run
-          // again — say that instead of a wire error the user cannot act on.
-          if (err instanceof SessionGoneError) {
-            syncedFilesRef.current.delete(appPath);
-            setError(
-              "The runner no longer holds this watch session — run it again to start a fresh one.",
-            );
-            return;
-          }
-          setError(
-            `Failed to sync the running workspace: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }),
-      );
-    }
-  }
-
   async function persistModule(
     workspace: Workspace,
     filePath: string,
@@ -982,10 +978,6 @@ export function Editor() {
       if (recorded) setHistoryVersion((v) => v + 1);
     }
 
-    // Every manifest write funnels through here, which is exactly where a live
-    // watch workspace has to learn about it.
-    syncWatchSessions(next);
-
     return next;
   }
 
@@ -996,19 +988,19 @@ export function Editor() {
   // What the editor lends the Telo Cloud layer: it owns the open workspace, so
   // opening one, closing it and re-reading it after an update rewrote the
   // working copy are done here. Read through a ref — these close over state.
-  const cloudHostRef = useRef({ openRoot, closeRoot, reloadFromDisk, syncWatchSessions });
-  cloudHostRef.current = { openRoot, closeRoot, reloadFromDisk, syncWatchSessions };
+  const cloudHostRef = useRef({ openRoot, closeRoot, reloadFromDisk });
+  cloudHostRef.current = { openRoot, closeRoot, reloadFromDisk };
   const { registerHost: registerCloudHost, setActiveRoot: setCloudActiveRoot } = cloud;
   useEffect(() => {
     registerCloudHost({
       open: (rootDir) => cloudHostRef.current.openRoot(rootDir),
       close: (rootDir) => cloudHostRef.current.closeRoot(rootDir),
       reload: async () => {
-        const reloaded = await cloudHostRef.current.reloadFromDisk();
+        await cloudHostRef.current.reloadFromDisk();
         // A running app reads the session's copy of these files, not this one.
-        if (reloaded) cloudHostRef.current.syncWatchSessions(reloaded);
+        runContextRef.current.syncWorkspace();
       },
-      idle: () => !agentLockedRef.current && syncsInFlightRef.current === 0,
+      idle: () => !agentLockedRef.current && !runContextRef.current.syncing(),
     });
     return () => registerCloudHost(null);
   }, [registerCloudHost]);
@@ -1149,10 +1141,13 @@ export function Editor() {
 
   // A request typed with no workspace open: the browser workspace is opened
   // and the request is its conversation's next message.
+  // The workspace opens in Agent mode, without asking: the request is for the agent.
   async function buildInBrowserWorkspace(request: string): Promise<boolean> {
+    openingModeRef.current = "agent";
     try {
       await openBrowserWorkspace();
     } catch (err) {
+      openingModeRef.current = null;
       setError(err instanceof Error ? err.message : String(err));
       return false;
     }
@@ -1519,6 +1514,35 @@ export function Editor() {
     navigate: navigateToDiagnostic,
     onShowMessage: (message) => setToast({ title: "Telo", description: message }),
   });
+
+  // The workspace's app set: every Application with its ports and the telo
+  // version it is edited against, sent to the session when it changes.
+  const versionedRunner = runContext.session?.capabilities?.features.teloVersions === true;
+  // Computed each render — the language status it reads has no identity of its
+  // own — and sent only when its content changes.
+  let desiredApps: DesiredAppSet | null = null;
+  if (sessionWorkspaceModules && appPorts) {
+    const applications: WorkspaceApplication[] = [];
+    for (const manifest of sessionWorkspaceModules.modules.values()) {
+      if (manifest.kind !== "Application") continue;
+      const version = runVersionFor(teloLanguage, manifest.filePath);
+      applications.push({
+        filePath: manifest.filePath,
+        name: manifest.metadata.name,
+        ports: appPorts.get(manifest.filePath) ?? [],
+        telo: "version" in version ? version : version.pending ? { pending: true } : { refusal: version.refusal },
+      });
+    }
+    desiredApps = desiredAppSet(sessionWorkspaceModules.rootDir, applications, versionedRunner);
+  }
+  const desiredKey = desiredApps ? JSON.stringify(desiredApps) : null;
+  const desiredRef = useRef(desiredApps);
+  desiredRef.current = desiredApps;
+  const { setDesiredApps } = runContext;
+  useEffect(() => {
+    if (desiredRef.current) setDesiredApps(desiredRef.current);
+  }, [desiredKey, setDesiredApps]);
+
 
   // What the active module's structured views read: the view model its engine
   // serves. A workspace whose language tooling failed to start has none, and
@@ -2260,6 +2284,7 @@ export function Editor() {
             void switchWorkspace(openRoot(cloudWorkspaceRoot(projectId))),
           onOpenFolder: openMode === "chooser" ? handleOpen : undefined,
           onClose: closeWorkspace,
+          mode: workspaceMode ? { current: workspaceMode, onChange: chooseWorkspaceMode } : undefined,
         }}
         onOpenNav={state.workspace ? () => setNavDrawerOpen(true) : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -2316,7 +2341,7 @@ export function Editor() {
           }}
           onNewModule={setCreateModuleKind}
           onDeleteModule={handleDeleteModule}
-          onRunModule={handleRunModule}
+          onRunModule={sessionMode ? handleRunModule : undefined}
           drawerOpen={navDrawerOpen}
           onDrawerOpenChange={setNavDrawerOpen}
         />
@@ -2421,7 +2446,8 @@ export function Editor() {
                         : null,
                       environment: viewEnvironment,
                       run: {
-                        appPath: activeAppPath,
+                        // A workspace used only on this device runs nothing.
+                        appPath: sessionMode ? activeAppPath : null,
                         editedTelo:
                           activeAppPath && teloLanguage?.kind === "running"
                             ? teloLanguage.statusOf(activeAppPath).version
@@ -2509,22 +2535,23 @@ export function Editor() {
         startersBaseUrl={resolveStartersBaseUrl(settings)}
         onCreate={createNewModule}
       />
+      <WorkspaceModeDialog
+        open={agentRootDir !== null && workspaceMode === null}
+        onChoose={chooseWorkspaceMode}
+      />
       <TermsGateDialog
         terms={termsGate?.terms ?? null}
         onAccept={() => {
           if (!termsGate) return;
           acceptTermsFor(termsGate.runnerId, termsGate.terms.version);
-          // Agent launches send the same acceptance; update it live so the
-          // agent doesn't stay 428-gated until the next runner switch.
-          if (termsGate.runnerId === settings.activeRunnerId) {
-            setAgentRunnerTerms(termsGate.terms.version);
-          }
           const { resume } = termsGate;
           setTermsGate(null);
-          // Resume whatever the gate interrupted. The accepted version is on the
-          // agent's ref by now, so its retry launches with the header set.
+          // The session waiting on the agreement carries on opening; a Run the
+          // gate interrupted is pressed again.
+          if (termsGate.runnerId === settings.activeRunnerId) {
+            runContext.acceptSessionTerms(termsGate.terms.version);
+          }
           if (resume.kind === "run") void handleRunModuleRef.current(resume.filePath);
-          else agentRetry();
         }}
         onDecline={() => setTermsGate(null)}
       />

@@ -4,10 +4,10 @@ metadata:
   version: 1.0.0
   description: |
     Test fixture: stands the agent up with `maxContextTokens: 7` and calls its
-    health route, so an agent that refuses to boot fails this run with its
-    refusal on stderr.
+    health route; the agent's declared floor refuses the value before anything
+    starts.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../../../modules/app
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
   Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
 variables:
@@ -26,8 +26,10 @@ with:
     metadata: { name: agent }
     source: ../../../../telo.yaml
     ports: { http: 18599 }
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
     variables:
-      workspaceDir: !cel "variables.scratch"
+      workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18598/v1
       maxContextTokens: 7
     secrets:

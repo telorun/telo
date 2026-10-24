@@ -1,0 +1,73 @@
+kind: Telo.Application
+metadata:
+  name: ForwardsANeedWholeTest
+  version: 1.0.0
+  description: >-
+    A child's own durable directory is supplied by name as a `!ref` to a
+    fulfilment this application writes, handed over whole: the child receives the
+    fulfilment's fields and writes into that directory.
+imports:
+  App: ../
+  Fs: ../../fs
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  fixturesDir:
+    env: APP_FORWARDS_A_NEED_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/app/tests/__fixtures__
+targets:
+  - !ref stateful
+  - !ref test
+---
+kind: Telo.DurableDirectory
+metadata: { name: childState }
+fields:
+  path: !cel "variables.fixturesDir.joinPath('scratch-forwarded')"
+---
+kind: App.Instance
+metadata: { name: stateful }
+source: ./__fixtures__/stateful/telo.yaml
+needs:
+  state: !ref childState
+---
+kind: Run.Loop
+metadata: { name: awaitExit }
+condition: !cel "resources.stateful.status.exitCode == null"
+maxIterations: 200
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 20ms
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: awaitExit
+    invoke: !ref awaitExit
+  - name: verifyExit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.stateful.status.exitCode"
+      expected: 0
+  - name: read
+    invoke:
+      kind: Fs.File
+      cwd: !cel "variables.fixturesDir"
+    inputs:
+      path: scratch-forwarded/marker.txt
+  - name: verifyMarker
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.content"
+      expected: written by the child
+  - name: clean
+    invoke:
+      kind: Fs.FileRemoval
+      cwd: !cel "variables.fixturesDir"
+    inputs:
+      path: scratch-forwarded
+      recursive: true

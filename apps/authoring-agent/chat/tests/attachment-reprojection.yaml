@@ -11,7 +11,7 @@ metadata:
     The next turn replays that history, and the model receives the image as its
     bytes. Offline and key-free.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
@@ -48,7 +48,7 @@ steps:
   - name: stateDir
     invoke: { kind: Fs.DirectoryCreation }
     inputs:
-      path: !cel "string(variables.scratch.joinPath('.telo-agent'))"
+      path: !cel "string(variables.scratch.joinPath('agent-state'))"
       createParents: true
   # The database as the previous agent left it: its migrations, one
   # conversation holding an uploaded image and one turn naming it, journaled,
@@ -59,7 +59,7 @@ steps:
       with:
         - kind: SQLite.Connection
           metadata: { name: legacyDb }
-          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+          file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
         # The previous agent's migrations, verbatim.
         - kind: SQLite.Schema
           metadata: { name: legacySchema }
@@ -219,7 +219,7 @@ steps:
           journal: !ref legacyJournal
         - kind: BlobFs.Store
           metadata: { name: uploads }
-          root: !cel "variables.scratch.joinPath('.telo-agent').joinPath('attachments')"
+          root: !cel "variables.scratch.joinPath('agent-state').joinPath('attachments')"
         - kind: Blob.Put
           metadata: { name: putUpload }
           store: !ref uploads
@@ -306,8 +306,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18581 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18580/v1
             # The seeded turn has no recent activity; retention must not take it.
             retentionDays: 3650
@@ -315,7 +317,7 @@ steps:
             openaiApiKey: stub-key
         - kind: SQLite.Connection
           metadata: { name: agentDb }
-          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+          file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
         - kind: Sql.Query
           metadata: { name: agentQuery }
           connection: !ref agentDb

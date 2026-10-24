@@ -1,8 +1,23 @@
 import { describe, expect, it } from "vitest";
 
-import { makeFakeDocker } from "../test-helpers.js";
 import type { ProbeConfig } from "@telorun/runner-core";
-import { runProbe } from "./probe.js";
+import { runProbe, type ProbeDockerClient } from "./probe.js";
+
+const ok = async () => ({});
+
+function makeFakeDocker(behavior: {
+  ping?: () => Promise<unknown>;
+  inspectVolume?: () => Promise<unknown>;
+  inspectNetwork?: () => Promise<unknown>;
+  inspectImage?: () => Promise<unknown>;
+}): ProbeDockerClient {
+  return {
+    ping: behavior.ping ?? ok,
+    getVolume: () => ({ inspect: behavior.inspectVolume ?? ok }),
+    getNetwork: () => ({ inspect: behavior.inspectNetwork ?? ok }),
+    getImage: () => ({ inspect: behavior.inspectImage ?? ok }),
+  };
+}
 
 const RUNNER = { bundleVolume: "telo_bundles", childNetwork: "telo_default" };
 const MISSING: ProbeConfig = { image: "telorun/telo:nodejs", pullPolicy: "missing" };

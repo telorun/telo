@@ -1,0 +1,286 @@
+{
+  "workspace": { "sub/marker.txt": "found" },
+  "exchanges": [
+    {
+      "name": "a connection with no bearer token is closed 4401",
+      "steps": [{ "connect": "main", "token": "none" }, { "expectClose": 4401 }]
+    },
+    {
+      "name": "a connection with another token is closed 4403",
+      "steps": [{ "connect": "main", "token": "wrong" }, { "expectClose": 4403 }]
+    },
+    {
+      "name": "hello is answered with the supervisor's state",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] }
+      ]
+    },
+    {
+      "name": "a hello of another generation is closed 4426",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 2, "resumeToken": "x" } },
+        { "expectClose": 4426 }
+      ]
+    },
+    {
+      "name": "a message before hello is closed 4400",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "stop", "runId": "r1", "graceMs": 0 } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a malformed message is closed 4400",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "sendText": "{" },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a second hello is closed 4400",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expectClose": 4400 }
+      ]
+    },
+    {
+      "name": "a run on pipes keeps stdout and stderr apart and ends after its output",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "printf out; printf err >&2"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "stdout", "text": "out" } },
+        { "expectOutput": { "stream": "stderr", "text": "err" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 } }
+      ]
+    },
+    {
+      "name": "a tty run gets a terminal of the size it names",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "[ -t 0 ] && [ -t 1 ] && stty size"], "env": {}, "cwd": ".", "io": "tty", "cols": 100, "rows": 30 } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "tty", "contains": "30 100" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 } }
+      ]
+    },
+    {
+      "name": "resize applies to the live pty",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "printf ready; read line; stty size"], "env": {}, "cwd": ".", "io": "tty" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "tty", "contains": "ready" } },
+        { "send": { "type": "resize", "cols": 50, "rows": 20 } },
+        { "sendStdin": "\n" },
+        { "expectOutput": { "stream": "tty", "contains": "20 50" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 } }
+      ]
+    },
+    {
+      "name": "a run's env reaches it and the supervisor's own variables do not",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        {
+          "send": {
+            "type": "run",
+            "runId": "r1",
+            "argv": ["sh", "-c", "printf '%s|%s|%s' \"$GREETING\" \"${TELO_SUPERVISOR_TOKEN-unset}\" \"${TELO_SUPERVISOR_LISTEN-unset}\""],
+            "env": { "GREETING": "hello" },
+            "cwd": ".",
+            "io": "streams"
+          }
+        },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "stdout", "text": "hello|unset|unset" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 } }
+      ]
+    },
+    {
+      "name": "a relative cwd resolves against the workspace",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["cat", "marker.txt"], "env": {}, "cwd": "sub", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "stdout", "text": "found" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 } }
+      ]
+    },
+    {
+      "name": "stdin reaches the live run",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "read line; printf 'got:%s' \"$line\""], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "sendStdin": "abc\n" },
+        { "expectOutput": { "stream": "stdout", "text": "got:abc" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 } }
+      ]
+    },
+    {
+      "name": "input with no live run is discarded",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "sendStdin": "ignored\n" },
+        { "expectSilence": 300 },
+        { "send": { "type": "stop", "runId": "r1", "graceMs": 0 } },
+        { "expect": { "type": "refused", "runId": "r1", "code": "no_run" } }
+      ]
+    },
+    {
+      "name": "a second run while one is live is refused, and the live one's runId is answered again",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "read line"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "send": { "type": "run", "runId": "r2", "argv": ["sh", "-c", "exit 0"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "refused", "runId": "r2", "code": "run_active" } },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "read line"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "send": { "type": "stop", "runId": "r1", "graceMs": 5000 } },
+        { "expect": { "type": "exited", "runId": "r1", "signal": "SIGTERM" } }
+      ]
+    },
+    {
+      "name": "an ended run is answered with its ending and never started again",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "printf once; exit 3"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "stdout", "text": "once" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 3 } },
+        { "send": { "type": "stop", "runId": "r1", "graceMs": 1000 } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 3 } },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "printf once; exit 3"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 3 } },
+        { "expectSilence": 300 }
+      ]
+    },
+    {
+      "name": "stop with no such run is refused",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "stop", "runId": "r9", "graceMs": 1000 } },
+        { "expect": { "type": "refused", "runId": "r9", "code": "no_run" } }
+      ]
+    },
+    {
+      "name": "stop sends SIGKILL to a group that outlives its grace",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "trap '' TERM; printf ready; read line"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "stdout", "text": "ready" } },
+        { "send": { "type": "stop", "runId": "r1", "graceMs": 200 } },
+        { "expect": { "type": "exited", "runId": "r1", "signal": "SIGKILL" } }
+      ]
+    },
+    {
+      "name": "what a run leaves in its group ends with it",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "sleep 30 & printf left"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "stdout", "text": "left" } },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 }, "withinMs": 1500 }
+      ]
+    },
+    {
+      "name": "a spawn that never ran is failed, and asked again answers the same",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["/nonexistent/telo"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "failed", "runId": "r1" }, "ignore": ["reason"] },
+        { "send": { "type": "stop", "runId": "r1", "graceMs": 0 } },
+        { "expect": { "type": "failed", "runId": "r1" }, "ignore": ["reason"] }
+      ]
+    },
+    {
+      "name": "a dropped connection stops nothing, and a reconnect is replayed from its lastSeq",
+      "steps": [
+        { "connect": "first", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 }, "on": "first" },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"], "on": "first" },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "printf one; sleep 0.5; printf two; read line"], "env": {}, "cwd": ".", "io": "streams" }, "on": "first" },
+        { "expect": { "type": "started", "runId": "r1" }, "on": "first" },
+        { "expectOutput": { "stream": "stdout", "text": "one" }, "record": "seen", "on": "first" },
+        { "close": "first" },
+        { "wait": 1000 },
+        { "connect": "second", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": "$seen" }, "on": "second" },
+        { "expect": { "type": "hello", "generation": 1, "state": "running", "runId": "r1" }, "ignore": ["instance"], "on": "second" },
+        { "expectOutput": { "stream": "stdout", "text": "two", "firstSeq": "$seen+1" }, "on": "second" },
+        { "close": "second" },
+        { "connect": "third", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 }, "on": "third" },
+        { "expect": { "type": "hello", "generation": 1, "state": "running", "runId": "r1" }, "ignore": ["instance"], "on": "third" },
+        { "expectOutput": { "stream": "stdout", "text": "onetwo", "firstSeq": 1 }, "on": "third" },
+        { "sendStdin": "\n", "on": "third" },
+        { "expect": { "type": "exited", "runId": "r1", "code": 0 }, "on": "third" }
+      ]
+    },
+    {
+      "name": "the supervisor's own SIGTERM is forwarded to the live run's group, and it exits once the run ended",
+      "steps": [
+        { "connect": "main", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"] },
+        { "send": { "type": "run", "runId": "r1", "argv": ["sh", "-c", "printf ready; read line"], "env": {}, "cwd": ".", "io": "streams" } },
+        { "expect": { "type": "started", "runId": "r1" } },
+        { "expectOutput": { "stream": "stdout", "text": "ready" } },
+        { "signalSupervisor": "SIGTERM" },
+        { "expect": { "type": "exited", "runId": "r1", "signal": "SIGTERM" } },
+        { "expectClose": 1001 },
+        { "expectSupervisorExit": 0 }
+      ]
+    },
+    {
+      "name": "a connection that says hello supersedes the one before it",
+      "steps": [
+        { "connect": "first", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 }, "on": "first" },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"], "on": "first" },
+        { "connect": "second", "token": "valid" },
+        { "send": { "type": "hello", "generation": 1, "lastSeq": 0 }, "on": "second" },
+        { "expect": { "type": "hello", "generation": 1, "state": "idle" }, "ignore": ["instance"], "on": "second" },
+        { "expectClose": 4409, "on": "first" }
+      ]
+    }
+  ]
+}

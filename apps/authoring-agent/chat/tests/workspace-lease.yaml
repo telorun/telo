@@ -31,7 +31,7 @@ metadata:
     was; a `write_file` call returns an error leading with ERR_WORKSPACE_BUSY
     and writes nothing; and the holder answers 200 once the pipe is read.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
@@ -64,7 +64,7 @@ kind: Shell.Command
 metadata: { name: inWorkspace }
 host:
   kind: Shell.LocalHost
-  cwd: !cel "variables.scratch"
+  cwd: !cel "variables.scratch.joinPath('workspace')"
 ---
 kind: Run.Sequence
 metadata: { name: push }
@@ -296,9 +296,9 @@ outputs:
 ---
 kind: Fs.TreeSnapshot
 metadata: { name: onDisk }
-cwd: !cel "variables.scratch"
+cwd: !cel "variables.scratch.joinPath('workspace')"
 ---
-# Fails until something exists at a path under the test's scratch directory.
+# Fails until something exists at a path under the agent's workspace.
 kind: Run.Sequence
 metadata: { name: exists }
 inputType:
@@ -350,10 +350,12 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18547 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18546/v1
-            teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+            teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
           secrets:
             openaiApiKey: stub-key
       targets: [ !ref agent ]

@@ -3,7 +3,6 @@ import type {
   AvailabilityReport,
   ConfigIssue,
   RunAdapter,
-  RunSession,
 } from "../../types";
 import { createHttpRunnerAdapter } from "../http-runner/factory";
 import {
@@ -48,7 +47,7 @@ function startAction(): AvailabilityAction {
     description:
       `Starts a telo runner in a Docker container on this machine (first start downloads ` +
       `${LOCAL_RUNNER_IMAGE}). The runner has access to your Docker daemon — it runs each ` +
-      `Application as its own container — and listens on 127.0.0.1 without authentication. ` +
+      `Application as its own container — and listens on 127.0.0.1; each session is reached only with its own resume secret. ` +
       `It is stopped and removed when the editor quits.`,
     async run() {
       await startLocalRunner();
@@ -91,38 +90,13 @@ export const localDockerAdapter: RunAdapter<LocalDockerConfig> = {
     return inner.isAvailable(dial(config, status.baseUrl));
   },
 
-  async start(request, config): Promise<RunSession> {
+  async connect(config) {
     // Never boots the runner — starting it is an explicit user action.
     const status = await localRunnerStatus();
     if (status.state !== "ready" || !status.baseUrl) {
       throw new Error(`${NOT_RUNNING_MESSAGE} Start it from the run panel or Settings.`);
     }
-    return inner.start(request, dial(config, status.baseUrl));
-  },
-
-  async attach(sessionId, config): Promise<RunSession | null> {
-    // Kill-on-close means sessions never outlive the editor process; when the
-    // runner is down the recorded session is gone for good.
-    const status = await localRunnerStatus();
-    if (status.state !== "ready" || !status.baseUrl) return null;
-    return inner.attach!(sessionId, dial(config, status.baseUrl));
-  },
-
-  async probeSession(sessionId, config) {
-    // Same reading `attach` takes: kill-on-close means a session never outlives
-    // the runner, so a runner that is not up has definitively lost this one.
-    const status = await localRunnerStatus();
-    if (status.state !== "ready" || !status.baseUrl) return null;
-    return inner.probeSession!(sessionId, dial(config, status.baseUrl));
-  },
-
-  async stopSession(sessionId, config) {
-    // Nothing left to stop — the runner that held it is gone, and with it the
-    // container. Resolving rather than throwing keeps Stop honest: the session
-    // really is not running.
-    const status = await localRunnerStatus();
-    if (status.state !== "ready" || !status.baseUrl) return;
-    await inner.stopSession!(sessionId, dial(config, status.baseUrl));
+    return inner.connect(dial(config, status.baseUrl));
   },
 
   async isRunning() {

@@ -48,7 +48,7 @@ A monorepo therefore keeps its cache at the workspace root, which matters when y
 
 - `0` — the command did its work.
 - `1` — the work failed: a manifest that does not load or that `telo check` refuses, an application argument the manifest does not declare, a name `telo builtins` does not know.
-- `2` — the invocation was refused before any work began, with the reason on stderr and nothing on stdout: an unknown flag, a missing argument or subcommand, a value outside an option's choices (`-o yaml`), `TELO_APP_CLI` set to anything but `1` or empty, a packaged application started with `TELO_APP_INFO`, a `telo runner` bind or port it refuses.
+- `2` — the invocation was refused before any work began, with the reason on stderr and nothing on stdout: an unknown flag, a missing argument or subcommand, a value outside an option's choices (`-o yaml`), `TELO_APP_CLI` set to anything but `1` or empty, a packaged application started with `TELO_APP_INFO`, a `telo runner` bind, port or state directory it refuses.
 
 `telo run` and a packaged application exit with the application's own status; `2` there still means the CLI refused its own options before the manifest path. A first word that names no command is a manifest path, so `telo frobnicate` is a run of `./frobnicate`, and fails with `1`.
 
@@ -386,7 +386,7 @@ Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.
 
 **Options:**
 
-- `--watch, -w` - Watch manifest file(s) for changes and restart automatically
+- `--watch, -w` - Watch manifest file(s) for changes and restart automatically. Each generation runs as a plain run would: an application that finishes is torn down and its exit code reported (with `--debug` / `--inspect`, as `Kernel.Stopped` with its `exitCode`), and the session waits for the next change; a server keeps serving until a change restarts it.
 - `--debug` - Write every kernel event, in order, to `.telo.debug.jsonl` next to the manifest. No network, no UI — the file is the machine-readable record of a run. `telo run` is exempt from `-o json` (the app owns stdout/stderr), so this is the machine surface for a run.
 - `--inspect[=[host:]port]` - Start the live inspection endpoint (default `127.0.0.1:9230`), serve the inspection UI and open it in a browser. Holds the app open even when it would otherwise exit. The endpoint streams event payloads — inputs and outputs of every call — so binding a non-loopback host is warned about; mark credentials with [`x-telo-sensitive`](/extend/sensitive-contract-fields) so they ride the wire as `[redacted]`.
 - `--no-open` - With `--inspect`, do not open the browser.
@@ -395,6 +395,22 @@ Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.
 - `--` - Everything after it is handed to the kernel as the application's own arguments, for controllers that read them.
 
 See [Global options](#global-options) for `--verbose`, `-o` and the cache root.
+
+---
+
+### `telo runner`
+
+Serve the `/v1` runner API over local processes on this machine, so an editor (or any client) can open workspace sessions and run their applications. Loopback only unless `--allow-remote`; no browser origin unless `--allow-origin <origin>`.
+
+**Options:**
+
+- `--port <n>` - Port to listen on (default `8061`; `0` picks a free one and reports it).
+- `--host <address>` - Address to bind (default `127.0.0.1`).
+- `--allow-remote` - Permit a non-loopback bind.
+- `--allow-origin <origin>` - A browser origin allowed to drive the runner (repeatable).
+- `--state-dir <dir>` - The runner's state directory: the session store (`sessions.sqlite`) and every session's directory (`sessions/<id>/workspace`, `sessions/<id>/agent`), kept across suspends, runner restarts and reboots.
+
+The state directory is `--state-dir`, else `RUNNER_STATE_DIR`, else the per-user default for application state: `$XDG_STATE_HOME/telo/runner` (`~/.local/state/telo/runner` when `XDG_STATE_HOME` is unset) on Linux, `~/Library/Application Support/telo/runner` on macOS, `%LOCALAPPDATA%\telo\state\runner` on Windows. It is never the temp directory or the CLI cache. When none can be resolved (no `HOME`) or the directory cannot be created and written, the runner refuses to start (exit `2`), naming `--state-dir` and `RUNNER_STATE_DIR`. Under `-o json` the command's result is `{ url, host, port, stateDir }`, `stateDir` being the directory in use.
 
 ---
 
@@ -576,7 +592,7 @@ Access it at `http://localhost:8080/api/hello`
 telo --watch ./manifest.yaml
 ```
 
-In watch mode, the manifest is reloaded and the kernel restarted whenever any manifest files change. This is useful while developing.
+In watch mode, the manifest is reloaded and the kernel restarted whenever any manifest files change. This is useful while developing. Each reload runs the application as a plain `telo run` would: an application that finishes (a script with no server) runs to completion, its resources are torn down and its exit code is printed, and the session then waits for the next change; a server keeps serving until a change restarts it or you press Ctrl+C.
 
 ### Remote Manifests
 

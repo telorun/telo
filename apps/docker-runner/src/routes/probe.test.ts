@@ -1,27 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { FastifyInstance } from "fastify";
 
-import { buildServer } from "../server.js";
-import { makeFakeDocker, makeRunnerConfig, type FakeDockerBehavior } from "../test-helpers.js";
-
-async function buildApp(behavior: FakeDockerBehavior = {}): Promise<FastifyInstance> {
-  const { app } = await buildServer({
-    docker: makeFakeDocker(behavior),
-    runnerConfig: makeRunnerConfig(),
-  });
-  await app.ready();
-  return app;
-}
+import { FakeEngine } from "../docker/fake-engine.test-support.js";
+import { bootTestServer } from "../test-server.test-support.js";
 
 describe("POST /v1/probe", () => {
   let app: FastifyInstance;
+  let close: () => Promise<void>;
 
   beforeEach(async () => {
-    app = await buildApp();
+    ({ app, close } = await bootTestServer());
   });
 
   afterEach(async () => {
-    await app.close();
+    await close();
   });
 
   it("returns ready on the happy path", async () => {
@@ -65,12 +57,12 @@ describe("POST /v1/probe", () => {
   });
 
   it("surfaces probe unavailable responses verbatim", async () => {
-    await app.close();
-    app = await buildApp({
-      ping: async () => {
-        throw new Error("boom");
-      },
-    });
+    await close();
+    const engine = new FakeEngine();
+    engine.docker.ping = async () => {
+      throw new Error("boom");
+    };
+    ({ app, close } = await bootTestServer(engine.docker));
     const res = await app.inject({
       method: "POST",
       url: "/v1/probe",

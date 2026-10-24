@@ -3,11 +3,14 @@ import { describe, expect, it } from "vitest";
 import { FAILURE_OUTPUT_CHARS, FAILURE_OUTPUT_LINES, describeRunFailure, outputTail } from "../run-failure";
 
 describe("a run's failure, as the dock shows it", () => {
-  it("is the session's failed start or non-zero exit, and each application's failed latest run", () => {
+  it("is the run's failed start, non-zero exit or signal, and its application's failed latest generation", () => {
     expect(describeRunFailure({ status: { kind: "failed", message: "image pull failed" }, runs: {} })).toEqual([
       "Run failed: image pull failed",
     ]);
     expect(describeRunFailure({ status: { kind: "exited", code: 2 }, runs: {} })).toEqual(["Exited with code 2"]);
+    expect(describeRunFailure({ status: { kind: "signalled", signal: "SIGKILL" }, runs: {} })).toEqual([
+      "Ended by signal SIGKILL",
+    ]);
     expect(
       describeRunFailure({
         status: { kind: "running" },
@@ -24,7 +27,7 @@ describe("a run's failure, as the dock shows it", () => {
     expect(
       describeRunFailure({
         status: { kind: "running" },
-        runs: { api: { type: "run", app: "api", generation: 1, phase: "started", trigger: "initial" } },
+        runs: { api: { type: "run", app: "api", generation: 1, phase: "started", trigger: "run" } },
       }),
     ).toBeNull();
   });

@@ -6,7 +6,6 @@ import { clampLimits, parseCpuMillis, parseMemoryBytes } from "./limits.js";
 const CEILINGS: LimitCeilings = {
   cpu: "50m",
   memory: "100Mi",
-  ttlSeconds: 3600,
   ephemeralStorage: "512Mi",
 };
 
@@ -15,23 +14,20 @@ describe("clampLimits — hard ceiling, clamp-down only", () => {
     expect(clampLimits(CEILINGS, undefined)).toEqual({
       cpu: "50m",
       memory: "100Mi",
-      ttlSeconds: 3600,
-      ephemeralStorage: "512Mi",
+          ephemeralStorage: "512Mi",
     });
   });
 
   it("clamps a request that exceeds the ceiling back to the ceiling", () => {
-    const r = clampLimits(CEILINGS, { cpu: "2", memory: "4Gi", ttlSeconds: 99_999 });
+    const r = clampLimits(CEILINGS, { cpu: "2", memory: "4Gi" });
     expect(r.cpu).toBe("50m");
     expect(r.memory).toBe("100Mi");
-    expect(r.ttlSeconds).toBe(3600);
   });
 
   it("honors a request that asks for LESS than the ceiling", () => {
-    const r = clampLimits(CEILINGS, { cpu: "20m", memory: "64Mi", ttlSeconds: 600 });
+    const r = clampLimits(CEILINGS, { cpu: "20m", memory: "64Mi" });
     expect(r.cpu).toBe("20m");
     expect(r.memory).toBe("64Mi");
-    expect(r.ttlSeconds).toBe(600);
   });
 
   it("falls back to the ceiling on an unparseable request", () => {

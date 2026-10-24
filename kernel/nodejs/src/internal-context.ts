@@ -1,5 +1,6 @@
 import type {
   AnalysisRegistry,
+  ApplicationSourceRecords,
   LoadedModule,
   ModuleDocuments,
   StaticAnalyzer,
@@ -21,10 +22,14 @@ export interface LibraryAnalysisHost {
   /** An import target as the loader read it — what the import's identity is
    *  judged on — with its expressions adopted like any loaded module's. */
   loadModule(url: string, options?: LoadOptions): Promise<LoadedModule>;
-  /** A library's flattened analysis set and the full documents of every
-   *  library it imports — what its analysis resolves a projection hop into
-   *  another library's internals against. */
-  loadLibrary(url: string): Promise<{ manifests: ResourceManifest[]; moduleDocuments: ModuleDocuments[] }>;
+  /** A library's flattened analysis set, the full documents of every library
+   *  it imports — what its analysis resolves a projection hop into another
+   *  library's internals against — and the child applications its resources run. */
+  loadLibrary(url: string): Promise<{
+    manifests: ResourceManifest[];
+    moduleDocuments: ModuleDocuments[];
+    applicationSources: ApplicationSourceRecords;
+  }>;
 }
 
 /**

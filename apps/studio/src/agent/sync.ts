@@ -1,5 +1,6 @@
 import { classifySensitiveEnvFiles, WORKSPACE_FILENAME } from "@telorun/analyzer";
-import type { AgentWorkspace, TreeFile, WorkspaceBridge } from "./types";
+import { encodeFileContent } from "../file-content-encoding";
+import type { AgentWorkspace, TreeFile, WorkspaceBridge, WorkspaceWrite } from "./types";
 
 /** Directory names excluded from two-way sync in BOTH directions: the editor's
  *  snapshot skips them, and the workspace's tree is filtered by the same list —
@@ -102,6 +103,7 @@ async function sharedSides(
  * files go in `write`, files present there but gone from the editor go in
  * `delete`. Idempotent — untouched files are never disturbed, which for a
  * co-resident agent also means a turn that changes nothing causes no reload.
+ * A file is written byte for byte: one that is not UTF-8 travels as base64.
  * Resolves with the sensitive env files the pass left out.
  */
 export async function seedDelta(
@@ -112,9 +114,11 @@ export async function seedDelta(
   const { editor, tree, sensitive } = await sharedSides(workspace, bridge, rawEditor, rawTree);
   const remote = new Map(tree.map((f) => [f.path, f.hash]));
 
-  const write: Array<{ path: string; content: string }> = [];
+  const write: WorkspaceWrite[] = [];
   for (const [path, hash] of editor) {
-    if (remote.get(path) !== hash) write.push({ path, content: await bridge.readFile(path) });
+    if (remote.get(path) === hash) continue;
+    const { content, encoding } = encodeFileContent(await bridge.readBytes(path));
+    write.push({ path, content, ...(encoding === "base64" ? { encoding } : {}) });
   }
   const remove: string[] = [];
   for (const path of remote.keys()) {

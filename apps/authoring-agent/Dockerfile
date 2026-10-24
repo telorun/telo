@@ -5,9 +5,9 @@ ARG TELO_NODE_VERSION=latest
 # telorun/authoring-agent — the AI manifest-authoring agent as one self-contained
 # image, built on the standard Telo CLI image. Every controller resolves
 # from the registry, baked into the image by `telo install`. The runner launches
-# this image PER SESSION; each container holds a private ./workspace, with the
-# agent's SQLite DB under ./workspace/.telo-agent, and journal — that
-# per-instance isolation is what makes it multi-user.
+# this image PER SESSION; each container holds a private ./workspace and the
+# agent's own state directory (its SQLite DB and journal) — that per-instance
+# isolation is what makes it multi-user.
 #
 # Runtime: inject OPENAI_API_KEY (BUDGET_LIMIT optional), listen on $PORT
 # (default 8080).
@@ -28,10 +28,17 @@ WORKDIR /srv
 COPY --from=build /build /srv
 
 # WORKSPACE_DIR (default ./workspace) resolves against the process cwd, so run
-# from the app dir where the manifest lives. The agent's state directory
-# (AGENT_STATE_DIR, default ./workspace/.telo-agent) is created on first use.
+# from the app dir where the manifest lives.
 WORKDIR /srv/telo-authoring-agent
 RUN mkdir -p workspace
+
+# The agent's state is a durable directory need. A container run on its own
+# gets it under this host state directory (`needs/agentState`, created at
+# load); a runner sets TELO_HOST_STATE_DIR to session storage of its own, and
+# AGENT_STATE_DIR names the directory outright. Owned by `node` (uid 1000),
+# the user the runners run the agent as.
+RUN mkdir -p /var/lib/telo-agent && chown node:node /var/lib/telo-agent
+ENV TELO_HOST_STATE_DIR=/var/lib/telo-agent
 
 ENV PORT=8080
 EXPOSE 8080

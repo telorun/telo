@@ -931,6 +931,11 @@
           },
           "ports": {
             "http": 8081
+          },
+          "needs": {
+            "state": {
+              "path": "/var/lib/child"
+            }
           }
         }
       }
@@ -1053,7 +1058,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 6,
+        "generation": 7,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1067,7 +1072,7 @@
       "message": "Session.Hello",
       "part": "response",
       "body": {
-        "generation": 6,
+        "generation": 7,
         "controller": {
           "telo": "0.103.2",
           "runtime": {
@@ -1413,7 +1418,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": "6",
+        "generation": "7",
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1445,7 +1450,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 6,
+        "generation": 7,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1636,6 +1641,21 @@
         "exitCode": "0"
       },
       "pointer": "/exitCode"
+    },
+    {
+      "name": "a child run supplying a need as text rather than its fields",
+      "message": "Runtime.Run",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "source": "./child.yaml",
+        "inputs": {
+          "needs": {
+            "state": "/var/lib/child"
+          }
+        }
+      },
+      "pointer": "/inputs/needs/state"
     },
     {
       "name": "a need named by a slot that is not a JSON Pointer",

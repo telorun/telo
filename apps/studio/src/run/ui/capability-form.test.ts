@@ -28,7 +28,7 @@ const caps: RunnerCapabilities = {
       },
     },
   },
-  features: { io: ["tty", "streams"] as const, ports: true, watch: true },
+  features: { io: ["tty", "streams"] as const, ports: true },
 };
 
 describe("mergeCapabilitySchema", () => {

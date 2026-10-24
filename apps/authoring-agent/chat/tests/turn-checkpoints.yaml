@@ -61,15 +61,16 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: stub-key
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('.telo-agent')" }
     variables:
       # The state directory inside the workspace, as the application lays it out.
       workspaceDir: !cel "variables.scratch"
-      stateDir: !cel "variables.scratch.joinPath('.telo-agent')"
       modelEndpoint: http://127.0.0.1:18540/v1
       teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
       maxCheckpointBytes: 4096
       maxTurnDiffBytes: 64
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
@@ -604,9 +605,10 @@ steps:
           metadata: { name: nestedAgent }
           source: ../../telo.yaml
           ports: { http: 18551 }
+          needs:
+            agentState: { path: !cel "variables.nested.joinPath('own').joinPath('state')" }
           variables:
             workspaceDir: !cel "variables.nested"
-            stateDir: !cel "variables.nested.joinPath('own').joinPath('state')"
             modelEndpoint: http://127.0.0.1:18540/v1
             teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
           secrets:

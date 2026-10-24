@@ -8,9 +8,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
-import { useRun } from "../context";
-import { isTerminal } from "../types";
+import { isRunLive, useRun } from "../context";
 import { RunStatusChip } from "./RunStatusChip";
+import { SessionStatusChip } from "./SessionStatusChip";
 import { useElapsed } from "./use-elapsed";
 
 interface RunBarProps {
@@ -18,16 +18,14 @@ interface RunBarProps {
   appPath: string;
   /** Active runner from settings, or null when none is selected. */
   runnerName: string | null;
-  /** Start this Application. There is one way to run, so there is one control:
-   *  whether the session also reloads on save is the runner's capability to
-   *  answer, not a mode the user picks. */
+  /** Start this Application in the workspace's session. */
   onRun: () => void;
   onOpenSettings: () => void;
 }
 
 /** Run controls, docked at the right end of the module's own view-tab strip: the
- *  runner that will host the run, the trigger, the live status, and the toggle
- *  for the output dock. Living in this strip is the point — it is the module's
+ *  runner the workspace's session lives on, the trigger, the live status (the
+ *  session's own while it is not up), and the toggle for the output dock. Living in this strip is the point — it is the module's
  *  scope, and it already holds the Variables tab that configures the run. The
  *  environment is NOT named here: there is exactly one per Application, so a
  *  chip for it mimicked a selector over a constant. */
@@ -49,6 +47,7 @@ export function RunBar({
     dockForApp,
     dockHasContent,
     setDockOpen,
+    session,
   } = useRun();
 
   const runs = runsForApp(appPath);
@@ -58,7 +57,7 @@ export function RunBar({
   const starting = isStartingApp(appPath);
   const blocker = blockerForApp(appPath);
   const elapsed = useElapsed(liveRun?.startedAt ?? null);
-  const hasHistory = runs.some((r) => isTerminal(r.status));
+  const hasHistory = runs.some((r) => !isRunLive(r.status));
   const hasOutput = dockHasContent(appPath);
 
   return (
@@ -75,6 +74,7 @@ export function RunBar({
 
       <div className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-800" aria-hidden />
 
+      {!liveRun && session && <SessionStatusChip session={session} />}
       {liveRun ? (
         <>
           <RunStatusChip status={liveRun.status} />

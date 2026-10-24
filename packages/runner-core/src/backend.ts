@@ -1,60 +1,74 @@
-import type { DebugFrame } from "@telorun/debug-wire";
-
 import type { ResolvedRunnerApp } from "./config.js";
 import type {
+  AppState,
   AvailabilityReport,
   ByteStreamTag,
   IoMode,
   PortMapping,
   ProbeConfig,
-  ReachabilityState,
   RouteState,
-  RunBundle,
   RunnerEndpoint,
   RunPhase,
   RunStatus,
   SessionConfig,
-  SessionMode,
   WorkspaceChangeSet,
-  WorkspaceCheckpointFile,
   WorkspaceTree,
 } from "./contract.js";
 import type { SessionContainerEngine } from "./session-containers/session-container-engine.js";
 
 /**
- * The seam between backend-neutral session machinery (routes, registry, SSE)
- * and a concrete workload runtime (docker container, kubernetes pod).
+ * The seam between backend-neutral session machinery (routes, registry, store,
+ * lifecycle, SSE) and a concrete substrate (kubernetes pods, docker containers,
+ * local processes).
  *
- * Deliberately abstract: a byte-stream out (`onOutput`), a stdin writer
- * (`BackendSession.writeStdin`), a resize signal, and a wait/exit (`done`) —
- * NOT docker's `ReadWriteStream` duplex. The k8s backend serves the same shape
- * over the Pod `attach` subresource; the docker backend adapts its hijacked
- * attach duplex onto it. Bundle delivery is the backend's responsibility too
- * (docker writes a shared-volume workdir; k8s stages the bundle for an
- * initContainer fetch), so the spec carries the raw `bundle` rather than a
- * pre-resolved on-disk path.
+ * A session is a WORKSPACE: the backend creates a workload that holds one idle
+ * slot per application (a container on the container backends) beside the
+ * workspace and an optional agent, and starts nothing in it. A run is a process
+ * start inside a slot that already exists (`runApp`). Core owns everything a
+ * run means — the argv, the env, the debug relay, the run projection,
+ * reachability — and the backend only spawns, signals and reports.
+ *
+ * Session env never reaches `create`, `setApps` or `setAgent`: it arrives with
+ * each `runApp` and lives only in the process running the app.
  */
 export interface RunnerBackend {
-  /** Report readiness without starting a session (daemon/cluster reachable,
-   *  image pullable, scaffolding present). Backs `POST /v1/probe`. */
+  /** Report readiness without creating a session. Backs `POST /v1/probe`. */
   probe(config: ProbeConfig): Promise<AvailabilityReport>;
 
-  /** Spawn the workload and wire it to the supplied callbacks. Resolves once
-   *  the workload has started (after a `running` status is emitted); rejects
-   *  with `SessionStartError` for any pre-start failure. */
-  start(spec: BackendStartSpec): Promise<BackendSession>;
+  /** Create a session's workload over its storage (created on first use, kept
+   *  across suspend). Resolves once every slot is up and idle, after reporting
+   *  `running` through `onStatus` and each app `ready` through `onAppState`;
+   *  rejects (`SessionStartError` for a typed stage) when it cannot be. */
+  create(spec: WorkloadSpec, callbacks: WorkloadCallbacks): Promise<BackendWorkload>;
 
-  /** Make one telo version runnable for a session about to be created, or say
-   *  why it cannot be: the returned text is the `reason` of a
-   *  `400 telo_version_unavailable`. Called before the session exists, once per
-   *  distinct version it names, so a refusal starts nothing. Present on a
-   *  backend whose runner advertises `features.teloVersions`. */
+  /** Take over the workload a previous runner process left for a session whose
+   *  record is `running`. Resolves with it — after reporting `running` and every
+   *  app's current state, a live run included — or with `undefined` when it is
+   *  gone, which suspends the session. Absent, every such session is suspended
+   *  at boot (the local runner, whose workloads never outlive it). */
+  adopt?(spec: WorkloadSpec, callbacks: WorkloadCallbacks): Promise<AdoptedWorkload | undefined>;
+
+  /** Delete everything a session holds: its workload if one is left, and its
+   *  storage. Called on `DELETE` and when retention purges a suspended
+   *  session. A session with nothing left is a no-op. */
+  destroy(sessionId: string): Promise<void>;
+
+  /** Make one telo version runnable for an app set about to be created or
+   *  replaced, or say why it cannot be: the returned text is the `reason` of a
+   *  `400 telo_version_unavailable`. Present on a backend whose runner
+   *  advertises `features.teloVersions`. */
   supplyTelo?(version: string, config: SessionConfig): Promise<string | undefined>;
 
-  /** Reap workloads orphaned by a prior runner process, matched by the
-   *  backend's own labelling. Run once at boot — the session registry is
-   *  in-memory, so a restart otherwise leaks running workloads. */
-  reapOrphans?(): Promise<void>;
+  /** The ports the workload itself binds beside an app set (a supervisor's, an
+   *  inspect endpoint's), asked when an app set is created or replaced. An app
+   *  declaring one is refused with `400 port_conflict` naming its purpose. */
+  reservedPorts?(apps: BackendAppSpec[]): ReservedPort[];
+
+  /** Remove what earlier runner processes left behind, run once at boot after
+   *  adoption: a workload or storage of a session not in `known`, and a
+   *  workload of a known session not in `live`. Storage of a known session is
+   *  never touched. */
+  reapOrphans?(sessions: { known: ReadonlySet<string>; live: ReadonlySet<string> }): Promise<void>;
 
   /** Runs the containers a session's workload starts through the engine core
    *  serves it (`RUNNER_SESSION_CONTAINERS`). A runner turning that on over a
@@ -62,105 +76,81 @@ export interface RunnerBackend {
   readonly containers?: SessionContainerEngine;
 }
 
-/** One application container the backend must stand up. */
+/** One application slot the backend must stand up. */
 export interface BackendAppSpec {
   name: string;
-  /** Bundle-relative entry path, already traversal-normalized by core. Empty for
-   *  a self-contained app session, where the image's own entrypoint runs. */
+  /** Workspace-relative entry path, already traversal-normalized by core. */
   entryRelativePath: string;
   ports: PortMapping[];
-  io: IoMode;
-  /** The telo version this app was requested on, already supplied by
-   *  `supplyTelo`. Absent, the backend's own choice runs. */
+  /** The telo version this app runs on, already supplied by `supplyTelo`.
+   *  Absent, the backend's own choice runs. */
   telo?: string;
 }
 
-/**
- * The DATA half of a workload launch — everything a start needs that is not a
- * callback. Retained on the session entry so `resume` can build a fresh pod
- * under the same session id from the same description, rather than a second,
- * drifting copy of it.
- */
-export interface WorkloadLaunch {
-  bundle: RunBundle;
-  env: Record<string, string>;
-  /** Whatever this runner declares on `/v1/capabilities`; opaque to core, and
-   *  narrowed by the backend that owns the vocabulary. */
-  config: SessionConfig;
-  /** True for an operator-predefined app session (`POST /v1/apps/:name/sessions`):
-   *  the catalog entry the route resolved carries the whole application (app +
-   *  controllers baked into its image), so the backend runs that image's own
-   *  entrypoint and stages no bundle — `bundle` is an empty placeholder. A
-   *  backend with no image catalog has no such session and refuses it. */
-  selfContained: boolean;
-  /** When true, launch each app with `--inspect` and relay its kernel debug
-   *  stream via `onDebug`. The inspect endpoint stays reachable only by the
-   *  runner — never published outward. Always true for a watch session: that
-   *  stream is where `run` events are projected from. */
-  inspect: boolean;
-  /** `run` (one pod, terminal on exit, today's shape) or `watch` (a workspace
-   *  volume, `telo run --watch` per app, the pod outliving its runs). */
-  mode: SessionMode;
-  /** The applications to run, one container each. Never empty — core defaults a
-   *  request with no `apps` to a single entry. */
-  apps: BackendAppSpec[];
-  /** The resolved catalog entry for a co-resident agent container, when one was
-   *  requested. Its operator env goes on THAT container and nowhere else — the
-   *  credential boundary used to be structural (two pods) and is now a code
-   *  invariant (containers in one pod). */
-  agent?: ResolvedRunnerApp;
-  /** Tokens minted for this session, already injected into the env they belong
-   *  to, and reported by core as `RunnerEndpoint.token`. Retained with the rest
-   *  of the launch, so a resumed session keeps them. */
-  tokens?: WorkloadTokens;
+/** A port the workload binds for one app's machinery. No app of the set may
+ *  declare it, whichever app it is reserved for. */
+export interface ReservedPort {
+  app: string;
+  port: number;
+  protocol: PortMapping["protocol"];
+  /** What binds it, as a refusal names it: `"the session supervisor"`. */
+  purpose: string;
 }
 
-/** A session's minted workload tokens, by where they are reported: `agent` on
- *  the `running` status's `agent` endpoint, `endpoints` on every application
- *  endpoint (a catalog app session's one workload). */
+/** Tokens core minted for one workload creation, already injected into the
+ *  env they belong to, and reported by core as `RunnerEndpoint.token`. */
 export interface WorkloadTokens {
+  /** The co-resident agent's `tokenEnv` value, reported on `status.agent`. */
   agent?: string;
-  endpoints?: string;
 }
 
-export interface BackendStartSpec extends WorkloadLaunch {
+/** What a workload is created from. Holds no session env. */
+export interface WorkloadSpec {
   sessionId: string;
+  /** May be empty: a workspace with no Application yet. */
+  apps: BackendAppSpec[];
+  /** The resolved catalog entry of the co-resident agent, its `tokenEnv`
+   *  already carrying this creation's token. Its operator env goes on the agent
+   *  and nowhere else. */
+  agent?: ResolvedRunnerApp;
+  /** Whatever this runner declares on `/v1/capabilities`; opaque to core. */
+  config: SessionConfig;
+  tokens: WorkloadTokens;
+}
 
-  /** Emit a lifecycle status. The backend drives `starting` → `running` →
-   *  terminal (`exited`/`failed`/`stopped`), or `suspended` on an idle reap. */
-  onStatus(status: RunStatus): void;
-  /** Emit a progress message for a coming-up phase (build / provision / boot).
-   *  Additive to status — surfaces what's happening while the session is still
-   *  `starting`. `app` is omitted for session-scoped provisioning. */
+/** An adopted workload with the tokens its containers were created with, read
+ *  back by the backend — core keeps no token across a restart. */
+export interface AdoptedWorkload {
+  workload: BackendWorkload;
+  tokens: WorkloadTokens;
+}
+
+/** The statuses a backend reports; core reports `starting`, `suspended` and
+ *  `stopped` itself. */
+export type BackendStatus = Extract<RunStatus, { kind: "running" } | { kind: "failed" }>;
+
+export interface WorkloadCallbacks {
+  /** `running` once the workload is up (and again when a recreate brings it
+   *  back), with the endpoints the app set declares and the agent's; `failed`
+   *  when a container of the workload ends or it cannot be recreated — a
+   *  container ending is never a run outcome. */
+  onStatus(status: BackendStatus): void;
+  /** A progress message while the workload comes up. `app` is omitted for
+   *  session-scoped provisioning. */
   onProgress(phase: RunPhase, message: string, done?: boolean, app?: string): void;
-  /** Bytes from one app's terminal. `stream` is `tty` under a terminal attach
-   *  and `stdout`/`stderr` only where the transport genuinely separated them. */
+  /** One app's state: `ready` once its slot is up and after each run ends,
+   *  `running` from the moment a run started. Core arms the run's debug relay
+   *  and reachability on `running` and ends them on the next `ready`. */
+  onAppState(app: string, state: AppState): void;
+  /** Bytes the live run of one app wrote. `stream` is `tty` under `io: "tty"`
+   *  and `stdout` / `stderr` only where the transport separated them. */
   onOutput(app: string, chunk: Buffer, stream: ByteStreamTag): void;
-  /** A frame relayed from one app's kernel debug stream. Only called when
-   *  `inspect` is true and the backend has connected to that app's endpoint. */
-  onDebug(app: string, frame: DebugFrame): void;
-  /** Report a declared port's reachability from the runner network — `checking`
-   *  while the workload comes up, then `reachable`, or `unreachable` after a
-   *  timeout. Surfaced on the editor's endpoint badge, not the log stream. */
-  onReachability(app: string, port: number, state: ReachabilityState): void;
-  /** Report whether the cluster's routing layer programmed a published host.
-   *  Separate from `onReachability`, which only proves the workload is listening
-   *  on its own address — a route nothing reconciles leaves every port reachable
-   *  and every public URL dead. Backends that front nothing (docker publishes
-   *  host ports directly) never call this. */
+  /** Whether the cluster's routing layer programmed a published host. */
   onRoute(
     app: string | undefined,
     route: { host: string; port: number; state: RouteState; reason?: string },
   ): void;
-  /** One app's workload ended on its own. A run session's workload ending IS the
-   *  session ending, so this is a watch-session concern: under `--watch` a
-   *  finished run leaves the container up, and a container that goes away has
-   *  died. Reported through the contract rather than by synthesizing a kernel
-   *  frame — that stream's contract is "frames relayed from the workload", and a
-   *  backend writing into it puts an event on the wire no kernel emitted. */
-  onRunEnded(app: string, outcome: { code?: number; reason?: string }): void;
-  /** An app's routable endpoint set changed after a reload re-read its declared
-   *  ports. */
+  /** An app's routable endpoint set changed after `applyDeclaredPorts`. */
   onEndpoints(
     app: string,
     change: {
@@ -169,60 +159,105 @@ export interface BackendStartSpec extends WorkloadLaunch {
       rejected?: Array<{ port: number; reason: string }>;
     },
   ): void;
-  /** True once a user stop / shutdown has been requested — lets the backend
-   *  classify a kill as `stopped` rather than `failed`. */
-  isUserStopped(): boolean;
 }
 
-export interface BackendSession {
-  /** Write bytes to one app's stdin. A no-op once that workload has terminated,
-   *  so callers need not track liveness. */
-  writeStdin(app: string, bytes: Uint8Array): void;
-
-  /** Resize one app's PTY. A no-op for an app running under `io: "streams"` —
-   *  the route rejects such a resize before it reaches here. */
-  resize(app: string, cols: number, rows: number): void;
-
-  /** Resolves after the workload terminates and its terminal status has been
-   *  emitted via `onStatus`. Never rejects — terminal failures surface as a
-   *  `failed` status. A watch session's workload outlives its runs, so this
-   *  settles only on stop, suspend, or the pod deadline. */
-  readonly done: Promise<void>;
-
-  /** Force-stop the workload. Idempotent and safe to call after natural exit
-   *  (a backend should treat an already-gone workload as a no-op). */
-  stop(): Promise<void>;
-
-  /** The workspace surface, present only on a watch session. Everything outside
-   *  the pod writes through here; the agent (inside it) writes the volume with
-   *  its own filesystem tools. */
-  readonly workspace?: WorkspaceAccess;
-
-  /** Re-run one app with no file change (`POST /v1/sessions/:id/reload`), by
-   *  touching its entry manifest through the same path every other write takes.
-   *  No signalling into the container, no shared PID namespace, no `exec` — RBAC
-   *  is unchanged. Watch sessions only. */
-  reload?(app: string): Promise<void>;
-
-  /** Replace the running app set. A pod's container list is fixed at creation,
-   *  so this checkpoints, deletes the pod and creates one with the new set —
-   *  the suspend/resume path, reused because it has to be. */
-  setApps?(apps: BackendAppSpec[]): Promise<void>;
-
-  /** Delete the workload, keeping nothing but what the caller already
-   *  checkpointed. `resume` builds a fresh one from that checkpoint. */
-  suspend?(): Promise<void>;
+/** Where core reaches one app's slot. */
+export interface AppAddresses {
+  /** The app's `--inspect` endpoint: `listen` is the address core passes to
+   *  `telo run --inspect` (`0.0.0.0:9231`), `url` the debug event stream core
+   *  relays from (`http://10.0.0.7:9231/events`). Reachable only by the runner. */
+  inspect: { listen: string; url: string };
+  /** The host core dials the app's declared tcp ports at for reachability. */
+  host: string;
 }
 
-/** The `workspace` container's routes, proxied by the runner. Reading and
- *  applying a change set are the only two shapes: a single-file write route
- *  would be a second set of concurrency rules over the same directory. */
+/** One run, as core asks for it. */
+export interface AppRun {
+  /** Minted by core; idempotency key of the run. */
+  runId: string;
+  /** `telo run --watch --no-input --inspect <listen> --no-open <entry>`.
+   *  `argv[0]` is the program name: the backend runs the telo it supplies for
+   *  the app's version under it. */
+  argv: string[];
+  /** The session env of this run. Never written anywhere but the process. */
+  env: Record<string, string>;
+  /** Workspace-relative working directory (`.` is the workspace root). */
+  cwd: string;
+  io: IoMode;
+  cols?: number;
+  rows?: number;
+}
+
+/** `runApp` was refused because of the app's run state. */
+export class AppRunRefused extends Error {
+  constructor(
+    public readonly code: "run_active" | "no_run",
+    message: string,
+  ) {
+    super(message);
+    this.name = "AppRunRefused";
+  }
+}
+
+/** A live workload: one per running session. */
+export interface BackendWorkload {
+  /** The workspace surface: everything outside the workload writes through it,
+   *  and a co-resident agent writes the same files directly. */
+  readonly workspace: WorkspaceAccess;
+
+  /** Where core reaches an app of the current set. Asked before each run and
+   *  for an adopted live one. */
+  addresses(app: string): Promise<AppAddresses>;
+
+  /** Start one run in an app's slot. Resolves once the process started (and
+   *  `running` was reported through `onAppState`); rejects with `AppRunRefused`
+   *  while another run is live, or with the reason a spawn never ran. A
+   *  repeated `runId` of the live run resolves again. */
+  runApp(app: string, run: AppRun): Promise<void>;
+
+  /** End a live run: SIGTERM to its process group, SIGKILL after `graceMs`.
+   *  Resolves once asked; the ending is reported through `onAppState`. A run
+   *  that already ended is a no-op. */
+  stopApp(app: string, runId: string, graceMs: number): Promise<void>;
+
+  /** Bytes for the live run's stdin; dropped unless `runId` is the live run. */
+  writeStdin(app: string, runId: string, bytes: Uint8Array): void;
+
+  /** Resize the live run's pty; dropped unless `runId` is the live run. */
+  resize(app: string, runId: string, cols: number, rows: number): void;
+
+  /** Re-run one app with no file change by touching its entry manifest
+   *  through the workspace (`POST /v1/sessions/:id/reload`). */
+  reload(app: string): Promise<void>;
+
+  /** The declared port set an app's kernel announced on this load
+   *  (`Kernel.PortsResolved`). The backend re-routes and reports the change
+   *  through `onEndpoints`. */
+  applyDeclaredPorts?(app: string, ports: PortMapping[]): void;
+
+  /** Replace the app set. Recreates the workload when its structure changes
+   *  (apps added or removed, a telo version or declared ports changed); every
+   *  live run ends with it. */
+  setApps(apps: BackendAppSpec[]): Promise<void>;
+
+  /** Replace the co-resident agent (its `tokenEnv` already carrying a fresh
+   *  token), or remove it. Recreates the workload. */
+  setAgent(agent: ResolvedRunnerApp | undefined, tokens: WorkloadTokens): Promise<void>;
+
+  /** Delete the workload and keep the session's storage. */
+  suspend(): Promise<void>;
+
+  /** The runner process is ending. A backend whose workloads outlive it drops
+   *  its connections and stops nothing; one whose workloads cannot (the local
+   *  runner) ends them. */
+  detach(): Promise<void>;
+}
+
+/** The `workspace` surface. Reading and applying a change set are the only two
+ *  shapes: a single-file write route would be a second set of concurrency
+ *  rules over the same directory. */
 export interface WorkspaceAccess {
   tree(): Promise<WorkspaceTree>;
   readFile(path: string): Promise<{ content: string; size: number }>;
   apply(changes: WorkspaceChangeSet): Promise<{ written: number; deleted: number }>;
-  /** Whole-tree pull for the checkpoint timer and for suspend. Whole tree rather
-   *  than a delta log: a manifest workspace is small, and one shape is easier to
-   *  reason about than a replay that has to be correct. */
-  snapshot(): Promise<WorkspaceCheckpointFile[]>;
 }

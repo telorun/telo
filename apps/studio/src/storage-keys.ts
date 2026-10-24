@@ -24,8 +24,6 @@ export const LOCAL_KEYS = {
   settings: "telo-studio:settings:v1",
   /** Accepted runner terms, keyed by runner id. */
   acceptedTerms: "telo-studio:accepted-terms",
-  /** Cross-reload run index. Bump the suffix if the entry shape changes. */
-  runIndex: "telo-studio:run:index:v1",
   colorMode: "telo-studio:color-mode",
   previewNoticeDismissed: "telo-studio:preview-notice-dismissed:v1",
   agentSettings: "telo-studio:agent:settings:v1",
@@ -52,13 +50,17 @@ export const LOCAL_PREFIXES = {
   agentComposer: "telo-studio:agent:composer:v1:",
   /** The `telo.version` setting, one per workspace root. */
   teloVersion: "telo-studio:telo-version:v1:",
+  /** A workspace's mode and runner session — `{ mode, workspace, runner?,
+   *  sessionId?, resumeSecret? }` — one entry per workspace root. */
+  session: "telo-studio:session:v1:",
   /** Auto resolutions of each module's telo version, one entry per workspace root. */
   engineResolutions: "telo-studio:engine-resolutions:v1:",
 } as const;
 
-/** `sessionStorage`, key prefixes — the tail is a run session id. Resume
- *  cursors are deliberately per-tab: a cursor belongs to one live connection,
- *  and replaying another tab's would skip events this tab never saw. */
+/** `sessionStorage`, key prefixes — the tail is a run session id. Per-tab
+ *  resume cursors an earlier Studio kept; nothing reads them now (a session's
+ *  event stream and each run's terminal replay from the runner's own buffer),
+ *  and they are named only for the legacy-key migration. */
 export const SESSION_PREFIXES = {
   runIoSeq: "telo-studio:run:io-seq:",
   runSseEventId: "telo-studio:run:sse-event-id:",

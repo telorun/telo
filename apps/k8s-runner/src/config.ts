@@ -3,6 +3,7 @@ import {
   loadCoreConfig,
   parseBool,
   parsePositiveInt,
+  requireStateDirectory,
   RunnerConfigError,
   type RunnerCoreConfig,
   type TagFilter,
@@ -30,19 +31,17 @@ export interface BaseImageCatalogConfig {
 }
 
 /**
- * Resource limits the runner will ever grant. These are HARD CEILINGS, not
- * defaults a request can exceed: the effective per-session value is
+ * Resource limits the runner will ever grant one container. These are HARD
+ * CEILINGS, not defaults a request can exceed: the effective value is
  * `min(requested, ceiling)` (clamp-down only). For a bare runner serving an
  * anonymous tier directly, the ceiling IS the policy.
  */
 export interface LimitCeilings {
-  /** Kubernetes CPU quantity, e.g. "50m". */
+  /** Kubernetes CPU quantity, e.g. "500m". */
   cpu: string;
-  /** Kubernetes memory quantity, e.g. "100Mi". */
+  /** Kubernetes memory quantity, e.g. "512Mi". */
   memory: string;
-  /** Wall-clock TTL in seconds (Pod activeDeadlineSeconds). */
-  ttlSeconds: number;
-  /** Per-Pod ephemeral-storage limit, e.g. "512Mi". */
+  /** Per-container ephemeral-storage limit, e.g. "1Gi". */
   ephemeralStorage: string;
 }
 
@@ -106,8 +105,9 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** Where the kernel image of a telo version an application names is pulled
    *  from (`RUNNER_TELO_IMAGE_REPOSITORY`, `RUNNER_TELO_IMAGE_VARIANT`). */
   teloImages: TeloImageSource;
-  /** Small image for the bundle-fetch initContainer (needs wget + tar). */
-  initImage: string;
+  /** The runner's own image (`RUNNER_SUPERVISOR_IMAGE`): a session pod's
+   *  `supervisor` init container copies the session supervisor out of it. */
+  supervisorImage: string;
   /** Optional dockerconfig Secret (in the session namespace) the kubelet pulls
    *  session images with — the kernel image, and any operator catalog image
    *  (`RUNNER_APPS`) held in a private registry. */
@@ -116,16 +116,13 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   runtimeClass?: string;
   /** How per-session routes are published. */
   sessionRouting: SessionRoutingConfig;
-  /** Runner's own in-cluster base URL, used to build the bundle fetch URL the
-   *  initContainer curls (e.g. http://k8s-runner.telo-runner:8062). */
-  selfUrl: string;
   /** Label applied to every session object, used for orphan reaping. */
   managedByLabel: string;
+  /** Ceilings of each `app-<name>` container and the `workspace` container
+   *  (`RUNNER_MAX_*`). */
   limits: LimitCeilings;
-  /** Ceilings for operator-predefined app sessions (`RUNNER_APPS`). Separate
-   *  from `limits` — apps are operator-curated and long-lived, so they get
-   *  roomier defaults than anonymous session code without loosening the
-   *  anonymous ceiling. */
+  /** Ceilings of the co-resident agent's container (`RUNNER_APP_MAX_*`): an
+   *  operator-curated image, sized separately from anonymous session code. */
   appLimits: LimitCeilings;
   /** Menu of base images a session may pick (advertised as the `image` enum). */
   baseImageCatalog: BaseImageCatalogConfig;
@@ -134,6 +131,37 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
    *  JSON). Always set: the session namespace's quota admits no pod without
    *  limits. */
   sessionContainerResources: ContainerResources;
+  /** Each session's own volume (`RUNNER_SESSION_STORAGE_SIZE`,
+   *  `RUNNER_SESSION_STORAGE_CLASS`). */
+  sessionStorage: SessionStorageConfig;
+}
+
+export interface SessionStorageConfig {
+  /** A Kubernetes storage quantity, e.g. `5Gi`. */
+  size: string;
+  /** StorageClass name; undefined is the cluster's default class. */
+  storageClassName?: string;
+}
+
+const STORAGE_QUANTITY = /^[0-9]+(\.[0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|k|M|G|T|P|E)?$/;
+// A DNS subdomain (RFC 1123), which a StorageClass name must be.
+const STORAGE_CLASS_NAME = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
+
+function loadSessionStorageConfig(env: NodeJS.ProcessEnv): SessionStorageConfig {
+  const size = env.RUNNER_SESSION_STORAGE_SIZE?.trim() || "5Gi";
+  if (!STORAGE_QUANTITY.test(size) || Number.parseFloat(size) <= 0) {
+    throw new RunnerConfigError(
+      `RUNNER_SESSION_STORAGE_SIZE must be a positive Kubernetes storage quantity such as 5Gi or 500Mi, got '${size}'.`,
+    );
+  }
+  const storageClassName = env.RUNNER_SESSION_STORAGE_CLASS?.trim() || undefined;
+  if (storageClassName !== undefined && (storageClassName.length > 253 || !STORAGE_CLASS_NAME.test(storageClassName))) {
+    throw new RunnerConfigError(
+      `RUNNER_SESSION_STORAGE_CLASS must be a StorageClass name (lowercase letters, digits, '-' and '.'), ` +
+        `got '${storageClassName}'. Unset it to use the cluster's default class.`,
+    );
+  }
+  return { size, storageClassName };
 }
 
 /** A pod container's `resources`, quantities as strings. */
@@ -180,6 +208,15 @@ function loadSessionContainerResources(raw: string | undefined): ContainerResour
 }
 
 const DEFAULT_PORT = 8062;
+
+/** Variables this runner read before sessions became durable workspaces. */
+const RETIRED_VARIABLES: Record<string, string> = {
+  RUNNER_SELF_URL:
+    "it served the bundle fetch, which is gone: a session's files arrive through its workspace. " +
+    "Session containers reach the runner through RUNNER_INTERNAL_URL",
+  RUNNER_INIT_IMAGE:
+    "it ran the bundle fetch, which is gone; a session pod's init container runs RUNNER_SUPERVISOR_IMAGE",
+};
 
 /** Compile a single optional regex env var into a one-element `RegExp[]`. */
 function parseTagRegex(raw: string | undefined, field: string): RegExp[] | undefined {
@@ -283,56 +320,50 @@ function loadBaseImageCatalogConfig(env: NodeJS.ProcessEnv): BaseImageCatalogCon
 }
 
 export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
-  const selfUrl = env.RUNNER_SELF_URL?.trim();
-  if (!selfUrl) {
+  for (const [name, why] of Object.entries(RETIRED_VARIABLES)) {
+    if (env[name] !== undefined) {
+      throw new RunnerConfigError(`${name} is no longer read and must be unset: ${why}.`);
+    }
+  }
+  const supervisorImage = env.RUNNER_SUPERVISOR_IMAGE?.trim();
+  if (!supervisorImage) {
     throw new RunnerConfigError(
-      "RUNNER_SELF_URL env var is required. Set it to the runner's in-cluster base URL " +
-        "(e.g. http://k8s-runner.telo-runner.svc:8062) so session initContainers can fetch the bundle.",
+      "RUNNER_SUPERVISOR_IMAGE is required: the runner's own image, which every session pod's " +
+        "`supervisor` init container copies the session supervisor from (the Helm chart sets it).",
     );
   }
 
   const sessionNamespace = env.RUNNER_SESSION_NAMESPACE?.trim() || "telo-sessions";
+  const core = loadCoreConfig(env, { port: DEFAULT_PORT });
+  requireStateDirectory(core.sessionStore);
 
   return {
-    ...loadCoreConfig(env, { port: DEFAULT_PORT }),
+    ...core,
     displayName: env.RUNNER_DISPLAY_NAME?.trim() || "Telo Runner",
     description:
       env.RUNNER_DESCRIPTION?.trim() || "Runs the Telo application in a cloud environment",
     sessionNamespace,
     defaultImage: env.RUNNER_IMAGE?.trim() || "telorun/node:latest-slim",
     teloImages: loadTeloImageSource(env),
-    initImage: env.RUNNER_INIT_IMAGE?.trim() || "busybox:stable",
+    supervisorImage,
     imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,
     sessionRouting: loadSessionRoutingConfig(env, sessionNamespace),
-    selfUrl: selfUrl.replace(/\/+$/, ""),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
-    // Sized for a pod that RESOLVES ITS OWN module closure. They used to be
-    // 50m / 100Mi / 512Mi, which described a different workload: the closure
-    // arrived in image layers, so the pod only ran it. It now downloads,
-    // unpacks and resolves it in-pod, into an emptyDir that counts against
-    // ephemeral-storage — so the old numbers meant an OOMKill on the memory
-    // ceiling and an eviction on the storage one, for the ordinary case. The
-    // watch path already ran this workload and already carried the roomier
-    // ceiling; these match it. `appLimits` stays separate: it still differs in
-    // TTL, and both remain the operator's policy to tighten.
+    // Sized for a container that resolves its own module closure into the
+    // session's storage; both remain the operator's policy to tighten.
     limits: {
       cpu: env.RUNNER_MAX_CPU?.trim() || "500m",
       memory: env.RUNNER_MAX_MEMORY?.trim() || "512Mi",
-      ttlSeconds: parsePositiveInt(env.RUNNER_MAX_TTL_SECONDS, 3600, "RUNNER_MAX_TTL_SECONDS"),
       ephemeralStorage: env.RUNNER_MAX_EPHEMERAL_STORAGE?.trim() || "1Gi",
     },
     appLimits: {
       cpu: env.RUNNER_APP_MAX_CPU?.trim() || "500m",
       memory: env.RUNNER_APP_MAX_MEMORY?.trim() || "512Mi",
-      ttlSeconds: parsePositiveInt(
-        env.RUNNER_APP_MAX_TTL_SECONDS,
-        21600,
-        "RUNNER_APP_MAX_TTL_SECONDS",
-      ),
       ephemeralStorage: env.RUNNER_APP_MAX_EPHEMERAL_STORAGE?.trim() || "1Gi",
     },
     baseImageCatalog: loadBaseImageCatalogConfig(env),
     sessionContainerResources: loadSessionContainerResources(env.RUNNER_SESSION_CONTAINERS_RESOURCES),
+    sessionStorage: loadSessionStorageConfig(env),
   };
 }

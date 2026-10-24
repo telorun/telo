@@ -7,9 +7,9 @@ import type { SessionRegistry } from "../session/registry.js";
  * Projects per-app `run` events out of the kernel lifecycle events the debug
  * stream already carries.
  *
- * The runner cannot see inside the container, and parsing the merged PTY stream
- * is not a contract — so a watch session always runs with the kernel debug
- * stream on and this reads it. A watch reload is a stop/start pair on ONE debug
+ * The runner cannot see inside the process, and parsing the merged PTY stream
+ * is not a contract — so every run is started with the kernel debug stream on
+ * and this reads it. A watch reload is a stop/start pair on ONE debug
  * connection, so `generation` is counted here and the kernel is asked for
  * nothing.
  *
@@ -25,7 +25,7 @@ import type { SessionRegistry } from "../session/registry.js";
 export class RunProjection {
   /** What to attribute the NEXT generation of each app to. A reload is a watch
    *  reload unless something told us otherwise, so `watch` is the resting value
-   *  and `initial` / `manual` / `resume` are set by whoever caused them. */
+   *  and `run` / `manual` are set by whoever caused them. */
   private readonly triggers = new Map<string, RunTrigger>();
 
   constructor(
@@ -33,17 +33,10 @@ export class RunProjection {
     private readonly sessionId: string,
   ) {}
 
-  /** Attribute an app's next generation. Called with `initial` when the session
-   *  comes up, `manual` from the reload route, `resume` after a pod recreate. */
+  /** Attribute an app's next generation: `run` when a Run starts its process,
+   *  `manual` from the reload route. */
   expect(app: string, trigger: RunTrigger): void {
     this.triggers.set(app, trigger);
-  }
-
-  /** Attribute every app's next generation — the session-wide cases (initial,
-   *  resume) always move all of them together. */
-  expectAll(trigger: RunTrigger): void {
-    const entry = this.registry.get(this.sessionId);
-    for (const app of entry?.apps.keys() ?? []) this.triggers.set(app, trigger);
   }
 
   /** Feed one frame from `app`'s debug stream. Frames that are not one of the
@@ -77,21 +70,17 @@ export class RunProjection {
   }
 
   /**
-   * Close the open generation because its WORKLOAD ended, not because the kernel
-   * said so. A container that goes away under `--watch` emits no `Kernel.Stopped`
-   * — there is nothing left to emit it — so the backend reports the ending and
-   * this turns it into the same run outcome the kernel path produces.
+   * Close the open generation because its PROCESS ended, not because the kernel
+   * said so: a process killed, or one whose `Kernel.Stopped` never reached the
+   * runner, leaves the generation open, so the run's ending closes it with the
+   * same run outcome the kernel path produces. Every pending attribution of
+   * the app goes with it — the next process is attributed by whoever starts it.
    */
-  endGeneration(app: string, outcome: { code?: number; reason?: string }): void {
+  endGeneration(app: string, outcome: { code?: number; signal?: string; reason?: string }): void {
+    this.triggers.delete(app);
     const channel = this.registry.get(this.sessionId)?.apps.get(app);
     if (!channel || channel.startedAt === null) return;
-    this.registry.finishGeneration(
-      this.sessionId,
-      app,
-      outcome.reason === undefined && outcome.code !== undefined
-        ? { phase: "completed", code: outcome.code }
-        : { phase: "failed", reason: outcome.reason ?? "workload ended" },
-    );
+    this.registry.finishGeneration(this.sessionId, app, runOutcome(outcome));
   }
 
   /** Open a generation unless one is already open — `Kernel.Starting` followed
@@ -105,6 +94,17 @@ export class RunProjection {
     this.triggers.delete(app);
     this.registry.startGeneration(this.sessionId, app, trigger, telo);
   }
+}
+
+function runOutcome(outcome: {
+  code?: number;
+  signal?: string;
+  reason?: string;
+}): { phase: "completed"; code: number } | { phase: "failed"; reason: string } {
+  if (outcome.reason !== undefined) return { phase: "failed", reason: outcome.reason };
+  if (outcome.signal !== undefined) return { phase: "failed", reason: `terminated by ${outcome.signal}` };
+  if (outcome.code !== undefined) return { phase: "completed", code: outcome.code };
+  return { phase: "failed", reason: "the process ended" };
 }
 
 /** The version the runtime says it is. Passed on, never compared: by the time

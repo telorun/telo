@@ -1,7 +1,7 @@
 import type { LimitCeilings } from "./config.js";
 
 /**
- * Effective per-session resource limits. Requests may ask for LESS than the
+ * Effective per-container resource limits. Requests may ask for LESS than the
  * ceiling but never MORE — `min(requested, ceiling)`. Without a control plane
  * the editor talks to the runner directly, so a raisable limit would void the
  * cap; clamp-down-only is the load-bearing invariant.
@@ -9,14 +9,12 @@ import type { LimitCeilings } from "./config.js";
 export interface ResolvedLimits {
   cpu: string;
   memory: string;
-  ttlSeconds: number;
   ephemeralStorage: string;
 }
 
 export interface RequestedLimits {
   cpu?: string;
   memory?: string;
-  ttlSeconds?: number;
   ephemeralStorage?: string;
 }
 
@@ -32,10 +30,6 @@ export function clampLimits(
       requested?.ephemeralStorage,
       parseMemoryBytes,
     ),
-    ttlSeconds:
-      requested?.ttlSeconds && requested.ttlSeconds > 0
-        ? Math.min(requested.ttlSeconds, ceilings.ttlSeconds)
-        : ceilings.ttlSeconds,
   };
 }
 

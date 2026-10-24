@@ -199,6 +199,11 @@ export interface AnalysisOptions {
    *  the derivation (the under-approximating direction — the runtime check
    *  remains the enforcement). */
   moduleDocuments?: ModuleDocuments[];
+  /** What each child application the entry's resources run declares, by
+   *  declaring file and source as written — collected from a LoadedGraph via
+   *  `collectApplicationSources`. Omitting it leaves those resources' inputs
+   *  unjudged against the child. */
+  applicationSources?: import("./child-application.js").ApplicationSourceRecords;
   /** When true, `analyze()` runs the state-mutating setup (module identity /
    *  alias / definition registration plus `normalizeInlineResources`) but
    *  skips every diagnostic-producing pass — per-resource validation, the

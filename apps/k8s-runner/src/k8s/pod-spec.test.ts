@@ -1,124 +1,156 @@
+import type { V1Container } from "@kubernetes/client-node";
 import { describe, expect, it } from "vitest";
 
 import { loadK8sRunnerConfig } from "../config.js";
-import { buildAppPod, buildSessionPod } from "./pod-spec.js";
+import { clampLimits } from "../limits.js";
+import { buildSessionPod, reservedPortsFor } from "./pod-spec.js";
 
-const BASE_ENV = {
-  RUNNER_SELF_URL: "http://k8s-runner.telo-runner.svc:8062",
-};
-
-describe("buildSessionPod", () => {
-  const config = loadK8sRunnerConfig({ ...process.env, ...BASE_ENV });
-  const pod = buildSessionPod({
-    config,
-    sessionId: "abc123",
-    podName: "telo-run-abc123",
-    entryRelativePath: "telo.yaml",
-    env: { API_TOKEN: "tok" },
-    ports: [{ port: 3000, protocol: "tcp" }],
-    limits: config.limits,
-    image: "telorun/node:0.30.1-slim",
-    pullPolicy: "always",
-    bundleUrl: "http://k8s-runner.telo-runner.svc:8062/internal/bundles/abc123?token=t",
-    inspect: false,
-  });
-  const container = pod.spec!.containers[0];
-
-  it("runs the picked kernel image under the requested pull policy", () => {
-    expect(container.image).toBe("telorun/node:0.30.1-slim");
-    expect(container.imagePullPolicy).toBe("Always");
-  });
-
-  it("resolves the module closure at boot into a writable cache", () => {
-    // No prebuilt image means no baked deps: the cache has to be a mounted
-    // emptyDir, and `telo run` has to be allowed to write it.
-    expect(container.env).toContainEqual({ name: "TELO_CACHE_DIR", value: "/telo-cache" });
-    expect(container.volumeMounts).toContainEqual({
-      name: "telo-cache",
-      mountPath: "/telo-cache",
-    });
-    expect(pod.spec!.volumes).toContainEqual({ name: "telo-cache", emptyDir: {} });
-    expect(container.command).toEqual(["telo", "run", "--no-input", "/app/telo.yaml"]);
-  });
-
-  it("is given headroom to resolve a closure, not just to run one", () => {
-    // The ceilings used to describe a pod that only RAN a prebuilt image (50m /
-    // 100Mi / 512Mi). It now downloads, unpacks and resolves the closure itself,
-    // into an emptyDir charged against ephemeral-storage — the old numbers were
-    // an OOMKill and an eviction for the ordinary case. Asserted against the
-    // app-session ceilings, which is the tier the equivalent watch container
-    // already ran under.
-    expect(container.resources?.limits?.memory).toBe(config.appLimits.memory);
-    expect(container.resources?.limits?.cpu).toBe(config.appLimits.cpu);
-    expect(container.resources?.limits?.["ephemeral-storage"]).toBe(
-      config.appLimits.ephemeralStorage,
-    );
-  });
-
-  it("delivers the body over the initContainer and keeps the rootfs read-only", () => {
-    const init = pod.spec!.initContainers![0];
-    expect(init.args?.[0]).toContain("/internal/bundles/abc123?token=t");
-    expect(container.securityContext).toMatchObject({ readOnlyRootFilesystem: true });
-    expect(pod.spec!.automountServiceAccountToken).toBe(false);
-  });
-
-  it("gives every container the resources a namespace quota requires", () => {
-    // A ResourceQuota on cpu / memory refuses the whole pod when ANY container,
-    // init containers included, declares no requests and limits for them.
-    for (const c of [...pod.spec!.initContainers!, ...pod.spec!.containers]) {
-      expect(c.resources?.requests).toMatchObject({ cpu: expect.any(String), memory: expect.any(String) });
-      expect(c.resources?.limits).toMatchObject({ cpu: expect.any(String), memory: expect.any(String) });
-    }
-  });
+const config = loadK8sRunnerConfig({
+  RUNNER_SUPERVISOR_IMAGE: "telorun/k8s-runner:0.22.0",
+  RUNNER_STATE_DIR: "/var/lib/telo-runner",
+  RUNNER_IMAGE: "telorun/node:0.121.0-slim",
+  RUNNER_MAX_CPU: "300m",
+  RUNNER_APP_MAX_MEMORY: "1Gi",
 });
 
-describe("buildAppPod", () => {
-  const config = loadK8sRunnerConfig({ ...process.env, ...BASE_ENV });
-  const pod = buildAppPod({
+const OPERATOR_KEY = "OPENAI_API_KEY";
+const APPS = [
+  { name: "web", entryRelativePath: "telo.yaml", ports: [{ port: 3000, protocol: "tcp" as const }], telo: "0.121.0" },
+  { name: "worker", entryRelativePath: "worker.yaml", ports: [], telo: "0.121.0" },
+];
+
+function build(overrides: Partial<Parameters<typeof buildSessionPod>[0]> = {}) {
+  return buildSessionPod({
     config,
     sessionId: "abc123",
-    podName: "telo-run-abc123",
-    env: { SERVICE_TOKEN: "tok-operator" },
-    ports: [{ port: 8080, protocol: "tcp" }],
-    limits: config.appLimits,
-    image: "acme/tool:1",
-    pullPolicy: "always",
+    podName: "telo-session-abc123-x",
+    apps: APPS,
+    supervisorTokens: { web: "token-web", worker: "token-worker" },
+    agent: {
+      name: "authoring-agent",
+      image: "ghcr.io/telorun/authoring-agent:1",
+      env: { [OPERATOR_KEY]: "sk-operator-secret", AGENT_TOKEN: "agent-token" },
+      pullPolicy: "missing",
+      port: 8080,
+      tokenEnv: "AGENT_TOKEN",
+    },
+    sessionConfig: {},
+    claimName: "telo-session-abc123",
+    workspaceAppConfigMap: "telo-workspace-app-deadbeef",
+    hostEnv: { TELO_HOST_PUBLIC_URL_TEMPLATE: "https://{port}-abc123.telo.run" },
+    limits: { app: clampLimits(config.limits, undefined), agent: clampLimits(config.appLimits, undefined) },
+    ...overrides,
   });
+}
 
-  it("runs the catalog image's own entrypoint — no build, no bundle initContainer", () => {
-    const container = pod.spec!.containers[0];
-    expect(pod.spec!.initContainers).toBeUndefined();
-    expect(container.image).toBe("acme/tool:1");
-    expect(container.command).toBeUndefined();
-    expect(container.imagePullPolicy).toBe("Always");
-  });
+const byName = (pod: ReturnType<typeof build>, name: string): V1Container =>
+  pod.spec!.containers.find((c) => c.name === name)!;
 
-  it("injects the merged env and declares the requested ports", () => {
-    const container = pod.spec!.containers[0];
-    expect(container.env).toContainEqual({ name: "SERVICE_TOKEN", value: "tok-operator" });
-    expect(container.ports).toEqual([{ containerPort: 8080, protocol: "TCP" }]);
-  });
+const envOf = (c: V1Container): Record<string, string> =>
+  Object.fromEntries((c.env ?? []).map((e) => [e.name, e.value ?? ""]));
 
-  it("applies app ceilings and TTL, keeping non-write hardening on", () => {
-    const container = pod.spec!.containers[0];
-    expect(container.resources?.limits?.memory).toBe("512Mi");
-    expect(pod.spec!.activeDeadlineSeconds).toBe(21600);
-    expect(pod.spec!.automountServiceAccountToken).toBe(false);
-    expect(pod.spec!.securityContext?.seccompProfile?.type).toBe("RuntimeDefault");
-    expect(container.securityContext).toEqual({
-      allowPrivilegeEscalation: false,
-      capabilities: { drop: ["ALL"] },
+describe("the session pod", () => {
+  const pod = build();
+
+  it("runs every app as an idle supervisor on its telo version's image, with no tty, no stdin and no session env", () => {
+    expect(pod.spec!.containers.map((c) => c.name)).toEqual(["workspace", "app-web", "app-worker", "agent"]);
+    APPS.forEach((app, index) => {
+      const container = byName(pod, `app-${app.name}`);
+      expect(container).toMatchObject({
+        image: "telorun/node:0.121.0-slim",
+        command: ["/opt/telo-runner/supervisor"],
+      });
+      expect(container.args).toBeUndefined();
+      expect(container.tty).toBeUndefined();
+      expect(container.stdin).toBeUndefined();
+      expect(envOf(container)).toEqual({
+        TELO_SUPERVISOR_LISTEN: `0.0.0.0:${9330 + index}`,
+        TELO_SUPERVISOR_TOKEN: `token-${app.name}`,
+        TELO_HOST_PUBLIC_URL_TEMPLATE: "https://{port}-abc123.telo.run",
+        HOME: "/home/telo",
+        npm_config_cache: "/home/telo/.npm",
+      });
+      expect(container.volumeMounts).toContainEqual({ name: "supervisor", mountPath: "/opt/telo-runner", readOnly: true });
     });
-    // Write-path hardening is deliberately relaxed: the operator-curated image
-    // owns its filesystem layout and user.
-    expect(container.securityContext).not.toHaveProperty("readOnlyRootFilesystem");
-    expect(pod.spec!.securityContext).not.toHaveProperty("runAsNonRoot");
   });
 
-  it("labels the pod for orphan reaping like session pods", () => {
-    expect(pod.metadata?.labels).toMatchObject({
+  it("copies the supervisor out of the runner's image and prepares the volume's two directories first", () => {
+    expect(pod.spec!.initContainers).toEqual([
+      expect.objectContaining({
+        name: "supervisor",
+        image: "telorun/k8s-runner:0.22.0",
+        command: [
+          "sh",
+          "-c",
+          "mkdir -p /telo-session/workspace /telo-session/agent && cp /opt/telo-runner/supervisor /telo-runner-out/supervisor",
+        ],
+        volumeMounts: [
+          { name: "supervisor", mountPath: "/telo-runner-out" },
+          { name: "session", mountPath: "/telo-session" },
+        ],
+      }),
+    ]);
+  });
+
+  it("mounts the session's own claim: workspace/ at /workspace everywhere, agent/ for the agent's state only", () => {
+    expect(pod.spec!.volumes).toContainEqual({
+      name: "session",
+      persistentVolumeClaim: { claimName: "telo-session-abc123" },
+    });
+    for (const container of pod.spec!.containers) {
+      expect(container.volumeMounts).toContainEqual({ name: "session", mountPath: "/workspace", subPath: "workspace" });
+    }
+    const agentState = { name: "session", mountPath: "/var/lib/telo-agent-state", subPath: "agent" };
+    expect(byName(pod, "agent").volumeMounts).toContainEqual(agentState);
+    expect(envOf(byName(pod, "agent")).TELO_HOST_STATE_DIR).toBe("/var/lib/telo-agent-state");
+    for (const container of pod.spec!.containers.filter((c) => c.name !== "agent")) {
+      expect(container.volumeMounts).not.toContainEqual(agentState);
+    }
+  });
+
+  it("puts the operator env on the agent container and nowhere else", () => {
+    for (const container of pod.spec!.containers) {
+      if (container.name === "agent") expect(envOf(container)[OPERATOR_KEY]).toBe("sk-operator-secret");
+      else expect(envOf(container)).not.toHaveProperty(OPERATOR_KEY);
+    }
+  });
+
+  it("sizes app and workspace containers by RUNNER_MAX_* and the agent by RUNNER_APP_MAX_*", () => {
+    for (const name of ["workspace", "app-web", "app-worker"]) {
+      expect(byName(pod, name).resources).toEqual({
+        limits: { cpu: "300m", memory: "512Mi", "ephemeral-storage": "1Gi" },
+        requests: { cpu: "300m", memory: "512Mi" },
+      });
+    }
+    expect(byName(pod, "agent").resources).toEqual({
+      limits: { cpu: "500m", memory: "1Gi", "ephemeral-storage": "1Gi" },
+      requests: { cpu: "500m", memory: "1Gi" },
+    });
+  });
+
+  it("omits the agent container when none was asked for", () => {
+    expect(build({ agent: undefined }).spec!.containers.map((c) => c.name)).toEqual([
+      "workspace",
+      "app-web",
+      "app-worker",
+    ]);
+  });
+
+  it("labels the pod for lookup and the sweep", () => {
+    expect(pod.metadata!.labels).toEqual({
       "app.kubernetes.io/managed-by": "telo-k8s-runner",
       "telo.run/session-id": "abc123",
     });
+  });
+});
+
+describe("reserved ports", () => {
+  it("are each app's supervisor and debug-stream port, by position", () => {
+    expect(reservedPortsFor(APPS)).toEqual([
+      { app: "web", port: 9330, protocol: "tcp", purpose: "the session supervisor" },
+      { app: "web", port: 9230, protocol: "tcp", purpose: "the kernel debug stream" },
+      { app: "worker", port: 9331, protocol: "tcp", purpose: "the session supervisor" },
+      { app: "worker", port: 9231, protocol: "tcp", purpose: "the kernel debug stream" },
+    ]);
   });
 });

@@ -1,7 +1,8 @@
-//! Where the Telo Cloud refresh token lives: the OS credential store, or —
-//! when the machine has none (a headless Linux session with no Secret
-//! Service) — this process's memory until Studio quits. Never a file, never
-//! the webview.
+//! Where the Telo Cloud refresh token lives — and every other credential the
+//! shell keeps (a runner's refresh token, a session's resume secret), each
+//! under an account of its own: the OS credential store, or — when the machine
+//! has none (a headless Linux session with no Secret Service) — this process's
+//! memory until Studio quits. Never a file, never the webview.
 //!
 //! The refresh token is deliberately not cached beside the credential store:
 //! every reader asks the store, so a token another Studio process rotated is
@@ -20,8 +21,11 @@ const SERVICE: &str = "com.telo.studio";
 const LOCK_FILE: &str = "cloud-refresh.lock";
 
 pub struct TokenStore {
-    /// The identity provider's URL: one grant per provider.
+    /// The identity provider's URL for the Cloud grant: one grant per
+    /// provider. Other credentials use accounts of their own.
     account: String,
+    /// What the credential is, in a failure's words.
+    label: &'static str,
     /// Used only when the process has no credential store.
     memory: Mutex<Option<String>>,
 }
@@ -33,7 +37,11 @@ enum Outcome<T> {
 
 impl TokenStore {
     pub fn new(account: String) -> Self {
-        Self { account, memory: Mutex::new(None) }
+        Self::labelled(account, "the Telo Cloud sign-in")
+    }
+
+    pub fn labelled(account: String, label: &'static str) -> Self {
+        Self { account, label, memory: Mutex::new(None) }
     }
 
     pub async fn load(&self) -> Result<Option<String>, CloudError> {
@@ -80,6 +88,7 @@ impl TokenStore {
         F: FnOnce(&Entry) -> Result<T, KeyringError> + Send + 'static,
     {
         let account = self.account.clone();
+        let label = self.label;
         let result = tokio::task::spawn_blocking(move || {
             let entry = match Entry::new(SERVICE, &account) {
                 Ok(entry) => entry,
@@ -94,7 +103,7 @@ impl TokenStore {
         })?;
         result.map_err(|error| {
             CloudError::credential_store(format!(
-                "Could not {action} the Telo Cloud sign-in in the system credential store: {}",
+                "Could not {action} {label} in the system credential store: {}",
                 describe(&error)
             ))
         })

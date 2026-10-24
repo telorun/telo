@@ -61,7 +61,7 @@ grows with every release.
 - **No install step.** `telo run` fetches each import on first use, verified against its pin, and only the parts this machine needs — under `--watch` too, so an import added while editing is fetched on the next reload. An app has no package manifest, dependency directory or lockfile of its own.
 - **One executable.** `telo package` produces a file that runs with no telo and no network, and refuses to write one that would be incomplete. The file is also the telo that runs it: `telo describe ./orders` reads it from any installed telo, and `TELO_APP_CLI=1 ./orders describe ./orders` (or `check`, or `run --inspect --debug`) describes, checks or runs it with live inspection where it is deployed.
 - **Run a published app by reference.** `telo run oci://…@<version>#sha256-<pin>`, verified before anything runs.
-- **No image per change.** Runners run a manifest without building an image, and watch sessions reload on edit.
+- **No image per change.** Runners run a manifest without building an image, and `telo run --watch` reloads on edit. Each reload runs as a plain run would: an app that finishes is torn down and reports its exit code, then the next edit runs it again; a server keeps serving until the next change.
 - **Offline boot.** `telo install` warms `.telo/`, so the tree boots with no network.
 - **Upgrades your runtime can read.** `telo upgrade` and the editor's import CodeLenses move pins only to versions your telo can run, and report what they held back.
 - **One version of each module.** A module imported at incompatible versions is refused before the app runs.
@@ -158,7 +158,7 @@ grows with every release.
 
 ### Testing
 
-- **Tests run the real app.** `App.Instance` runs the application file itself, and tests are manifests run by the kernel you deploy.
+- **Tests run the real app.** `App.Instance` runs the application file itself, and tests are manifests run by the kernel you deploy. Each test hands the app it starts its own ports and storage — a durable directory under `needs:` — so two tests never share state, and what it hands over is held to the app's own declarations before anything runs: a misspelled input, a value the app refuses or a source that is not an app fails `telo check`.
 - **Containers on demand.** Tests start their own containers — readiness-waited, loopback-only, always removed — unchanged locally, in CI or in a runner session.
 - **Assert on what happened.** `Assert.Events` matches kernel events as a subsequence or counts them (`times: 0` for "never").
 - **No store mocks.** In-memory stores and `:memory:` SQLite run the production code path.

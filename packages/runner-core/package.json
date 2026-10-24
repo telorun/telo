@@ -24,6 +24,10 @@
     "./container": {
       "import": "./dist/container-config.js",
       "types": "./dist/container-config.d.ts"
+    },
+    "./test-support": {
+      "import": "./dist/supervisor/fake-supervisor.js",
+      "types": "./dist/supervisor/fake-supervisor.d.ts"
     }
   },
   "files": [
@@ -34,20 +38,24 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:supervisor": "cargo build --release --locked -p telo-runner-supervisor"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
     "@fastify/websocket": "^11.0.1",
     "@telorun/debug-wire": "workspace:*",
     "fastify": "^5.12.1",
+    "jose": "^6.2.3",
+    "pg": "^8.20.0",
+    "ws": "^8.18.0",
     "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "@types/pg": "^8.0.0",
     "@types/ws": "^8.5.13",
     "typescript": "^5.0.0",
-    "vitest": "^2.1.8",
-    "ws": "^8.18.0"
+    "vitest": "^2.1.8"
   }
 }

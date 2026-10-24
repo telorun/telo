@@ -152,7 +152,7 @@ export function requestsMade(fetchMock: ReturnType<typeof stubAgent>): string[] 
 
 const bridge: WorkspaceBridge = {
   snapshot: async () => new Map(),
-  readFile: async () => "", probeFile: async () => ({ kind: "missing" as const }),
+  readFile: async () => "", readBytes: async () => new Uint8Array(), probeFile: async () => ({ kind: "missing" as const }),
   applyChanges: async () => undefined,
   editorFile: () => null, workspaceFile: () => null,
 };

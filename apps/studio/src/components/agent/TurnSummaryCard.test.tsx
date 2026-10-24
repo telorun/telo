@@ -69,7 +69,7 @@ function editorHolding(hash: string) {
   const applyChanges = vi.fn(async () => undefined);
   const bridge: WorkspaceBridge = {
     snapshot: async () => new Map([["app/telo.yaml", hash]]),
-    readFile: async () => "", probeFile: async () => ({ kind: "missing" as const }),
+    readFile: async () => "", readBytes: async () => new Uint8Array(), probeFile: async () => ({ kind: "missing" as const }),
     applyChanges,
     editorFile: () => null, workspaceFile: () => null,
   };
@@ -286,7 +286,7 @@ describe("the turn summary card", () => {
     const applyChanges = vi.fn<WorkspaceBridge["applyChanges"]>(async (writes, deletes) => {
       for (const path of deletes) held.delete(path);
     });
-    renderPanel({ snapshot: async () => new Map(held), readFile: async () => "", probeFile: async () => ({ kind: "missing" as const }), applyChanges, editorFile: () => null, workspaceFile: () => null });
+    renderPanel({ snapshot: async () => new Map(held), readFile: async () => "", readBytes: async () => new Uint8Array(), probeFile: async () => ({ kind: "missing" as const }), applyChanges, editorFile: () => null, workspaceFile: () => null });
 
     await userEvent.click(await screen.findByRole("button", { name: "Revert" }));
     await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Revert" }));

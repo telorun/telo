@@ -1,34 +1,44 @@
 import { describe, expect, it } from "vitest";
 
-import { SessionLimitError, SessionRegistry } from "./registry.js";
+import type { SessionRecord } from "../session-store/session-store.js";
+import { SessionRegistry } from "./registry.js";
 
-const deps = { maxSessions: 2, exitTtlMs: 60_000, replayBufferBytes: 10_000 };
-
-function markExited(reg: SessionRegistry, sessionId: string): void {
-  reg.emit(sessionId, { type: "status", status: { kind: "exited", code: 0 } });
+function record(id: string, apps: string[]): SessionRecord {
+  const now = new Date();
+  return {
+    id,
+    owner: { kind: "secret", secretHash: "0".repeat(64) },
+    workspace: id,
+    agent: null,
+    apps: apps.map((name) => ({ name, entryRelativePath: `${name}.yaml`, ports: [] })),
+    config: {},
+    status: "running",
+    createdAt: now,
+    lastActiveAt: now,
+    suspendedAt: null,
+    containerEngine: null,
+  };
 }
 
-describe("SessionRegistry capacity", () => {
-  it("evicts the oldest terminal session to admit a new run at capacity", () => {
-    const reg = new SessionRegistry(deps);
-    reg.register({ sessionId: "a" });
-    reg.register({ sessionId: "b" });
-    markExited(reg, "a");
+describe("byte channels are per app", () => {
+  it("routes a push to the named app and drops one for an unknown name", () => {
+    const registry = new SessionRegistry({ replayBufferBytes: 100_000 });
+    const entry = registry.register(record("s1", ["web", "worker"]), { kind: "running" });
 
-    // At capacity (2). The retained exited session yields to the new run.
-    reg.register({ sessionId: "c" });
+    registry.pushBytes("s1", "web", Buffer.from("hello"));
+    expect(entry.apps.get("web")!.byteBuffer.size).toBe(1);
+    expect(entry.apps.get("worker")!.byteBuffer.size).toBe(0);
 
-    expect(reg.has("a")).toBe(false);
-    expect(reg.has("b")).toBe(true);
-    expect(reg.has("c")).toBe(true);
+    expect(registry.pushBytes("s1", "nope", Buffer.from("x"))).toBeUndefined();
   });
 
-  it("rejects a new run when every session is still live", () => {
-    const reg = new SessionRegistry(deps);
-    reg.register({ sessionId: "a" });
-    reg.register({ sessionId: "b" });
+  it("carries the stream tag through the buffer", () => {
+    const registry = new SessionRegistry({ replayBufferBytes: 100_000 });
+    registry.register(record("s1", ["app"]), { kind: "running" });
+    registry.pushBytes("s1", "app", Buffer.from("out"), "stdout");
+    registry.pushBytes("s1", "app", Buffer.from("err"), "stderr");
 
-    expect(() => reg.register({ sessionId: "c" })).toThrow(SessionLimitError);
-    expect(reg.size()).toBe(2);
+    const entries = registry.get("s1")!.apps.get("app")!.byteBuffer.replay(0).entries;
+    expect(entries.map((e) => e.stream)).toEqual(["stdout", "stderr"]);
   });
 });

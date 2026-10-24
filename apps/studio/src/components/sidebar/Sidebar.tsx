@@ -22,7 +22,8 @@ interface SidebarProps {
   onOpenModule: (filePath: string) => void;
   onNewModule: (kind: ModuleKind) => void;
   onDeleteModule: (filePath: string) => Promise<void>;
-  onRunModule: (filePath: string) => void;
+  /** Absent where nothing runs (a workspace used only on this device). */
+  onRunModule?: (filePath: string) => void;
   /** Phone width only, where the sidebar is a drawer over the content. */
   drawerOpen: boolean;
   onDrawerOpenChange: (open: boolean) => void;

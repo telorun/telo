@@ -1,0 +1,23 @@
+{{- if eq .Values.sessionStore.kind "sqlite" }}
+# The runner's own state: the SQLite session store (`sessions.sqlite`). Kept
+# across runner restarts and upgrades, so sessions survive them; `helm uninstall`
+# keeps it too (`helm.sh/resource-policy: keep`), as it holds every session's
+# record.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "k8s-runner.name" . }}-state
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  resources:
+    requests:
+      storage: {{ .Values.sessionStore.persistence.size | quote }}
+  {{- if .Values.sessionStore.persistence.storageClass }}
+  storageClassName: {{ .Values.sessionStore.persistence.storageClass | quote }}
+  {{- end }}
+{{- end }}

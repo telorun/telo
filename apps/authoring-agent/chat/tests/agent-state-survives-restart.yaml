@@ -3,23 +3,25 @@ metadata:
   name: ChatAgentStateSurvivesRestart
   version: 1.0.0
   description: |
-    The agent keeps its state on the workspace volume, so a restart on the same
-    WORKSPACE_DIR keeps its conversations. Boots the agent against the provider
-    stub, runs one turn with a tool call to its end, reads the conversation's
-    records, stops it, boots a fresh instance on the same workspace and reads
-    the same page back, identical. Also pins what lands on disk:
-    `.telo-agent/agent.sqlite` and nothing else. Offline and key-free.
+    The agent keeps its state in its durable state directory, so a restart
+    handed the same directory keeps its conversations. Boots the agent against
+    the provider stub, runs one turn with a tool call to its end, reads the
+    conversation's records, stops it, boots a fresh instance on the same
+    workspace and state directory and reads the same page back, identical.
+    Also pins what lands on disk: `agent.sqlite` in the state directory, and
+    nothing in the workspace — no `.telo-agent` there. Offline and key-free.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Run: ../../../../modules/run
   Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
 variables:
-  # This test's own workspace, emptied before each run. Resolved against the
+  # This test's own directory, emptied before each run, holding the agent's
+  # workspace and its state directory side by side. Resolved against the
   # working directory, like every host path an Application reads.
-  workspace:
-    env: CHAT_TEST_RESTART_WORKSPACE
+  scratch:
+    env: CHAT_TEST_RESTART_SCRATCH
     type: string
     x-telo-type: Telo.HostPath
     default: apps/authoring-agent/chat/tests/.scratch/agent-state-survives-restart
@@ -40,12 +42,12 @@ steps:
   - name: prepare
     invoke: { kind: Fs.DirectoryCreation }
     inputs:
-      path: !cel "string(variables.workspace)"
+      path: !cel "string(variables.scratch)"
       createParents: true
   - name: reset
     invoke: { kind: Fs.FileRemoval }
     inputs:
-      path: !cel "string(variables.workspace)"
+      path: !cel "string(variables.scratch)"
       recursive: true
   - name: firstBoot
     invoke:
@@ -55,8 +57,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18431 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.workspace"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18430/v1
           secrets:
             openaiApiKey: stub-key
@@ -99,8 +103,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18432 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.workspace"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18430/v1
           secrets:
             openaiApiKey: stub-key
@@ -136,11 +142,11 @@ steps:
   - name: onDisk
     invoke:
       kind: Fs.DirectoryListing
-      cwd: !cel "variables.workspace"
+      cwd: !cel "variables.scratch"
     inputs:
       recursive: true
   - name: onlyTheDatabase
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "steps.onDisk.result.entries.map(e, e.path)"
-      expected: [.telo-agent, .telo-agent/agent.sqlite]
+      expected: [agent-state, agent-state/agent.sqlite, workspace]

@@ -1,3 +1,4 @@
+import { openFetchEventStream, type SseFrame } from "../fetch-event-stream";
 import { ERR_UNAUTHENTICATED, TOKEN_REQUIRED_MESSAGE, withToken } from "./client";
 import type { JournalRecord, TurnError } from "./types";
 
@@ -16,33 +17,14 @@ export class AgentStreamError extends Error {
   }
 }
 
-/** Consecutive connection attempts that deliver nothing before the stream is
- *  given up as lost. An attempt that delivers a frame resets the count. */
-const MAX_FAILED_ATTEMPTS = 6;
-
-function reconnectDelay(failedAttempts: number): number {
-  return Math.min(250 * 2 ** failedAttempts, 5000);
-}
-
-/** Answers a fronting proxy gives while the upstream is (re)starting — ridden
- *  out like a dropped connection rather than read as the turn's ending. */
-const TRANSIENT_STATUSES = new Set([502, 503, 504]);
-
-interface SseFrame {
-  event: string;
-  data: string;
-  id?: string;
-}
-
 /**
  * Consume `GET /chat/{turnId}/events` — a resumable SSE stream of `{ id, data }`
  * journal records. Replays after `fromId` (the client's last seen id) then tails
  * live; ends after the turn's `finish` record, or with an `event: error` frame
  * carrying the turn's error `{ code, message }`.
  *
- * Read with `fetch` rather than `EventSource`, which cannot send the agent's
- * bearer token. What `EventSource` did by itself is done here: a dropped
- * connection is reopened from the last record id (`Last-Event-ID`, and
+ * Read through the fetch-based reader, since `EventSource` cannot send the
+ * agent's bearer token: a dropped connection is reopened from the last record id (`Last-Event-ID`, and
  * `?lastEventId=` for a proxy that strips the header), and a record at or below
  * that id — a replay overlapping what was already delivered — is dropped, so a
  * reconnect neither repeats nor skips one. A 401 ends the stream at once with
@@ -57,13 +39,12 @@ export function openAgentStream(opts: {
   onError: (err: AgentStreamError) => void;
   onEnd: () => void;
 }): AgentStreamHandle {
-  const abort = new AbortController();
   let closed = false;
   let lastId = opts.fromId;
   const close = () => {
     if (closed) return;
     closed = true;
-    abort.abort();
+    stream.close();
   };
   const fail = (err: AgentStreamError, ended: boolean) => {
     close();
@@ -110,55 +91,23 @@ export function openAgentStream(opts: {
     return false;
   };
 
-  void (async () => {
-    let failedAttempts = 0;
-    for (;;) {
-      if (closed) return;
-      let delivered = false;
-      try {
-        const res = await fetch(url(), { headers: headers(), signal: abort.signal });
-        if (res.status === 401) {
-          fail(new AgentStreamError(TOKEN_REQUIRED_MESSAGE, ERR_UNAUTHENTICATED), false);
-          return;
-        }
-        if (!res.ok && !TRANSIENT_STATUSES.has(res.status)) {
-          fail(await refusalError(res), false);
-          return;
-        }
-        if (!res.ok) await res.body?.cancel();
-        else if (res.body) {
-          for await (const frame of readFrames(res.body)) {
-            delivered = true;
-            let ended: boolean;
-            try {
-              ended = dispatch(frame);
-            } catch (err) {
-              // A frame this client cannot read or apply: reading it again
-              // after a reconnect would fail the same way.
-              fail(new AgentStreamError(`agent stream unreadable: ${err instanceof Error ? err.message : String(err)}`), false);
-              return;
-            }
-            if (ended) return;
-          }
-        }
-      } catch (err) {
-        // Only the connection is read here: its failure — a network error, a
-        // dropped body — is what a reconnect is for; our own close ends it.
-        if (closed) return;
-        if (!(err instanceof TypeError)) {
-          fail(new AgentStreamError(`agent stream failed: ${err instanceof Error ? err.message : String(err)}`), false);
-          return;
-        }
-      }
-      if (closed) return;
-      failedAttempts = delivered ? 0 : failedAttempts + 1;
-      if (failedAttempts >= MAX_FAILED_ATTEMPTS) {
-        fail(new AgentStreamError("agent stream connection lost"), false);
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, reconnectDelay(failedAttempts)));
-    }
-  })();
+  const stream = openFetchEventStream({
+    connect: (signal) => fetch(url(), { headers: headers(), signal }),
+    onFrame: dispatch,
+    onRefused: async (res) => {
+      fail(
+        res.status === 401
+          ? new AgentStreamError(TOKEN_REQUIRED_MESSAGE, ERR_UNAUTHENTICATED)
+          : await refusalError(res),
+        false,
+      );
+    },
+    onFailure: (failure) => {
+      if (failure.kind === "lost") fail(new AgentStreamError("agent stream connection lost"), false);
+      else if (failure.kind === "unreadable") fail(new AgentStreamError(`agent stream unreadable: ${describe(failure.cause)}`), false);
+      else fail(new AgentStreamError(`agent stream failed: ${describe(failure.cause)}`), false);
+    },
+  });
 
   return { close };
 }
@@ -185,45 +134,6 @@ function parseErrorFrame(data: string): AgentStreamError {
   );
 }
 
-/** The SSE frames of a response body, per the event-stream format: fields up to
- *  a blank line, `data:` lines joined by newlines, comments ignored. A frame cut
- *  off by the end of the body is not dispatched. */
-async function* readFrames(body: ReadableStream<Uint8Array>): AsyncGenerator<SseFrame> {
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let data: string[] = [];
-  let event = "";
-  let id: string | undefined;
-  try {
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) return;
-      buffer += decoder.decode(value, { stream: true });
-      let newline: RegExpExecArray | null;
-      while ((newline = /\r\n|\r|\n/.exec(buffer)) !== null) {
-        // A lone `\r` at the end of the buffer may be the first half of `\r\n`.
-        if (newline[0] === "\r" && newline.index === buffer.length - 1) break;
-        const line = buffer.slice(0, newline.index);
-        buffer = buffer.slice(newline.index + newline[0].length);
-        if (line === "") {
-          if (data.length > 0) yield { event: event || "message", data: data.join("\n"), id };
-          data = [];
-          event = "";
-          id = undefined;
-          continue;
-        }
-        if (line.startsWith(":")) continue;
-        const colon = line.indexOf(":");
-        const field = colon === -1 ? line : line.slice(0, colon);
-        const raw = colon === -1 ? "" : line.slice(colon + 1);
-        const value = raw.startsWith(" ") ? raw.slice(1) : raw;
-        if (field === "data") data.push(value);
-        else if (field === "event") event = value;
-        else if (field === "id") id = value;
-      }
-    }
-  } finally {
-    reader.releaseLock();
-  }
+function describe(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }

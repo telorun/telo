@@ -21,6 +21,10 @@ None of these can be expressed:
   cannot start on SQLite or PostgreSQL, or on OpenAI or Anthropic, depending on
   what its environment supplies: declaring both connections creates both, and
   declaring both API keys requires both.
+- **A library cannot default an instance its importer may omit**: every
+  `resources:` input is required at every import. And a library that borrows
+  a collector while exporting a member of it deadlocks at init with nothing
+  reported before boot.
 - **A `with:` scope member is never checked.** Members of an `x-telo-scope`
   field get no per-resource pass, so a misspelled field, an unresolved `!ref`
   or a CEL typo inside `with:` passes `telo check` and fails when the scope
@@ -52,7 +56,8 @@ one before it is green:
    depend on it.
 2. **The expansion language** — the three tags in every position, the binding
    record, identity, absence, families, step repeats, decidability,
-   configurations, per-configuration inputs and needs, and the
+   configurations, per-configuration inputs and needs, optional resource
+   inputs and the init edge through an import, and the
    `scheduled-jobs-app` blueprint, shipped in one telo release: the binding
    spelling and member identity cannot change once traces carry them, and
    shipping a position later would first ship a refusal whose only future is
@@ -403,8 +408,8 @@ Every value the analyzer decides before boot — a condition, a selector, an
      `user`, `path` and `query` as well), and a non-sensitive member is never
      redacted, whatever input holds it.
   3. **Presence**: a bare input path compared with `null`
-     (`!cel "secrets.openaiApiKey != null"`). Its domain is `present` |
-     `absent`.
+     (`!cel "secrets.openaiApiKey != null"`, `!cel "resources.store == null"`).
+     Its domain is `present` | `absent`.
 
 **Reading through a reference.** A bare `self.<path>` or
 `<binding>.value.<path>` may cross every reference it meets into the
@@ -424,8 +429,9 @@ reference, naming the module: it would couple the consumer's configurations to
 a library's non-contract configuration, which a patch release can change.
 
 **An input admits absence** when its declaration says so: a `variables:` /
-`secrets:` entry declaring `default: null`, in an Application or a Library. Its
-CEL type is then nullable, so an unguarded read is `CEL_NULLABLE_ACCESS`, and
+`secrets:` entry declaring `default: null`, in an Application or a Library; an
+optional need (below); or a Library `resources:` entry declaring
+`optional: true` (below). Its CEL type is then nullable, so an unguarded read is `CEL_NULLABLE_ACCESS`, and
 `DEFAULT_INVALID` accepts `null` there whatever its `type:`. A `ports:` entry
 never admits absence: `default: null` on one is `DEFAULT_INVALID`. A presence
 test on an input that cannot be absent is constant, so its dead branch is
@@ -504,6 +510,16 @@ unenumerable before boot or a name declared in more than one place:
 - **A shared base for branches**: a resource whose kind is the same in every
   branch is one declaration with field-value choices; branches of different
   kinds share keys only through what their abstract declares.
+- **A member joining a collector from the member side** (a table declaring
+  the schema it belongs to): the collector's set would stay open over time — a
+  `with:` scope or a later import adds members after it has run its one pass —
+  and a library's patch release could change what an application's ledger
+  owns.
+- **A fallback that must be registered with a collector**, and a default
+  instance named by the input it stands in for (`default: !ref …` on a
+  resource input): one name would be borrowed in some imports and owned in
+  others. A registered member is a ready-made instance a module that does not
+  borrow that collector exports, listed by the collector's owner.
 - **Choosing an import, a variable's `default:`, an `include:` or a kind's
   schema**: `BRANCH_POSITION_INVALID`; an import's `variables:` value is chosen
   with a `!cel` ternary, never with a tag.
@@ -552,9 +568,12 @@ secret of one name never collide. The same keys are used in
   `… (when secrets.openaiApiKey is absent)`). `telo check`, the language
   server and studio all render that one message.
 - **A library's own check** takes as its dimensions its own `variables:` /
-  `secrets:` entries a condition reads through one of the three projections. A
-  consumer's check takes the dimensions its own bindings reach, so a library
-  imported with `dialect: postgres` is checked once.
+  `secrets:` entries a condition reads through one of the three projections,
+  and the presence of each of its optional `resources:` entries a condition
+  reads. A consumer's check takes the dimensions its own bindings reach, so a
+  library imported with `dialect: postgres` is checked once; and it reads each
+  import's resource supply as a literal fact, so a library's inputs never
+  multiply an application's configurations.
 - **The analysis stamp covers every configuration**, so a warm load checks
   nothing again whichever configuration starts.
 - **What is repeated** is the checks over the whole application, and the
@@ -679,6 +698,95 @@ need `a` and a required need `b`, with `!if` choosing between a consumer of
   `ERR_NEED_PARTIALLY_SUPPLIED` before any resource is created.
 - A condition reading `resources.databaseAccess.url.host` is
   `BRANCH_UNDECIDABLE`.
+
+### Over `resources:` inputs
+
+Before: every entry of a Library's `resources:` block must be supplied at
+every import (`RESOURCE_INPUT_MISSING`), so a library cannot offer a default
+for an instance its importer may or may not hand over. And a library that
+borrows a collector (a `Sql.Schema`) while exporting a member that collector
+lists (a table) deadlocks at init with nothing reported before boot, because a
+reference through an import alias is only a soft init-order edge.
+
+After:
+
+- **An entry may declare `optional: true`** — the key `needs:` entries already
+  carry; there is no `default:` key on a resource input. Inside the library,
+  `resources.<input>` is then nullable (`CEL_NULLABLE_ACCESS` unguarded), and
+  its presence, read only as a bare `resources.<input> != null` / `== null`,
+  is the presence projection, keyed `resources.<input>` — the key form
+  optional needs use. A non-optional entry stays required at every import.
+- **The fallback is the library's own declaration-position `!if`** on
+  `resources.<input> == null`, declaring the default under a name of its own;
+  a use site chooses with a field-value `!if` whose `then:` is
+  `!ref <input>` and `else:` the default (or the default inline in `else:`
+  when it is used once). `!ref <input>` is legal only in a branch proving the
+  input present; elsewhere it is `RESOURCE_INPUT_OPTIONAL_REFERENCED`.
+- **Two names, two ownerships.** The input is always borrowed, never torn down
+  by the library's context; the default is always owned — by the import's
+  child context, or by the root-spawned context of a `lifecycle: shared`
+  library — and exists only in the configuration where the input is absent,
+  so it is never created when the importer supplies one.
+- **Presence per import is a literal fact.** An import supplies an input or
+  does not, and neither imports nor `!ref`s are chosen, so in an importer's
+  check no label is printed and nothing multiplies; only the library's own
+  check enumerates `present | absent`, labelled `(when resources.<input> is
+  absent)`. The kernel's import controller expands the library's documents
+  with that import's facts before registering any of its resources;
+  per-import presence is not part of `Kernel.Starting`'s configuration.
+- **A `lifecycle: shared` library** has one configuration: one import supplying
+  an input and another omitting it is `SHARED_LIBRARY_CONFLICT` /
+  `ERR_SHARED_LIBRARY_CONFLICT`, naming both aliases and `resources.<input>`,
+  decided statically across modules since presence is literal at every import.
+- **A member that must be registered with a collector is never a fallback.**
+  Membership is declared only by the collector — a `Sql.Schema`'s tables, a
+  server's mounts, `logging.sinks` — by reference, in the module declaring the
+  collector. A module offering such a member exports it as a ready-made
+  instance the collector's owner lists (`!ref <Alias>.<table>`), and must not
+  borrow that same collector; a module that both consumes a collector and
+  supplies members to it moves the members into a leaf module that borrows
+  nothing. An export declared only in some configurations is legal, and a
+  reference where it does not exist is the ordinary unresolved reference,
+  labelled with its configuration or the import's literal fact.
+- **An instance reference through an import alias is a hard init-order edge**
+  to that import — a resource-level `!ref <Alias>.<name>` or a startup read of
+  `resources.<Alias>.<name>` — because an export exists only once its import has
+  initialized; a kind spelled through an alias stays soft and step edges stay
+  out of init order. A resource supplied to an import (its `resources:`, or a
+  whole `needs:` supply) that reaches an export of that same import through
+  hard edges is `DEPENDENCY_CYCLE` at check and `ERR_CIRCULAR_DEPENDENCY` at
+  load, before anything initializes — today an unclassified init-loop failure.
+  Both halves add the edge, so `telo check` and load agree.
+- **The graph stores stay fully declared.** Their bookkeeping tables
+  (`layers`, `drafts`, the revisions strategy's) are members of the
+  application's schema and shared by a layer and its bases
+  (`GRAPH_BASE_STORE_MISMATCH`), so the schema's owner declares them; the
+  slots stay required and no graph module changes.
+
+*Verify*:
+
+- A fixture library with an optional input `store`, a declaration-position
+  default and a field-value `!if` at its slot: an import supplying `store` uses
+  it and emits no `Created` event for the default; an import omitting it
+  creates the default, which is torn down with the child while a supplied
+  instance outlives the child's teardown.
+- The library's own `telo check` covers two configurations, a typo in the
+  default reported `(when resources.store is absent)`; the consumer's check
+  prints no label.
+- `!ref store` outside a proving branch fails the library's own check, is
+  reported at an omitting consumer's `imports:` entry with that run failing
+  `ERR_RESOURCE_INPUT_OPTIONAL_REFERENCED`, and a supplying consumer boots.
+- A shared library imported once supplying and once omitting the input is
+  `SHARED_LIBRARY_CONFLICT` and `ERR_SHARED_LIBRARY_CONFLICT`.
+- A library taking `schema` as an input and exporting a table the
+  application's schema lists is `DEPENDENCY_CYCLE` naming the import from
+  `telo check`, and `ERR_CIRCULAR_DEPENDENCY` from `telo run` before anything
+  initializes; a leaf exporting a ready-made table, listed by the application's
+  schema and handed to a store, boots; `!ref Lib.sweep` invoked from a step
+  inside a resource supplied to `Lib` raises no cycle.
+- A templated store wrapper declaring a default bookkeeping table is refused
+  by `telo check` with `GRAPH_TABLE_NOT_IN_SCHEMA`, and every graph store kind
+  keeps its bookkeeping slots required.
 
 ### `targets:` widening
 
@@ -1003,7 +1111,8 @@ integer's domain cannot be enumerated.
 
 - The language server publishes each diagnostic with `data.configurations`
   and the labelled message.
-- Studio's module graph gets a configuration picker, defaulting to each
+- Studio's module graph gets a configuration picker — for a library module
+  including its `resources.<input>` presence dimensions — defaulting to each
   dimension's `default:` (a presence dimension to `absent`) and otherwise the
   first value of its domain, and draws the selected configuration. A
   declaration-position choice is one box identified by its name, its
@@ -1024,7 +1133,8 @@ integer's domain cannot be enumerated.
 The Rust loader turns the three tags into sentinels identical to the Node
 loader's, reads `...` as a plain key, and parses the indexed `!ref` form
 through the shared conformance vectors. The Rust kernel evaluates no CEL, so it
-refuses a module containing a tag, a splice or an indexed `!ref` at load with
+refuses a module containing a tag, a splice, an indexed `!ref` or an
+`optional:` resource input at load with
 the existing `ERR_UNSUPPORTED_MANIFEST_FEATURE`, naming it and its line, as it
 refuses `needs:`.
 
@@ -1142,6 +1252,9 @@ Three new blueprints, each with an `example/` and `tests/`:
 | `BRANCH_CASE_UNREACHABLE` | the case (warning) | no configuration, and no value of the closed domain, selects it; the dead branch of a constant condition |
 | `BRANCH_CASE_INVALID` | the branch | at a declaration position, a branch is not one unnamed resource declaration (or a nested choice or family whose branches are), or branches differ in arity |
 | `DEFAULT_INVALID` | the `default:` | (extended) `default: null` on a `ports:` entry |
+| `RESOURCE_INPUT_OPTIONAL_REFERENCED` | the `!ref`, labelled with the absent configuration; at an omitting importer's `imports:` entry | a `!ref` to an optional resource input outside a branch proving it present |
+| `SHARED_LIBRARY_CONFLICT` | both imports | (extended) imports of a shared library disagree on whether an optional input is supplied |
+| `DEPENDENCY_CYCLE` | the import | (extended) a resource supplied to an import reaches an export of that same import through hard edges |
 | `CRUD_TABLE_COLUMN_UNDECLARED` / `CRUD_TABLE_TYPE_DIFFERS` / `CRUD_TABLE_KEY_DIFFERS` | the `Crud.Resource`, as `RESOURCE_RULE_VIOLATED` | a model shape disagrees with the referenced table's row |
 | `RESOURCE_RULE_INVALID` | the rule | (extended) one pointer in both `resolve:` and `project:` |
 
@@ -1158,7 +1271,8 @@ defect, at creation for a consumer's value, at load for a document — pinned in
 - **Floors.** Every module whose own `telo.yaml` writes one of the tags, an
   `as:`, a `...` splice, a family, an indexed `!ref`, a step repeat, a
   non-`!ref` item in a templated `targets:`, `default: null` on a `variables:`
-  / `secrets:` entry, or a rule's `project:` / reference-crossing `resolve:`
+  / `secrets:` entry, `optional: true` on a Library `resources:` entry, or a
+  rule's `project:` / reference-crossing `resolve:`
   (crud), declares `requires: telo:` at the release that ships this, as the
   surface generator reports it, verified by running the previous published CLI
   against it.
@@ -1173,7 +1287,14 @@ defect, at creation for a consumer's value, at load for a document — pinned in
   environment through the presence of its own input"); the
   application-arguments spec (`requiredWhen`, `--help`); the needs guides
   (presence, per-configuration requirement, the report's `dimensions` and
-  `requiredWhen`); the resource-rules guide (`project:`, crossing `resolve:`);
+  `requiredWhen`); the library-resource-inputs guide (optional inputs, the
+  fallback pattern, ownership, and the collector rule, naming the graph
+  stores' bookkeeping tables as a registered member that is declared rather
+  than defaulted); `modules/sql/docs/declarative-schema.md` (a module's tables
+  are listed by the application's schema); the root `CLAUDE.md`'s and the
+  analyzer guide's `Telo.Library` `resources` bullet; the kernel guide's
+  import-controller expansion and the hard edge through an import; the
+  resource-rules guide (`project:`, crossing `resolve:`);
   the analyzer guide's template, reference-form, scope-member and CEL-scope
   sections (the "a `with:` scope member gets none" sentence goes); the kernel
   guide's load order; the root `CLAUDE.md`'s reference sentence (the indexed
@@ -1189,8 +1310,9 @@ defect, at creation for a consumer's value, at load for a document — pinned in
   binding record, splices, families and the indexed `!ref`, absence, the
   decidability rule (including "a decided value may read through a reference
   into a declaration of your own module"), the backend-by-environment pattern,
-  "inline when used once, a declaration-position choice when named", and the
-  webhook verifiers, in the same change.
+  "inline when used once, a declaration-position choice when named", optional
+  resource inputs with a library-owned fallback, the rule that only a
+  collector lists its members, and the webhook verifiers, in the same change.
 
 ## Verify
 

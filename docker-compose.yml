@@ -206,6 +206,10 @@ services:
       dockerfile: ./cli/nodejs/Dockerfile
       target: lean-slim
 
+  # The development stage runs this checkout's sources and carries the session
+  # supervisor built from it at /opt/telo-runner/supervisor, which the runner
+  # writes onto the bundles volume at boot for every app container to mount.
+  # Rebuild after changing the supervisor:  docker compose build runner
   runner:
     image: telorun/docker-runner:${DOCKER_TAG:-latest}
     build:
@@ -216,6 +220,7 @@ services:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
       - runner-bundles:/bundles
+      - runner-state:/var/lib/telo-runner
     working_dir: /app
     environment:
       PORT: 8061
@@ -227,14 +232,11 @@ services:
       # so studio links to the reachable app, not the runner host. The proxy
       # routes these to telo-run-<sessionId> on the shared network (see Caddyfile).
       RUNNER_PUBLIC_BASE_URL: http://run.telo.localhost:${PROXY_PORT:-8060}
-      # Watch sessions on: this is the development stack, and a workspace that
-      # reloads on save is the whole point of running it. In production the
-      # default is off — a watch session is a container set that outlives its
-      # runs, so an operator opts in.
-      RUNNER_WATCH_SESSIONS: "true"
+      # The runner's own state: the SQLite session store.
+      RUNNER_STATE_DIR: /var/lib/telo-runner
       # Short idle window locally. A dev machine is not paying for capacity, and
       # a fast suspend/resume cycle is the part worth exercising by hand.
-      RUNNER_WATCH_IDLE_SECONDS: ${RUNNER_WATCH_IDLE_SECONDS:-600}
+      RUNNER_SESSION_IDLE_SECONDS: ${RUNNER_SESSION_IDLE_SECONDS:-600}
       # Every session gets a container engine of its own, served by this runner
       # at `/v1/sessions/<id>/engine` and reached over the compose network, so a
       # test that starts its own database runs here unchanged. The containers
@@ -291,4 +293,5 @@ volumes:
   storage-data:
   db-data:
   runner-bundles:
+  runner-state:
   embedder-cache:

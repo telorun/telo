@@ -30,13 +30,10 @@ const port: PortMapping = {
 };
 
 describe("a routed session's public addresses", () => {
-  it("are answered from the session's own host scheme, the secondary only where announcements are routed", () => {
-    expect(publicUrlTemplateEnv(config, sessionId, true)).toEqual({
+  it("are answered from the session's own host scheme", () => {
+    expect(publicUrlTemplateEnv(config, sessionId)).toEqual({
       TELO_HOST_PUBLIC_URL_TEMPLATE: `https://{port}-${sessionId}.telo.run`,
       TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE: `https://{label}--{port}-${sessionId}.telo.run`,
-    });
-    expect(publicUrlTemplateEnv(config, sessionId, false)).toEqual({
-      TELO_HOST_PUBLIC_URL_TEMPLATE: `https://{port}-${sessionId}.telo.run`,
     });
   });
 

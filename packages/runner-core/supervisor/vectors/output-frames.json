@@ -1,0 +1,14 @@
+{
+  "valid": [
+    { "name": "the first frame, from a pty", "seq": 1, "stream": "tty", "payloadHex": "68690d0a", "frameHex": "000000010068690d0a" },
+    { "name": "stdout", "seq": 258, "stream": "stdout", "payloadHex": "6f7574", "frameHex": "00000102016f7574" },
+    { "name": "stderr", "seq": 65536, "stream": "stderr", "payloadHex": "657272", "frameHex": "0001000002657272" },
+    { "name": "the last seq there is", "seq": 4294967295, "stream": "stdout", "payloadHex": "00ff", "frameHex": "ffffffff0100ff" },
+    { "name": "an empty payload", "seq": 7, "stream": "tty", "payloadHex": "", "frameHex": "0000000700" }
+  ],
+  "invalid": [
+    { "name": "shorter than its header", "frameHex": "00000001" },
+    { "name": "seq zero", "frameHex": "000000000068" },
+    { "name": "an unknown stream", "frameHex": "000000010368" }
+  ]
+}

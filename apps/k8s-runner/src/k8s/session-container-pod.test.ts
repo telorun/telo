@@ -6,7 +6,8 @@ import { podOwnerRef } from "./routing/session-service.js";
 import { buildSessionContainerPod, buildSessionContainerPolicies } from "./session-container-pod.js";
 
 const config = loadK8sRunnerConfig({
-  RUNNER_SELF_URL: "http://k8s-runner.telo-runner.svc:8062",
+  RUNNER_SUPERVISOR_IMAGE: "telorun/k8s-runner:test",
+  RUNNER_STATE_DIR: "/var/lib/telo-runner",
   RUNNER_SESSION_CONTAINERS_RESOURCES: JSON.stringify({
     limits: { cpu: "1", memory: "1Gi" },
     requests: { cpu: "250m", memory: "256Mi" },

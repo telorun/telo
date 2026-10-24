@@ -8,8 +8,10 @@ An application, and every library it imports, may declare **needs** — typed
 requests for something it cannot create itself, such as the address and
 credentials of a database (see [Declaring a need](/learn/declaring-a-need)).
 A need that no import supplies reaches the application being run, and is read
-from the environment when it loads. That is the only door: nothing is fetched,
-provisioned or asked of a host at boot.
+from the environment when it loads. Nothing is fetched, provisioned or asked of
+a host at boot. The one other door is an application that runs it: a parent
+starting it with `App.Instance` supplies its needs by name (see
+[Needs supplied by a parent](#needs-supplied-by-a-parent)).
 
 Whoever starts the application — a person, a CI job, an operator — reads the
 needs report, provides each entry, and sets its environment variables.
@@ -127,8 +129,9 @@ one.
 
 ## How a need is read
 
-1. **Supplied at an import** — whole or field by field. Its variables are not
-   read, and it is not in the report.
+1. **Supplied at an import** — whole or field by field — or, for an
+   application's own need, **supplied by name by the parent running it**. Its
+   variables are not read, and no host value answers it.
 2. **Otherwise from the environment**, at load, before any resource
    initializes:
    - each set variable is decoded against its field's schema as a root
@@ -334,6 +337,38 @@ every need:
 ```bash
 TELO_HOST_STATE_DIR=./data telo run ./shop
 ```
+
+## Needs supplied by a parent
+
+An application started by another with `App.Instance` is a root of its own, and
+does not inherit its parent's host values. The parent supplies the child's own
+needs by the child's need names, in the two forms an import takes — a `!ref` to
+a need or fulfilment of its own, handed over whole, or a map of the need type's
+fields:
+
+```yaml
+kind: App.Instance
+metadata: { name: agent }
+source: ../telo.yaml
+needs:
+  agentState:
+    path: !cel "variables.scratch.joinPath('agent-state')"
+```
+
+A need supplied this way is answered by that value alone, before the child's
+environment variables and before `TELO_HOST_STATE_DIR` or the address templates
+would answer it, and a `supply: root` type is accepted. `telo check` follows
+the parent's `source:` and refuses, before anything runs, a name the child does
+not declare (naming the needs it does), a field its type does not declare or a
+literal the type refuses, a required field a map leaves out, a `!ref` to
+anything but a need or fulfilment of the child's type, and a need of the parent
+stating less than the child's (its version range, its features, a durable
+directory's access or size). The child refuses at load what only the values
+decide: a required field an expression left out (`ERR_NEED_PARTIALLY_SUPPLIED`)
+and a durable directory it cannot use (`ERR_NEED_DIRECTORY_UNUSABLE`, naming the
+parent's `App.Instance`). A sensitive
+field is redacted in the child as its need type marks it. This is how a test
+gives each application it starts storage of its own.
 
 ## See also
 

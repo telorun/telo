@@ -22,9 +22,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: dummy-key-never-used
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('state-off')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
-      stateDir: !cel "variables.scratch.joinPath('state-off')"
       teloProgram: [echo]
       # The default, restated: what this case asserts is that the default is the
       # closed one, so reading it from the library would assert nothing.
@@ -35,9 +36,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: dummy-key-never-used
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('state-on')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
-      stateDir: !cel "variables.scratch.joinPath('state-on')"
       teloProgram: [echo]
       allowManifestRuns: true
   Run: ../../../../modules/run

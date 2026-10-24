@@ -38,7 +38,6 @@ export const LOCAL_MIGRATION: MigrationTable = {
     ["telo-editor-v2", LOCAL_KEYS.uiState],
     ["telo-editor-settings-v1", LOCAL_KEYS.settings],
     ["telo-editor-accepted-terms", LOCAL_KEYS.acceptedTerms],
-    ["telo-editor:runs-v1", LOCAL_KEYS.runIndex],
     ["telo-editor:color-mode", LOCAL_KEYS.colorMode],
     ["telo-editor-preview-notice-dismissed-v1", LOCAL_KEYS.previewNoticeDismissed],
     ["telo-editor:agent-settings-v1", LOCAL_KEYS.agentSettings],
@@ -52,8 +51,15 @@ export const LOCAL_MIGRATION: MigrationTable = {
   // `telo-editor-v1` was already deleted on load before the rename. The
   // per-application environments (`deployments`) are gone: an application's
   // environment is its workspace's env files, and the stored values are dropped
-  // rather than migrated.
-  droppedKeys: ["telo-editor-v1", "telo-editor-deployments-v1", "telo-studio:deployments:v1"],
+  // rather than migrated. The run index is gone with runs as sessions: a
+  // workspace's session is its own entry (`LOCAL_PREFIXES.session`).
+  droppedKeys: [
+    "telo-editor-v1",
+    "telo-editor-deployments-v1",
+    "telo-studio:deployments:v1",
+    "telo-editor:runs-v1",
+    "telo-studio:run:index:v1",
+  ],
 };
 
 export const SESSION_MIGRATION: MigrationTable = {

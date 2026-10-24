@@ -277,40 +277,55 @@ export interface TreeFile {
   hash: string;
 }
 
+/** One file written to a workspace surface; `encoding` is `utf8` when omitted. */
+export interface WorkspaceWrite {
+  path: string;
+  content: string;
+  encoding?: "utf8" | "base64";
+}
+
 /**
  * The directory the agent and the editor converge on, whichever side of the
- * runner it lives on: a standalone agent's own `./workspace`, or — for a
- * co-resident agent — the watch session's shared volume, which the editor
- * reaches through `/v1/sessions/:id/workspace` and the agent writes directly
- * with its filesystem tools. One interface because the convergence logic is the
- * same either way; only the transport differs.
+ * runner it lives on: the own `./workspace` of an agent at a user-set URL, or —
+ * for the co-resident agent — the session's workspace, which the editor reaches
+ * through `/v1/sessions/:id/workspace` and the agent writes directly with its
+ * filesystem tools. One interface because the convergence logic is the same
+ * either way; only the transport differs.
  */
 export interface AgentWorkspace {
   /** Content-hash tree of the shared workspace. */
   tree(): Promise<TreeFile[]>;
   readFile(path: string): Promise<string>;
-  apply(write: Array<{ path: string; content: string }>, remove: string[]): Promise<void>;
+  apply(write: WorkspaceWrite[], remove: string[]): Promise<void>;
   /** Paths this surface holds that are nobody's to sync — infrastructure the
    *  runner seeds into the volume rather than files the user authored. Excluded
    *  in BOTH directions: filtering only the workspace side would make every
    *  turn re-push a file the editor happens to have, and only the editor side
-   *  would delete one it does not. Empty for a standalone agent, whose
+   *  would delete one it does not. Empty for an agent at a user-set URL, whose
    *  workspace holds nothing the editor did not put there. */
   readonly excludedPaths: ReadonlySet<string>;
 }
 
 /**
- * The agent that lives inside a live watch session: where it answers, and the
- * session's own workspace surface. Resolved from the session's `running` status
- * — the runner reports where it routed the agent, because only it knows.
+ * The agent that lives inside the workspace's runner session: where it answers,
+ * and the session's own workspace surface. Resolved from the session's `running`
+ * status — the runner reports where it routed the agent, because only it knows.
  */
 export interface CoResidentAgent {
-  runId: string;
+  sessionId: string;
   baseUrl: string;
   /** The per-session token the runner minted for the agent, when it did. */
   token?: string;
   workspace: AgentWorkspace;
 }
+
+/** The co-resident agent of the workspace's session, as the editor shell knows
+ *  it: none — with the reason a send is told — still coming up with the
+ *  session, or answering. */
+export type SessionAgentState =
+  | { kind: "none"; reason: string }
+  | { kind: "starting" }
+  | { kind: "ready"; agent: CoResidentAgent };
 
 /** What `GET /capabilities` says about the agent answering. */
 export interface AgentIdentity {
@@ -366,9 +381,12 @@ export type AgentIdentityState =
  * through the editor's own WorkspaceAdapter (the durable home).
  */
 export interface WorkspaceBridge {
-  /** Content-hash the editor's workspace (path → sha256 hex), excluding vendor dirs. */
+  /** Content-hash the editor's workspace (path → sha256 hex of each file's
+   *  bytes), excluding vendor dirs. */
   snapshot(): Promise<Map<string, string>>;
   readFile(path: string): Promise<string>;
+  /** A file's bytes, for a write that must carry a file that is not UTF-8. */
+  readBytes(path: string): Promise<Uint8Array>;
   /** One read that says what it found — text, nothing there, a directory, or a
    *  file that cannot be read — for the markers the sync's sensitive-file rule
    *  reads, where an absent marker is an answer rather than a failure. */

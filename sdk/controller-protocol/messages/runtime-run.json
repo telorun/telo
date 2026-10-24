@@ -40,6 +40,13 @@
             "additionalProperties": {
               "type": "integer"
             }
+          },
+          "needs": {
+            "description": "Fulfilments of the child's own root needs, keyed by need name: each the fields of the need's type. A forwarded fulfilment crosses as its fields.",
+            "type": "object",
+            "additionalProperties": {
+              "type": "object"
+            }
           }
         },
         "additionalProperties": false

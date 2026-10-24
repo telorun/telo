@@ -11,12 +11,28 @@ import type { PullPolicy, RunnerTerms } from "./contract.js";
 export interface RunnerCoreConfig {
   port: number;
   logLevel: string;
+  /** Most RUNNING sessions at once (`RUNNER_MAX_SESSIONS`); suspended ones do
+   *  not count. */
   maxSessions: number;
-  exitTtlMs: number;
   replayBufferBytes: number;
   corsOrigins: string[] | "*";
-  watch: WatchSessionConfig;
+  sessions: SessionLifecycleConfig;
+  sessionStore: SessionStoreConfig;
   sessionContainers: SessionContainersConfig;
+  /** Absent: the runner takes resume secrets only. */
+  identity?: IdentityConfig;
+}
+
+/**
+ * Identity callers (`RUNNER_IDENTITY_AUDIENCE` + `RUNNER_IDENTITY_ISSUERS`):
+ * DPoP-bound access tokens from the listed issuers, minted for the audience.
+ */
+export interface IdentityConfig {
+  /** The runner's canonical public https base URL — the RFC 8707 resource, the
+   *  expected `aud`, and the base of every DPoP `htu`. */
+  audience: string;
+  /** Issuer identifiers, each compared to a token's `iss` exactly. */
+  issuers: string[];
 }
 
 /**
@@ -35,31 +51,33 @@ export type SessionContainersConfig =
       internalUrl: string;
     };
 
-/**
- * Watch-session policy. Off by default and separately ceilinged, because a watch
- * session is a materially different resource shape from a run: a pod that
- * outlives its runs, whose concurrency is bounded by simultaneous EDITORS rather
- * than simultaneous runs. Inheriting a run session's ceilings would size it for
- * the opposite assumption.
- */
-export interface WatchSessionConfig {
-  /** Server-side gate. Watch sessions are never client-requestable when off. */
-  enabled: boolean;
-  /** No SSE/WS subscriber for this long → suspend (pod deleted, checkpoint held). */
+/** How long a session runs, idles and is kept. */
+export interface SessionLifecycleConfig {
+  /** No SSE/WS subscriber for this long → suspend (`RUNNER_SESSION_IDLE_SECONDS`). */
   idleMs: number;
-  /** Pod deadline for a watch session. The agent and app containers share one
-   *  pod, so one deadline covers both: take the longer (agent) ceiling and let
-   *  idleness do the real work, or the conversation dies at an hour mid-turn. */
-  maxTtlSeconds: number;
-  maxSessions: number;
+  /** A running session suspends after this long (`RUNNER_SESSION_MAX_RUNNING_SECONDS`). */
+  maxRunningSeconds: number;
+  /** A suspended session is deleted with its storage after this long
+   *  (`RUNNER_SESSION_RETENTION_SECONDS`). */
+  retentionMs: number;
+  /** Per-session reloads per minute (`RUNNER_SESSION_RELOAD_LIMIT`). */
   reloadLimitPerMinute: number;
-  /** How long a SUSPENDED record is retained before eviction. Deliberately not
-   *  the pod deadline: that bounds a pod, so on its own nothing would ever evict
-   *  a suspended record. */
-  suspendedTtlMs: number;
-  /** How often the runner pulls a whole-tree workspace snapshot. */
-  checkpointMs: number;
 }
+
+/** Where session records live (`RUNNER_SESSION_STORE`). */
+export type SessionStoreConfig =
+  | {
+      kind: "sqlite";
+      /** The runner's whole state directory, where `sessions.sqlite` sits:
+       *  the host's resolved state root, else `RUNNER_STATE_DIR`; undefined
+       *  when neither is given. */
+      directory: string | undefined;
+    }
+  | {
+      kind: "postgres";
+      /** `RUNNER_SESSION_STORE_URL`. Carries credentials: never log it. */
+      url: string;
+    };
 
 export class RunnerConfigError extends Error {}
 
@@ -136,9 +154,9 @@ function hashTermsVersion(body: string): string {
 }
 
 /**
- * An operator-predefined application entry in `RUNNER_APPS`. The catalog is the
- * whole gate: a client launches an app by name and can neither pick the image
- * nor read the injected env, so no allowlist beyond the catalog is needed.
+ * An entry of `RUNNER_APPS`, the catalog of co-resident agents a session may
+ * run (`features.agents`). The catalog is the whole gate: a client picks an
+ * agent by name and can neither pick the image nor read the injected env.
  *
  * The catalog may embed secrets (`env` values), so treat the whole `RUNNER_APPS`
  * value as secret material (docker: a `.env.local` file; k8s: source it from a
@@ -147,28 +165,23 @@ function hashTermsVersion(body: string): string {
  */
 export interface RunnerAppConfig {
   image: string;
-  /** Env injected verbatim into the app's workload (operator secrets included).
-   *  A client-supplied value for any key defined here is dropped — operator
-   *  values always win. */
+  /** Env injected verbatim into the agent container (operator secrets
+   *  included), and into nothing else. */
   env?: Record<string, string>;
   /** Workload image pull policy (default `missing`); `always` keeps a moving
    *  tag like `latest-slim` fresh. */
   pullPolicy?: PullPolicy;
-  /** The tcp port this image listens on, published by the runner when the entry
-   *  is used as a session's co-resident `agent` — a client cannot supply it,
-   *  because what gets published is the operator's decision, not the caller's.
+  /** The tcp port this image listens on, published by the runner — a client
+   *  cannot supply it, because what gets published is the operator's decision.
    *  There is deliberately NO default: the catalog is pure operator
    *  configuration and the runner has no built-in knowledge of any specific
    *  app, so guessing 8080 would be exactly that knowledge. An entry without it
-   *  still works as a standalone app session (where the client declares the
-   *  ports it wants published); only `agent` use requires it. */
+   *  is not offered as an agent. */
   port?: number;
   /** Env var name under which the runner injects a token it mints for every
-   *  session started from this entry — as an app session or as a co-resident
-   *  agent — and reports as `RunnerEndpoint.token` on that workload's endpoints.
-   *  It is kept across suspend and resume; a runner restart means a new session
-   *  and so a new token. A name the entry's own `env` also sets is refused, and
-   *  a client-supplied value under it is dropped. */
+   *  workload it creates with this agent, reported as `RunnerEndpoint.token` on
+   *  the session's `agent` endpoint. A resume or an agent change mints a new
+   *  one. A name the entry's own `env` also sets is refused. */
   tokenEnv?: string;
   title?: string;
   description?: string;
@@ -284,8 +297,8 @@ function validateAppEntry(name: string, value: unknown): RunnerAppConfig {
  * advertisement makes the editor attach an agent to every run and every run is
  * refused.
  *
- * Per entry, not per catalog: declaring a port opts an app into co-resident
- * use, omitting one leaves it launchable on its own.
+ * Per entry, not per catalog: declaring a port opts an entry into co-resident
+ * use.
  */
 export function coResidentAgentNames(apps: Record<string, ResolvedRunnerApp>): string[] {
   return Object.keys(apps).filter((name) => apps[name]?.port !== undefined);
@@ -322,26 +335,150 @@ export function parseCorsOrigins(raw: string | undefined): string[] | "*" {
 
 export function loadCoreConfig(
   env: NodeJS.ProcessEnv,
-  defaults: { port?: number } = {},
+  defaults: { port?: number; stateDir?: string } = {},
 ): RunnerCoreConfig {
+  refuseRetiredVariables(env);
   return {
     port: parsePort(env.PORT, defaults.port ?? 8061),
     logLevel: env.LOG_LEVEL?.trim() || "info",
-    maxSessions: parsePositiveInt(env.RUNNER_MAX_SESSIONS, 32, "RUNNER_MAX_SESSIONS"),
-    // Exited sessions linger so the editor can re-attach and replay their console
-    // + inspection history after a page reload. The registry evicts the oldest
-    // *terminal* session early when at capacity, so a long TTL never blocks a new
-    // run while live sessions are protected.
-    exitTtlMs: parsePositiveInt(env.RUNNER_EXIT_TTL_MS, 4 * 60 * 60 * 1000, "RUNNER_EXIT_TTL_MS"),
+    maxSessions: parsePositiveInt(env.RUNNER_MAX_SESSIONS, 8, "RUNNER_MAX_SESSIONS"),
     replayBufferBytes: parsePositiveInt(
       env.RUNNER_REPLAY_BUFFER_BYTES,
       5_000_000,
       "RUNNER_REPLAY_BUFFER_BYTES",
     ),
     corsOrigins: parseCorsOrigins(env.RUNNER_CORS_ORIGINS),
-    watch: loadWatchConfig(env),
+    sessions: loadSessionLifecycleConfig(env),
+    sessionStore: loadSessionStoreConfig(env, defaults.stateDir),
     sessionContainers: loadSessionContainersConfig(env),
+    ...optionalIdentity(loadIdentityConfig(env)),
   };
+}
+
+function optionalIdentity(identity: IdentityConfig | undefined): { identity?: IdentityConfig } {
+  return identity ? { identity } : {};
+}
+
+/** Variables an earlier runner read, each with what replaced it — a
+ *  replacement variable, or null when the setting is gone. */
+const RETIRED_VARIABLES: ReadonlyArray<{ name: string; replacement: string | null; why: string }> = [
+  { name: "RUNNER_WATCH_SESSIONS", replacement: null, why: "sessions are always on" },
+  { name: "RUNNER_WATCH_MAX_SESSIONS", replacement: "RUNNER_MAX_SESSIONS", why: "it bounds running sessions" },
+  { name: "RUNNER_WATCH_IDLE_SECONDS", replacement: "RUNNER_SESSION_IDLE_SECONDS", why: "" },
+  { name: "RUNNER_WATCH_MAX_TTL_SECONDS", replacement: "RUNNER_SESSION_MAX_RUNNING_SECONDS", why: "" },
+  { name: "RUNNER_WATCH_SUSPENDED_TTL_SECONDS", replacement: "RUNNER_SESSION_RETENTION_SECONDS", why: "" },
+  { name: "RUNNER_WATCH_RELOAD_LIMIT", replacement: "RUNNER_SESSION_RELOAD_LIMIT", why: "" },
+  {
+    name: "RUNNER_WORKSPACE_CHECKPOINT_SECONDS",
+    replacement: null,
+    why: "a session's workspace lives on its own durable storage, so there is no checkpoint",
+  },
+  { name: "RUNNER_EXIT_TTL_MS", replacement: null, why: "one-shot run sessions are removed" },
+  { name: "RUNNER_MAX_TTL_SECONDS", replacement: null, why: "one-shot run sessions are removed" },
+  { name: "RUNNER_APP_MAX_TTL_SECONDS", replacement: null, why: "catalog app sessions are removed" },
+];
+
+/** Refuses to boot with any retired variable set, naming every one at once. */
+export function refuseRetiredVariables(env: NodeJS.ProcessEnv): void {
+  const found = RETIRED_VARIABLES.filter(({ name }) => env[name] !== undefined);
+  if (found.length === 0) return;
+  const lines = found.map(({ name, replacement, why }) =>
+    replacement
+      ? `  ${name} is renamed: set ${replacement} instead${why ? ` (${why})` : ""}.`
+      : `  ${name} is removed: ${why}. Unset it.`,
+  );
+  throw new RunnerConfigError(
+    `this runner no longer reads ${found.length === 1 ? "a variable" : "variables"} its environment sets:\n` +
+      lines.join("\n"),
+  );
+}
+
+export function loadSessionLifecycleConfig(env: NodeJS.ProcessEnv): SessionLifecycleConfig {
+  return {
+    idleMs:
+      parsePositiveInt(env.RUNNER_SESSION_IDLE_SECONDS, 300, "RUNNER_SESSION_IDLE_SECONDS") * 1000,
+    maxRunningSeconds: parsePositiveInt(
+      env.RUNNER_SESSION_MAX_RUNNING_SECONDS,
+      21600,
+      "RUNNER_SESSION_MAX_RUNNING_SECONDS",
+    ),
+    retentionMs:
+      parsePositiveInt(
+        env.RUNNER_SESSION_RETENTION_SECONDS,
+        2_592_000,
+        "RUNNER_SESSION_RETENTION_SECONDS",
+      ) * 1000,
+    reloadLimitPerMinute: parsePositiveInt(
+      env.RUNNER_SESSION_RELOAD_LIMIT,
+      30,
+      "RUNNER_SESSION_RELOAD_LIMIT",
+    ),
+  };
+}
+
+const SESSION_STORES = ["sqlite", "postgres"] as const;
+
+/** `RUNNER_SESSION_STORE` (default `sqlite`). `RUNNER_STATE_DIR` names a
+ *  runner's WHOLE state directory, never the store's alone, so a host with a
+ *  state root of its own (`stateDir`) has already read it in its own precedence
+ *  and its answer is the directory; a container runner has none and reads the
+ *  variable here. */
+export function loadSessionStoreConfig(
+  env: NodeJS.ProcessEnv,
+  stateDir?: string,
+): SessionStoreConfig {
+  const kind = env.RUNNER_SESSION_STORE?.trim() || "sqlite";
+  const url = env.RUNNER_SESSION_STORE_URL?.trim() || undefined;
+  if (kind === "postgres") {
+    if (!url) {
+      throw new RunnerConfigError(
+        "RUNNER_SESSION_STORE=postgres needs RUNNER_SESSION_STORE_URL: the Postgres connection URL " +
+          "the session records are kept at (postgres://user:password@host:5432/database).",
+      );
+    }
+    let protocol: string;
+    try {
+      protocol = new URL(url).protocol;
+    } catch {
+      // The value carries a password, so it is never quoted back.
+      throw new RunnerConfigError(
+        "RUNNER_SESSION_STORE_URL is not a URL; expected postgres://user:password@host:5432/database.",
+      );
+    }
+    if (protocol !== "postgres:" && protocol !== "postgresql:") {
+      throw new RunnerConfigError(
+        `RUNNER_SESSION_STORE_URL must be a postgres:// or postgresql:// URL, got a '${protocol}' one.`,
+      );
+    }
+    return { kind, url };
+  }
+  if (kind !== "sqlite") {
+    throw new RunnerConfigError(
+      `RUNNER_SESSION_STORE must be one of ${SESSION_STORES.join(" | ")}, got '${kind}'.`,
+    );
+  }
+  if (url) {
+    throw new RunnerConfigError(
+      "RUNNER_SESSION_STORE_URL is set, but RUNNER_SESSION_STORE is sqlite — set " +
+        "RUNNER_SESSION_STORE=postgres to use it, or unset it.",
+    );
+  }
+  return { kind, directory: stateDir ?? (env.RUNNER_STATE_DIR?.trim() || undefined) };
+}
+
+/**
+ * A container runner's state directory is the operator's to provide (a PVC, a
+ * data volume): it has no root of its own to fall back on, so a SQLite store
+ * without `RUNNER_STATE_DIR` is refused at boot.
+ */
+export function requireStateDirectory(store: SessionStoreConfig): void {
+  if (store.kind === "sqlite" && store.directory === undefined) {
+    throw new RunnerConfigError(
+      "RUNNER_STATE_DIR is required with RUNNER_SESSION_STORE=sqlite (the default): set it to a " +
+        "directory on persistent storage, where the runner keeps its session store — or set " +
+        "RUNNER_SESSION_STORE=postgres with RUNNER_SESSION_STORE_URL.",
+    );
+  }
 }
 
 export function loadSessionContainersConfig(env: NodeJS.ProcessEnv): SessionContainersConfig {
@@ -372,33 +509,77 @@ export function loadSessionContainersConfig(env: NodeJS.ProcessEnv): SessionCont
   return { enabled, max, internalUrl: raw.replace(/\/+$/, "") };
 }
 
-export function loadWatchConfig(env: NodeJS.ProcessEnv): WatchSessionConfig {
-  return {
-    enabled: parseBool(env.RUNNER_WATCH_SESSIONS, false, "RUNNER_WATCH_SESSIONS"),
-    idleMs:
-      parsePositiveInt(env.RUNNER_WATCH_IDLE_SECONDS, 300, "RUNNER_WATCH_IDLE_SECONDS") * 1000,
-    maxTtlSeconds: parsePositiveInt(
-      env.RUNNER_WATCH_MAX_TTL_SECONDS,
-      21600,
-      "RUNNER_WATCH_MAX_TTL_SECONDS",
+/** `RUNNER_IDENTITY_AUDIENCE` and `RUNNER_IDENTITY_ISSUERS`, set together or
+ *  not at all; undefined when neither is set. */
+export function loadIdentityConfig(env: NodeJS.ProcessEnv): IdentityConfig | undefined {
+  const rawAudience = env.RUNNER_IDENTITY_AUDIENCE?.trim() || undefined;
+  const rawIssuers = env.RUNNER_IDENTITY_ISSUERS?.trim() || undefined;
+  if (rawAudience === undefined && rawIssuers === undefined) return undefined;
+  if (rawAudience === undefined) {
+    throw new RunnerConfigError(
+      "RUNNER_IDENTITY_ISSUERS is set without RUNNER_IDENTITY_AUDIENCE: set the audience to the " +
+        "runner's public https base URL (e.g. https://runner.example.com), or unset the issuers to " +
+        "take resume secrets only.",
+    );
+  }
+  if (rawIssuers === undefined) {
+    throw new RunnerConfigError(
+      "RUNNER_IDENTITY_AUDIENCE is set without RUNNER_IDENTITY_ISSUERS: list the https issuer " +
+        "identifiers whose access tokens this runner accepts, comma-separated, or unset the audience " +
+        "to take resume secrets only.",
+    );
+  }
+  const issuers = [
+    ...new Set(
+      rawIssuers
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => s !== ""),
     ),
-    maxSessions: parsePositiveInt(env.RUNNER_WATCH_MAX_SESSIONS, 8, "RUNNER_WATCH_MAX_SESSIONS"),
-    reloadLimitPerMinute: parsePositiveInt(
-      env.RUNNER_WATCH_RELOAD_LIMIT,
-      30,
-      "RUNNER_WATCH_RELOAD_LIMIT",
-    ),
-    suspendedTtlMs:
-      parsePositiveInt(
-        env.RUNNER_WATCH_SUSPENDED_TTL_SECONDS,
-        86400,
-        "RUNNER_WATCH_SUSPENDED_TTL_SECONDS",
-      ) * 1000,
-    checkpointMs:
-      parsePositiveInt(
-        env.RUNNER_WORKSPACE_CHECKPOINT_SECONDS,
-        30,
-        "RUNNER_WORKSPACE_CHECKPOINT_SECONDS",
-      ) * 1000,
-  };
+  ];
+  if (issuers.length === 0) {
+    throw new RunnerConfigError(
+      "RUNNER_IDENTITY_ISSUERS lists no issuer: give comma-separated https issuer identifiers.",
+    );
+  }
+  for (const issuer of issuers) parseHttpsUrl(issuer, "RUNNER_IDENTITY_ISSUERS", "an issuer");
+  return { audience: parseAudience(rawAudience), issuers };
+}
+
+function parseAudience(raw: string): string {
+  const url = parseHttpsUrl(raw, "RUNNER_IDENTITY_AUDIENCE", "the audience");
+  const canonical = url.origin + (url.pathname === "/" ? "" : url.pathname);
+  if (raw.endsWith("/")) {
+    throw new RunnerConfigError(
+      `RUNNER_IDENTITY_AUDIENCE must not end with a slash: write '${canonical.replace(/\/+$/, "")}'.`,
+    );
+  }
+  if (canonical !== raw) {
+    throw new RunnerConfigError(
+      `RUNNER_IDENTITY_AUDIENCE must be written canonically, as clients compare it exactly: ` +
+        `write '${canonical}' instead of '${raw}'.`,
+    );
+  }
+  return raw;
+}
+
+function parseHttpsUrl(raw: string, variable: string, what: string): URL {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new RunnerConfigError(`${variable}: ${what} '${raw}' is not a URL; expected https://host[/path].`);
+  }
+  if (url.protocol !== "https:") {
+    throw new RunnerConfigError(
+      `${variable}: ${what} '${raw}' must be an https URL — an identity is only accepted over TLS.`,
+    );
+  }
+  if (raw.includes("?") || raw.includes("#")) {
+    throw new RunnerConfigError(`${variable}: ${what} '${raw}' must carry no query and no fragment.`);
+  }
+  if (url.username !== "" || url.password !== "") {
+    throw new RunnerConfigError(`${variable}: ${what} '${raw}' must carry no user or password.`);
+  }
+  return url;
 }

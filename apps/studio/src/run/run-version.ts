@@ -8,24 +8,26 @@ import type { TeloLanguage } from "../hooks/useLanguageSession";
  * A module nothing serves has no version to ask for. That is a refusal carrying
  * the status that already explains it, never a fallback to some other version:
  * running on one the editor did not check against is the skew this removes.
+ * `pending` marks a refusal that lasts only until the engine has started.
  */
 export function runVersionFor(
   language: TeloLanguage | null,
   path: string,
-): { version: string } | { refusal: string } {
+): { version: string } | { refusal: string; pending?: true } {
   if (language === null) {
-    return { refusal: "The telo language tooling is still starting, so this module has no telo version yet." };
+    return {
+      refusal: "The telo language tooling is still starting, so this module has no telo version yet.",
+      pending: true,
+    };
   }
   if (language.kind === "failed") {
     return { refusal: `This module has no telo version to run on: ${language.failure}.` };
   }
   const status = language.statusOf(path);
   if (status.version === undefined) {
-    return {
-      refusal: status.error
-        ? `This module has no telo version to run on: ${status.error.message}`
-        : "The telo engine for this module is still starting, so it has no telo version yet.",
-    };
+    return status.error
+      ? { refusal: `This module has no telo version to run on: ${status.error.message}` }
+      : { refusal: "The telo engine for this module is still starting, so it has no telo version yet.", pending: true };
   }
   return { version: status.version };
 }

@@ -1,38 +1,29 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { BackendStartSpec, RunnerBackend } from "../backend.js";
 import { loadSessionContainersConfig, RunnerConfigError, type RunnerCoreConfig } from "../config.js";
-import { buildServer, type ServerHandle } from "../server.js";
+import { buildServer } from "../server.js";
 import {
   SessionContainerFieldRefused,
   SessionContainerNotFound,
   type SessionContainerEngine,
   type SessionContainerSpec,
 } from "../session-containers/session-container-engine.js";
+import {
+  bootTestServer,
+  FakeWorkloadBackend,
+  TEST_CAPABILITIES,
+  temporaryStore,
+  testConfig,
+} from "../test-support/fake-workload-backend.js";
 
 const INTERNAL_URL = "http://runner.internal:8061";
 
 function config(enabled: boolean): RunnerCoreConfig {
-  return {
-    port: 0,
-    logLevel: "silent",
-    maxSessions: 8,
-    exitTtlMs: 60_000,
-    replayBufferBytes: 100_000,
-    corsOrigins: "*",
-    watch: {
-      enabled: false,
-      idleMs: 3_600_000,
-      maxTtlSeconds: 21_600,
-      maxSessions: 8,
-      reloadLimitPerMinute: 30,
-      suspendedTtlMs: 3_600_000,
-      checkpointMs: 3_600_000,
-    },
+  return testConfig({
     sessionContainers: enabled
       ? { enabled: true, max: 2, internalUrl: INTERNAL_URL }
       : { enabled: false, max: 2 },
-  };
+  });
 }
 
 interface FakeEngine extends SessionContainerEngine {
@@ -82,30 +73,8 @@ function fakeEngine(): FakeEngine {
   return engine;
 }
 
-function backend(starts: BackendStartSpec[], engine?: SessionContainerEngine): RunnerBackend {
-  return {
-    probe: async () => ({ status: "ready" }),
-    async start(spec) {
-      starts.push(spec);
-      spec.onStatus({ kind: "running" });
-      return {
-        writeStdin: () => {},
-        resize: () => {},
-        done: new Promise<void>(() => {}),
-        stop: async () => spec.onStatus({ kind: "stopped" }),
-      };
-    },
-    ...(engine ? { containers: engine } : {}),
-  };
-}
-
-const SESSION_BODY = {
-  bundle: {
-    entryRelativePath: "telo.yaml",
-    files: [{ relativePath: "telo.yaml", contents: "kind: Telo.Application\n" }],
-  },
-  env: { TELO_HOST_CONTAINER_ENGINE_TOKEN: "client" },
-};
+/** A Run's env carrying a client value the runner must write over. */
+const RUN_BODY = { env: { TELO_HOST_CONTAINER_ENGINE_TOKEN: "client" }, io: "tty" };
 
 const CREATE_BODY = {
   Image: "pgvector/pgvector:pg18",
@@ -117,41 +86,54 @@ const CREATE_BODY = {
 };
 
 describe("the session container engine", () => {
-  let server: ServerHandle | undefined;
-  let starts: BackendStartSpec[];
+  let booted: Awaited<ReturnType<typeof bootTestServer>> | undefined;
   let engine: FakeEngine;
 
-  async function boot(enabled = true): Promise<ServerHandle> {
-    starts = [];
+  async function boot(enabled = true) {
     engine = fakeEngine();
-    server = await buildServer({
-      backend: backend(starts, engine),
+    booted = await bootTestServer({
+      backend: new FakeWorkloadBackend({ containers: engine }),
       config: config(enabled),
-      version: "test",
-      capabilities: {
-        displayName: "test",
-        description: "test",
-        config: { schema: { type: "object" } },
-        features: { io: ["tty"], ports: true, watch: false },
-      },
     });
-    return server;
+    return booted;
   }
 
-  async function startSession(): Promise<{ id: string; prefix: string; auth: Record<string, string> }> {
-    const res = await server!.app.inject({ method: "POST", url: "/v1/sessions", payload: SESSION_BODY });
+  /** A session with one app, run once: the engine env rides each Run. */
+  async function startSession(): Promise<{
+    id: string;
+    prefix: string;
+    auth: Record<string, string>;
+    session: Record<string, string>;
+    env: Record<string, string>;
+  }> {
+    const res = await booted!.server.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: { workspace: `w-${Math.random()}`, apps: [{ name: "app", entryRelativePath: "telo.yaml" }] },
+    });
     expect(res.statusCode).toBe(201);
     const id = res.json().sessionId as string;
-    const env = starts.at(-1)!.env;
+    const session = { authorization: `Bearer ${res.json().resumeSecret}` };
+    await expect.poll(() => booted!.server.registry.get(id)?.apps.get("app")?.state).toBe("ready");
+    const run = await booted!.server.app.inject({
+      method: "POST",
+      url: `/v1/sessions/${id}/apps/app/run`,
+      headers: session,
+      payload: RUN_BODY,
+    });
+    expect(run.statusCode).toBe(202);
+    const env = booted!.backend.workloadOf(id).runs.at(-1)!.run.env;
     return {
       id,
       prefix: `/v1/sessions/${id}/engine/v1.41`,
       auth: { authorization: `Bearer ${env.TELO_HOST_CONTAINER_ENGINE_TOKEN}` },
+      session,
+      env,
     };
   }
 
   async function createContainer(session: { prefix: string; auth: Record<string, string> }) {
-    return server!.app.inject({
+    return booted!.server.app.inject({
       method: "POST",
       url: `${session.prefix}/containers/create`,
       headers: session.auth,
@@ -160,55 +142,45 @@ describe("the session container engine", () => {
   }
 
   afterEach(async () => {
-    await server?.app.close();
-    server = undefined;
+    await booted?.server.app.close();
+    await booted?.store.dispose();
+    booted = undefined;
   });
 
-  it("points every session at its own engine, with a token the runner minted", async () => {
+  it("points every run of a session at its own engine, with a token the runner minted", async () => {
     await boot();
-    const { id } = await startSession();
-    const env = starts[0]!.env;
+    const { id, env } = await startSession();
     expect(env.TELO_HOST_CONTAINER_ENGINE_URL).toBe(`${INTERNAL_URL}/v1/sessions/${id}/engine`);
     expect(env.TELO_HOST_CONTAINER_ENGINE_TOKEN).toMatch(/^[a-z2-7]{32}$/);
   });
 
   it("gives a session nothing when the runner serves no engine", async () => {
     await boot(false);
-    const res = await server!.app.inject({
-      method: "POST",
-      url: "/v1/sessions",
-      payload: { ...SESSION_BODY, env: {} },
-    });
-    expect(res.statusCode).toBe(201);
-    expect(Object.keys(starts[0]!.env).filter((key) => key.startsWith("TELO_HOST_"))).toEqual([]);
-    const engineCall = await server!.app.inject({
-      method: "GET",
-      url: `/v1/sessions/${res.json().sessionId}/engine/v1.41/_ping`,
-    });
+    const { env, prefix } = await startSession();
+    expect(env).toEqual(RUN_BODY.env);
+    const engineCall = await booted!.server.app.inject({ method: "GET", url: `${prefix}/_ping` });
     expect(engineCall.statusCode).toBe(404);
   });
 
   it("is refused at boot over a backend that cannot run containers", async () => {
+    const store = await temporaryStore();
     await expect(
       buildServer({
-        backend: backend([]),
+        backend: new FakeWorkloadBackend(),
         config: config(true),
         version: "test",
-        capabilities: {
-          displayName: "test",
-          description: "test",
-          config: { schema: { type: "object" } },
-          features: { io: ["tty"], ports: true, watch: false },
-        },
+        capabilities: TEST_CAPABILITIES,
+        store: store.store,
       }),
     ).rejects.toThrow(RunnerConfigError);
+    await store.dispose();
   });
 
   it("refuses a request without the session's token, and a forged one", async () => {
     await boot();
     const session = await startSession();
-    const missing = await server!.app.inject({ method: "GET", url: `${session.prefix}/_ping` });
-    const forged = await server!.app.inject({
+    const missing = await booted!.server.app.inject({ method: "GET", url: `${session.prefix}/_ping` });
+    const forged = await booted!.server.app.inject({
       method: "GET",
       url: `${session.prefix}/_ping`,
       headers: { authorization: `Bearer ${"a".repeat(32)}` },
@@ -219,18 +191,18 @@ describe("the session container engine", () => {
   it("answers ping, image inspect and pull", async () => {
     await boot();
     const session = await startSession();
-    const ping = await server!.app.inject({ method: "GET", url: `${session.prefix}/_ping`, headers: session.auth });
-    const held = await server!.app.inject({
+    const ping = await booted!.server.app.inject({ method: "GET", url: `${session.prefix}/_ping`, headers: session.auth });
+    const held = await booted!.server.app.inject({
       method: "GET",
       url: `${session.prefix}/images/held:1/json`,
       headers: session.auth,
     });
-    const absent = await server!.app.inject({
+    const absent = await booted!.server.app.inject({
       method: "GET",
       url: `${session.prefix}/images/library/absent:1/json`,
       headers: session.auth,
     });
-    const pull = await server!.app.inject({
+    const pull = await booted!.server.app.inject({
       method: "POST",
       url: `${session.prefix}/images/create?fromImage=library/absent&tag=1`,
       headers: session.auth,
@@ -278,7 +250,7 @@ describe("the session container engine", () => {
   ])("refuses %j with a 400 naming %s", async (patch, field) => {
     await boot();
     const session = await startSession();
-    const res = await server!.app.inject({
+    const res = await booted!.server.app.inject({
       method: "POST",
       url: `${session.prefix}/containers/create`,
       headers: session.auth,
@@ -292,7 +264,7 @@ describe("the session container engine", () => {
   it("answers a field the backend cannot run with a 400 naming it", async () => {
     await boot();
     const session = await startSession();
-    const res = await server!.app.inject({
+    const res = await booted!.server.app.inject({
       method: "POST",
       url: `${session.prefix}/containers/create`,
       headers: session.auth,
@@ -313,8 +285,8 @@ describe("the session container engine", () => {
     await boot();
     const session = await startSession();
     const { Id } = (await createContainer(session)).json();
-    await server!.app.inject({ method: "POST", url: `${session.prefix}/containers/${Id}/start`, headers: session.auth });
-    const res = await server!.app.inject({
+    await booted!.server.app.inject({ method: "POST", url: `${session.prefix}/containers/${Id}/start`, headers: session.auth });
+    const res = await booted!.server.app.inject({
       method: "GET",
       url: `${session.prefix}/containers/${Id}/json`,
       headers: session.auth,
@@ -329,7 +301,7 @@ describe("the session container engine", () => {
     await boot();
     const session = await startSession();
     const { Id } = (await createContainer(session)).json();
-    const res = await server!.app.inject({
+    const res = await booted!.server.app.inject({
       method: "GET",
       url: `${session.prefix}/containers/${Id}/logs?follow=true&stdout=true&stderr=true`,
       headers: session.auth,
@@ -348,7 +320,7 @@ describe("the session container engine", () => {
     const session = await startSession();
     const { Id } = (await createContainer(session)).json();
     const list = (filters: object) =>
-      server!.app.inject({
+      booted!.server.app.inject({
         method: "GET",
         url: `${session.prefix}/containers/json?all=true&filters=${encodeURIComponent(JSON.stringify(filters))}`,
         headers: session.auth,
@@ -363,10 +335,10 @@ describe("the session container engine", () => {
     const other = await startSession();
     const { Id } = (await createContainer(owner)).json();
     const calls = await Promise.all([
-      server!.app.inject({ method: "GET", url: `${other.prefix}/containers/${Id}/json`, headers: other.auth }),
-      server!.app.inject({ method: "GET", url: `${other.prefix}/containers/${Id}/logs`, headers: other.auth }),
-      server!.app.inject({ method: "DELETE", url: `${other.prefix}/containers/${Id}`, headers: other.auth }),
-      server!.app.inject({
+      booted!.server.app.inject({ method: "GET", url: `${other.prefix}/containers/${Id}/json`, headers: other.auth }),
+      booted!.server.app.inject({ method: "GET", url: `${other.prefix}/containers/${Id}/logs`, headers: other.auth }),
+      booted!.server.app.inject({ method: "DELETE", url: `${other.prefix}/containers/${Id}`, headers: other.auth }),
+      booted!.server.app.inject({
         method: "GET",
         url: `${other.prefix}/containers/json?all=true`,
         headers: other.auth,
@@ -380,7 +352,7 @@ describe("the session container engine", () => {
   it("refuses a request outside the subset", async () => {
     await boot();
     const session = await startSession();
-    const res = await server!.app.inject({
+    const res = await booted!.server.app.inject({
       method: "POST",
       url: `${session.prefix}/containers/c1/exec`,
       headers: session.auth,
@@ -393,10 +365,14 @@ describe("the session container engine", () => {
     await boot();
     const session = await startSession();
     const { Id } = (await createContainer(session)).json();
-    await server!.app.inject({ method: "DELETE", url: `/v1/sessions/${session.id}` });
+    await booted!.server.app.inject({
+      method: "DELETE",
+      url: `/v1/sessions/${session.id}`,
+      headers: session.session,
+    });
     await expect.poll(() => engine.removed).toEqual([Id]);
     await expect.poll(() => engine.ended).toEqual([session.id]);
-    const after = await server!.app.inject({ method: "GET", url: `${session.prefix}/_ping`, headers: session.auth });
+    const after = await booted!.server.app.inject({ method: "GET", url: `${session.prefix}/_ping`, headers: session.auth });
     expect(after.statusCode).toBe(404);
   });
 
@@ -404,21 +380,52 @@ describe("the session container engine", () => {
     await boot();
     const session = await startSession();
     const { Id } = (await createContainer(session)).json();
-    server!.registry.emit(session.id, { type: "status", status: { kind: "suspended" } });
+    booted!.server.registry.emit(session.id, { type: "status", status: { kind: "suspended" } });
     await expect.poll(() => engine.removed).toEqual([Id]);
     expect(engine.ended).toEqual([]);
-    const after = await server!.app.inject({ method: "GET", url: `${session.prefix}/_ping`, headers: session.auth });
+    const after = await booted!.server.app.inject({ method: "GET", url: `${session.prefix}/_ping`, headers: session.auth });
     expect(after.statusCode).toBe(200);
   });
 
-  it("removes every container when the runner shuts down", async () => {
+  /** Close the runner and boot another over the same store and engine, with
+   *  the session's workload still there when `adoptable`. */
+  async function restart(sessionId: string, adoptable: boolean) {
+    const store = booted!.store;
+    await booted!.server.app.close();
+    const backend = new FakeWorkloadBackend({ containers: engine });
+    if (adoptable) backend.adoptable.set(sessionId, { tokens: {}, live: { app: "run-1" } });
+    booted = await bootTestServer({ backend, config: config(true) }, store);
+  }
+
+  it("keeps a live session's containers across a runner restart, still admitting the token its run holds", async () => {
     await boot();
     const session = await startSession();
     const { Id } = (await createContainer(session)).json();
-    await server!.app.close();
-    server = undefined;
-    expect(engine.removed).toEqual([Id]);
-    expect(engine.ended).toEqual([session.id]);
+    await restart(session.id, true);
+    expect([engine.removed, engine.ended]).toEqual([[], []]);
+
+    const inspect = await booted!.server.app.inject({
+      method: "GET",
+      url: `${session.prefix}/containers/${Id}/json`,
+      headers: session.auth,
+    });
+    expect(inspect.statusCode).toBe(200);
+
+    // Once the runs holding the old token are gone, it admits nothing.
+    booted!.server.registry.emit(session.id, { type: "status", status: { kind: "suspended" } });
+    await expect.poll(() => engine.removed).toEqual([Id]);
+    const after = await booted!.server.app.inject({ method: "GET", url: `${session.prefix}/_ping`, headers: session.auth });
+    expect(after.statusCode).toBe(403);
+  });
+
+  it("removes the containers of a session whose workload did not survive a runner restart", async () => {
+    await boot();
+    const session = await startSession();
+    const { Id } = (await createContainer(session)).json();
+    await restart(session.id, false);
+    expect(booted!.server.registry.get(session.id)!.status.kind).toBe("suspended");
+    await expect.poll(() => engine.removed).toEqual([Id]);
+    expect(engine.ended).toEqual([]);
   });
 });
 

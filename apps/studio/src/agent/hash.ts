@@ -5,8 +5,13 @@
  * Uses the browser SubtleCrypto (available in the editor and Tauri webviews).
  */
 export async function sha256Hex(text: string): Promise<string> {
-  const bytes = new TextEncoder().encode(text);
-  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return sha256HexOfBytes(new TextEncoder().encode(text));
+}
+
+/** sha256 hex of bytes — what the workspace surfaces hash a file by, so a
+ *  file that is not UTF-8 compares by what it holds. */
+export async function sha256HexOfBytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes as Uint8Array<ArrayBuffer>);
   const view = new Uint8Array(digest);
   let out = "";
   for (let i = 0; i < view.length; i++) out += view[i].toString(16).padStart(2, "0");

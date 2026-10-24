@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
+import { ownWorkspace } from "../agent-workspace";
+import { AgentClient } from "../client";
 import { AgentProvider, useAgent } from "../context";
 import { AGENT_PANEL_DEFAULT_WIDTH, loadConversationId, saveAgentSettings, saveConversationId } from "../storage";
 import {
@@ -15,18 +17,9 @@ import {
   type Answer,
 } from "./agent-harness";
 
-// The agent exists only once a send launches it: a fresh instance holding no
-// conversation, whatever id this workspace last pointed at.
-vi.mock("../launch", () => ({
-  AGENT_APP_NAME: "authoring-agent",
-  launchAgentSession: vi.fn(async () => ({
-    agentUrl: AGENT_URL,
-    sessionId: "s1",
-    deleteUrl: "http://runner.test/v1/sessions/s1",
-    stop: async () => undefined,
-  })),
-}));
-
+// The workspace's session is still coming up: its agent answers only after the
+// first send waits for it — a fresh instance holding no conversation, whatever
+// id this workspace last pointed at.
 beforeEach(() => {
   FakeEventStream.opened = [];
   saveAgentSettings({ overrideUrl: "", panelOpen: true, panelWidth: AGENT_PANEL_DEFAULT_WIDTH, questionCards: true });
@@ -42,11 +35,21 @@ function open() {
     wrapper: ({ children }: { children: ReactNode }) => <AgentProvider>{children}</AgentProvider>,
   });
   act(() => {
-    view.result.current.setRunner("http://runner.test");
+    view.result.current.setSessionAgent({ kind: "starting" });
     view.result.current.registerWorkspace(fakeWorkspaceBridge);
     view.result.current.setConversation("ws");
   });
   return view;
+}
+
+/** The session's agent comes up. */
+function agentAnswers(view: ReturnType<typeof open>) {
+  act(() =>
+    view.result.current.setSessionAgent({
+      kind: "ready",
+      agent: { sessionId: "s1", baseUrl: AGENT_URL, workspace: ownWorkspace(new AgentClient(AGENT_URL)) },
+    }),
+  );
 }
 
 const chatBody = (fetchMock: ReturnType<typeof stubAgent>) => {
@@ -54,7 +57,7 @@ const chatBody = (fetchMock: ReturnType<typeof stubAgent>) => {
   return JSON.parse(String(chat?.body));
 };
 
-describe("a workspace opened before any agent is reachable", () => {
+describe("a workspace opened while its session's agent is coming up", () => {
   const serving: Record<string, Answer> = {
     "GET /capabilities": capabilities(),
     "POST /conversations": { status: 201, body: conversation({ id: "n1", title: null, revision: 0 }) },
@@ -72,14 +75,17 @@ describe("a workspace opened before any agent is reachable", () => {
 
   it.each([
     ["no pointer", null],
-    ["a pointer the launched agent never held", "stale"],
-  ])("with %s, the first send creates the conversation on the launched agent and sends", async (pointerKind, pointer) => {
+    ["a pointer the session's agent never held", "stale"],
+  ])("with %s, the first send waits for the session's agent, creates the conversation there and sends", async (pointerKind, pointer) => {
     if (pointer) saveConversationId("ws", pointer);
     const fetchMock = stubAgent({ turns: [], next: null }, { ...serving });
-    const { result } = open();
+    const view = open();
+    const { result } = view;
     expect(result.current.draft).toBe(true);
 
     act(() => result.current.send("hello"));
+    await waitFor(() => expect(result.current.status).toBe("launching"));
+    agentAnswers(view);
 
     await waitFor(() => expect(requestsMade(fetchMock)).toContain("POST /chat"));
     const made = requestsMade(fetchMock);
@@ -93,9 +99,11 @@ describe("a workspace opened before any agent is reachable", () => {
   it("sends under the stored id to an agent that does not serve conversations", async () => {
     saveConversationId("ws", "kept");
     const fetchMock = stubAgent({ turns: [], next: null }, { "POST /chat": serving["POST /chat"] });
-    const { result } = open();
+    const view = open();
+    const { result } = view;
 
     act(() => result.current.send("hello"));
+    agentAnswers(view);
 
     await waitFor(() => expect(requestsMade(fetchMock)).toContain("POST /chat"));
     expect(requestsMade(fetchMock)).not.toContain("POST /conversations");
@@ -106,13 +114,15 @@ describe("a workspace opened before any agent is reachable", () => {
   it("New conversation before any agent drops the pointer, and the first send creates", async () => {
     saveConversationId("ws", "stale");
     const fetchMock = stubAgent({ turns: [], next: null }, { ...serving });
-    const { result } = open();
+    const view = open();
+    const { result } = view;
 
     act(() => result.current.clearConversation());
     expect(result.current.draft).toBe(true);
     expect(loadConversationId("ws")).toBeNull();
 
     act(() => result.current.send("hello"));
+    agentAnswers(view);
 
     await waitFor(() => expect(requestsMade(fetchMock)).toContain("POST /chat"));
     expect(chatBody(fetchMock)).toEqual({ conversationId: "n1", message: "hello" });

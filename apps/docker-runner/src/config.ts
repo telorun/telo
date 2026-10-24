@@ -1,4 +1,9 @@
-import { loadCoreConfig, RunnerConfigError, type RunnerCoreConfig } from "@telorun/runner-core";
+import {
+  loadCoreConfig,
+  requireStateDirectory,
+  RunnerConfigError,
+  type RunnerCoreConfig,
+} from "@telorun/runner-core";
 import { loadTeloImageSource, type TeloImageSource } from "@telorun/runner-core/container";
 
 export { RunnerConfigError };
@@ -50,8 +55,11 @@ export function loadRunnerConfig(env: NodeJS.ProcessEnv): RunnerConfig {
     }
   }
 
+  const core = loadCoreConfig(env, { port: 8061 });
+  requireStateDirectory(core.sessionStore);
+
   return {
-    ...loadCoreConfig(env, { port: 8061 }),
+    ...core,
     bundleRoot: env.BUNDLE_ROOT?.trim() || "/bundles",
     bundleVolume,
     childNetwork,

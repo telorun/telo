@@ -11,7 +11,7 @@ metadata:
     sends it, so the refusal is not a resolver that reads nothing. Offline and
     key-free.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
@@ -60,8 +60,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18588 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18586/v1
           secrets:
             openaiApiKey: stub-key
@@ -74,7 +76,7 @@ steps:
       with:
         - kind: SQLite.Connection
           metadata: { name: seedDb }
-          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+          file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
         - kind: Sql.Command
           metadata: { name: seedCommand }
           connection: !ref seedDb
@@ -93,7 +95,7 @@ steps:
           journal: !ref seedJournal
         - kind: BlobFs.Store
           metadata: { name: uploads }
-          root: !cel "variables.scratch.joinPath('.telo-agent').joinPath('attachments')"
+          root: !cel "variables.scratch.joinPath('agent-state').joinPath('attachments')"
         - kind: Blob.Put
           metadata: { name: putUpload }
           store: !ref uploads
@@ -156,8 +158,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18589 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18586/v1
           secrets:
             openaiApiKey: stub-key

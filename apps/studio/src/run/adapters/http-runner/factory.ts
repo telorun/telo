@@ -1,23 +1,30 @@
 import type { JSONSchema7 } from "json-schema";
 
+import { challengeParam } from "../../identity-credentials";
+import type { RunnerCredentials } from "../../runner-credentials";
 import {
-  isTerminal,
+  RunnerRefusal,
+  SessionGoneError,
   TeloVersionRefusedError,
   TermsRequiredError,
+  type AdoptedSession,
   type AvailabilityReport,
   type ConfigIssue,
+  type CreatedSession,
+  type ListedSession,
   type RunAdapter,
-  type RunEvent,
   type RunnerCapabilities,
-  type RunnerTerms,
+  type RunnerConnection,
   type RunnerEndpoint,
-  type RunSession,
+  type RunnerSession,
+  type RunnerTerms,
   type RunStatus,
+  type SessionDocument,
   type WorkspaceChangeSet,
   type WorkspaceFileEntry,
 } from "../../types";
 import { makeHttpRunnerIo } from "./io-client";
-import { openSseClient } from "./sse-client";
+import { openSessionEvents } from "./sse-client";
 
 const HEALTH_TIMEOUT_MS = 2_000;
 /** Workspace writes and reloads travel to the container and back, so they get a
@@ -29,19 +36,19 @@ const WORKSPACE_TIMEOUT_MS = 30_000;
  *  depend on the Node-only `@telorun/runner-core` package. */
 const ACCEPTED_TERMS_HEADER = "x-telo-accepted-terms";
 
-interface CreateSessionResponse {
-  sessionId: string;
-  streamUrl: string;
-  createdAt: string;
-}
-
 interface ErrorResponse {
   error: string;
   message?: string;
   stage?: string;
   daemonMessage?: string;
-  /** Why a `telo_version_*` refusal was made, in the runner's words. */
+  /** Why a `telo_version_*` refusal was made, in the runner's words, and the
+   *  app and version it was made for. */
   reason?: string;
+  app?: unknown;
+  version?: unknown;
+  /** The current terms, on a `428 terms_required`. */
+  terms?: RunnerTerms;
+  [key: string]: unknown;
 }
 
 function withoutProperties(
@@ -55,9 +62,10 @@ function withoutProperties(
 /**
  * Every runner adapter speaks the identical `/v1` HTTP+SSE contract — they
  * differ only in their config shape and the `config` payload they send. This
- * factory owns the shared wire logic (health/probe, session start, SSE +
- * WebSocket PTY wiring) so docker-runner and k8s adapters can't drift, mirroring
- * the server-side runner-core extraction.
+ * factory owns the shared wire logic (health/probe, the session routes, the
+ * event stream and the byte channel, every request authorized through the
+ * session's credentials) so the adapters can't drift, mirroring the
+ * server-side runner-core extraction.
  */
 export interface HttpRunnerAdapterOptions<Config extends { baseUrl: string }> {
   id: string;
@@ -159,301 +167,267 @@ export function createHttpRunnerAdapter<Config extends { baseUrl: string }>(
       return report;
     },
 
-    async start(request, config): Promise<RunSession> {
-      const base = trimTrailingSlash(config.baseUrl);
+    async connect(config): Promise<RunnerConnection> {
+      const issue = validateBaseUrl(config.baseUrl);
+      if (issue) throw new Error(issue.message);
+      return createConnection(trimTrailingSlash(config.baseUrl), opts.buildRequestConfig(config), opts.startTimeoutMs);
+    },
+  };
+}
 
+function createConnection(
+  base: string,
+  requestConfig: Record<string, unknown>,
+  startTimeoutMs: number,
+): RunnerConnection {
+  return {
+    baseUrl: base,
+    async createSession(request, { acceptedTermsVersion, withheldConfig, credentials }): Promise<CreatedSession> {
       const headers: Record<string, string> = { "content-type": "application/json" };
-      if (request.acceptedTermsVersion) {
-        headers[ACCEPTED_TERMS_HEADER] = request.acceptedTermsVersion;
-      }
-
-      const createRes = await fetchWithTimeout(
-        `${base}/v1/sessions`,
+      if (acceptedTermsVersion) headers[ACCEPTED_TERMS_HEADER] = acceptedTermsVersion;
+      const res = await authorizedFetch(
+        base,
+        credentials,
+        "POST",
+        "/v1/sessions",
         {
-          method: "POST",
           headers,
           body: JSON.stringify({
-            bundle: request.bundle,
-            env: request.env ?? {},
-            ports: request.ports ?? [],
-            config: withoutProperties(opts.buildRequestConfig(config), request.withheldConfig),
-            ...(request.telo !== undefined ? { telo: request.telo } : {}),
-            // Always request the debug stream so the run view's Debug panel is
-            // populated; the runner relays it over this same session stream.
-            inspect: true,
-            // Omitted for a plain run, so a runner too old to know the field is
-            // unaffected. A runner with watch disabled rejects it with 400.
-            ...(request.mode === "watch" ? { mode: "watch" } : {}),
-            // Only ever sent alongside `watch` — the runner rejects the pairing
-            // otherwise, and the caller only sets it from `features.agents`.
-            ...(request.mode === "watch" && request.agent ? { agent: request.agent } : {}),
+            workspace: request.workspace,
+            apps: request.apps,
+            config: withoutProperties(requestConfig, withheldConfig),
+            ...(request.agent ? { agent: request.agent } : {}),
           }),
         },
-        opts.startTimeoutMs,
+        startTimeoutMs,
+        "create the session",
       );
-
-      // The runner enforces its terms — if unacknowledged it replies 428 with the
-      // current terms. Surface them so the caller can gate and retry.
-      if (createRes.status === 428) {
-        let payload: { terms?: RunnerTerms } | null = null;
-        try {
-          payload = (await createRes.json()) as { terms?: RunnerTerms };
-        } catch {
-          // fall through to a generic error below
-        }
-        if (payload?.terms) throw new TermsRequiredError(payload.terms);
-        throw new Error("Runner requires accepting its terms before running.");
+      if (res.status === 201) {
+        const body = (await res.json()) as { sessionId: string; resumeSecret?: string };
+        return {
+          kind: "created",
+          sessionId: body.sessionId,
+          ...(body.resumeSecret ? { resumeSecret: body.resumeSecret } : {}),
+        };
       }
-
-      if (!createRes.ok) {
-        let err: ErrorResponse | null = null;
-        try {
-          err = (await createRes.json()) as ErrorResponse;
-        } catch {
-          // fall through
-        }
-        const message = err?.daemonMessage ?? err?.message ?? `runner returned HTTP ${createRes.status}`;
-        if (
-          request.telo !== undefined &&
-          (err?.error === "telo_version_unavailable" || err?.error === "telo_version_unsupported")
-        ) {
-          throw new TeloVersionRefusedError(err.error, request.telo, err.reason ?? message);
-        }
-        throw new Error(message);
+      const refusal = await refusalOf(res, "create the session");
+      if (refusal instanceof RunnerRefusal && refusal.code === "session_exists") {
+        const existing = refusal.body.sessionId;
+        if (typeof existing === "string") return { kind: "exists", sessionId: existing };
       }
+      throw refusal;
+    },
 
-      const { sessionId, streamUrl } = (await createRes.json()) as CreateSessionResponse;
-      return buildSession({
+    async listSessions(workspace, credentials): Promise<ListedSession[]> {
+      const res = await authorizedFetch(
         base,
-        sessionId,
-        streamUrl,
-        initialStatus: { kind: "starting" },
-        isWatch: request.mode === "watch",
+        credentials,
+        "GET",
+        "/v1/sessions",
+        { query: `workspace=${encodeURIComponent(workspace)}` },
+        WORKSPACE_TIMEOUT_MS,
+        "list your sessions",
+      );
+      if (!res.ok) throw await refusalOf(res, "list your sessions");
+      const body = (await res.json()) as { sessions?: unknown };
+      if (!Array.isArray(body.sessions)) throw new Error("The runner listed no sessions array.");
+      return body.sessions.filter(
+        (s): s is ListedSession =>
+          typeof s === "object" && s !== null && typeof (s as ListedSession).sessionId === "string",
+      );
+    },
+
+    async adoptSession(sessionId, resumeSecret, credentials): Promise<AdoptedSession> {
+      const res = await authorizedFetch(
+        base,
+        credentials,
+        "POST",
+        `/v1/sessions/${encodeURIComponent(sessionId)}/owner`,
+        { headers: { "content-type": "application/json" }, body: JSON.stringify({ resumeSecret }) },
+        WORKSPACE_TIMEOUT_MS,
+        "adopt the session",
+      );
+      if (res.ok) {
+        const body = (await res.json()) as { sessionId?: unknown };
+        return { kind: "adopted", sessionId: typeof body.sessionId === "string" ? body.sessionId : sessionId };
+      }
+      const refusal = await refusalOf(res, "adopt the session", { sessionRoute: true });
+      if (refusal instanceof SessionGoneError) return { kind: "gone" };
+      if (refusal instanceof RunnerRefusal && refusal.code === "session_exists") {
+        const existing = refusal.body.sessionId;
+        if (typeof existing === "string") return { kind: "exists", sessionId: existing };
+      }
+      throw refusal;
+    },
+
+    session(sessionId, credentials): RunnerSession {
+      return createSession(base, sessionId, credentials, startTimeoutMs);
+    },
+  };
+}
+
+function createSession(
+  base: string,
+  sessionId: string,
+  credentials: RunnerCredentials,
+  startTimeoutMs: number,
+): RunnerSession {
+  const path = `/v1/sessions/${encodeURIComponent(sessionId)}`;
+  // Where this session's event stream got to, across the streams opened on it.
+  const cursor = { value: 0 };
+  const call = async (
+    method: string,
+    route: string,
+    what: string,
+    init: { body?: unknown; query?: string; timeoutMs?: number } = {},
+  ): Promise<Response> => {
+    const res = await authorizedFetch(
+      base,
+      credentials,
+      method,
+      `${path}${route}`,
+      {
+        ...(init.query ? { query: init.query } : {}),
+        ...(init.body !== undefined
+          ? { headers: { "content-type": "application/json" }, body: JSON.stringify(init.body) }
+          : {}),
+      },
+      init.timeoutMs ?? WORKSPACE_TIMEOUT_MS,
+      what,
+    );
+    if (!res.ok) throw await refusalOf(res, what, { sessionRoute: true });
+    return res;
+  };
+
+  return {
+    id: sessionId,
+
+    async read(): Promise<SessionDocument> {
+      const res = await call("GET", "", "read the session");
+      const doc = (await res.json()) as SessionDocument;
+      return { ...doc, status: fillEndpointHost(doc.status, base) };
+    },
+    async resume() {
+      await call("POST", "/resume", "resume the session", { timeoutMs: startTimeoutMs });
+    },
+    async suspend() {
+      await call("POST", "/suspend", "suspend the session");
+    },
+    async setApps(apps) {
+      await call("PUT", "/apps", "change the session's applications", {
+        body: { apps },
+        timeoutMs: startTimeoutMs,
       });
     },
-
-    async attach(sessionId, config): Promise<RunSession | null> {
-      const base = trimTrailingSlash(config.baseUrl);
-
-      let res: Response;
-      try {
-        res = await fetchWithTimeout(
-          `${base}/v1/sessions/${sessionId}`,
-          { method: "GET" },
-          HEALTH_TIMEOUT_MS * 3,
-        );
-      } catch {
-        throw new Error(`Couldn't reach the runner at ${config.baseUrl}.`);
-      }
-      // The session is gone — evicted past its TTL, or the runner restarted.
-      // The caller keeps the history entry but marks it unavailable.
-      if (res.status === 404) return null;
-      if (!res.ok) {
-        throw new Error(`Runner returned HTTP ${res.status} on /v1/sessions/${sessionId}.`);
-      }
-      const { status, mode } = (await res.json()) as { status: RunStatus; mode?: string };
-
-      return buildSession({
-        base,
-        sessionId,
-        streamUrl: `/v1/sessions/${sessionId}/events`,
-        initialStatus: fillEndpointHost(status, base),
-        // The re-hydrated record is empty, so replay console + events from the
-        // start instead of from the prior tab's checkpoint.
-        replayFromStart: true,
-        // The session document is authoritative about what kind of session this
-        // is — a reload has no memory of what was requested.
-        isWatch: mode === "watch",
+    async setAgent(name) {
+      await call("PUT", "/agent", "change the session's agent", { body: { name }, timeoutMs: startTimeoutMs });
+    },
+    async runApp(app, request) {
+      const res = await call("POST", `/apps/${encodeURIComponent(app)}/run`, `run '${app}'`, {
+        body: request,
+        timeoutMs: startTimeoutMs,
       });
+      const { runId } = (await res.json()) as { runId: string };
+      return runId;
     },
-
-    async probeSession(sessionId, config): Promise<RunStatus | null> {
-      const base = trimTrailingSlash(config.baseUrl);
-
-      let res: Response;
-      try {
-        res = await fetchWithTimeout(
-          `${base}/v1/sessions/${sessionId}`,
-          { method: "GET" },
-          HEALTH_TIMEOUT_MS * 3,
-        );
-      } catch {
-        throw new Error(`Couldn't reach the runner at ${config.baseUrl}.`);
-      }
-      if (res.status === 404) return null;
-      if (!res.ok) {
-        throw new Error(`Runner returned HTTP ${res.status} on /v1/sessions/${sessionId}.`);
-      }
-      const { status } = (await res.json()) as { status: RunStatus };
-      return fillEndpointHost(status, base);
+    async stopApp(app) {
+      await call("POST", `/apps/${encodeURIComponent(app)}/stop`, `stop '${app}'`);
     },
-
-    async stopSession(sessionId, config): Promise<void> {
-      await deleteSession(trimTrailingSlash(config.baseUrl), sessionId);
+    async reload(app) {
+      await call("POST", "/reload", `reload '${app}'`, { query: `app=${encodeURIComponent(app)}` });
+    },
+    async workspaceTree(): Promise<WorkspaceFileEntry[]> {
+      const res = await call("GET", "/workspace", "read the workspace");
+      const body = (await res.json()) as { files?: WorkspaceFileEntry[] };
+      // No list is not an empty workspace: read as one, the sync would delete
+      // the editor's files.
+      if (!Array.isArray(body.files)) {
+        throw new Error("Couldn't read the workspace — runner returned no file list.");
+      }
+      return body.files;
+    },
+    async readWorkspaceFile(file: string): Promise<string> {
+      const res = await call("GET", "/workspace/file", `read '${file}'`, {
+        query: `path=${encodeURIComponent(file)}`,
+      });
+      const body = (await res.json()) as { content?: unknown };
+      return typeof body.content === "string" ? body.content : "";
+    },
+    async applyWorkspace(changes: WorkspaceChangeSet) {
+      await call("POST", "/workspace", "sync the workspace", { body: changes });
+    },
+    subscribe(onEvent, onClosed) {
+      const stream = openSessionEvents({
+        url: `${base}${path}/events`,
+        credentials,
+        cursor,
+        onEvent: (event) =>
+          onEvent(event.type === "status" ? { ...event, status: fillEndpointHost(event.status, base) } : event),
+        onClosed,
+      });
+      return () => stream.close();
+    },
+    io(app, fromSeq) {
+      return makeHttpRunnerIo({
+        url: `${base.replace(/^http(s?):/i, "ws$1:")}${path}/io`,
+        fromSeq,
+        async ticket() {
+          const res = await call("POST", "/io-tickets", `open '${app}'s terminal`, { body: { app } });
+          const { ticket } = (await res.json()) as { ticket: string };
+          return ticket;
+        },
+      });
     },
   };
 }
 
 /**
- * DELETE a session, resolving once it is no longer running. A runner that never
- * had the id answers 204, one that models it as absent answers 404 — both are
- * the outcome the caller asked for, so neither is an error. Only an answer that
- * leaves the session's fate unknown throws.
+ * The error a refused request stands for, in the runner's words. On a session
+ * route a `404 not_found` is the session gone for these credentials, which the
+ * caller answers by creating a new one.
  */
-async function deleteSession(base: string, sessionId: string): Promise<void> {
-  const res = await fetchWithTimeout(
-    `${base}/v1/sessions/${sessionId}`,
-    { method: "DELETE" },
-    HEALTH_TIMEOUT_MS * 3,
-  );
-  if (res.ok || res.status === 404) return;
-  throw new Error(await describeFailure(res, "stop the session"));
-}
-
-interface BuildSessionArgs {
-  base: string;
-  sessionId: string;
-  streamUrl: string;
-  initialStatus: RunStatus;
-  replayFromStart?: boolean;
-  isWatch?: boolean;
-}
-
-/** Wires the SSE event stream + WebSocket PTY channel for a session that already
- *  exists on the runner, shared by `start` (fresh POST) and `attach` (resume
- *  after reload). The only difference between the two is where the session id
- *  comes from and whether replay starts from zero. */
-function buildSession(args: BuildSessionArgs): RunSession {
-  const { base, sessionId, streamUrl, initialStatus, replayFromStart, isWatch } = args;
-
-  let currentStatus: RunStatus = initialStatus;
-  const subscribers = new Set<(event: RunEvent) => void>();
-  const emit = (event: RunEvent): void => {
-    for (const sub of subscribers) sub(event);
-  };
-
-  const client = openSseClient({
-    url: `${base}${streamUrl}`,
-    sessionId,
-    replayFromStart,
-    onEvent: (event) => {
-      const next =
-        event.type === "status"
-          ? { ...event, status: fillEndpointHost(event.status, base) }
-          : event;
-      if (next.type === "status") currentStatus = next.status;
-      emit(next);
-    },
-    onError: () => {
-      if (isTerminal(currentStatus)) return;
-      const failed: RunStatus = { kind: "failed", message: "Runner stream closed unexpectedly." };
-      currentStatus = failed;
-      emit({ type: "status", status: failed });
-    },
-  });
-
-  const wsBase = base.replace(/^http(s?):/i, "ws$1:");
-  const io = makeHttpRunnerIo({
-    url: `${wsBase}/v1/sessions/${sessionId}/io`,
-    sessionId,
-    replayFromStart,
-  });
-
-  return {
-    id: sessionId,
-    getStatus: () => currentStatus,
-    subscribe(listener) {
-      subscribers.add(listener);
-      return () => {
-        subscribers.delete(listener);
-      };
-    },
-    io,
-    async stop() {
-      try {
-        await fetchWithTimeout(`${base}/v1/sessions/${sessionId}`, { method: "DELETE" }, HEALTH_TIMEOUT_MS * 3);
-      } catch (err) {
-        client.close();
-        throw err;
-      }
-    },
-    // The three below exist only on a watch session — the routes 409 on a run
-    // session, so gating them here keeps the failure at the call site rather
-    // than on the wire.
-    ...(isWatch
-      ? {
-          isWatch: true as const,
-          async syncWorkspace(changes: WorkspaceChangeSet) {
-            const res = await fetchWithTimeout(
-              `${base}/v1/sessions/${sessionId}/workspace`,
-              {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify(changes),
-              },
-              WORKSPACE_TIMEOUT_MS,
-            );
-            if (!res.ok) throw new Error(await describeFailure(res, "sync the workspace"));
-          },
-          async workspaceTree(): Promise<WorkspaceFileEntry[]> {
-            const res = await fetchWithTimeout(
-              `${base}/v1/sessions/${sessionId}/workspace`,
-              { method: "GET" },
-              WORKSPACE_TIMEOUT_MS,
-            );
-            if (!res.ok) throw new Error(await describeFailure(res, "read the workspace"));
-            const body = (await res.json()) as { files?: WorkspaceFileEntry[] };
-            // No list is not an empty workspace: read as one, the sync would
-            // delete the editor's files.
-            if (!Array.isArray(body.files)) {
-              throw new Error("Couldn't read the workspace — runner returned no file list.");
-            }
-            return body.files;
-          },
-          async readWorkspaceFile(path: string): Promise<string> {
-            const res = await fetchWithTimeout(
-              `${base}/v1/sessions/${sessionId}/workspace/file?path=${encodeURIComponent(path)}`,
-              { method: "GET" },
-              WORKSPACE_TIMEOUT_MS,
-            );
-            if (!res.ok) throw new Error(await describeFailure(res, `read '${path}'`));
-            const body = (await res.json()) as { content?: unknown };
-            return typeof body.content === "string" ? body.content : "";
-          },
-          async reload() {
-            const res = await fetchWithTimeout(
-              `${base}/v1/sessions/${sessionId}/reload`,
-              { method: "POST" },
-              WORKSPACE_TIMEOUT_MS,
-            );
-            if (!res.ok) throw new Error(await describeFailure(res, "reload"));
-          },
-          async resume(): Promise<boolean> {
-            const res = await fetchWithTimeout(
-              `${base}/v1/sessions/${sessionId}/resume`,
-              { method: "POST" },
-              WORKSPACE_TIMEOUT_MS,
-            );
-            // A suspended checkpoint lives in the runner's memory, so a restart
-            // loses it. That is by design: the editor holds the authoritative
-            // workspace, so `false` means "start a fresh session", not "error".
-            if (res.status === 404 || res.status === 409) return false;
-            if (!res.ok) throw new Error(await describeFailure(res, "resume"));
-            return true;
-          },
-        }
-      : {}),
-  };
-}
-
-async function describeFailure(res: Response, what: string): Promise<string> {
-  let payload: ErrorResponse | null = null;
+async function refusalOf(
+  res: Response,
+  what: string,
+  options: { sessionRoute?: boolean } = {},
+): Promise<Error> {
+  let body: ErrorResponse | null = null;
   try {
-    payload = (await res.json()) as ErrorResponse;
+    body = (await res.json()) as ErrorResponse;
   } catch {
     // fall through to the status code
   }
-  return payload?.message ?? `Couldn't ${what} — runner returned HTTP ${res.status}.`;
+  if (res.status === 428 && body?.terms) return new TermsRequiredError(body.terms);
+  if (options.sessionRoute && res.status === 404 && body?.error === "not_found") return new SessionGoneError();
+  const challenge = res.headers.get("www-authenticate");
+  const code = body?.error ?? (challenge ? challengeParam(challenge, "error") : null) ?? `http_${res.status}`;
+  const said = body?.daemonMessage ?? body?.message ?? (challenge ? challengeParam(challenge, "error_description") : null);
+  if (code === "identity_provider_unavailable") {
+    return new RunnerRefusal(
+      res.status,
+      code,
+      `The runner cannot reach the identity provider to check your sign-in${said ? `: ${said}` : ""}. Try again.`,
+      { ...(body ?? {}) },
+    );
+  }
+  if (code === "invalid_token" || code === "invalid_dpop_proof") {
+    return new RunnerRefusal(
+      res.status,
+      code,
+      `The runner refused your sign-in (${code})${said ? `: ${said}` : "."}`,
+      { ...(body ?? {}) },
+    );
+  }
+  const message = said ?? `Couldn't ${what} — runner returned HTTP ${res.status}.`;
+  if (body?.error === "telo_version_unavailable" || body?.error === "telo_version_unsupported") {
+    return new TeloVersionRefusedError(
+      body.error,
+      typeof body.version === "string" ? body.version : undefined,
+      body.reason ?? message,
+      typeof body.app === "string" ? body.app : undefined,
+    );
+  }
+  return new RunnerRefusal(res.status, code, message, { ...(body ?? {}) });
 }
 
 export function validateBaseUrl(raw: string): ConfigIssue | null {
@@ -467,6 +441,45 @@ export function validateBaseUrl(raw: string): ConfigIssue | null {
   } catch {
     return { path: "/baseUrl", message: "Runner URL is not a valid URL." };
   }
+}
+
+/**
+ * One request authorized by `credentials` (none: unauthenticated). Headers are
+ * asked per attempt, and a refusal the credentials can repair — an expired
+ * token — is tried once more with new ones. A credential that cannot be had
+ * fails in its own words; only a request that never got an answer is
+ * "couldn't reach".
+ */
+async function authorizedFetch(
+  base: string,
+  credentials: RunnerCredentials | undefined,
+  method: string,
+  route: string,
+  init: { headers?: Record<string, string>; body?: string; query?: string },
+  timeoutMs: number,
+  what: string,
+): Promise<Response> {
+  const url = base + route;
+  const attempt = async (): Promise<Response> => {
+    const authorization = credentials ? await credentials.headers({ method, url }) : {};
+    try {
+      return await fetchWithTimeout(
+        init.query ? `${url}?${init.query}` : url,
+        {
+          method,
+          headers: { ...authorization, ...init.headers },
+          ...(init.body !== undefined ? { body: init.body } : {}),
+        },
+        timeoutMs,
+      );
+    } catch {
+      throw new Error(`Couldn't reach the runner at ${base} to ${what}.`);
+    }
+  };
+  const first = await attempt();
+  if (first.ok || !credentials?.retry || !(await credentials.retry(first))) return first;
+  await first.body?.cancel();
+  return attempt();
 }
 
 function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {

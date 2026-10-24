@@ -32,7 +32,7 @@ export function engineRoute(containers: SessionContainers): FastifyPluginAsync {
   return async (app: FastifyInstance) => {
     const base = `/v1/sessions/:id/engine/${API_VERSION}`;
 
-    app.addHook("preClose", async () => containers.releaseAll());
+    app.addHook("preClose", async () => containers.shutdown());
 
     app.get<{ Params: Params }>(`${base}/_ping`, async (req, reply) => {
       if (!admit(containers, req, reply)) return;

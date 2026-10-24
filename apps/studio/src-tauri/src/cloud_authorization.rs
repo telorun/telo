@@ -19,8 +19,15 @@ pub const CLIENT_ID: &str = "telo-studio-desktop";
 /// What Studio does in Telo Cloud: act in the user's projects (`cloud:projects.admin`), create one
 /// (`cloud:projects.create`) and claim the organization's registry namespace, which a first
 /// project needs (`cloud:registry.manage`). A token carries only those the user's role holds.
-const SCOPE: &str = "openid profile email offline_access cloud:access cloud:projects.admin \
+pub const SCOPE: &str = "openid profile email offline_access cloud:access cloud:projects.admin \
      cloud:projects.create cloud:registry.manage";
+/// A runner authorization names the runner as its resource and asks for
+/// nothing else: a refresh token for that runner.
+pub const RUNNER_SCOPE: &str = "offline_access";
+/// The OpenID Connect errors a `prompt=none` authorization answers when the
+/// user has to take part.
+const INTERACTION_ERRORS: [&str; 4] =
+    ["login_required", "consent_required", "interaction_required", "account_selection_required"];
 const CALLBACK_PATH: &str = "/callback";
 const AUTHORIZATION_WINDOW: Duration = Duration::from_secs(5 * 60);
 const REQUEST_HEAD_LIMIT: usize = 16 * 1024;
@@ -38,8 +45,14 @@ pub struct AuthorizationRequest {
 }
 
 impl AuthorizationRequest {
-    /// Binds the loopback port first: the redirect URI names it.
-    pub async fn bind(accounts_url: &str, resource: &str) -> Result<Self, CloudError> {
+    /// Binds the loopback port first: the redirect URI names it. `prompt` is
+    /// `none` for an authorization that must not ask the user anything.
+    pub async fn bind(
+        accounts_url: &str,
+        resource: &str,
+        scope: &str,
+        prompt: Option<&str>,
+    ) -> Result<Self, CloudError> {
         let listener = TcpListener::bind(("127.0.0.1", 0)).await.map_err(|error| {
             CloudError::authorization_failed(format!(
                 "Could not listen on 127.0.0.1 for the sign-in callback: {error}"
@@ -65,12 +78,15 @@ impl AuthorizationRequest {
             .append_pair("response_type", "code")
             .append_pair("client_id", CLIENT_ID)
             .append_pair("redirect_uri", &redirect_uri)
-            .append_pair("scope", SCOPE)
+            .append_pair("scope", scope)
             .append_pair("state", &state)
             .append_pair("nonce", &nonce)
             .append_pair("code_challenge", &code_challenge(&code_verifier))
             .append_pair("code_challenge_method", "S256")
             .append_pair("resource", resource);
+        if let Some(prompt) = prompt {
+            url.query_pairs_mut().append_pair("prompt", prompt);
+        }
 
         Ok(Self {
             url: url.into(),
@@ -200,7 +216,12 @@ async fn serve_connection(
                 if let Some(description) = description.filter(|text| !text.is_empty()) {
                     message.push_str(&format!(" ({})", truncated(&description)));
                 }
-                ("200 OK", FAILED_PAGE, Some(Err(CloudError::authorization_denied(message))))
+                let error = if INTERACTION_ERRORS.contains(&error.as_str()) {
+                    CloudError::interaction_required(message)
+                } else {
+                    CloudError::authorization_denied(message)
+                };
+                ("200 OK", FAILED_PAGE, Some(Err(error)))
             }
             Callback::NotFound => ("404 Not Found", NOT_FOUND_PAGE, None),
             Callback::Rejected => ("400 Bad Request", REJECTED_PAGE, None),
@@ -320,7 +341,9 @@ mod tests {
     #[tokio::test]
     async fn the_wait_ends_only_on_the_callback_carrying_its_state() {
         let request =
-            AuthorizationRequest::bind(ISSUER, "https://console.telo.cloud/api").await.unwrap();
+            AuthorizationRequest::bind(ISSUER, "https://console.telo.cloud/api", SCOPE, None)
+                .await
+                .unwrap();
         let authorize = Url::parse(&request.url).unwrap();
         let parameter = |name: &str| {
             authorize.query_pairs().find(|(key, _)| key == name).unwrap().1.into_owned()

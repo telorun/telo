@@ -42,6 +42,9 @@ function fakeBridge(
     async readFile(path) {
       return files.get(path) ?? "";
     },
+    async readBytes(path) {
+      return new TextEncoder().encode(files.get(path) ?? "");
+    },
     async probeFile(path) {
       const text = files.get(path);
       return text === undefined ? { kind: "missing" } : { kind: "text", text };

@@ -8,9 +8,10 @@ metadata:
   description: >-
     Runs another application as a resource of this one: supervise several applications
     from a single manifest, or stand one up for the length of a test and call it over
-    the network. The child's own variables, secrets and ports are supplied by name and
-    validated by the child; its exit code is reported as observed state, and it is shut
-    down cleanly when the scope that declared it ends.
+    the network. The child's own variables, secrets, ports and needs — its storage
+    among them — are supplied by name and validated by the child; its exit code is
+    reported as observed state, and it is shut down cleanly when the scope that
+    declared it ends.
 requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
@@ -23,9 +24,12 @@ requires:
   # this module stands on: a start that resolves once the child is listening, and
   # the child's input and output reachable as a text channel.
   #
-  # 0.93.0 is the release that will carry them — forward-declared, because 0.92.0
-  # is the newest published one and has none of it.
-  telo: ">=0.93.0"
+  # 0.93.0 carried them. `needs:` rests on the same seam: before 0.123.0 a
+  # child's needs could not be supplied by name, so a `needs:` entry here would
+  # reach the child as nothing and it would read its needs from its own
+  # environment instead. 0.123.0 is the release that will carry it —
+  # forward-declared, because 0.122.0 is the newest published one.
+  telo: ">=0.123.0"
 imports:
   Channel: ../channel
 exports:
@@ -45,7 +49,7 @@ metadata:
   description: >-
     Starts the application at the given location when this resource runs, and shuts it
     down when the scope holding it ends. Values for the child's declared variables,
-    secrets and ports are supplied by name and validated against its own declarations.
+    secrets, ports and needs are supplied by name and validated against its own declarations.
     The application stays up while a child runs; once a child exits, its exit code is
     reported and it stops holding.
 capability: Telo.Service
@@ -77,14 +81,16 @@ schema:
         Where the child application's manifest is: a path relative to the module
         declaring this resource, or a published module reference. Always a literal —
         a location computed at run time cannot be resolved, pinned or checked before
-        the application starts.
-
-        NOT CHECKED STATICALLY YET: whether it resolves, whether it is an
-        application, and whether the values below name inputs it declares are all
-        decided when the child boots. Checking them at `telo check` needs the child's
-        manifest in hand while analysing this one, which is an edge the loader does
-        not yet follow.
+        the application starts. `telo check` follows it: a source that does not
+        resolve or is not an application is refused here, and every name under
+        `variables`, `secrets`, `ports` and `needs` is held to what the child
+        declares before anything runs.
       type: string
+      x-telo-application-source:
+        variables: /variables
+        secrets: /secrets
+        ports: /ports
+        needs: /needs
     variables:
       title: Variables
       description: >-
@@ -121,4 +127,23 @@ schema:
       additionalProperties:
         type: integer
         x-telo-type: Telo.TcpPort
+      x-telo-eval: compile
+    needs:
+      title: Needs
+      description: >-
+        Fulfilments of the child's own `needs:`, keyed by the child's need name —
+        each a `!ref` to a need or fulfilment of this module, handed over whole, or a
+        map of the need type's fields. A need supplied here is answered before the
+        child's environment and host values; the fields are validated against the
+        child's need type, a required one left out is refused, and a name the child
+        does not declare is refused.
+      type: object
+      additionalProperties:
+        anyOf:
+          - title: Forwarded
+            description: A need or fulfilment of this module, handed to the child whole.
+            x-telo-ref: { kind: Telo.Provider, use: dependency }
+          - title: Fields
+            description: The fields of the child's need type, by name.
+            type: object
       x-telo-eval: compile

@@ -1,0 +1,28 @@
+kind: Telo.Application
+metadata:
+  name: Stateful
+  version: 1.0.0
+  description: >-
+    A child application for the App.Instance needs tests: it declares a durable
+    directory, writes a marker file into it and exits, so a test reads back where
+    the directory it was handed lies.
+imports:
+  Fs: ../../../../fs
+  Run: ../../../../run
+needs:
+  state:
+    kind: Telo.DurableDirectory
+    env: { path: STATEFUL_STATE_DIR }
+targets:
+  - !ref record
+---
+kind: Run.Sequence
+metadata: { name: record }
+steps:
+  - name: write
+    invoke:
+      kind: Fs.FileWrite
+      cwd: !cel "resources.state.path"
+    inputs:
+      path: marker.txt
+      content: written by the child

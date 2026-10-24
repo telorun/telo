@@ -24,9 +24,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: stub-key
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
-      stateDir: !cel "variables.scratch.joinPath('state')"
       modelEndpoint: http://127.0.0.1:18555/v1
       maxAttachmentBytes: 2000
       maxToolResultBytes: 1200

@@ -16,7 +16,7 @@ metadata:
     the original error and refunds its reservation, so the next start is
     admitted. Offline, against the provider stub.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
@@ -93,8 +93,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18495 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('admission').joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch.joinPath('admission')"
+            workspaceDir: !cel "variables.scratch.joinPath('admission').joinPath('workspace')"
             # Nothing listens here: the admitted turn fails at its model call,
             # which is not what is under test.
             modelEndpoint: http://127.0.0.1:9/v1
@@ -105,7 +107,7 @@ steps:
         # The instance's own database, reached from outside it.
         - kind: SQLite.Connection
           metadata: { name: agentDb }
-          file: !cel "variables.scratch.joinPath('admission').joinPath('.telo-agent').joinPath('agent.sqlite')"
+          file: !cel "variables.scratch.joinPath('admission').joinPath('agent-state').joinPath('agent.sqlite')"
         - kind: Sql.Command
           metadata: { name: seed }
           connection: !ref agentDb
@@ -196,8 +198,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18496 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('projection').joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch.joinPath('projection')"
+            workspaceDir: !cel "variables.scratch.joinPath('projection').joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18494/v1
             # One turn's reservation and a little more: a second start fits only
             # once the first turn is settled to what it spent.
@@ -206,7 +210,7 @@ steps:
             openaiApiKey: stub-key
         - kind: SQLite.Connection
           metadata: { name: agentDb }
-          file: !cel "variables.scratch.joinPath('projection').joinPath('.telo-agent').joinPath('agent.sqlite')"
+          file: !cel "variables.scratch.joinPath('projection').joinPath('agent-state').joinPath('agent.sqlite')"
         - kind: Sql.Command
           metadata: { name: seed }
           connection: !ref agentDb
@@ -273,8 +277,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18497 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('continue').joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch.joinPath('continue')"
+            workspaceDir: !cel "variables.scratch.joinPath('continue').joinPath('workspace')"
             # Nothing listens here: every turn fails at its model call.
             modelEndpoint: http://127.0.0.1:9/v1
             # Two reservations: the failed turn is charged its own, which leaves
@@ -284,7 +290,7 @@ steps:
             openaiApiKey: stub-key
         - kind: SQLite.Connection
           metadata: { name: agentDb }
-          file: !cel "variables.scratch.joinPath('continue').joinPath('.telo-agent').joinPath('agent.sqlite')"
+          file: !cel "variables.scratch.joinPath('continue').joinPath('agent-state').joinPath('agent.sqlite')"
         - kind: Sql.Command
           metadata: { name: seed }
           connection: !ref agentDb

@@ -3,7 +3,8 @@ metadata:
   name: PlanApprovalRunnerRefusals
   version: 1.0.0
   description: |
-    What the runner refuses. A runner serving no repository does not boot, nor
+    What the runner refuses. A runner handed no repository fails `telo check`
+    against its own declaration and never starts, nor
     does one mapping two repositories to one directory; a feed page that is not
     the protocol's shape ends the runner at the feed call with the
     output-contract error, before any command runs; and a reader misspelling a
@@ -20,7 +21,10 @@ kind: Assert.Manifest
 metadata: { name: noRepos }
 source: ./__fixtures__/empty-repos/telo.yaml
 expect:
-  runFails: "repos: / must NOT have fewer than 1 properties"
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/variables/repos must NOT have fewer than 1 properties"
+  runFails: "[SCHEMA_VIOLATION] App.Instance/runner: /variables/repos must NOT have fewer than 1 properties"
 ---
 kind: Assert.Manifest
 metadata: { name: sharedDirectory }

@@ -1,151 +1,107 @@
-import { SESSION_PREFIXES } from "../../../storage-keys";
+import { openFetchEventStream } from "../../../fetch-event-stream";
+import { refusalCode } from "../../identity-credentials";
+import type { RunnerCredentials } from "../../runner-credentials";
 import { isTerminal, type RunEvent } from "../../types";
 
-const STORAGE_PREFIX = SESSION_PREFIXES.runSseEventId;
-
-export interface SseClient {
+export interface SessionEvents {
   close(): void;
 }
 
-export interface SseClientDeps {
+export interface SessionEventsDeps {
+  /** `…/v1/sessions/:id/events`. */
   url: string;
-  sessionId: string;
+  credentials: RunnerCredentials;
   onEvent: (event: RunEvent) => void;
-  onError: (err: Error) => void;
-  /** Resume from the very start (lastEventId=0), replaying the runner's full
-   *  buffered history regardless of any per-tab checkpoint. Used when re-attaching
-   *  to a session after a page reload, where the in-memory record is empty and
-   *  must be refilled from scratch. */
-  replayFromStart?: boolean;
+  /** The stream ended without being closed: refused, or lost. */
+  onClosed: (reason: string) => void;
+  /** The last event id a previous stream of this session delivered, and where
+   *  each new one is reported — so a stream opened again after the session
+   *  ended (a failed session resumed) carries on rather than replaying. */
+  cursor: { value: number };
 }
+
+/** The SSE event names the runner sends; each payload carries its own `type`. */
+const FORWARDED = new Set(["status", "progress", "debug", "app", "reachability", "run", "endpoints", "route"]);
 
 /**
- * Opens an EventSource against the runner's /v1/sessions/:id/events and
- * fans out `stdout` / `stderr` / `status` frames as RunEvents.
+ * The session's event stream, read through the fetch-based reader so every
+ * connection carries the session's credentials as headers.
  *
- * Resume comes from two independent signals:
- * - Native EventSource auto-reconnect sends `Last-Event-ID` as a header for
- *   transient network blips within the same instance.
- * - A fresh instance (tab reload) has no header — we append `?lastEventId=<n>`
- *   from sessionStorage on construction. The server prefers the header when
- *   both are present.
+ * The first stream of a session replays from the start of the runner's buffer,
+ * since the caller rebuilds its view of the session from it; a reconnect, and a
+ * stream opened again, resume after the last event id seen (`Last-Event-ID`,
+ * and `?lastEventId=` for a proxy that strips the header). A terminal status
+ * ends the stream: the runner closes it there, and reconnecting would only
+ * replay the ending.
  */
-export function openSseClient(deps: SseClientDeps): SseClient {
-  const storageKey = `${STORAGE_PREFIX}${deps.sessionId}`;
-
-  const url = new URL(deps.url, window.location.href);
-  if (deps.replayFromStart) {
-    // Cold re-attach: replay the full event history and drop the stale per-tab
-    // checkpoint so it can't shadow the from-zero replay.
-    url.searchParams.set("lastEventId", "0");
-    clearPersistedId(storageKey);
-  } else {
-    const persisted = readPersistedId(storageKey);
-    if (persisted !== null && url.searchParams.get("lastEventId") === null) {
-      url.searchParams.set("lastEventId", String(persisted));
-    }
-  }
-
-  const source = new EventSource(url.toString(), { withCredentials: false });
-  let closed = false;
-
-  // Every named event forwards identically — the SSE `event:` name is the
-  // discriminator the payload already carries — so one handler serves them all
-  // and adding an event type is one entry in the list below.
-  const forward = (e: MessageEvent): void => {
-    const parsed = parseRunEvent(e.data);
-    if (parsed) {
-      persistId(storageKey, e.lastEventId);
-      deps.onEvent(parsed);
-    }
-  };
-
-  const handleGap = (): void => {
-    // A replay gap is a fact about the STREAM, not output from the workload —
-    // workload bytes travel the byte channel — so it is reported as a
-    // provisioning message rather than synthesized into the app's own output.
-    deps.onEvent({
-      type: "progress",
-      phase: "boot",
-      message: "stream reconnected — earlier events truncated",
-    });
-  };
-  const handleError = (): void => {
-    // EventSource fires `error` on transient disconnects too — it reconnects
-    // automatically. Only surface to the caller when we've already closed or
-    // the readyState is CLOSED.
-    if (source.readyState === EventSource.CLOSED) {
-      deps.onError(new Error("runner stream closed"));
-      close();
-    }
-  };
-
-  const FORWARDED = ["status", "progress", "debug", "reachability", "run", "endpoints", "route"];
-  for (const name of FORWARDED) source.addEventListener(name, forward);
-  source.addEventListener("gap", handleGap);
-  source.addEventListener("error", handleError);
-
-  function close(): void {
-    if (closed) return;
-    closed = true;
-    for (const name of FORWARDED) source.removeEventListener(name, forward);
-    source.removeEventListener("gap", handleGap);
-    source.removeEventListener("error", handleError);
-    source.close();
-  }
-
-  return { close };
+export function openSessionEvents(deps: SessionEventsDeps): SessionEvents {
+  const cursor = deps.cursor;
+  return openFetchEventStream({
+    async connect(signal) {
+      const target = new URL(deps.url, window.location.href);
+      target.searchParams.set("lastEventId", String(cursor.value));
+      const open = async () =>
+        fetch(target.toString(), {
+          headers: {
+            ...(await deps.credentials.headers({ method: "GET", url: deps.url })),
+            accept: "text/event-stream",
+            "last-event-id": String(cursor.value),
+          },
+          signal,
+        });
+      let res = await open();
+      if (!res.ok && deps.credentials.retry && (await deps.credentials.retry(res))) {
+        await res.body?.cancel();
+        res = await open();
+      }
+      // Not a proxy restarting, which the reader rides out: the runner cannot
+      // check the sign-in, which the user is told.
+      if (res.status === 503 && (await refusalCode(res)) === "identity_provider_unavailable") {
+        throw new Error("the runner cannot reach the identity provider to check your sign-in. Try again.");
+      }
+      return res;
+    },
+    onFrame(frame) {
+      if (frame.id !== undefined) {
+        const id = Number.parseInt(frame.id, 10);
+        if (Number.isFinite(id)) {
+          if (id <= cursor.value) return false;
+          cursor.value = id;
+        }
+      }
+      if (frame.event === "gap") {
+        // A fact about the STREAM, not output from the workload — workload bytes
+        // travel the byte channel — so it is reported as a provisioning message.
+        deps.onEvent({ type: "progress", phase: "boot", message: "stream reconnected — earlier events truncated" });
+        return false;
+      }
+      if (!FORWARDED.has(frame.event)) return false;
+      const event = JSON.parse(frame.data) as RunEvent;
+      if (!event || typeof event !== "object" || typeof event.type !== "string") {
+        throw new Error(`runner event carries no type: ${frame.data.slice(0, 200)}`);
+      }
+      deps.onEvent(event);
+      return event.type === "status" && isTerminal(event.status);
+    },
+    async onRefused(res) {
+      deps.onClosed(await refusedReason(res));
+    },
+    onFailure(failure) {
+      deps.onClosed(
+        failure.kind === "lost"
+          ? "The runner's event stream was lost."
+          : `The runner's event stream failed: ${failure.cause instanceof Error ? failure.cause.message : String(failure.cause)}`,
+      );
+    },
+  });
 }
 
-function parseRunEvent(raw: string): RunEvent | null {
+async function refusedReason(res: Response): Promise<string> {
   try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!isRunEvent(parsed)) return null;
-    return parsed;
+    const body = (await res.json()) as { message?: unknown };
+    if (typeof body.message === "string") return `The runner refused the event stream: ${body.message}`;
   } catch {
-    return null;
+    // fall through to the status code
   }
-}
-
-function isRunEvent(value: unknown): value is RunEvent {
-  if (!value || typeof value !== "object") return false;
-  const v = value as { type?: unknown };
-  return (
-    v.type === "run" ||
-    v.type === "endpoints" ||
-    v.type === "status" ||
-    v.type === "progress" ||
-    v.type === "debug" ||
-    v.type === "reachability" ||
-    v.type === "route"
-  );
-}
-
-function readPersistedId(key: string): number | null {
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    if (!raw) return null;
-    const n = Number.parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistId(key: string, raw: string): void {
-  if (!raw) return;
-  try {
-    window.sessionStorage.setItem(key, raw);
-  } catch {
-    // sessionStorage can be disabled/full — resume will simply not work,
-    // which is the same as v1 degraded mode.
-  }
-}
-
-function clearPersistedId(key: string): void {
-  try {
-    window.sessionStorage.removeItem(key);
-  } catch {
-    /* sessionStorage unavailable — nothing to clear */
-  }
+  return `The runner refused the event stream (HTTP ${res.status}).`;
 }

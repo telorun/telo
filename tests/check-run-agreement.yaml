@@ -364,6 +364,8 @@ targets:
   - !ref browserEntryComputedAtCreation
   - !ref browserExportAnnotationInvalid
   - !ref browserExportAnnotationInvalidAtRuntime
+  - !ref applicationInputUndeclared
+  - !ref applicationInputUndeclaredInStep
   - !ref needTypeUnresolved
   - !ref needTypeUnresolvedAtRuntime
   - !ref needParametersInvalid
@@ -4040,6 +4042,32 @@ expect:
     - code: BROWSER_EXPORT_ANNOTATION_INVALID
       message: "reached through import 'Lib': Telo.Definition 'Component' declares 'schema.properties.export.x-telo-browser-export.abi'"
   runFails: "[BROWSER_EXPORT_ANNOTATION_INVALID] Imported library 'BrowserAnnotationInvalidLib', reached through import 'Lib': Telo.Definition 'Component' declares 'schema.properties.export.x-telo-browser-export.abi': 'abi' must be a non-empty list of the generations the kind accepts"
+---
+# A CHILD APPLICATION's inputs. `x-telo-application-source` marks the field naming
+# an application a resource runs; `telo check` follows it and refuses a name the
+# child does not declare where it is written, and the run is refused at the
+# parent's load — before the child would have refused it when it booted.
+kind: Assert.Manifest
+metadata:
+  name: applicationInputUndeclared
+source: ./__fixtures__/check-run-agreement/application-input-undeclared/telo.yaml
+expect:
+  errors:
+    - code: APPLICATION_INPUT_UNDECLARED
+      message: "'variables.whom' names no variable the application at './child/telo.yaml' declares — it declares 'who'."
+  runFails: "[APPLICATION_INPUT_UNDECLARED] App.Instance/child: 'variables.whom' names no variable the application at './child/telo.yaml' declares — it declares 'who'."
+---
+# The same, for a child declared in the `with:` scope of a sequence written
+# inline in a step — the shape a test standing an application up takes.
+kind: Assert.Manifest
+metadata:
+  name: applicationInputUndeclaredInStep
+source: ./__fixtures__/check-run-agreement/application-input-undeclared-in-step/telo.yaml
+expect:
+  errors:
+    - code: APPLICATION_INPUT_UNDECLARED
+      message: "'variables.whom' names no variable the application at '../application-input-undeclared/child/telo.yaml' declares — it declares 'who'."
+  runFails: "[APPLICATION_INPUT_UNDECLARED] App.Instance/child: 'variables.whom' names no variable the application at '../application-input-undeclared/child/telo.yaml' declares — it declares 'who'."
 ---
 # NEEDS. The need table is one reader: `telo check` reports a refusal at the
 # module that wrote it, and the kernel raises its `ERR_` twin at load — for a
