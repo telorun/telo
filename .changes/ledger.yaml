@@ -3,15 +3,15 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.28.2
+    version: 0.28.3
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-hlxpksfaXlyhUOEymrGVtPO6oHgWP0cHxAkcwmuZGVE
+      image: sha256-bIgYmGl6msKr3qFQhAyUcR2yiqCtgLa3IB2KozZKUOk
   apps/hub:
-    version: 0.18.2
+    version: 0.18.3
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-7b95R8XWD4RI1_s5VDH0PFrSI7LkF9nvzxfefIUmiRI
+      image: sha256-hnGbhOquUa7wzihnV6jsLRfGvv7IyesmJgJT22s08MU
   blueprints/agent-app:
     version: 0.4.1
     registry: oci://ghcr.io/telorun/blueprints
@@ -38,12 +38,12 @@ modules:
       library/js: sha256-a8OmTWBukX8gu3Ygf31wDAXp7LxbIsbqx1S-NFUg8tE
       manifest: sha256-Y0fQTna5-Rj0YxeG0QejBh9a-LWeiBPR70EgLJDTUHM
   modules/ai-mcp:
-    version: 0.26.0
+    version: 0.26.1
     registry: oci://ghcr.io/telorun
     layers:
       common: sha256-DS7t92xNPM_LO9jbJn7stpWC4cwGrU3GKxcLduvPwgc
-      controller/js: sha256-TdqrVjXHlmrbj7eG4pDCGodNnzPTsZ9ygNEAEG3WEcw
-      manifest: sha256-6D2N115bR8gKETUeni3m_fH30bRkIPB0ZFaxMWE_OMo
+      controller/js: sha256-aGrN6QB5kNftRPCzChGAenlU17KlSS25UbstlmXfmH0
+      manifest: sha256-u6IIz9tTFIkkUJ4B5bxAk0cjNi_GLBXtNAgooaFJmJw
   modules/ai-openai:
     version: 0.17.0
     registry: oci://ghcr.io/telorun

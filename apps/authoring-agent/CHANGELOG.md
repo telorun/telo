@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.28.3 - 2026-10-24
+### Fixed
+* The agent no longer counts a new application as finished without its apps/<slug>/telo.yaml: a feature library and its tests are not the application, and with no server the application's targets run what the request asked for.
+* The agent reads a hub tool's error and acts on it before falling back to the CLI, and takes an import pin from the integrity field of telo module manifest -o json rather than from telo module digest, whose registry digest is never a pin.
+
 ## 0.28.1 - 2026-10-23
 ### Fixed
 * A conversation whose history holds a hub tool's result no longer fails its next turn with the provider's 400 "Invalid 'input[N].call_id': empty string": history is replayed as stored, and an uploaded file is a content reference (attachment:<id>) the agent's resolver reads for the model from the conversation's own uploads. Conversations stored before this are re-projected from the journal when the agent starts.
