@@ -1,0 +1,8 @@
+# Consumes the library next door, whose forwarded route the entry-scoped check
+# here does not judge — the router's own validation refuses it at boot.
+kind: Telo.Application
+metadata:
+  name: TemplateForwardUnimportedEntryApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

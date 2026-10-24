@@ -1,0 +1,17 @@
+# Its alias `Run` names a library declaring no `Sequence`, while a dependency
+# loads the run module, whose canonical name is also `Run`. The kernel resolves
+# `Run.Sequence` through the alias alone and finds no such kind, so this
+# library's own `telo check` reports `UNDEFINED_KIND` and the kernel refuses it.
+kind: Telo.Library
+metadata:
+  name: KindThroughResolvedAliasLib
+  version: 1.0.0
+  description: Fixture library whose alias names a module lacking the kind it spells.
+imports:
+  Run: ../own
+  Deps: ../deps
+---
+kind: Run.Sequence
+metadata:
+  name: seq
+steps: []

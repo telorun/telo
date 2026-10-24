@@ -1,0 +1,6 @@
+# A library that declares no kinds, imported under the alias `Run`.
+kind: Telo.Library
+metadata:
+  name: KindThroughResolvedAliasOwn
+  version: 1.0.0
+  description: Fixture library declaring no kinds.

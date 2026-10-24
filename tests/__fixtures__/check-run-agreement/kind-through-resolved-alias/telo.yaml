@@ -1,0 +1,8 @@
+# Consumes the library next door, whose unresolvable kind the entry-scoped check
+# here does not see — the kernel is what refuses it at boot.
+kind: Telo.Application
+metadata:
+  name: KindThroughResolvedAliasApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

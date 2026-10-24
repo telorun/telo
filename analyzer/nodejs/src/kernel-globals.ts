@@ -66,6 +66,9 @@ export function buildKernelGlobalsIndex(
   /** Which resources are functions. A function publishes no reading, so its
    *  name is absent from `resources` and a read of it is an unknown field. */
   functions?: { isFunction(manifest: ResourceManifest): boolean },
+  /** Declarations that exist for the analysis alone (a template forward's
+   *  views): no `resources.<name>` reaches one at run time. */
+  analysisOnly?: ReadonlySet<ResourceManifest>,
 ): KernelGlobalsIndex {
   const entryDoc =
     (manifests.find((m) => m.kind === "Telo.Application") as
@@ -82,6 +85,7 @@ export function buildKernelGlobalsIndex(
       resources,
       entryDoc?.metadata?.name as string | undefined,
       functions,
+      analysisOnly,
     ),
   );
   const openResources = { type: "object", additionalProperties: true };
@@ -156,12 +160,18 @@ function buildResourcesSchema(
     | undefined,
   entryModule: string | undefined,
   functions: { isFunction(manifest: ResourceManifest): boolean } | undefined,
+  analysisOnly: ReadonlySet<ResourceManifest> | undefined,
 ): Record<string, any> {
   const resourceProps: Record<string, any> = {};
   const withheld = new Set<string>();
   for (const m of manifests) {
     const name = m.metadata?.name as string | undefined;
     if (!name || !m.kind) continue;
+    // A forward view exists for the analysis alone: nothing publishes it.
+    if (analysisOnly?.has(m)) {
+      withheld.add(name);
+      continue;
+    }
     // A dependency's code is not in the consumer's `resources`: an export is read
     // as `resources.<Alias>.<name>`, and what extraction pulled out of one is
     // reachable under no name at all.
@@ -199,7 +209,7 @@ function buildResourcesSchema(
   // Imports' exported instances publish two levels deep (`resources.<Alias>.<name>`);
   // the alias node stays open so its other keys keep resolving.
   for (const [key, entry] of resources ?? []) {
-    if (!key.includes(".") || entry.forwardedFrom !== undefined) continue;
+    if (!key.includes(".") || entry.forwardedFrom !== undefined || withheld.has(key)) continue;
     if (entry.reading) applyReadingNode(resourceProps, key, entry.reading);
     else if (entry.status) applyObservedStateNode(resourceProps, key, entry.status);
   }

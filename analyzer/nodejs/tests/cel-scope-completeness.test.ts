@@ -171,3 +171,47 @@ describe("the expression's type against the field's", () => {
     );
   });
 });
+
+describe("a resource read at a field with no CEL context", () => {
+  // `label` is a startup field no `x-telo-context` covers: `resources` there was
+  // an open map, so a read of a resource nobody declared passed check and
+  // failed at boot with "no such key".
+  it("is reported when the module declares no such resource", () => {
+    const [d] = diagnosticsFor({ label: makeTaggedSentinel("cel", "string(resources.dbFile)") }).filter(
+      (x) => x.code === "CEL_UNKNOWN_FIELD",
+    );
+    expect(d?.message).toContain("'resources.dbFile' is not defined");
+  });
+
+  it("is not reported for a resource the module declares", () => {
+    const other = { kind: "Test.Thing", metadata: { name: "other" } } as unknown as ResourceManifest;
+    const codes = diagnosticsFor({ label: makeTaggedSentinel("cel", "string(resources.other)") }, [other])
+      .map((x) => x.code)
+      .filter((code) => code.startsWith("CEL_"));
+    expect(codes).toEqual([]);
+  });
+});
+
+describe("an expression an import supplies", () => {
+  // The application doc's `imports:` entry and its desugared `Telo.Import`
+  // hold the same expression; the import judges it, once.
+  it("is reported once, by the import", () => {
+    const value = makeTaggedSentinel("cel", "string(resources.foo)");
+    const app = {
+      ...APP,
+      imports: { Lib: { source: "./lib", variables: { a: value } } },
+    } as unknown as ResourceManifest;
+    const imported = {
+      kind: "Telo.Import",
+      metadata: { name: "Lib", resolvedModuleName: "Lib" },
+      source: "./lib",
+      variables: { a: value },
+    } as unknown as ResourceManifest;
+    const found = new StaticAnalyzer()
+      .analyze(withSyntheticPositions([app, KIND, imported]))
+      .filter((d) => d.code === "CEL_UNKNOWN_FIELD");
+    expect(found.map((d) => (d.data as { resource?: { kind?: string } }).resource?.kind)).toEqual([
+      "Telo.Import",
+    ]);
+  });
+});

@@ -1,0 +1,8 @@
+# Consumes the library next door, whose undeclared read the entry-scoped check
+# here does not see — the kernel is what refuses it at boot.
+kind: Telo.Application
+metadata:
+  name: UndeclaredResourceReadApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

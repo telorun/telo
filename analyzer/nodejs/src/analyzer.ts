@@ -1205,6 +1205,17 @@ export class StaticAnalyzer {
       }
     }
     const aliasesByModule = ctx?.aliasesByModule ?? new Map<string, AliasResolver>();
+    // Every import in the set, by the module it loads: what tells a kind spelled
+    // by the canonical name of a module some import loads from one nothing loads.
+    const importersByModule = new Map<string, { alias: string; entryScoped: boolean }[]>();
+    for (const m of manifests) {
+      if (m.kind !== "Telo.Import") continue;
+      const meta = m.metadata as { name?: string; module?: string; resolvedModuleName?: string };
+      if (!meta.name || !meta.resolvedModuleName) continue;
+      const list = importersByModule.get(meta.resolvedModuleName) ?? [];
+      list.push({ alias: meta.name, entryScoped: !meta.module || rootModules.has(meta.module) });
+      importersByModule.set(meta.resolvedModuleName, list);
+    }
     // Every imported library's own declarations, read by a projection hop into
     // a library's internals. Shared with the registry so an editor's contract
     // query resolves the same hops `telo check` does.
@@ -1979,6 +1990,10 @@ export class StaticAnalyzer {
       ? undefined
       : buildTemplateForwardViews(allManifests, defs, aliases, { aliasesByModule, rootModules });
     if (forwardViews) allManifests.push(...forwardViews.analyzed);
+    // A forward view, and what was extracted from one, exists for this analysis
+    // alone: it is spelled by its entry's canonical kind and holds the consumer's
+    // metadata, so no alias of the consumer need name its kind.
+    const analysisOnlyDocs: ReadonlySet<ResourceManifest> = new Set(forwardViews?.analyzed ?? []);
     // Which module wrote each manifest, and the language it writes its texts in.
     const textLanguages = new TextLanguageScope(
       allManifests as unknown as ResourceManifest[],
@@ -2557,7 +2572,12 @@ export class StaticAnalyzer {
 
     // Build typed kernel globals schema so x-telo-context chain validation
     // recognises variables, secrets, resources, env automatically
-    const kernelGlobals = buildKernelGlobalsIndex(allManifests, observedState, moduleFunctions);
+    const kernelGlobals = buildKernelGlobalsIndex(
+      allManifests,
+      observedState,
+      moduleFunctions,
+      analysisOnlyDocs,
+    );
     // What an import hands a library's host-path input, read against the
     // importer's own declarations — the library resolves nothing it is given.
     diagnostics.push(
@@ -2794,9 +2814,8 @@ export class StaticAnalyzer {
 
       const resource = { kind: m.kind, name: m.metadata?.name as string };
 
-      // Resolve kind through alias if needed; direct lookup takes priority so that
-      // aliases whose name matches the module name (the common case) work without
-      // path-derived name mangling. A resource that originated in an imported library
+      // Resolve kind through the declaring scope's aliases; the alias-resolved kind is
+      // looked up first, and the written spelling only when no alias resolved it. A resource that originated in an imported library
       // (its `metadata.module` names a non-root module — e.g. an inline route handler
       // extracted from an imported Http.Api) must resolve its kind alias against THAT
       // library's import map, not the consumer's; an anonymous child inherits the
@@ -2836,8 +2855,49 @@ export class StaticAnalyzer {
         continue;
       }
       const resolvedKind = kindResult.status === "ok" ? kindResult.kind : undefined;
-      const definition =
-        defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined);
+      // The kernel resolves an entry-module resource's kind through that module's own
+      // aliases alone, so a module another module imports is not reachable by its name
+      // from here, however the registry keys its definitions.
+      const analysisOnly = analysisOnlyDocs.has(m as unknown as ResourceManifest);
+      const entryScoped = !analysisOnly && (!ownModule || rootModules.has(ownModule));
+      if (entryScoped && kindResult.status === "unknown") {
+        const prefix = m.kind.slice(0, m.kind.indexOf("."));
+        const importers = importersByModule.get(prefix);
+        if (importers && defs.resolve(m.kind)) {
+          const ownAliases = importers.filter((i) => i.entryScoped).map((i) => i.alias);
+          const suffix = m.kind.slice(prefix.length + 1);
+          const repair =
+            ownAliases.length > 0
+              ? `This module imports it as '${ownAliases[0]}' — write '${ownAliases[0]}.${suffix}'.`
+              : `It is loaded through another module's imports, which does not make its kinds ` +
+                `available here — add it to this module's 'imports:'.`;
+          diagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "UNDEFINED_KIND",
+            source: SOURCE,
+            message:
+              `Kind '${m.kind}': no module imported with alias '${prefix}' in this module. ` +
+              `${repair} Known aliases: ${aliases.knownAliases().join(", ") || "(none)"}.`,
+            data: {
+              resource,
+              filePath,
+              path: "kind",
+              ...(ownAliases.length > 0
+                ? { suggestedKind: `${ownAliases[0]}.${suffix}`, fix: { replacement: `${ownAliases[0]}.${suffix}` } }
+                : {}),
+            },
+          });
+          continue;
+        }
+      }
+      // An alias that resolved names the one kind the kernel will look up; a
+      // definition another module happens to register under the written spelling
+      // is not it.
+      const definition = analysisOnly
+        ? (defs.resolve(m.kind) ?? (resolvedKind ? defs.resolve(resolvedKind) : undefined))
+        : resolvedKind
+          ? defs.resolve(resolvedKind)
+          : defs.resolve(m.kind);
       if (!definition && m.kind === BUILTIN_VOCABULARY_KIND) {
         // Registered nowhere on purpose; say what the document is rather than
         // suggesting a kind of a similar spelling.

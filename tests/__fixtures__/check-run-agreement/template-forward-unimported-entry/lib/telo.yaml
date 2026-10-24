@@ -1,0 +1,30 @@
+# Declares a resource of a templated kind whose body forwards `routes` into an
+# `Http.Api`, while importing no alias for the router's module. The route's
+# undeclared key is the router's to refuse: the forward view of the entry is
+# checked like any declaration, whatever this library imports.
+kind: Telo.Library
+metadata:
+  name: TemplateForwardUnimportedEntry
+  version: 1.0.0
+  description: Fixture library forwarding a route with an undeclared key into a router it does not import.
+imports:
+  Routes: ../../template-forward-invalid/routes
+  Run: ../../../../../modules/run
+---
+kind: Routes.Routes
+metadata:
+  name: orders
+routes:
+  - request:
+      path: /orders
+      method: GET
+    bogus: 1
+    handler:
+      kind: Run.Value
+      value:
+        ok: true
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"

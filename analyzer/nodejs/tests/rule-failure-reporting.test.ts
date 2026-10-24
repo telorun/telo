@@ -48,10 +48,10 @@ const definition = (module: string): ResourceManifest =>
     },
   }) as unknown as ResourceManifest;
 
-const resources = (count: number, module: string): ResourceManifest[] =>
+const resources = (count: number, alias: string): ResourceManifest[] =>
   Array.from(
     { length: count },
-    (_, i) => ({ kind: `${module}.Widget`, metadata: { name: `w${i}` } }) as unknown as ResourceManifest,
+    (_, i) => ({ kind: `${alias}.Widget`, metadata: { name: `w${i}` } }) as unknown as ResourceManifest,
   );
 
 const failures = (docs: ResourceManifest[]) =>
@@ -67,7 +67,7 @@ const failures = (docs: ResourceManifest[]) =>
 
 describe("an evaluation-time rule failure", () => {
   it("is one warning at the consumer's imports entry, however many resources it meets", () => {
-    expect(failures([app, dependencyImport, definition("dep"), ...resources(5, "dep")])).toEqual([
+    expect(failures([app, dependencyImport, definition("dep"), ...resources(5, "Dep")])).toEqual([
       { severity: 2, filePath: "app.yaml", path: "imports.Dep", rule: "WIDGETS_POSITIVE" },
     ]);
   });
@@ -84,7 +84,14 @@ describe("an evaluation-time rule failure", () => {
       source: "./dep",
     } as unknown as ResourceManifest;
     expect(
-      failures([app, wrapImport, innerImport, definition("dep"), ...resources(2, "dep")]),
+      failures([
+        app,
+        wrapImport,
+        innerImport,
+        definition("dep"),
+        // Declared in `wrap`, the module importing `dep`, through its own alias.
+        ...resources(2, "Dep").map((r) => ({ ...r, metadata: { ...r.metadata, module: "wrap" } })),
+      ]),
     ).toEqual([{ severity: 2, filePath: "app.yaml", path: "imports.Wrap", rule: "WIDGETS_POSITIVE" }]);
   });
 

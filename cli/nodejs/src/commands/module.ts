@@ -3,6 +3,7 @@ import {
   isHttpsModuleRef,
   isOciRef,
   kindDeclarationOf,
+  OCI_SCHEME,
   manifestCacheKey,
   ociManifestCacheCoords,
   readApplicationContract,
@@ -273,12 +274,61 @@ async function runVersions(argv: { ref: string; json: boolean; digests: boolean 
 }
 
 /** Resolve `ref` to a single manifest's text — local file, direct URL, or any
- *  transport-owned ref — shared by `manifest` / `resources` / `kinds`. */
-async function loadManifestText(ref: string, log: Logger): Promise<string> {
+ *  transport-owned ref — shared by `manifest` / `resources` / `kinds`, with the
+ *  ref it was read at. */
+async function loadManifestText(ref: string, log: Logger): Promise<{ ref: string; text: string }> {
   const localPath = localManifestPath(ref);
-  return localPath
-    ? readFileOrExit(localPath, log)
-    : readRemoteManifest(defaultTransportRegistry(), ref, log);
+  if (localPath) return { ref, text: readFileOrExit(localPath, log) };
+  const registry = defaultTransportRegistry();
+  const resolved = await withNewestVersion(registry, ref, log);
+  return { ref: resolved, text: await readRemoteManifest(registry, resolved, log) };
+}
+
+/** The repository of an `oci://` ref written with no version and no pin, or
+ *  `null` for any other ref. */
+export function versionlessOciRepository(ref: string): string | null {
+  if (!isOciRef(ref)) return null;
+  const { base, integrity } = splitIntegrity(ref);
+  if (integrity !== undefined) return null;
+  const repoAndRef = base.slice(OCI_SCHEME.length).split("/").slice(1).join("/");
+  return repoAndRef.length === 0 || repoAndRef.includes("@") ? null : base;
+}
+
+/** The highest SemVer version a registry lists; a tag that is no version
+ *  (`latest`, a digest) is never chosen. */
+export function newestPublishedVersion(versions: readonly string[]): string | undefined {
+  return sortVersionsDesc([...versions]).find((v) => semver.valid(v));
+}
+
+/** An `oci://` ref written with no version reads the newest published version,
+ *  as the hub's own reads do — never a `latest` tag, which no telo module
+ *  publishes, so asking for one only ever answered "not found". The ref read is
+ *  said on stderr, since the version it names is one the caller did not write. */
+async function withNewestVersion(
+  registry: TransportRegistry,
+  ref: string,
+  log: Logger,
+): Promise<string> {
+  const base = versionlessOciRepository(ref);
+  const transport = base === null ? undefined : registry.forRef(base);
+  if (base === null || !transport) return ref;
+  let versions: string[] | null;
+  try {
+    versions = await registry.listVersions(base);
+  } catch (err) {
+    outErrLine(`${log.err.error("error")}  ${errMsg(err)}`);
+    process.exit(1);
+  }
+  const newest = versions === null ? undefined : newestPublishedVersion(versions);
+  if (newest === undefined) {
+    outErrLine(
+      `${log.err.error("error")}  ${base} names no version, and the registry lists no published one to read — pass '${base}@<version>'`,
+    );
+    process.exit(1);
+  }
+  const resolved = transport.withVersion(base, newest);
+  outErrLine(log.err.dim(`reading ${resolved}, the newest published version`));
+  return resolved;
 }
 
 function parseDocs(text: string): Document[] {
@@ -381,11 +431,11 @@ export async function buildManifestJsonPayload(
 
 async function runManifest(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
-  const text = await loadManifestText(argv.ref, log);
+  const { ref, text } = await loadManifestText(argv.ref, log);
   if (argv.json || output().isJson) {
     // The hub's tracker parses this document; it is the payload, not a log
     // line, so it bypasses `outLine` (a no-op under `-o json`).
-    output().document(await buildManifestJsonPayload(argv.ref, text, log));
+    output().document(await buildManifestJsonPayload(ref, text, log));
     return;
   }
   output().raw(text.endsWith("\n") ? text : `${text}\n`);
@@ -544,7 +594,7 @@ function extractKinds(docs: Document[]): KindEntry[] {
 
 async function runResources(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
-  const resources = extractResources(parseDocs(await loadManifestText(argv.ref, log)));
+  const resources = extractResources(parseDocs((await loadManifestText(argv.ref, log)).text));
   if (argv.json || output().isJson) {
     output().document(resources);
     return;
@@ -558,7 +608,7 @@ async function runResources(argv: { ref: string; json: boolean }): Promise<void>
 
 async function runKinds(argv: { ref: string; json: boolean }): Promise<void> {
   const log = createLogger(false);
-  const kinds = extractKinds(parseDocs(await loadManifestText(argv.ref, log)));
+  const kinds = extractKinds(parseDocs((await loadManifestText(argv.ref, log)).text));
   if (argv.json || output().isJson) {
     output().document(kinds);
     return;
@@ -616,14 +666,16 @@ export function moduleCommand(yargs: Argv): Argv {
           (yy) =>
             yy
               .positional("ref", {
-                describe: "Module ref: ./path, oci://host/repo@1.2.0, or an https URL",
+                describe:
+                  "Module ref: ./path, oci://host/repo@1.2.0 (oci://host/repo reads the newest published version), or an https URL",
                 type: "string",
                 demandOption: true,
               })
               .option("json", {
                 type: "boolean",
                 default: false,
-                describe: "Emit { ref, cacheKey, manifest, integrity, runtime, application } as JSON",
+                describe:
+                  "Emit { ref, cacheKey, manifest, integrity, runtime, application } as JSON; `ref` is the version read and `integrity` the pin an imports: entry writes after it",
               }),
           async (argv) => {
             await runManifest(argv as any);

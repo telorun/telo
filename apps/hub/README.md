@@ -176,7 +176,10 @@ HTTP twin.
   read at the version the child's own `imports:` pins the parent at, or at the
   latest tracked one when the hub does not hold that version. A
   name the module does not define is reported beside the kinds it exports; a
-  call naming only untracked refs is an error result. An alias-qualified name
+  call naming only untracked refs is an error result. An empty `version` reads
+  the latest tracked version; a tracked ref asked for at a version the hub does
+  not hold is answered with its latest version and the versions it does hold.
+  An alias-qualified name
   (`Http.Server`) is read by its suffix. **Built-ins are read at one telo
   version** — `telo`, else a version asked for on the built-in vocabulary's own
   ref, else the latest tracked — because a `Telo.<Kind>` reference means the

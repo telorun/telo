@@ -29,6 +29,8 @@ targets:
   - !ref getKinds_ReadsQuotedScalars
   - !ref getKinds_KeepsTheImplementationWhenAsked
   - !ref getKinds_ReportsAnUntrackedRef
+  - !ref getKinds_ReadsAnEmptyVersionAsTheLatest
+  - !ref getKinds_NamesTheVersionsOfATrackedRef
   - !ref getKinds_ReadsTheParentTheChildPins
   - !ref getKinds_RefusesNoKinds
   - !ref getKinds_RefusesAnUntrackedTeloVersion
@@ -341,6 +343,66 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_MCP_TOOL_ERROR
+        invoke:
+          kind: Assert.Equals
+---
+# An empty `version` is no version: a model whose tool calls must fill every
+# property sends `""` for one it means to omit, and is answered with the latest.
+kind: Run.Sequence
+metadata: { name: getKinds_ReadsAnEmptyVersionAsTheLatest }
+steps:
+  - name: call
+    invoke: !ref mcpToolCall
+    inputs:
+      name: get_kinds
+      arguments:
+        kinds:
+          - { ref: "oci://ghcr.io/telorun/timer", kind: Delay, version: "" }
+        telo: ""
+  - name: text
+    value: !cel "steps.call.result.content[0].text"
+  - name: assert
+    inputs:
+      actual:
+        timerImport: !cel >-
+          size(regexExtract(steps.text.result,
+            '#   Timer: oci://ghcr\\.io/telorun/timer@[0-9.]+#sha256-[A-Za-z0-9_-]+')) > 0
+        delayDefinition: !cel "steps.text.result.contains('\\n  name: Delay\\n')"
+      expected:
+        timerImport: true
+        delayDefinition: true
+    invoke:
+      kind: Assert.Equals
+---
+# A tracked ref asked for at a version the hub does not hold is said so, with
+# the versions it does — never reported as an untracked ref.
+kind: Run.Sequence
+metadata: { name: getKinds_NamesTheVersionsOfATrackedRef }
+steps:
+  - name: refused
+    try:
+      - name: call
+        invoke: !ref mcpToolCall
+        inputs:
+          name: get_kinds
+          arguments:
+            kinds:
+              - { ref: "oci://ghcr.io/telorun/timer", kind: Delay, version: 0.0.1 }
+      - name: answered
+        throw:
+          code: ERR_TEST_EXPECTED_REFUSAL
+          message: get_kinds answered for a version the hub does not track
+    catch:
+      - name: assert
+        inputs:
+          actual:
+            code: !cel "error.code"
+            namesVersions: !cel >-
+              size(regexExtract(string(error.data.content[0].text),
+                'is tracked by the hub, but not at version 0[.]0[.]1 [(]asked for: Delay[)][.] Its latest version is [0-9.]+;')) > 0
+          expected:
+            code: ERR_MCP_TOOL_ERROR
+            namesVersions: true
         invoke:
           kind: Assert.Equals
 ---

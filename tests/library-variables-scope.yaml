@@ -38,7 +38,7 @@ expect:
 # reads a variable IT does not declare; the importing app declares that very
 # name. The consumer's pass must still report it (so forwarded exports are not
 # exempt from CEL checking) and must report it against the LIBRARY's block —
-# which `available: onlyInLib` is the proof of, since matching the app's contract
+# which `declared: onlyInLib` is the proof of, since matching the app's contract
 # would have made this read valid.
 kind: Assert.Manifest
 metadata:
@@ -47,4 +47,4 @@ source: ./__fixtures__/library-variables/typo-app.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: "'variables.typoNotDeclared' is not defined (available: onlyInLib)"
+      message: '"typoNotDeclared" is not declared here (declared: onlyInLib)'

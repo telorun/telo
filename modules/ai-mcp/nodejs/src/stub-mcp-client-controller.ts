@@ -6,7 +6,8 @@ import { ERR_INVOKE_CANCELLED, InvokeError } from "@telorun/sdk";
  * responses so AiMcp.ToolProvider's discovery/dispatch can be tested without a live MCP
  * server. Advertises `echo_text` (echoes its `text` argument) and `snapshot_image`
  * (returns an MCP image content block, whose `mimeType` the provider normalizes to the
- * Ai contract's `mediaType`), `wait_for_cancel` (never answers; rejects when the call's
+ * Ai contract's `mediaType`), `fail_with_message` (answers `isError: true` with a text
+ * block saying why), `wait_for_cancel` (never answers; rejects when the call's
  * context is cancelled, counting it) and `cancelled_count` (how many calls were
  * cancelled so far, so a test can prove the cancellation reached the client).
  *
@@ -109,6 +110,11 @@ class StubMcpClient implements ResourceInstance {
             inputSchema: { type: "object", additionalProperties: false, properties: {} },
           },
           {
+            name: "fail_with_message",
+            description: "Always fails, saying why.",
+            inputSchema: { type: "object", additionalProperties: false, properties: {} },
+          },
+          {
             name: "wait_for_cancel",
             description: "Never answers; ends when the call is cancelled.",
             inputSchema: { type: "object", additionalProperties: false, properties: {} },
@@ -125,6 +131,12 @@ class StubMcpClient implements ResourceInstance {
       if (params?.name === "wait_for_cancel") return this.waitForCancel(ctx);
       if (params?.name === "cancelled_count") {
         return { content: [{ type: "text", text: String(this.cancelledCalls) }] };
+      }
+      if (params?.name === "fail_with_message") {
+        return {
+          isError: true,
+          content: [{ type: "text", text: "pkg 'demo' is not tracked; try version 1.2.0" }],
+        };
       }
       if (params?.name === "snapshot_image") {
         return { content: [{ type: "image", data: "aGVsbG8=", mimeType: "image/png" }] };

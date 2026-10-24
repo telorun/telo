@@ -430,13 +430,13 @@ Each hit prints the exact ref to paste into your `imports:` map, and the kinds t
 
 ### `telo module <subcommand> <ref>`
 
-Inspect a module without importing it. `<ref>` is any form the runtime resolves: a local path, an `oci://` ref, or a direct URL.
+Inspect a module without importing it. `<ref>` is any form the runtime resolves: a local path, an `oci://` ref, or a direct URL. An `oci://` ref written with no version is read at the newest published version by `manifest`, `resources` and `kinds`, which say on stderr which one.
 
 | Subcommand | What it prints |
 | --- | --- |
 | `versions` | The module's published versions, newest first (one entry for a local path or direct URL); with `--digests`, each with the digest `digest` prints for it, read in one process (`--json` writes `[{ version, digest }]`; a version whose digest cannot be read is `{ version, error }`, also named on stderr) |
-| `manifest` | The module's `telo.yaml`, verified against the inline hash when the ref is pinned |
-| `digest` | The version's content-identity digest — a cheap read that downloads no payload |
+| `manifest` | The module's `telo.yaml`, verified against the inline hash when the ref is pinned; `--json` adds the version read (`ref`) and the pin an `imports:` entry writes (`integrity`, `sha256-<base64url>`) |
+| `digest` | The version's content-identity digest — a cheap read that downloads no payload. It is not an import pin, and cannot be turned into one: take the pin from `manifest --json` |
 | `resources` | The resource instances the module declares |
 | `kinds` | The resource kinds the module defines, with capability and whether each is exported |
 

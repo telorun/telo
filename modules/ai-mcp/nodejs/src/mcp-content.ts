@@ -1,5 +1,21 @@
 import type { ContentPart } from "@telorun/ai";
 
+/** What a failed tool call said, for the error the model reads: its text blocks joined,
+ *  or the content as JSON when it carries no text. */
+export function mcpErrorText(content: unknown): string {
+  if (Array.isArray(content)) {
+    const texts = content
+      .filter((b): b is { type: "text"; text: string } =>
+        !!b && typeof b === "object" && b.type === "text" && typeof b.text === "string",
+      )
+      .map((b) => b.text.trim())
+      .filter((t) => t.length > 0);
+    if (texts.length > 0) return texts.join("\n");
+  }
+  if (typeof content === "string" && content.trim().length > 0) return content.trim();
+  return content === undefined ? "" : JSON.stringify(content);
+}
+
 /** MCP content blocks are nearly Ai content parts, but an image block names its MIME
  *  type `mimeType` where the Ai contract uses `mediaType`. Translate the block types
  *  the Ai contract understands (text, image) so a vision MCP tool's image reaches the

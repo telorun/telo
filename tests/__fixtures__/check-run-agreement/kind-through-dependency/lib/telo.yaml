@@ -1,0 +1,18 @@
+# Spells a kind by the name of a module only its own dependency imports. The
+# kernel resolves a kind through the declaring module's aliases (and its
+# importers'), never through a module the graph merely holds, so this library's
+# own `telo check` reports `UNDEFINED_KIND` and the kernel refuses it at boot.
+kind: Telo.Library
+metadata:
+  name: KindThroughDependencyLib
+  version: 1.0.0
+  description: Fixture library declaring a resource whose kind's module it does not import.
+imports:
+  Inner: ../inner
+---
+kind: HttpServer.Server
+metadata:
+  name: server
+listen:
+  port: 18431
+mounts: []

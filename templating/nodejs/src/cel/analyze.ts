@@ -518,6 +518,38 @@ export function validateChainAgainstSchema(
   chain: string[],
   schema: Record<string, any>,
 ): string | null {
+  return chainFailureAgainstSchema(chain, schema)?.message ?? null;
+}
+
+/**
+ * The member chains whose last read the type checker already refused, joined with
+ * `.` — the select nodes whose member range is one of `ranges`, which is where the
+ * checker reports an unknown member. A context schema read of the same chain would
+ * say it a second time, in other words.
+ */
+export function chainsRefusedAt(
+  node: CelNode,
+  ranges: ReadonlyArray<readonly [number, number]>,
+): Set<string> {
+  const refused = new Set<string>();
+  if (ranges.length === 0) return refused;
+  const at = new Set(ranges.map(([start, end]) => `${start}:${end}`));
+  const visit = (current: CelNode): void => {
+    if (current.kind === "select" && at.has(`${current.fieldRange[0]}:${current.fieldRange[1]}`)) {
+      const chain = extractChain(current, new Set());
+      if (chain) refused.add(chain.join("."));
+    }
+    for (const child of childNodes(current)) visit(child);
+  };
+  visit(node);
+  return refused;
+}
+
+/** {@link validateChainAgainstSchema}, with the path of the read that failed. */
+export function chainFailureAgainstSchema(
+  chain: string[],
+  schema: Record<string, any>,
+): { path: string; message: string } | null {
   let current: Record<string, any> = schema;
   for (let i = 0; i < chain.length; i++) {
     const key = chain[i]!;
@@ -549,7 +581,10 @@ export function validateChainAgainstSchema(
       const propSchema = props[key];
       if (isLiveSlot(propSchema) && i < chain.length - 1) {
         const path = chain.slice(0, i + 1).join(".");
-        return `'${path}' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)`;
+        return {
+          path,
+          message: `'${path}' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)`,
+        };
       }
       current = propSchema;
       continue;
@@ -557,7 +592,7 @@ export function validateChainAgainstSchema(
     if (!members && current.additionalProperties === true) return null;
     const path = chain.slice(0, i + 1).join(".");
     const available = Object.keys(props).join(", ");
-    return `'${path}' is not defined (available: ${available})`;
+    return { path, message: `'${path}' is not defined (available: ${available})` };
   }
   return null;
 }

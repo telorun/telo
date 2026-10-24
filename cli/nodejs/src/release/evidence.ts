@@ -30,6 +30,7 @@ import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
+import { dockerignorePatterns } from "./dockerignore-patterns.js";
 import type { DiscoveredModule, Workspace } from "./workspace.js";
 
 /** Where one module publishes: the resolved base, and the ref it derives. */
@@ -170,17 +171,14 @@ export async function imageDigest(module: DiscoveredModule): Promise<string> {
     fs.existsSync(file),
   );
   const ignored = ignoreFile
-    ? fs
-        .readFileSync(ignoreFile, "utf8")
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line !== "" && !line.startsWith("#"))
+    ? dockerignorePatterns(fs.readFileSync(ignoreFile, "utf8"), ignoreFile)
     : [];
 
   // An ignore file EXCLUDES, so it goes in `exclude:` rather than being read as
   // a selector — `*` followed by `!*.yaml` means "nothing but the YAML", and
   // treating those as includes would digest exactly the files Docker drops.
-  // `exclude` shares the same last-match-wins engine, so the re-include works.
+  // Read with Docker's anchoring, a file outside the image (the chart a release
+  // stamps after recording the ledger) cannot move the digest.
   //
   // The same digest primitive the artifact layers use, so "did this module's
   // payload change?" is one question with one answer regardless of which of the
