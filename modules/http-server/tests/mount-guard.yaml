@@ -149,12 +149,15 @@ steps:
           body: !cel "steps.admitted.result.body"
         unclaimed:
           status: !cel "steps.unclaimed.result.status"
-          code: !cel "steps.unclaimed.result.body.error.code"
+          body: !cel "steps.unclaimed.result.body"
         preflightStatus: !cel "steps.preflight.result.status"
         sibling:
           status: !cel "steps.sibling.result.status"
           body: !cel "steps.sibling.result.body"
-        unmatchedStatus: !cel "steps.unmatched.result.status"
+        unmatched:
+          status: !cel "steps.unmatched.result.status"
+          contentType: !cel "steps.unmatched.result.headers['content-type']"
+          body: !cel "steps.unmatched.result.body"
       expected:
         refused:
           status: 401
@@ -165,9 +168,18 @@ steps:
           body: { ok: true }
         unclaimed:
           status: 500
-          code: ERR_INPUT_INVALID
+          body:
+            type: about:blank
+            title: Internal Server Error
+            status: 500
+            detail: The request is not valid.
+            code: ERR_INPUT_INVALID
         preflightStatus: 204
         sibling:
           status: 200
           body: { ok: true }
-        unmatchedStatus: 404
+        # No notFoundHandler: the bare 404 problem.
+        unmatched:
+          status: 404
+          contentType: application/problem+json; charset=utf-8
+          body: { type: about:blank, title: Not Found, status: 404 }

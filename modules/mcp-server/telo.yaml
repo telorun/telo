@@ -137,9 +137,9 @@ schema:
                   type: object
                   additionalProperties: false
                   properties:
-                    code: { type: string }
+                    code: { type: string, x-telo-caught-member: code }
                     message: { type: string }
-                    data: { type: object, additionalProperties: true }
+                    data: { type: object, additionalProperties: true, x-telo-caught-member: data }
                 request:
                   type: object
                   additionalProperties: false
@@ -308,9 +308,9 @@ schema:
                   type: object
                   additionalProperties: false
                   properties:
-                    code: { type: string }
+                    code: { type: string, x-telo-caught-member: code }
                     message: { type: string }
-                    data: { type: object, additionalProperties: true }
+                    data: { type: object, additionalProperties: true, x-telo-caught-member: data }
                 request:
                   type: object
                   additionalProperties: false
@@ -466,9 +466,9 @@ schema:
                   type: object
                   additionalProperties: false
                   properties:
-                    code: { type: string }
+                    code: { type: string, x-telo-caught-member: code }
                     message: { type: string }
-                    data: { type: object, additionalProperties: true }
+                    data: { type: object, additionalProperties: true, x-telo-caught-member: data }
                 request:
                   type: object
                   additionalProperties: false

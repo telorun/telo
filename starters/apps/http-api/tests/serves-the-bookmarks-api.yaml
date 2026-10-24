@@ -57,12 +57,17 @@ steps:
         health: !cel "steps.health.result.status"
         healthBody: !cel "steps.health.result.body"
         anonymous: !cel "steps.anonymous.result.status"
-        anonymousBody: !cel "steps.anonymous.result.body.error"
+        anonymousBody: !cel "steps.anonymous.result.body"
       expected:
         health: 200
         healthBody: { status: ok }
         anonymous: 401
-        anonymousBody: unauthenticated
+        anonymousBody:
+          type: about:blank
+          title: Unauthorized
+          status: 401
+          detail: A bearer token is required.
+          code: ERR_UNAUTHENTICATED
 
   # The database file outlives the test, so the bookmark is tagged freshly on
   # every run and the list is asked for that tag alone.
@@ -197,10 +202,16 @@ steps:
       actual:
         removed: !cel "steps.remove.result.status"
         gone: !cel "steps.gone.result.status"
-        goneBody: !cel "steps.gone.result.body.error"
+        goneBody: !cel "steps.gone.result.body"
         removeAgain: !cel "steps.removeAgain.result.status"
       expected:
         removed: 204
         gone: 404
-        goneBody: not_found
+        goneBody:
+          type: about:blank
+          title: Not Found
+          status: 404
+          detail: !cel "'There is no bookmark ' + string(steps.create.result.body.id) + '.'"
+          code: ERR_BOOKMARK_NOT_FOUND
+          data: { id: !cel "string(steps.create.result.body.id)" }
         removeAgain: 404

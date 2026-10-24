@@ -40,8 +40,13 @@ describe("the built-in vocabulary archive", () => {
     for (const name of ["Definition", "Abstract"]) {
       const schema = documentNamed(vocabulary, name).schema;
       expect(schema.properties.capability.enum).toEqual(declarableCapabilities());
-      expect(schema.if.properties.capability.not.enum).toEqual(throwsAllowedCapabilities());
     }
+    // `throws.codes` is legal on every role; only the dispatchable ones may
+    // derive a union from what they dispatch.
+    const definition = documentNamed(vocabulary, "Definition").schema;
+    expect(definition.if.properties.capability.not.enum).toEqual(throwsAllowedCapabilities());
+    expect(definition.then).toEqual({ properties: { throws: { properties: { inherit: false, passthrough: false } } } });
+    expect(documentNamed(vocabulary, "Abstract").schema.if).toBeUndefined();
   });
 
   it("names the platform axes the artifact selectors read", () => {

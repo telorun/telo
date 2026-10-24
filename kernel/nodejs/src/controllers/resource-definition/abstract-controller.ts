@@ -14,6 +14,7 @@ import type {
 import { RuntimeError } from "@telorun/sdk";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
+import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
 import {
   forgetRegisteredDefinition,
@@ -114,6 +115,7 @@ class ResourceAbstract implements ResourceInstance {
       resolveDef,
     );
 
+    stampDeclaredDisplayMessages(this.resource as unknown as ResourceDefinition, resolveDef);
     ctx.registerDefinition(this.resource);
     recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
   }

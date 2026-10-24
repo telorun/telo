@@ -32,9 +32,12 @@ variables:
     minLength: 1
     default: Hello
     description: The word `/hello` greets with.
+# `http-server` comes from this repository while its error responses are
+# unreleased, and `run` with it; `telo upgrade --pin-local` pins them again
+# once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  Http: ../../../modules/http-server
+  Run: ../../../modules/run
 exports:
   resources:
     - api
@@ -73,10 +76,7 @@ routes:
     catches:
       - status: 422
         content:
-          application/json:
-            body:
-              error: name_refused
-              message: !cel "error.message"
+          application/problem+json: {}
 
   - request:
       path: /info
@@ -121,7 +121,7 @@ steps:
       - name: refuse
         throw:
           code: ERR_NAME_REFUSED
-          message: a name is not a number
+          displayMessage: A name is not a number.
   - name: line
     value: !cel "variables.greeting + ', ' + inputs.name + '!'"
 outputs:

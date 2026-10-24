@@ -81,6 +81,9 @@ export interface CelScopeQueryContext {
   aliasesByModule: Map<string, AliasResolver>;
   /** The imported libraries' own declarations the analysis indexed. */
   libraries?: LibraryDeclarations;
+  /** The catch ladder's answer for a catch entry's caught data
+   *  (`CelScopeInputs.caughtDataAt`). */
+  caughtDataAt?: (m: ResourceManifest, path: string) => Record<string, any> | undefined;
 }
 
 /**
@@ -151,6 +154,7 @@ export class CelScopeQuery {
       referrersOf: (m) =>
         referrerSlotsOf((this.callGraph ??= buildCallGraph(manifests, defs, { aliases, aliasesByModule })), m),
       definitionOf: (m) => this.definitionFor(m),
+      caughtDataAt: ctx.caughtDataAt,
     });
     this.ctx = ctx;
   }

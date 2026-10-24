@@ -15,12 +15,20 @@
  */
 import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
-import { judgeValues, schemaValueKind, type KnownValues, type TextProblem } from "./text-judgement.js";
+import {
+  judgeValues,
+  schemaValueKind,
+  type KnownValues,
+  type MessageValueKind,
+  type TextProblem,
+} from "./text-judgement.js";
 import {
   pointerSegments,
+  relativePointerOf,
   renderValuePath,
   TEXT_VALUES_ANNOTATION,
   TEXT_VALUES_FOR_ANNOTATION,
+  TEXT_VALUES_FROM_ANNOTATION,
   textFragmentOf,
   type ValuePath,
 } from "./text-slot.js";
@@ -50,10 +58,12 @@ function fragmentAt(node: Schema, root: Schema, resolveRef: ((ref: string) => Sc
 }
 
 /**
- * Every misplaced `x-telo-text-values` a kind's schema reaches — through
- * properties, map values, list items, unions, document-local references and named
- * shapes: not on a `Text` / `Message` node, a declared value whose schema is
- * neither a string nor a number, or a text a values pairing already binds.
+ * Every misplaced `x-telo-text-values` / `x-telo-text-values-from` a kind's
+ * schema reaches — through properties, map values, list items, unions,
+ * document-local references and named shapes: not on a `Text` / `Message` node, a
+ * declared value whose schema is neither a string nor a number, a text a values
+ * pairing already binds, a values-from that is no relative pointer, sits beside a
+ * declared value map, or names a sibling the holding object does not declare.
  */
 export function textValuesProblems(
   kind: string,
@@ -64,10 +74,16 @@ export function textValuesProblems(
   if (!isSchema(schema)) return [];
   const problems: TextValuesProblem[] = [];
   const visited = new Set<object>();
-  const report = (path: ValuePath, shape: string | undefined, inner: ValuePath, reason: string) => {
-    const where = renderValuePath(shape ? path : [...path, TEXT_VALUES_ANNOTATION]);
+  const report = (
+    path: ValuePath,
+    shape: string | undefined,
+    inner: ValuePath,
+    reason: string,
+    annotation: string = TEXT_VALUES_ANNOTATION,
+  ) => {
+    const where = renderValuePath(shape ? path : [...path, annotation]);
     const place = shape
-      ? `'${where}', which reaches '${renderValuePath([...inner, TEXT_VALUES_ANNOTATION])}' in the named shape '${shape}' it names,`
+      ? `'${where}', which reaches '${renderValuePath([...inner, annotation])}' in the named shape '${shape}' it names,`
       : `'${where}'`;
     problems.push({ path: where, message: `'${kind}' declares ${place} ${reason}` });
   };
@@ -91,7 +107,27 @@ export function textValuesProblems(
         }
       }
     }
+    if (TEXT_VALUES_FROM_ANNOTATION in node) {
+      const fragment = fragmentAt(node, root, resolveRef);
+      const from = (why: string) => report(path, shape, inner, why, TEXT_VALUES_FROM_ANNOTATION);
+      if (fragment !== "Text" && fragment !== "Message") {
+        from("on a node that is no text: it names the schema whose required properties a Text or a Message is formatted with, so write it beside the text's `$ref: telo://manifest#/$defs/Text`.");
+      } else if (!relativePointerOf(node[TEXT_VALUES_FROM_ANNOTATION])) {
+        from("as something other than a relative JSON pointer (`0/data` names the sibling `data`).");
+      } else if (TEXT_VALUES_ANNOTATION in node) {
+        from(`beside ${TEXT_VALUES_ANNOTATION}: a text's values are declared one way. Remove one of the two.`);
+      }
+    }
     if (isSchema(node.properties)) {
+      // A text naming a sibling for its values must name one this object declares.
+      for (const [key, child] of Object.entries(node.properties)) {
+        const relative = relativePointerOf(isSchema(child) ? child[TEXT_VALUES_FROM_ANNOTATION] : undefined);
+        if (!relative || relative.up !== 0 || relative.segments.length === 0) continue;
+        if (!Object.hasOwn(node.properties, relative.segments[0]!)) {
+          const [p, i] = step(["properties", key]);
+          report(p, shape, i, `naming '${relative.segments[0]}', which the object holding the text does not declare.`, TEXT_VALUES_FROM_ANNOTATION);
+        }
+      }
       // A text a sibling pairs values with is formatted with those values.
       for (const [key, child] of Object.entries(node.properties)) {
         const segments = pointerSegments(isSchema(child) ? child[TEXT_VALUES_FOR_ANNOTATION] : undefined);
@@ -137,6 +173,48 @@ export function textValuesProblems(
   };
   visit(schema, schema, at, undefined, []);
   return problems;
+}
+
+/** What a property schema admits as a message value, read strictly: only a
+ *  value DECLARED a string or a number can fill a placeholder, so one of no
+ *  declared type is refused rather than trusted. */
+function dataValueKind(schema: unknown): { kind: MessageValueKind; describe: string } {
+  const type = isSchema(schema) ? schema.type : undefined;
+  const types = (Array.isArray(type) ? type : type === undefined ? [] : [type]) as unknown[];
+  if (types.length === 0) return { kind: "refused", describe: "a value of no declared type" };
+  if (types.every((t) => t === "string")) return { kind: "string", describe: "a string" };
+  if (types.every((t) => t === "integer" || t === "number")) return { kind: "number", describe: "a number" };
+  if (types.every((t) => t === "string" || t === "integer" || t === "number")) {
+    return { kind: "string", describe: "a string or a number" };
+  }
+  return { kind: "refused", describe: `a value declared ${types.join(" or ")}` };
+}
+
+/** The values a text naming `x-telo-text-values-from` is formatted with: each
+ *  REQUIRED property of the data schema, as what it is declared to be. A
+ *  property the data may lack is no value, since an error may arrive without it. */
+export function dataTextValues(schema: unknown): KnownValues {
+  if (!isSchema(schema)) return new Map();
+  const properties = isSchema(schema.properties) ? schema.properties : {};
+  const required = Array.isArray(schema.required) ? schema.required.filter((n): n is string => typeof n === "string") : [];
+  return new Map(required.map((name) => [name, dataValueKind(properties[name])]));
+}
+
+/** A text judged against the values its sibling data schema guarantees. */
+export function judgeDataValues(
+  message: Parameters<typeof judgeValues>[0],
+  schema: unknown,
+  dataPath: ValuePath,
+): TextProblem[] {
+  const known = dataTextValues(schema);
+  const names = [...known.keys()];
+  const advice =
+    `this text is formatted with the required properties of '${renderValuePath(dataPath)}'` +
+    (names.length === 0 ? ", which declares none" : `: ${names.map((name) => `{$${name}}`).join(", ")}`) +
+    " — name only those, or declare the property and list it under required";
+  return judgeValues(message, known).map((problem) =>
+    problem.code === "MESSAGE_PLACEHOLDER_UNBOUND" ? { ...problem, message: `${problem.message}, but ${advice}` } : problem,
+  );
 }
 
 /**

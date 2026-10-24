@@ -6,9 +6,10 @@ import { presetRange, rangeLongerThan, rangeReversed, type Preset, type Range, t
 import { useControl, useControls } from "./effective-controls.js";
 import { optionKey, useChosenOptions, useOptionPages, type OptionSourceSpec } from "./option-source.js";
 import { Picker } from "./picker.js";
+import { issuePlace, issueWord, problemOf } from "./problem-details.js";
 import { RendererContext } from "./renderer-context.js";
 import type { SurfaceSpec } from "./surface.js";
-import { labelFor, useSay, useText, type Say, type ValueLabel, type WireText } from "./texts.js";
+import { findingText, labelFor, useSay, useText, type Say, type ValueLabel, type WireText } from "./texts.js";
 import { plainTypes, validate, type JsonSchema } from "./validation.js";
 
 /** The word warning of a range longer than its limit, by unit. */
@@ -285,29 +286,29 @@ export function fieldFindings(
   return invalid;
 }
 
-/** A 400's validation envelope, read for a set of fields. */
+/** A 400's problem, read for a set of fields. */
 export interface Refusal {
-  /** The message of each detail whose path begins with a shown field's property. */
+  /** What each issue within the body at a shown field's property says. */
   byField: Record<string, string>;
-  /** Every other detail, or the envelope's bare message when it carries none. */
+  /** Every other issue, or the problem's `detail` when it carries none. */
   other: string[];
 }
 
-/** The property a detail is about: the first segment of its path, `period`
- *  for `period.from`. */
-const firstSegment = (path: string): string => path.replace(/^\//, "").split(/[./]/)[0];
-
-export function refusalOf(body: any, fields: Field[], say: Say): Refusal {
+/** Each issue lands on the field its pointer's first segment after `/body`
+ *  names — `period` for `/body/period/from` — worded as the browser's own
+ *  validation words it; the rest are said under the form, by their path. */
+export function refusalOf(body: unknown, fields: Field[], say: Say): Refusal {
   const shown = new Set(fields.map((field) => field.property));
+  const problem = problemOf(body);
   const byField: Record<string, string> = {};
   const other: string[] = [];
-  for (const detail of (Array.isArray(body?.details) ? body.details : []) as { path?: string; message?: string }[]) {
-    const path = String(detail.path ?? "");
-    const property = firstSegment(path);
-    if (shown.has(property)) byField[property] ??= detail.message ?? say("invalid");
-    else other.push([path, detail.message].filter(Boolean).join(" "));
+  for (const issue of problem.issues) {
+    const { inBody, path } = issuePlace(issue);
+    const word = issueWord(issue);
+    if (inBody && shown.has(path[0])) byField[path[0]] ??= say(word.id, word.values);
+    else other.push(findingText({ path, word }, say));
   }
-  if (Object.keys(byField).length === 0 && other.length === 0) other.push(body?.message ?? say("recordRefused"));
+  if (problem.issues.length === 0) other.push(problem.detail ?? say("recordRefused"));
   return { byField, other };
 }
 

@@ -4,10 +4,21 @@
 
 const OPERATORS = ["contains", "gt", "gte", "lt", "lte", "in"];
 
-const invalid = (location, path, message) => ({
+/** A validation problem with one issue, as an `Http.Api` answers one. */
+const invalid = (pointer, keyword, params = {}) => ({
   status: 400,
-  body: { error: "ValidationError", message: "Request validation failed", status: 400, details: [{ location, path, message }] },
+  body: {
+    type: "about:blank",
+    title: "Bad Request",
+    status: 400,
+    detail: "The request is not valid.",
+    code: "ERR_INPUT_INVALID",
+    data: { issues: [{ pointer, keyword, params }] },
+  },
 });
+
+/** A failure with no code: the bare problem of its status. */
+const bare = (status, title) => ({ status, body: { type: "about:blank", title, status } });
 
 const compare = (a, b) => (typeof a === "number" && typeof b === "number" ? a - b : String(a ?? "").localeCompare(String(b ?? "")));
 
@@ -20,7 +31,7 @@ export function createCollection(seed, required = []) {
 
   const list = (query) => {
     const limit = query.has("limit") ? Number(query.get("limit")) : 25;
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) return invalid("query", "limit", "must be an integer from 1 to 100");
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) return invalid("/query/limit", "invalid");
     let selected = [...rows].sort((a, b) => compare(a.id, b.id));
     const names = [...new Set(query.keys())];
     for (const name of names) {
@@ -29,7 +40,7 @@ export function createCollection(seed, required = []) {
       const dot = name.lastIndexOf(".");
       const operator = dot > 0 && OPERATORS.includes(name.slice(dot + 1)) ? name.slice(dot + 1) : "eq";
       const property = operator === "eq" ? name : name.slice(0, dot);
-      if (!properties().has(property)) return invalid("query", name, "names no property of this collection");
+      if (!properties().has(property)) return invalid(`/query/${name.replace(/~/g, "~0").replace(/\//g, "~1")}`, "additionalProperties", { additionalProperty: name });
       const values = query.getAll(name);
       const against = (row) => (typeof row[property] === "number" ? Number(values[0]) : values[0]);
       selected = selected.filter((row) => {
@@ -44,11 +55,11 @@ export function createCollection(seed, required = []) {
     if (query.has("sort")) {
       const sort = query.get("sort");
       const property = sort.replace(/^-/, "");
-      if (!properties().has(property)) return invalid("query", "sort", "names no property of this collection");
+      if (!properties().has(property)) return invalid("/query/sort", "invalid");
       selected.sort((a, b) => compare(a[property], b[property]) * (sort.startsWith("-") ? -1 : 1));
     }
     const offset = query.has("cursor") ? Number(Buffer.from(query.get("cursor"), "base64url").toString()) : 0;
-    if (!Number.isInteger(offset) || offset < 0) return invalid("query", "cursor", "is not a cursor this collection issued");
+    if (!Number.isInteger(offset) || offset < 0) return invalid("/query/cursor", "invalid");
     const end = offset + limit;
     return {
       status: 200,
@@ -69,18 +80,18 @@ export function createCollection(seed, required = []) {
         if (method === "GET") return list(query);
         if (method === "POST") {
           const absent = missing(body);
-          if (absent) return invalid("body", absent, "is a required property");
+          if (absent) return invalid(`/body/${absent}`, "required", { missingProperty: absent });
           const row = { ...body, id: nextId++ };
           rows.push(row);
           return { status: 201, body: row };
         }
       }
       const index = rows.findIndex((row) => String(row.id) === key);
-      if (index === -1) return { status: 404, body: { error: "NotFound", message: `No row '${key}'.`, status: 404 } };
+      if (index === -1) return bare(404, "Not Found");
       if (method === "GET") return { status: 200, body: rows[index] };
       if (method === "PUT") {
         const absent = missing(body);
-        if (absent) return invalid("body", absent, "is a required property");
+        if (absent) return invalid(`/body/${absent}`, "required", { missingProperty: absent });
         rows[index] = { ...body, id: rows[index].id };
         return { status: 200, body: rows[index] };
       }
@@ -88,7 +99,7 @@ export function createCollection(seed, required = []) {
         rows.splice(index, 1);
         return { status: 204, body: undefined };
       }
-      return { status: 405, body: { error: "MethodNotAllowed", message: `${method} is not served here.`, status: 405 } };
+      return bare(405, "Method Not Allowed");
     },
   };
 }
@@ -108,6 +119,7 @@ export const Collection = {
             body: request.body,
           });
           reply.code(answer.status);
+          if (answer.status >= 400) reply.header("content-type", "application/problem+json; charset=utf-8");
           return answer.body === undefined ? reply.send() : reply.send(answer.body);
         };
         app.route({ method: ["GET", "POST"], url: base === "" ? "/" : base, handler: serve });

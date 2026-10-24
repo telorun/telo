@@ -21,8 +21,8 @@ tree for anything else.
 | `clearAnswerOn` | none | input properties whose change clears what was drawn from the last answer |
 
 The operation must speak [the action contract](action-contract.md): one `POST`
-with a JSON body, answered with a JSON object on success and a
-`{ code, message }` body otherwise.
+with a JSON body, answered with a JSON object on success and a problem body
+(`code`, `detail`, a 400's `data.issues`) otherwise.
 
 ```yaml
 kind: Ui.Action

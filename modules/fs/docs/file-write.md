@@ -64,9 +64,7 @@ routes:
     catches:
       - when: !cel "error.code == 'ERR_FILE_TOO_LARGE'"
         status: 413
-        content:
-          application/json:
-            body: { error: !cel "error.message" }
+        content: { application/problem+json: {} }
 ```
 
 The bytes go to a temporary file named `.<basename>.<random>.tmp` in the target's own directory. When the stream ends, that file is renamed over the target. A reader therefore sees the previous file or the new one, never part of an upload, and a stream that fails or is refused leaves the target exactly as it was — its previous content, or still absent.

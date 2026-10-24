@@ -49,6 +49,7 @@ const SECTION_SRC = {
   valueTypes: join(ROOT, "sdk", "value-types"),
   zoneAttributes: join(ROOT, "sdk", "zone-attributes"),
   formats: join(ROOT, "sdk", "formats"),
+  errorCodes: join(ROOT, "sdk", "error-codes"),
 };
 const LICENSE_SRC = join(ROOT, "sdk", "LICENSE");
 
@@ -68,7 +69,7 @@ for (const path of [SRC, FRAGMENT_SRC, ...Object.values(SECTION_SRC), LICENSE_SR
       `'${path}' does not exist. The built-in vocabulary is data that ships beside the ` +
         `language halves — if this is a container or package build, its file allowlist ` +
         `has to include 'sdk/builtins', 'sdk/value-types', 'sdk/zone-attributes', ` +
-        `'sdk/formats' and 'sdk/LICENSE'.`,
+        `'sdk/formats', 'sdk/error-codes' and 'sdk/LICENSE'.`,
     );
   }
 }
@@ -178,7 +179,8 @@ const ROOT_DESCRIPTION =
   "documents that declare applications, libraries, kinds, imports and needs; the lifecycle " +
   "roles a kind may take; log and trace destinations; named schema shapes and CEL " +
   "functions; public address needs; and the schema fragments, value types, zone " +
-  "attributes and string formats they reference.";
+  "attributes and string formats they reference; and the error codes the runtime raises " +
+  "itself, with the text a person is shown for each.";
 
 /**
  * The fixed YAML emitter. Block style, two-space indent, LF, no anchors, tags or
@@ -255,14 +257,14 @@ function blockLines(value, indent, where) {
 
 const text = (lines) => `${lines.join("\n")}\n`;
 
-/** One section of the root document: its entries keyed by name, lexically. A
- *  value type, zone attribute and format is its data file verbatim. */
-function readSection(section, dir) {
+/** One section of the root document: its entries keyed by name (an error
+ *  code's by its `code`), lexically. Each entry is its data file verbatim. */
+function readSection(section, dir, key = "name") {
   const entries = {};
   for (const { file, data } of readEntries(dir)) {
-    const name = data?.name;
+    const name = data?.[key];
     if (typeof name !== "string" || name === "") {
-      fail(`${dir}/${file}: an entry of '${section}' declares no string 'name'.`);
+      fail(`${dir}/${file}: an entry of '${section}' declares no string '${key}'.`);
     }
     if (Object.hasOwn(entries, name)) fail(`${dir}/${file}: '${section}' declares '${name}' twice.`);
     entries[name] = data;
@@ -282,6 +284,7 @@ const sections = {
   valueTypes: sortedByKey(readSection("valueTypes", SECTION_SRC.valueTypes)),
   zoneAttributes: sortedByKey(readSection("zoneAttributes", SECTION_SRC.zoneAttributes)),
   formats: sortedByKey(readSection("formats", SECTION_SRC.formats)),
+  errorCodes: sortedByKey(readSection("errorCodes", SECTION_SRC.errorCodes, "code")),
 };
 
 let version;
@@ -308,6 +311,7 @@ const SECTION_CLASS = {
   valueTypes: "value type",
   zoneAttributes: "zone attribute",
   formats: "format",
+  errorCodes: "error code",
 };
 for (const [section, entries] of Object.entries(sections)) {
   const head = `${scalarText(section, "root")}:`;

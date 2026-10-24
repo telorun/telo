@@ -63,14 +63,30 @@ So a caller that has no further rung must render the last resort itself:
 ```ts
 if (!(await dispatchCatches(entries, error, requestContext, accept, ctx, validate, sink))) {
   reply.code(500);
-  reply.header("Content-Type", "application/json");
-  reply.send(errorEnvelope(error));
+  reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+  reply.send(problemDetails(500, error));
 }
 ```
 
-`errorEnvelope(error)` is exported for exactly this: it is the
-`{error: {code, message, data}}` body this module used to produce internally, so
-a transport that renders it on decline is byte-identical to the old behaviour.
+**Every error is rendered as an RFC 9457 problem.** `problemDetails(status, failure?)`
+renders one from a status and a coded failure (`{ code, data?, displayMessage? }`): `type`
+is `about:blank`, `title` the registered reason phrase of the status (absent for an
+unregistered one, never localized — `httpReasonPhrase(status)`), `status`, `detail` the
+display message formatted in its own language with `data` as its values (present only when
+there is one), `code`, and `data` unchanged (absent when there is none). Without a failure
+it is the bare `{ type, title, status }` of an uncoded one. `PROBLEM_MEDIA_TYPE` is
+`application/problem+json`. A failure's developer `message` is never part of a problem.
+
+`dispatchCatches` binds `problem` — the default problem each entry renders, under that
+entry's own status — beside `error` in every entry's CEL, its `when:` included. An entry
+with no `body:` sends that problem as `application/problem+json`, the one key the `Catches`
+schema lets omit `body:` (every other key requires it). An error is never refused
+for `Accept`: an entry none of whose keys the header admits renders its first key.
+`dispatchReturns` answers a `returns:` entry whose representations `Accept` refuses with a
+406 problem, code `ERR_NOT_ACCEPTABLE` (exported), `data: { available }`.
+
+The normative shape — every member, and when a transport answers with a problem — is in
+[`modules/http-server/docs/returns-and-catches.md`](../http-server/docs/returns-and-catches.md#problem-details).
 
 **Plain errors never reach either function.** A non-`InvokeError` has no
 `error.code` for a `when:` to key on, so a transport hands those to its own

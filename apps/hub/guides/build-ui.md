@@ -262,9 +262,10 @@ delete: true
 - A row read is a record valid against the model, so it can be sent back: a
   property with no value is left out (`null` only where the model admits
   `null`).
-- A refusal is a 400 with the request-validation envelope `{ error:
-  "ValidationError", message, status: 400, details: [{ location, path,
-  message }] }`; a detail whose `path` is a field's property marks that field.
+- Every error is an `application/problem+json` problem; the failure tree reads
+  `code` and `detail`. A refusal is a 400 whose `data.issues` are
+  `{ pointer, keyword, params }`: one at `/body/<property>` marks that field,
+  worded by `Ui.Words`; the rest go under the form.
 - 401 and 403 are shown where they happened. Query keys beginning `_telo` are
   the renderer's.
 
@@ -435,8 +436,7 @@ onSuccess:
 
 The route answers the **action contract**: any 2xx with a JSON object valid
 against `outputModel` (read only when `result` or `onSuccess.navigate` reads
-it), a 400 with the validation envelope, anything else with a
-`{ code, message }` body. An `Http.Api`
+it), and a problem for any failure. An `Http.Api`
 route's `request.schema.body` takes the JSON Schema written inline — a `!ref`
 to a `Telo.JsonSchema` there passes `telo check` and fails at boot — so write
 the request shape out there and keep it equal to `inputModel`:
@@ -722,7 +722,7 @@ application with `App.Instance` (from the `app` module) in a `Run.Sequence`'s
   action's `path` and `fields`, a table's `rowActions`.
 - Call the routes the screen uses with the records the page would send — a
   list query, a create, the action's input — and assert the answers,
-  including the 400 envelope for a refused record.
+  including the 400 problem for a refused record.
 
 ```yaml
 kind: Run.Sequence

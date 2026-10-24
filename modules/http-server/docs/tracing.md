@@ -35,7 +35,7 @@ what received the request.
 | Outcome | When |
 | --- | --- |
 | `cancelled` | The connection closed before the response completed. |
-| `rejected` | A coded error decided the response: a guard's refusal, a route's or the not-found handler's throw — rendered by any `catches:` rung or by the built-in 500 envelope — a request that failed validation (`error.type` `ERR_INPUT_INVALID`, a 400), or a body over `maxBodyBytes` (`error.type` `ERR_REQUEST_BODY_TOO_LARGE`, a 413). |
+| `rejected` | A coded error decided the response: a guard's refusal, a route's or the not-found handler's throw — rendered by any `catches:` rung or by the last-resort 500 problem — a request that failed validation (`error.type` `ERR_INPUT_INVALID`, a 400), or a body over `maxBodyBytes` (`error.type` `ERR_REQUEST_BODY_TOO_LARGE`, a 413). |
 | `failed` | An uncoded error reached the framework, which answered 500. |
 | `ok` | Anything else — including a 404 with no not-found handler and a 4xx a `returns:` entry chose. |
 

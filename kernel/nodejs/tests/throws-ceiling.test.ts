@@ -60,10 +60,8 @@ describe("throws: on a Telo.Abstract", () => {
     );
   });
 
-  it("refuses a list on a capability with no caller to catch it", async () => {
-    expect(await createKindDocument({ ...lookup, capability: "Telo.Service" })).toMatchObject(
-      refusedBySchema(/\/throws is not allowed here/),
-    );
+  it("admits a list on a capability with no caller to catch it — the failures it answers with", async () => {
+    expect(await createKindDocument({ ...lookup, capability: "Telo.Service" })).toBeUndefined();
   });
 
   it("refuses inherit even set to false, and a malformed code", async () => {
@@ -85,10 +83,11 @@ describe("throws: on a Telo.Definition", () => {
     ...fields,
   });
 
-  it("refuses a list on a capability with no caller to catch it, as telo check does", async () => {
-    expect(await createKindDocument(definition({ capability: "Telo.Mount" }))).toMatchObject(
-      refusedBySchema(/\/throws is not allowed here/),
-    );
+  it("admits a list on a capability with no caller to catch it, and refuses inherit there, as telo check does", async () => {
+    expect(await createKindDocument(definition({ capability: "Telo.Mount" }))).toBeUndefined();
+    expect(
+      await createKindDocument(definition({ capability: "Telo.Mount", throws: { inherit: true } })),
+    ).toMatchObject(refusedBySchema(/\/throws\/inherit is not allowed here/));
   });
 
   it("admits a list where the capability is inherited through extends", async () => {

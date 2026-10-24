@@ -132,27 +132,27 @@ steps:
           ids: !cel "steps.declared.result.body.rows.map(r, r.id)"
         otherOperator:
           status: !cel "steps.otherOperator.result.status"
-          details: !cel "steps.otherOperator.result.body.details"
+          issues: !cel "steps.otherOperator.result.body.data.issues"
         otherProperty:
           status: !cel "steps.otherProperty.result.status"
-          details: !cel "steps.otherProperty.result.body.details"
+          issues: !cel "steps.otherProperty.result.body.data.issues"
         byKey:
           status: !cel "steps.byKey.result.status"
-          details: !cel "steps.byKey.result.body.details"
+          issues: !cel "steps.byKey.result.body.data.issues"
       expected:
         declared: { status: 200, ids: [1, 2] }
         otherOperator:
           status: 400
-          details:
-            - { location: query, path: text, message: is not a filter this collection accepts }
+          issues:
+            - { pointer: /query/text, keyword: additionalProperties, params: { additionalProperty: text } }
         otherProperty:
           status: 400
-          details:
-            - { location: query, path: isDone, message: is not a filter this collection accepts }
+          issues:
+            - { pointer: /query/isDone, keyword: additionalProperties, params: { additionalProperty: isDone } }
         byKey:
           status: 400
-          details:
-            - { location: query, path: id, message: is not a filter this collection accepts }
+          issues:
+            - { pointer: /query/id, keyword: additionalProperties, params: { additionalProperty: id } }
 
   # ── Sort: a listed property pages to the end, each row once ──
   - name: page1
@@ -180,10 +180,10 @@ steps:
         unsorted: !cel "steps.unsorted.result.body.rows.map(r, r.id)"
         sortUnlisted:
           status: !cel "steps.sortUnlisted.result.status"
-          details: !cel "steps.sortUnlisted.result.body.details"
+          issues: !cel "steps.sortUnlisted.result.body.data.issues"
         sortByKey:
           status: !cel "steps.sortByKey.result.status"
-          details: !cel "steps.sortByKey.result.body.details"
+          issues: !cel "steps.sortByKey.result.body.data.issues"
       expected:
         # Latest first, the key between equal dates, the row with no date last.
         walked: [5, 2, 4, 1, 3]
@@ -191,12 +191,12 @@ steps:
         unsorted: [1, 2, 3, 4, 5]
         sortUnlisted:
           status: 400
-          details:
-            - { location: query, path: sort, message: is not a property this collection sorts by }
+          issues:
+            - { pointer: /query/sort, keyword: enum, params: { allowedValues: [dueOn, -dueOn] } }
         sortByKey:
           status: 400
-          details:
-            - { location: query, path: sort, message: is not a property this collection sorts by }
+          issues:
+            - { pointer: /query/sort, keyword: enum, params: { allowedValues: [dueOn, -dueOn] } }
 
   # ── One record by its key, on a model that accepts no filter ──
   - name: readOne

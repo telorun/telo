@@ -77,7 +77,12 @@ steps:
       expected:
         placed: 201
         refused: 422
-        refusedBody: { error: ERR_EMPTY_ORDER }
+        refusedBody:
+          type: about:blank
+          title: Unprocessable Content
+          status: 422
+          detail: An order needs at least one item.
+          code: ERR_EMPTY_ORDER
         orders:
           - { item: keyboard, quantity: 2 }
           - { item: monitor, quantity: 1 }

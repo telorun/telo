@@ -68,9 +68,7 @@ routes:
     catches:
       - when: !cel "error.code == 'ERR_BLOB_TOO_LARGE'"
         status: 413
-        content:
-          application/json:
-            body: { error: !cel "error.message" }
+        content: { application/problem+json: {} }
 ```
 
 Never build a key from text a client chose, such as a file name: generate the key

@@ -173,8 +173,9 @@ protected is protected by its mount's [`guard`](mount-guard.md):
 
 - **`serve`** — a host no entry matches reaches the mounts without `hostnames`.
 - **`reject`** — a request whose host matches no `hostnames` entry of any mount
-  is answered `421 Misdirected Request` with the `{error: {code, message, data}}`
-  envelope, code `ERR_HOST_NOT_SERVED`. The refusal comes before guards, routes
+  is answered `421 Misdirected Request` with a problem (`application/problem+json`),
+  code `ERR_HOST_NOT_SERVED`, `data: { host }`, its `detail` the display message
+  `Http.Server` declares for the code. The refusal comes before guards, routes
   and reading the body, and is the server's own answer: no `catches:` list sees
   it. Under trust, the host is the one `X-Forwarded-Host` names.
 - **An IP-literal host is never refused** — IPv4, or bracketed IPv6. It reaches

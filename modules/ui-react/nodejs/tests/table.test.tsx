@@ -199,14 +199,16 @@ describe("a table", () => {
   });
 
   it.each([
-    [401, "ERR_UI_UNAUTHORIZED", "You are not signed in, or your session has ended."],
-    [403, "ERR_UI_FORBIDDEN", "You are not allowed to do this."],
-    [500, "ERR_UI_REQUEST_FAILED", "it broke"],
-  ])("shows a %i from its collection as its own error node, the page around it intact", async (status, code, message) => {
+    [401, { type: "about:blank", title: "Unauthorized", status: 401 }, "ERR_UI_UNAUTHORIZED", "You are not signed in, or your session has ended."],
+    [403, { type: "about:blank", title: "Forbidden", status: 403 }, "ERR_UI_FORBIDDEN", "You are not allowed to do this."],
+    [500, { type: "about:blank", title: "Internal Server Error", status: 500 }, "ERR_UI_REQUEST_FAILED", "The request failed with status 500."],
+    // An unclaimed coded failure is shown under its own code, with its detail.
+    [500, { type: "about:blank", title: "Internal Server Error", status: 500, detail: "The todos could not be read.", code: "ERR_TODOS_UNREADABLE" }, "ERR_TODOS_UNREADABLE", "The todos could not be read."],
+  ])("shows a %i from its collection as its own error node, the page around it intact", async (status, body, code, message) => {
     rendered = await render({
       path: "/",
       pages: { "/": { title: "Todos", children: [{ type: "text", text: "Above" }, tableNode()] } },
-      answers: { "/api/todos": () => new Response(JSON.stringify({ message: "it broke" }), { status }) },
+      answers: { "/api/todos": () => new Response(JSON.stringify(body), { status }) },
     });
     expect(rendered.part("table").getAttribute("data-state")).toBe("error");
     expect(rendered.part("error-code").textContent).toBe(code);
@@ -236,11 +238,11 @@ describe("a table", () => {
 
   it("keeps a refused delete in its dialog, with the grid and its rows as they were", async () => {
     rendered = await show([tableNode()]);
-    rendered.answer("/api/todos/1", () => new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }));
+    rendered.answer("/api/todos/1", () => new Response(JSON.stringify({ type: "about:blank", title: "Conflict", status: 409, detail: "It is referenced.", code: "ERR_REFERENCED" }), { status: 409 }));
     await rendered.click(rendered.parts("row-delete")[0]);
     await rendered.click(rendered.part("surface").querySelector('[data-telo-part="submit"]') as HTMLElement);
     const dialog = rendered.part("surface");
-    expect(dialog.querySelector('[data-telo-part="error-code"]')?.textContent).toBe("ERR_UI_REQUEST_FAILED");
+    expect(dialog.querySelector('[data-telo-part="error-code"]')?.textContent).toBe("ERR_REFERENCED");
     expect(dialog.querySelector('[data-telo-part="error-message"]')?.textContent).toContain("It is referenced.");
     expect(rendered.part("table").getAttribute("data-state")).toBe("idle");
     expect(cells(rendered, 0)).toEqual(["Write the plan", "Review the plan"]);
@@ -351,12 +353,12 @@ describe("a table", () => {
     await rendered.click(archives()[1]);
     expect(rendered.sent.map((each) => each.body)).toEqual([{ id: 1, status: "archived" }, { id: 2, status: "archived" }]);
     finishes[0](new Response(null, { status: 204 }));
-    finishes[1](new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }));
+    finishes[1](new Response(JSON.stringify({ type: "about:blank", title: "Conflict", status: 409, detail: "It is referenced.", code: "ERR_REFERENCED" }), { status: 409 }));
     await rendered.settle();
     expect([...rowWrites(0), ...rowWrites(1)].map((button) => button.disabled)).toEqual([false, false, false, false, false, false]);
     expect(lists(rendered).length).toBeGreaterThan(before);
     // The refused row draws its failure beside its button, which stays.
-    expect(failureOf(rendered)).toEqual(["ERR_UI_REQUEST_FAILED", "It is referenced."]);
+    expect(failureOf(rendered)).toEqual(["ERR_REFERENCED", "It is referenced."]);
     expect(rendered.parts("row-failure")[0].closest('[data-telo-part="table-row"]')).toBe(rendered.parts("table-row")[1]);
   });
 
@@ -433,7 +435,7 @@ describe("a table", () => {
   it.each([
     ["a 401", () => new Response(null, { status: 401 }), "ERR_UI_UNAUTHORIZED", "You are not signed in, or your session has ended."],
     ["a 403", () => new Response(null, { status: 403 }), "ERR_UI_FORBIDDEN", "You are not allowed to do this."],
-    ["a 409", () => new Response(JSON.stringify({ message: "It is referenced." }), { status: 409 }), "ERR_UI_REQUEST_FAILED", "It is referenced."],
+    ["a 409", () => new Response(JSON.stringify({ type: "about:blank", title: "Conflict", status: 409, detail: "It is referenced.", code: "ERR_REFERENCED" }), { status: 409 }), "ERR_REFERENCED", "It is referenced."],
     [
       "no answer at all",
       () => {
@@ -444,9 +446,9 @@ describe("a table", () => {
     ],
     [
       "a 400",
-      () => new Response(JSON.stringify({ error: "ValidationError", message: "Request validation failed", details: [{ location: "body", path: "id", message: "must be integer" }] }), { status: 400 }),
-      "ERR_UI_REQUEST_FAILED",
-      "Request validation failed",
+      () => new Response(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues: [{ pointer: "/body/id", keyword: "type", params: { type: "integer" } }] } }), { status: 400 }),
+      "ERR_INPUT_INVALID",
+      "The request is not valid.",
     ],
   ])("draws %s to a row operation asked nothing as its failure beside its button, reloads nothing, and clears it on the next press", async (name, respond, code, message) => {
     rendered = await show([acting()]);
@@ -466,7 +468,7 @@ describe("a table", () => {
 
   it("shows a refusal to a row operation it asked about in that confirmation, and sends it again on confirm", async () => {
     rendered = await show([acting()]);
-    rendered.answer("/api/todos/rename", () => new Response(JSON.stringify({ code: "ERR_TAKEN", message: "That name is taken." }), { status: 409 }));
+    rendered.answer("/api/todos/rename", () => new Response(JSON.stringify({ type: "about:blank", title: "Conflict", status: 409, detail: "That name is taken.", code: "ERR_TAKEN" }), { status: 409 }));
     await rendered.click(rendered.parts("row-action")[1]);
     await rendered.click(confirming());
     const dialog = confirmation() as HTMLElement;
@@ -516,14 +518,14 @@ describe("a table", () => {
     rendered = await show([acting({ rowActions: [reject] })]);
     rendered.answer(
       "/api/todos/reject",
-      () => new Response(JSON.stringify({ error: "ValidationError", details: [{ location: "body", path: "reason", message: "is required" }, { location: "body", path: "id", message: "is closed" }] }), { status: 400 }),
+      () => new Response(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues: [{ pointer: "/body/reason", keyword: "required", params: { missingProperty: "reason" } }, { pointer: "/body/id", keyword: "invalid", params: {} }] } }), { status: 400 }),
     );
     const before = lists(rendered).length;
     await rendered.click(rendered.parts("row-action")[0]);
     await rendered.click(confirming());
     const dialog = confirmation() as HTMLElement;
-    expect(dialog.querySelector('[data-telo-part="field-error"]')?.textContent).toBe("is required");
-    expect(dialog.querySelector('[data-telo-part="form-error"]')?.textContent).toBe("id is closed");
+    expect(dialog.querySelector('[data-telo-part="field-error"]')?.textContent).toBe("Is required");
+    expect(dialog.querySelector('[data-telo-part="form-error"]')?.textContent).toBe("id: Is not valid");
     expect(dialog.querySelector('[data-telo-part="error"]')).toBeNull();
     expect(lists(rendered)).toHaveLength(before);
     rendered.answer("/api/todos/reject", () => new Response(null, { status: 204 }));

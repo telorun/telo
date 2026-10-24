@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: ThrowMessages
+  version: 1.0.0
+  description: |
+    A throw step's two messages stay apart. `message` is the developer's and may
+    be computed; `displayMessage` is the text a person is shown. Without a
+    `message` the developer message is the display message formatted with
+    `data`, and without either it is the code.
+lang: en
+imports:
+  Run: ..
+  Assert: ../../assert
+targets:
+  - !ref testMessages
+---
+kind: Run.Sequence
+metadata: { name: testMessages }
+steps:
+  - name: both
+    try:
+      - name: throwBoth
+        throw:
+          code: ITEM_MISSING
+          message: !cel "'lookup of ' + '42' + ' found no row'"
+          displayMessage: "Item {$id} does not exist."
+          data: { id: "42" }
+    catch:
+      - name: assertBoth
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            message: !cel "error.message"
+            displayMessage: !cel "error.displayMessage"
+          expected:
+            message: lookup of 42 found no row
+            displayMessage: { text: "Item {$id} does not exist.", context: null, lang: en, computed: false }
+  - name: displayOnly
+    try:
+      - name: throwDisplay
+        throw:
+          code: ITEM_MISSING
+          displayMessage: "Item {$id} does not exist."
+          data: { id: "42" }
+    catch:
+      - name: assertDisplayOnly
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "error.message"
+          expected: Item 42 does not exist.
+  - name: neither
+    try:
+      - name: throwBare
+        throw:
+          code: ITEM_MISSING
+    catch:
+      - name: assertNeither
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            message: !cel "error.message"
+            displayMessage: !cel "error.displayMessage"
+          expected:
+            message: ITEM_MISSING
+            displayMessage: null

@@ -174,18 +174,21 @@ steps:
         missing:
           status: !cel "steps.badCreate.result.status"
           body: !cel "steps.badCreate.result.body"
-        tooLong: !cel "steps.tooLongCreate.result.body.details"
+        tooLong: !cel "steps.tooLongCreate.result.body.data.issues"
       expected:
         missing:
           status: 400
           body:
-            error: ValidationError
-            message: Request validation failed
+            type: about:blank
+            title: Bad Request
             status: 400
-            details:
-              - { location: body, path: text, message: is a required property }
+            detail: The request is not valid.
+            code: ERR_INPUT_INVALID
+            data:
+              issues:
+                - { pointer: /body/text, keyword: required, params: { missingProperty: text } }
         tooLong:
-          - { location: body, path: dueDate, message: must NOT have more than 10 characters }
+          - { pointer: /body/dueDate, keyword: maxLength, params: { limit: 10 } }
     invoke:
       kind: Assert.Equals
 
@@ -308,28 +311,28 @@ steps:
       actual:
         partial:
           status: !cel "steps.partialUpdate.result.status"
-          details: !cel "steps.partialUpdate.result.body.details"
+          issues: !cel "steps.partialUpdate.result.body.data.issues"
         bad:
           status: !cel "steps.badUpdate.result.status"
-          details: !cel "steps.badUpdate.result.body.details"
+          issues: !cel "steps.badUpdate.result.body.data.issues"
         nulled:
           status: !cel "steps.nullUpdate.result.status"
-          details: !cel "steps.nullUpdate.result.body.details"
+          issues: !cel "steps.nullUpdate.result.body.data.issues"
         row: !cel "steps.readAfterRefusals.result.body"
         missing: !cel "steps.updateMissing.result.status"
       expected:
         partial:
           status: 400
-          details:
-            - { location: body, path: text, message: is a required property }
+          issues:
+            - { pointer: /body/text, keyword: required, params: { missingProperty: text } }
         bad:
           status: 400
-          details:
-            - { location: body, path: done, message: must be equal to one of the allowed values }
+          issues:
+            - { pointer: /body/done, keyword: enum, params: { allowedValues: [0, 1] } }
         nulled:
           status: 400
-          details:
-            - { location: body, path: dueDate, message: must be string }
+          issues:
+            - { pointer: /body/dueDate, keyword: type, params: { type: string } }
         row: { id: 1, text: "Buy milk", done: 1 }
         missing: 404
     invoke:

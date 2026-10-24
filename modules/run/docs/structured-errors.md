@@ -1,5 +1,5 @@
 ---
-description: "Run.Sequence error handling: try/catch/finally with InvokeError.code/message/data binding and rethrow step capability"
+description: "Run.Sequence error handling: try/catch/finally with InvokeError.code/message/displayMessage/data binding, the throw and rethrow steps"
 sidebar_label: Structured Errors
 ---
 
@@ -11,6 +11,7 @@ sidebar_label: Structured Errors
 
 - `try:` / `catch:` step binding the `error` context
 - the `throw:` step — throws an `InvokeError` at a specific point in the sequence
+- the `rethrow:` step — re-raises the failure a `catch:` caught, unchanged
 - `throws: { inherit: true }` — how a sequence declares its effective throw union
 
 ## `try` / `catch` / `finally`
@@ -18,11 +19,12 @@ sidebar_label: Structured Errors
 Inside a `catch:` block, the CEL context gains:
 
 - `error.code` — the thrown `InvokeError.code`, or `INTERNAL_ERROR` for plain `Error` throws. Always a non-empty string, so `throw: { code: !cel "error.code" }` can safely rethrow it.
-- `error.message` — the thrown message
+- `error.message` — the thrown message, the developer's
 - `error.data` — the `InvokeError.data`, or `undefined` for plain errors
+- `error.displayMessage` — the text a person is shown for the failure, as its record (`{ text, context, lang, computed }`), or `null` when it carries none
 - `error.step` — the name of the step that threw
 
-These four fields are statically type-checked: a typo like `!cel "error.cdoe"` inside a `catch` (or `finally`) is reported as `CEL_UNKNOWN_FIELD`, at any nesting depth.
+These five fields are statically type-checked: a typo like `!cel "error.cdoe"` inside a `catch` (or `finally`) is reported as `CEL_UNKNOWN_FIELD`, at any nesting depth.
 
 Inside a `finally` block, `error` is **nullable** — it is `null` when the `try` (and any `catch`) succeeded, and the caught failure only when a failure propagates. Accessing a field without a null-guard is a static error (`CEL_NULLABLE_ACCESS`); guard first: `!cel "error == null ? 'OK' : error.code"` or `!cel "error != null && error.code == 'X'"`.
 
@@ -50,18 +52,24 @@ steps:
             - !cel "error.message"
             - !cel "error.data"
             - !cel "error.step"
-      - name: rethrow
-        throw:
-          code: !cel "error.code"
-          message: !cel "error.message"
-          data: !cel "error.data"
+      - name: again
+        rethrow: {}
 ```
 
-A `catch` block that falls through without re-throwing *absorbs* the error. A `catch` block that ends in a `throw:` step re-raises it — the step's `code` determines which codes propagate out of the sequence.
+A `catch` block that falls through without re-throwing *absorbs* the error. A `catch` block that ends in a `rethrow:` step re-raises it; one ending in a `throw:` step raises a new error — the step's `code` determines which codes propagate out of the sequence.
 
 ## `throw:` step
 
-A `throw:` step takes `{ code, message?, data? }` and throws the matching `InvokeError` from inside the sequence. The analyzer statically narrows the step's contribution to the sequence's throw union using the same rules as passthrough call sites:
+A `throw:` step takes `{ code, message?, displayMessage?, data? }` and throws the matching `InvokeError` from inside the sequence. Its two messages have two readers:
+
+- `message` is the developer's — logs and traces — and may be computed (`message: !cel "'lookup of ' + inputs.id + ' found no row'"`).
+- `displayMessage` is the text a person is shown: a literal `Text` in the module's `lang:`, whose placeholders name members of `data` (`displayMessage: "Item {$id} does not exist."` beside `data: { id: !cel "inputs.id" }`), a caught error's `!cel "error.displayMessage"`, or null. Any other expression is refused — `TEXT_ARGUMENT_COMPUTED` by `telo check`, `ERR_TEXT_ARGUMENT_COMPUTED` at run — because a sentence CEL builds can be neither checked nor translated.
+
+Without `message`, the developer message is the display message formatted in its own language with `data`, else the `code`. When the kind the error leaves declares the code with a `displayMessage`, that is attached to an error carrying none (`docs/extend/text-records.md`).
+
+Inside a `catch:` branch, a `throw:` records the failure the branch caught as the new error's `cause`. Nothing in CEL reads it — `error` has no `cause` — but the log record of the new error writes it in its cause chain, so the original failure is never lost from the logs.
+
+The analyzer statically narrows the step's contribution to the sequence's throw union using the same rules as passthrough call sites:
 
 | Form                                  | Statically resolves to                 |
 |---------------------------------------|----------------------------------------|
@@ -72,6 +80,12 @@ A `throw:` step takes `{ code, message?, data? }` and throws the matching `Invok
 The enclosing `try`'s propagated union includes `INTERNAL_ERROR` whenever the `try` block contains an `invoke:` step, since any invoked resource can throw a plain `Error` that the catch surfaces as `error.code === 'INTERNAL_ERROR'`. A surrounding `catches:` list must therefore cover `INTERNAL_ERROR` (or include a catch-all) for such a rethrow.
 
 Any other CEL expression is an analyzer error — the throw union would be unbounded and any surrounding `catches:` list would have no way to cover it.
+
+## `rethrow:` step
+
+`rethrow: {}` re-raises the failure the enclosing `catch:` caught, exactly as it was: its code, both messages, its data, its cause and its stack — a plain `Error` stays a plain `Error`, read again as `INTERNAL_ERROR` by the next catch. Prefer it to restating the fields in a `throw:`, which drops whatever the error carries beyond them.
+
+It is legal only inside a `catch:` branch, at any depth (inside an `if:` or a nested `try:` of one). In a `finally:` branch — where `error` is null when nothing failed — or outside every `catch:`, there is no caught failure: `telo check` reports `RETHROW_WITHOUT_CAUGHT_ERROR` and the run fails with `ERR_RETHROW_WITHOUT_CAUGHT_ERROR`. Its contribution to the throw union is the enclosing `try`'s propagated union, as for `code: !cel "error.code"`.
 
 ## `throws: { inherit: true }`
 

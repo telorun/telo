@@ -664,7 +664,9 @@ steps:
       - name: refuse
         throw:
           code: ERR_PLAN_NOT_FOUND
-          message: !cel "'Plan ' + inputs.planId + ' does not exist.'"
+          displayMessage: "Plan {$planId} does not exist."
+          data:
+            planId: !cel "inputs.planId"
 outputs:
   plan: !cel "steps.query.result.plans[0]"
 ---
@@ -863,7 +865,9 @@ steps:
               - name: refuse
                 throw:
                   code: ERR_PRODUCT_EXISTS
-                  message: !cel "'Product ' + inputs.slug + ' is already registered.'"
+                  displayMessage: "Product {$slug} is already registered."
+                  data:
+                    slug: !cel "inputs.slug"
           - name: insert
             invoke: { kind: Sql.Command, connection: !ref connection }
             inputs:
@@ -1050,7 +1054,9 @@ steps:
       - name: refuse
         throw:
           code: ERR_PRODUCT_NOT_FOUND
-          message: !cel "'Product ' + inputs.slug + ' is not registered. Register it on the settings page first.'"
+          displayMessage: "Product {$slug} is not registered. Register it on the settings page first."
+          data:
+            slug: !cel "inputs.slug"
   - name: read
     invoke: !ref readProducts
     inputs: { slug: !cel "inputs.slug" }
@@ -1129,7 +1135,9 @@ steps:
               - name: refuse
                 throw:
                   code: ERR_REPO_EXISTS
-                  message: !cel "'Repository ' + inputs.slug + ' is already registered.'"
+                  displayMessage: "Repository {$slug} is already registered."
+                  data:
+                    slug: !cel "inputs.slug"
           - name: unknown
             invoke: { kind: Sql.Query, connection: !ref connection }
             inputs:
@@ -1142,9 +1150,9 @@ steps:
               - name: refuseProducts
                 throw:
                   code: ERR_PRODUCT_NOT_FOUND
-                  message: !cel >-
-                    'Product ' + join(steps.unknown.result.rows.map(r, string(r.slug)), ', ')
-                      + ' is not registered. Register products on the settings page first.'
+                  displayMessage: "Product {$products} is not registered. Register products on the settings page first."
+                  data:
+                    products: !cel "join(steps.unknown.result.rows.map(r, string(r.slug)), ', ')"
           - name: insertRepo
             invoke: { kind: Sql.Command, connection: !ref connection }
             inputs:
@@ -1251,9 +1259,9 @@ steps:
               - name: refuseProduct
                 throw:
                   code: ERR_PRODUCT_NOT_FOUND
-                  message: !cel >-
-                    'Product ' + inputs.product + ' is not registered. A reviewer registers
-                    products and repositories on the settings page (/settings).'
+                  displayMessage: "Product {$product} is not registered. A reviewer registers products and repositories on the settings page (/settings)."
+                  data:
+                    product: !cel "inputs.product"
           - name: linked
             invoke: { kind: Sql.Query, connection: !ref connection }
             inputs:
@@ -1265,19 +1273,19 @@ steps:
               - name: refuseRepo
                 throw:
                   code: ERR_REPO_NOT_IN_PRODUCT
-                  message: !cel >-
-                    'Repository ' + inputs.repo + ' is not registered under product ' + inputs.product
-                      + '. A reviewer links repositories to products on the settings page (/settings).'
+                  displayMessage: "Repository {$repo} is not registered under product {$product}. A reviewer links repositories to products on the settings page (/settings)."
+                  data:
+                    repo: !cel "inputs.repo"
+                    product: !cel "inputs.product"
           - name: duplicates
             if: !cel "size(steps.doc.result.items) != size(distinct(steps.doc.result.items))"
             then:
               - name: refuseDuplicates
                 throw:
                   code: ERR_DUPLICATE_ITEM_ID
-                  message: !cel >-
-                    'Item IDs must be unique within a revision; repeated: '
-                      + join(distinct(steps.doc.result.items.filter(i,
-                          size(steps.doc.result.items.filter(j, j == i)) > 1)), ', ')
+                  displayMessage: "Item IDs must be unique within a revision; repeated: {$repeated}"
+                  data:
+                    repeated: !cel "join(distinct(steps.doc.result.items.filter(i, size(steps.doc.result.items.filter(j, j == i)) > 1)), ', ')"
           - name: existing
             invoke: { kind: Sql.Query, connection: !ref connection }
             inputs:
@@ -1384,7 +1392,9 @@ steps:
       - name: refuse
         throw:
           code: ERR_PLAN_NOT_FOUND
-          message: !cel "'Plan ' + inputs.planId + ' does not exist.'"
+          displayMessage: "Plan {$planId} does not exist."
+          data:
+            planId: !cel "inputs.planId"
 outputs:
   state: !cel "string(steps.query.result.rows[0].state)"
   latestSeq: !cel "int(steps.query.result.rows[0].latest_seq)"
@@ -1450,16 +1460,17 @@ steps:
                   - name: refuseClosed
                     throw:
                       code: ERR_PLAN_CLOSED
-                      message: !cel "'Plan ' + inputs.planId + ' is ' + steps.plan.result.state + ' and takes no further revisions.'"
+                      displayMessage: "Plan {$planId} is {$state} and takes no further revisions."
+                      data:
+                        planId: !cel "inputs.planId"
+                        state: !cel "steps.plan.result.state"
               - name: stale
                 if: !cel "inputs.base != steps.plan.result.latestHash"
                 then:
                   - name: refuseStale
                     throw:
                       code: ERR_STALE_BASE
-                      message: !cel >-
-                        'The plan has moved on: its latest revision is ' + string(steps.plan.result.latestSeq)
-                          + ' (' + steps.plan.result.latestHash + '). Read it and revise against that hash.'
+                      displayMessage: "The plan has moved on: its latest revision is {$latestSeq} ({$latestHash}). Read it and revise against that hash."
                       data:
                         latestSeq: !cel "steps.plan.result.latestSeq"
                         latestHash: !cel "steps.plan.result.latestHash"
@@ -1469,10 +1480,9 @@ steps:
                   - name: refuseDuplicates
                     throw:
                       code: ERR_DUPLICATE_ITEM_ID
-                      message: !cel >-
-                        'Item IDs must be unique within a revision; repeated: '
-                          + join(distinct(steps.doc.result.items.filter(i,
-                              size(steps.doc.result.items.filter(j, j == i)) > 1)), ', ')
+                      displayMessage: "Item IDs must be unique within a revision; repeated: {$repeated}"
+                      data:
+                        repeated: !cel "join(distinct(steps.doc.result.items.filter(i, size(steps.doc.result.items.filter(j, j == i)) > 1)), ', ')"
               - name: insertRevision
                 invoke: { kind: Sql.Command, connection: !ref connection }
                 inputs:
@@ -1593,7 +1603,10 @@ steps:
               - name: refuse
                 throw:
                   code: ERR_INVALID_TRANSITION
-                  message: !cel "'Plan ' + inputs.planId + ' is ' + steps.plan.result.state + ' and cannot be withdrawn.'"
+                  displayMessage: "Plan {$planId} is {$state} and cannot be withdrawn."
+                  data:
+                    planId: !cel "inputs.planId"
+                    state: !cel "steps.plan.result.state"
           - name: update
             invoke: { kind: Sql.Command, connection: !ref connection }
             inputs:
@@ -1681,12 +1694,24 @@ steps:
                 || (inputs.state != '' && !(inputs.state in steps.transitions.result[steps.plan.result.state]))
             then:
               - name: refuseIllegal
-                throw:
-                  code: ERR_INVALID_TRANSITION
-                  message: !cel >-
-                    'Plan ' + inputs.planId + ' is ' + steps.plan.result.state
-                      + (inputs.state == '' ? '' : ' and cannot move to ' + inputs.state)
-                      + '. Reports are taken only on an approved plan and the work that follows it.'
+                if: !cel "inputs.state == ''"
+                then:
+                  - name: refuseReport
+                    throw:
+                      code: ERR_INVALID_TRANSITION
+                      displayMessage: "Plan {$planId} is {$state}. Reports are taken only on an approved plan and the work that follows it."
+                      data:
+                        planId: !cel "inputs.planId"
+                        state: !cel "steps.plan.result.state"
+                else:
+                  - name: refuseMove
+                    throw:
+                      code: ERR_INVALID_TRANSITION
+                      displayMessage: "Plan {$planId} is {$state} and cannot move to {$target}. Reports are taken only on an approved plan and the work that follows it."
+                      data:
+                        planId: !cel "inputs.planId"
+                        state: !cel "steps.plan.result.state"
+                        target: !cel "inputs.state"
           - name: update
             invoke: { kind: Sql.Command, connection: !ref connection }
             inputs:
@@ -2053,7 +2078,10 @@ steps:
               - name: refuseRevision
                 throw:
                   code: ERR_REVISION_NOT_FOUND
-                  message: !cel "'Plan ' + inputs.planId + ' has no revision ' + string(inputs.revision) + '.'"
+                  displayMessage: "Plan {$planId} has no revision {$revision}."
+                  data:
+                    planId: !cel "inputs.planId"
+                    revision: !cel "string(inputs.revision)"
           - name: noItem
             if: !cel >-
               inputs.item != '' && !(inputs.item in parseJson(string(steps.revision.result.rows[0].items)))
@@ -2061,7 +2089,10 @@ steps:
               - name: refuseItem
                 throw:
                   code: ERR_ITEM_NOT_FOUND
-                  message: !cel "'Revision ' + string(inputs.revision) + ' has no item ' + inputs.item + '.'"
+                  displayMessage: "Revision {$revision} has no item {$item}."
+                  data:
+                    revision: !cel "string(inputs.revision)"
+                    item: !cel "inputs.item"
           - name: event
             invoke: !ref appendEvent
             inputs:
@@ -2149,16 +2180,17 @@ steps:
               - name: refuseRevision
                 throw:
                   code: ERR_REVISION_NOT_FOUND
-                  message: !cel "'Plan ' + inputs.planId + ' has no revision ' + string(inputs.revision) + '.'"
+                  displayMessage: "Plan {$planId} has no revision {$revision}."
+                  data:
+                    planId: !cel "inputs.planId"
+                    revision: !cel "string(inputs.revision)"
           - name: superseded
             if: !cel "inputs.revision != steps.plan.result.latestSeq || inputs.hash != steps.plan.result.latestHash"
             then:
               - name: refuseSuperseded
                 throw:
                   code: ERR_REVISION_SUPERSEDED
-                  message: !cel >-
-                    'A decision binds to the latest revision, which is ' + string(steps.plan.result.latestSeq)
-                      + ' (' + steps.plan.result.latestHash + '). Review it and decide again.'
+                  displayMessage: "A decision binds to the latest revision, which is {$latestSeq} ({$latestHash}). Review it and decide again."
                   data:
                     latestSeq: !cel "steps.plan.result.latestSeq"
                     latestHash: !cel "steps.plan.result.latestHash"
@@ -2171,7 +2203,11 @@ steps:
               - name: refuseState
                 throw:
                   code: ERR_INVALID_TRANSITION
-                  message: !cel "'Plan ' + inputs.planId + ' is ' + steps.plan.result.state + ' and cannot take a ' + inputs.decision + ' decision.'"
+                  displayMessage: "Plan {$planId} is {$state} and cannot take a {$decision} decision."
+                  data:
+                    planId: !cel "inputs.planId"
+                    state: !cel "steps.plan.result.state"
+                    decision: !cel "inputs.decision"
           - name: update
             invoke: { kind: Sql.Command, connection: !ref connection }
             inputs:
@@ -2276,7 +2312,9 @@ steps:
       - name: refuse
         throw:
           code: ERR_PRODUCT_NOT_FOUND
-          message: !cel "'Product ' + inputs.slug + ' is not registered.'"
+          displayMessage: "Product {$slug} is not registered."
+          data:
+            slug: !cel "inputs.slug"
   - name: plans
     invoke: !ref queryPlans
     inputs: { planId: "", product: !cel "inputs.slug", repo: "", state: "", olderThanSeconds: -1 }
@@ -3102,14 +3140,20 @@ steps:
               - name: refuseUnserved
                 throw:
                   code: ERR_REPO_NOT_SERVED
-                  message: !cel "'Runner ' + inputs.name + ' does not serve repository ' + inputs.repo + '.'"
+                  displayMessage: "Runner {$name} does not serve repository {$repo}."
+                  data:
+                    name: !cel "inputs.name"
+                    repo: !cel "inputs.repo"
           - name: unknownSession
             if: !cel "inputs.type == 'stop' && size(steps.target.result.rows) == 0"
             then:
               - name: refuseSession
                 throw:
                   code: ERR_SESSION_NOT_FOUND
-                  message: !cel "'Runner ' + inputs.name + ' has no session ' + inputs.session + '.'"
+                  displayMessage: "Runner {$name} has no session {$session}."
+                  data:
+                    name: !cel "inputs.name"
+                    session: !cel "inputs.session"
           - name: repo
             value: !cel "inputs.type == 'start' ? inputs.repo : string(steps.target.result.rows[0].repo)"
           - name: next

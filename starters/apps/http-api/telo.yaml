@@ -29,13 +29,16 @@ metadata:
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   telo: ">=0.121.0"
+# `http-server` comes from this repository while its error responses are
+# unreleased, and the modules beside it with it; `telo upgrade --pin-local`
+# pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
-  CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY
-  RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.1#sha256-DIwBfYFt1lviymf0OxCZE2i3uL1hw99bmWxrZUKpElU
+  Http: ../../../modules/http-server
+  Run: ../../../modules/run
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  CacheMemory: ../../../modules/cache-memory
+  RateLimit: ../../../modules/rate-limit
 targets:
   - !ref migrate
   - !ref server
@@ -143,7 +146,7 @@ steps:
       - name: refuse
         throw:
           code: ERR_UNAUTHENTICATED
-          message: a bearer token is required
+          displayMessage: A bearer token is required.
 ---
 # Counters live in the process. Swap this one resource for cache-redis and the
 # limit is shared by every replica.
@@ -245,7 +248,8 @@ steps:
       - name: refuse
         throw:
           code: ERR_BOOKMARK_NOT_FOUND
-          message: !cel "'no bookmark ' + string(inputs.id)"
+          displayMessage: "There is no bookmark {$id}."
+          data: { id: !cel "string(inputs.id)" }
 outputs:
   bookmark: !cel "steps.found.result.rows[0]"
 ---
@@ -272,7 +276,8 @@ steps:
       - name: refuse
         throw:
           code: ERR_BOOKMARK_NOT_FOUND
-          message: !cel "'no bookmark ' + string(inputs.id)"
+          displayMessage: "There is no bookmark {$id}."
+          data: { id: !cel "string(inputs.id)" }
 ---
 kind: Http.Api
 metadata: { name: bookmarkRoutes }
@@ -365,10 +370,7 @@ routes:
       - when: !cel "error.code == 'ERR_BOOKMARK_NOT_FOUND'"
         status: 404
         content:
-          application/json:
-            body:
-              error: not_found
-              message: !cel "error.message"
+          application/problem+json: {}
 
   - request:
       path: /bookmarks/{id}
@@ -388,10 +390,7 @@ routes:
       - when: !cel "error.code == 'ERR_BOOKMARK_NOT_FOUND'"
         status: 404
         content:
-          application/json:
-            body:
-              error: not_found
-              message: !cel "error.message"
+          application/problem+json: {}
 ---
 # Unguarded on purpose: an orchestrator's probe carries no token.
 kind: Http.Api
@@ -434,9 +433,6 @@ mounts:
           headers:
             WWW-Authenticate: Bearer
           content:
-            application/json:
-              body:
-                error: unauthenticated
-                message: !cel "error.message"
+            application/problem+json: {}
   - path: /
     mount: !ref probeRoutes

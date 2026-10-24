@@ -143,6 +143,16 @@ through `x-telo-text-values-for` takes none of its own — anything else is
 `TEXT_VALUES_INVALID`, reported at the kind and again when the kernel registers
 it. A text with neither annotation is not judged for its placeholders.
 
+When the values are another field's data rather than a fixed set, name that
+field's SCHEMA with `x-telo-text-values-from: "<relative JSON pointer>"`, from
+the object holding the text (`0/data` is its sibling `data`). The text may read
+only the **required** properties of that schema declared `string`, `integer` or
+`number`: a property the value may arrive without is `MESSAGE_PLACEHOLDER_UNBOUND`,
+one of no declared type (or another type) `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`.
+The annotation sits on a `Text` or `Message` node, never beside
+`x-telo-text-values`, and its sibling must be declared — otherwise
+`TEXT_VALUES_INVALID`. The built-in throws-code entry is where it is used.
+
 ## Texts inside a union
 
 A field may admit a text or something else — `anyOf: [Text, { text, values }]`,
@@ -150,6 +160,73 @@ a text or a reference. A value is a text only where the `Text` branch admits it:
 a string, or an object holding exactly a closed branch's members. Anything else
 is judged by its own branch, and an expression is evaluated first and judged as
 whatever it produced.
+
+A union holding both a `Text` and a `TextRecord` branch takes a text as written
+or the record of one already shown, and an expression there is admitted by the
+record branch alone: statically its type must be the record (else
+`TEXT_ARGUMENT_COMPUTED`), and at run time a value it produces that is not a
+record is `ERR_TEXT_ARGUMENT_COMPUTED`. That is how a throw step's
+`displayMessage` passes a caught error's on (`!cel "error.displayMessage"`) and
+refuses a sentence CEL builds.
+
+## The display message of a failure
+
+A failure carries two messages. `message` is the developer's, for logs and
+traces. `displayMessage` is the text a person is shown for it, as its record on
+the `InvokeError` (its values are the error's `data`), stored in the language it
+was written in — a transport translates it when it renders. Three places give a
+failure its display message:
+
+- **A kind's code.** `throws.codes.<CODE>.displayMessage` is a `Text` in the declaring
+  module's `lang:`, its placeholders limited to the required string and number
+  properties of the code's `data` schema:
+
+  ```yaml
+  throws:
+    codes:
+      ITEM_MISSING:
+        description: No item has the id.
+        displayMessage: "Item {$id} does not exist."
+        data:
+          type: object
+          required: [id]
+          properties: { id: { type: string } }
+  ```
+
+  Where an error leaves a dispatch of that kind (the nearest declaration along
+  `extends` wins), the kernel attaches it unless the error already carries one —
+  one attached nearer the failure is never replaced — and first holds `data` to
+  the declared schema: a mismatch is `ERR_OUTPUT_INVALID`, whose `data` is
+  `{ code, data, issues }` naming the original code, so a renderer formatting it
+  never fails. Only a code declaring a `displayMessage` is checked this way.
+  `throws.codes` is legal on a kind of every capability, so a server can declare
+  the refusals it answers with.
+- **A throw step.** `throw.displayMessage` is a literal `Text` whose
+  placeholders name members of `throw.data`, or a caught error's
+  `error.displayMessage`; null or omitted, the error carries none. `throw.message`
+  is the developer's string and may be computed; without it the developer
+  message is the display message formatted in its own language with `data`, else
+  the code. `rethrow: {}` re-raises a caught failure with both messages as they
+  are.
+- **The runtime's own codes.** `ERR_INPUT_INVALID`, `ERR_OUTPUT_INVALID`,
+  `ERR_CONTRACT_UNRESOLVABLE`, `ERR_SCHEMA_PROJECTION_UNRESOLVED`,
+  `ERR_FUNCTION_FAILED` and `ERR_PREDICATE_NOT_BOOLEAN` carry built-in English
+  display messages (`telo builtins ERR_INPUT_INVALID` prints one). They count as shown by
+  every module, so a catalog translating them is never `MESSAGE_TEXT_UNUSED`.
+
+Every catch context's `error` — a `catch:` / `finally:` branch, a kind's
+`x-telo-error-context` — reads it as `error.displayMessage`, a nullable
+`TextRecord`, beside `error.message`.
+
+A controller rethrowing an error it caught keeps `displayMessage` and `data` as
+they are. One answering a refusal outside any dispatch — a request a server
+refuses before a route runs — asks for its kind's display message with
+`ctx.declaredDisplayMessage(code, data)`:
+the record its kind declares for `code` (or the built-in one), `undefined` when
+neither has one, with `data` held to the declared schema exactly as at a
+dispatch exit. A Rust controller returns `ControllerError::new(code, message)
+.with_data(data).with_display_message(record)`, and both kernels carry the two
+across.
 
 ## Records on a wire
 
@@ -206,14 +283,14 @@ reference slot, and must not sit inside another catalog set.
 | `MESSAGE_PLURAL_CATEGORY_INVALID` | a selection names a category its language lacks |
 | `MESSAGE_SOURCE_LANGUAGE_MISSING` | a text selects a plural case and its module declares no `lang:` |
 | `MESSAGE_PLACEHOLDER_UNKNOWN` | a translation reads a placeholder its source lacks |
-| `MESSAGE_PLACEHOLDER_UNBOUND` | a message's values lack a name it reads, or it reads a name its slot's `x-telo-text-values` does not declare |
+| `MESSAGE_PLACEHOLDER_UNBOUND` | a message's values lack a name it reads, or it reads a name its slot's `x-telo-text-values` does not declare, or one its `x-telo-text-values-from` schema does not require |
 | `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` | a value is neither a string nor a number, or a selector's is not a number |
 | `MESSAGE_ENTRY_COMPUTED` | a catalog holds an expression, or an expression produces one |
 | `MESSAGE_ENTRY_DUPLICATE` | a catalog, or a catalog set, translates one text and context twice in one language |
-| `TEXT_ARGUMENT_COMPUTED` | a `Text` parameter's argument is an expression |
+| `TEXT_ARGUMENT_COMPUTED` | a `Text` parameter's argument is an expression, or an expression at a text-or-record slot is not typed as a record |
 | `TEXT_VALUES_FOR_INVALID` | a values pairing names nothing, no `Text`, or a `Text` already paired |
 | `TEXT_SLOT_ACCESSOR` | a kind types a text at or beneath an accessor field |
-| `TEXT_VALUES_INVALID` | `x-telo-text-values` on a node that is no text, a value schema other than `string` / `integer` / `number`, or on a text a values pairing binds |
+| `TEXT_VALUES_INVALID` | `x-telo-text-values` on a node that is no text, a value schema other than `string` / `integer` / `number`, or on a text a values pairing binds; `x-telo-text-values-from` on a node that is no text, that is no relative pointer, beside `x-telo-text-values`, or naming a sibling the object does not declare |
 | `TEXT_CATALOG_SET_INVALID` | a catalog set marks a node reaching no catalog and no reference, or sits inside another |
 | `MESSAGE_TEXT_UNUSED` (warning) | a catalog entry matches no text its module's imports show |
 | `TEXT_CONTEXT_MISPLACED` (warning) | `x-telo-text-context` where nothing reads it |
@@ -223,5 +300,8 @@ mistakes as `ERR_<code>` — for a text or values computed at creation or when y
 controller evaluates them, and for a dependency's own texts, which `telo check`
 of your application does not judge.
 
-The Rust kernel builds no text records yet, and refuses a resource whose kind
-holds a `Text` or marks a catalog set.
+The Rust kernel builds no text records for a resource yet, and refuses a resource
+whose kind holds a `Text` or marks a catalog set. It does read a kind's
+`throws.codes.*.displayMessage` — judged when the kind registers, with the same
+codes — and attaches it, and the built-in display messages, where an error leaves
+a dispatch.

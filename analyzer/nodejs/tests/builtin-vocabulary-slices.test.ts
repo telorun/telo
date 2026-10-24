@@ -43,8 +43,12 @@ describe("selecting entries of the built-in vocabulary", () => {
       "  value types",
       "  zone attributes",
       "  formats",
+      "  error codes",
     ]);
     expect(lines[1]).toContain("Abstract, Application,");
     expect(lines[5]).toBe("  formats: css-selector, language-tag, message-pattern, re2-pattern");
+    expect(lines[6]).toBe(
+      "  error codes: ERR_CONTRACT_UNRESOLVABLE, ERR_FUNCTION_FAILED, ERR_INPUT_INVALID, ERR_OUTPUT_INVALID, ERR_PREDICATE_NOT_BOOLEAN, ERR_SCHEMA_PROJECTION_UNRESOLVED",
+    );
   });
 });

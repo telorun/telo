@@ -748,7 +748,7 @@ routes:
           if: !cel "size(steps.project.result.rows) == 0"
           then:
             - name: unknown
-              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+              throw: { code: PROJECT_UNKNOWN, displayMessage: "There is no project '{$code}'.", data: { code: !cel "inputs.code" } }
         - name: members
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -775,8 +775,7 @@ routes:
         when: !cel "error.code == 'PROJECT_UNKNOWN'"
         status: 404
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
 
   # The people working on one project.
   - request:
@@ -802,7 +801,7 @@ routes:
           if: !cel "size(steps.project.result.rows) == 0"
           then:
             - name: unknown
-              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+              throw: { code: PROJECT_UNKNOWN, displayMessage: "There is no project '{$code}'.", data: { code: !cel "inputs.code" } }
         - name: people
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -820,8 +819,8 @@ routes:
     catches:
       - *projectUnknown
 
-  # Tags the featured project TEL-42. A tag it already has is refused with a
-  # `{ code, message }` body; one the body schema refuses is the 400 envelope.
+  # Tags the featured project TEL-42. A tag it already has is refused with a 409
+  # problem; one the body schema refuses is the 400 validation problem.
   - request:
       method: POST
       path: /tags
@@ -846,7 +845,7 @@ routes:
           if: !cel "size(steps.existing.result.rows) > 0"
           then:
             - name: duplicate
-              throw: { code: TAG_EXISTS, message: !interpolate "TEL-42 is already tagged '${{ inputs.tag }}'." }
+              throw: { code: TAG_EXISTS, displayMessage: "TEL-42 is already tagged '{$tag}'.", data: { tag: !cel "inputs.tag" } }
         - name: insert
           invoke: { kind: Sql.Command, connection: !ref db }
           inputs:
@@ -867,8 +866,7 @@ routes:
       - when: !cel "error.code == 'TAG_EXISTS'"
         status: 409
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
 
   # The task board: every task with its assignee and project nested in it,
   # a page at a time under the collection contract. It accepts no filter and
@@ -975,8 +973,8 @@ routes:
             body: !cel "result"
 
   # Opens a session for an active member of the team: a row in `sessions` and
-  # its token in an http-only cookie. An e-mail no member has is the 400
-  # envelope on the field; a member who left is refused with 403.
+  # its token in an http-only cookie. An e-mail no member has is a 400 problem
+  # saying so; a member who left is refused with 403.
   - request:
       method: POST
       path: /session/signin
@@ -1007,12 +1005,12 @@ routes:
           if: !cel "size(steps.person.result.rows) == 0"
           then:
             - name: stranger
-              throw: { code: NOT_A_MEMBER, message: is not the e-mail of anyone on the team }
+              throw: { code: NOT_A_MEMBER, displayMessage: "{$email} is not the e-mail of anyone on the team.", data: { email: !cel "inputs.email" } }
         - name: current
           if: !cel "steps.person.result.rows[0].active == 0"
           then:
             - name: left
-              throw: { code: ACCOUNT_INACTIVE, message: !interpolate "${{ inputs.email }} has left the team." }
+              throw: { code: ACCOUNT_INACTIVE, displayMessage: "{$email} has left the team.", data: { email: !cel "inputs.email" } }
         - name: token
           value: !cel "uuidv4()"
         - name: open
@@ -1032,18 +1030,11 @@ routes:
       - when: !cel "error.code == 'NOT_A_MEMBER'"
         status: 400
         content:
-          application/json:
-            body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details:
-                - { location: body, path: email, message: !cel "error.message" }
+          application/problem+json: {}
       - when: !cel "error.code == 'ACCOUNT_INACTIVE'"
         status: 403
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
 
   # Deletes the cookie's session and clears the cookie.
   - request:
@@ -1069,8 +1060,8 @@ routes:
             body: {}
 
   # ---- The forms page ----
-  # Stores a request. A title another request has is the 400 envelope on the
-  # title field. The daily call is held to a pattern rather than `format: time`,
+  # Stores a request. A title another request has is a 400 problem saying
+  # so. The daily call is held to a pattern rather than `format: time`,
   # which wants seconds and an offset the browser's time control does not send.
   - request:
       method: POST
@@ -1113,7 +1104,7 @@ routes:
           if: !cel "size(steps.same.result.rows) > 0"
           then:
             - name: taken
-              throw: { code: TITLE_TAKEN, message: is the title of another request }
+              throw: { code: TITLE_TAKEN, displayMessage: "Another request is already titled '{$title}'.", data: { title: !cel "inputs.title" } }
         - name: insert
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -1138,13 +1129,7 @@ routes:
       - when: !cel "error.code == 'TITLE_TAKEN'"
         status: 400
         content:
-          application/json:
-            body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details:
-                - { location: body, path: title, message: !cel "error.message" }
+          application/problem+json: {}
 
   # The five requests received last, as the forms page lists them.
   - request: { method: GET, path: /requests }
@@ -1168,8 +1153,7 @@ routes:
             body: !cel "result"
 
   # Books a lead and the people around them on a project. A period that starts
-  # after it ends, or runs past a year, is the 400 envelope on one of its
-  # dates, which marks the period field.
+  # after it ends, or runs past a year, is a 400 problem saying which.
   - request:
       method: POST
       path: /bookings
@@ -1208,17 +1192,17 @@ routes:
           if: !cel "size(steps.project.result.rows) == 0"
           then:
             - name: unknown
-              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.projectCode }}'." }
+              throw: { code: PROJECT_UNKNOWN, displayMessage: "There is no project '{$code}'.", data: { code: !cel "inputs.projectCode" } }
         - name: ordered
           if: !cel "inputs.period.from > inputs.period.to"
           then:
             - name: reversed
-              throw: { code: PERIOD_REVERSED, message: must not be after the end }
+              throw: { code: PERIOD_REVERSED, displayMessage: "The period must not start after it ends." }
         - name: bounded
           if: !cel "timestamp(inputs.period.to + 'T00:00:00Z') - timestamp(inputs.period.from + 'T00:00:00Z') > duration('8784h')"
           then:
             - name: tooLong
-              throw: { code: PERIOD_TOO_LONG, message: is more than a year after the start }
+              throw: { code: PERIOD_TOO_LONG, displayMessage: "The period must end within a year of its start." }
         - name: insert
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -1242,23 +1226,11 @@ routes:
       - when: !cel "error.code == 'PERIOD_REVERSED'"
         status: 400
         content:
-          application/json:
-            body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details:
-                - { location: body, path: period.from, message: !cel "error.message" }
+          application/problem+json: {}
       - when: !cel "error.code == 'PERIOD_TOO_LONG'"
         status: 400
         content:
-          application/json:
-            body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details:
-                - { location: body, path: period.to, message: !cel "error.message" }
+          application/problem+json: {}
 
   # The five bookings made last, with the names of the people booked.
   - request: { method: GET, path: /bookings }
@@ -1332,7 +1304,7 @@ routes:
           if: !cel "size(steps.project.result.rows) == 0"
           then:
             - name: unknown
-              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.projectCode }}'." }
+              throw: { code: PROJECT_UNKNOWN, displayMessage: "There is no project '{$code}'.", data: { code: !cel "inputs.projectCode" } }
         - name: open
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -1366,8 +1338,8 @@ routes:
       - *projectUnknown
 
   # Gives a task to an active member of the team. Naming nobody, or an e-mail
-  # no member has, is the 400 envelope on the e-mail; an unknown task is 404
-  # and a member who left 409, each with a `{ code, message }` body.
+  # no member has, is a 400 problem; an unknown task is 404 and a member who
+  # left 409, each a problem whose `detail` says what went wrong.
   - request:
       method: POST
       path: /assign
@@ -1389,7 +1361,7 @@ routes:
           if: !cel "!has(inputs.assigneeEmail)"
           then:
             - name: nobody
-              throw: { code: ASSIGNEE_MISSING, message: names nobody to give the task to }
+              throw: { code: ASSIGNEE_MISSING, displayMessage: "Name someone to give the task to." }
         - name: task
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -1398,7 +1370,7 @@ routes:
           if: !cel "size(steps.task.result.rows) == 0"
           then:
             - name: noTask
-              throw: { code: TASK_UNKNOWN, message: !interpolate "There is no task ${{ inputs.id }}." }
+              throw: { code: TASK_UNKNOWN, displayMessage: "There is no task {$id}.", data: { id: !cel "string(inputs.id)" } }
         - name: person
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -1407,12 +1379,12 @@ routes:
           if: !cel "size(steps.person.result.rows) == 0"
           then:
             - name: stranger
-              throw: { code: NOT_A_MEMBER, message: is not the e-mail of anyone on the team }
+              throw: { code: NOT_A_MEMBER, displayMessage: "{$email} is not the e-mail of anyone on the team.", data: { email: !cel "inputs.assigneeEmail" } }
         - name: current
           if: !cel "steps.person.result.rows[0].active == 0"
           then:
             - name: left
-              throw: { code: ASSIGNEE_INACTIVE, message: !interpolate "${{ steps.person.result.rows[0].name }} has left the team." }
+              throw: { code: ASSIGNEE_INACTIVE, displayMessage: "{$name} has left the team.", data: { name: !cel "steps.person.result.rows[0].name" } }
         - name: assign
           invoke: { kind: Sql.Command, connection: !ref db }
           inputs:
@@ -1430,24 +1402,16 @@ routes:
       - when: !cel "error.code == 'ASSIGNEE_MISSING' || error.code == 'NOT_A_MEMBER'"
         status: 400
         content:
-          application/json:
-            body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details:
-                - { location: body, path: assigneeEmail, message: !cel "error.message" }
+          application/problem+json: {}
       - &taskUnknown
         when: !cel "error.code == 'TASK_UNKNOWN'"
         status: 404
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
       - when: !cel "error.code == 'ASSIGNEE_INACTIVE'"
         status: 409
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
 
   # Moves a task to another status. A task already there is refused with 409.
   - request:
@@ -1475,12 +1439,12 @@ routes:
           if: !cel "size(steps.task.result.rows) == 0"
           then:
             - name: noTask
-              throw: { code: TASK_UNKNOWN, message: !interpolate "There is no task ${{ inputs.id }}." }
+              throw: { code: TASK_UNKNOWN, displayMessage: "There is no task {$id}.", data: { id: !cel "string(inputs.id)" } }
         - name: moved
           if: !cel "steps.task.result.rows[0].status == inputs.status"
           then:
             - name: unchanged
-              throw: { code: STATUS_UNCHANGED, message: !interpolate "Task ${{ inputs.id }} is already ${{ inputs.status }}." }
+              throw: { code: STATUS_UNCHANGED, displayMessage: "Task {$id} is already {$status}.", data: { id: !cel "string(inputs.id)", status: !cel "inputs.status" } }
         - name: move
           invoke: { kind: Sql.Command, connection: !ref db }
           inputs:
@@ -1499,8 +1463,7 @@ routes:
       - when: !cel "error.code == 'STATUS_UNCHANGED'"
         status: 409
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
 
   # How one project's tasks stand, read again after a task moves.
   - request:
@@ -1559,7 +1522,7 @@ routes:
           if: !cel "size(steps.project.result.rows) == 0"
           then:
             - name: unknown
-              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+              throw: { code: PROJECT_UNKNOWN, displayMessage: "There is no project '{$code}'.", data: { code: !cel "inputs.code" } }
       outputs:
         page: !cel "'/tables?project=' + steps.project.result.rows[0].code"
         name: !cel "steps.project.result.rows[0].name"
@@ -1680,7 +1643,7 @@ routes:
           if: !cel "size(steps.task.result.rows) == 0"
           then:
             - name: noTask
-              throw: { code: TASK_UNKNOWN, message: !interpolate "There is no task ${{ inputs.taskId }}." }
+              throw: { code: TASK_UNKNOWN, displayMessage: "There is no task {$id}.", data: { id: !cel "string(inputs.taskId)" } }
         - name: insert
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -1727,7 +1690,7 @@ routes:
           if: !cel "size(steps.pin.result.rows) == 0"
           then:
             - name: noComment
-              throw: { code: COMMENT_UNKNOWN, message: !interpolate "There is no comment ${{ inputs.id }}." }
+              throw: { code: COMMENT_UNKNOWN, displayMessage: "There is no comment {$id}.", data: { id: !cel "string(inputs.id)" } }
       outputs:
         id: !cel "inputs.id"
     returns:
@@ -1740,8 +1703,7 @@ routes:
         when: !cel "error.code == 'COMMENT_UNKNOWN'"
         status: 404
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
 
   # Deletes a comment.
   - request:
@@ -1763,7 +1725,7 @@ routes:
           if: !cel "size(steps.remove.result.rows) == 0"
           then:
             - name: noComment
-              throw: { code: COMMENT_UNKNOWN, message: !interpolate "There is no comment ${{ inputs.id }}." }
+              throw: { code: COMMENT_UNKNOWN, displayMessage: "There is no comment {$id}.", data: { id: !cel "string(inputs.id)" } }
       outputs:
         id: !cel "inputs.id"
     returns:
@@ -1774,7 +1736,7 @@ routes:
     catches:
       - *commentUnknown
 
-  # Rewrites a comment. Leaving the new text out is the 400 envelope on it.
+  # Rewrites a comment. Leaving the new text out is a 400 problem.
   - request:
       method: POST
       path: /comments/edit
@@ -1796,7 +1758,7 @@ routes:
           if: !cel "!has(inputs.body)"
           then:
             - name: empty
-              throw: { code: COMMENT_EMPTY, message: is needed to change the comment }
+              throw: { code: COMMENT_EMPTY, displayMessage: "Write the new text of the comment." }
         - name: edit
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -1805,7 +1767,7 @@ routes:
           if: !cel "size(steps.edit.result.rows) == 0"
           then:
             - name: noComment
-              throw: { code: COMMENT_UNKNOWN, message: !interpolate "There is no comment ${{ inputs.id }}." }
+              throw: { code: COMMENT_UNKNOWN, displayMessage: "There is no comment {$id}.", data: { id: !cel "string(inputs.id)" } }
       outputs:
         id: !cel "inputs.id"
     returns:
@@ -1817,13 +1779,7 @@ routes:
       - when: !cel "error.code == 'COMMENT_EMPTY'"
         status: 400
         content:
-          application/json:
-            body:
-              error: ValidationError
-              message: Request validation failed
-              status: 400
-              details:
-                - { location: body, path: body, message: !cel "error.message" }
+          application/problem+json: {}
       - *commentUnknown
 
   # ---- The language switch ----
@@ -1989,12 +1945,12 @@ routes:
           if: !cel "size(steps.person.result.rows) == 0"
           then:
             - name: closed
-              throw: { code: UNAUTHORIZED, message: The session closed. }
+              throw: { code: UNAUTHORIZED, displayMessage: The session closed. }
         - name: manager
           if: !cel "steps.person.result.rows[0].role != 'manager'"
           then:
             - name: forbidden
-              throw: { code: FORBIDDEN, message: Only a manager may pause a project. }
+              throw: { code: FORBIDDEN, displayMessage: Only a manager may pause a project. }
         - name: project
           invoke: { kind: Sql.Query, connection: !ref db }
           inputs:
@@ -2003,7 +1959,7 @@ routes:
           if: !cel "size(steps.project.result.rows) == 0"
           then:
             - name: unknown
-              throw: { code: PROJECT_UNKNOWN, message: !interpolate "There is no project '${{ inputs.code }}'." }
+              throw: { code: PROJECT_UNKNOWN, displayMessage: "There is no project '{$code}'.", data: { code: !cel "inputs.code" } }
         - name: running
           if: !cel "steps.project.result.rows[0].status != 'active'"
           then:
@@ -2033,15 +1989,16 @@ routes:
       - when: !cel "error.code == 'PROJECT_UNKNOWN'"
         status: 404
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          application/problem+json: {}
       - when: !cel "error.code == 'PROJECT_NOT_ACTIVE'"
         status: 409
         headers:
           Content-Language: !cel "error.data.lang"
         content:
-          application/json:
-            body: { code: !cel "error.code", message: !cel "error.message" }
+          # Its words are computed per language, so they are the developer
+          # message, written into the problem as its `detail`.
+          application/problem+json:
+            body: !cel "merge(problem, {'detail': error.message})"
   # Sends nothing and answers nothing: whether it is let through is the guard's.
   - request:
       method: POST

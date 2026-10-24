@@ -8,13 +8,14 @@
 //! resource of one is declared.
 
 use std::cell::{OnceCell, RefCell};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 
 use serde_json::Value;
 
 use crate::controller_loader::ControllerLoader;
 use crate::controller_loaders::native_abi::LoadedController;
+use crate::declared_display_messages::DeclaredDisplayMessage;
 use crate::error::KernelError;
 use crate::runtime_registry::ControllerPolicy;
 use crate::schema_validator::SchemaValidator;
@@ -45,6 +46,8 @@ pub struct Definition {
     author_schema: OnceCell<Option<Rc<SchemaValidator>>>,
     /// Whether the schema declares a host path anywhere, read once.
     declares_host_path: OnceCell<bool>,
+    /// The display message each code declares, read and judged at registration.
+    pub declared_display_messages: BTreeMap<String, DeclaredDisplayMessage>,
 }
 
 impl Definition {
@@ -70,6 +73,7 @@ impl Definition {
             controller: RefCell::new(None),
             author_schema: OnceCell::new(),
             declares_host_path: OnceCell::new(),
+            declared_display_messages: BTreeMap::new(),
         }
     }
 

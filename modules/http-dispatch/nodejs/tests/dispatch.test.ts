@@ -147,7 +147,7 @@ describe("dispatchReturns", () => {
     expect(JSON.parse(new TextDecoder().decode(captured.body))).toEqual({ ok: true });
   });
 
-  it("renders 406 when no content[mime] matches Accept", async () => {
+  it("renders a 406 problem when no content[mime] matches Accept", async () => {
     const returns: ReturnEntry[] = [
       { status: 200, content: { "text/html": { body: "<p>hi</p>" } } },
     ];
@@ -163,9 +163,14 @@ describe("dispatchReturns", () => {
     );
     const captured = await result;
     expect(captured.status).toBe(406);
-    expect(captured.headers["content-type"]).toBe("application/json");
-    const envelope = JSON.parse(new TextDecoder().decode(captured.body));
-    expect(envelope.error.code).toBe("NOT_ACCEPTABLE");
+    expect(captured.headers["content-type"]).toBe("application/problem+json");
+    expect(JSON.parse(new TextDecoder().decode(captured.body))).toEqual({
+      type: "about:blank",
+      title: "Not Acceptable",
+      status: 406,
+      code: "ERR_NOT_ACCEPTABLE",
+      data: { available: ["text/html"] },
+    });
   });
 
   it("picks the first entry whose `when:` evaluates truthy", async () => {
@@ -349,30 +354,39 @@ describe("dispatchCatches", () => {
     expect(JSON.parse(new TextDecoder().decode(captured.body))).toEqual({ code: "Validation" });
   });
 
-  it("overrides Content-Type to application/json when no body: is provided", async () => {
-    // Verifies the last-write-wins semantic on setHeader — the dispatcher
-    // negotiates text/plain, then replaces it with application/json before
-    // sending the default error envelope.
+  const notFound = {
+    code: "ORDER_NOT_FOUND",
+    message: "order 42 is not in the table",
+    data: { id: "42" },
+    displayMessage: { text: "Order {$id} does not exist.", context: null, lang: "en", computed: false },
+  };
+
+  it("renders an entry with no body as its default problem, whatever Accept says", async () => {
+    const catches: CatchEntry[] = [{ status: 404, content: { "application/problem+json": {} } }];
+    const { sink, result } = makeInMemorySink();
+    await dispatchCatches(catches, notFound, {}, "text/html", makeModuleContext(), noopValidate, sink);
+    const captured = await result;
+    expect(captured.status).toBe(404);
+    expect(captured.headers["content-type"]).toBe("application/problem+json");
+    expect(JSON.parse(new TextDecoder().decode(captured.body))).toEqual({
+      type: "about:blank",
+      title: "Not Found",
+      status: 404,
+      detail: "Order 42 does not exist.",
+      code: "ORDER_NOT_FOUND",
+      data: { id: "42" },
+    });
+  });
+
+  it("binds the entry's own default problem in its when: and its body", async () => {
     const catches: CatchEntry[] = [
-      {
-        status: 500,
-        content: { "text/plain": {} },
-      },
+      { status: 410, when: "?problem.missing", content: { "application/json": { body: "$problem" } } },
+      { status: 404, when: "?problem.detail", content: { "application/json": { body: { message: "$problem.detail" } } } },
     ];
     const { sink, result } = makeInMemorySink();
-    await dispatchCatches(
-      catches,
-      { code: "Internal", message: "boom" },
-      {},
-      "text/plain",
-      makeModuleContext(),
-      noopValidate,
-      sink,
-    );
+    await dispatchCatches(catches, notFound, {}, undefined, makeModuleContext(), noopValidate, sink);
     const captured = await result;
-    expect(captured.status).toBe(500);
-    expect(captured.headers["content-type"]).toBe("application/json");
-    const env = JSON.parse(new TextDecoder().decode(captured.body));
-    expect(env.error.code).toBe("Internal");
+    expect(captured.status).toBe(404);
+    expect(JSON.parse(new TextDecoder().decode(captured.body))).toEqual({ message: "Order 42 does not exist." });
   });
 });

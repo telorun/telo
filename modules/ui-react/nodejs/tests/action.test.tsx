@@ -126,36 +126,36 @@ describe("an action", () => {
     respond = () => new Promise<Response>((resolve) => (finish = resolve));
     await rendered.click(rendered.part("submit"));
     expect(rendered.parts("action-result")).toEqual([]);
-    finish(json({ message: "it broke" }, 500));
+    finish(json({ type: "about:blank", title: "Internal Server Error", status: 500 }, 500));
     await rendered.settle();
-    expect(failure(rendered)).toEqual(["ERR_UI_REQUEST_FAILED", "it broke"]);
+    expect(failure(rendered)).toEqual(["ERR_UI_REQUEST_FAILED", "The request failed with status 500."]);
     expect(rendered.parts("action-result")).toEqual([]);
     await rendered.click(rendered.part("submit"));
     expect(rendered.parts("action-failure")).toEqual([]);
     expect(state(rendered)).toBe("submitting");
   });
 
-  it("puts a 400's details on the fields they name and the rest under the form, and draws its failure", async () => {
-    const details = [
-      { location: "body", path: "month", message: "is in the future" },
-      { location: "body", path: "owner", message: "is a required property" },
+  it("puts a 400's issues on the fields they name and the rest under the form, in its own words, and draws its failure", async () => {
+    const issues = [
+      { pointer: "/body/month", keyword: "pattern", params: { pattern: "^[0-9]{4}-[0-9]{2}$" } },
+      { pointer: "/body/owner", keyword: "required", params: { missingProperty: "owner" } },
     ];
-    rendered = await show(() => json({ error: "ValidationError", message: "Request validation failed", status: 400, details }, 400));
+    rendered = await show(() => json({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues } }, 400));
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
     expect(rendered.parts("field")[0].getAttribute("data-invalid")).toBe("true");
-    expect(texts(rendered.parts("field-error"))).toEqual(["is in the future"]);
-    expect(rendered.part("form-error").textContent).toBe("owner is a required property");
+    expect(texts(rendered.parts("field-error"))).toEqual(["Is not in the expected format"]);
+    expect(rendered.part("form-error").textContent).toBe("owner: Is required");
     expect(state(rendered)).toBe("error");
-    expect(failure(rendered)).toEqual(["ERR_UI_REQUEST_FAILED", "Request validation failed"]);
+    expect(failure(rendered)).toEqual(["ERR_INPUT_INVALID", "The request is not valid."]);
   });
 
   it.each([
     ["an action", actionNode()],
     ["a form", { type: "form", schema: reportSchema, basePath: "/api/reports", fields: actionNode().fields, groups: [], state: actionNode().state }],
   ])("marks the list controls of %s a 400 names, until a record is accepted", async (name, node) => {
-    const details = ["formats", "recipients"].map((path) => ({ location: "body", path, message: "is refused" }));
-    let respond = () => json({ error: "ValidationError", status: 400, details }, 400);
+    const issues = ["formats", "recipients"].map((property) => ({ pointer: `/body/${property}`, keyword: "minItems", params: { limit: 2 } }));
+    let respond = () => json({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues } }, 400);
     rendered = await show(() => respond(), node);
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
@@ -169,7 +169,7 @@ describe("an action", () => {
   });
 
   it("draws a 400 that names nothing as its failure, with the code its body gives", async () => {
-    rendered = await show(() => json({ code: "ERR_NO_REPORT", message: "No report for that month", status: 400 }, 400));
+    rendered = await show(() => json({ type: "about:blank", title: "Bad Request", status: 400, detail: "No report for that month", code: "ERR_NO_REPORT" }, 400));
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
     expect(rendered.parts("form-error")).toEqual([]);
@@ -179,7 +179,7 @@ describe("an action", () => {
   it.each([
     ["a 401", () => new Response(null, { status: 401 }), "ERR_UI_UNAUTHORIZED"],
     ["a 403", () => new Response(null, { status: 403 }), "ERR_UI_FORBIDDEN"],
-    ["a 500", () => json({ message: "it broke" }, 500), "ERR_UI_REQUEST_FAILED"],
+    ["a 500", () => json({ type: "about:blank", title: "Internal Server Error", status: 500 }, 500), "ERR_UI_REQUEST_FAILED"],
     [
       "no answer at all",
       () => {

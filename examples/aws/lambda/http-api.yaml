@@ -13,11 +13,10 @@ metadata:
     `Lambda.HttpApi` example: an AWS Lambda fronted by API Gateway HTTP API
     v2. Declares two routes (GET /users/{id}, POST /orders) plus a CORS
     block and a per-route `catches:` mapping that turns a thrown
-    `ValidationError` into a 400 with a structured body. See
+    `ORDER_INVALID` into a 400 with a structured body. See
     `examples/aws/lambda/README.md` for the full packaging + deploy walkthrough.
 imports:
   Lambda: oci://ghcr.io/telorun/aws/lambda@0.11.0#sha256-z4Sh2fdoIbnEGK8rKrMI3c6OiqXv3mktJJ4kQQSsvuU
-  JS: oci://ghcr.io/telorun/javascript@0.14.0#sha256-Fh_R8G4kVuI1Wsg0hEa0pucfLN0vHBLrAHDMK9PwxR8
   Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
 targets:
   - !ref main
@@ -34,9 +33,9 @@ inputType:
 value:
   message: !cel "'Hello, user ' + inputs.id + '!'"
 ---
-# POST /orders → echoes the parsed JSON body; throws ValidationError on
+# POST /orders → echoes the parsed JSON body; throws ORDER_INVALID on
 # missing fields so the route's catches: block can render a 400.
-kind: JS.Script
+kind: Run.Sequence
 metadata: { name: placeOrder }
 inputType:
   kind: Telo.JsonSchema
@@ -49,13 +48,16 @@ inputType:
         properties:
           sku: { type: string }
           quantity: { type: integer }
-code: |
-  function main({ body }) {
-    if (!body || typeof body.sku !== "string" || typeof body.quantity !== "number") {
-      throw new InvokeError("ValidationError", "sku (string) and quantity (number) are required");
-    }
-    return { orderId: `ord_${Date.now()}`, sku: body.sku, quantity: body.quantity };
-  }
+steps:
+  - name: complete
+    if: !cel "!has(inputs.body.sku) || !has(inputs.body.quantity)"
+    then:
+      - name: incomplete
+        throw: { code: ORDER_INVALID, displayMessage: An order needs a sku and a quantity. }
+outputs:
+  orderId: !cel "'ord_' + uuidv4()"
+  sku: !cel "inputs.body.sku"
+  quantity: !cel "inputs.body.quantity"
 ---
 kind: Lambda.HttpApi
 metadata: { name: web }
@@ -87,7 +89,7 @@ routes:
           application/json:
             body: !cel "result"
     catches:
-      - code: ValidationError
+      - when: !cel "error.code == 'ORDER_INVALID'"
         status: 400
         content:
           application/json:

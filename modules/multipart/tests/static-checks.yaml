@@ -29,9 +29,9 @@ source: ./__fixtures__/catch-data-typo.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: "'reasn' is not defined (available: reason)"
+      message: "'error.data.reasn' is not defined (available: reason)"
     - code: CEL_UNKNOWN_FIELD
-      message: "'maximum' is not defined (available: limit, max, part, name)"
+      message: "'error.data.maximum' is not defined (available: limit, max, part, name)"
 ---
 kind: Assert.Manifest
 metadata: { name: limitBelowOne }

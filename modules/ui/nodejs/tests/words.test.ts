@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseAllDocuments } from "yaml";
 
@@ -21,6 +21,16 @@ describe("the renderer's own words", () => {
     expect(Object.keys(kind.properties).sort()).toEqual(wire);
     expect([...kind.required].sort()).toEqual(wire);
     expect(written.sort()).toEqual(wire);
+  });
+
+  it("word every keyword a server's validation issue may carry", () => {
+    const directory = new URL("../../../../sdk/issue-keywords/", import.meta.url);
+    const keywords = readdirSync(directory)
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => JSON.parse(readFileSync(new URL(file, directory), "utf8")) as { keyword: string; params: string[] });
+    expect(keywords.length).toBeGreaterThan(0);
+    const words = named("Words").schema.properties as Record<string, Schema>;
+    expect(keywords.filter(({ keyword }) => !words[keyword]).map(({ keyword }) => keyword)).toEqual([]);
   });
 
   it("each declare the values they are formatted with", () => {

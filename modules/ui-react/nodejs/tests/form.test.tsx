@@ -145,15 +145,15 @@ describe("a form", () => {
   });
 
   it("puts the API's refusals on the fields they name, and the rest on the form", async () => {
-    const details = [
-      { location: "body", path: "text", message: "is already taken" },
-      { location: "body", path: "owner", message: "is a required property" },
+    const issues = [
+      { pointer: "/body/text", keyword: "maxLength", params: { limit: 5 } },
+      { pointer: "/body/owner", keyword: "required", params: { missingProperty: "owner" } },
     ];
-    rendered = await show({ "/api/todos": () => new Response(JSON.stringify({ error: "ValidationError", status: 400, details }), { status: 400 }) });
+    rendered = await show({ "/api/todos": () => new Response(JSON.stringify({ type: "about:blank", title: "Bad Request", status: 400, detail: "The request is not valid.", code: "ERR_INPUT_INVALID", data: { issues } }), { status: 400 }) });
     await rendered.enter(rendered.part("input"), "Plan the launch");
     await rendered.click(rendered.part("submit"));
-    expect(rendered.part("field-error").textContent).toBe("is already taken");
-    expect(rendered.part("form-error").textContent).toBe("owner is a required property");
+    expect(rendered.part("field-error").textContent).toBe("Must be at most 5 characters");
+    expect(rendered.part("form-error").textContent).toBe("owner: Is required");
   });
 
   it("shows a refused request as its own error node", async () => {

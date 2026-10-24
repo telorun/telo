@@ -105,9 +105,8 @@ export function runSinkContract(name: string, makeSink: SinkFactory): void {
     });
 
     it("setHeader is last-write-wins (no multi-value merging)", async () => {
-      // The dispatcher relies on this for `dispatchCatches` overriding the
-      // negotiated Content-Type back to application/json when no body: was
-      // provided — must replace the prior value, not append.
+      // `ResponseSink` promises it: a second value for a header replaces the
+      // first rather than being appended to it.
       const { sink, result } = makeSink();
       sink.setStatus(200);
       sink.setHeader("Content-Type", "text/plain");

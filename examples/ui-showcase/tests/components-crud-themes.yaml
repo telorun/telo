@@ -129,16 +129,16 @@ steps:
         pauseAgainPolish: [ !cel "steps.pauseAgainPolish.result.status", !cel "steps.pauseAgainPolish.result.headers['content-language']", !cel "steps.pauseAgainPolish.result.body" ]
         pauseAgainChosenPolish: [ !cel "steps.pauseAgainChosenPolish.result.status", !cel "steps.pauseAgainChosenPolish.result.headers['content-language']", !cel "steps.pauseAgainChosenPolish.result.body" ]
         unknown: [ !cel "steps.unknown.result.status", !cel "steps.unknown.result.body" ]
-        malformed: !cel "[steps.malformed.result.status, steps.malformed.result.body.details.map(d, [d.location, d.path])]"
+        malformed: !cel "[steps.malformed.result.status, steps.malformed.result.body.data.issues.map(i, i.pointer)]"
         stored: !cel "steps.paused.result.body.rows.map(r, r.status)"
       expected:
         anonymous: [ 401, "" ]
         notManager: [ 403, "" ]
         pause: [ 200, { code: OPS-7, name: Billing migration, status: paused } ]
-        pauseAgain: [ 409, en, { code: PROJECT_NOT_ACTIVE, message: "OPS-7 is not running, so it cannot be paused." } ]
-        pauseAgainPolish: [ 409, pl, { code: PROJECT_NOT_ACTIVE, message: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać." } ]
+        pauseAgain: [ 409, en, { type: about:blank, title: Conflict, status: 409, detail: "OPS-7 is not running, so it cannot be paused.", code: PROJECT_NOT_ACTIVE, data: { lang: en } } ]
+        pauseAgainPolish: [ 409, pl, { type: about:blank, title: Conflict, status: 409, detail: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać.", code: PROJECT_NOT_ACTIVE, data: { lang: pl } } ]
         # The language cookie wins over Accept-Language, as in every application.
-        pauseAgainChosenPolish: [ 409, pl, { code: PROJECT_NOT_ACTIVE, message: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać." } ]
-        unknown: [ 404, { code: PROJECT_UNKNOWN, message: There is no project 'NOPE-1'. } ]
-        malformed: [ 400, [ [ body, code ] ] ]
+        pauseAgainChosenPolish: [ 409, pl, { type: about:blank, title: Conflict, status: 409, detail: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać.", code: PROJECT_NOT_ACTIVE, data: { lang: pl } } ]
+        unknown: [ 404, { type: about:blank, title: Not Found, status: 404, detail: "There is no project 'NOPE-1'.", code: PROJECT_UNKNOWN, data: { code: NOPE-1 } } ]
+        malformed: [ 400, [ /body/code ] ]
         stored: [ paused ]

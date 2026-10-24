@@ -135,29 +135,43 @@ impl LoadedController {
         bytes
     }
 
-    /// Decode the `{code, message}` payload a failed call wrote.
+    /// Decode the `{code, message, data?, displayMessage?}` payload a failed call wrote.
     fn take_error(&self, buf: TeloBuf, operation: &str) -> KernelError {
         let bytes = self.take_bytes(buf);
-        match serde_json::from_slice::<Value>(&bytes) {
-            Ok(payload) => {
-                let code = payload
-                    .get("code")
-                    .and_then(Value::as_str)
-                    .unwrap_or("ERR_CONTROLLER")
-                    .to_string();
-                let message = payload
-                    .get("message")
-                    .and_then(Value::as_str)
-                    .unwrap_or("controller reported no message")
-                    .to_string();
-                KernelError::new(code, message)
-            }
-            Err(_) => KernelError::controller_invalid(format!(
-                "controller {} failed during {operation} and returned an undecodable error payload",
-                self.purl
-            )),
+        error_from_payload(&bytes, &self.purl, operation)
+    }
+}
+
+/// The failure a controller's error payload describes: its code and message,
+/// and its `data` and `displayMessage` when it carries them — the controller protocol's
+/// error member, as the C ABI carries it.
+fn error_from_payload(bytes: &[u8], purl: &str, operation: &str) -> KernelError {
+    let Ok(payload) = serde_json::from_slice::<Value>(bytes) else {
+        return KernelError::controller_invalid(format!(
+            "controller {purl} failed during {operation} and returned an undecodable error payload"
+        ));
+    };
+    let code = payload
+        .get("code")
+        .and_then(Value::as_str)
+        .unwrap_or("ERR_CONTROLLER")
+        .to_string();
+    let message = payload
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or("controller reported no message")
+        .to_string();
+    if let Some(display_message) = payload.get("displayMessage") {
+        if serde_json::from_value::<telorun_sdk_core::TextRecord>(display_message.clone()).is_err() {
+            return KernelError::controller_invalid(format!(
+                "controller {purl} failed during {operation} with error '{code}', whose `displayMessage` is no text record"
+            ));
         }
     }
+    let mut error = KernelError::new(code, message);
+    error.data = payload.get("data").cloned();
+    error.display_message = payload.get("displayMessage").cloned();
+    error
 }
 
 /// One resource instance living inside a loaded controller.
@@ -265,4 +279,32 @@ unsafe extern "C" fn is_cancelled(_ctx: *mut c_void) -> bool {
 
 unsafe extern "C" fn free_buf(buf: TeloBuf) {
     let _ = catch_unwind(AssertUnwindSafe(|| drop(unsafe { buf.into_vec() })));
+}
+
+#[cfg(test)]
+mod error_payload_tests {
+    use super::*;
+
+    #[test]
+    fn reads_the_data_and_display_message_a_controller_returned() {
+        let error = telorun_sdk_core::ControllerError::new("NOT_FOUND", "missing")
+            .with_data(serde_json::json!({ "id": "42" }))
+            .with_display_message(telorun_sdk_core::TextRecord {
+                text: telorun_sdk_core::MessageSource::Pattern("Item {$id} is missing.".into()),
+                context: None,
+                lang: "en".into(),
+                computed: false,
+            });
+        let bytes = serde_json::to_vec(&error.payload()).unwrap();
+        let read = error_from_payload(&bytes, "pkg:cargo/x", "invoke");
+        assert_eq!(read.code, "NOT_FOUND");
+        assert_eq!(read.data, Some(serde_json::json!({ "id": "42" })));
+        assert_eq!(read.display_message.unwrap()["text"], serde_json::json!("Item {$id} is missing."));
+    }
+
+    #[test]
+    fn refuses_a_display_message_that_is_no_record() {
+        let bytes = br#"{"code":"NOT_FOUND","message":"missing","displayMessage":"Item missing."}"#;
+        assert_eq!(error_from_payload(bytes, "pkg:cargo/x", "invoke").code, "ERR_CONTROLLER_INVALID");
+    }
 }

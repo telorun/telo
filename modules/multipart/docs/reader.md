@@ -95,14 +95,10 @@ The same two codes as the decoder, both declared, so a route's `catches:` names 
 catches:
   - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
     status: 400
-    content:
-      application/json:
-        body: { error: malformed_upload, reason: !cel "error.data.reason" }
+    content: { application/problem+json: {} }
   - when: !cel "error.code == 'ERR_MULTIPART_LIMIT_EXCEEDED'"
     status: 413
-    content:
-      application/json:
-        body: { error: upload_too_large, limit: !cel "error.data.limit", max: !cel "error.data.max" }
+    content: { application/problem+json: {} }
 ```
 
 ### When they are raised

@@ -94,6 +94,10 @@ function testContext(needs: Record<string, Address>, listenPort: number) {
       inputs,
     }),
     resolveNeed,
+    declaredDisplayMessage: (code: string) =>
+      code === "ERR_HOST_NOT_SERVED"
+        ? { text: "Host {$host} is not served here.", context: null, lang: "en", computed: false }
+        : undefined,
   };
   const unwind = async () => {
     for (const inverse of inverses.reverse()) await inverse();
@@ -175,12 +179,18 @@ function get(
   port: number,
   path: string,
   headers: Record<string, string>,
-): Promise<{ status: number; body: any }> {
+): Promise<{ status: number; contentType: string | undefined; body: any }> {
   return new Promise((resolve, reject) => {
     const req = http.request({ host: "127.0.0.1", port, path, method: "GET", headers }, (res) => {
       let text = "";
       res.on("data", (chunk) => (text += chunk));
-      res.on("end", () => resolve({ status: res.statusCode!, body: text ? JSON.parse(text) : undefined }));
+      res.on("end", () =>
+        resolve({
+          status: res.statusCode!,
+          contentType: res.headers["content-type"],
+          body: text ? JSON.parse(text) : undefined,
+        }),
+      );
     });
     req.on("error", reject);
     req.end();
@@ -309,8 +319,18 @@ describe("unknownHosts: reject", () => {
     );
     running = server;
     const refused = await get(server.port, "/who", { host: "evil.example" });
-    expect(refused.status).toBe(421);
-    expect(refused.body.error.code).toBe("ERR_HOST_NOT_SERVED");
+    expect(refused).toEqual({
+      status: 421,
+      contentType: "application/problem+json; charset=utf-8",
+      body: {
+        type: "about:blank",
+        title: "Misdirected Request",
+        status: 421,
+        detail: "Host evil.example is not served here.",
+        code: "ERR_HOST_NOT_SERVED",
+        data: { host: "evil.example" },
+      },
+    });
     expect((await get(server.port, "/health/who", { host: "127.0.0.1" })).body.who).toBe("open");
     expect((await get(server.port, "/health/who", { host: "[::1]" })).body.who).toBe("open");
     expect((await get(server.port, "/who", { host: "shop.example" })).body.who).toBe("site");

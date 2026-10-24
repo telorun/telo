@@ -132,6 +132,15 @@ describe("step list model", () => {
     expect(branch!.entries[0]!.depth).toBe(1);
   });
 
+  it("reads a rethrow in a catch as a leaf step of its own, and a throw's form offers its display message", () => {
+    const [entry] = read([{ try: [], catch: [{ rethrow: {} }, { throw: { code: "FAILED" } }] }]);
+    const [rethrow, thrown] = entry!.branches.find((b) => b.label === "catch")!.entries;
+    expect(rethrow).toMatchObject({ pointer: "/steps/0/catch/0", keyword: "rethrow", classified: true, branches: [], additions: [] });
+    expect(thrown!.keyword).toBe("throw");
+    const fields = ((thrown!.schema.properties as Record<string, any>).throw.properties ?? {}) as Record<string, unknown>;
+    expect(Object.keys(fields)).toEqual(expect.arrayContaining(["code", "message", "displayMessage", "data"]));
+  });
+
   it("nests to arbitrary depth, since a branch holds steps", () => {
     const [entry] = read([
       {

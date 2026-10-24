@@ -78,14 +78,10 @@ Two codes, both declared, so a route's `catches:` names them and `telo check` re
 catches:
   - when: !cel "error.code == 'ERR_MULTIPART_MALFORMED'"
     status: 400
-    content:
-      application/json:
-        body: { error: malformed_upload, reason: !cel "error.data.reason" }
+    content: { application/problem+json: {} }
   - when: !cel "error.code == 'ERR_MULTIPART_LIMIT_EXCEEDED'"
     status: 413
-    content:
-      application/json:
-        body: { error: upload_too_large, limit: !cel "error.data.limit", max: !cel "error.data.max" }
+    content: { application/problem+json: {} }
 ```
 
 A failure of the source itself — the request was cancelled, the connection dropped — is not reworded: it is rethrown as it was raised.

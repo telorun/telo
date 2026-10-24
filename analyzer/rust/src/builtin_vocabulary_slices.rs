@@ -20,6 +20,7 @@ pub enum EntryClass {
     ValueType,
     ZoneAttribute,
     Format,
+    ErrorCode,
 }
 
 impl EntryClass {
@@ -30,6 +31,7 @@ impl EntryClass {
             EntryClass::ValueType => "value type",
             EntryClass::ZoneAttribute => "zone attribute",
             EntryClass::Format => "format",
+            EntryClass::ErrorCode => "error code",
         }
     }
 
@@ -39,18 +41,20 @@ impl EntryClass {
             "valueTypes" => Some(EntryClass::ValueType),
             "zoneAttributes" => Some(EntryClass::ZoneAttribute),
             "formats" => Some(EntryClass::Format),
+            "errorCodes" => Some(EntryClass::ErrorCode),
             _ => None,
         }
     }
 }
 
 /// The order classes are listed in when a name is unknown.
-const CLASS_ORDER: [EntryClass; 5] = [
+const CLASS_ORDER: [EntryClass; 6] = [
     EntryClass::Kind,
     EntryClass::Fragment,
     EntryClass::ValueType,
     EntryClass::ZoneAttribute,
     EntryClass::Format,
+    EntryClass::ErrorCode,
 ];
 
 /// One selectable entry: the names selecting it and the text printed for it.

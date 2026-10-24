@@ -6,9 +6,9 @@ metadata:
     An application that mounts the library twice, each import configured
     differently — the shape the library's description promises works.
 imports:
-  # Published, like the library's own: importing the workspace copy beside the
-  # library's published one is refused with DUPLICATE_IMPORT_ALIAS.
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
+  # The workspace copy, like the library's own: importing a published copy
+  # beside the library's workspace one is refused with DUPLICATE_IMPORT_ALIAS.
+  Http: ../../../../../modules/http-server
   English:
     source: ../..
     variables:

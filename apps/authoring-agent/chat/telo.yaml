@@ -37,6 +37,10 @@ metadata:
 # `HttpClient` in particular, since `ai` and `openai` reach the last three: one
 # module loaded from two origins is two identities for one kind. When a change
 # needs one from the checkout, the whole set moves to the checkout together.
+# A caught failure is re-raised with `rethrow: {}`, a step an older runtime's
+# grammar does not hold.
+requires:
+  telo: ">=0.123.0"
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.30.0#sha256-F90oqgcUzPQykjBo07Eu-t-0rwZApUi16gJki_3bCPI
   OpenAI: oci://ghcr.io/telorun/openai@0.15.0#sha256-RG60ZY-3o_xsDIbjW_wg7mjEBe4DNmXN8OcOlpRa3ro
@@ -1353,10 +1357,7 @@ steps:
             if: !cel "error.code != 'ERR_FILE_TOO_LARGE'"
             then:
               - name: reraise
-                throw:
-                  code: !cel "error.code"
-                  message: !cel "error.message"
-                  data: !cel "has(error.data) ? error.data : null"
+                rethrow: {}
 outputs:
   hash: !cel "has(steps.read) ? dyn(steps.read.result.sha256) : null"
 ---
@@ -1460,10 +1461,7 @@ steps:
                 Self.checkpointTooLargeMessage(inputs.subject, int(inputs.spent) + int(error.data.size),
                   int(variables.maxCheckpointBytes), 'bytes')
       - name: reraise
-        throw:
-          code: !cel "error.code"
-          message: !cel "error.message"
-          data: !cel "has(error.data) ? error.data : null"
+        rethrow: {}
 outputs:
   content: !cel "steps.read.result.content"
   sha256: !cel "steps.read.result.sha256"
@@ -1518,7 +1516,9 @@ steps:
       - name: refuseTurnGone
         throw:
           code: ERR_JOURNAL_KEY_REMOVED
-          message: !cel "'Turn ' + inputs.turnId + ' was removed; nothing was changed.'"
+          displayMessage: "Turn {$turnId} was removed; nothing was changed."
+          data:
+            turnId: !cel "inputs.turnId"
 ---
 # Settles entries whose write is not known to have happened, from the file each
 # names: an entry is confirmed when the file holds its "after" (for a deletion:
@@ -1827,10 +1827,7 @@ steps:
                                 callId: !cel "steps.call.result"
                                 turnId: null
                             - name: reraise
-                              throw:
-                                code: !cel "error.code"
-                                message: !cel "error.message"
-                                data: !cel "has(error.data) ? error.data : null"
+                              rethrow: {}
                         - name: confirm
                           invoke: !ref checkpointCommand
                           inputs:
@@ -1905,9 +1902,9 @@ steps:
                                 - name: refuseNotText
                                   throw:
                                     code: ERR_FILE_NOT_TEXT
-                                    message: !cel >-
-                                      'ERR_FILE_NOT_TEXT: refused to edit "' + inputs.path + '": its bytes are not UTF-8 text, so an '
-                                        + 'exact string replacement cannot be applied to it. Nothing was changed.'
+                                    displayMessage: "ERR_FILE_NOT_TEXT: refused to edit \"{$path}\": its bytes are not UTF-8 text, so an exact string replacement cannot be applied to it. Nothing was changed."
+                                    data:
+                                      path: !cel "inputs.path"
                             - name: unique
                               value: !cel "inputs.oldString != '' && size(string(steps.text.result).split(inputs.oldString)) == 2"
                             - name: checkpoint
@@ -1967,10 +1964,7 @@ steps:
                                     callId: !cel "steps.call.result"
                                     turnId: null
                                 - name: reraise
-                                  throw:
-                                    code: !cel "error.code"
-                                    message: !cel "error.message"
-                                    data: !cel "has(error.data) ? error.data : null"
+                                  rethrow: {}
                             - name: confirm
                               invoke: !ref checkpointCommand
                               inputs:
@@ -2134,10 +2128,7 @@ steps:
                                     callId: !cel "steps.call.result"
                                     turnId: null
                                 - name: reraise
-                                  throw:
-                                    code: !cel "error.code"
-                                    message: !cel "error.message"
-                                    data: !cel "has(error.data) ? error.data : null"
+                                  rethrow: {}
                             - name: confirm
                               invoke: !ref checkpointCommand
                               inputs:
@@ -2582,14 +2573,18 @@ steps:
       - name: refuseUnknown
         throw:
           code: ERR_TURN_NOT_FOUND
-          message: !cel "'No turn ' + inputs.turnId + ' was started on this agent.'"
+          displayMessage: "No turn {$turnId} was started on this agent."
+          data:
+            turnId: !cel "inputs.turnId"
   - name: removed
     if: !cel "steps.header.result.state == 'removed'"
     then:
       - name: refuseRemoved
         throw:
           code: ERR_JOURNAL_KEY_REMOVED
-          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+          displayMessage: "Turn {$turnId} was removed."
+          data:
+            turnId: !cel "inputs.turnId"
   - name: read
     invoke: !ref journalSource
     inputs:
@@ -2642,7 +2637,9 @@ steps:
       - name: refuseCursor
         throw:
           code: ERR_TURN_NOT_FOUND
-          message: !cel "'Turn ' + inputs.fromTurn + ' is not part of this conversation.'"
+          displayMessage: "Turn {$turnId} is not part of this conversation."
+          data:
+            turnId: !cel "inputs.fromTurn"
   - name: headers
     invoke:
       kind: Run.Projection
@@ -2974,14 +2971,18 @@ steps:
       - name: refuseRemoved
         throw:
           code: ERR_JOURNAL_KEY_REMOVED
-          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+          displayMessage: "Turn {$turnId} was removed."
+          data:
+            turnId: !cel "inputs.turnId"
   - name: unknown
     if: !cel "steps.header.result.state == 'unknown' || size(steps.row.result.rows) == 0"
     then:
       - name: refuseUnknown
         throw:
           code: ERR_TURN_NOT_FOUND
-          message: !cel "'No turn ' + inputs.turnId + ' was started on this agent.'"
+          displayMessage: "No turn {$turnId} was started on this agent."
+          data:
+            turnId: !cel "inputs.turnId"
 outputs:
   conversationId: !cel "string(steps.row.result.rows[0].conversation_id)"
   lastTurnId: !cel "string(steps.row.result.rows[0].last_turn_id)"
@@ -3267,7 +3268,9 @@ steps:
       - name: refuseGone
         throw:
           code: ERR_JOURNAL_KEY_REMOVED
-          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+          displayMessage: "Turn {$turnId} was removed."
+          data:
+            turnId: !cel "inputs.turnId"
 outputs:
   revert: !cel "Self.revertOutcome(string(steps.state.result.rows[0].reverted_at), steps.outcome.result.rows)"
   revision: !cel "int(steps.state.result.rows[0].revision)"
@@ -3888,14 +3891,18 @@ steps:
       - name: refuseUnknown
         throw:
           code: ERR_CONVERSATION_NOT_FOUND
-          message: !cel "'No conversation ' + inputs.conversationId + ' exists on this agent.'"
+          displayMessage: "No conversation {$conversationId} exists on this agent."
+          data:
+            conversationId: !cel "inputs.conversationId"
   - name: removed
     if: !cel "steps.found.result.rows[0].removed_at != null"
     then:
       - name: refuseRemoved
         throw:
           code: ERR_CONVERSATION_REMOVED
-          message: !cel "'Conversation ' + inputs.conversationId + ' was deleted.'"
+          displayMessage: "Conversation {$conversationId} was deleted."
+          data:
+            conversationId: !cel "inputs.conversationId"
 outputs:
   row: !cel "steps.found.result.rows[0]"
   conversation: !cel "Self.conversationOf(steps.found.result.rows[0])"
@@ -3923,7 +3930,9 @@ steps:
       - name: refuseArchived
         throw:
           code: ERR_CONVERSATION_ARCHIVED
-          message: !cel "'Conversation ' + inputs.conversationId + ' is archived; unarchive it to continue it.'"
+          displayMessage: "Conversation {$conversationId} is archived; unarchive it to continue it."
+          data:
+            conversationId: !cel "inputs.conversationId"
 outputs:
   conversation: !cel "steps.conversation.result.conversation"
 ---
@@ -3952,18 +3961,24 @@ steps:
       - name: refuseUnknown
         throw:
           code: ERR_CONVERSATION_NOT_FOUND
-          message: !cel "'No conversation ' + inputs.conversationId + ' exists on this agent.'"
+          displayMessage: "No conversation {$conversationId} exists on this agent."
+          data:
+            conversationId: !cel "inputs.conversationId"
   - name: removed
     if: !cel "steps.current.result.rows[0].removed_at != null"
     then:
       - name: refuseRemoved
         throw:
           code: ERR_CONVERSATION_REMOVED
-          message: !cel "'Conversation ' + inputs.conversationId + ' was deleted.'"
+          displayMessage: "Conversation {$conversationId} was deleted."
+          data:
+            conversationId: !cel "inputs.conversationId"
   - name: refuseArchived
     throw:
       code: ERR_CONVERSATION_ARCHIVED
-      message: !cel "'Conversation ' + inputs.conversationId + ' is archived; unarchive it to continue it.'"
+      displayMessage: "Conversation {$conversationId} is archived; unarchive it to continue it."
+      data:
+        conversationId: !cel "inputs.conversationId"
 ---
 # POST /conversations. The agent mints every conversation id.
 kind: Run.Sequence
@@ -4396,7 +4411,9 @@ steps:
       - name: refuseMissing
         throw:
           code: ERR_CONVERSATION_NOT_FOUND
-          message: !cel "'No conversation ' + inputs.conversationId + ' exists on this agent.'"
+          displayMessage: "No conversation {$conversationId} exists on this agent."
+          data:
+            conversationId: !cel "inputs.conversationId"
   - name: busy
     if: !cel "steps.attempt.result.outcome == 'busy'"
     then:
@@ -4445,7 +4462,9 @@ steps:
       - name: refuseUnknownTurn
         throw:
           code: ERR_TURN_NOT_FOUND
-          message: !cel "'Turn ' + inputs.fromTurnId + ' is not a turn of this conversation.'"
+          displayMessage: "Turn {$turnId} is not a turn of this conversation."
+          data:
+            turnId: !cel "inputs.fromTurnId"
   - name: latest
     invoke: !ref journalRead
     inputs:
@@ -4643,7 +4662,9 @@ steps:
       - name: refuseGone
         throw:
           code: ERR_CONVERSATION_CHANGED
-          message: !cel "'Turn ' + inputs.sourceTurnId + ' was removed while the branch was copied.'"
+          displayMessage: "Turn {$turnId} was removed while the branch was copied."
+          data:
+            turnId: !cel "inputs.sourceTurnId"
   - name: records
     value: !cel >-
       steps.source.result.entries.map(e, e.data).map(r,
@@ -4734,10 +4755,7 @@ steps:
             if: !cel "steps.source.result.error == null || error.code != steps.source.result.error.code"
             then:
               - name: reraise
-                throw:
-                  code: !cel "error.code"
-                  message: !cel "error.message"
-                  data: !cel "has(error.data) ? error.data : null"
+                rethrow: {}
   # The copy's checkpoint: the source's entries and revert outcomes under the
   # copy's id, and its blobs as files of the copy's own directory.
   - name: entries
@@ -4837,7 +4855,9 @@ steps:
       - name: refuseUnknownTurn
         throw:
           code: ERR_TURN_NOT_FOUND
-          message: !cel "'Turn ' + inputs.throughTurnId + ' is not a turn of this conversation.'"
+          displayMessage: "Turn {$turnId} is not a turn of this conversation."
+          data:
+            turnId: !cel "inputs.throughTurnId"
   # Sorted, so the copies keep the source's order however the ids were minted.
   - name: ids
     value:
@@ -4930,10 +4950,7 @@ steps:
         inputs:
           conversationId: !cel "steps.ids.result.conversation"
       - name: reraise
-        throw:
-          code: !cel "error.code"
-          message: !cel "error.message"
-          data: !cel "has(error.data) ? error.data : null"
+        rethrow: {}
   - name: read
     invoke: !ref requireConversation
     inputs:
@@ -5163,7 +5180,9 @@ steps:
           - name: refuseUnknown
             throw:
               code: ERR_ATTACHMENT_NOT_FOUND
-              message: !cel "'No attachment ' + inputs.id + ' exists in this conversation.'"
+              displayMessage: "No attachment {$attachmentId} exists in this conversation."
+              data:
+                attachmentId: !cel "inputs.id"
       - name: blob
         invoke: !ref getAttachment
         inputs:
@@ -5177,10 +5196,7 @@ steps:
         if: !cel "!(error.code in ['ERR_ATTACHMENT_NOT_FOUND', 'ERR_BLOB_NOT_FOUND'])"
         then:
           - name: propagate
-            throw:
-              code: !cel "error.code"
-              message: !cel "error.message"
-              data: !cel "has(error.data) ? error.data : null"
+            rethrow: {}
 outputs:
   part: !cel >-
     !has(steps.bytes)
@@ -5263,7 +5279,7 @@ steps:
       - name: refuseMislabelled
         throw:
           code: ERR_ATTACHMENT_MISLABELLED
-          message: !cel "'The file is not what it was sent as: its content is ' + steps.sniffed.result.mediaType + '.'"
+          displayMessage: "The file is not what it was sent as: its content is {$mediaType}."
           data:
             mediaType: !cel "steps.sniffed.result.mediaType"
   - name: unaccepted
@@ -5272,7 +5288,7 @@ steps:
       - name: refuseType
         throw:
           code: ERR_ATTACHMENT_TYPE_NOT_ACCEPTED
-          message: !cel "'Files of type ' + steps.sniffed.result.mediaType + ' are not accepted.'"
+          displayMessage: "Files of type {$mediaType} are not accepted."
           data:
             mediaType: !cel "steps.sniffed.result.mediaType"
             accepted: !cel "Self.attachmentTypes()"
@@ -5349,7 +5365,7 @@ steps:
       - name: refuseFull
         throw:
           code: ERR_ATTACHMENT_LIMIT
-          message: !cel "'This conversation already holds ' + string(int(variables.maxConversationAttachments)) + ' files, the most it may.'"
+          displayMessage: "This conversation already holds {$max} files, the most it may."
           data:
             max: !cel "int(variables.maxConversationAttachments)"
   - name: id
@@ -5417,9 +5433,10 @@ steps:
       - name: refuseUnknown
         throw:
           code: ERR_ATTACHMENT_NOT_FOUND
-          message: !cel "'No attachment ' + inputs.attachmentId + ' exists in this conversation.'"
+          displayMessage: "No attachment {$attachmentId} exists in this conversation."
           data:
             attachmentIds: !cel "[inputs.attachmentId]"
+            attachmentId: !cel "inputs.attachmentId"
   - name: blob
     try:
       - name: content
@@ -5428,10 +5445,18 @@ steps:
           key: !cel "Self.attachmentKey(inputs.conversationId, inputs.attachmentId)"
     catch:
       - name: gone
-        throw:
-          code: !cel "error.code == 'ERR_BLOB_NOT_FOUND' ? 'ERR_ATTACHMENT_NOT_FOUND' : error.code"
-          message: !cel "error.code == 'ERR_BLOB_NOT_FOUND' ? 'Attachment ' + inputs.attachmentId + ' is no longer stored.' : error.message"
-          data: !cel "error.code == 'ERR_BLOB_NOT_FOUND' ? dyn({'attachmentIds': [inputs.attachmentId]}) : has(error.data) ? error.data : null"
+        if: !cel "error.code == 'ERR_BLOB_NOT_FOUND'"
+        then:
+          - name: refuseGone
+            throw:
+              code: ERR_ATTACHMENT_NOT_FOUND
+              displayMessage: "Attachment {$attachmentId} is no longer stored."
+              data:
+                attachmentIds: !cel "[inputs.attachmentId]"
+                attachmentId: !cel "inputs.attachmentId"
+        else:
+          - name: reraise
+            rethrow: {}
 outputs:
   output: !cel "steps.content.result.output"
   name: !cel "string(steps.row.result.rows[0].name)"
@@ -5608,11 +5633,10 @@ steps:
       - name: reject
         throw:
           code: ERR_TELO_VERB_NOT_ALLOWED
-          message: !cel >-
-            'telo ' + (size(inputs.args) == 0 ? '' : inputs.args[0]) +
-            ' is not available here. Allowed subcommands: ' +
-            join(variables.teloVerbs, ', ') +
-            '; `--version` alone is also available. Note a bare path means `run`, which is not allowed.'
+          displayMessage: "telo {$verb} is not available here. Allowed subcommands: {$allowed}; `--version` alone is also available. Note a bare path means `run`, which is not allowed."
+          data:
+            verb: !cel "size(inputs.args) == 0 ? '' : inputs.args[0]"
+            allowed: !cel "join(variables.teloVerbs, ', ')"
   - name: outside
     value: !cel >-
       inputs.args
@@ -6452,7 +6476,7 @@ steps:
       - name: refuseTooMany
         throw:
           code: ERR_TOO_MANY_ATTACHMENTS
-          message: !cel "'A message carries at most ' + string(Self.messageAttachmentLimit()) + ' attachments.'"
+          displayMessage: "A message carries at most {$max} attachments."
           data:
             max: !cel "Self.messageAttachmentLimit()"
   - name: uploads
@@ -6782,7 +6806,9 @@ steps:
       - name: refuseRemoved
         throw:
           code: ERR_JOURNAL_KEY_REMOVED
-          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+          displayMessage: "Turn {$turnId} was removed."
+          data:
+            turnId: !cel "inputs.turnId"
   - name: row
     invoke: !ref historyRows
     inputs:
@@ -6794,7 +6820,9 @@ steps:
       - name: refuseUnknown
         throw:
           code: ERR_TURN_NOT_FOUND
-          message: !cel "'No turn ' + inputs.turnId + ' was started on this agent.'"
+          displayMessage: "No turn {$turnId} was started on this agent."
+          data:
+            turnId: !cel "inputs.turnId"
   # Stamped BEFORE the cancel, so no read between the turn failing with
   # ERR_INVOKE_CANCELLED and the stamp reports it `failed`. Only an unstamped
   # turn is stamped, and only a stamp this request wrote is cleared again when
@@ -6879,14 +6907,18 @@ steps:
       - name: refuseRemoved
         throw:
           code: ERR_JOURNAL_KEY_REMOVED
-          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+          displayMessage: "Turn {$turnId} was removed."
+          data:
+            turnId: !cel "inputs.turnId"
   - name: unknown
     if: !cel "steps.snapshot.result.state == 'unknown' || size(steps.row.result.rows) == 0"
     then:
       - name: refuseUnknown
         throw:
           code: ERR_TURN_NOT_FOUND
-          message: !cel "'No turn ' + inputs.turnId + ' was started on this agent.'"
+          displayMessage: "No turn {$turnId} was started on this agent."
+          data:
+            turnId: !cel "inputs.turnId"
   - name: conversation
     invoke: !ref requireWritableConversation
     inputs:
@@ -6919,16 +6951,28 @@ steps:
       steps.turn.result.status in ['finished', 'aborted'] || steps.turn.result.lastTurnId != inputs.turnId
     then:
       - name: refuseNotContinuable
-        throw:
-          code: ERR_TURN_NOT_CONTINUABLE
-          message: !cel >-
-            steps.turn.result.status == 'finished' ? 'This turn finished; there is nothing to continue.'
-              : steps.turn.result.status == 'aborted' ? 'This turn was aborted; send a new message instead.'
-              : 'A later turn follows this one; only the last turn of a conversation can be continued.'
-          data:
-            reason: !cel >-
-              steps.turn.result.status == 'finished' ? 'finished'
-                : steps.turn.result.status == 'aborted' ? 'aborted' : 'superseded'
+        if: !cel "steps.turn.result.status == 'finished'"
+        then:
+          - name: refuseFinished
+            throw:
+              code: ERR_TURN_NOT_CONTINUABLE
+              displayMessage: "This turn finished; there is nothing to continue."
+              data: { reason: finished }
+        else:
+          - name: refuseAbortedOrSuperseded
+            if: !cel "steps.turn.result.status == 'aborted'"
+            then:
+              - name: refuseAborted
+                throw:
+                  code: ERR_TURN_NOT_CONTINUABLE
+                  displayMessage: "This turn was aborted; send a new message instead."
+                  data: { reason: aborted }
+            else:
+              - name: refuseSuperseded
+                throw:
+                  code: ERR_TURN_NOT_CONTINUABLE
+                  displayMessage: "A later turn follows this one; only the last turn of a conversation can be continued."
+                  data: { reason: superseded }
   - name: guard
     invoke: !ref ipGuard
     inputs:
@@ -6997,7 +7041,9 @@ steps:
           - name: refuseRecreated
             throw:
               code: ERR_JOURNAL_KEY_REMOVED
-              message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+              displayMessage: "Turn {$turnId} was removed."
+              data:
+                turnId: !cel "inputs.turnId"
       # From here the key is this attempt's: a refusal fails it again with the
       # error the takeover reported, so it reads as it did before.
       - name: held
@@ -7056,7 +7102,9 @@ steps:
                       - name: refuseRemoved
                         throw:
                           code: ERR_JOURNAL_KEY_REMOVED
-                          message: !cel "'Turn ' + inputs.turnId + ' was removed.'"
+                          displayMessage: "Turn {$turnId} was removed."
+                          data:
+                            turnId: !cel "inputs.turnId"
               inputs:
                 conversationId: !cel "inputs.conversationId"
                 turnId: !cel "inputs.turnId"

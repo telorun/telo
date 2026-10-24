@@ -53,4 +53,4 @@ expect:
     - code: UNDECLARED_THROW_CODE
       message: "catches[4] references code 'ERR_VENDOR_REQUEST_FAILED' which is not in the handler's declared throw union"
     - code: CEL_UNKNOWN_FIELD
-      message: "error.data.'staus' is not defined (available: status)"
+      message: "'error.data.staus' is not defined (available: status)"

@@ -81,4 +81,4 @@ source: ./__fixtures__/scope-catch-error-data.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_FIELD
-      message: "error.data.'holdre'"
+      message: "'error.data.holdre' is not defined"

@@ -1,0 +1,27 @@
+# `problem.data` is null where the failure carries no data, so a member read
+# through it needs a guard.
+kind: Telo.Application
+metadata: { name: ProblemNullableMember }
+imports:
+  Http: ../../
+  Run: ../../../run
+---
+kind: Run.Sequence
+metadata: { name: fail }
+steps:
+  - name: bare
+    throw: { code: BARE_FAILURE }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /bare, method: GET }
+    handler: !ref fail
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - status: 500
+        content:
+          application/json:
+            body: { id: !cel "problem.data.id" }

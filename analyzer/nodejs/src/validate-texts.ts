@@ -68,6 +68,8 @@ import {
 import {
   catalogsComputedAbove,
   expressionsWithin,
+  isTextOrRecordUnion,
+  producesTextRecord,
   renderValuePath,
   siteValueOf,
   TEXT_CONTEXT_ANNOTATION,
@@ -76,8 +78,8 @@ import {
   type TextWalk,
   type ValuePath,
 } from "./text-slot.js";
-import { readText } from "@telorun/sdk";
-import { judgeDeclaredValues } from "./text-values.js";
+import { builtinErrorCodes, readText } from "@telorun/sdk";
+import { judgeDataValues, judgeDeclaredValues } from "./text-values.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -108,6 +110,8 @@ export interface TextPassOptions {
     manifest: ResourceManifest,
     path: string,
   ) => { kind: MessageValueKind; describe: string } | undefined;
+  /** The schema the plain chain at `path` of `manifest` reads, when it is one. */
+  readonly producedSchemaAt?: (manifest: ResourceManifest, path: string) => Record<string, any> | undefined;
 }
 
 const isExpression = (value: unknown): boolean => isTaggedSentinel(value);
@@ -391,6 +395,11 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
               diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
             }
           }
+          if (read.message && site.valuesFrom) {
+            for (const problem of judgeDataValues(read.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
+              diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
+            }
+          }
           continue;
         }
         const text = judgeText(site.value, lang);
@@ -401,6 +410,29 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
           for (const problem of judgeDeclaredValues(text.text.message, site.declaredValues)) {
             diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
           }
+        }
+        if (text.text && site.valuesFrom) {
+          for (const problem of judgeDataValues(text.text.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
+            diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
+          }
+        }
+      }
+      if (judged) {
+        // An expression at a slot taking a literal text or a record is admitted
+        // by the record branch alone.
+        for (const expression of writing.walk.expressions) {
+          if (!isTextOrRecordUnion(expression.schema, expression.root, walkOptions.resolveRef)) continue;
+          const at = [...writing.base, ...expression.path];
+          if (writing.forwards && selfForwardPath(valueAt(manifest, at))) continue;
+          const produced = options.producedSchemaAt?.(manifest, renderValuePath(at));
+          if (produced && producesTextRecord(produced, produced, walkOptions.resolveRef)) continue;
+          diagnostics.push(
+            diagnostic(
+              "TEXT_ARGUMENT_COMPUTED",
+              `the value at '${renderValuePath(at)}' is computed, and this slot takes a literal text or the record of a text already shown (\`!cel "error.displayMessage"\`): a text an expression produces can be neither checked nor translated. Write the text itself, with its values beside it`,
+              { manifest, path: at },
+            ),
+          );
         }
       }
       if (!judged) continue;
@@ -602,6 +634,20 @@ class CalleeResolver {
   }
 }
 
+let builtinShown: ReadonlySet<string> | undefined;
+
+/** The built-in texts — the ambient error codes' — which every module shows,
+ *  since the runtime attaches them to failures any module's dispatch raises. */
+function builtinShownTexts(): ReadonlySet<string> {
+  builtinShown ??= new Set(
+    builtinErrorCodes().flatMap((entry) => {
+      const read = readText(entry.displayMessage);
+      return read.ok ? [keyOfText(read.text)] : [];
+    }),
+  );
+  return builtinShown;
+}
+
 /** The texts a module's whole import closure shows, memoized per module. */
 class ClosureTexts {
   private readonly edges = new Map<string, Set<string>>();
@@ -626,7 +672,7 @@ class ClosureTexts {
   of(module: string): ReadonlySet<string> {
     const cached = this.memo.get(module);
     if (cached) return cached;
-    const texts = new Set<string>();
+    const texts = new Set<string>(builtinShownTexts());
     const seen = new Set<string>();
     const pending = [module];
     while (pending.length > 0) {

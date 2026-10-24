@@ -224,7 +224,7 @@ export {
 } from "./template-targets.js";
 export { nearestName } from "./nearest-name.js";
 // An ancestor's `throws:` as a ceiling, read once for `telo check` and the kernel.
-export { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
+export { codesOutsideCeiling, dispatchesThrows, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
 export { builtinDocumentSchema } from "./builtins.js";
 // The closed capability roster, read from the built-in entries for `telo check`,
 // the kernel and the editor support alike.
@@ -476,6 +476,10 @@ export {
   TEXT_RECORD_FRAGMENT,
   TEXT_VALUES_ANNOTATION,
   TEXT_VALUES_FOR_ANNOTATION,
+  TEXT_VALUES_FROM_ANNOTATION,
+  isTextOrRecordUnion,
+  producesTextRecord,
+  relativePointerOf,
   textFragmentOf,
   textSites,
   UNDETERMINED_LANGUAGE,
@@ -524,7 +528,7 @@ export type {
   TextParameter,
 } from "./text-schemas.js";
 export { textSlotAccessorProblems } from "./text-slot-accessor.js";
-export { declaredValueKinds, judgeDeclaredValues, textValuesProblems } from "./text-values.js";
+export { dataTextValues, declaredValueKinds, judgeDataValues, judgeDeclaredValues, textValuesProblems } from "./text-values.js";
 export {
   declaresTextCatalogSet,
   TEXT_CATALOG_SET_ANNOTATION,

@@ -471,8 +471,10 @@ delete.
 - **Live validation.** What the model refuses of a field is shown as values are
   entered, once the field has been touched, and of every field on a
   submission — the keywords of the interpreted profile; any other is the API's.
-  A 400 detail lands on the field whose property is the first segment of its
-  `path` (`period.from` reaches the date range entering `period`) and stays
+  A 400 problem's issue (`data.issues`) lands on the field whose property is
+  the first segment of its `pointer` after `/body` (`/body/period/from`
+  reaches the date range entering `period`), worded from its `keyword` and
+  `params` by the same `Ui.Words` the browser's own validation uses, and stays
   until that field changes; one no shown field enters is shown under the form.
 - **Field kinds.** An input field draws the control it names: `select` a list
   (several values for a list property), `options` side by side, `toggle` a
@@ -527,11 +529,12 @@ below it what the operation answered.
   then be a JSON object the declared answer model accepts; any other body is a
   failure `ERR_UI_RESPONSE_INVALID`.
 - Anything else draws the `failure` tree (`action-failure`) over `error` —
-  `status`, absent when nothing answered, and the `code` and `message` of a
-  `{ code, message }` body, else `ERR_UI_UNAUTHORIZED` for a 401,
-  `ERR_UI_FORBIDDEN` for a 403 and `ERR_UI_REQUEST_FAILED` for anything else
-  — `input` and `values`. A 400 also marks the fields its details name, every
-  other detail under the fields.
+  `status`, absent when nothing answered; `code`, the problem body's `code`,
+  else `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a 403 and
+  `ERR_UI_REQUEST_FAILED` for anything else; `message`, its `detail`, else the
+  renderer's own word for the status — `input` and `values`. A 400 also marks
+  the fields its `data.issues` name, each worded from its `keyword` and
+  `params` by `Ui.Words`, every other issue under the fields.
 - After a success, every reader whose `source.path` and every table whose
   `source.basePath` equals an entry of `onSuccess.refreshes` reads again, and
   `onSuccess.navigate` moves the page: within the application to a declared

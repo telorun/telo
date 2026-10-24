@@ -1,0 +1,95 @@
+kind: Telo.Application
+metadata:
+  name: DeclaredDisplayMessages
+  version: 1.0.0
+  description: |
+    A failure leaving a dispatch whose kind declares its code with a
+    `displayMessage` carries it as `error.displayMessage`, in the declaring
+    module's language, with `data` as its values. A display message attached
+    nearer the failure is kept, `rethrow: {}` passes the caught failure on
+    unchanged, and data the code does not declare is refused as
+    `ERR_OUTPUT_INVALID` naming the original code.
+lang: en
+imports:
+  Run: ..
+  Assert: ../../assert
+  Texts: ./__fixtures__/declared-display-messages
+targets:
+  - !ref testDeclared
+  - !ref testNearest
+  - !ref testDataRefused
+---
+kind: Texts.Lookup
+metadata: { name: lookup }
+---
+kind: Run.Sequence
+metadata: { name: testDeclared }
+steps:
+  - name: attempt
+    try:
+      - name: missing
+        invoke: !ref lookup
+        inputs: { id: "42", mode: declared }
+    catch:
+      - name: assertDisplayMessage
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            code: !cel "error.code"
+            message: !cel "error.message"
+            data: !cel "error.data"
+            displayMessage: !cel "error.displayMessage"
+          expected:
+            code: ITEM_MISSING
+            message: ITEM_MISSING
+            data: { id: "42" }
+            displayMessage: { text: "Item {$id} does not exist.", context: null, lang: en, computed: false }
+---
+# The body's own display message is attached first and survives the kind's
+# exit; a caller's `rethrow: {}` passes the failure on with all of it.
+kind: Run.Sequence
+metadata: { name: testNearest }
+steps:
+  - name: outer
+    try:
+      - name: inner
+        try:
+          - name: own
+            invoke: !ref lookup
+            inputs: { id: "42", mode: own }
+        catch:
+          - name: reraise
+            rethrow: {}
+    catch:
+      - name: assertNearest
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            code: !cel "error.code"
+            message: !cel "error.message"
+            data: !cel "error.data"
+            displayMessage: !cel "error.displayMessage"
+          expected:
+            code: ITEM_MISSING
+            message: Nothing is stored under 42.
+            data: { id: "42" }
+            displayMessage: { text: "Nothing is stored under {$id}.", context: null, lang: en, computed: false }
+---
+kind: Run.Sequence
+metadata: { name: testDataRefused }
+steps:
+  - name: attempt
+    try:
+      - name: bad
+        invoke: !ref lookup
+        inputs: { id: "42", mode: bad }
+    catch:
+      - name: assertRefused
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            code: !cel "error.code"
+            original: !cel "error.data.code"
+          expected:
+            code: ERR_OUTPUT_INVALID
+            original: ITEM_MISSING

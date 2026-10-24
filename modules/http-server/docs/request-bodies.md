@@ -96,19 +96,20 @@ The limit covers streamed and multipart bodies as well as buffered ones, so an u
 
 ## What a refusal looks like
 
-A body over the limit is answered `413` with `Connection: close`:
+A body over the limit is answered `413` with `Connection: close` and a problem (`application/problem+json`, see [Problem details](returns-and-catches.md#problem-details)):
 
 ```json
 {
-  "error": {
-    "code": "ERR_REQUEST_BODY_TOO_LARGE",
-    "message": "Request body exceeds maxBodyBytes (1048576).",
-    "data": { "maxBodyBytes": 1048576, "contentLength": 5242880 }
-  }
+  "type": "about:blank",
+  "title": "Content Too Large",
+  "status": 413,
+  "detail": "The request body is larger than the 1,048,576 bytes this server accepts.",
+  "code": "ERR_REQUEST_BODY_TOO_LARGE",
+  "data": { "maxBodyBytes": 1048576, "contentLength": 5242880 }
 }
 ```
 
-`data.contentLength` is the request's declared `Content-Length`, and is absent for a body sent chunked.
+`data.contentLength` is the request's declared `Content-Length`, and is absent for a body sent chunked. `detail` is the display message `Http.Server` declares for the code (`throws.codes.ERR_REQUEST_BODY_TOO_LARGE`).
 
 **The answer is the server's own.** No `catches:` list — a route's, a router's or the server's, a catch-all included — sees it, it takes no part in throws coverage, and a `catches:` entry naming `ERR_REQUEST_BODY_TOO_LARGE` is reported as `UNDECLARED_THROW_CODE`, since no handler raises that code.
 
@@ -138,7 +139,7 @@ A handler that wrote the first chunks somewhere — rows, a file, an object in a
 
 ## A body that is not read to its end
 
-The server decides this when the response is finished, for every response — a handler's, a `catches:` entry's, the built-in 500 envelope, a guard's refusal, a 404, a 415:
+The server decides this when the response is finished, for every response — a handler's, a `catches:` entry's, the last-resort 500 problem, a guard's refusal, a 404, a 415:
 
 | When the response is finished | The response | The connection |
 | --- | --- | --- |

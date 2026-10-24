@@ -1,0 +1,8 @@
+modules:
+  modules/crud: Added
+body: "A list query the reader refuses is answered as a 400 problem
+  (application/problem+json) with code ERR_CRUD_QUERY_INVALID, the declared detail The
+  list request is not valid., and data.issues, one { pointer, keyword, params } per
+  refused parameter with its pointer under /query. Breaking: the hand-written
+  ValidationError envelope and its details[] are gone, and the reader's error data
+  carries issues instead of details."

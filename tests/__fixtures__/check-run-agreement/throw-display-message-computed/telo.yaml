@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: ThrowDisplayMessageComputedApp
+imports:
+  Lib: ./lib
+targets:
+  - !ref Lib.refuse

@@ -1,0 +1,27 @@
+kind: Telo.Library
+metadata:
+  name: BodilessCatchFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+kind: Http.Api
+metadata:
+  name: api
+routes:
+  - request: { path: /x, method: GET }
+    handler:
+      kind: Run.Sequence
+      steps:
+        - name: boom
+          throw: { code: FOO }
+    returns:
+      - status: 200
+        content: { application/json: { body: { ok: true } } }
+    catches:
+      # Only `application/problem+json` may omit `body:` — under any other key
+      # the default problem would be sent with a media type it does not have.
+      - when: !cel "error.code == 'FOO'"
+        status: 404
+        content: { text/plain: {} }

@@ -56,26 +56,6 @@
       "kind",
       "metadata"
     ],
-    "if": {
-      "required": [
-        "throws",
-        "capability"
-      ],
-      "properties": {
-        "capability": {
-          "not": {
-            "enum": {
-              "$roster": "throwsAllowed"
-            }
-          }
-        }
-      }
-    },
-    "then": {
-      "properties": {
-        "throws": false
-      }
-    },
     "additionalProperties": true
   }
 }

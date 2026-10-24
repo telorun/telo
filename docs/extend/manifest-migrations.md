@@ -84,11 +84,14 @@ The patch is declarative, and the operations are named for what they **target**:
 | `set-value` | the value at the match | `value`, or `qualify` to prefix the existing string |
 | `set-tag` | the matched scalar | `tag` (the engine name, no `!`), optional `source`: `text` (default — the scalar's text, unchanged) or `hole` (the expression of the lone `${{ }}` hole the text is; only on a `scalar: lone-hole` rule) |
 | `insert-item` | the matched sequence | `value`, optional `at` |
+| `add-key` | the matched mapping | `key`, `value` (a scalar, or a mapping of plain data) — refuses a key the mapping already holds |
 | `remove-entry` | the matched mapping entry or sequence item | — |
 
 No operation carries a path of its own; the matcher supplies the location. The model is JSON Patch's — a declarative edit as a short sequence of primitives over a document — but the names deliberately are not, because these are narrower: `move` relocates a value anywhere across parents and replaces an occupied destination, while `rename-key` only ever renames within one mapping and *refuses* an occupied destination.
 
-A written `value` must be a **scalar** — a string, number, boolean or `null`. The file applier renders one by re-quoting it in the author's own style at the node's own span, which has no meaning for a mapping or a sequence, so a structured value is refused when the entry is *read*. Otherwise the limitation would be invisible until someone ran `telo migrate` and was told, permanently, to fix it by hand.
+A value `set-value` or `insert-item` writes must be a **scalar** — a string, number, boolean or `null`. The file applier renders one by re-quoting it in the author's own style at the node's own span, which has no meaning for a mapping or a sequence, so a structured value there is refused when the entry is *read*. Otherwise the limitation would be invisible until someone ran `telo migrate` and was told, permanently, to fix it by hand.
+
+`add-key` is the one operation that may write a **mapping** — of plain data, with mappings, sequences and scalars beneath it. A new key owns its whole span, so nothing the author wrote is re-quoted: the file applier renders the mapping fresh, in the style of the mapping it joins — lines at the entry's column beneath a block mapping, inline before a flow mapping's closing brace — with each string written plain only when it is a bare word that reads back as that string. A sequence, or anything that is not plain data, is refused when the entry is read.
 
 The vocabulary is closed on purpose. Every operation has a known YAML edit form, and that is what makes a migration applicable to a *file* at all — and what lets the driver derive whether a quick fix exists, read straight off the verb. **A migration whose operation does not fit is a signal to extend the operation set, never to hand-write a rewrite.**
 
@@ -110,12 +113,18 @@ The vocabulary is closed on purpose. Every operation has a known YAML edit form,
 | `withSibling` | no | a key that must be present in the same mapping |
 | `notUnder` | no | narrows within `under` — e.g. the data-bearing JSON Schema keywords |
 | `inSchema` | no | narrows to a JSON **schema region** — see below |
+| `ancestor` | no | `{ path, key, value }`: the matched path ends in `path` (which ends at the matched key), and the mapping holding `path`'s first key holds `key` with the scalar `value` |
+| `withoutKey` | no | the matched value must be a mapping that does not hold this key |
 
 ### Telling a spelling apart by its shape
 
 `valuePattern` and `valueNotPattern` select a legacy value by its shape, where no list of known values could: the core entry `capability-as-extends` moves a module's kind written in `capability:` into `extends:`, and a module's kind is any `<Alias>.<Kind>` whose alias is not `Telo` — every lifecycle role is written `Telo.<Role>`. The two patterns are that test (`valuePattern: "[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*"`, `valueNotPattern: "Telo\\..*"`), with no name resolved. A pattern matches the whole value, so an entry never depends on whether its author anchored it, and a value that is not a string matches neither. They do not combine with `value` / `valueOneOf`, or with a `scalar` rule. The core entry `element-from-item-relative-pointer` is the other user: a bare field name at `x-telo-context-element-from-item` (`valuePattern: "[^/~]+"`) is qualified to the relative pointer naming that field beside the region, `0/<field>`, wherever a schema region holds it (`DEPRECATED_ELEMENT_FROM_ITEM_FIELD`).
 
 A pattern is written in the **RE2 subset** — no lookahead, no lookbehind, no backreference — and the entry reader refuses anything outside it. An entry travels to every runtime, and a construct one regex engine accepts and another refuses would make a manifest migrate on one kernel and not on another, silently. The subset is also why there are two tokens: "an alias other than `Telo`" is a lookahead in one pattern, and a positive pattern beside a negative one says it without one. Listing the excluded values instead would have rewritten a typo such as `Telo.Invokable` into an `extends:` and reported it as a missing parent; left alone, it reaches the roster's own refusal, which names the role meant.
+
+### Placing a member by where it is written
+
+A key name alone reaches every mapping that spells it: `code` is a member of a catch list's error binding and of countless other schemas. `ancestor` places a match by the structure around it instead — a fixed suffix of the path ending at the matched key, whose head sits in a mapping carrying a given key and value — and `withoutKey` leaves a node the current spelling already reached alone. The core entry `caught-member-marks` is the user: the `code` and `data` members of an `error` binding in an `x-telo-context` written beside `x-telo-outcome-list: catches` gain `x-telo-caught-member: code` / `data` (`add-key`), where they carry no mark (`DEPRECATED_IMPLICIT_CAUGHT_MEMBER`). A published `notFoundHandler.catches` that declares no context at all gains the `x-telo-context` of what `http-server` 0.39.1 binds there at run time — `request`, and `error` with `code`, `message` and `data`, marks included, and nothing that runtime does not bind (`problem`, `error.displayMessage`) — written by one `add-key` of a mapping, placed by `ancestor` (`properties` / `notFoundHandler` / `properties` / `catches` inside an object schema) and left alone by `withoutKey: x-telo-context` wherever a context is already written.
 
 ### The one region a kind list cannot name
 

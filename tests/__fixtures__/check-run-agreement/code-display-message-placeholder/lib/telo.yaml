@@ -1,0 +1,22 @@
+# A code's display message naming a data property the error may arrive without: `id` is
+# declared but not required, so no value is guaranteed to fill the placeholder.
+kind: Telo.Library
+metadata:
+  name: CodeDisplayMessagePlaceholder
+lang: en
+exports:
+  kinds: [Lookup]
+---
+kind: Telo.Abstract
+metadata:
+  name: Lookup
+capability: Telo.Invocable
+throws:
+  codes:
+    ITEM_MISSING:
+      description: No item has the id.
+      displayMessage: "Item {$id} does not exist."
+      data:
+        type: object
+        properties:
+          id: { type: string }

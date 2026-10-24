@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata:
+  name: RethrowInsideCatchFixture
+  version: 1.0.0
+imports:
+  Http: ../..
+  Run: ../../../run
+---
+# try block throws A or B; catch re-raises it with `rethrow: {}`.
+# Resolver must see that the sequence's propagated union equals the try block's {A, B}.
+kind: Run.Sequence
+metadata:
+  name: catchAndRethrow
+steps:
+  - name: outer
+    try:
+      - name: branch
+        if: !cel "true"
+        then:
+          - name: throwA
+            throw: { code: "A", message: "a" }
+        else:
+          - name: throwB
+            throw: { code: "B", message: "b" }
+    catch:
+      - name: again
+        rethrow: {}
+---
+# Route covers both A and B explicitly — zero analyzer errors.
+kind: Http.Api
+metadata:
+  name: catchRethrowApi
+routes:
+  - request:
+      path: /x
+      method: GET
+    handler: !ref catchAndRethrow
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+    catches:
+      - when: !cel "error.code in ['A', 'B']"
+        status: 400
+        content:
+          application/json:
+            body: { error: !cel "error.message" }

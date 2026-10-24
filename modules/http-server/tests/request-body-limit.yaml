@@ -9,7 +9,7 @@ metadata:
     The server's limit is 64 bytes. One router carries a buffered route under it,
     a route that raises it and one that lowers it; a streamed route and a
     multipart route, whose bodies are counted as their handlers pull them; and an
-    MCP endpoint is mounted beside them. Every refusal is the same envelope.
+    MCP endpoint is mounted beside them. Every refusal is the same 413 problem.
 
     The streamed route's handler wraps its sink in `try:` and has a step after
     it, and the route declares a catch-all — none of which may answer: the
@@ -181,15 +181,19 @@ steps:
       actual:
         status: !cel "steps.buffered.result.status"
         connection: !cel "steps.buffered.result.headers['connection']"
+        contentType: !cel "steps.buffered.result.headers['content-type']"
         body: !cel "steps.buffered.result.body"
       expected:
         status: 413
         connection: close
+        contentType: application/problem+json; charset=utf-8
         body:
-          error:
-            code: ERR_REQUEST_BODY_TOO_LARGE
-            message: Request body exceeds maxBodyBytes (64).
-            data: { maxBodyBytes: 64, contentLength: 100 }
+          type: about:blank
+          title: Content Too Large
+          status: 413
+          detail: The request body is larger than the 64 bytes this server accepts.
+          code: ERR_REQUEST_BODY_TOO_LARGE
+          data: { maxBodyBytes: 64, contentLength: 100 }
     invoke: !ref Assert.equals
 
   - name: raised
@@ -217,7 +221,7 @@ steps:
     inputs:
       actual:
         status: !cel "steps.lowered.result.status"
-        data: !cel "steps.lowered.result.body.error.data"
+        data: !cel "steps.lowered.result.body.data"
       expected:
         status: 413
         data: { maxBodyBytes: 8, contentLength: 20 }
@@ -242,15 +246,19 @@ steps:
       actual:
         status: !cel "steps.streamed.result.status"
         connection: !cel "steps.streamed.result.headers['connection']"
+        contentType: !cel "steps.streamed.result.headers['content-type']"
         body: !cel "steps.streamed.result.body"
       expected:
         status: 413
         connection: close
+        contentType: application/problem+json; charset=utf-8
         body:
-          error:
-            code: ERR_REQUEST_BODY_TOO_LARGE
-            message: Request body exceeds maxBodyBytes (64).
-            data: { maxBodyBytes: 64 }
+          type: about:blank
+          title: Content Too Large
+          status: 413
+          detail: The request body is larger than the 64 bytes this server accepts.
+          code: ERR_REQUEST_BODY_TOO_LARGE
+          data: { maxBodyBytes: 64 }
     invoke: !ref Assert.equals
 
   # The built-in multipart path: no `contentTypeParsers` entry, counted the same.
@@ -270,7 +278,7 @@ steps:
     inputs:
       actual:
         status: !cel "steps.form.result.status"
-        code: !cel "steps.form.result.body.error.code"
+        code: !cel "steps.form.result.body.code"
       expected:
         status: 413
         code: ERR_REQUEST_BODY_TOO_LARGE
@@ -288,14 +296,18 @@ steps:
     inputs:
       actual:
         status: !cel "steps.mcp.result.status"
+        contentType: !cel "steps.mcp.result.headers['content-type']"
         body: !cel "steps.mcp.result.body"
       expected:
         status: 413
+        contentType: application/problem+json; charset=utf-8
         body:
-          error:
-            code: ERR_REQUEST_BODY_TOO_LARGE
-            message: Request body exceeds maxBodyBytes (64).
-            data: { maxBodyBytes: 64, contentLength: 100 }
+          type: about:blank
+          title: Content Too Large
+          status: 413
+          detail: The request body is larger than the 64 bytes this server accepts.
+          code: ERR_REQUEST_BODY_TOO_LARGE
+          data: { maxBodyBytes: 64, contentLength: 100 }
     invoke: !ref Assert.equals
 ---
 kind: Assert.Events

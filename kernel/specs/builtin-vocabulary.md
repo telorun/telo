@@ -23,7 +23,7 @@ A YAML stream. The first document is the **root**; every later document is one b
      for a build of a tree whose release is still pending;
    - `description` — search text;
    - `license: MIT`.
-2. The root carries four sections, each a map keyed by name:
+2. The root carries five sections, each a map keyed by name:
    - `$defs` — every shared schema fragment, unexpanded. A fragment refers to another as
      `$ref: telo://manifest#/$defs/<Name>`. No key starts with `telo:` (that prefix is the
      analyzer's for a fragment it hoists into a schema).
@@ -33,6 +33,10 @@ A YAML stream. The first document is the **root**; every later document is one b
      (`sdk/zone-attributes/`).
    - `formats` — every Telo string format, keyed by its `name` (`css-selector`,
      `language-tag`, `message-pattern`), verbatim (`sdk/formats/`).
+   - `errorCodes` — every error code the runtime raises around every dispatch alike, keyed by
+     its `code` (`ERR_INPUT_INVALID`), verbatim (`sdk/error-codes/`): its `description`, the
+     `displayMessage` a person is shown for it, written in English, and an optional `data`
+     schema.
 3. Every later document is a built-in in its authored form: `kind` is `Telo.Abstract`,
    `Telo.Definition` or `Telo.NeedType`, and no document carries `controllers:` — the root's
    kind says once that the runtime implements every kind in the archive. A fragment reference
@@ -92,8 +96,9 @@ and the Rust CLI embeds the same file at build, refusing to build without it.
 1. With no name, the archive is written byte for byte.
 2. Each name selects one entry. A kind or need type is selected by its name with or without
    `Telo.` (`Application`, `Telo.Application`) and prints its whole document. A fragment
-   (`Step`), a value type (`Telo.Url`), a zone attribute (`atomic`) or a format
-   (`css-selector`) prints its section's line followed by the entry's line and body. No name
+   (`Step`), a value type (`Telo.Url`), a zone attribute (`atomic`), a format
+   (`css-selector`) or an error code (`ERR_INPUT_INVALID`) prints its section's line followed
+   by the entry's line and body. No name
    selects two entries; the renderer refuses an archive in which one would.
 3. Several names print their entries in argument order, joined by a line holding `---`.
 4. A name that selects nothing writes nothing to stdout, writes *"No built-in is named

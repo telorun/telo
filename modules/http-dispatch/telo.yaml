@@ -244,7 +244,7 @@ schema:
             maximum: 599
           when:
             title: When
-            description: CEL condition that selects this entry (sees `error` and `request`).
+            description: CEL condition that selects this entry (sees `error`, `problem` — the default problem this entry renders — and `request`).
             type: boolean
           headers:
             title: Headers
@@ -254,7 +254,12 @@ schema:
               type: string
           content:
             title: Content
-            description: Per-MIME error-body shape. Buffer-mode only.
+            description: >-
+              Per-MIME error-body shape. Buffer-mode only. Every key writes a
+              `body`, except `application/problem+json`, which may omit it to
+              render the entry's default problem (RFC 9457). When no key matches
+              the `Accept` header the first is rendered — an error is never
+              refused for `Accept`.
             type: object
             propertyNames:
               title: Content-Type
@@ -264,13 +269,35 @@ schema:
                 - application/problem+json
                 - text/plain
                 - text/html
+            # Two copies of one entry shape, differing only in `required`: a
+            # `#/$defs` pointer would resolve against the consuming kind's schema,
+            # into which `x-telo-schema-from` transplants this definition.
+            properties:
+              application/problem+json:
+                type: object
+                additionalProperties: false
+                properties:
+                  body:
+                    title: Body
+                    description: CEL expression or object mapping for the error body. Omitted, the entry renders its default problem.
+                  schema:
+                    title: Schema
+                    description: JSON Schema used to validate the rendered body.
+                    type: object
+                  headers:
+                    title: Headers
+                    description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                    type: object
+                    additionalProperties:
+                      type: string
             additionalProperties:
               type: object
               additionalProperties: false
+              required: [body]
               properties:
                 body:
                   title: Body
-                  description: CEL expression or object mapping for the error body.
+                  description: CEL expression or object mapping for the error body. Only an `application/problem+json` entry may omit it.
                 schema:
                   title: Schema
                   description: JSON Schema used to validate the rendered body.

@@ -1,0 +1,70 @@
+{
+  "name": "Throws.DisplayMessage",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The display message this resource's kind declares for a code, for a refusal the controller renders outside a dispatch. `data` is held to the code's declared `data` schema first, exactly as at a dispatch exit.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "code": {
+        "type": "string",
+        "minLength": 1
+      },
+      "data": {
+        "description": "The refusal's data, the display message's values."
+      }
+    },
+    "required": [
+      "instance",
+      "code"
+    ],
+    "additionalProperties": false
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The display message's record, nearest along `extends` or the built-in one for an ambient code; nothing when no declaration gives the code one.",
+    "type": "object",
+    "properties": {
+      "displayMessage": {
+        "description": "The text a person is shown for the failure, as its record; its values are `data`.",
+        "type": "object",
+        "properties": {
+          "text": {
+            "description": "The Message in its fragment spelling: a pattern, or a plural selection."
+          },
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lang": {
+            "type": "string",
+            "minLength": 1
+          },
+          "computed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "context",
+          "lang",
+          "computed"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "errors": [
+    "ERR_OUTPUT_INVALID"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

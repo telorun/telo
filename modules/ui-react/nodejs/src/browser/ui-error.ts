@@ -1,4 +1,5 @@
 import type { MessageValue } from "@telorun/message-format";
+import { problemOf } from "./problem-details.js";
 import type { Say } from "./texts.js";
 
 /** One of the renderer's own words, with the values it is formatted with. */
@@ -34,26 +35,31 @@ export function errorSpec(error: unknown, fallbackCode: string): ErrorSpec {
   return { type: "error", code: fallbackCode, message: error instanceof Error ? error.message : String(error) };
 }
 
+/** The code and word a failed status stands for when its body names neither. */
+function statusFailure(status: number): { code: string; word: WordCall } {
+  if (status === 401) return { code: "ERR_UI_UNAUTHORIZED", word: { id: "requestUnauthorized" } };
+  if (status === 403) return { code: "ERR_UI_FORBIDDEN", word: { id: "requestForbidden" } };
+  return { code: "ERR_UI_REQUEST_FAILED", word: { id: "requestFailedStatus", values: { status } } };
+}
+
 /**
- * What a response that is not a success means. 401 and 403 have codes of their
- * own; anything else is a failed request, reported with the server's message
- * or else with its status.
+ * What a response that is not a success means: its problem's `code` and
+ * `detail` where it gives them, else what the status stands for — 401 and 403
+ * with codes of their own, anything else a failed request.
  */
 export async function responseError(response: Response): Promise<UiError> {
-  if (response.status === 401) {
-    return new UiError("ERR_UI_UNAUTHORIZED", String(response.status), { id: "requestUnauthorized" });
-  }
-  if (response.status === 403) return new UiError("ERR_UI_FORBIDDEN", String(response.status), { id: "requestForbidden" });
+  let body: unknown;
   try {
-    const body = await response.clone().json();
-    if (typeof body?.message === "string") return new UiError("ERR_UI_REQUEST_FAILED", body.message);
+    body = await response.clone().json();
   } catch {
     // The body is not JSON; the status alone is the report.
   }
-  return new UiError("ERR_UI_REQUEST_FAILED", String(response.status), {
-    id: "requestFailedStatus",
-    values: { status: response.status },
-  });
+  const problem = problemOf(body);
+  const fallback = statusFailure(response.status);
+  const code = problem.code ?? fallback.code;
+  return problem.detail !== undefined
+    ? new UiError(code, problem.detail)
+    : new UiError(code, String(response.status), fallback.word);
 }
 
 /** A request that got no response at all. */
@@ -64,7 +70,7 @@ export function networkError(error: unknown): UiError {
 }
 
 /** What a request that did not succeed reads as: `status` absent when nothing
- *  answered, `code` and `message` from a `{ code, message }` body. */
+ *  answered, `code` and `message` the problem's `code` and `detail`. */
 export interface RequestError {
   status?: number;
   code?: string;
@@ -72,19 +78,14 @@ export interface RequestError {
 }
 
 /** A response that is not a success, read with the body it carried: the
- *  body's `code` and `message` where it gives them, else what the status means. */
+ *  problem's `code` and `detail` where it gives them, else what the status means. */
 export function requestErrorOf(status: number, body: unknown, say: Say): RequestError {
-  const answer = body !== null && typeof body === "object" && !Array.isArray(body) ? (body as Record<string, unknown>) : {};
-  const fallback =
-    status === 401
-      ? { code: "ERR_UI_UNAUTHORIZED", message: say("requestUnauthorized") }
-      : status === 403
-        ? { code: "ERR_UI_FORBIDDEN", message: say("requestForbidden") }
-        : { code: "ERR_UI_REQUEST_FAILED", message: say("requestFailedStatus", { status }) };
+  const problem = problemOf(body);
+  const fallback = statusFailure(status);
   return {
     status,
-    code: typeof answer.code === "string" ? answer.code : fallback.code,
-    message: typeof answer.message === "string" ? answer.message : fallback.message,
+    code: problem.code ?? fallback.code,
+    message: problem.detail ?? say(fallback.word.id, fallback.word.values),
   };
 }
 

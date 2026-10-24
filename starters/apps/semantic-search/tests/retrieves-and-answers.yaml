@@ -135,11 +135,11 @@ steps:
         reply: !cel "steps.ask.result.body.reply"
         sources: !cel "steps.ask.result.body.sources.map(m, m.id)"
         unrelated: !cel "steps.unrelated.result.body"
-        # The refusal names the field, which is what lets the page show it there.
+        # The refusal's issue names the field, which is what lets the page show
+        # it there.
         noQuestion:
           status: !cel "steps.noQuestion.result.status"
-          error: !cel "steps.noQuestion.result.body.error"
-          fields: !cel "steps.noQuestion.result.body.details.map(d, d.path)"
+          body: !cel "steps.noQuestion.result.body"
       expected:
         searchStatus: 200
         found: [ releases ]
@@ -152,8 +152,14 @@ steps:
           reply: [ { answer: I could not find anything about that in the indexed documents. } ]
         noQuestion:
           status: 400
-          error: ValidationError
-          fields: [ q ]
+          body:
+            type: about:blank
+            title: Bad Request
+            status: 400
+            detail: The request is not valid.
+            code: ERR_INPUT_INVALID
+            data:
+              issues: [ { pointer: /body/q, keyword: minLength, params: { limit: 1 } } ]
 
   - name: beforeIndexing
     invoke: !ref call

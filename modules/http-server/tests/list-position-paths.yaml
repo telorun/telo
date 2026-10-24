@@ -3,10 +3,11 @@ metadata:
   name: ListPositionPathsTest
   version: 1.0.0
   description: |
-    One route, two producers of the 400 envelope: the validator refuses text the
-    schema does not accept, and a plain-encoded slot refuses text its encoding
-    does not read. Both name a list position the same way — in brackets against
-    the list that holds it (`items[0].name`, `items[0].at`).
+    One route, two producers of the validation 400: the validator refuses text
+    the schema does not accept, and a plain-encoded slot refuses text its
+    encoding does not read. Both answer the same problem, each finding a JSON
+    Pointer into the request as CEL reads it (`/body/items/0/name`,
+    `/body/items/0/at`) with its keyword and params and no prose.
 imports:
   Http: ../
   HttpClient: ../../http-client
@@ -67,17 +68,41 @@ steps:
       url: http://127.0.0.1:8997/events
       method: POST
       body: { items: [{ name: "a", at: "0000-01-01T00:00:00Z" }] }
-  - name: assertBracketSpelling
+  - name: assertOneShape
     inputs:
       actual:
         tooLong:
           status: !cel "steps.tooLong.result.status"
-          where: !cel "steps.tooLong.result.body.details.map(d, d.location + ':' + d.path)"
+          contentType: !cel "steps.tooLong.result.headers['content-type']"
+          body: !cel "steps.tooLong.result.body"
         undecodable:
           status: !cel "steps.undecodable.result.status"
-          where: !cel "steps.undecodable.result.body.details.map(d, d.location + ':' + d.path)"
+          contentType: !cel "steps.undecodable.result.headers['content-type']"
+          body: !cel "steps.undecodable.result.body"
       expected:
-        tooLong: { status: 400, where: ["body:items[0].name"] }
-        undecodable: { status: 400, where: ["body:items[0].at"] }
+        tooLong:
+          status: 400
+          contentType: application/problem+json; charset=utf-8
+          body:
+            type: about:blank
+            title: Bad Request
+            status: 400
+            detail: The request is not valid.
+            code: ERR_INPUT_INVALID
+            data:
+              issues:
+                - { pointer: /body/items/0/name, keyword: maxLength, params: { limit: 3 } }
+        undecodable:
+          status: 400
+          contentType: application/problem+json; charset=utf-8
+          body:
+            type: about:blank
+            title: Bad Request
+            status: 400
+            detail: The request is not valid.
+            code: ERR_INPUT_INVALID
+            data:
+              issues:
+                - { pointer: /body/items/0/at, keyword: format, params: { format: Telo.Timestamp } }
     invoke:
       kind: Assert.Equals

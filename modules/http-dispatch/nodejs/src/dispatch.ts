@@ -1,4 +1,5 @@
 import { InvokeError, type ResourceInstance } from "@telorun/sdk";
+import { PROBLEM_MEDIA_TYPE, problemDetails, type CodedFailure, type ProblemDetails } from "./problem-details.js";
 import type { CatchEntry, ContentEntry, ReturnEntry } from "./schema.js";
 import type { ResponseSink, StreamErrorHook } from "./sink.js";
 
@@ -22,7 +23,7 @@ export type ValidateSchema = (value: unknown, schema: unknown) => void;
  *  see modules/mcp-server/nodejs/src/outcome.ts for the same precaution. */
 function matchEntry<T extends { when?: unknown }>(
   entries: T[],
-  celCtx: Record<string, unknown>,
+  celCtxOf: (entry: T) => Record<string, unknown>,
   moduleContext: ModuleLikeContext,
 ): T | undefined {
   let fallback: T | undefined;
@@ -31,7 +32,7 @@ function matchEntry<T extends { when?: unknown }>(
       fallback ??= entry;
       continue;
     }
-    if (moduleContext.expandWith(entry.when, celCtx) === true) return entry;
+    if (moduleContext.expandWith(entry.when, celCtxOf(entry)) === true) return entry;
   }
   return fallback;
 }
@@ -164,7 +165,7 @@ export async function dispatchReturns(
   streamError?: StreamErrorHook,
 ): Promise<void> {
   const celCtx = { result, ...requestContext };
-  const entry = matchEntry(returns, celCtx, moduleContext);
+  const entry = matchEntry(returns, () => celCtx, moduleContext);
 
   if (!entry) {
     // Unreachable when the analyzer has run — every route's returns: list must
@@ -190,14 +191,8 @@ export async function dispatchReturns(
   if (!matchedMime) {
     // No Accept-header match at any positive q-value — RFC 9110 §15.5.7.
     sink.setStatus(406);
-    sink.setHeader("Content-Type", "application/json");
-    await sink.send({
-      error: {
-        code: "NOT_ACCEPTABLE",
-        message: "No representation matched the Accept header.",
-        available: contentKeys,
-      },
-    });
+    sink.setHeader("Content-Type", PROBLEM_MEDIA_TYPE);
+    await sink.send(problemDetails(406, { code: ERR_NOT_ACCEPTABLE, data: { available: contentKeys } }));
     return;
   }
 
@@ -277,34 +272,82 @@ async function dispatchStream(
   await sink.stream(encoded.output, onError);
 }
 
+/** The code a `returns:` entry is refused with when no representation it declares
+ *  matches the request's `Accept` header. */
+export const ERR_NOT_ACCEPTABLE = "ERR_NOT_ACCEPTABLE";
+
+/** A caught failure as `dispatchCatches` receives it. `message` is the developer's:
+ *  `error.message` reads it, and no response carries it. `error.displayMessage`
+ *  reads the display message's record, null when there is none. */
+export interface CaughtFailure extends CodedFailure {
+  readonly message: string;
+}
+
+/** A problem as CEL reads it: its status an integer, and `title`, `detail` and
+ *  `data` null where the wire body omits them. */
+function problemBinding(problem: ProblemDetails): Record<string, unknown> {
+  return {
+    ...problem,
+    title: problem.title ?? null,
+    status: BigInt(problem.status),
+    detail: problem.detail ?? null,
+    data: problem.data ?? null,
+  };
+}
+
 /** Render an InvokeError through a `catches:` list, reporting whether any entry
  *  matched. Plain (non-InvokeError) throws never reach this function — the
  *  caller re-throws them to its transport.
  *
  *  **It never invents a response.** A catch list is one rung of a scope ladder —
  *  a route's, its router's, its server's — so what an unmatched throw means is
- *  the CALLER's to decide: try the next rung, or render the last-resort envelope
- *  because there is no next rung. Answering it here rendered a fixed 500 from a
- *  shared library, which both swallowed the error and made every outer rung
- *  unreachable, since nothing ever escaped the innermost one.
+ *  the CALLER's to decide: try the next rung, or render the last-resort problem
+ *  because there is no next rung.
+ *
+ *  Every entry's CEL — its `when:` included — reads `error` and `problem`, the
+ *  default problem that entry renders: its status, the failure's code, data and
+ *  display message. An entry with no `body:` renders that problem as
+ *  `application/problem+json`, whichever of its content keys was selected. **An error is never refused for `Accept`**: an
+ *  entry whose content keys match nothing in it renders its first key.
  *
  *  Catches are buffer-mode only by design: by the time a catch fires the
  *  response is committed pre-stream and there's no upstream iterable to feed
- *  an encoder. content[mime] entries carry body/schema/headers; encoder/mode
- *  fields are not part of the catch schema. */
+ *  an encoder. */
 export async function dispatchCatches(
   catches: CatchEntry[] | undefined,
-  error: { code: string; message: string; data?: unknown },
+  error: CaughtFailure,
   requestContext: Record<string, unknown>,
   acceptHeader: string | undefined,
   moduleContext: ModuleLikeContext,
   validateSchema: ValidateSchema,
   sink: ResponseSink,
 ): Promise<boolean> {
-  const celCtx = { error, ...requestContext };
-  const entry = catches ? matchEntry(catches, celCtx, moduleContext) : undefined;
+  if (!catches) return false;
+  const caught = {
+    code: error.code,
+    message: error.message,
+    data: error.data,
+    displayMessage: error.displayMessage ?? null,
+  };
+  const problems = new Map<number, ProblemDetails>();
+  const problemOf = (entry: CatchEntry): ProblemDetails => {
+    const status = Number(entry.status);
+    let problem = problems.get(status);
+    if (!problem) {
+      problem = problemDetails(status, error);
+      problems.set(status, problem);
+    }
+    return problem;
+  };
+  const celCtxOf = (entry: CatchEntry) => ({
+    error: caught,
+    problem: problemBinding(problemOf(entry)),
+    ...requestContext,
+  });
+  const entry = matchEntry(catches, celCtxOf, moduleContext);
 
   if (!entry) return false;
+  const celCtx = celCtxOf(entry);
 
   if (!entry.content || Object.keys(entry.content).length === 0) {
     sink.setStatus(entry.status);
@@ -314,55 +357,18 @@ export async function dispatchCatches(
   }
 
   const contentKeys = Object.keys(entry.content);
-  const matchedMime = negotiateContent(contentKeys, acceptHeader);
-
-  if (!matchedMime) {
-    sink.setStatus(406);
-    sink.setHeader("Content-Type", "application/json");
-    await sink.send({
-      error: {
-        code: "NOT_ACCEPTABLE",
-        message: "No catch representation matched the Accept header.",
-        available: contentKeys,
-      },
-    });
-    return true;
-  }
-
+  const matchedMime = negotiateContent(contentKeys, acceptHeader) ?? contentKeys[0]!;
   const contentEntry = entry.content[matchedMime]!;
   sink.setStatus(entry.status);
-  sink.setHeader("Content-Type", matchedMime);
+  // The default problem is application/problem+json whatever key selected it:
+  // the catches schema refuses a bodiless entry under any other key, but
+  // statically only, so a dependency's entry still reaches here.
+  sink.setHeader("Content-Type", contentEntry.body !== undefined ? matchedMime : PROBLEM_MEDIA_TYPE);
   applyHeaders(entry.headers, contentEntry.headers, celCtx, moduleContext, sink, entry.status);
 
-  if (contentEntry.body !== undefined) {
-    const mappedBody = moduleContext.expandWith(contentEntry.body, celCtx);
-    if (contentEntry.schema) validateSchema(mappedBody, contentEntry.schema);
-    await sink.send(mappedBody);
-    return true;
-  }
-
-  // Default error envelope when no body is given. The matched MIME may be
-  // text/plain (or any non-JSON shape) — the negotiated Content-Type would
-  // lie about a JSON payload. Override to application/json to keep the
-  // envelope honest. Authors who want the matched MIME on the wire must
-  // provide an explicit `body:` for that content[mime] entry.
-  sink.setHeader("Content-Type", "application/json");
-  await sink.send(errorEnvelope(error));
+  const body =
+    contentEntry.body !== undefined ? moduleContext.expandWith(contentEntry.body, celCtx) : problemOf(entry);
+  if (contentEntry.schema) validateSchema(body, contentEntry.schema);
+  await sink.send(body);
   return true;
-}
-
-/** The last-resort rendering of a throw no `catches:` entry claimed, and the
- *  body a matched entry falls back to when it declares no `body:`.
- *
- *  One function because the two must stay identical: the transport renders it
- *  when the whole scope ladder declines, which is exactly the response this
- *  module used to produce from inside `dispatchCatches`. Keeping the bytes the
- *  same is what makes the ladder a pure addition for every manifest that
- *  declares no scope-level list. */
-export function errorEnvelope(error: {
-  code: string;
-  message: string;
-  data?: unknown;
-}): { error: { code: string; message: string; data?: unknown } } {
-  return { error: { code: error.code, message: error.message, data: error.data } };
 }

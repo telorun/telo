@@ -66,6 +66,15 @@ export interface InsertItemOperation {
   readonly at?: number;
 }
 
+/** Write a value under a key the matched MAPPING does not hold: a scalar, or a
+ *  mapping of literal data. Refuses an occupied key, as `rename-key` refuses an
+ *  occupied destination. */
+export interface AddKeyOperation {
+  readonly op: "add-key";
+  readonly key: string;
+  readonly value: unknown;
+}
+
 /** Remove the matched mapping entry or sequence item. */
 export interface RemoveEntryOperation {
   readonly op: "remove-entry";
@@ -79,6 +88,7 @@ export type MigrationOperation =
   | SetValueOperation
   | SetTagOperation
   | InsertItemOperation
+  | AddKeyOperation
   | RemoveEntryOperation;
 
 export const MIGRATION_OPS = [
@@ -86,6 +96,7 @@ export const MIGRATION_OPS = [
   "set-value",
   "set-tag",
   "insert-item",
+  "add-key",
   "remove-entry",
 ] as const;
 
@@ -142,6 +153,7 @@ export type MigrationRefusal =
   | "destination-occupied"
   | "not-a-mapping-entry"
   | "not-a-sequence"
+  | "not-a-mapping"
   | "not-a-scalar"
   | "malformed-value"
   /** The value is already what the patch would write. A rule should match only

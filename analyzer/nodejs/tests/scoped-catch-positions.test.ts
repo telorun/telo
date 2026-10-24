@@ -37,6 +37,15 @@ const apiDef: ResourceManifest = {
         type: "array",
         "x-telo-outcome-list": "catches",
         "x-telo-catches-for": "",
+        "x-telo-context": {
+          type: "object",
+          properties: {
+            error: {
+              type: "object",
+              properties: { code: { type: "string", "x-telo-caught-member": "code" } },
+            },
+          },
+        },
         items: { type: "object", properties: { status: { type: "integer" } } },
       },
       routes: {

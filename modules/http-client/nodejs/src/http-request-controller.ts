@@ -299,12 +299,19 @@ export async function readBody(
 
   if (responseType === "text") return response.text();
 
-  const contentType = responseHeaders["content-type"] ?? "";
-  if (contentType.includes("application/json")) {
+  if (isJsonMediaType(responseHeaders["content-type"] ?? "")) {
     const text = await response.text();
     return text.length === 0 ? null : JSON.parse(text);
   }
   return response.text();
+}
+
+/** `application/json`, or any type with the `+json` structured-syntax suffix (RFC 6839). */
+function isJsonMediaType(contentType: string): boolean {
+  const essence = contentType.split(";", 1)[0].trim().toLowerCase();
+  if (essence === "application/json") return true;
+  const slash = essence.indexOf("/");
+  return slash > 0 && essence.endsWith("+json") && essence.length > slash + "+json".length + 1;
 }
 
 /**

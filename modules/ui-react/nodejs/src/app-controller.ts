@@ -53,6 +53,14 @@ interface HeaderConfig {
 const HEADER_SIDES = ["start", "end"] as const;
 type HeaderSide = (typeof HEADER_SIDES)[number];
 
+/** Nothing served here: the bare problem of a 404, as the server answers one. */
+function notFound(reply: FastifyReply) {
+  return reply
+    .code(404)
+    .type("application/problem+json; charset=utf-8")
+    .send(JSON.stringify({ type: "about:blank", title: "Not Found", status: 404 }));
+}
+
 export type AppResource = RuntimeResource & {
   title: TextRecord;
   /** A fixed tag, or an expression read per request. */
@@ -509,10 +517,7 @@ export class UiReactApp {
     const index = this.pages.findIndex(({ reading }) => reading.path === path);
     const page = this.pages[index];
     if (!page) {
-      return reply
-        .code(404)
-        .header("cache-control", "private, no-cache")
-        .send({ error: "NotFound", message: `This application declares no page at '${String(path)}'.`, status: 404 });
+      return notFound(reply.header("cache-control", "private, no-cache"));
     }
     const scope = { request: this.requestOf(request) };
     const pageWidth = this.resource.pageWidth ?? undefined;
@@ -549,7 +554,7 @@ export class UiReactApp {
     const params = request.params as { digest: string; "*": string };
     const asset = started.store.get(params.digest, params["*"]);
     if (!asset) {
-      return reply.code(404).send({ error: "NotFound", message: "No such asset.", status: 404 });
+      return notFound(reply);
     }
     reply.header("cache-control", IMMUTABLE).type(asset.mediaType);
     return reply.send(asset.body);
@@ -559,7 +564,7 @@ export class UiReactApp {
     const pathname = new URL(request.url, "http://telo.invalid").pathname;
     const path = pathname.slice(mount.length) || "/";
     if (path === "/_telo" || path.startsWith("/_telo/")) {
-      return reply.code(404).send({ error: "NotFound", message: `Nothing is served at '${path}'.`, status: 404 });
+      return notFound(reply);
     }
     const declared = this.pages.some(({ reading }) => reading.path === path);
     const language = this.inLanguage(started, this.effectiveTag(started, this.requestOf(request)));

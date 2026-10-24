@@ -149,7 +149,7 @@ export function useRecordEntry(entry: EntrySpec, initial?: Record<string, unknow
       setServed({});
       return { ok: true, record: sent };
     },
-    /** A refusal: the details naming a field land on it, the rest under the form. */
+    /** A refusal: the issues naming a field land on it, the rest under the form. */
     refuse(byField: Record<string, string>, other: string[]) {
       setServed(byField);
       setFormError(other.length > 0 ? other.join(" ") : undefined);

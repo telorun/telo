@@ -76,6 +76,7 @@ import {
   type StepResultAlternative,
 } from "./step-result-inference.js";
 import { bodyForPath, templateBodies } from "./template-body.js";
+import { withCaughtData } from "./caught-member.js";
 import {
   contextChainAt,
   elementOfCollection,
@@ -552,6 +553,11 @@ export interface CelScopeInputs {
   referrersOf?: (m: ResourceManifest) => ReadonlyArray<{ manifest: ResourceManifest; path: string }>;
   /** A referrer's kind, resolved in the scope of the module declaring it. */
   definitionOf?: (m: ResourceManifest) => ResourceDefinition | undefined;
+  /** The data of the codes the catch entry holding `path` matches — the catch
+   *  ladder's answer — which every `x-telo-caught-member: data` member of the
+   *  site's context takes. Absent, or undefined for a path, a marked member keeps
+   *  the schema it declares. */
+  caughtDataAt?: (m: ResourceManifest, path: string) => Record<string, any> | undefined;
 }
 
 /**
@@ -1136,6 +1142,10 @@ export class CelScopeResolver {
       for (const name of absent) delete properties[name];
       resolved = { ...resolved, properties };
     }
+    // Inside a catch entry, a member marked as the caught failure's data is the
+    // data of the codes that entry matches.
+    const caught = this.inputs.caughtDataAt?.(m, path);
+    if (caught) resolved = withCaughtData(resolved, caught);
     // A named shape nested anywhere in the context — a contract's
     // `outputType: { properties: { x: !ref Money } }`, an input declared as
     // `!ref Shape` — is a `$ref` the member walk cannot see through, so it is

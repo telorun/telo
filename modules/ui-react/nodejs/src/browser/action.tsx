@@ -4,6 +4,7 @@ import { useHost, useHostStore } from "./host.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { followSuccess, PressQueueContext, runOperation, type ActionSpec, type Outcome } from "./operation.js";
 import { useRecordEntry, type EntrySpec } from "./record-entry.js";
+import { problemOf } from "./problem-details.js";
 import { Fields, refusalOf } from "./record-fields.js";
 import { RendererContext, RootsContext } from "./renderer-context.js";
 import { useSay, useText } from "./texts.js";
@@ -58,8 +59,7 @@ export function Action({ node }: { node: SpecNode }) {
       if (outcome.error.status === 400) {
         // A refusal still marks the fields it names.
         const { byField, other } = refusalOf(outcome.body, shown, say);
-        const body = outcome.body as { details?: unknown } | undefined;
-        entry.refuse(byField, Array.isArray(body?.details) ? other.filter((line) => line !== "") : []);
+        entry.refuse(byField, problemOf(outcome.body).issues.length > 0 ? other : []);
       }
       setState("error");
       return;

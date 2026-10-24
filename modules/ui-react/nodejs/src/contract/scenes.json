@@ -171,7 +171,12 @@
       },
       "lang": "en"
     },
-    "uniqueItems": {"message":["Must not repeat an item"],"lang":"en"}
+    "uniqueItems": {"message":["Must not repeat an item"],"lang":"en"},
+    "minProperties": {"message":{"plural":"limit","cases":{"one":["Must have at least ",{"placeholder":"limit"}," entry"],"other":["Must have at least ",{"placeholder":"limit"}," entries"]}},"lang":"en"},
+    "maxProperties": {"message":{"plural":"limit","cases":{"one":["Must have at most ",{"placeholder":"limit"}," entry"],"other":["Must have at most ",{"placeholder":"limit"}," entries"]}},"lang":"en"},
+    "format": {"message":["Is not a valid ",{"placeholder":"format"}],"lang":"en"},
+    "additionalProperties": {"message":["Is not expected here"],"lang":"en"},
+    "propertyNames": {"message":["Has a name that is not allowed: ",{"placeholder":"propertyName"}],"lang":"en"}
   },
   "scenes": [
     {
@@ -1028,7 +1033,7 @@
           "respond": {
             "POST /api/todos": {
               "status": 400,
-              "body": {"details":[{"location":"body","path":"elsewhere","message":"is refused"}]}
+              "body": {"type":"about:blank","title":"Bad Request","status":400,"detail":"The request is not valid.","code":"ERR_INPUT_INVALID","data":{"issues":[{"pointer":"/body/elsewhere","keyword":"invalid","params":{}}]}}
             }
           }
         },

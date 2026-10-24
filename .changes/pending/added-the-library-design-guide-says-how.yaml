@@ -1,0 +1,4 @@
+modules:
+  apps/hub: Added
+body: The library design guide says how a kind declaring a catch list marks its caught
+  code and data with `x-telo-caught-member`.

@@ -7,6 +7,7 @@ metadata:
     structured error carrying its code. `invoke`'s is caught by name inside a
     `try:`, with its message unprefixed; `create`'s fails the boot naming the
     resource, rather than leaving an Error object standing in as the instance.
+    Its `data` and its display message cross the bridge with it.
     An integer a Rust controller returns reaches the kernel as a number within
     ±(2^53−1) and as a 64-bit integer beyond it, whatever its sign. The
     controller is built on the Rust SDK, so this is the SDK's napi bridge under
@@ -55,6 +56,23 @@ steps:
           expected:
             code: ERR_FIXTURE
             message: the probe was asked to fail
+  - name: attemptWithDisplayMessage
+    try:
+      - name: failsWithDisplayMessage
+        invoke: !ref probe
+        inputs:
+          fail: true
+          displayMessage: true
+    catch:
+      - name: assertCarried
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            data: !cel "error.data"
+            displayMessage: !cel "error.displayMessage"
+          expected:
+            data: { id: "42" }
+            displayMessage: { text: "Probe {$id} failed.", context: null, lang: en, computed: false }
 ---
 kind: Run.Sequence
 metadata: { name: testIntegers }

@@ -413,8 +413,9 @@ outputType:
         description: Response headers, normalized to lowercase keys (per §2 of the Response Contract).
       body:
         description: |
-          Parsed JSON when content-type is application/json (or null on an empty body
-          with a JSON content-type); raw string otherwise. Open shape — per-call
+          Parsed JSON when the media type is application/json or ends in +json
+          (application/problem+json included), or null on an empty body with such a
+          type; raw string otherwise. Open shape — per-call
           narrowing is the manifest author's concern (use CEL or downstream
           Type kinds).
 schema:

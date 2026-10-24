@@ -16,6 +16,7 @@ pub mod controller_loader;
 pub mod controller_loaders;
 pub mod controller_registry;
 pub mod controllers;
+pub mod declared_display_messages;
 pub mod directory_lock;
 pub mod error;
 pub mod evaluation_context;

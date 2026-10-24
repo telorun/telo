@@ -70,6 +70,22 @@ describe("napi loader re-raises a controller's own error as an InvokeError", () 
     expect((err as InvokeError).cause).toBe(original);
   });
 
+  it("carries the controller's data and display message across the bridge", async () => {
+    const displayMessage = { text: "Item {$id} is missing.", context: null, lang: "en", computed: false };
+    const original = Object.assign(controllerError("NOT_FOUND", "missing"), { data: { id: "42" }, displayMessage });
+    const instance = await instanceThrowing(original);
+    const err = caught(() => instance.invoke({}));
+    expect(err).toMatchObject({ code: "NOT_FOUND", data: { id: "42" }, displayMessage });
+  });
+
+  it("refuses a display message that is no text record", async () => {
+    const original = Object.assign(controllerError("NOT_FOUND", "missing"), { displayMessage: "Item missing." });
+    const instance = await instanceThrowing(original);
+    const err = caught(() => instance.invoke({}));
+    expect(err).toBeInstanceOf(RuntimeError);
+    expect(err).toMatchObject({ code: "ERR_CONTROLLER_INVALID" });
+  });
+
   it("re-raises from snapshot, register and create", async () => {
     const original = controllerError("ERR_X", "boom");
     const controller = controllerThrowing(original);

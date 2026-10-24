@@ -1,6 +1,6 @@
 import type { CelEnvironment } from "@telorun/cel";
 import { isKindDocument } from "./kind-declaration.js";
-import { celExpressionsOf, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { isRefSentinel } from "@telorun/templating";
 import {
   AMBIENT_CONTRACT_ERROR_CODES,
   isAmbientContractErrorCode,
@@ -8,17 +8,12 @@ import {
 } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import {
-  handsFailureBack,
-  throwsUses,
-  type ThrowsCodeMeta,
-  type ThrowsUnion,
-} from "./resolve-throws-union.js";
+import { handsFailureBack, throwsUses, type ThrowsUnion } from "./resolve-throws-union.js";
 import { forEachDeclaredSlot } from "./schema-walk.js";
 import {
   CatchLadder,
   collectOutcomeLists,
-  extractCoveredCodes,
+  type CatchEntryReading,
   type CatchList,
   type OutcomeEntry,
 } from "./catch-scope.js";
@@ -28,7 +23,6 @@ import { createAjv } from "./schema-compat.js";
 import { builtinDocumentSchema } from "./builtins.js";
 import { declarableCapabilities, throwsAllowedCapabilities } from "./capability-roster.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
-import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -62,23 +56,19 @@ function checkCatchAllPlacement(
  *  denominator differs (a handler's union, or the enclosing resource's own), the
  *  typo check does not. */
 function checkUndeclaredCodes(
-  entries: OutcomeEntry[],
+  readings: readonly CatchEntryReading[],
   union: ThrowsUnion,
-  resource: { kind: string; name: string },
   filePath: string | undefined,
   arrayPath: string,
-  env: CelEnvironment,
   denominator: string,
-  routing: { kind: string; name: string } = resource,
+  routing: { kind: string; name: string },
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const declaredCodes = new Set(union.codes.keys());
 
-  for (let i = 0; i < entries.length; i++) {
-    const e = entries[i];
-    if (!e?.when) continue;
-    const { proven, codes } = extractCoveredCodes(e.when, env);
-    if (!proven) continue;
+  for (let i = 0; i < readings.length; i++) {
+    const { catchAll, proven, codes } = readings[i]!;
+    if (catchAll || !proven) continue;
     for (const c of codes) {
       // An ambient kernel code (contract violations) is raised by the kernel,
       // not declared by the kind, so naming it is legal and still typo-checked
@@ -137,7 +127,7 @@ function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder)
       source: SOURCE,
       message:
         `handler ${handlerLabel(site.handler)} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
-        `Give each a matching \`when:\` (e.g. \`when: !cel "error.code == '${uncovered[0]}'"\`), or add a catch-all entry — one with no \`when:\`, placed last.`,
+        `Give each a matching \`when:\`${site.codeChains[0] ? ` (e.g. \`when: !cel "${site.codeChains[0].join(".")} == '${uncovered[0]}'"\`)` : ""}, or add a catch-all entry — one with no \`when:\`, placed last.`,
       data: { resource: routing, filePath, path: arrayPath, uncovered },
     });
   }
@@ -155,149 +145,6 @@ function handlerLabel(handler: unknown): string {
     if (typeof kind === "string") return `\`${kind}\``;
   }
   return typeof handler === "string" ? `\`${handler}\`` : "`?`";
-}
-
-/** Rule 2: for each `error.data.<field>` chain in a catches entry's expressions,
- *  type-check against the data schema declared for the matched code(s). When the
- *  matching `when:` disjunctively covers multiple codes, use the intersection
- *  of their data schemas so only fields present on every code narrow through. */
-function checkTypedErrorData(
-  entries: OutcomeEntry[],
-  union: ThrowsUnion,
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  arrayPath: string,
-  env: CelEnvironment,
-  routing: { kind: string; name: string } = resource,
-): AnalysisDiagnostic[] {
-  const diagnostics: AnalysisDiagnostic[] = [];
-  // If the union is unbounded we can't narrow data schemas reliably — skip
-  // typed-data checks for those entries. The catch-all path still provides
-  // runtime access to error.data as an opaque value.
-  if (union.unbounded || union.codes.size === 0) return diagnostics;
-
-  const dataByCode: Record<string, Record<string, any> | undefined> = {};
-  for (const [code, meta] of union.codes) {
-    dataByCode[code] = (meta as ThrowsCodeMeta).data;
-  }
-  const allCodes = Object.keys(dataByCode);
-
-  for (let i = 0; i < entries.length; i++) {
-    const e = entries[i];
-    if (!e) continue;
-    const covered = e.when
-      ? extractCoveredCodes(e.when, env)
-      : { proven: false, codes: new Set<string>() };
-    // Codes applicable to this entry:
-    //  - coverage-proving `when:` → exactly those codes
-    //  - catch-all (no `when:`) or non-proven expr → all declared codes
-    const applicable = covered.proven
-      ? [...covered.codes].filter((c) => c in dataByCode)
-      : allCodes;
-    if (applicable.length === 0) continue;
-    const schemas = applicable.map((c) => dataByCode[c]).filter(Boolean) as Record<string, any>[];
-    if (schemas.length === 0) continue;
-    const dataSchema = intersectDataSchemas(schemas);
-    // The WHOLE entry, not an enumerated `body` / `headers` pair. An HTTP catch
-    // entry keeps its body at `content[<mime>].body`, so reading `e.body` walked
-    // a field that shape never has and this check was inert for every catch list
-    // in the standard library. Walking the entry also covers `when:` and the
-    // per-MIME header overrides, which are equally places `error.data` is read.
-    collectCelStrings(e, `${arrayPath}[${i}]`).forEach((entry) => {
-      diagnostics.push(
-        ...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath, env, routing),
-      );
-    });
-  }
-  return diagnostics;
-}
-
-/** Intersection of JSON Schemas (object type, explicit properties only). Only
- *  retains properties present in every input; picks the most-specific of the
- *  sub-schemas when they agree on `type`, else widens to `{}`. */
-function intersectDataSchemas(schemas: Record<string, any>[]): Record<string, any> {
-  if (schemas.length === 1) return schemas[0];
-  const commonProps: Record<string, Record<string, any>> = {};
-  const firstProps = (schemas[0].properties ?? {}) as Record<string, Record<string, any>>;
-  for (const propName of Object.keys(firstProps)) {
-    const sub = schemas.map((s) => (s.properties ?? {})[propName]);
-    if (sub.some((p) => p === undefined)) continue;
-    commonProps[propName] = intersectPropertySchemas(sub);
-  }
-  return {
-    type: "object",
-    properties: commonProps,
-    additionalProperties: false,
-  };
-}
-
-function intersectPropertySchemas(schemas: Record<string, any>[]): Record<string, any> {
-  const types = new Set(schemas.map((s) => s?.type).filter(Boolean));
-  if (types.size === 1) {
-    const type = [...types][0];
-    if (type === "object") return intersectDataSchemas(schemas);
-    return { type };
-  }
-  return {};
-}
-
-interface CelString {
-  expr: string;
-  path: string;
-}
-
-function collectCelStrings(value: unknown, path: string): CelString[] {
-  const out: CelString[] = [];
-  // Every CEL expression a tag holds — the whole `!cel` scalar, each hole of a
-  // tag with holes — since walking a sentinel as a plain object finds nothing.
-  if (isTaggedSentinel(value)) {
-    for (const expr of celExpressionsOf(value.engine, value.source)) {
-      out.push({ expr: expr.trim(), path });
-    }
-    return out;
-  }
-  if (Array.isArray(value)) {
-    for (const [i, v] of value.entries()) {
-      out.push(...collectCelStrings(v, `${path}[${i}]`));
-    }
-    return out;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      out.push(...collectCelStrings(v, path ? `${path}.${k}` : k));
-    }
-  }
-  return out;
-}
-
-function checkCelChainAgainstDataSchema(
-  entry: CelString,
-  dataSchema: Record<string, any>,
-  resource: { kind: string; name: string },
-  filePath: string | undefined,
-  env: CelEnvironment,
-  routing: { kind: string; name: string } = resource,
-): AnalysisDiagnostic[] {
-  const parsed = env.parse(entry.expr);
-  if (parsed.diagnostics.length > 0) return [];
-  const chains = extractAccessChains(parsed.root);
-  const diagnostics: AnalysisDiagnostic[] = [];
-  for (const chain of chains) {
-    // Only interested in chains that start with error.data.*
-    if (chain[0] !== "error" || chain[1] !== "data" || chain.length <= 2) continue;
-    const subChain = chain.slice(2); // strip "error", "data"
-    const err = validateChainAgainstSchema(subChain, dataSchema);
-    if (err) {
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "CEL_UNKNOWN_FIELD",
-        source: SOURCE,
-        message: `${resource.kind}/${resource.name}: CEL at '${entry.path}': error.data.${err}`,
-        data: { resource: routing, filePath, path: entry.path },
-      });
-    }
-  }
-  return diagnostics;
 }
 
 /** The capabilities whose lifecycle includes a dispatch a caller can catch. On
@@ -331,12 +178,16 @@ const DECLARABLE = new Set(declarableCapabilities());
 /** The `throws:` property of the built-in `Telo.Abstract` schema — the one
  *  definition of an abstract's block, which the kernel validates it against. */
 function abstractThrowsSchema(): Record<string, unknown> {
-  const throws = (builtinDocumentSchema("Abstract") as { properties?: Record<string, unknown> })
-    .properties?.throws;
+  const root = builtinDocumentSchema("Abstract") as {
+    properties?: Record<string, unknown>;
+    $defs?: Record<string, unknown>;
+  };
+  const throws = root.properties?.throws;
   if (!throws || typeof throws !== "object") {
     throw new Error("The built-in Telo.Abstract schema declares no `throws` property.");
   }
-  return throws as Record<string, unknown>;
+  // A code's `message` reaches the fragments hoisted into the document's root.
+  return root.$defs ? { ...(throws as Record<string, unknown>), $defs: root.$defs } : (throws as Record<string, unknown>);
 }
 
 let abstractThrowsValidator: ValidateFunction | undefined;
@@ -376,7 +227,9 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
     // (`CAPABILITY_UNKNOWN` / `CAPABILITY_NOT_DECLARABLE`) — the kernel refuses it
     // before it reads `throws:` at all.
     const capability = (m as Record<string, any>).capability as string | undefined;
+    const dynamicKey = throws.inherit !== undefined ? "inherit" : throws.passthrough !== undefined ? "passthrough" : undefined;
     if (
+      dynamicKey &&
       typeof capability === "string" &&
       DECLARABLE.has(capability) &&
       !THROWS_CAPABLE.has(capability)
@@ -386,12 +239,12 @@ function validateThrowsDeclarations(manifests: ResourceManifest[]): AnalysisDiag
         code: "THROWS_ON_NON_DISPATCH_CAPABILITY",
         source: SOURCE,
         message:
-          `${m.kind} '${name}' declares throws: but its capability is '${capability}'. ` +
-          `A throw union describes what a CALLER can catch, so it is only meaningful on ` +
-          `${throwsAllowedCapabilities().join(" or ")}; on '${capability}' a thrown error is a ` +
-          `boot-time failure with no caller to render it. The kernel refuses this definition at ` +
-          `create(), so a manifest carrying it cannot start.`,
-        data: { resource: { kind: m.kind, name }, filePath, path: "throws" },
+          `${m.kind} '${name}' declares throws.${dynamicKey} but its capability is '${capability}'. ` +
+          `A union derived from what a kind dispatches describes what a CALLER can catch, so it is ` +
+          `only meaningful on ${throwsAllowedCapabilities().join(" or ")}; a '${capability}' kind may ` +
+          `declare throws.codes — the failures it answers with — and nothing more. The kernel ` +
+          `refuses this definition at create(), so a manifest carrying it cannot start.`,
+        data: { resource: { kind: m.kind, name }, filePath, path: `throws.${dynamicKey}` },
       });
       continue;
     }
@@ -448,6 +301,9 @@ export function validateThrowsCoverage(
    *  exported entry point into the siblings it invokes — which a consumer's
    *  flat set does not carry. */
   moduleManifests: Map<string, ResourceManifest[]> = new Map(),
+  /** The ladder the analysis already built over `manifests`, so the CEL scope
+   *  rule and this pass read one. */
+  built?: CatchLadder,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   diagnostics.push(...validateThrowsDeclarations(manifests));
@@ -456,15 +312,9 @@ export function validateThrowsCoverage(
   // a server up around a test is exactly that shape — with the ladder each
   // dispatch site climbs. A scope list has to be known before any site it
   // covers is judged, so the ladder is built whole first.
-  const ladder = new CatchLadder(
-    manifests,
-    defs,
-    aliases,
-    env,
-    aliasesByModule,
-    rootModules,
-    moduleManifests,
-  );
+  const ladder =
+    built ??
+    new CatchLadder(manifests, defs, aliases, env, aliasesByModule, rootModules, moduleManifests);
 
   for (const manifest of ladder.allManifests) {
     if (!manifest.kind || !manifest.metadata?.name) continue;
@@ -507,26 +357,13 @@ export function validateThrowsCoverage(
     const union = ladder.unionOf(site);
     diagnostics.push(
       ...checkUndeclaredCodes(
-        site.entries,
+        site.readings,
         union,
-        site.resource,
         site.filePath,
         site.arrayPath,
-        env,
         site.isScope
           ? "the throw union of everything this resource drives"
           : "the handler's declared throw union",
-        site.routing,
-      ),
-    );
-    diagnostics.push(
-      ...checkTypedErrorData(
-        site.entries,
-        union,
-        site.resource,
-        site.filePath,
-        site.arrayPath,
-        env,
         site.routing,
       ),
     );

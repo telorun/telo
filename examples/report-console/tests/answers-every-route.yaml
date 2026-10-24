@@ -120,7 +120,7 @@ steps:
         - [ !cel "steps.anonymousFiles.result.status", !cel "steps.anonymousFiles.result.body" ]
         - [ !cel "steps.anonymousGenerate.result.status", !cel "steps.anonymousGenerate.result.body" ]
       expected:
-        - [ 401, &refused { code: UNAUTHORIZED, message: Sign in to Google first. } ]
+        - [ 401, &refused { type: about:blank, title: Unauthorized, status: 401, detail: "Sign in to Google first.", code: UNAUTHORIZED } ]
         - [ 401, *refused ]
         - [ 401, *refused ]
 
@@ -288,8 +288,8 @@ steps:
           projectsLink: /projects?sheet=sheet-2026
 
   # Refusals the failure tree draws: a closed sheet, an unknown one, a period
-  # that ends before it starts and a record the route's schema refuses — the
-  # last two as the request-validation envelope, which marks the field.
+  # that ends before it starts and a record the route's schema refuses, whose
+  # validation problem names the field.
   - name: closed
     invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/generate, method: POST }
     inputs:
@@ -313,17 +313,14 @@ steps:
         closed: [ !cel "steps.closed.result.status", !cel "steps.closed.result.body" ]
         unknown: [ !cel "steps.unknown.result.status", !cel "steps.unknown.result.body" ]
         reversed: [ !cel "steps.reversed.result.status", !cel "steps.reversed.result.body" ]
-        noColumns: [ !cel "steps.noColumns.result.status", !cel "steps.noColumns.result.body.details.map(d, [d.location, d.path])" ]
+        noColumns: [ !cel "steps.noColumns.result.status", !cel "steps.noColumns.result.body.data.issues.map(i, i.pointer)" ]
       expected:
-        closed: [ 409, { code: SHEET_CLOSED, message: The timesheet 'Hours 2025' is closed for reporting. } ]
-        unknown: [ 404, { code: SHEET_UNKNOWN, message: There is no timesheet 'sheet-1999'. } ]
+        closed: [ 409, { type: about:blank, title: Conflict, status: 409, detail: "The timesheet 'Hours 2025' is closed for reporting.", code: SHEET_CLOSED, data: { name: Hours 2025 } } ]
+        unknown: [ 404, { type: about:blank, title: Not Found, status: 404, detail: "There is no timesheet 'sheet-1999'.", code: SHEET_UNKNOWN, data: { id: sheet-1999 } } ]
         reversed:
           - 400
-          - error: ValidationError
-            message: Request validation failed
-            status: 400
-            details: [ { location: body, path: period, message: must not start after it ends } ]
-        noColumns: [ 400, [ [ body, columns ] ] ]
+          - { type: about:blank, title: Bad Request, status: 400, detail: "The period must not start after it ends.", code: PERIOD_REVERSED }
+        noColumns: [ 400, [ /body/columns ] ]
 
   # A result row's two actions, and the projects table's.
   - name: draft
@@ -358,5 +355,5 @@ steps:
           - 201
           - link: https://drive.example.com/folder-invoices/2026-09-01_2026-09-30/atlas.pdf
             target: Invoices 2026 / 2026-09-01 – 2026-09-30
-        uploadNowhere: [ 404, { code: FOLDER_UNKNOWN, message: There is no Drive folder 'sheet-2026'. } ]
+        uploadNowhere: [ 404, { type: about:blank, title: Not Found, status: 404, detail: "There is no Drive folder 'sheet-2026'.", code: FOLDER_UNKNOWN, data: { folder: sheet-2026 } } ]
         remind: [ 200, { sentTo: billing@atlas.example.com } ]

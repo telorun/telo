@@ -163,6 +163,8 @@ import {
 } from "./validate-ref-slots.js";
 import { scopeSlotProblems } from "./validate-scope-slots.js";
 import { topologyRoleProblems } from "./validate-topology-roles.js";
+import { caughtMemberProblems } from "./validate-caught-members.js";
+import { CatchLadder } from "./catch-scope.js";
 import {
   validateValueTypeSlots,
   type ValueTypeSlotIssue,
@@ -254,6 +256,7 @@ import {
 } from "./cel-bindings.js";
 import { CEL_RESERVED_WORDS, checkName, isTypeLevelName } from "./identifier-name.js";
 import { validateIdentifierNames } from "./validate-identifier-names.js";
+import { validateRethrowPlacement } from "./validate-rethrow-placement.js";
 import { validateExtends } from "./validate-extends.js";
 import { validateLogging } from "./validate-logging.js";
 import { validateModuleArtifact } from "./validate-module-artifact.js";
@@ -451,7 +454,7 @@ function refSlotIssueDiagnostic(issue: RefSlotIssue): AnalysisDiagnostic {
  */
 function kindDocumentFindingReportedElsewhere(issue: SchemaIssue): boolean {
   if (issue.path === "capability" || issue.path === "extends") return true;
-  if (issue.path === "throws" && issue.keyword === "false schema") return true;
+  if (/^throws\.(inherit|passthrough)$/.test(issue.path) && issue.keyword === "false schema") return true;
   return issue.path === "" && issue.keyword === "if";
 }
 
@@ -1811,6 +1814,21 @@ export class StaticAnalyzer {
             },
           });
         }
+        // A caught-member mark nothing reads, and a catch list marking no code.
+        for (const problem of caughtMemberProblems(declarer as Record<string, any>)) {
+          diagnostics.push({
+            severity:
+              problem.code === "SCHEMA_VIOLATION" ? DiagnosticSeverity.Error : DiagnosticSeverity.Warning,
+            code: problem.code,
+            source: SOURCE,
+            message: `${declarer.kind} ${problem.message}`,
+            data: {
+              resource: { kind: declarer.kind, name: declarer.metadata?.name as string },
+              filePath: (declarer.metadata as { source?: string } | undefined)?.source,
+              path: problem.path,
+            },
+          });
+        }
       }
     }
 
@@ -2214,6 +2232,14 @@ export class StaticAnalyzer {
           getCallGraph(),
           { aliasesByModule, rootModules, libraries },
         ),
+      );
+      // A `rethrow:` outside every catch: branch has no caught failure to re-raise.
+      diagnostics.push(
+        ...validateRethrowPlacement(defs, aliases, rootModules, getCallGraph(), {
+          aliasesByModule,
+          rootModules,
+          libraries,
+        }),
       );
       // A file embed resolves at resource creation, so one written on a doc that
       // is never instantiated is read by nothing and would ship silently.
@@ -2680,6 +2706,27 @@ export class StaticAnalyzer {
     // `cel-scope.ts` so the IDE asks the same question the pass does — a
     // completion list is a claim that the name it offers will pass this check,
     // and two implementations of it could not be held in agreement.
+    // Each imported library's full document set: a library's exported entry
+    // point is forwarded into the flat set while the siblings it invokes are not,
+    // so without them a throw union stops at the boundary.
+    const libraryManifests = new Map<string, ResourceManifest[]>();
+    for (const doc of options?.moduleDocuments ?? []) {
+      libraryManifests.set(doc.module, doc.manifests);
+    }
+    // The catch ladder, built on first use: the CEL scope rule reads it to type
+    // a catch entry's `data`-marked members from the codes the entry matches,
+    // and the coverage pass derives its verdicts from the same one.
+    let catchLadderMemo: CatchLadder | undefined;
+    const catchLadder = (): CatchLadder =>
+      (catchLadderMemo ??= new CatchLadder(
+        allManifests,
+        defs,
+        aliases,
+        this.celEnv,
+        aliasesByModule,
+        rootModules,
+        libraryManifests,
+      ));
     const celScope = new CelScopeResolver({
       celEnv: this.celEnv,
       defs,
@@ -2695,6 +2742,7 @@ export class StaticAnalyzer {
       referrersOf: (m) => referrerSlotsOf(getCallGraph(), m),
       definitionOf: (m) =>
         definitionInScope(defs, m.kind, m.metadata, aliases, aliasesByModule) as ResourceDefinition | undefined,
+      caughtDataAt: (m, path) => catchLadder().caughtDataAt(m, path),
     });
 
     /**
@@ -4826,15 +4874,8 @@ export class StaticAnalyzer {
     // Validate provider coherence rules for `provide:` template-target definitions.
     diagnostics.push(...validateProviderCoherence(allManifests, defs, aliases));
 
-    // Validate throws: declarations and catches: coverage (rules 1, 2, 4, 7).
-    // The library document sets collected for the zone stage serve here too: a
-    // library's exported entry point is forwarded into the flat set while the
-    // siblings it invokes are not, so without them the walk stops at the
-    // boundary and reports an empty union for a body that plainly throws.
-    const libraryManifests = new Map<string, ResourceManifest[]>();
-    for (const doc of options?.moduleDocuments ?? []) {
-      libraryManifests.set(doc.module, doc.manifests);
-    }
+    // Validate throws: declarations and catches: coverage (rules 1, 4, 7), over
+    // the ladder the CEL scope rule typed each entry's caught data from.
     diagnostics.push(
       ...validateThrowsCoverage(
         allManifests,
@@ -4844,6 +4885,7 @@ export class StaticAnalyzer {
         aliasesByModule,
         rootModules,
         libraryManifests,
+        catchLadder(),
       ),
     );
 
@@ -5110,6 +5152,7 @@ export class StaticAnalyzer {
           const produced = celSourceSchemaByPath.get(manifest)?.get(path);
           return produced ? schemaValueKind(produced) : undefined;
         },
+        producedSchemaAt: (manifest, path) => celSourceSchemaByPath.get(manifest)?.get(path),
       }),
     );
 

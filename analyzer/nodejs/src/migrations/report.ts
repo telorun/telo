@@ -117,6 +117,8 @@ function refusalPhrase(ops: readonly MigrationOperation[]): string {
         return "adds a tag";
       case "insert-item":
         return "inserts an item";
+      case "add-key":
+        return "adds a key";
       case "remove-entry":
         return "removes an entry";
       default:
@@ -145,6 +147,18 @@ function describeChange(applied: AppliedPatch): string {
 
   if (after === undefined && effects.some((e) => e.kind === "remove-entry")) {
     return `\`${legacyKey}\` is no longer used.`;
+  }
+  const added = effects.filter((e) => e.kind === "add-key");
+  if (added.length > 0 && added.length === effects.length) {
+    return `\`${legacyKey}\` gains \`${added
+      .map((e) =>
+        e.kind !== "add-key"
+          ? ""
+          : typeof e.value === "object" && e.value !== null
+            ? e.key
+            : `${e.key}: ${renderValue(e.value)}`,
+      )
+      .join("`, `")}\`.`;
   }
   const inserted = insertedValues(effects);
   if (inserted) {

@@ -448,6 +448,11 @@ schema:
             type: string
           data:
             description: Structured payload from an InvokeError, else undefined.
+          displayMessage:
+            description: The text a person is shown for the failure, as its record; null when it carries none.
+            anyOf:
+              - $ref: "telo://manifest#/$defs/TextRecord"
+              - type: "null"
         additionalProperties: false
       x-telo-context:
         type: object
@@ -585,6 +590,11 @@ schema:
             type: string
           data:
             description: Structured payload from an InvokeError, else undefined.
+          displayMessage:
+            description: The text a person is shown for the failure, as its record; null when it carries none.
+            anyOf:
+              - $ref: "telo://manifest#/$defs/TextRecord"
+              - type: "null"
         additionalProperties: false
       x-telo-context:
         type: object
@@ -721,6 +731,11 @@ schema:
             type: string
           data:
             description: Structured payload from an InvokeError, else undefined.
+          displayMessage:
+            description: The text a person is shown for the failure, as its record; null when it carries none.
+            anyOf:
+              - $ref: "telo://manifest#/$defs/TextRecord"
+              - type: "null"
         additionalProperties: false
       x-telo-context:
         type: object

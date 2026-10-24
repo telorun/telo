@@ -218,7 +218,8 @@ steps:
 ---
 # An argument that does not build is the contract's own `ERR_INPUT_INVALID`: catchable
 # by name, never re-attempted by a retry policy, and carrying the type's entry — its
-# pointer, `ERR_URL_INVALID` and the reason — with no part of the value.
+# finding (pointer, `format` naming the type) and `ERR_URL_INVALID`, the reason in
+# its message — with no part of the value.
 kind: Run.Sequence
 metadata: { name: dispatchRefused }
 steps:
@@ -234,7 +235,8 @@ steps:
         value: !cel >-
           {
             'code': error.code,
-            'issues': error.data.issues.map(i, {'pointer': i.pointer, 'code': i.code, 'reason': i.reason}),
+            'issues': error.data.issues,
+            'givesReason': error.message.contains('its scheme must be one of postgres, postgresql'),
             'quotesPassword': error.message.contains('s3cret') || json(error.data).contains('s3cret')
           }
   # The validator's message quotes the arguments it refuses: the URL is written censored.
@@ -264,8 +266,10 @@ steps:
           code: ERR_INPUT_INVALID
           issues:
             - pointer: /url
+              keyword: format
+              params: { format: Telo.Url }
               code: ERR_URL_INVALID
-              reason: its scheme must be one of postgres, postgresql
+          givesReason: true
           quotesPassword: false
         otherField:
           code: ERR_INPUT_INVALID

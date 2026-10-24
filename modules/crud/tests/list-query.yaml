@@ -300,20 +300,21 @@ steps:
       actual:
         unknownProperty:
           status: !cel "steps.unknownProperty.result.status"
+          type: !cel "steps.unknownProperty.result.headers['content-type']"
           body: !cel "steps.unknownProperty.result.body"
-        multiKeySort: !cel "steps.multiKeySort.result.body.details"
-        unknownOperator: !cel "steps.unknownOperator.result.body.details"
-        operatorNotApplicable: !cel "steps.operatorNotApplicable.result.body.details"
-        unparsableValue: !cel "steps.unparsableValue.result.body.details"
-        spelledEquality: !cel "steps.spelledEquality.result.body.details.map(d, d.path)"
-        limitTooLarge: !cel "steps.limitTooLarge.result.body.details"
-        limitTooSmall: !cel "steps.limitTooSmall.result.body.details"
-        limitNotANumber: !cel "steps.limitNotANumber.result.body.details"
-        repeatedSort: !cel "steps.repeatedSort.result.body.details"
-        repeatedCursor: !cel "steps.repeatedCursor.result.body.details"
-        typedBeforeFilter: !cel "steps.typedBeforeFilter.result.body.details.map(d, d.path)"
-        malformedCursor: !cel "steps.malformedCursor.result.body.details"
-        cursorOfAnotherSort: !cel "steps.cursorOfAnotherSort.result.body.details"
+        multiKeySort: !cel "steps.multiKeySort.result.body.data.issues"
+        unknownOperator: !cel "steps.unknownOperator.result.body.data.issues"
+        operatorNotApplicable: !cel "steps.operatorNotApplicable.result.body.data.issues"
+        unparsableValue: !cel "steps.unparsableValue.result.body.data.issues"
+        spelledEquality: !cel "steps.spelledEquality.result.body.data.issues.map(i, i.pointer)"
+        limitTooLarge: !cel "steps.limitTooLarge.result.body.data.issues"
+        limitTooSmall: !cel "steps.limitTooSmall.result.body.data.issues"
+        limitNotANumber: !cel "steps.limitNotANumber.result.body.data.issues"
+        repeatedSort: !cel "steps.repeatedSort.result.body.data.issues"
+        repeatedCursor: !cel "steps.repeatedCursor.result.body.data.issues"
+        typedBeforeFilter: !cel "steps.typedBeforeFilter.result.body.data.issues.map(i, i.pointer)"
+        malformedCursor: !cel "steps.malformedCursor.result.body.data.issues"
+        cursorOfAnotherSort: !cel "steps.cursorOfAnotherSort.result.body.data.issues"
         statuses: !cel >-
           [steps.multiKeySort, steps.unknownOperator, steps.operatorNotApplicable, steps.unparsableValue,
            steps.spelledEquality, steps.limitTooLarge, steps.limitTooSmall, steps.limitNotANumber,
@@ -323,36 +324,40 @@ steps:
       expected:
         unknownProperty:
           status: 400
+          type: application/problem+json; charset=utf-8
           body:
-            error: ValidationError
-            message: Request validation failed
+            type: about:blank
+            title: Bad Request
             status: 400
-            details:
-              - { location: query, path: nope, message: is not a filter this collection accepts }
+            detail: The list request is not valid.
+            code: ERR_CRUD_QUERY_INVALID
+            data:
+              issues:
+                - { pointer: /query/nope, keyword: additionalProperties, params: { additionalProperty: nope } }
         multiKeySort:
-          - { location: query, path: sort, message: "takes one property; `id` is always the tiebreaker" }
+          - { pointer: /query/sort, keyword: maxItems, params: { limit: 1 } }
         unknownOperator:
-          - { location: query, path: text.like, message: is not a filter this collection accepts }
+          - { pointer: /query/text.like, keyword: additionalProperties, params: { additionalProperty: text.like } }
         operatorNotApplicable:
-          - { location: query, path: isDone.contains, message: is not a filter this collection accepts }
+          - { pointer: /query/isDone.contains, keyword: additionalProperties, params: { additionalProperty: isDone.contains } }
         unparsableValue:
-          - { location: query, path: priority, message: is not a value of type integer }
-        spelledEquality: [text.eq]
+          - { pointer: /query/priority, keyword: type, params: { type: integer } }
+        spelledEquality: [/query/text.eq]
         limitTooLarge:
-          - { location: query, path: limit, message: must be <= 100 }
+          - { pointer: /query/limit, keyword: maximum, params: { comparison: "<=", limit: 100 } }
         limitTooSmall:
-          - { location: query, path: limit, message: must be >= 1 }
+          - { pointer: /query/limit, keyword: minimum, params: { comparison: ">=", limit: 1 } }
         limitNotANumber:
-          - { location: query, path: limit, message: must be integer }
+          - { pointer: /query/limit, keyword: type, params: { type: integer } }
         repeatedSort:
-          - { location: query, path: sort, message: must be string }
+          - { pointer: /query/sort, keyword: type, params: { type: string } }
         repeatedCursor:
-          - { location: query, path: cursor, message: must be string }
-        typedBeforeFilter: [limit]
+          - { pointer: /query/cursor, keyword: type, params: { type: string } }
+        typedBeforeFilter: [/query/limit]
         malformedCursor:
-          - { location: query, path: cursor, message: is not a cursor this collection issued }
+          - { pointer: /query/cursor, keyword: invalid, params: {} }
         cursorOfAnotherSort:
-          - { location: query, path: cursor, message: "was issued for a different sort; start again without it" }
+          - { pointer: /query/cursor, keyword: invalid, params: {} }
         statuses: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]
 
   # ── The envelope is the documented response ──

@@ -91,7 +91,8 @@ written into a native controller's PURL as `abi=telo-<n>`.
   need operations (§7.5). No carrier implemented any of them and no artifact
   could declare one, so each is superseded rather than kept readable.
 - **Generation `7` is the generation this specification defines.** It is `6`'s
-  message set with `Runtime.Run`'s `inputs` carrying `needs` (§9.2), with the
+  message set with `Runtime.Run`'s `inputs` carrying `needs` (§9.2) and
+  `Throws.DisplayMessage` (§7.6) added, with the
   same value encoding: `durable-execution.md` §6's typed frame, whose timestamp
   payload is RFC 3339 with a trimmed nanosecond fraction. It is the value in
   `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
@@ -293,6 +294,7 @@ One row per message, in the lexical order of the file names in
 | `Span.Open` | `controller-to-kernel` | `6. Invocation` | no | no |
 | `Span.Settle` | `controller-to-kernel` | `6. Invocation` | no | no |
 | `Status.Set` | `controller-to-kernel` | `5. Lifecycle` | no | no |
+| `Throws.DisplayMessage` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Value.Decode` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Value.Expand` | `controller-to-kernel` | `7. Resolution & schema` | yes | yes |
 | `Zone.Attributes` | `controller-to-kernel` | `6. Invocation` | yes | no |
@@ -382,8 +384,15 @@ A **response** frame carries the requester's `id` and the same `type`, and its
 `payload` is an object with exactly one member:
 
 - `ok` — the response body; or
-- `error` — `{ "code": "<ERR_*>", "message": "<text>", "data": <value> }`, `data`
-  optional.
+- `error` — `{ "code": "<ERR_*>", "message": "<text>", "data": <value>, "displayMessage": <record> }`,
+  `data` and `displayMessage` optional. `message` is the developer's;
+  `displayMessage` is the text a person is shown for the failure, as its record
+  (`{ "text", "context", "lang", "computed" }`, the `TextRecord` fragment), whose
+  values are `data`. A controller rethrowing a failure it caught carries the
+  `displayMessage` it received unchanged, and a kernel attaches a kind's declared
+  display message to an error carrying none (`kernel/specs/invocation-contract.md`).
+  `displayMessage` is an additive member within `telo-7`, which no carrier speaks
+  yet. An error's `cause` is not carried.
 
 A message whose `response` in `messages/` is `null` is a **notification**: no
 response frame is ever sent for it, and a peer that sends one is in violation.
@@ -933,6 +942,20 @@ marks let an SDK hold a marked field in a value that prints `[redacted]` where n
 kernel sees the output, and a runtime recording protocol traffic censors every
 field `Need.Resolve` marks.
 
+### 7.6 Declared display messages
+
+A kind's `throws.codes.<CODE>.displayMessage` is attached by the kernel to an
+error leaving a dispatch of that kind (`kernel/specs/invocation-contract.md`). A
+refusal a controller renders OUTSIDE a dispatch — a server answering a request no
+route was reached for — never leaves one, so the controller asks for it:
+`Throws.DisplayMessage` names the code and the refusal's `data`, and the kernel
+answers with the record the asking resource's kind declares for the code (nearest
+along `extends`), or the built-in one for an ambient code, or nothing when none
+gives it one. The kernel holds `data` to the code's declared `data` schema first,
+exactly as at a dispatch exit: a mismatch is `ERR_OUTPUT_INVALID` naming the code,
+whose structured `data` holds `code`, `data` and `issues`. It is synchronous
+because the controller is building the refusal it is about to render.
+
 ## 8. Channels
 
 A **channel** is a one-way, flow-controlled byte stream between the two ends,
@@ -1092,7 +1115,7 @@ codes cross unchanged and are not listed here.
 | `ERR_CONTROLLER_HOST_EXITED` | the controller host exited or closed its connection without the kernel having refused a frame | any request in flight, and any later call into the terminal carrier instance |
 | `ERR_CONTROLLER_PROTOCOL_VIOLATION` | a peer sent a frame or message this protocol does not permit and the kernel refused it, or a controller on the ABI carrier refused one | any request in flight, and any later call into the terminal carrier instance |
 | `ERR_INPUT_INVALID` | a value did not satisfy the schema it was promised against | `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Schema.Validate`, `Schema.Check`, `Value.Decode` |
-| `ERR_OUTPUT_INVALID` | a result did not satisfy the resolved `outputType` | `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Controller.Provide` |
+| `ERR_OUTPUT_INVALID` | a result did not satisfy the resolved `outputType`, or an error's `data` did not satisfy the `data` schema its code declares | `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Controller.Provide`, `Throws.DisplayMessage` |
 | `ERR_CONTRACT_UNRESOLVABLE` | a declared contract resolved to no schema at all | `Controller.Create`, `Dispatch.Invoke`, `Dispatch.InvokeResolved`, `Schema.Resolve` |
 | `ERR_SCHEMA_PROJECTION_UNRESOLVED` | a projected schema could not be resolved | `Schema.Resolve` |
 | `ERR_FUNCTION_FAILED` | a module function raised | `Callable.Call`, `Value.Expand` |

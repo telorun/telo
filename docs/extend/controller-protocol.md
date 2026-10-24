@@ -148,6 +148,17 @@ that is not semver, is `ERR_NEED_OBSERVATION_INVALID`. In Node the two messages
 are `ctx.resolveNeed(pointer)` and `ctx.verifyNeed(pointer, observation)` — see
 [a kind that consumes and verifies a need](./consuming-needs.md).
 
+## A refusal outside a dispatch: asking for its display message
+
+The kernel attaches the display message a kind declares for a code
+(`throws.codes.<CODE>.displayMessage`) to an error leaving a dispatch of that
+kind. A refusal you render yourself before any dispatch — a server answering a
+request too large to read — leaves none, so you ask: `Throws.DisplayMessage`
+names the code and the refusal's `data`, and answers with the record your kind
+declares (or the built-in one for an ambient code), or nothing. The kernel holds
+`data` to the code's declared `data` schema first; a mismatch is
+`ERR_OUTPUT_INVALID`. In Node it is `ctx.declaredDisplayMessage(code, data)`.
+
 ## Generations, and `abi=telo-7`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by

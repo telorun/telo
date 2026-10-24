@@ -32,7 +32,7 @@ schema:
 ```
 
 That is the whole declaration. The grammar — `invoke` / `value` / `if` /
-`while` / `switch` / `try` / `throw`, the `steps.<name>.result` accumulator, the
+`while` / `switch` / `try` / `throw` / `rethrow`, the `steps.<name>.result` accumulator, the
 `error` variable inside a `catch:` — comes with the reference, and so does every
 analysis built on it: typed step results, throws coverage, the call graph, the
 editor's step rendering.

@@ -1,13 +1,21 @@
+use serde_json::Value;
 use thiserror::Error;
+
+use crate::text_record::TextRecord;
 
 /// Error type for controller operations. The `code` is surfaced to the kernel
 /// as a structured error code (e.g. `ERR_VALIDATION_FAILED`); `message` is the
-/// human-readable description.
+/// developer's description, for logs and traces. `data` is the structured
+/// payload a catch reads, and `display_message` the text a person is shown for
+/// the failure, as its record, whose values are `data` — a controller rethrowing
+/// an error it caught carries the display message it received unchanged.
 #[derive(Debug, Error)]
 #[error("[{code}] {message}")]
 pub struct ControllerError {
     pub code: String,
     pub message: String,
+    pub data: Option<Value>,
+    pub display_message: Option<TextRecord>,
 }
 
 impl ControllerError {
@@ -15,7 +23,35 @@ impl ControllerError {
         Self {
             code: code.into(),
             message: message.into(),
+            data: None,
+            display_message: None,
         }
+    }
+
+    /// This error carrying `data`.
+    pub fn with_data(mut self, data: Value) -> Self {
+        self.data = Some(data);
+        self
+    }
+
+    /// This error carrying the text a person is shown for it.
+    pub fn with_display_message(mut self, display_message: TextRecord) -> Self {
+        self.display_message = Some(display_message);
+        self
+    }
+
+    /// The JSON payload both carriers write: `code` and `message`, and `data`
+    /// and `displayMessage` when present — the controller protocol's error member.
+    pub fn payload(&self) -> Value {
+        let mut payload = serde_json::json!({ "code": self.code, "message": self.message });
+        if let Some(data) = &self.data {
+            payload["data"] = data.clone();
+        }
+        if let Some(display_message) = &self.display_message {
+            payload["displayMessage"] =
+                serde_json::to_value(display_message).expect("a text record serializes");
+        }
+        payload
     }
 
     pub fn with_message(message: impl Into<String>) -> Self {

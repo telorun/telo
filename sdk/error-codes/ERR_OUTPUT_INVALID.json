@@ -1,0 +1,5 @@
+{
+  "code": "ERR_OUTPUT_INVALID",
+  "description": "A result, or the data of an error leaving a dispatch, did not satisfy what its kind declares.",
+  "displayMessage": "The service produced a result it could not deliver."
+}

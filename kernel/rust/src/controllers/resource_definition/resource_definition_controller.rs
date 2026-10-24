@@ -14,6 +14,7 @@ use serde_json::Value;
 use telo_analyzer::capability_roster::capability_problem;
 
 use crate::controller_registry::Definition;
+use crate::declared_display_messages::declared_display_messages;
 use crate::error::KernelError;
 use crate::runtime_registry::ControllerPolicy;
 
@@ -22,6 +23,7 @@ pub fn register_definition(
     source: &str,
     policy: &ControllerPolicy,
     document: &Value,
+    lang: Option<&str>,
 ) -> Result<Rc<Definition>, KernelError> {
     let name = document
         .get("metadata")
@@ -78,7 +80,7 @@ pub fn register_definition(
         }
     };
 
-    Ok(Rc::new(Definition::new(
+    let mut definition = Definition::new(
         module_name.to_string(),
         name.to_string(),
         capability.map(str::to_string),
@@ -86,7 +88,10 @@ pub fn register_definition(
         controllers,
         source.to_string(),
         policy.clone(),
-    )))
+    );
+    definition.declared_display_messages =
+        declared_display_messages(document, &format!("{module_name}.{name}"), lang)?;
+    Ok(Rc::new(definition))
 }
 
 #[cfg(test)]
@@ -110,6 +115,7 @@ mod tests {
             "telo.yaml",
             &ControllerPolicy::default(),
             &document,
+            None,
         )
         .expect("a callable kind registers");
         assert_eq!(definition.capability.as_deref(), Some("Telo.Callable"));
@@ -140,7 +146,7 @@ mod tests {
                 document["extends"] = Value::from("Lib.Base");
             }
             let answer =
-                register_definition("Lib", "telo.yaml", &ControllerPolicy::default(), &document);
+                register_definition("Lib", "telo.yaml", &ControllerPolicy::default(), &document, None);
             match row["code"].as_str() {
                 None => {
                     if let Err(error) = answer {

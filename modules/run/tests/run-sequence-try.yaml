@@ -189,16 +189,32 @@ steps:
 
   # --- rethrow of a plain error's code: must propagate INTERNAL_ERROR, not
   # fail with INVALID_THROW_STEP (the bug this guards against). ---
+  # The innermost `rethrow: {}` re-raises the plain error itself, so the catch
+  # around it sees it exactly as it was thrown.
   - name: rethrowPlain
     try:
       - name: innerRethrow
         try:
-          - name: plainFail
-            invoke:
-              kind: JavaScript.Script
-              code: |
-                function main() { throw new Error("deep") }
+          - name: unchangedRethrow
+            try:
+              - name: plainFail
+                invoke:
+                  kind: JavaScript.Script
+                  code: |
+                    function main() { throw new Error("deep") }
+            catch:
+              - name: again
+                rethrow: {}
         catch:
+          - name: caughtUnchanged
+            invoke: { kind: Assert.Equals }
+            inputs:
+              actual:
+                code: !cel "error.code"
+                message: !cel "error.message"
+              expected:
+                code: INTERNAL_ERROR
+                message: deep
           - name: reraise
             throw:
               code: !cel "error.code"

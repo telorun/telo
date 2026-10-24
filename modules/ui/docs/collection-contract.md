@@ -37,21 +37,27 @@ model admits `null`.
 
 ## Refusals — 400
 
-A request the collection refuses answers with the request-validation envelope:
+A request the collection refuses answers with a validation problem
+(`application/problem+json`), each finding an entry of `data.issues`:
 
 ```json
 {
-  "error": "ValidationError",
-  "message": "Request validation failed",
+  "type": "about:blank",
+  "title": "Bad Request",
   "status": 400,
-  "details": [ { "location": "query", "path": "sort", "message": "is not a property this collection sorts by" } ]
+  "detail": "The request is not valid.",
+  "code": "ERR_INPUT_INVALID",
+  "data": { "issues": [ { "pointer": "/query/sort", "keyword": "enum", "params": { "allowedValues": ["title", "due"] } } ] }
 }
 ```
 
-For a refused body, `location` is `body` and `path` is the property's name
-exactly as the model spells it (`note`; `address.street` for a nested one). A
-form shows a detail on the field whose property its `path` equals, and the
-rest under the form.
+An issue is exactly `{ pointer, keyword, params }` and carries no prose:
+`pointer` is a JSON Pointer into the request (`/query/sort`; for a refused body
+`/body/note`, `/body/address/street` for a nested property), and `keyword` /
+`params` come from the closed vocabulary `Http.Api` answers with — a JSON Schema
+keyword and its params, or `invalid`. The renderer words each one. A form shows
+an issue on the field its first segment after `/body` names, and the rest under
+the form.
 
 ## Items
 

@@ -1,0 +1,5 @@
+{
+  "code": "ERR_CONTRACT_UNRESOLVABLE",
+  "description": "A declared contract could not be resolved to a schema, so nothing it promises can be enforced.",
+  "displayMessage": "The service is misconfigured."
+}

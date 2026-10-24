@@ -3,6 +3,7 @@ import {
   decodeTypedFrame,
   encodeTypedFrame,
   InvokeError,
+  isTextRecord,
   RuntimeError,
   writePlainJson,
   type FunctionContext,
@@ -416,10 +417,24 @@ const NAPI_CONTROLLER_ERROR_MARKER = "teloControllerError";
  */
 function restructure(err: unknown): unknown {
   if (!(err instanceof Error)) return err;
-  const marked = err as Error & { code?: unknown; [NAPI_CONTROLLER_ERROR_MARKER]?: unknown };
+  const marked = err as Error & {
+    code?: unknown;
+    data?: unknown;
+    displayMessage?: unknown;
+    [NAPI_CONTROLLER_ERROR_MARKER]?: unknown;
+  };
   if (marked[NAPI_CONTROLLER_ERROR_MARKER] !== true) return err;
   if (typeof marked.code !== "string" || marked.code === "") return err;
-  return new InvokeError(marked.code, err.message, undefined, { cause: err });
+  if (marked.displayMessage !== undefined && !isTextRecord(marked.displayMessage)) {
+    return new RuntimeError(
+      "ERR_CONTROLLER_INVALID",
+      `A Rust controller's error '${marked.code}' carries a \`displayMessage\` that is no text record.`,
+    );
+  }
+  return new InvokeError(marked.code, err.message, marked.data, {
+    cause: err,
+    ...(marked.displayMessage !== undefined ? { displayMessage: marked.displayMessage } : {}),
+  });
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {

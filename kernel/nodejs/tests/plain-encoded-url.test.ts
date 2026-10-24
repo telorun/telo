@@ -43,15 +43,12 @@ describe("ctx.readPlainEncoded at a Telo.Url slot", () => {
     expect(refusal?.code).toBe("ERR_INPUT_INVALID");
     expect(refusal?.data).toEqual({
       issues: [
-        {
-          path: "url",
-          pointer: "/url",
-          code: "ERR_URL_INVALID",
-          reason: "its scheme must be one of postgres, postgresql",
-          message: "ERR_URL_INVALID: not a Telo.Url — its scheme must be one of postgres, postgresql",
-        },
+        { pointer: "/url", keyword: "format", params: { format: "Telo.Url" }, code: "ERR_URL_INVALID" },
       ],
     });
+    expect(refusal?.message).toBe(
+      "/url: ERR_URL_INVALID: not a Telo.Url — its scheme must be one of postgres, postgresql",
+    );
     expect(`${refusal?.message}${JSON.stringify(refusal?.data)}`).not.toContain("pw-7");
   });
 });

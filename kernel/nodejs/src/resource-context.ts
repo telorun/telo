@@ -34,7 +34,10 @@ import {
   type BrowserEntryFiles,
   type NeedObservation,
   type NeedResolution,
+  type ValueIssue,
+  valueIssue,
 } from "@telorun/sdk";
+import type { TextRecord } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
 import { declarationOfInstance } from "./instance-declaration.js";
 import {
@@ -56,6 +59,7 @@ import {
   isResolvedReference,
   resolvedReference,
   type ResolvedReference,
+  type SchemaIssue,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
@@ -298,11 +302,12 @@ export class ResourceContextImpl implements ResourceContext {
       this.validator.compile(schema, { persist: false }).validate(decoded);
     } catch (error) {
       if (!(error instanceof RuntimeError)) throw error;
-      // Where in the value each refusal is, as a dotted path, so a transport can
-      // point its caller at the field rather than at the whole payload.
+      // Where in the value each refusal is and what it violated, in the issue
+      // vocabulary, so a transport can point its caller at the field rather than
+      // at the whole payload. The prose stays in the message.
       const issues =
         error instanceof SchemaValidationError
-          ? { issues: error.issues.map(({ path, message }) => ({ path, message })) }
+          ? { issues: error.issues.map(plainEncodedIssue) }
           : undefined;
       throw new InvokeError(ERR_INPUT_INVALID, error.message, issues, { cause: error });
     }
@@ -541,6 +546,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   zoneAttributes(ctx?: InvokeContext): readonly OpenZoneAttributes[] {
     return this.zoneContext().zoneAttributes(ctx);
+  }
+
+  declaredDisplayMessage(code: string, data?: unknown): TextRecord | undefined {
+    return this.kernel.declaredDisplayMessage(this.#resolvedKind, code, data, this.#describeSelf());
   }
 
   /** The root context for runtime-driven inbound work — inherits nothing from
@@ -1276,3 +1285,16 @@ export class ResourceContextImpl implements ResourceContext {
   }
 }
 
+/** A schema refusal of a transport's inbound value as a finding: a value type that
+ *  does not read is `format`, a missing property `required`, anything else
+ *  `invalid` — the dotted path and the validator's sentence stay in the message. */
+function plainEncodedIssue(issue: SchemaIssue): ValueIssue {
+  const pointer = issue.pointer ?? "";
+  if (issue.keyword === "x-telo-type" && issue.valueType) {
+    return valueIssue(pointer, "format", { format: issue.valueType });
+  }
+  if (issue.keyword === "required") {
+    return valueIssue(pointer, "required", { missingProperty: issue.missingProperty });
+  }
+  return valueIssue(pointer, undefined);
+}

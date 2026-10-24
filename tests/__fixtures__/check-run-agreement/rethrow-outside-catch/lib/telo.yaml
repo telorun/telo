@@ -1,0 +1,15 @@
+# A rethrow outside every catch: branch: there is no caught failure to re-raise.
+kind: Telo.Library
+metadata:
+  name: RethrowOutsideCatch
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [refuse]
+---
+kind: Run.Sequence
+metadata:
+  name: refuse
+steps:
+  - name: again
+    rethrow: {}

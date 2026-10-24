@@ -79,10 +79,12 @@ refused — both shapes are closed. The body is validated as the JSON it is,
 with no conversion: a string where the shape declares an integer, or a `null`
 at a typed property, is refused.
 
-A refused body is a 400 before any statement runs, in the request-validation
-envelope: `location` is `body`, `path` the property (`text`, `address.street`)
-and `message` what is wrong with it — `is a required property`,
-`must NOT have more than 5 characters`, `must match format "date"`.
+A refused body is a 400 before any statement runs: the server's validation
+problem (`application/problem+json`, `code: ERR_INPUT_INVALID`), one
+`data.issues` entry per finding as `{ pointer, keyword, params }` — `pointer`
+the property under `/body` (`/body/text`, `/body/address/street`), and no prose:
+`required` with `{ missingProperty: text }`, `maxLength` with `{ limit: 5 }`,
+`format` with `{ format: date }`.
 
 ## What a write answers with
 

@@ -10,7 +10,8 @@ import { readProvidesZone, readRequiresZone, readViolatesZone } from "./zone-slo
  * document is the root (`kind: Telo.Builtins`, `metadata.name: Telo`, the
  * release's `metadata.version`, `license: MIT`) carrying the shared fragments as
  * `$defs` and the closed vocabularies a definition names (`valueTypes`,
- * `zoneAttributes`, `formats`); every later document is one built-in kind in its
+ * `zoneAttributes`, `formats`), and the error codes the runtime raises itself with
+ * their texts (`errorCodes`); every later document is one built-in kind in its
  * authored form.
  *
  * It is READ, never declared, run or imported, which is why its kind is
@@ -48,7 +49,16 @@ export function builtinVocabularyImportMessage(source: string, version: unknown)
 
 /** The root's sections, keyed by name. `layers` is the index `telo publish`
  *  appends, present in a published archive and never in a rendered one. */
-const ROOT_KEYS = new Set(["kind", "metadata", "$defs", "valueTypes", "zoneAttributes", "formats", "layers"]);
+const ROOT_KEYS = new Set([
+  "kind",
+  "metadata",
+  "$defs",
+  "valueTypes",
+  "zoneAttributes",
+  "formats",
+  "errorCodes",
+  "layers",
+]);
 const DOCUMENT_KINDS = new Set(["Telo.Abstract", "Telo.Definition", "Telo.NeedType"]);
 const FRAGMENT_REF = "telo://manifest#/$defs/";
 /** A key the analyzer reserves for a fragment it hoists into a schema. */
@@ -64,6 +74,7 @@ export interface BuiltinVocabulary {
   readonly valueTypes: Readonly<Record<string, unknown>>;
   readonly zoneAttributes: Readonly<Record<string, unknown>>;
   readonly formats: Readonly<Record<string, unknown>>;
+  readonly errorCodes: Readonly<Record<string, unknown>>;
 }
 
 export type BuiltinVocabularyReading =
@@ -127,6 +138,7 @@ export function readBuiltinVocabulary(text: string): BuiltinVocabularyReading {
   const valueTypes = section("valueTypes");
   const zoneAttributes = section("zoneAttributes");
   const formats = section("formats");
+  const errorCodes = section("errorCodes");
   for (const name of Object.keys(defs)) {
     if (name.startsWith(HOISTED_KEY_PREFIX)) {
       problems.push(
@@ -201,6 +213,13 @@ export function readBuiltinVocabulary(text: string): BuiltinVocabularyReading {
     }
   };
   for (const [name, body] of Object.entries(defs)) closure(body, `$defs.${name}`);
+  for (const [code, entry] of Object.entries(errorCodes)) {
+    if (!isMap(entry) || entry.code !== code) {
+      problems.push(`\`errorCodes.${code}\` is not an entry declaring \`code: ${code}\`.`);
+      continue;
+    }
+    closure(entry, `errorCodes.${code}`);
+  }
   documents.forEach((doc, i) => {
     const name = isMap(doc.metadata) ? doc.metadata.name : undefined;
     closure(doc, typeof name === "string" ? `Telo.${name}` : `document ${i + 2}`);
@@ -216,6 +235,7 @@ export function readBuiltinVocabulary(text: string): BuiltinVocabularyReading {
       valueTypes,
       zoneAttributes,
       formats,
+      errorCodes,
     },
     problems: [],
   };

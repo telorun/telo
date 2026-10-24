@@ -23,8 +23,10 @@ fn napi_failure(err: napi::Error) -> ControllerError {
 pub const CONTROLLER_ERROR_MARKER: &str = "teloControllerError";
 
 /// The error thrown for a [`ControllerError`] a controller returned: a JS
-/// `Error` whose `.code` is the controller's code and whose `.message` is its
-/// plain message — the two fields the native ABI carries — marked with
+/// `Error` whose `.code` is the controller's code, whose `.message` is its
+/// plain message and whose `.data` / `.displayMessage` are its payload and
+/// display message when it
+/// carries them — the fields the native ABI carries — marked with
 /// [`CONTROLLER_ERROR_MARKER`]. Built here and thrown as that object, so napi
 /// never derives anything from a status.
 pub fn controller_error(env: &Env, err: ControllerError) -> napi::Error {
@@ -51,6 +53,16 @@ fn marked_error(env: &Env, err: &ControllerError) -> napi::Result<JsUnknown> {
     object.define_properties(&[Property::new(CONTROLLER_ERROR_MARKER)?
         .with_value(&env.get_boolean(true)?)
         .with_property_attributes(PropertyAttributes::Default)])?;
+    // `data` and `displayMessage` cross as the members the Node loader reads, so
+    // a failure keeps its payload and its display message across the bridge.
+    if let Some(data) = &err.data {
+        object.set_named_property("data", value_to_js(env, data)?)?;
+    }
+    if let Some(display_message) = &err.display_message {
+        let display_message = serde_json::to_value(display_message)
+            .map_err(|e| napi::Error::new(napi::Status::GenericFailure, e.to_string()))?;
+        object.set_named_property("displayMessage", value_to_js(env, &display_message)?)?;
+    }
     Ok(object.into_unknown())
 }
 

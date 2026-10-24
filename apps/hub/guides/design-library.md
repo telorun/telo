@@ -344,6 +344,20 @@ throws:
   (`THROWS_NOT_SUBSTITUTABLE`), so a caller's `catches:` / `try:` written
   against the contract stays complete for any backend. Raise failures under
   the contract's codes.
+- Give a code the words a person is shown with `displayMessage:` beside its
+  `description:` — a text in the library's `lang:` whose placeholders name
+  only REQUIRED string or number properties of the code's `data` schema
+  (`displayMessage: "The channel refused {$to}."` with `data: { type: object,
+  required: [to], properties: { to: { type: string } } }`). Every failure
+  under that code leaving the kind carries it as `error.displayMessage`, and
+  data the schema refuses is refused instead, so it always formats.
+- A kind that renders failures through a catch list (`x-telo-outcome-list:
+  catches`) marks, in that list's `x-telo-context`, which members carry the
+  caught code and data: `code: { type: string, x-telo-caught-member: code }`
+  and `data: { type: object, x-telo-caught-member: data }`, under whatever
+  bindings it offers. A `when:` comparing a marked code chain with code
+  literals proves coverage, and every marked data member is typed inside each
+  entry from the codes it matches; a list marking no code proves nothing.
 - Use an abstract only where there will be more than one implementation, or
   the backend is the importer's choice. To reuse one controller under a
   friendlier schema, specialize the concrete kind instead.

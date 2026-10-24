@@ -69,7 +69,7 @@ schema:
       x-telo-context:
         type: object
         properties:
-          error: { type: object, properties: { code: { type: string } } }
+          error: { type: object, properties: { code: { type: string, x-telo-caught-member: code } } }
       items:
         type: object
         properties:
@@ -103,7 +103,7 @@ schema:
             x-telo-context:
               type: object
               properties:
-                error: { type: object, properties: { code: { type: string } } }
+                error: { type: object, properties: { code: { type: string, x-telo-caught-member: code } } }
             items:
               type: object
               properties:

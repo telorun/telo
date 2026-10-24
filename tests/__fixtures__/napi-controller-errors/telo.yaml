@@ -23,6 +23,7 @@ inputType:
     type: object
     properties:
       fail: { type: boolean }
+      displayMessage: { type: boolean }
       numbers: { type: boolean }
     additionalProperties: false
 outputType:
