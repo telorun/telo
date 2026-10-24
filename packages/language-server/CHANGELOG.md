@@ -1,5 +1,7 @@
 # @telorun/language-server
 
+## 0.122.1
+
 ## 0.122.0
 
 ## 0.121.0
