@@ -277,6 +277,11 @@ import {
 import { validateImportHostPaths } from "./validate-import-host-paths.js";
 import { moduleFileEntryMismatches } from "./validate-host-path-entries.js";
 import { validateImportInputs } from "./validate-import-inputs.js";
+import {
+  applicationInputsSlotSchema,
+  validateApplicationInputs,
+} from "./validate-application-inputs.js";
+import { applicationSourceAnnotationProblems, readApplicationSourceSlot } from "./application-source-slot.js";
 import { importInputsJoinSchema } from "./import-inputs.js";
 import { validateModuleMetadata } from "./validate-module-metadata.js";
 import { validateRequires } from "./validate-requires.js";
@@ -2753,6 +2758,9 @@ export class StaticAnalyzer {
       ),
     );
 
+    // The child applications the loader followed, by declaring file and source.
+    const applicationSources = options?.applicationSources ?? {};
+
     // Validate each non-definition, non-system resource
     for (const m of allManifests) {
       const filePath = (m.metadata as { source?: string } | undefined)?.source;
@@ -3043,6 +3051,17 @@ export class StaticAnalyzer {
             : undefined;
         if (inputSlots) {
           for (const slot of collectCelValueSlots(m, inputSlots, "", namedShape)) {
+            celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
+          }
+        }
+        // A child application's inputs are typed by what the child declares.
+        const childSlots = entryScoped
+          ? applicationInputsSlotSchema(m as unknown as ResourceManifest, schema, applicationSources, (kind) =>
+              needTypeOf(defs.resolve(kind)),
+            )
+          : undefined;
+        if (childSlots) {
+          for (const slot of collectCelValueSlots(m, childSlots, "", namedShape)) {
             celReturnSlots.push({ manifest: m, resource, filePath, ...slot });
           }
         }
@@ -4872,7 +4891,30 @@ export class StaticAnalyzer {
         (kind) => defs.resolve(kind),
         options?.moduleDocuments ?? [],
         (manifest) => defs.referenceSites(manifest, aliases, aliasesByModule),
+        (kind) => {
+          const definition = defs.resolve(kind);
+          return definition ? readApplicationSourceSlot(defs.effectiveSchemaOf(definition))?.feeds.needs : undefined;
+        },
       ),
+    );
+
+    // A resource running a child application, held to what the child the
+    // loader followed declares.
+    diagnostics.push(
+      ...validateApplicationInputs(allManifests as unknown as ResourceManifest[], rootModules, applicationSources, {
+        authorSchemaOf: (resource, module) => {
+          const kind = declaringModuleScope(module, aliases, { aliasesByModule, rootModules }).resolveKind(
+            resource.kind,
+          );
+          const definition = kind ? defs.resolve(kind) : undefined;
+          return definition ? validationSchemaFor(definition) : undefined;
+        },
+        referenceSites: (resource) => defs.referenceSites(resource, aliases, aliasesByModule),
+        resolveKind: (module, kind) =>
+          declaringModuleScope(module, aliases, { aliasesByModule, rootModules }).resolveKind(kind),
+        needType: (kind) => needTypeOf(defs.resolve(kind)),
+        defs,
+      }),
     );
 
     // An import alias a kind has already put in CEL scope, where a call through
@@ -4988,6 +5030,10 @@ export class StaticAnalyzer {
         })),
         ...browserExportAnnotationProblems(String(m.metadata?.name), m.schema).map((problem) => ({
           code: "BROWSER_EXPORT_ANNOTATION_INVALID",
+          ...problem,
+        })),
+        ...applicationSourceAnnotationProblems(String(m.metadata?.name), m.schema).map((problem) => ({
+          code: "APPLICATION_SOURCE_ANNOTATION_INVALID",
           ...problem,
         })),
       ];

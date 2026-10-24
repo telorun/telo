@@ -503,7 +503,7 @@ export class AgentClient {
   }
 
   /** POST /workspace — apply an explicit write/delete change set (Fs.TreeSync). */
-  async syncWorkspace(write: Array<{ path: string; content: string }>, del: string[]): Promise<void> {
+  async syncWorkspace(write: Array<{ path: string; content: string; encoding?: "utf8" | "base64" }>, del: string[]): Promise<void> {
     const res = await fetchRetrying(
       this.url("/workspace"),
       this.init({

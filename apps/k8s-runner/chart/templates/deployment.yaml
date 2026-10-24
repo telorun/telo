@@ -6,8 +6,10 @@ metadata:
   labels:
     {{- include "k8s-runner.labels" . | nindent 4 }}
 spec:
-  # Single replica is REQUIRED — the session registry is in-memory and the
-  # runner reaps orphaned pods on boot; two replicas would double-manage pods.
+  # Single replica is REQUIRED — live byte channels and event streams are
+  # in-process, and the runner adopts and sweeps session pods at boot; two
+  # replicas would double-manage them. `Recreate` also keeps two runners from
+  # holding the SQLite session store at once.
   replicas: 1
   strategy:
     type: Recreate
@@ -23,11 +25,13 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
+        # The runner's own state volume is written as this group.
+        fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: runner
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          image: {{ include "k8s-runner.image" . | quote }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           # The runner holds the cluster API credentials — it is the highest-value
           # target, so it gets the same container hardening as session pods.
@@ -40,6 +44,10 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            {{- if eq .Values.sessionStore.kind "sqlite" }}
+            - name: state
+              mountPath: /var/lib/telo-runner
+            {{- end }}
             {{- if .Values.runner.terms.enabled }}
             - name: terms
               mountPath: /etc/telo/terms
@@ -72,24 +80,43 @@ spec:
             {{- end }}
             - name: RUNNER_MAX_SESSIONS
               value: "{{ .Values.runner.maxSessions }}"
-            - name: RUNNER_WATCH_SESSIONS
-              value: "{{ .Values.watch.enabled }}"
-            {{- if .Values.watch.enabled }}
-            - name: RUNNER_WATCH_IDLE_SECONDS
-              value: "{{ .Values.watch.idleSeconds }}"
-            - name: RUNNER_WATCH_MAX_TTL_SECONDS
-              value: "{{ .Values.watch.maxTtlSeconds }}"
-            - name: RUNNER_WATCH_MAX_SESSIONS
-              value: "{{ .Values.watch.maxSessions }}"
-            - name: RUNNER_WATCH_RELOAD_LIMIT
-              value: "{{ .Values.watch.reloadLimit }}"
-            - name: RUNNER_WATCH_SUSPENDED_TTL_SECONDS
-              value: "{{ .Values.watch.suspendedTtlSeconds }}"
-            - name: RUNNER_WORKSPACE_CHECKPOINT_SECONDS
-              value: "{{ .Values.watch.checkpointSeconds }}"
+            - name: RUNNER_SESSION_IDLE_SECONDS
+              value: "{{ .Values.sessions.idleSeconds }}"
+            - name: RUNNER_SESSION_MAX_RUNNING_SECONDS
+              value: "{{ .Values.sessions.maxRunningSeconds }}"
+            - name: RUNNER_SESSION_RETENTION_SECONDS
+              value: "{{ .Values.sessions.retentionSeconds }}"
+            - name: RUNNER_SESSION_RELOAD_LIMIT
+              value: "{{ .Values.sessions.reloadLimit }}"
+            - name: RUNNER_SUPERVISOR_IMAGE
+              value: {{ include "k8s-runner.image" . | quote }}
+            - name: RUNNER_SESSION_STORE
+              value: {{ .Values.sessionStore.kind | quote }}
+            {{- if eq .Values.sessionStore.kind "sqlite" }}
+            - name: RUNNER_STATE_DIR
+              value: /var/lib/telo-runner
+            {{- else if .Values.sessionStore.existingSecret }}
+            - name: RUNNER_SESSION_STORE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.sessionStore.existingSecret | quote }}
+                  key: {{ .Values.sessionStore.existingSecretKey | quote }}
+            {{- else }}
+            - name: RUNNER_SESSION_STORE_URL
+              value: {{ .Values.sessionStore.url | quote }}
             {{- end }}
-            - name: RUNNER_SELF_URL
-              value: {{ include "k8s-runner.selfUrl" . | quote }}
+            - name: RUNNER_SESSION_STORAGE_SIZE
+              value: {{ .Values.sessionStorage.size | quote }}
+            {{- if .Values.sessionStorage.storageClass }}
+            - name: RUNNER_SESSION_STORAGE_CLASS
+              value: {{ .Values.sessionStorage.storageClass | quote }}
+            {{- end }}
+            {{- if .Values.identity.audience }}
+            - name: RUNNER_IDENTITY_AUDIENCE
+              value: {{ .Values.identity.audience | quote }}
+            - name: RUNNER_IDENTITY_ISSUERS
+              value: {{ join "," .Values.identity.issuers | quote }}
+            {{- end }}
             - name: RUNNER_SESSION_NAMESPACE
               value: {{ .Values.sessionNamespace | quote }}
             {{- if .Values.session.image }}
@@ -123,8 +150,6 @@ spec:
             - name: RUNNER_INTERNAL_URL
               value: {{ include "k8s-runner.selfUrl" . | quote }}
             {{- end }}
-            - name: RUNNER_INIT_IMAGE
-              value: {{ .Values.session.initImage | quote }}
             - name: RUNNER_BASE_IMAGE_CATALOG_ENABLED
               value: "{{ .Values.session.baseImages.enabled }}"
             {{- if .Values.session.baseImages.enabled }}
@@ -188,10 +213,14 @@ spec:
               value: {{ .Values.limits.maxCpu | quote }}
             - name: RUNNER_MAX_MEMORY
               value: {{ .Values.limits.maxMemory | quote }}
-            - name: RUNNER_MAX_TTL_SECONDS
-              value: "{{ .Values.limits.maxTtlSeconds }}"
             - name: RUNNER_MAX_EPHEMERAL_STORAGE
               value: {{ .Values.limits.maxEphemeralStorage | quote }}
+            - name: RUNNER_APP_MAX_CPU
+              value: {{ .Values.limits.agent.maxCpu | quote }}
+            - name: RUNNER_APP_MAX_MEMORY
+              value: {{ .Values.limits.agent.maxMemory | quote }}
+            - name: RUNNER_APP_MAX_EPHEMERAL_STORAGE
+              value: {{ .Values.limits.agent.maxEphemeralStorage | quote }}
             {{- if .Values.runner.terms.enabled }}
             - name: RUNNER_TERMS_FILE
               value: /etc/telo/terms/terms.md
@@ -220,6 +249,11 @@ spec:
         # Writable scratch so readOnlyRootFilesystem doesn't break the runtime.
         - name: tmp
           emptyDir: {}
+        {{- if eq .Values.sessionStore.kind "sqlite" }}
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ include "k8s-runner.name" . }}-state
+        {{- end }}
         {{- if .Values.runner.terms.enabled }}
         - name: terms
           configMap:

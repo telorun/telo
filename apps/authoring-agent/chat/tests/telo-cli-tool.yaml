@@ -20,9 +20,10 @@ imports:
     secrets:
       # The tool never touches the model; the key is only a required import input.
       openaiApiKey: dummy-key-never-used
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
-      stateDir: !cel "variables.scratch.joinPath('state')"
       # `echo`, not a real CLI. What this manifest owns is the VERB GUARD and
       # the argv it composes — whether `telo cel functions` prints the right
       # thing is the CLI's own business, tested in `cli/nodejs`. Echoing the
@@ -38,9 +39,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: dummy-key-never-used
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('identity/state')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('identity/workspace')"
-      stateDir: !cel "variables.scratch.joinPath('identity/state')"
       teloProgram: [bun, ../../../../../../../../cli/nodejs/bin/telo.ts]
       teloVerbs: [check]
   Run: ../../../../modules/run

@@ -11,8 +11,8 @@ export const WORKSPACE_APP_FILENAME = "telo.yaml";
  *
  * **Every backend must skip the same set.** The tree is what the editor diffs
  * its own files against, so a backend that includes one more entry than another
- * reports files as changed that are not, and one that includes fewer drops them
- * across a checkpoint. The workspace application reads this list as the default
+ * reports files as changed that are not, and one that includes fewer reports
+ * files missing that are there. The workspace application reads this list as the default
  * of its `WORKSPACE_EXCLUDE` variable, and a backend that walks a directory
  * itself (the local runner) reads it from here — one list, asserted equal to the
  * manifest's own default by a test in this package.

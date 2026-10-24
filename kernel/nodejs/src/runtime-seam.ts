@@ -2,6 +2,7 @@ import {
   Loader,
   StaticAnalyzer,
   assembleGraphDiagnostics,
+  collectApplicationSources,
   collectModuleDocuments,
   diagnosticFix,
   flattenForAnalyzer,
@@ -214,7 +215,12 @@ export function refusedRunText(err: unknown): string {
  * implementation detail rather than something a module author has to know.
  */
 export class KernelRuntimeSeam implements RuntimeSeam {
-  constructor(private readonly kernel: Kernel) {}
+  /** `caller` names the resource asking, for a child's refusal naming who
+   *  supplied a value by name. */
+  constructor(
+    private readonly kernel: Kernel,
+    private readonly caller?: string,
+  ) {}
 
   async run(source: string, options?: RuntimeRunOptions): Promise<RuntimeRun> {
     // Import here rather than at module scope: `resource-context.ts` imports this
@@ -232,7 +238,10 @@ export class KernelRuntimeSeam implements RuntimeSeam {
       stdout: stdout.writable,
       stderr: stderr.writable,
       sources: [...this.kernel.injectedSources],
-      inputs: options?.inputs,
+      inputs: options?.inputs && {
+        ...options.inputs,
+        ...(this.caller !== undefined ? { suppliedBy: this.caller } : {}),
+      },
       // A child reads what the caller writes it, never the host's own input:
       // two children sharing one terminal would race for the same lines.
       stdin: stdin.readable,
@@ -353,6 +362,7 @@ export class KernelRuntimeSeam implements RuntimeSeam {
         // The zone stage derives each imported library's export contracts from
         // its own full documents, which the flattened list drops.
         moduleDocuments: collectModuleDocuments(graph),
+        applicationSources: collectApplicationSources(graph),
         hostVersions: nodeHostVersions(),
       },
     );

@@ -97,10 +97,26 @@ export function computeAnalysisSignature(
   const { appKey, entryUrl } = options;
   const entryDir = appKey !== undefined && entryUrl ? directoryOf(entryUrl) : undefined;
   const entries: Array<[string, string]> = [];
-  for (const [, mod] of graph.modules) {
-    for (const file of [mod.owner, ...mod.partials]) {
-      const digest = createHash("sha256").update(file.text).digest("hex");
-      entries.push([entryDir ? relocatableIdentity(file, entryDir) : file.source, digest]);
+  const fileEntries = (modules: LoadedGraph["modules"]) => {
+    for (const [, mod] of modules) {
+      for (const file of [mod.owner, ...mod.partials]) {
+        const digest = createHash("sha256").update(file.text).digest("hex");
+        entries.push([entryDir ? relocatableIdentity(file, entryDir) : file.source, digest]);
+      }
+    }
+  };
+  fileEntries(graph.modules);
+  // A child application the entry runs is checked against what it declares, so
+  // its files are part of what the verdict is about — and so is a source that
+  // did not load, which a later load may find.
+  for (const [fromFile, loads] of graph.applicationSources ?? []) {
+    for (const [source, load] of loads) {
+      if ("graph" in load) {
+        fileEntries(load.graph.modules);
+        continue;
+      }
+      const from = entryDir ? relocatableIdentity({ source: fromFile }, entryDir) : fromFile;
+      entries.push([`application-source:${from}\0${source}`, `failed:${load.failure.error.message}`]);
     }
   }
   entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));

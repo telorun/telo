@@ -13,118 +13,107 @@ import { toast } from "sonner";
 
 import { type DebugFrame, isEventFrame } from "@telorun/debug-wire";
 
-import { registry } from "./registry";
-import { loadRunIndex, saveRunIndex, type PersistedRunEntry } from "./run-index";
+import type { SessionAgentState, WorkspaceBridge } from "../agent/types";
+import type { ResumeSecretStore } from "./runner-credentials";
+import type { DesiredAppSet } from "./session-apps";
 import { TerminalBuffer } from "./terminal-buffer";
-import {
-  isTerminal,
-  type AvailabilityAction,
-  type RunAdapter,
-  type RunEvent,
-  type RunPhase,
-  type RunOutcomeEvent,
-  type RunnerEndpoint,
-  type RunReachabilityState,
-  type RunRequest,
-  type RunRouteState,
-  type RunSession,
-  type RunStatus,
-  type WorkspaceChangeSet,
-  SessionGoneError,
+import type {
+  AvailabilityAction,
+  RunAdapter,
+  RunAppRequest,
+  RunEvent,
+  RunnerEndpoint,
+  RunnerTerms,
+  RunOutcomeEvent,
+  RunPhase,
+  RunReachabilityState,
+  RunRouteState,
+  SequencedRunIo,
 } from "./types";
+import type { WorkspaceSessionEntry } from "./workspace-session-entry";
+import {
+  RunWithdrawnError,
+  WorkspaceSession,
+  type WorkspaceIdentity,
+  type WorkspaceSessionState,
+} from "./workspace-session";
 
-const MAX_LOG_LINES = 10_000;
+/** Per-application run history cap. Oldest runs beyond this are evicted and
+ *  their terminal torn down. */
+const MAX_RUNS_PER_APP = 10;
 /** Ring cap on buffered debug frames (events + log lines) held per run. */
 const MAX_DEBUG_FRAMES = 5_000;
-/** Per-application run history cap. Oldest runs beyond this are evicted and
- *  their runtime (session + transcript) torn down. */
-const MAX_RUNS_PER_APP = 10;
+/** How long a run's terminal keeps listening after the run ended: its last
+ *  output and its ending travel on two channels. */
+const RUN_OUTPUT_GRACE_MS = 1_000;
+/** How long a run this page did not start waits before its terminal opens. */
+const ADOPTED_TERMINAL_DELAY_MS = 300;
 
-/** Why a run the editor still held ended without the editor seeing it end. The
- *  two causes are indistinguishable from here — and call for the same thing —
- *  so the message names both rather than picking one. */
-const SESSION_LOST_MESSAGE =
-  "The runner no longer has this session — it was restarted, or the session expired.";
+/** How one run of one app stands. `queued` is a Run waiting on the session —
+ *  the session itself, the app set, or the app's container — and says which
+ *  through the session's state. */
+export type AppRunStatus =
+  | { kind: "queued" }
+  | { kind: "starting" }
+  | { kind: "running" }
+  | { kind: "exited"; code: number }
+  | { kind: "signalled"; signal: string }
+  | { kind: "failed"; message: string }
+  | { kind: "stopped" };
 
-export interface LogLine {
-  id: number;
-  stream: "stdout" | "stderr";
-  text: string;
+export function isRunLive(status: AppRunStatus): boolean {
+  return status.kind === "queued" || status.kind === "starting" || status.kind === "running";
 }
 
-/** One run of one Application — the display-facing record held in React state,
- *  newest-first within its app's list. Live runtime objects (session, terminal
- *  buffer, event subscription) live in a ref-held side table keyed by `id`, so
- *  high-frequency byte output never churns React state. */
+/** One run of one Application — a Run pressed, or a run the session reports
+ *  that this page did not start (re-attached after a reload). Newest-first
+ *  within its app's list. Live objects (the terminal) live in a ref-held side
+ *  table keyed by `id`, so high-frequency byte output never churns React state. */
 export interface RunRecord {
   id: string;
+  /** The runner's id for the run, once it started. */
+  runId?: string;
   /** Application module `filePath` this run belongs to. */
   appPath: string;
-  adapterId: string;
-  adapterDisplayName: string;
-  status: RunStatus;
+  /** The app's name in the session. */
+  app: string;
+  /** The runner that runs it, as named in settings. */
+  runnerName: string;
+  status: AppRunStatus;
   startedAt: number;
-  /** True when this run streams a PTY transcript (terminal adapter). The
-   *  TerminalBuffer itself is in the runtime side table — read via
-   *  `getTerminal(id)`. */
+  /** True once the run streams a terminal — read via `getTerminal(id)`. */
   hasTerminal: boolean;
-  /** Latest coming-up progress (build/provision/boot) while the session is
-   *  still `starting`. Cleared once status reaches `running` or terminal. */
+  /** Latest coming-up progress of the app while its run starts. */
   progress: { phase: RunPhase; message: string } | null;
-  /** Captured output for log-only adapters (no `io` channel). */
-  lines: LogLine[];
-  truncated: boolean;
-  /** Frames from the workload's kernel debug stream (events + log lines), fed
-   *  to the Debug panel's Logs / Events tabs. Newest appended; capped. */
+  /** Frames from the workload's kernel debug stream (events), fed to the Debug
+   *  panel's Events tab. Newest appended; capped. */
   debugFrames: DebugFrame[];
-  /** Total frames ever appended (incl. evicted ones). Monotonic — the sequence
-   *  of `debugFrames[0]` is `debugFrameSeq - debugFrames.length`. Lets the view
-   *  track a "cleared" boundary that survives ring-buffer eviction. */
+  /** Total frames ever appended (incl. evicted ones). */
   debugFrameSeq: number;
-  /** Per-port reachability of declared ports, watched by the runner and rendered
-   *  on the endpoint badge (spinner → ok / error). Keyed by port. */
+  /** Per-port reachability of the app's declared ports, while it runs. */
   portReachability: Map<number, RunReachabilityState>;
-  /** Whether the runner's cluster programmed each published host, keyed by port.
-   *  Deliberately beside `portReachability` rather than merged into it: a route
-   *  nothing reconciles leaves the port perfectly reachable from the runner and
-   *  the public URL dead, so collapsing the two would hide exactly the failure
-   *  this reports. */
+  /** Whether the runner's cluster programmed each published host, keyed by port. */
   portRoutes: Map<number, { state: RunRouteState; host: string; app?: string; reason?: string }>;
-  /** Latest run outcome per application, keyed by app name. Separate from
-   *  `status`, which is the SESSION's: in a watch session a one-shot app
-   *  completing leaves the session running and starts a new generation on the
-   *  next edit. A run session has exactly one entry, named `app`. */
+  /** Latest generation outcome of the app, keyed by app name. */
   runs: Record<string, RunOutcomeEvent>;
-  /** The telo version this run asked its runner for; absent when the runner
-   *  does not choose one per application. */
+  /** The telo version the app's set entry named; absent when the runner does
+   *  not choose one per application. */
   requestedTelo?: string;
-  /** The version each application's runtime last reported for itself, by app
-   *  name. An app missing here runs on a runtime that reports none. */
+  /** The version the app's runtime last reported for itself, by app name. */
   reportedTelo: Record<string, string>;
-  /** Declared ports the runner could not route, by port, with its reason. The
-   *  design's whole point is that such a port is reported rather than dropped;
-   *  dropping it here would put the silence back. */
+  /** Declared ports the runner could not route, by port, with its reason. */
   unroutablePorts: Map<number, string>;
-  /** Set when a run restored from the index could not be re-attached — the
-   *  session is gone from the runner (evicted past its TTL / runner restarted)
-   *  or its adapter can't resume. The list keeps the entry; the view shows a
-   *  note instead of trying to stream. */
-  historyUnavailable?: boolean;
+  /** The endpoints the session publishes for this app's ports. */
+  endpoints: RunnerEndpoint[];
+  /** Set once Stop was pressed: the run's ending is then read as stopped. */
+  stopRequested?: boolean;
 }
 
-/**
- * A live watch session that carries a co-resident agent. `session` is handed
- * over whole rather than as a workspace adapter, because the agent's workspace
- * IS this session's — the run module's job is to say which session, not to
- * model what the agent does with it.
- */
+/** The co-resident agent of the workspace's session, while it is running. */
 export interface CoResidentAgentSession {
-  runId: string;
-  /** Where the agent's HTTP contract answers. */
+  sessionId: string;
   baseUrl: string;
-  /** The token the runner minted for the agent, when it did. */
   token?: string;
-  session: RunSession;
 }
 
 /** Unavailable/setup-required banner shown in the run dock when a run failed to
@@ -134,11 +123,7 @@ export interface UnavailableRun {
   adapterDisplayName: string;
   message: string;
   remediation?: string;
-  /** Adapter-provided remedy carried on the availability report (e.g. starting
-   *  the editor-managed local runner); rendered as a button beside Recheck. */
   action?: AvailabilityAction;
-  /** Optional re-probe so the Recheck button can retry without going back
-   *  through Editor's entire Run flow. */
   recheck?: () => Promise<void>;
 }
 
@@ -159,19 +144,16 @@ export interface EnvFileProblem {
 }
 
 /** Why a run never started. Held per Application and rendered in that app's run
- *  dock — the same surface the run's own output would have used, so "what
- *  happened when I pressed Run" always has one place. */
+ *  dock — the same surface the run's own output would have used. */
 export type RunBlocker =
   | ({ kind: "unavailable" } & UnavailableRun)
   | { kind: "missing-config"; entries: MissingConfigEntry[] }
-  | { kind: "env-files"; problems: EnvFileProblem[] };
+  | { kind: "env-files"; problems: EnvFileProblem[] }
+  | { kind: "outside-workspace"; importer: string; source: string; target: string };
 
-/** Per-Application dock geometry. Held in memory (not persisted): it records
- *  where you were, which is worth a module switch and not worth restoring
- *  against a workspace whose runs are gone. */
+/** Per-Application dock geometry, held in memory. */
 export interface RunDockState {
   open: boolean;
-  /** Body height in px while not maximized. */
   height: number;
   maximized: boolean;
 }
@@ -179,93 +161,83 @@ export interface RunDockState {
 export const RUN_DOCK_MIN_HEIGHT = 160;
 const DEFAULT_DOCK: RunDockState = { open: false, height: 340, maximized: false };
 
-/** Live, non-serializable run state, kept out of React state. */
-interface RunRuntime {
-  session: RunSession;
-  terminal: TerminalBuffer | null;
-  unsubscribe: () => void;
-  lineId: number;
-  partial: { stdout: string; stderr: string };
+/**
+ * What the editor binds the run context to: one open workspace in Agent or
+ * Manual mode, on one runner. A new binding (another workspace, another runner,
+ * Only on this device) lets go of the previous session, suspending it.
+ */
+export interface WorkspaceBinding {
+  workspaceKey: string;
+  entry: WorkspaceSessionEntry;
+  mode: "agent" | "manual";
+  runner: { id: string; name: string; adapter: RunAdapter<unknown>; config: unknown };
+  termsAccepted(terms: RunnerTerms): boolean;
+  secrets: ResumeSecretStore;
+  /** The signed-in identity; null when signed out. A change rebinds. */
+  identity: WorkspaceIdentity | null;
+  saveEntry(entry: WorkspaceSessionEntry): void;
+  bridge: WorkspaceBridge;
+  /** A fresh Run request for an app the session asks to start again, or null
+   *  when it cannot run now (the reason shown as its dock's blocker). */
+  prepareRun(appPath: string): Promise<RunAppRequest | null>;
 }
 
 interface RunContextValue {
-  startRun(params: {
-    appPath: string;
-    adapter: RunAdapter<unknown>;
-    config: unknown;
-    request: RunRequest;
-  }): Promise<void>;
-  stopRun(runId: string): Promise<void>;
-  /** The app's live watch session, or null. A watch session is a workspace that
-   *  runs continuously, so a save syncs into it rather than starting a new run. */
-  watchRunForApp(appPath: string): RunRecord | null;
-  /** Every app with a live watch session, across the workspace. */
-  watchRuns(): RunRecord[];
-  /** The co-resident agent of a live watch session, or null. Resolved from the
-   *  session's own `running` status: the runner reports where it routed the
-   *  agent, because only the runner knows how (a pod-shared Service on
-   *  kubernetes, a network alias or a published host port on docker). */
-  coResidentAgent(): CoResidentAgentSession | null;
-  /** Push an edit into a live watch session. A no-op for a plain run, so the
-   *  editor's save path can call it unconditionally. */
-  syncWorkspace(runId: string, changes: WorkspaceChangeSet): Promise<void>;
-  /** Re-run a watch session's app with no file change. */
-  reloadRun(runId: string): Promise<void>;
-  /** Bring a suspended session back. False when the runner no longer holds its
-   *  checkpoint — the caller starts a fresh session instead. */
-  resumeRun(runId: string): Promise<boolean>;
-  /** Drop a run from history: tears down its runtime, forgets its re-attach
-   *  metadata, and removes it from the persisted index. Used to clear a run
-   *  whose history is no longer available on the runner. */
-  removeRun(runId: string): void;
-  /** Clear an Application's finished run history. A still-live run
-   *  (starting/running) is kept so it isn't orphaned. */
-  clearRunsForApp(appPath: string): void;
-  /** Show `runId` in its own Application's dock, and open that dock. */
-  selectRun(runId: string): void;
+  /** Bind (or unbind, with null) the open workspace's session. */
+  bindWorkspace(binding: WorkspaceBinding | null): void;
+  /** The workspace session, or null where there is none. */
+  session: WorkspaceSessionState | null;
+  /** The runner's terms were accepted: carry on opening the session. */
+  acceptSessionTerms(version: string): void;
+  /** Try to open the session again after it could not be had. */
+  retrySession(): void;
+  /** The workspace's app set, as the editor computes it. */
+  setDesiredApps(set: DesiredAppSet): void;
+  /** Whether an agent turn runs: an app-set change waits for it. */
+  setTurnActive(active: boolean): void;
+  /** Push the editor's files into the session after a save. */
+  syncWorkspace(): void;
+  /** Whether a sync into the session is in flight. */
+  syncing(): boolean;
+  /** The session's agent, as the agent panel consumes it. */
+  sessionAgent: SessionAgentState;
+  /** The app's name in the session, or null when it is not in the set. */
+  appNameOf(appPath: string): string | null;
+  /** The io a Run asks for on this runner. */
+  runIo(): RunAppRequest["io"];
 
-  /** Newest-first run history for one Application. */
+  /** Run an Application with the request the editor prepared. */
+  runApp(appPath: string, request: RunAppRequest): Promise<void>;
+  stopRun(recordId: string): Promise<void>;
+  reloadRun(recordId: string): Promise<void>;
+  removeRun(recordId: string): void;
+  clearRunsForApp(appPath: string): void;
+  selectRun(recordId: string): void;
   runsForApp(appPath: string): RunRecord[];
-  /** The app's in-flight run (starting/running), or null. */
   liveRunForApp(appPath: string): RunRecord | null;
-  /** The app's most recent run regardless of status, or null. */
   latestRunForApp(appPath: string): RunRecord | null;
-  /** The run this app's dock shows: the explicitly selected one, else its live
-   *  run, else its most recent. Null when the app has never run. */
   selectedRunForApp(appPath: string): RunRecord | null;
-  /** True while `adapter.start` is awaited for this app — the dock shows a
-   *  loading state. */
   isStartingApp(appPath: string): boolean;
 
-  /** Why this app's last Run press never produced a run, or null. */
   blockerForApp(appPath: string): RunBlocker | null;
   showBlocker(appPath: string, blocker: RunBlocker): void;
   clearBlocker(appPath: string): void;
 
-  /** Dock geometry for one Application's pane. */
   dockForApp(appPath: string): RunDockState;
-  /** Whether this app's dock has anything to show — a run, a blocker, or a
-   *  start in flight. */
   dockHasContent(appPath: string): boolean;
   /** Whether the dock COVERS the module pane right now: maximized, open, and
-   *  holding something. The one authority, because three surfaces render
-   *  against it — the dock, the view area it hides, and the bar's restore
-   *  toggle — and each deciding for itself is what let them disagree: clearing
-   *  the run history while maximized hid the views behind a dock that had
-   *  stopped rendering, with the toggle gone too. */
+   *  holding something — the one authority the dock, the view area and the
+   *  bar's restore toggle all render against. */
   dockFillsPane(appPath: string): boolean;
   setDockOpen(appPath: string, open: boolean): void;
   setDockHeight(appPath: string, height: number): void;
   setDockMaximized(appPath: string, maximized: boolean): void;
 
   /** Forget everything held for an Application — its runs, its dock, its
-   *  blocker and its selection — stopping any session of it still running. For
-   *  a module that no longer exists: all of these are keyed by its path, and
-   *  would otherwise be inherited by a module later created there. */
+   *  blocker and its selection — stopping a live run of it. */
   forgetApp(appPath: string): void;
 
-  /** The live terminal buffer for a run, or null (log-only / unknown run). */
-  getTerminal(runId: string): TerminalBuffer | null;
+  getTerminal(recordId: string): TerminalBuffer | null;
 }
 
 const RunContextValue = createContext<RunContextValue | null>(null);
@@ -276,166 +248,280 @@ export function useRun(): RunContextValue {
   return ctx;
 }
 
-export function RunProvider({ children }: { children: ReactNode }) {
-  // Re-attach metadata, keyed by run id: which adapter ran the session and the
-  // config (e.g. runner baseUrl) needed to reconnect to it after a reload. Held
-  // in a ref so it is available to the persist effect synchronously, before any
-  // state-driven effect can run and clobber the stored config.
-  const attachMeta = useRef<Map<string, { adapterId: string; config: unknown }>>(new Map());
-  // Restored runs whose status still claims to be live. A status read back out
-  // of localStorage is a CLAIM about a session nobody has re-checked since the
-  // page was last open, and the runner holds its registry in memory — a restart
-  // forgets every session — so the claim is reconciled once on mount. Filled by
-  // the state initializer below, which is the only place the restored entries
-  // and their statuses are both in hand.
-  const unreconciled = useRef<string[]>([]);
+function newRecord(fields: { appPath: string; app: string; runnerName: string; status: AppRunStatus; requestedTelo?: string }): RunRecord {
+  return {
+    id: crypto.randomUUID(),
+    appPath: fields.appPath,
+    app: fields.app,
+    runnerName: fields.runnerName,
+    status: fields.status,
+    startedAt: Date.now(),
+    hasTerminal: false,
+    progress: null,
+    debugFrames: [],
+    debugFrameSeq: 0,
+    portReachability: new Map(),
+    portRoutes: new Map(),
+    runs: {},
+    ...(fields.requestedTelo !== undefined ? { requestedTelo: fields.requestedTelo } : {}),
+    reportedTelo: {},
+    unroutablePorts: new Map(),
+    endpoints: [],
+  };
+}
 
-  // Seed the run list from the persisted index so a page reload restores history.
-  const [runsByApp, setRunsByApp] = useState<Map<string, RunRecord[]>>(() => {
-    const byApp = new Map<string, RunRecord[]>();
-    for (const entry of loadRunIndex()) {
-      attachMeta.current.set(entry.id, { adapterId: entry.adapterId, config: entry.config });
-      if (!isTerminal(entry.status)) unreconciled.current.push(entry.id);
-      const list = byApp.get(entry.appPath) ?? [];
-      list.push(shellFromEntry(entry));
-      byApp.set(entry.appPath, list);
-    }
-    for (const [appPath, list] of byApp) {
-      list.sort((a, b) => b.startedAt - a.startedAt);
-      byApp.set(appPath, list.slice(0, MAX_RUNS_PER_APP));
-    }
-    return byApp;
-  });
-  // Selection, blockers, dock geometry and the starting flag are all keyed by
-  // Application: a run belongs to one app's pane, and two apps can be running at
-  // once. Global state here is what made the run a mode of the window.
+function message(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+export function RunProvider({ children }: { children: ReactNode }) {
+  const [session, setSession] = useState<WorkspaceSessionState | null>(null);
+  const controllerRef = useRef<WorkspaceSession | null>(null);
+  const bindingRef = useRef<WorkspaceBinding | null>(null);
+  // App name ↔ module path, from the editor's app set — in state for readers,
+  // and in a ref for the event handlers, which outlive a render.
+  const [apps, setApps] = useState<AppIndex>(EMPTY_APPS);
+  const appsRef = useRef(apps);
+  appsRef.current = apps;
+
+  const [runsByApp, setRunsByApp] = useState<Map<string, RunRecord[]>>(new Map());
+  const runsRef = useRef(runsByApp);
+  runsRef.current = runsByApp;
   const [selectedRunIdByApp, setSelectedRunIdByApp] = useState<Map<string, string>>(new Map());
   const [blockerByApp, setBlockerByApp] = useState<Map<string, RunBlocker>>(new Map());
-  const [startingApps, setStartingApps] = useState<Set<string>>(new Set());
   const [dockByApp, setDockByApp] = useState<Map<string, RunDockState>>(new Map());
-  // Terminal buffers keyed by run id, held in STATE (not just the runtime ref)
-  // so the view re-renders reactively when a buffer appears — load-bearing for
-  // resume, where the buffer is attached asynchronously after the record already
-  // exists, and a ref read on the next render isn't a reliable trigger.
   const [terminals, setTerminals] = useState<Map<string, TerminalBuffer>>(new Map());
+  // Each run's byte channel, so the next run of the app starts after it.
+  const ios = useRef<Map<string, SequencedRunIo>>(new Map());
+  const terminalTable = useRef<Map<string, TerminalBuffer>>(new Map());
 
-  // Live run objects, keyed by run id. Reconciled against `runsByApp` so a run
-  // that leaves React state (eviction) has its session/transcript torn down.
-  const runtimes = useRef<Map<string, RunRuntime>>(new Map());
-  // Runs whose re-attach is in flight, to dedupe concurrent attach attempts.
-  const attaching = useRef<Set<string>>(new Set());
-
-  /** Publish (or clear) a run's terminal buffer into reactive state so the view
-   *  picks it up. Pass `null` to remove it. */
-  const setTerminal = useCallback((runId: string, terminal: TerminalBuffer | null) => {
+  const setTerminal = useCallback((recordId: string, terminal: TerminalBuffer | null) => {
     setTerminals((prev) => {
-      if (terminal === null && !prev.has(runId)) return prev;
+      if (terminal === null && !prev.has(recordId)) return prev;
       const next = new Map(prev);
-      if (terminal === null) next.delete(runId);
-      else next.set(runId, terminal);
+      if (terminal === null) next.delete(recordId);
+      else next.set(recordId, terminal);
       return next;
     });
   }, []);
 
-  const disposeRuntime = useCallback(
-    (runId: string) => {
-      const rt = runtimes.current.get(runId);
-      if (!rt) return;
-      runtimes.current.delete(runId);
-      rt.unsubscribe();
-      // Evicting a still-running run must not leak the underlying container.
-      if (!isTerminal(rt.session.getStatus())) {
-        void rt.session.stop().catch(() => undefined);
-      }
-      rt.terminal?.dispose();
-      setTerminal(runId, null);
+  const disposeTerminal = useCallback(
+    (recordId: string) => {
+      terminalTable.current.get(recordId)?.dispose();
+      terminalTable.current.delete(recordId);
+      ios.current.delete(recordId);
+      setTerminal(recordId, null);
     },
     [setTerminal],
   );
 
-  const updateRecord = useCallback(
-    (runId: string, mut: (record: RunRecord) => RunRecord) => {
-      setRunsByApp((prev) => {
-        for (const [appPath, records] of prev) {
-          const idx = records.findIndex((r) => r.id === runId);
-          if (idx === -1) continue;
-          const nextRecords = records.slice();
-          nextRecords[idx] = mut(records[idx]);
-          const next = new Map(prev);
-          next.set(appPath, nextRecords);
-          return next;
-        }
-        return prev;
-      });
-    },
-    [],
-  );
+  // Each change is applied to the ref at once as well, so the event handlers
+  // that follow it in the same tick see it; the render that commits it
+  // assigns the same value.
+  const updateRecord = useCallback((recordId: string, mut: (record: RunRecord) => RunRecord) => {
+    const apply = (prev: Map<string, RunRecord[]>) => {
+      for (const [appPath, records] of prev) {
+        const idx = records.findIndex((r) => r.id === recordId);
+        if (idx === -1) continue;
+        const nextRecords = records.slice();
+        nextRecords[idx] = mut(records[idx]!);
+        const next = new Map(prev);
+        next.set(appPath, nextRecords);
+        return next;
+      }
+      return prev;
+    };
+    runsRef.current = apply(runsRef.current);
+    setRunsByApp(apply);
+  }, []);
 
-  // Tear down runtimes whose record left state (evicted past the per-app cap)
-  // and forget their re-attach metadata.
+  const addRecord = useCallback((record: RunRecord) => {
+    const apply = (prev: Map<string, RunRecord[]>) => {
+      const next = new Map(prev);
+      next.set(record.appPath, [record, ...(prev.get(record.appPath) ?? [])].slice(0, MAX_RUNS_PER_APP));
+      return next;
+    };
+    runsRef.current = apply(runsRef.current);
+    setRunsByApp(apply);
+  }, []);
+
+  // Tear down terminals whose record left state (evicted past the per-app cap).
   useEffect(() => {
     const live = new Set<string>();
     for (const records of runsByApp.values()) for (const r of records) live.add(r.id);
-    for (const id of [...runtimes.current.keys()]) {
-      if (!live.has(id)) disposeRuntime(id);
-    }
-    for (const id of [...attachMeta.current.keys()]) {
-      if (!live.has(id)) attachMeta.current.delete(id);
-    }
-  }, [runsByApp, disposeRuntime]);
+    for (const id of [...terminalTable.current.keys()]) if (!live.has(id)) disposeTerminal(id);
+  }, [runsByApp, disposeTerminal]);
 
-  // Mirror the run list to the persisted index so the next reload can restore it.
-  // Bodies (logs/events) are never stored — only the pointer + last-known status.
-  useEffect(() => {
-    const entries: PersistedRunEntry[] = [];
-    for (const [appPath, records] of runsByApp) {
-      for (const record of records) {
-        const meta = attachMeta.current.get(record.id);
-        entries.push({
-          id: record.id,
-          appPath,
-          adapterId: record.adapterId,
-          adapterDisplayName: record.adapterDisplayName,
-          hasTerminal: record.hasTerminal,
-          startedAt: record.startedAt,
-          status: record.status,
-          ...(record.requestedTelo !== undefined ? { requestedTelo: record.requestedTelo } : {}),
-          config: meta?.config,
-        });
+  /** Give a run its terminal: the app's byte channel from after the previous
+   *  run's output. */
+  const attachTerminal = useCallback(
+    (record: RunRecord) => {
+      const controller = controllerRef.current;
+      if (!controller || terminalTable.current.has(record.id)) return;
+      const previous = (runsRef.current.get(record.appPath) ?? []).find(
+        (r) => r.id !== record.id && ios.current.has(r.id),
+      );
+      const io = controller.io(record.app, previous ? ios.current.get(previous.id)!.lastSeq() : 0);
+      const terminal = new TerminalBuffer(io);
+      ios.current.set(record.id, io);
+      terminalTable.current.set(record.id, terminal);
+      setTerminal(record.id, terminal);
+      // The session publishes every app's ports; this run's are its app's own.
+      const ports = appsRef.current.ports.get(record.app) ?? new Set<string>();
+      const endpoints = controller.state.endpoints.filter((e) => ports.has(`${e.protocol}/${e.port}`));
+      updateRecord(record.id, (r) => ({ ...r, hasTerminal: true, endpoints }));
+    },
+    [setTerminal, updateRecord],
+  );
+
+  /** Give a run its runner id, and its terminal. */
+  const attachRun = useCallback(
+    (record: RunRecord, runId: string) => {
+      updateRecord(record.id, (r) => ({ ...r, runId }));
+      attachTerminal(record);
+    },
+    [attachTerminal, updateRecord],
+  );
+
+  /** The run an app's events belong to: its live one, else its latest started. */
+  const currentRecord = useCallback((appPath: string, runId?: string): RunRecord | null => {
+    const records = runsRef.current.get(appPath) ?? [];
+    if (runId) {
+      const exact = records.find((r) => r.runId === runId);
+      if (exact) return exact;
+    }
+    return records.find((r) => r.status.kind === "running" || r.status.kind === "starting") ?? records.find((r) => r.runId) ?? null;
+  }, []);
+
+  const runnerName = () => bindingRef.current?.runner.name ?? "";
+
+  const applyEvent = useCallback(
+    (event: RunEvent) => {
+      if (event.type === "status" || (event.type === "progress" && event.app === undefined)) return;
+      const appPath = appsRef.current.byName.get(event.app ?? "");
+      if (!appPath) return;
+
+      if (event.type === "app") {
+        if (event.state === "running") {
+          const records = runsRef.current.get(appPath) ?? [];
+          const known = records.find((r) => r.runId === event.runId);
+          const waiting = known ?? records.find((r) => !r.runId && (r.status.kind === "starting" || r.status.kind === "queued"));
+          if (waiting) {
+            if (!waiting.runId) attachRun(waiting, event.runId);
+            updateRecord(waiting.id, (r) => ({ ...r, status: { kind: "running" }, progress: null }));
+            return;
+          }
+          // A run this page did not start: one live before a reload, or a
+          // rerun another client asked for.
+          const adopted = newRecord({
+            appPath,
+            app: event.app,
+            runnerName: runnerName(),
+            status: { kind: "running" },
+            requestedTelo: appsRef.current.telo.get(event.app),
+          });
+          addRecord({ ...adopted, runId: event.runId });
+          // A replayed run that ended long ago arrives with its ending right
+          // behind it; only one still running gets a terminal.
+          setTimeout(() => {
+            const current = (runsRef.current.get(appPath) ?? []).find((r) => r.id === adopted.id);
+            if (current && current.status.kind === "running") attachTerminal(current);
+          }, ADOPTED_TERMINAL_DELAY_MS);
+          return;
+        }
+        const ended = event.ended;
+        if (!ended) return;
+        const record = (runsRef.current.get(appPath) ?? []).find((r) => r.runId === ended.runId);
+        if (!record) return;
+        // The app's byte channel goes on to its next run: this run's terminal
+        // stops listening once its trailing output has arrived, keeping what
+        // it recorded.
+        setTimeout(() => terminalTable.current.get(record.id)?.dispose(), RUN_OUTPUT_GRACE_MS);
+        updateRecord(record.id, (r) => ({
+          ...r,
+          progress: null,
+          status: r.stopRequested
+            ? { kind: "stopped" }
+            : ended.code !== undefined
+              ? { kind: "exited", code: ended.code }
+              : ended.signal !== undefined
+                ? { kind: "signalled", signal: ended.signal }
+                : { kind: "failed", message: ended.reason ?? "The run ended." },
+        }));
+        return;
       }
-    }
-    saveRunIndex(entries);
-  }, [runsByApp]);
 
-  // On provider teardown, stop every live session and detach subscriptions.
-  useEffect(() => {
-    const table = runtimes.current;
-    return () => {
-      for (const id of [...table.keys()]) disposeRuntime(id);
-    };
-  }, [disposeRuntime]);
+      const record = currentRecord(appPath);
+      if (!record) return;
+      switch (event.type) {
+        case "progress":
+          updateRecord(record.id, (r) =>
+            r.status.kind === "starting" || r.status.kind === "queued" ? { ...r, progress: { phase: event.phase, message: event.message } } : r,
+          );
+          return;
+        case "debug":
+          if (!isEventFrame(event.frame)) return;
+          updateRecord(record.id, (r) => appendDebugFrames(r, [event.frame]));
+          return;
+        case "reachability":
+          updateRecord(record.id, (r) => ({
+            ...r,
+            portReachability: new Map(r.portReachability).set(event.port, event.state),
+          }));
+          return;
+        case "route":
+          // Kept apart from reachability on purpose: an unprogrammed route is
+          // the one failure where the port answers the runner and the URL the
+          // user was handed does not.
+          updateRecord(record.id, (r) => ({
+            ...r,
+            portRoutes: new Map(r.portRoutes).set(event.port, {
+              state: event.state,
+              host: event.host,
+              ...(event.app ? { app: event.app } : {}),
+              ...(event.reason ? { reason: event.reason } : {}),
+            }),
+          }));
+          return;
+        case "run":
+          updateRecord(record.id, (r) => ({
+            ...r,
+            runs: { ...r.runs, [event.app]: event },
+            ...(event.phase === "started"
+              ? { reportedTelo: reportedAfter(r.reportedTelo, event.app, event.telo) }
+              : {}),
+          }));
+          return;
+        case "endpoints":
+          updateRecord(record.id, (r) => {
+            const removed = new Set((event.removed ?? []).map((e) => `${e.protocol}/${e.port}`));
+            const endpoints = [...r.endpoints.filter((e) => !removed.has(`${e.protocol}/${e.port}`)), ...(event.added ?? [])];
+            const unroutable = new Map(r.unroutablePorts);
+            for (const entry of event.rejected ?? []) unroutable.set(entry.port, entry.reason);
+            for (const entry of event.added ?? []) unroutable.delete(entry.port);
+            const routes = new Map(r.portRoutes);
+            for (const entry of event.removed ?? []) routes.delete(entry.port);
+            return { ...r, endpoints, unroutablePorts: unroutable, portRoutes: routes };
+          });
+          return;
+      }
+    },
+    [addRecord, attachRun, attachTerminal, currentRecord, updateRecord],
+  );
+  const applyEventRef = useRef(applyEvent);
+  applyEventRef.current = applyEvent;
 
   const updateDock = useCallback((appPath: string, mut: (prev: RunDockState) => RunDockState) => {
     setDockByApp((prev) => {
       const cur = prev.get(appPath) ?? DEFAULT_DOCK;
       const next = mut(cur);
-      if (
-        next.open === cur.open &&
-        next.height === cur.height &&
-        next.maximized === cur.maximized
-      ) {
-        return prev;
-      }
+      if (next.open === cur.open && next.height === cur.height && next.maximized === cur.maximized) return prev;
       const map = new Map(prev);
       map.set(appPath, next);
       return map;
     });
   }, []);
-
-  const dockForApp = useCallback(
-    (appPath: string) => dockByApp.get(appPath) ?? DEFAULT_DOCK,
-    [dockByApp],
-  );
+  const dockForApp = useCallback((appPath: string) => dockByApp.get(appPath) ?? DEFAULT_DOCK, [dockByApp]);
   const setDockOpen = useCallback(
     (appPath: string, open: boolean) => updateDock(appPath, (d) => ({ ...d, open })),
     [updateDock],
@@ -449,13 +535,8 @@ export function RunProvider({ children }: { children: ReactNode }) {
     (appPath: string, maximized: boolean) => updateDock(appPath, (d) => ({ ...d, maximized })),
     [updateDock],
   );
-
-  /** Put a dock back to rest. Called when the last thing it could show goes
-   *  away: a maximized dock kept across an emptying would fill the pane again
-   *  the moment the app next runs, which is not where the author left it. */
   const restDock = useCallback(
-    (appPath: string) =>
-      updateDock(appPath, (d) => ({ ...d, open: false, maximized: false })),
+    (appPath: string) => updateDock(appPath, (d) => ({ ...d, open: false, maximized: false })),
     [updateDock],
   );
 
@@ -468,11 +549,7 @@ export function RunProvider({ children }: { children: ReactNode }) {
       return next;
     });
   }, []);
-
-  const blockerForApp = useCallback(
-    (appPath: string) => blockerByApp.get(appPath) ?? null,
-    [blockerByApp],
-  );
+  const blockerForApp = useCallback((appPath: string) => blockerByApp.get(appPath) ?? null, [blockerByApp]);
   const clearBlocker = useCallback((appPath: string) => setBlocker(appPath, null), [setBlocker]);
   const showBlocker = useCallback(
     (appPath: string, blocker: RunBlocker) => {
@@ -482,21 +559,20 @@ export function RunProvider({ children }: { children: ReactNode }) {
     [setBlocker, setDockOpen],
   );
 
-  const setSelectedRunForApp = useCallback((appPath: string, runId: string) => {
+  const setSelectedRunForApp = useCallback((appPath: string, recordId: string) => {
     setSelectedRunIdByApp((prev) => {
-      if (prev.get(appPath) === runId) return prev;
+      if (prev.get(appPath) === recordId) return prev;
       const next = new Map(prev);
-      next.set(appPath, runId);
+      next.set(appPath, recordId);
       return next;
     });
   }, []);
-
-  const forgetSelection = useCallback((match: (runId: string) => boolean) => {
+  const forgetSelection = useCallback((match: (recordId: string) => boolean) => {
     setSelectedRunIdByApp((prev) => {
       let changed = false;
       const next = new Map(prev);
-      for (const [appPath, runId] of prev) {
-        if (!match(runId)) continue;
+      for (const [appPath, recordId] of prev) {
+        if (!match(recordId)) continue;
         next.delete(appPath);
         changed = true;
       }
@@ -504,182 +580,192 @@ export function RunProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const markStarting = useCallback((appPath: string, starting: boolean) => {
-    setStartingApps((prev) => {
-      if (prev.has(appPath) === starting) return prev;
-      const next = new Set(prev);
-      if (starting) next.add(appPath);
-      else next.delete(appPath);
-      return next;
+  // The last app set the editor computed, for a session bound after it.
+  const desiredRef = useRef<DesiredAppSet | null>(null);
+  const runAppRef = useRef<(appPath: string, request: RunAppRequest) => Promise<void>>(async () => undefined);
+
+  const bindWorkspace = useCallback((binding: WorkspaceBinding | null) => {
+    const previous = bindingRef.current;
+    const sameSession =
+      previous !== null &&
+      binding !== null &&
+      previous.workspaceKey === binding.workspaceKey &&
+      previous.runner.id === binding.runner.id &&
+      previous.runner.config === binding.runner.config &&
+      previous.identity === binding.identity;
+    bindingRef.current = binding;
+    if (sameSession) {
+      controllerRef.current?.setMode(binding.mode);
+      return;
+    }
+    const old = controllerRef.current;
+    controllerRef.current = null;
+    if (old) {
+      void old.suspend().catch((err: unknown) =>
+        toast.error("Couldn't suspend the workspace's session", { description: message(err), duration: 10_000 }),
+      );
+    }
+    for (const id of [...terminalTable.current.keys()]) disposeTerminal(id);
+    setRunsByApp(new Map());
+    setSelectedRunIdByApp(new Map());
+    setBlockerByApp(new Map());
+    if (!binding) {
+      setSession(null);
+      return;
+    }
+    const controller = new WorkspaceSession({
+      workspaceKey: binding.workspaceKey,
+      entry: binding.entry,
+      runner: binding.runner,
+      mode: binding.mode,
+      termsAccepted: binding.termsAccepted,
+      secrets: binding.secrets,
+      identity: binding.identity,
+      saveEntry: binding.saveEntry,
+      bridge: binding.bridge,
+      listener: {
+        changed: () => {
+          if (controllerRef.current === controller) setSession(controller.state);
+        },
+        event: (event) => {
+          if (controllerRef.current === controller) applyEventRef.current(event);
+        },
+        rerun: (app) => {
+          const appPath = appsRef.current.byName.get(app);
+          const current = bindingRef.current;
+          if (!appPath || !current || controllerRef.current !== controller) return;
+          void current
+            .prepareRun(appPath)
+            .then((request) => (request ? runAppRef.current(appPath, request) : undefined))
+            .catch((err: unknown) =>
+              toast.error(`Couldn't start '${app}' again`, { description: message(err), duration: 10_000 }),
+            );
+        },
+        syncFailed: (text) => toast.error(text, { duration: 10_000 }),
+      },
     });
+    controllerRef.current = controller;
+    const desired = desiredRef.current;
+    if (desired) controller.setDesired(desired.apps.map((a) => a.spec), desired.settled, desired.versioned);
+    setSession(controller.state);
+    void controller.open();
+  }, [disposeTerminal]);
+
+  // Let go of the session when the provider goes away (the page stays: the
+  // runner suspends it once nothing subscribes).
+  useEffect(
+    () => () => {
+      controllerRef.current?.dispose();
+      for (const terminal of terminalTable.current.values()) terminal.dispose();
+    },
+    [],
+  );
+
+  const acceptSessionTerms = useCallback((version: string) => controllerRef.current?.acceptTerms(version), []);
+  const retrySession = useCallback(() => void controllerRef.current?.open(), []);
+  const setDesiredApps = useCallback((set: DesiredAppSet) => {
+    desiredRef.current = set;
+    const next: AppIndex = { byPath: new Map(), byName: new Map(), telo: new Map(), ports: new Map() };
+    for (const app of set.apps) {
+      next.byPath.set(app.appPath, app.spec.name);
+      next.byName.set(app.spec.name, app.appPath);
+      next.ports.set(app.spec.name, new Set((app.spec.ports ?? []).map((p) => `${p.protocol}/${p.port}`)));
+      if (app.spec.telo !== undefined) next.telo.set(app.spec.name, app.spec.telo);
+    }
+    appsRef.current = next;
+    setApps(next);
+    controllerRef.current?.setDesired(
+      set.apps.map((a) => a.spec),
+      set.settled,
+      set.versioned,
+    );
+  }, []);
+  const setTurnActive = useCallback((active: boolean) => controllerRef.current?.setTurnActive(active), []);
+  const syncWorkspace = useCallback(() => controllerRef.current?.sync(), []);
+  const syncing = useCallback(() => controllerRef.current?.syncing ?? false, []);
+  const appNameOf = useCallback((appPath: string) => apps.byPath.get(appPath) ?? null, [apps]);
+  const runIo = useCallback(() => controllerRef.current?.runIo ?? "tty", []);
+
+  const runApp = useCallback(
+    async (appPath: string, request: RunAppRequest) => {
+      const controller = controllerRef.current;
+      const app = appsRef.current.byPath.get(appPath);
+      if (!controller || !app) throw new Error("This application is not part of the workspace's session.");
+      setBlocker(appPath, null);
+      setDockOpen(appPath, true);
+      const record = newRecord({
+        appPath,
+        app,
+        runnerName: runnerName(),
+        status: { kind: "queued" },
+        requestedTelo: appsRef.current.telo.get(app),
+      });
+      addRecord(record);
+      setSelectedRunForApp(appPath, record.id);
+      try {
+        const runId = await controller.run(app, request);
+        const current = (runsRef.current.get(appPath) ?? []).find((r) => r.id === record.id);
+        if (!current) return;
+        if (!current.runId) attachRun(current, runId);
+        updateRecord(record.id, (r) => (r.status.kind === "queued" ? { ...r, status: { kind: "starting" } } : r));
+      } catch (err) {
+        updateRecord(record.id, (r) => ({
+          ...r,
+          progress: null,
+          status: err instanceof RunWithdrawnError ? { kind: "stopped" } : { kind: "failed", message: message(err) },
+        }));
+      }
+    },
+    [addRecord, attachRun, setBlocker, setDockOpen, setSelectedRunForApp, updateRecord],
+  );
+  runAppRef.current = runApp;
+
+  const findRecord = (recordId: string): RunRecord | null => {
+    for (const records of runsRef.current.values()) {
+      const found = records.find((r) => r.id === recordId);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  /** Stop a run: a waiting one is withdrawn, a live one is ended by the runner
+   *  and reads as stopped when its ending arrives. A Stop that fails says so. */
+  const stopRun = useCallback(
+    async (recordId: string) => {
+      const record = findRecord(recordId);
+      const controller = controllerRef.current;
+      if (!record || !controller || !isRunLive(record.status)) return;
+      if (record.status.kind === "queued" && controller.withdraw(record.app)) return;
+      updateRecord(recordId, (r) => ({ ...r, stopRequested: true }));
+      try {
+        await controller.stop(record.app);
+      } catch (err) {
+        updateRecord(recordId, (r) => ({ ...r, stopRequested: false }));
+        toast.error("Couldn't stop the run", { description: message(err), duration: 10_000 });
+      }
+    },
+    [updateRecord],
+  );
+
+  const reloadRun = useCallback(async (recordId: string) => {
+    const record = findRecord(recordId);
+    const controller = controllerRef.current;
+    if (!record || !controller) return;
+    await controller.reload(record.app);
   }, []);
 
-  /** Write a terminal status onto a record that still claims to be live. Only
-   *  ever narrows: a record its event stream already settled keeps its own
-   *  outcome, which says more than this one does. */
-  const settle = useCallback(
-    (runId: string, status: RunStatus) => {
-      updateRecord(runId, (record) =>
-        isTerminal(record.status) ? record : { ...record, status, progress: null },
-      );
-    },
-    [updateRecord],
-  );
-
-  /**
-   * Record that the runner no longer has this session.
-   *
-   * Terminal, because the run is over — we simply did not see it end. Writing it
-   * is what unpins the record: a stale `running` claim keeps the app's button
-   * showing Stop, so the user can neither stop the run (there is nothing to
-   * stop) nor start another. A record the event stream already settled keeps its
-   * own outcome, which carries more than this one does (an exit code, a failure
-   * message).
-   */
-  const markSessionLost = useCallback(
-    (runId: string) => {
-      updateRecord(runId, (record) => ({
-        ...record,
-        // Nothing left on the runner to replay, whichever way the status went.
-        historyUnavailable: true,
-        ...(isTerminal(record.status)
-          ? {}
-          : {
-              status: { kind: "failed", message: SESSION_LOST_MESSAGE } satisfies RunStatus,
-              progress: null,
-            }),
-      }));
-    },
-    [updateRecord],
-  );
-
-  // Reconcile restored runs that still claim to be live against the runner that
-  // owns them. Nothing else re-checks that claim: the status came out of
-  // localStorage and its session's event stream — the thing that would have
-  // reported the end — died with the page.
-  //
-  // Mount only. A session lost while the tab is open takes its stream with it,
-  // and the stream reports that itself.
-  useEffect(() => {
-    const ids = unreconciled.current;
-    unreconciled.current = [];
-    if (ids.length === 0) return;
-
-    let cancelled = false;
-    void (async () => {
-      for (const runId of ids) {
-        if (cancelled) return;
-        const meta = attachMeta.current.get(runId);
-        if (!meta) continue;
-        const adapter = registry.get(meta.adapterId);
-        if (!adapter?.probeSession) continue;
-        try {
-          const status = await adapter.probeSession(runId, meta.config);
-          if (cancelled) return;
-          if (status === null) markSessionLost(runId);
-          else updateRecord(runId, (record) => ({ ...record, status }));
-        } catch {
-          // The runner could not be reached, so nothing was learned. Leaving the
-          // claim as it stands is the honest reading — a terminal status written
-          // here would report an outage as a finished run. Stop stays available
-          // and reports the outage itself.
-        }
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [markSessionLost, updateRecord]);
-
-  // Re-establish a run restored from the index: reconnect to the still-live
-  // session on the runner and replay its history. No-op once a runtime exists
-  // (freshly started runs, or an already-attached one). Marks the record
-  // unavailable when the session is gone or its adapter can't resume.
-  const ensureAttached = useCallback(
-    async (runId: string) => {
-      if (runtimes.current.has(runId) || attaching.current.has(runId)) return;
-      const meta = attachMeta.current.get(runId);
-      if (!meta) return;
-      const adapter = registry.get(meta.adapterId);
-      if (!adapter?.attach) {
-        updateRecord(runId, (record) => ({ ...record, historyUnavailable: true }));
-        return;
-      }
-      attaching.current.add(runId);
-      try {
-        const session = await adapter.attach(runId, meta.config);
-        if (!session) {
-          // The runner answered and does not have it. That is a fact about the
-          // run, not just about our ability to show its history — so the record
-          // goes terminal rather than staying pinned as live.
-          markSessionLost(runId);
-          return;
-        }
-        const terminal = session.io ? new TerminalBuffer(session.io) : null;
-        const runtime: RunRuntime = {
-          session,
-          terminal,
-          unsubscribe: () => undefined,
-          lineId: 0,
-          partial: { stdout: "", stderr: "" },
-        };
-        runtimes.current.set(runId, runtime);
-        if (terminal) setTerminal(runId, terminal);
-        runtime.unsubscribe = session.subscribe((event) => {
-          applyRunEvent(event, runId, runtime, updateRecord);
-        });
-        updateRecord(runId, (record) => ({
-          ...record,
-          status: session.getStatus(),
-          hasTerminal: terminal !== null,
-          historyUnavailable: false,
-        }));
-      } catch (err) {
-        console.warn("run attach failed:", err);
-        updateRecord(runId, (record) => ({ ...record, historyUnavailable: true }));
-      } finally {
-        attaching.current.delete(runId);
-      }
-    },
-    [updateRecord, setTerminal, markSessionLost],
-  );
-
-  const selectRun = useCallback(
-    (runId: string) => {
-      // A run identifies its own app, so selecting one from history never needs
-      // the caller to say which pane it belongs to.
-      let appPath: string | null = null;
-      for (const [path, records] of runsByApp) {
-        if (records.some((r) => r.id === runId)) {
-          appPath = path;
-          break;
-        }
-      }
-      if (!appPath) return;
-      setBlocker(appPath, null);
-      setSelectedRunForApp(appPath, runId);
-      setDockOpen(appPath, true);
-      void ensureAttached(runId);
-    },
-    [runsByApp, ensureAttached, setBlocker, setSelectedRunForApp, setDockOpen],
-  );
-
   const removeRun = useCallback(
-    (runId: string) => {
-      // Clearing the selection first means the dock falls back to the app's next
-      // run for a removed one that was on screen. The runsByApp change drives the
-      // rest: the eviction effect disposes any runtime + forgets its re-attach
-      // metadata, and the persist effect rewrites the index without it.
-      forgetSelection((id) => id === runId);
+    (recordId: string) => {
+      forgetSelection((id) => id === recordId);
       setRunsByApp((prev) => {
         let found = false;
         const next = new Map(prev);
         for (const [appPath, records] of prev) {
-          if (!records.some((r) => r.id === runId)) continue;
+          if (!records.some((r) => r.id === recordId)) continue;
           found = true;
           next.set(
             appPath,
-            records.filter((r) => r.id !== runId),
+            records.filter((r) => r.id !== recordId),
           );
         }
         return found ? next : prev;
@@ -688,178 +774,10 @@ export function RunProvider({ children }: { children: ReactNode }) {
     [forgetSelection],
   );
 
-  /**
-   * Stop a run, whether or not the editor still holds a live session for it.
-   *
-   * The record outlives its runtime — a page reload drops every session object,
-   * and a runner restart drops every session — so Stop acts on what the record
-   * always knows: an id and the adapter config the run was started with. Going
-   * through the runtime alone is what made Stop a silent no-op on exactly the
-   * runs that needed stopping.
-   *
-   * It also settles the record itself rather than waiting for a `status` event.
-   * That stream is precisely what a runner restart takes away, and the runner
-   * answers a stop for a session it does not have with a success it then has no
-   * way to report.
-   */
-  const stopRun = useCallback(
-    async (runId: string) => {
-      const rt = runtimes.current.get(runId);
-      if (rt && isTerminal(rt.session.getStatus())) return;
-      try {
-        if (rt) {
-          // The live session owns its stream teardown, so prefer it.
-          await rt.session.stop();
-        } else {
-          const meta = attachMeta.current.get(runId);
-          const adapter = meta ? registry.get(meta.adapterId) : undefined;
-          if (!meta || !adapter?.stopSession) {
-            throw new Error("This run's runner is no longer available to stop it.");
-          }
-          await adapter.stopSession(runId, meta.config);
-        }
-        settle(runId, { kind: "stopped" });
-      } catch (err) {
-        // Reported, never swallowed: a Stop that silently does nothing is what
-        // pinned the run in the first place. The record keeps its status —
-        // nothing was learned about the workload — so the toast carries the way
-        // out for a runner that is not coming back.
-        const message = err instanceof Error ? err.message : String(err);
-        toast.error("Couldn't stop the run", {
-          description: message,
-          action: { label: "Forget run", onClick: () => removeRun(runId) },
-          duration: 10_000,
-        });
-      }
-    },
-    [settle, removeRun],
-  );
-
-  /**
-   * The app's live WATCH session, or null. This is what makes a save cheap: the
-   * editor pushes the changed file into a running workspace instead of starting
-   * a new session, and the kernel's own watcher reloads on it.
-   *
-   * A `suspended` session counts as live — it is not terminal, it is a pod that
-   * was reaped for idleness and resumes under the same id.
-   */
-  // The runtime side table is the authority on watch-ness: a record restored
-  // from the persisted index carries no session until it is re-attached.
-  const isLiveWatch = useCallback(
-    (record: RunRecord): boolean =>
-      LIVE_WATCH_STATUSES.has(record.status.kind) &&
-      runtimes.current.get(record.id)?.session.isWatch === true,
-    [],
-  );
-
-  const watchRunForApp = useCallback(
-    (appPath: string): RunRecord | null =>
-      (runsByApp.get(appPath) ?? []).find(isLiveWatch) ?? null,
-    [runsByApp, isLiveWatch],
-  );
-
-  /** Every app with a live watch session. The editor's save path walks this
-   *  rather than its own bookkeeping, so a session re-attached after a page
-   *  reload still receives edits — the alternative is a tab refresh silently
-   *  disconnecting saves from a workspace that is still running. */
-  const watchRuns = useCallback((): RunRecord[] => {
-    const found: RunRecord[] = [];
-    for (const records of runsByApp.values()) {
-      const run = records.find(isLiveWatch);
-      if (run) found.push(run);
-    }
-    return found;
-  }, [runsByApp, isLiveWatch]);
-
-  /**
-   * The co-resident agent of a live watch session, or null.
-   *
-   * Only a `running` session has one to report: the endpoint is announced with
-   * that status, and a suspended session — which stays live for editing — has
-   * no pod behind it, so its agent is not answering. Returning it anyway would
-   * hand the panel a URL that connects to nothing.
-   *
-   * First match wins when several apps run watch sessions. The alternative is
-   * asking the user which agent they meant, and there is nothing to choose
-   * between: at most one agent runs per session, they share no conversation,
-   * and each writes only its own session's volume.
-   */
-  const coResidentAgent = useCallback((): CoResidentAgentSession | null => {
-    for (const records of runsByApp.values()) {
-      const record = records.find(isLiveWatch);
-      if (!record || record.status.kind !== "running" || !record.status.agent) continue;
-      const session = runtimes.current.get(record.id)?.session;
-      if (!session) continue;
-      return {
-        runId: record.id,
-        baseUrl: endpointUrl(record.status.agent),
-        token: record.status.agent.token,
-        session,
-      };
-    }
-    return null;
-  }, [runsByApp, isLiveWatch]);
-
-  /** Push an edit into a live watch session. Silent no-op when the run is not a
-   *  watch session — the editor calls this on every save, and a plain run must
-   *  not be disturbed by one. */
-  const syncWorkspace = useCallback(
-    async (runId: string, changes: WorkspaceChangeSet): Promise<void> => {
-      const runtime = runtimes.current.get(runId);
-      const session = runtime?.session;
-      if (!session?.syncWorkspace) return;
-      // A session reaped for idleness has no workspace to write to — the route
-      // answers 409. The user's first save after a reap must resume it, not
-      // hand them an error for something they did not do.
-      if (session.getStatus().kind === "suspended" && session.resume) {
-        const resumed = await session.resume();
-        if (!resumed) throw new SessionGoneError();
-      }
-      await session.syncWorkspace(changes);
-    },
-    [],
-  );
-
-  const reloadRun = useCallback(async (runId: string): Promise<void> => {
-    const session = runtimes.current.get(runId)?.session;
-    if (!session?.reload) return;
-    await session.reload();
-  }, []);
-
-  /** Resume a suspended session. Returns false when the runner no longer holds
-   *  the checkpoint — the caller starts a fresh session and re-seeds from the
-   *  editor's own copy, which is the authoritative one. */
-  const resumeRun = useCallback(async (runId: string): Promise<boolean> => {
-    const session = runtimes.current.get(runId)?.session;
-    if (!session?.resume) return false;
-    return session.resume();
-  }, []);
-
-  // Geometry follows content, reconciled in ONE place.
-  //
-  // A dock can be emptied from several directions — the history cleared, the
-  // last record removed, a blocker dismissed — and a branch in each mutator is
-  // three chances to miss one. What must not survive is a MAXIMIZED dock with
-  // nothing in it: the dock stops rendering and the view area hidden behind it
-  // has nothing left to bring it back. `dockFillsPane` makes that state
-  // unrenderable; this stops the geometry outliving its content at all.
-  useEffect(() => {
-    for (const [appPath, dock] of dockByApp) {
-      if (!dock.open && !dock.maximized) continue;
-      const hasContent =
-        startingApps.has(appPath) ||
-        blockerByApp.has(appPath) ||
-        (runsByApp.get(appPath) ?? []).length > 0;
-      if (!hasContent) restDock(appPath);
-    }
-  }, [dockByApp, runsByApp, blockerByApp, startingApps, restDock]);
-
   const clearRunsForApp = useCallback(
     (appPath: string) => {
       const records = runsByApp.get(appPath) ?? [];
-      // Only the finished runs are "history"; keep any live run so the eviction
-      // effect doesn't tear down (and orphan) a still-running workload.
-      const clearedIds = new Set(records.filter((r) => isTerminal(r.status)).map((r) => r.id));
+      const clearedIds = new Set(records.filter((r) => !isRunLive(r.status)).map((r) => r.id));
       if (clearedIds.size === 0) return;
       forgetSelection((id) => clearedIds.has(id));
       setRunsByApp((prev) => {
@@ -875,129 +793,42 @@ export function RunProvider({ children }: { children: ReactNode }) {
     [runsByApp, forgetSelection],
   );
 
-  const startRun = useCallback(
-    async ({
-      appPath,
-      adapter,
-      config,
-      request,
-    }: {
-      appPath: string;
-      adapter: RunAdapter<unknown>;
-      config: unknown;
-      request: RunRequest;
-    }) => {
-      setBlocker(appPath, null);
-      setDockOpen(appPath, true);
-      markStarting(appPath, true);
-
-      let session: RunSession;
-      try {
-        session = await adapter.start(request, config);
-      } catch (err) {
-        // The dock opened eagerly so the click feels responsive; if start
-        // rejects, close it again and let the caller surface the error.
-        markStarting(appPath, false);
-        setDockOpen(appPath, false);
-        throw err;
-      }
-
-      const terminal = session.io ? new TerminalBuffer(session.io) : null;
-      const record: RunRecord = {
-        id: session.id,
-        appPath,
-        adapterId: adapter.id,
-        adapterDisplayName: adapter.displayName,
-        status: session.getStatus(),
-        startedAt: Date.now(),
-        hasTerminal: terminal !== null,
-        progress: null,
-        lines: [],
-        truncated: false,
-        debugFrames: [],
-        debugFrameSeq: 0,
-        portReachability: new Map(),
-        portRoutes: new Map(),
-        runs: {},
-        ...(request.telo !== undefined ? { requestedTelo: request.telo } : {}),
-        reportedTelo: {},
-        unroutablePorts: new Map(),
-      };
-
-      const runtime: RunRuntime = {
-        session,
-        terminal,
-        unsubscribe: () => undefined,
-        lineId: 0,
-        partial: { stdout: "", stderr: "" },
-      };
-      runtimes.current.set(record.id, runtime);
-      if (terminal) setTerminal(record.id, terminal);
-      attachMeta.current.set(record.id, { adapterId: adapter.id, config });
-      runtime.unsubscribe = session.subscribe((event) => {
-        applyRunEvent(event, record.id, runtime, updateRecord);
-      });
-
-      setRunsByApp((prev) => {
-        const next = new Map(prev);
-        const combined = [record, ...(prev.get(appPath) ?? [])];
-        next.set(appPath, combined.slice(0, MAX_RUNS_PER_APP));
-        return next;
-      });
-      setSelectedRunForApp(appPath, record.id);
-      markStarting(appPath, false);
+  const selectRun = useCallback(
+    (recordId: string) => {
+      const record = findRecord(recordId);
+      if (!record) return;
+      setBlocker(record.appPath, null);
+      setSelectedRunForApp(record.appPath, recordId);
+      setDockOpen(record.appPath, true);
     },
-    [updateRecord, setTerminal, setBlocker, setDockOpen, markStarting, setSelectedRunForApp],
+    [setBlocker, setSelectedRunForApp, setDockOpen],
   );
 
-  const runsForApp = useCallback(
-    (appPath: string) => runsByApp.get(appPath) ?? [],
-    [runsByApp],
-  );
+  const runsForApp = useCallback((appPath: string) => runsByApp.get(appPath) ?? [], [runsByApp]);
   const liveRunForApp = useCallback(
-    (appPath: string) =>
-      (runsByApp.get(appPath) ?? []).find(
-        (r) => r.status.kind === "starting" || r.status.kind === "running",
-      ) ?? null,
+    (appPath: string) => (runsByApp.get(appPath) ?? []).find((r) => isRunLive(r.status)) ?? null,
     [runsByApp],
   );
-  const latestRunForApp = useCallback(
-    (appPath: string) => (runsByApp.get(appPath) ?? [])[0] ?? null,
-    [runsByApp],
-  );
-  // Falling back to live-then-latest is what lets the dock open on the run the
-  // user means without every entry point having to select one explicitly.
+  const latestRunForApp = useCallback((appPath: string) => (runsByApp.get(appPath) ?? [])[0] ?? null, [runsByApp]);
   const selectedRunForApp = useCallback(
     (appPath: string): RunRecord | null => {
       const records = runsByApp.get(appPath) ?? [];
       const selectedId = selectedRunIdByApp.get(appPath);
       const selected = selectedId ? records.find((r) => r.id === selectedId) : undefined;
       if (selected) return selected;
-      return (
-        records.find((r) => r.status.kind === "starting" || r.status.kind === "running") ??
-        records[0] ??
-        null
-      );
+      return records.find((r) => isRunLive(r.status)) ?? records[0] ?? null;
     },
     [runsByApp, selectedRunIdByApp],
   );
   const isStartingApp = useCallback(
-    (appPath: string) => startingApps.has(appPath),
-    [startingApps],
+    (appPath: string) => (runsByApp.get(appPath) ?? []).some((r) => r.status.kind === "starting"),
+    [runsByApp],
   );
-  const getTerminal = useCallback(
-    (runId: string) => terminals.get(runId) ?? null,
-    [terminals],
-  );
+  const getTerminal = useCallback((recordId: string) => terminals.get(recordId) ?? null, [terminals]);
 
-  // Declared after the readers it composes, because that is all it is: the one
-  // answer to "is there anything to show" and "does the dock cover the pane".
   const dockHasContent = useCallback(
-    (appPath: string) =>
-      startingApps.has(appPath) ||
-      blockerByApp.has(appPath) ||
-      selectedRunForApp(appPath) !== null,
-    [startingApps, blockerByApp, selectedRunForApp],
+    (appPath: string) => blockerByApp.has(appPath) || selectedRunForApp(appPath) !== null,
+    [blockerByApp, selectedRunForApp],
   );
   const dockFillsPane = useCallback(
     (appPath: string) => {
@@ -1007,26 +838,32 @@ export function RunProvider({ children }: { children: ReactNode }) {
     [dockForApp, dockHasContent],
   );
 
+  // Geometry follows content, reconciled in ONE place: a maximized dock with
+  // nothing in it would hide the view area with nothing left to bring it back.
+  useEffect(() => {
+    for (const [appPath, dock] of dockByApp) {
+      if (!dock.open && !dock.maximized) continue;
+      const hasContent = blockerByApp.has(appPath) || (runsByApp.get(appPath) ?? []).length > 0;
+      if (!hasContent) restDock(appPath);
+    }
+  }, [dockByApp, runsByApp, blockerByApp, restDock]);
+
   const forgetApp = useCallback(
     (appPath: string) => {
-      // The application is gone, so nothing of it may keep running: a live
-      // session left behind is a workload nobody can reach from the editor, and
-      // every later save would try to sync a module that no longer exists.
-      // Dropping the records stops the sessions this tab holds (the teardown of
-      // a run that leaves state); one restored from history and never
-      // re-attached has no session object, so it is stopped by id here.
-      for (const record of runsByApp.get(appPath) ?? []) {
-        if (isTerminal(record.status) || runtimes.current.has(record.id)) continue;
-        const meta = attachMeta.current.get(record.id);
-        const adapter = meta ? registry.get(meta.adapterId) : undefined;
-        if (!meta || !adapter?.stopSession) continue;
-        void adapter.stopSession(record.id, meta.config).catch((err: unknown) => {
-          toast.error("Couldn't stop a run of the deleted application", {
-            description: `${appPath}: ${err instanceof Error ? err.message : String(err)}`,
-            duration: 10_000,
-          });
-        });
+      // The application is gone, so nothing of it may keep running.
+      const live = (runsRef.current.get(appPath) ?? []).find((r) => isRunLive(r.status));
+      const controller = controllerRef.current;
+      if (live && controller) {
+        if (!controller.withdraw(live.app)) {
+          void controller.stop(live.app).catch((err: unknown) =>
+            toast.error("Couldn't stop a run of the deleted application", {
+              description: `${appPath}: ${message(err)}`,
+              duration: 10_000,
+            }),
+          );
+        }
       }
+      for (const record of runsRef.current.get(appPath) ?? []) disposeTerminal(record.id);
       setRunsByApp((prev) => {
         if (!prev.has(appPath)) return prev;
         const next = new Map(prev);
@@ -1047,19 +884,48 @@ export function RunProvider({ children }: { children: ReactNode }) {
         return next;
       });
     },
-    [setBlocker, runsByApp],
+    [disposeTerminal, setBlocker],
   );
+
+  const sessionAgent = useMemo((): SessionAgentState => {
+    const controller = controllerRef.current;
+    if (!session || !controller) return { kind: "none", reason: NO_SESSION_REASON };
+    if (session.phase === "failed") return { kind: "none", reason: `The workspace's session is unavailable: ${session.problem ?? "unknown reason"}` };
+    if (session.agentOffered === false) {
+      return { kind: "none", reason: "This runner offers no agent to run beside a workspace." };
+    }
+    if (bindingRef.current?.mode !== "agent") return { kind: "none", reason: NO_SESSION_REASON };
+    if (session.agentUnavailable) return { kind: "none", reason: session.agentUnavailable };
+    const agent = session.agent;
+    const workspace = controller.workspace;
+    if (!agent || !workspace || !session.sessionId) return { kind: "starting" };
+    return {
+      kind: "ready",
+      agent: {
+        sessionId: session.sessionId,
+        baseUrl: agent.url ?? `http://${agent.host}:${agent.port}`,
+        ...(agent.token ? { token: agent.token } : {}),
+        workspace,
+      },
+    };
+  }, [session]);
 
   const value = useMemo<RunContextValue>(
     () => ({
-      startRun,
-      stopRun,
-      watchRunForApp,
-      watchRuns,
-      coResidentAgent,
+      bindWorkspace,
+      session,
+      acceptSessionTerms,
+      retrySession,
+      setDesiredApps,
+      setTurnActive,
       syncWorkspace,
+      syncing,
+      sessionAgent,
+      appNameOf,
+      runIo,
+      runApp,
+      stopRun,
       reloadRun,
-      resumeRun,
       removeRun,
       clearRunsForApp,
       selectRun,
@@ -1081,14 +947,20 @@ export function RunProvider({ children }: { children: ReactNode }) {
       getTerminal,
     }),
     [
-      startRun,
-      stopRun,
-      watchRunForApp,
-      watchRuns,
-      coResidentAgent,
+      bindWorkspace,
+      session,
+      acceptSessionTerms,
+      retrySession,
+      setDesiredApps,
+      setTurnActive,
       syncWorkspace,
+      syncing,
+      sessionAgent,
+      appNameOf,
+      runIo,
+      runApp,
+      stopRun,
       reloadRun,
-      resumeRun,
       removeRun,
       clearRunsForApp,
       selectRun,
@@ -1114,44 +986,17 @@ export function RunProvider({ children }: { children: ReactNode }) {
   return <RunContextValue.Provider value={value}>{children}</RunContextValue.Provider>;
 }
 
-/** Statuses under which a watch session is still there to receive edits.
- *  `suspended` counts: it is not terminal — the pod was reaped for idleness and
- *  the session resumes under the same id. */
-const LIVE_WATCH_STATUSES = new Set<RunStatus["kind"]>(["running", "starting", "suspended"]);
-
-/** A runner endpoint as a dialable URL. The runner sets `url` where it fronts the
- *  endpoint with a proxy or ingress, and the adapter composes one from the base
- *  URL it reached the runner on where it did not — so the scheme is never
- *  guessed here. The fallback covers an adapter that supplies neither. */
-function endpointUrl(endpoint: RunnerEndpoint): string {
-  return endpoint.url ?? `http://${endpoint.host}:${endpoint.port}`;
+interface AppIndex {
+  byPath: Map<string, string>;
+  byName: Map<string, string>;
+  telo: Map<string, string>;
+  ports: Map<string, Set<string>>;
 }
 
-/** Build an empty display record from a persisted index entry. Bodies (lines,
- *  debug frames, terminal scrollback) stay empty until the run is selected and
- *  re-attached, which replays them from the runner. */
-function shellFromEntry(entry: PersistedRunEntry): RunRecord {
-  return {
-    id: entry.id,
-    appPath: entry.appPath,
-    adapterId: entry.adapterId,
-    adapterDisplayName: entry.adapterDisplayName,
-    status: entry.status,
-    startedAt: entry.startedAt,
-    hasTerminal: entry.hasTerminal,
-    progress: null,
-    lines: [],
-    truncated: false,
-    debugFrames: [],
-    debugFrameSeq: 0,
-    portReachability: new Map(),
-    portRoutes: new Map(),
-    runs: {},
-    ...(entry.requestedTelo !== undefined ? { requestedTelo: entry.requestedTelo } : {}),
-    reportedTelo: {},
-    unroutablePorts: new Map(),
-  };
-}
+const EMPTY_APPS: AppIndex = { byPath: new Map(), byName: new Map(), telo: new Map(), ports: new Map() };
+
+const NO_SESSION_REASON =
+  "No agent serves this workspace — open it in Agent mode from the workspace menu, or set an agent URL in settings.";
 
 function reportedAfter(
   reported: Record<string, string>,
@@ -1162,122 +1007,7 @@ function reportedAfter(
   return telo === undefined ? rest : { ...rest, [app]: telo };
 }
 
-function applyRunEvent(
-  event: RunEvent,
-  runId: string,
-  runtime: RunRuntime,
-  updateRecord: (runId: string, mut: (record: RunRecord) => RunRecord) => void,
-): void {
-  if (event.type === "status") {
-    // Reaching running/terminal ends the coming-up phase — drop the spinner feed.
-    const clearProgress = event.status.kind !== "starting";
-    updateRecord(runId, (record) => ({
-      ...record,
-      status: event.status,
-      progress: clearProgress ? null : record.progress,
-    }));
-    return;
-  }
-
-  if (event.type === "progress") {
-    updateRecord(runId, (record) =>
-      // A progress frame arriving after the workload is up is stale — ignore it.
-      record.status.kind === "starting"
-        ? { ...record, progress: { phase: event.phase, message: event.message } }
-        : record,
-    );
-    return;
-  }
-
-  if (event.type === "debug") {
-    // The editor shows logs through the run's terminal / LogStream slot, so only
-    // relayed *event* frames feed the Events tab; log and record frames are dropped.
-    if (!isEventFrame(event.frame)) return;
-    updateRecord(runId, (record) => appendDebugFrames(record, [event.frame]));
-    return;
-  }
-
-  if (event.type === "reachability") {
-    updateRecord(runId, (record) => ({
-      ...record,
-      portReachability: new Map(record.portReachability).set(event.port, event.state),
-    }));
-    return;
-  }
-
-  if (event.type === "route") {
-    // Kept apart from reachability on purpose: an unprogrammed route is the one
-    // failure where the port answers the runner and the URL the user was handed
-    // does not, so folding the two would restore exactly that silence.
-    updateRecord(runId, (record) => ({
-      ...record,
-      portRoutes: new Map(record.portRoutes).set(event.port, {
-        state: event.state,
-        host: event.host,
-        // Retained rather than dropped: a route belongs to one app, and the
-        // banner should be able to say which. (The view is not scoped by app
-        // yet — `unroutablePorts` beside it has the same shape today, so doing
-        // one and not the other would leave the dock inconsistent.)
-        ...(event.app ? { app: event.app } : {}),
-        ...(event.reason ? { reason: event.reason } : {}),
-      }),
-    }));
-    return;
-  }
-
-  if (event.type === "run") {
-    // A run outcome is per APP per generation, and is deliberately not a session
-    // status: a one-shot app completing leaves the session up, so the chip must
-    // not go terminal on it.
-    updateRecord(runId, (record) => ({
-      ...record,
-      runs: { ...record.runs, [event.app]: event },
-      // Each start speaks for itself: one that reports no version leaves the
-      // app with none, rather than the previous generation's.
-      ...(event.phase === "started"
-        ? { reportedTelo: reportedAfter(record.reportedTelo, event.app, event.telo) }
-        : {}),
-    }));
-    return;
-  }
-
-  if (event.type === "endpoints") {
-    // A port the runner could not route is the exact outcome this event exists
-    // to prevent being silent — an app that binds a port and is unreachable.
-    // Keep it on the record so the view can say so, with the runner's reason.
-    const rejected = event.rejected ?? [];
-    // A reload re-read the app's declared ports and the runner re-patched its
-    // routing. Merge rather than replace: `added`/`removed` describe a delta.
-    updateRecord(runId, (record) => {
-      const removed = new Set((event.removed ?? []).map((e) => `${e.protocol}/${e.port}`));
-      const current = (record.status.kind === "running" ? record.status.endpoints : undefined) ?? [];
-      const kept = current.filter((e) => !removed.has(`${e.protocol}/${e.port}`));
-      const endpoints = [...kept, ...(event.added ?? [])];
-      const unroutable = new Map(record.unroutablePorts);
-      for (const entry of rejected) unroutable.set(entry.port, entry.reason);
-      for (const entry of event.added ?? []) unroutable.delete(entry.port);
-      // A dropped port takes its route verdict with it. Without this an
-      // `unprogrammed` entry outlives the port and the dock keeps warning about
-      // a host the session no longer serves.
-      const routes = new Map(record.portRoutes);
-      for (const entry of event.removed ?? []) routes.delete(entry.port);
-      return record.status.kind === "running"
-        ? {
-            ...record,
-            status: { ...record.status, endpoints },
-            unroutablePorts: unroutable,
-            portRoutes: routes,
-          }
-        : { ...record, unroutablePorts: unroutable, portRoutes: routes };
-    });
-    return;
-  }
-
-}
-
-/** Append debug frames to a record, ring-capped at {@link MAX_DEBUG_FRAMES}.
- *  `debugFrameSeq` counts every frame ever appended (even evicted ones) so the
- *  view's cleared/paused boundary stays correct after eviction. */
+/** Append debug frames to a record, ring-capped at {@link MAX_DEBUG_FRAMES}. */
 function appendDebugFrames(record: RunRecord, frames: DebugFrame[]): RunRecord {
   const combined = [...record.debugFrames, ...frames];
   const overflow = combined.length - MAX_DEBUG_FRAMES;

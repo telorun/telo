@@ -25,13 +25,14 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: stub-key
+    needs:
+      agentState: { path: !cel "variables.libraryScratch.joinPath('state')" }
     variables:
       workspaceDir: !cel "variables.libraryScratch.joinPath('workspace')"
-      stateDir: !cel "variables.libraryScratch.joinPath('state')"
       modelEndpoint: http://127.0.0.1:18526/v1
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
@@ -240,7 +241,7 @@ inputType:
 with:
   - kind: SQLite.Connection
     metadata: { name: agentDb }
-    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+    file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
   - kind: Sql.Query
     metadata: { name: agentQuery }
     connection: !ref agentDb
@@ -405,8 +406,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18527 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18526/v1
           secrets:
             openaiApiKey: stub-key

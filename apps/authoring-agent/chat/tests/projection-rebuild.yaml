@@ -18,9 +18,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: stub-key
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
-      stateDir: !cel "variables.scratch.joinPath('state')"
       modelEndpoint: http://127.0.0.1:18460/v1
   App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
   Fs: ../../../../modules/fs

@@ -7,6 +7,7 @@ import {
 import { VALUE_TYPES, type ResourceManifest } from "@telorun/sdk";
 import { celNamespaceNames } from "@telorun/templating";
 import { isKindDocument } from "./kind-declaration.js";
+import { isModuleKind } from "./module-kinds.js";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
 import { inferredStepsCelSchema, registerTypedSteps } from "./step-result-inference.js";
@@ -132,9 +133,10 @@ export function moduleNamesEnvironment(
 /** Clone `baseEnv` and register typed variable declarations so that
  *  `env.check(expr)` can infer return types for expressions referencing known variables.
  *
- *  - `variables`: typed from the manifest's `variables` field if it is a schema map
- *    (only module-identity docs — `Telo.Application` / `Telo.Library` — carry this); otherwise registered as `map` (dyn).
- *  - `secrets`, `resources`: always `map` (dyn — output schemas unknown).
+ *  - `variables` / `secrets`: typed from the declaring module's block — the
+ *    manifest's own when it is a module doc, else its `moduleGlobals` stamp, else
+ *    `rootModuleManifest`'s; `map` (dyn) when none declares one.
+ *  - `resources`: always `map` (dyn — output schemas unknown).
  *  - `extraContextSchema`: additional variables from an `x-telo-context` annotation.
  *
  *  NOTE: The set of kernel globals registered here must match `KERNEL_GLOBAL_NAMES`
@@ -176,9 +178,15 @@ export function buildTypedCelEnvironment(
     const root = (
       isKindDocument(manifest) ? undefined : (rootModuleManifest as Record<string, unknown>)
     ) as Record<string, unknown> | undefined;
+    // Only a module doc DECLARES its blocks. On any other doc a `variables:` /
+    // `secrets:` field is values supplied to something else — an import's
+    // inputs, a child application's — never the scope its own CEL reads.
+    const declaring = isModuleKind(manifest.kind)
+      ? (manifest as Record<string, unknown>)
+      : undefined;
     registerConfigNamespace(
       env,
-      (manifest as Record<string, unknown>).variables ?? moduleGlobals?.variables ?? root?.variables,
+      declaring?.variables ?? moduleGlobals?.variables ?? root?.variables,
       "variables",
     );
 
@@ -205,7 +213,7 @@ export function buildTypedCelEnvironment(
 
     registerConfigNamespace(
       env,
-      (manifest as Record<string, unknown>).secrets ?? moduleGlobals?.secrets ?? root?.secrets,
+      declaring?.secrets ?? moduleGlobals?.secrets ?? root?.secrets,
       "secrets",
     );
     env.registerVariable("resources", "map");

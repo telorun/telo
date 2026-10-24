@@ -10,15 +10,17 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::sync::watch;
 use url::Url;
 
-use crate::cloud_authorization::{AuthorizationRequest, CLIENT_ID};
+use crate::cloud_authorization::{AuthorizationRequest, CLIENT_ID, SCOPE};
 use crate::cloud_error::CloudError;
 use crate::cloud_token_store::{lock_refresh, TokenStore};
+use crate::runner_identity::RunnerIdentityState;
 
 const DEFAULT_API_URL: &str = "https://console.telo.cloud/api";
 const DEFAULT_ACCOUNTS_URL: &str = "https://accounts.telo.run";
@@ -140,12 +142,25 @@ struct TokenRefusal {
     error: String,
 }
 
-enum TokenFailure {
+pub(crate) enum TokenFailure {
     /// No usable answer: a network failure, a 5xx, a body that is not a token
     /// response.
     Unreachable(String),
-    /// The identity provider answered with an OAuth error code.
-    Refused(String),
+    /// The identity provider answered with an OAuth error code, and with the
+    /// `DPoP-Nonce` it hands out (RFC 9449 §8), if any.
+    Refused { error: String, nonce: Option<String> },
+}
+
+/// What a token request with a page's DPoP proof is answered: the access token
+/// (bound to the page's key), and the refresh token when one is issued.
+#[derive(Deserialize)]
+pub(crate) struct BoundTokenResponse {
+    pub access_token: String,
+    #[serde(default)]
+    pub token_type: Option<String>,
+    pub expires_in: u64,
+    #[serde(default)]
+    pub refresh_token: Option<String>,
 }
 
 struct AccessToken {
@@ -243,17 +258,17 @@ impl Cloud {
             ("client_id", CLIENT_ID),
             ("resource", self.settings.api_base_text.as_str()),
         ];
-        match self.token_request(&form).await {
+        match self.token_request::<TokenResponse>(&form, None).await {
             Ok(tokens) => {
                 self.store.save(&tokens.refresh_token).await?;
                 Ok(Some(self.hold_access(tokens)))
             }
-            Err(TokenFailure::Refused(error)) if error == "invalid_grant" => {
+            Err(TokenFailure::Refused { error, .. }) if error == "invalid_grant" => {
                 self.store.delete().await?;
                 *self.access.lock().unwrap() = None;
                 Ok(None)
             }
-            Err(TokenFailure::Refused(error)) => Err(CloudError::authorization_failed(format!(
+            Err(TokenFailure::Refused { error, .. }) => Err(CloudError::authorization_failed(format!(
                 "The identity provider refused to renew the sign-in: {error}"
             ))),
             Err(TokenFailure::Unreachable(reason)) => {
@@ -279,13 +294,29 @@ impl Cloud {
         tokens.access_token
     }
 
-    async fn token_request(&self, form: &[(&str, &str)]) -> Result<TokenResponse, TokenFailure> {
-        let response = self
+    /// The identity provider's token endpoint: what a DPoP proof for a token
+    /// request names as its `htu`.
+    pub fn token_endpoint(&self) -> String {
+        format!("{}/oauth2/token", self.settings.accounts_url)
+    }
+
+    /// One token request. `dpop` is a proof the page signed for it, sent as
+    /// the `DPoP` header so the token is bound to the page's key.
+    pub(crate) async fn token_request<T: DeserializeOwned + HasLifetime>(
+        &self,
+        form: &[(&str, &str)],
+        dpop: Option<&str>,
+    ) -> Result<T, TokenFailure> {
+        let mut request = self
             .http
-            .post(format!("{}/oauth2/token", self.settings.accounts_url))
+            .post(self.token_endpoint())
             .header(reqwest::header::ACCEPT, "application/json")
             .form(form)
-            .timeout(IDENTITY_TIMEOUT)
+            .timeout(IDENTITY_TIMEOUT);
+        if let Some(proof) = dpop {
+            request = request.header("DPoP", proof);
+        }
+        let response = request
             .send()
             .await
             .map_err(|error| TokenFailure::Unreachable(transport_reason(&error)))?;
@@ -293,6 +324,11 @@ impl Cloud {
         if status.is_server_error() {
             return Err(TokenFailure::Unreachable(format!("the token endpoint answered {status}")));
         }
+        let nonce = response
+            .headers()
+            .get("dpop-nonce")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_string);
         let body = response
             .bytes()
             .await
@@ -300,19 +336,25 @@ impl Cloud {
         if !status.is_success() {
             // The body is never echoed: only the OAuth error code is read.
             return match serde_json::from_slice::<TokenRefusal>(&body) {
-                Ok(refusal) => Err(TokenFailure::Refused(refusal.error)),
+                Ok(refusal) => Err(TokenFailure::Refused { error: refusal.error, nonce }),
                 Err(_) => {
                     Err(TokenFailure::Unreachable(format!("the token endpoint answered {status}")))
                 }
             };
         }
-        let tokens: TokenResponse = serde_json::from_slice(&body).map_err(|_| {
+        let tokens: T = serde_json::from_slice(&body).map_err(|_| {
             TokenFailure::Unreachable("the token response is malformed".to_string())
         })?;
-        if tokens.expires_in == 0 {
+        if tokens.expires_in() == 0 {
             return Err(TokenFailure::Unreachable("the token response is malformed".to_string()));
         }
         Ok(tokens)
+    }
+
+    /// Whether Studio holds a sign-in. Only read: a runner's token never
+    /// comes from the sign-in's grant.
+    pub(crate) async fn signed_in(&self) -> Result<bool, CloudError> {
+        Ok(self.store.load().await?.is_some())
     }
 
     /// RFC 7009. The identity provider answers 200 for any token.
@@ -345,9 +387,13 @@ impl Cloud {
                 open_browser(app, &in_flight.url)?;
                 in_flight.done.clone()
             } else {
-                let request =
-                    AuthorizationRequest::bind(&self.settings.accounts_url, &self.settings.api_base_text)
-                        .await?;
+                let request = AuthorizationRequest::bind(
+                    &self.settings.accounts_url,
+                    &self.settings.api_base_text,
+                    SCOPE,
+                    None,
+                )
+                .await?;
                 let (settle, done) = watch::channel(None);
                 *slot = Some(InFlight { url: request.url.clone(), done: done.clone() });
                 let cloud = self.clone();
@@ -386,8 +432,8 @@ impl Cloud {
             ("client_id", CLIENT_ID),
             ("resource", self.settings.api_base_text.as_str()),
         ];
-        let tokens = self.token_request(&form).await.map_err(|failure| match failure {
-            TokenFailure::Refused(error) => CloudError::authorization_failed(format!(
+        let tokens = self.token_request::<TokenResponse>(&form, None).await.map_err(|failure| match failure {
+            TokenFailure::Refused { error, .. } => CloudError::authorization_failed(format!(
                 "The identity provider refused the authorization code: {error}"
             )),
             TokenFailure::Unreachable(reason) => CloudError::identity_provider_unreachable(format!(
@@ -501,6 +547,23 @@ impl Cloud {
     }
 }
 
+/// A token response's lifetime, which must not be zero.
+pub(crate) trait HasLifetime {
+    fn expires_in(&self) -> u64;
+}
+
+impl HasLifetime for TokenResponse {
+    fn expires_in(&self) -> u64 {
+        self.expires_in
+    }
+}
+
+impl HasLifetime for BoundTokenResponse {
+    fn expires_in(&self) -> u64 {
+        self.expires_in
+    }
+}
+
 /// reqwest's own text names the URL; a URL here never carries a secret, but
 /// the cause chain is what explains a failure.
 pub fn transport_reason(error: &reqwest::Error) -> String {
@@ -513,7 +576,7 @@ pub fn transport_reason(error: &reqwest::Error) -> String {
     reason
 }
 
-fn open_browser(app: &AppHandle, url: &str) -> Result<(), CloudError> {
+pub(crate) fn open_browser(app: &AppHandle, url: &str) -> Result<(), CloudError> {
     app.opener().open_url(url, None::<&str>).map_err(|error| {
         CloudError::authorization_failed(format!(
             "The system browser could not be opened for the sign-in: {error}"
@@ -537,13 +600,17 @@ pub async fn cloud_session(
     state.cloud()?.session(&app).await
 }
 
+/// A new sign-in may be another user: no runner's grant outlives the one
+/// before.
 #[tauri::command]
 pub async fn cloud_sign_in(
     app: AppHandle,
     state: State<'_, CloudState>,
+    runners: State<'_, RunnerIdentityState>,
 ) -> Result<CloudSession, CloudError> {
     let cloud = state.cloud()?;
     cloud.authorize(&app).await?;
+    runners.forget_all().await?;
     cloud.session(&app).await
 }
 
@@ -553,15 +620,22 @@ pub async fn cloud_sign_in(
 pub async fn cloud_switch_organization(
     app: AppHandle,
     state: State<'_, CloudState>,
+    runners: State<'_, RunnerIdentityState>,
 ) -> Result<CloudSession, CloudError> {
     let cloud = state.cloud()?;
     cloud.authorize(&app).await?;
+    runners.forget_all().await?;
     cloud.session(&app).await
 }
 
 #[tauri::command]
-pub async fn cloud_sign_out(app: AppHandle, state: State<'_, CloudState>) -> Result<(), CloudError> {
-    state.cloud()?.sign_out(&app).await
+pub async fn cloud_sign_out(
+    app: AppHandle,
+    state: State<'_, CloudState>,
+    runners: State<'_, RunnerIdentityState>,
+) -> Result<(), CloudError> {
+    state.cloud()?.sign_out(&app).await?;
+    runners.forget_all().await
 }
 
 #[cfg(test)]

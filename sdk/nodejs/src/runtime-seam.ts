@@ -70,8 +70,9 @@ export interface RuntimeRunOptions {
    * host-env guardrail exists to close. A supplied name that the child does not
    * declare is refused; a declared name not supplied falls back to the
    * environment and then to its default, exactly as it does for a root
-   * application. Values are validated against the child's own declarations, so
-   * the child remains the authority on what it accepts.
+   * application. A need supplied here is answered before the environment and
+   * the host values. Values are validated against the child's own declarations,
+   * so the child remains the authority on what it accepts.
    */
   inputs?: RuntimeRunInputs;
 }
@@ -81,6 +82,13 @@ export interface RuntimeRunInputs {
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   ports?: Record<string, number>;
+  /**
+   * Fulfilments of the child's own root `needs:`, keyed by need name, each the
+   * fields of the need's type. A need supplied here is not read from the child's
+   * environment nor derived from host values; its fields are validated against
+   * the child's need type, so a forwarded fulfilment crosses as its fields.
+   */
+  needs?: Record<string, Record<string, unknown>>;
 }
 
 /**

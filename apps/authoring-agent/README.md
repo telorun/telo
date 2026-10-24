@@ -42,10 +42,11 @@ else writes it, so the editor keeps its own files in step through the agent's
 the agent wrote after one. The agent can check manifests but cannot observe an
 application running, because there is none.
 
-**Co-resident in a watch session** — the runner mounts the session's shared
-workspace volume and points `WORKSPACE_DIR` at it. That directory is also where
-each application container runs `telo run --watch`, so a file the agent writes
-reloads the app: **the agent can change a manifest and see the consequence.**
+**Co-resident in a runner session** — the runner mounts the session's
+workspace and points `WORKSPACE_DIR` at it. That directory is also where each
+application's container runs `telo run --watch` once the user presses Run, so a
+file the agent writes reloads a running app: **the agent can change a manifest
+and see the consequence.**
 The editor no longer talks to the agent about files at all — it reads and writes
 the same volume through the runner's `/v1/sessions/:id/workspace` surface, which
 is the write path its own saves already take. The agent's `/workspace` routes
@@ -57,9 +58,17 @@ arrangement, and setting `WORKSPACE_DIR` is the whole of it.
 
 ### The agent's own state
 
-The agent keeps its state in `AGENT_STATE_DIR`, which defaults to `.telo-agent`
-inside the workspace. It holds `agent.sqlite` and, once a turn has changed a
-file, `checkpoints/`. `agent.sqlite` holds:
+The agent's state is a durable directory it asks its host for: a need named
+`agentState`, of type `Telo.DurableDirectory`, with `access: single-writer` —
+at most one running agent has it at any moment, which SQLite relies on. A host
+names it with `AGENT_STATE_DIR`, or sets `TELO_HOST_STATE_DIR` and the agent's
+state is `<TELO_HOST_STATE_DIR>/needs/agentState`, created at load; with
+neither, the agent refuses to start (`ERR_NEED_UNMET`, naming
+`AGENT_STATE_DIR`). The image sets `TELO_HOST_STATE_DIR=/var/lib/telo-agent`,
+and a runner sets it to session storage of its own. `telo needs report
+apps/authoring-agent` lists the need. The directory holds `agent.sqlite`,
+`attachments/` and, once a turn has changed a file, `checkpoints/`.
+`agent.sqlite` holds:
 
 - **the turn journal** (`turn_journal`, `turn_journal_keys`) — every record of
   every turn, under the turn's id. It is the one source of truth: the event
@@ -78,14 +87,16 @@ file, `checkpoints/`. `agent.sqlite` holds:
 it was before a turn's tool changed it, and as the tool left it. One directory
 per turn, never shared between turns, removed with the turn.
 
-It lives on the workspace volume because the container is the ephemeral part. A
-co-resident agent's workspace is the session volume, which outlives the
-container, so restarting the agent on the same `WORKSPACE_DIR` keeps its
-conversations. `.telo-agent` is not workspace content: `GET /workspace`, the
-per-turn `WORKSPACE STATE:` listing and the `list_dir` tool all leave it out,
-Studio never syncs it in either direction, and every tool and both `/workspace`
-routes refuse a path inside it with `ERR_PATH_OUTSIDE_WORKSPACE` — as they do
-the removal of a directory holding it, or of the workspace root.
+It lives outside the workspace, on storage the host keeps, because the
+container is the ephemeral part: restarting the agent on the same state
+directory keeps its conversations, nothing syncs it, and SQLite runs on the
+filesystem it was opened on. Wherever it lies — `AGENT_STATE_DIR` may name a
+directory inside the workspace — every tool and both `/workspace` routes refuse
+a path inside it with `ERR_PATH_OUTSIDE_WORKSPACE`, as they do the removal of a
+directory holding it, or of the workspace root. A workspace from before the
+state had a directory of its own may still hold a `.telo-agent` directory:
+`GET /workspace`, the per-turn `WORKSPACE STATE:` listing and the `list_dir`
+tool leave it out, and Studio never syncs it in either direction.
 
 ## Asking before building
 
@@ -290,7 +301,7 @@ back into a question, never quietly replaced with a guess.
 | `GET /workspace/file?path=` | One file's contents |
 | `GET /capabilities` | The capability document — who this agent is and what it serves (see The capability document) |
 | `GET /health` | `200 { status: "up" }` — liveness. Unguarded |
-| `GET /ready` | `200 { ready: true, reasons: [] }`, or `503 { ready: false, reasons: [{ code, message }] }` with `SCHEMA_UNAVAILABLE` (the conversation database cannot be read), `MODEL_CREDENTIAL_MISSING` (`OPENAI_API_KEY` is empty) or `WORKSPACE_NOT_WRITABLE` (writing and removing `.telo-agent/ready-probe` failed). Each message is fixed; the failure's own text goes to the log as a `warn` record. Unguarded |
+| `GET /ready` | `200 { ready: true, reasons: [] }`, or `503 { ready: false, reasons: [{ code, message }] }` with `SCHEMA_UNAVAILABLE` (the conversation database cannot be read), `MODEL_CREDENTIAL_MISSING` (`OPENAI_API_KEY` is empty) or `WORKSPACE_NOT_WRITABLE` (writing and removing `.telo/agent-ready-probe` failed). Each message is fixed; the failure's own text goes to the log as a `warn` record. Unguarded |
 
 Every route but `/health` and `/ready` passes one guard, before the request
 body is read:
@@ -947,7 +958,7 @@ Variables:
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP listen port |
 | `WORKSPACE_DIR` | `./workspace` | The directory every tool is rooted at (see above) |
-| `AGENT_STATE_DIR` | `<WORKSPACE_DIR>/.telo-agent` | Where the agent keeps its own state — `agent.sqlite` (see above) |
+| `AGENT_STATE_DIR` | none | The agent's state directory — `agent.sqlite`, checkpoints, attachments (see above). Unset, it is `<TELO_HOST_STATE_DIR>/needs/agentState`; with neither set the agent refuses to start |
 | `MODEL` | `gpt-6-luna` | The model every turn runs on. Changing it drops the recorded reasoning on the next turn |
 | `MODEL_ENDPOINT` | `https://api.openai.com/v1` | The OpenAI-compatible endpoint the model is called through — a gateway, or the local stub the tests use |
 | `RETENTION_DAYS` | `30` | Days a conversation may sit idle before it is deleted whole, and how long its removed turns then answer 410 rather than 404 (at least 1) |
@@ -1066,8 +1077,11 @@ A deployment whose callers are trusted can widen `teloVerbs` at the import.
 ## Running it
 
 ```bash
-OPENAI_API_KEY=sk-... pnpm run telo apps/authoring-agent/telo.yaml
+OPENAI_API_KEY=sk-... AGENT_STATE_DIR=$PWD/.agent-state pnpm run telo apps/authoring-agent/telo.yaml
 ```
+
+Without `AGENT_STATE_DIR` (or `TELO_HOST_STATE_DIR`), `telo run` at a terminal
+asks for the state directory, and a non-interactive run refuses to start.
 
 The image is one self-contained artifact built on the Telo CLI image, with every
 controller pre-fetched by `telo install` so boot does no network I/O:

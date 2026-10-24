@@ -87,6 +87,34 @@ export interface ApplicationInputs {
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   ports?: Record<string, number>;
+  /** The fields of each of the application's own `needs:`, by need name. A need
+   *  supplied here is answered before the environment and the host values. */
+  needs?: Record<string, Record<string, unknown>>;
+  /** Who supplied these values, for a refusal naming where one came from. */
+  suppliedBy?: string;
+}
+
+/** Where a value supplied by name came from, when the supplier did not say. */
+const UNNAMED_SUPPLIER = "whoever started this application";
+
+/** Who supplied an application's inputs by name, as a refusal names it. */
+export function inputSupplier(inputs: ApplicationInputs | undefined): string {
+  return inputs?.suppliedBy ?? UNNAMED_SUPPLIER;
+}
+
+/** The application's own needs a value was supplied for by name. Only a root
+ *  need can be: one a library declares is supplied at its import. */
+export function suppliedNeedEntries<T extends NeedEnvironmentEntry>(
+  entries: readonly T[],
+  inputs: ApplicationInputs | undefined,
+): Set<T> {
+  const supplied = inputs?.needs;
+  if (!supplied) return new Set();
+  return new Set(
+    entries.filter(
+      (entry) => !entry.via && entry.path.length === 1 && Object.hasOwn(supplied, entry.need.name),
+    ),
+  );
 }
 
 /** Everything a root Application's inputs are read from besides the
@@ -264,13 +292,20 @@ function readApplicationInputs(
   const ports = resolvePorts(manifest.ports ?? {}, env, validator, findings, inputs?.ports, channel("ports"));
   reading.result = { variables, secrets, ports };
   if (needs) {
-    // A `Telo.PublicUrl` nothing else supplies is answered from the host's
+    // A need supplied by name is answered by that supply alone. Of the rest, a
+    // `Telo.PublicUrl` nothing else supplies is answered from the host's
     // templates, and a `Telo.DurableDirectory` from the host's state directory,
     // each read as if its env name held the derived value; an address whose
     // port has no value yet waits for it rather than being asked.
-    const derived = withStateDirectories(needs.entries, withDerivedPublicUrls(needs.entries, env, ports));
-    const awaiting = publicUrlsAwaitingPorts(needs.entries, env, ports);
-    reading.result.needs = resolveNeedEnvironment(needs, derived, validator, findings, reading, awaiting);
+    const supplied = suppliedNeedEntries(needs.entries, inputs);
+    const unsupplied = needs.entries.filter((entry) => !supplied.has(entry));
+    const derived = withStateDirectories(unsupplied, withDerivedPublicUrls(unsupplied, env, ports));
+    const awaiting = publicUrlsAwaitingPorts(unsupplied, env, ports);
+    reading.result.needs = resolveNeedEnvironment(needs, derived, validator, findings, reading, awaiting, supplied);
+    for (const entry of supplied) {
+      const value = resolveSuppliedNeed(entry, needs, inputs!, validator, findings, reading);
+      if (value) reading.result.needs.set(entry.path.join("."), value);
+    }
   }
   return reading;
 }
@@ -325,10 +360,11 @@ function resolveNeedEnvironment(
   findings: Findings,
   reading: InputReading,
   awaiting: ReadonlySet<NeedEnvironmentEntry>,
+  supplied: ReadonlySet<NeedEnvironmentEntry>,
 ): Map<string, Record<string, unknown> | null> {
   const values = new Map<string, Record<string, unknown> | null>();
   for (const entry of request.entries) {
-    if (awaiting.has(entry)) continue;
+    if (awaiting.has(entry) || supplied.has(entry)) continue;
     const path = entry.path.join(".");
     const shape = request.shapeOf(entry);
     const fields = Object.entries(entry.fields ?? {});
@@ -412,6 +448,78 @@ function resolveNeedEnvironment(
     values.set(path, decoded);
   }
   return values;
+}
+
+/**
+ * Read one of the application's own needs from the fields supplied for it by
+ * name. A supplied value is already a value, so each field is validated against
+ * its schema but never coerced; a field the type does not declare, or a value
+ * it refuses, joins the application's `ERR_MANIFEST_VALIDATION_FAILED`, and a
+ * required field left out is `ERR_NEED_PARTIALLY_SUPPLIED`. Undefined when the
+ * supply is refused.
+ */
+function resolveSuppliedNeed(
+  entry: NeedEnvironmentEntry,
+  request: NeedEnvironmentRequest,
+  inputs: ApplicationInputs,
+  validator: SchemaValidator,
+  findings: Findings,
+  reading: InputReading,
+): Record<string, unknown> | undefined {
+  const path = entry.path.join(".");
+  const supplier = inputSupplier(inputs);
+  const supply = inputs.needs![entry.need.name];
+  const label = `needs ${path}`;
+  if (!supply || typeof supply !== "object" || Array.isArray(supply)) {
+    findings.fail(`${label}: the value ${supplier} supplied is not an object of the need type's fields`);
+    return undefined;
+  }
+  const shape = request.shapeOf(entry);
+  const fields = entry.fields ?? {};
+  let refused = false;
+  for (const name of Object.keys(supply)) {
+    if (Object.hasOwn(fields, name)) continue;
+    findings.fail(
+      `${label}: field '${name}' is not declared by need type '${entry.need.type ?? entry.need.kind}'` +
+        ` (it declares: ${Object.keys(fields).join(", ") || "none"})`,
+    );
+    refused = true;
+  }
+  const missing = Object.entries(fields).filter(
+    ([name, field]) => field.required && (supply[name] === undefined || supply[name] === null),
+  );
+  if (missing.length > 0) {
+    const given = Object.keys(supply).filter((name) => supply[name] !== undefined && supply[name] !== null);
+    reading.needRefusals.push({
+      code: "ERR_NEED_PARTIALLY_SUPPLIED",
+      entry,
+      missing: [],
+      message:
+        `Need '${path}' (type '${entry.need.type ?? entry.need.kind}', declared by module ` +
+        `'${entry.moduleName}') is supplied by name by ${supplier} only in part: ` +
+        `${given.length > 0 ? `${given.join(", ")} ${given.length === 1 ? "is" : "are"} given, and ` : ""}` +
+        `the required ${missing.map(([name]) => name).join(", ")} ` +
+        `${missing.length === 1 ? "is" : "are"} not. Supply every required field.`,
+    });
+    return undefined;
+  }
+  const decoded: Record<string, unknown> = {};
+  for (const name of Object.keys(fields)) {
+    if (supply[name] === undefined || supply[name] === null) continue;
+    const schema = shape?.fields[name] ?? {};
+    const source = `the value ${supplier} supplied`;
+    const value = supply[name];
+    // None of these quotes the value, so a sensitive field is never printed.
+    const problem =
+      membersEnvRefusal(value, schema, validator) ?? validateResidual(value, schema, validator);
+    if (problem) {
+      findings.fail(`${label}.${name}: ${source}: ${problem}`);
+      refused = true;
+      continue;
+    }
+    decoded[name] = value;
+  }
+  return refused ? undefined : decoded;
 }
 
 function isSetIn(env: Record<string, string | undefined>, name: string): boolean {
@@ -918,7 +1026,7 @@ function reportUndeclaredInputs(
   findings: Findings,
 ): void {
   if (!inputs) return;
-  for (const block of ["variables", "secrets", "ports"] as const) {
+  for (const block of ["variables", "secrets", "ports", "needs"] as const) {
     const supplied = inputs[block];
     if (!supplied) continue;
     const declared = manifest[block];

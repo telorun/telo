@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import { PackageURL } from "packageurl-js";
 import * as path from "path";
-import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, collectModuleDocuments, flattenForAnalyzer, isBuiltinVocabularyRoot, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
+import { DEFAULT_MANIFEST_FILENAME, Loader, PUBLISH_BLOCKING_CODES, StaticAnalyzer, TELO_SURFACE_VERSION, collectApplicationSources, collectModuleDocuments, flattenForAnalyzer, isBuiltinVocabularyRoot, splitIntegrity, type LoadedGraph } from "@telorun/analyzer";
 import { LocalFileSource, defaultTransportRegistry, resolveCacheRoot } from "@telorun/kernel";
 import { defaultCustomTags } from "@telorun/templating";
 import { parseAllDocuments } from "yaml";
@@ -551,6 +551,7 @@ async function publishOne(
   const analysisManifests = flattenForAnalyzer(analysisGraph);
   const diagnostics = new StaticAnalyzer().analyze(analysisManifests, {
     moduleDocuments: collectModuleDocuments(analysisGraph),
+    applicationSources: collectApplicationSources(analysisGraph),
   });
   const { errorCount, diagnostics: located } = formatAnalysisDiagnostics(
     diagnostics,

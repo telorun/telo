@@ -45,7 +45,7 @@ metadata:
     and the file untouched, and once the directory can be listed the next boot
     confirms it into the turn's summary.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
@@ -78,7 +78,7 @@ kind: Shell.Command
 metadata: { name: inWorkspace }
 host:
   kind: Shell.LocalHost
-  cwd: !cel "variables.scratch"
+  cwd: !cel "variables.scratch.joinPath('workspace')"
 ---
 kind: Run.Sequence
 metadata: { name: push }
@@ -294,7 +294,7 @@ inputType:
 with:
   - kind: SQLite.Connection
     metadata: { name: legacyDb }
-    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+    file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
   - kind: Sql.Command
     metadata: { name: legacyCommand }
     connection: !ref legacyDb
@@ -323,7 +323,7 @@ inputType:
 with:
   - kind: SQLite.Connection
     metadata: { name: stoppedDb }
-    file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+    file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
   - kind: Sql.Command
     metadata: { name: stoppedCommand }
     connection: !ref stoppedDb
@@ -360,7 +360,7 @@ steps:
   - name: prepare
     invoke: { kind: Fs.DirectoryCreation }
     inputs:
-      path: !cel "string(variables.scratch)"
+      path: !cel "string(variables.scratch.joinPath('workspace'))"
       createParents: true
   # A run cut short may have left the directory unlistable.
   - name: unlockLeftover
@@ -380,10 +380,12 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18543 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18542/v1
-            teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+            teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
           secrets:
             openaiApiKey: stub-key
       targets: [ !ref agent ]
@@ -694,7 +696,7 @@ steps:
             with:
               - kind: SQLite.Connection
                 metadata: { name: sealedDb }
-                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+                file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
               - kind: Sql.Command
                 metadata: { name: sealedCommand }
                 connection: !ref sealedDb
@@ -738,7 +740,7 @@ steps:
             with:
               - kind: SQLite.Connection
                 metadata: { name: endedDb }
-                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+                file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
               - kind: Sql.Query
                 metadata: { name: endedQuery }
                 connection: !ref endedDb
@@ -1025,10 +1027,12 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18549 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18542/v1
-            teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
+            teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
           secrets:
             openaiApiKey: stub-key
       targets: [ !ref agent ]
@@ -1083,7 +1087,7 @@ steps:
             with:
               - kind: SQLite.Connection
                 metadata: { name: rebootedDb }
-                file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+                file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
               - kind: Sql.Query
                 metadata: { name: rebootedQuery }
                 connection: !ref rebootedDb

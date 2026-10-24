@@ -1,4 +1,4 @@
-import type { RunBundle, WorkspaceChangeSet } from "../contract.js";
+import type { WorkspaceChangeSet, WorkspaceTree } from "../contract.js";
 
 /** The kernel anchors its `.telo` cache at the directory holding this file. */
 export const WORKSPACE_MARKER_FILENAME = "telo-workspace.yaml";
@@ -31,14 +31,15 @@ export const WORKSPACE_MARKER_CONTENTS = `# Marks the root of this session's wor
 `;
 
 /**
- * The marker, unless the workspace already brings its own. A user whose project
+ * The marker for a session's workspace as it stands, unless it already holds
+ * one. A user whose project
  * really is a Telo workspace has a marker with a real \`release.modules\` list,
  * and overwriting it would silently change what \`telo release\` discovers.
  */
 export function workspaceMarkerWrite(
-  bundle: RunBundle,
+  tree: WorkspaceTree,
 ): NonNullable<WorkspaceChangeSet["write"]> {
-  const provided = bundle.files.some((f) => f.relativePath === WORKSPACE_MARKER_FILENAME);
+  const provided = tree.files.some((f) => f.path === WORKSPACE_MARKER_FILENAME);
   if (provided) return [];
   return [{ path: WORKSPACE_MARKER_FILENAME, content: WORKSPACE_MARKER_CONTENTS }];
 }

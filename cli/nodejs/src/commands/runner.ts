@@ -1,5 +1,4 @@
 import * as os from "node:os";
-import * as path from "node:path";
 
 import type { RunnerCoreConfig } from "@telorun/runner-core";
 import type { Argv } from "yargs";
@@ -16,7 +15,6 @@ interface RunnerArgv {
   allowRemote: boolean;
   allowOrigin: string[];
   stateDir?: string;
-  watchSessions: boolean;
 }
 
 const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -25,8 +23,8 @@ const LOOPBACK = new Set(["127.0.0.1", "::1", "localhost"]);
 const DEFAULT_PORT = 8061;
 
 /** How long a shutdown waits for in-flight HTTP requests to finish before it
- *  stops waiting. Every session is already down by then; what remains is a
- *  client holding a stream open. */
+ *  stops waiting. Every run has ended by then; what remains is a client holding
+ *  a stream open. */
 const DRAIN_TIMEOUT_MS = 3_000;
 
 export function runnerCommand(cli: Argv): Argv {
@@ -62,13 +60,7 @@ export function runnerCommand(cli: Argv): Argv {
         .option("state-dir", {
           type: "string",
           describe:
-            "Where session workspaces are staged (default: a `telo-runner` directory under the system temp directory).",
-        })
-        .option("watch-sessions", {
-          type: "boolean",
-          default: true,
-          describe:
-            "Offer watch sessions — a workspace that runs continuously, where an edit costs a kernel reload. Use --no-watch-sessions to serve one-shot runs only.",
+            "The runner's state directory: the session store and every session's directory, kept across suspends, restarts and reboots. Overrides RUNNER_STATE_DIR; default the per-user state directory (Linux $XDG_STATE_HOME/telo/runner or ~/.local/state/telo/runner, macOS ~/Library/Application Support/telo/runner, Windows %LOCALAPPDATA%\\telo\\state\\runner).",
         }),
     async (argv) => {
       await runRunner(argv as unknown as RunnerArgv);
@@ -100,34 +92,35 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   // startup path of every `telo check` and `telo run` (~70ms of a ~270ms
   // start). The command surface is unchanged — yargs registration above stays
   // static, so `--help` still lists it.
-  const { buildServer, loadCoreConfig, parseCorsOrigins, stopAllSessions } = await import(
+  const { buildServer, loadCoreConfig, openSessionStore, parseCorsOrigins } = await import(
     "@telorun/runner-core"
   );
   const { createProcessBackend } = await import("../runner/process-backend.js");
-  const { prepareStateRoot, releaseStateRoot } = await import("../runner/state-root.js");
+  const { prepareStateRoot, resolveStateRoot, STATE_DIR_ENV } = await import(
+    "../runner/state-root.js"
+  );
   const { localRunnerCapabilities, validateLocalRunnerConfig } = await import(
     "../runner/capabilities.js"
   );
 
-  const stateRoot = argv.stateDir
-    ? path.resolve(argv.stateDir)
-    : path.join(os.tmpdir(), "telo-runner");
+  const resolution = resolveStateRoot(argv.stateDir, process.env, process.platform, process.cwd());
+  if ("refusal" in resolution) {
+    outErrLine(`telo runner: ${resolution.refusal}`);
+    process.exitCode = EXIT_REFUSED;
+    return;
+  }
+  const stateRoot = resolution.root;
 
-  // Private to this user, and owned by this process: a session workspace holds
-  // the user's source, and a runner that is killed leaves one behind with
-  // nothing that knows about it. The sweep is what reclaims those.
-  let ownRoot: string;
+  // Private to this user: a session directory holds the user's source.
   try {
-    const prepared = await prepareStateRoot(stateRoot);
-    ownRoot = prepared.ownRoot;
-    if (prepared.swept.length > 0) {
-      outErrLine(
-        `telo runner: reclaimed ${prepared.swept.length} session directory/-ies left by runners that are no longer running.`,
-      );
-    }
+    await prepareStateRoot(stateRoot);
   } catch (err) {
-    outErrLine(`telo runner: could not prepare '${stateRoot}': ${message(err)}`);
-    process.exitCode = 1;
+    const source = resolution.from === "default" ? "the per-user default" : resolution.from;
+    outErrLine(
+      `telo runner: cannot keep state in '${stateRoot}' (${source}): ${message(err)}. ` +
+        `Name a writable directory with --state-dir <dir> or ${STATE_DIR_ENV}.`,
+    );
+    process.exitCode = EXIT_REFUSED;
     return;
   }
 
@@ -136,24 +129,31 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   const { carriersRoot } = await import("../package/app-home.js");
   const { TELO_RUNTIME_VERSION } = await import("@telorun/kernel");
   const backend = createProcessBackend({
-    stateRoot: ownRoot,
+    stateRoot,
     telo: createTeloSupply({
       identity: TELO_RUNTIME_VERSION,
       hostTarget: hostReleaseTarget(),
       cacheRoot: carriersRoot(),
     }),
+    onSwept: (names) =>
+      outErrLine(
+        `telo runner: removed ${names.length} session director${names.length === 1 ? "y" : "ies"} no stored session owns.`,
+      ),
   });
-  const capabilities = localRunnerCapabilities({ watch: argv.watchSessions });
 
   // The env-driven core config stays the way every runner reads it (ceilings,
-  // buffers, CORS), with the two answers this command owns written over it: the
-  // port it was told to listen on, and whether watch sessions are offered.
+  // buffers, CORS, the session store), with what this command owns written
+  // over it: the port it was told to listen on, and the state root, already
+  // resolved with `RUNNER_STATE_DIR` in its place, where the SQLite store lives.
   // `port: 0` is this command's "pick a free one", which the env parser refuses
   // as a PORT value — so the fallback it is handed is a real port and the
   // requested one is written over it below.
   let base: RunnerCoreConfig;
   try {
-    base = loadCoreConfig(process.env, { port: argv.port > 0 ? argv.port : DEFAULT_PORT });
+    base = loadCoreConfig(process.env, {
+      port: argv.port > 0 ? argv.port : DEFAULT_PORT,
+      stateDir: stateRoot,
+    });
   } catch (err) {
     outErrLine(`telo runner: ${message(err)}`);
     process.exitCode = EXIT_REFUSED;
@@ -173,25 +173,52 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
     // A per-request log belongs to an operator watching a shared runner, not to
     // someone running one desktop session, so this one is quiet until asked.
     logLevel: process.env.LOG_LEVEL?.trim() || (argv.verbose ? "info" : "warn"),
-    watch: { ...base.watch, enabled: argv.watchSessions },
   };
 
-  const { app, registry } = await buildServer({
-    backend,
-    config,
-    version: cliVersion() ?? "unversioned build",
-    capabilities,
-    validateConfig: validateLocalRunnerConfig,
-    // The runner's own log is diagnostics, so it goes where every other
-    // CLI-owned diagnostic goes: stderr. On stdout it would sit in the middle
-    // of the `-o json` payload.
-    logStream: process.stderr,
+  const store = await openSessionStore(config.sessionStore, {
+    log: {
+      error: (detail, msg) =>
+        outErrLine(`telo runner: ${msg}: ${message((detail as { err?: unknown }).err ?? detail)}`),
+    },
+  }).catch((err: unknown) => {
+    outErrLine(`telo runner: could not open the session store: ${message(err)}`);
+    return undefined;
   });
+  if (!store) {
+    process.exitCode = 1;
+    return;
+  }
+
+  let server: Awaited<ReturnType<typeof buildServer>>;
+  try {
+    // Boot happens here: every stored session is loaded and, since nothing a
+    // local runner started outlives it, marked suspended; then the sweep runs.
+    server = await buildServer({
+      backend,
+      config,
+      store,
+      version: cliVersion() ?? "unversioned build",
+      capabilities: localRunnerCapabilities(),
+      validateConfig: validateLocalRunnerConfig,
+      // The runner's own log is diagnostics, so it goes where every other
+      // CLI-owned diagnostic goes: stderr. On stdout it would sit in the middle
+      // of the `-o json` payload.
+      logStream: process.stderr,
+    });
+  } catch (err) {
+    await store.close();
+    outErrLine(`telo runner: ${message(err)}`);
+    process.exitCode = 1;
+    return;
+  }
+  const { app, lifecycle } = server;
 
   try {
     await app.listen({ port: argv.port, host: argv.host });
   } catch (err) {
     outErrLine(`telo runner: could not listen on ${argv.host}:${argv.port}: ${message(err)}`);
+    await app.close();
+    await store.close();
     process.exitCode = 1;
     return;
   }
@@ -201,29 +228,28 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   const url = `http://${argv.host === "::1" ? "[::1]" : argv.host}:${port}`;
 
   outLine(`telo runner listening on ${url}`);
-  outLine(`Applications run as ${os.userInfo().username}, from ${ownRoot}.`);
+  outLine(`Applications run as ${os.userInfo().username}, from ${stateRoot}.`);
   // The result of this command is the address it is serving, which is what a
   // supervising client needs before it can dial. Written once, as soon as it is
   // true, because the command does not end until the runner is stopped.
-  outEmit({ url, host: argv.host, port, watch: argv.watchSessions, stateDir: ownRoot });
+  outEmit({ url, host: argv.host, port, stateDir: stateRoot });
 
   /**
-   * Stop everything this runner started, then go.
+   * End every run this runner started, then go.
    *
-   * **Workloads first, and the HTTP close bounded.** A runner's own streams are
+   * **Runs first, and the HTTP close bounded.** A runner's own streams are
    * requests that never end — an SSE event stream, an attached byte channel —
    * so `close()` waits on them for as long as a client stays connected. Waiting
    * there first is what leaves `telo run --watch` processes alive until the
    * supervisor's patience runs out and SIGKILLs this process, which orphans
-   * them holding the user's ports. So the workloads are killed while this
-   * process is still the one that knows about them, and the server drain gets a
-   * deadline rather than a promise.
+   * them holding the user's ports. So the lifecycle detaches every workload
+   * (ending its runs, keeping its directory) while this process is still the
+   * one that knows about them, and the server drain gets a deadline.
    */
   const shutdown = async (signal: string): Promise<void> => {
-    for (const entry of registry.list()) entry.userStopped = true;
-    await stopAllSessions(registry, app.log);
+    await lifecycle.close();
     await Promise.race([app.close(), delay(DRAIN_TIMEOUT_MS)]);
-    await releaseStateRoot(stateRoot);
+    await store.close();
     outErrLine(`telo runner: stopped (${signal}).`);
     process.exit(0);
   };

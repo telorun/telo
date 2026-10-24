@@ -137,6 +137,33 @@ describe("analysis stamp", () => {
     });
   });
 
+  it("covers a child application's files, which the parent's verdict is checked against", () => {
+    const withChild = (childText: string): LoadedGraph =>
+      ({
+        modules: new Map([["app", { owner: { source: "/ws/telo.yaml", text: "kind: Telo.Application\n" }, partials: [] }]]),
+        applicationSources: new Map([
+          [
+            "/ws/telo.yaml",
+            new Map([
+              [
+                "./child/telo.yaml",
+                {
+                  graph: {
+                    modules: new Map([
+                      ["child", { owner: { source: "/ws/child/telo.yaml", text: childText }, partials: [] }],
+                    ]),
+                  },
+                },
+              ],
+            ]),
+          ],
+        ]),
+      }) as unknown as LoadedGraph;
+    expect(computeAnalysisSignature(withChild("kind: Telo.Application\n"))).not.toBe(
+      computeAnalysisSignature(withChild("kind: Telo.Application\n# a variable renamed\n")),
+    );
+  });
+
   it("reads nothing from a pre-workspace-anchor stamp file", async () => {
     // The old layout is a FILE where this one wants a directory, so neither
     // version of the kernel can misread the other's — no migration needed.

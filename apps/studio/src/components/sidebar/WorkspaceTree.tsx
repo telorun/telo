@@ -21,7 +21,7 @@ interface WorkspaceTreeProps {
   onOpenModule: (filePath: string) => void;
   onNewModule: (kind: ModuleKind) => void;
   onDeleteModule: (filePath: string) => Promise<void>;
-  onRunModule: (filePath: string) => void;
+  onRunModule?: (filePath: string) => void;
 }
 
 interface TreeNode {
@@ -87,7 +87,7 @@ export function WorkspaceTree({
             workspace={workspace}
             onOpen={() => onOpenModule(node.manifest.filePath)}
             onDelete={() => setDeleteTarget(node.manifest)}
-            onRun={() => onRunModule(node.manifest.filePath)}
+            onRun={onRunModule ? () => onRunModule(node.manifest.filePath) : undefined}
           />
         ))}
       </TreeSection>

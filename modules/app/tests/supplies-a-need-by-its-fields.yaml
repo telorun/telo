@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: SuppliesANeedByItsFieldsTest
+  version: 1.0.0
+  description: >-
+    A child's own durable directory is supplied by name as a map of the need
+    type's fields, so a test gives the application storage of its own instead of
+    whatever its environment or host would name. The child writes into the
+    directory it was handed, and the file is found there.
+imports:
+  App: ../
+  Fs: ../../fs
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  fixturesDir:
+    env: APP_SUPPLIES_A_NEED_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: modules/app/tests/__fixtures__
+targets:
+  - !ref stateful
+  - !ref test
+---
+kind: App.Instance
+metadata: { name: stateful }
+source: ./__fixtures__/stateful/telo.yaml
+needs:
+  state:
+    path: !cel "variables.fixturesDir.joinPath('scratch-fields')"
+---
+kind: Run.Loop
+metadata: { name: awaitExit }
+condition: !cel "resources.stateful.status.exitCode == null"
+maxIterations: 200
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: 20ms
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: awaitExit
+    invoke: !ref awaitExit
+  - name: verifyExit
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.stateful.status.exitCode"
+      expected: 0
+  - name: read
+    invoke:
+      kind: Fs.File
+      cwd: !cel "variables.fixturesDir"
+    inputs:
+      path: scratch-fields/marker.txt
+  - name: verifyMarker
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result.content"
+      expected: written by the child
+  - name: clean
+    invoke:
+      kind: Fs.FileRemoval
+      cwd: !cel "variables.fixturesDir"
+    inputs:
+      path: scratch-fields
+      recursive: true

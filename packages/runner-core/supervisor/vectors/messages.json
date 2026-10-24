@@ -1,0 +1,83 @@
+{
+  "generation": 1,
+  "runner": {
+    "valid": [
+      { "name": "hello holding nothing", "message": { "type": "hello", "generation": 1, "lastSeq": 0 } },
+      { "name": "hello holding the last seq there is", "message": { "type": "hello", "generation": 1, "lastSeq": 4294967295 } },
+      {
+        "name": "run on pipes",
+        "message": { "type": "run", "runId": "r1", "argv": ["telo", "run", "telo.yaml"], "env": {}, "cwd": ".", "io": "streams" }
+      },
+      {
+        "name": "run on a pty with its size and env",
+        "message": {
+          "type": "run",
+          "runId": "r2",
+          "argv": ["telo"],
+          "env": { "GREETING": "hello", "EMPTY": "" },
+          "cwd": "apps/api",
+          "io": "tty",
+          "cols": 120,
+          "rows": 40
+        }
+      },
+      { "name": "stop with a grace", "message": { "type": "stop", "runId": "r1", "graceMs": 10000 } },
+      { "name": "stop with no grace", "message": { "type": "stop", "runId": "r1", "graceMs": 0 } },
+      { "name": "resize", "message": { "type": "resize", "cols": 80, "rows": 24 } }
+    ],
+    "invalid": [
+      { "name": "not JSON", "text": "{", "close": 4400 },
+      { "name": "not an object", "text": "[]", "close": 4400 },
+      { "name": "no type", "text": "{\"generation\":1,\"lastSeq\":0}", "close": 4400 },
+      { "name": "an unknown type", "text": "{\"type\":\"launch\",\"runId\":\"r1\"}", "close": 4400 },
+      { "name": "hello of another generation, judged before its fields", "text": "{\"type\":\"hello\",\"generation\":2,\"resumeToken\":\"x\"}", "close": 4426 },
+      { "name": "hello with a generation that is not an integer", "text": "{\"type\":\"hello\",\"generation\":\"1\",\"lastSeq\":0}", "close": 4400 },
+      { "name": "hello without lastSeq", "text": "{\"type\":\"hello\",\"generation\":1}", "close": 4400 },
+      { "name": "hello with a negative lastSeq", "text": "{\"type\":\"hello\",\"generation\":1,\"lastSeq\":-1}", "close": 4400 },
+      { "name": "hello with a lastSeq past 32 bits", "text": "{\"type\":\"hello\",\"generation\":1,\"lastSeq\":4294967296}", "close": 4400 },
+      { "name": "run with a field generation 1 does not define", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{},\"cwd\":\".\",\"io\":\"tty\",\"tty\":true}", "close": 4400 },
+      { "name": "run with an empty argv", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[],\"env\":{},\"cwd\":\".\",\"io\":\"streams\"}", "close": 4400 },
+      { "name": "run with an argv that is not strings", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\",1],\"env\":{},\"cwd\":\".\",\"io\":\"streams\"}", "close": 4400 },
+      { "name": "run with an empty runId", "text": "{\"type\":\"run\",\"runId\":\"\",\"argv\":[\"telo\"],\"env\":{},\"cwd\":\".\",\"io\":\"streams\"}", "close": 4400 },
+      { "name": "run without env", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"cwd\":\".\",\"io\":\"streams\"}", "close": 4400 },
+      { "name": "run with an env value that is not a string", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{\"PORT\":8080},\"cwd\":\".\",\"io\":\"streams\"}", "close": 4400 },
+      { "name": "run with an env name holding =", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{\"A=B\":\"c\"},\"cwd\":\".\",\"io\":\"streams\"}", "close": 4400 },
+      { "name": "run with an empty cwd", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{},\"cwd\":\"\",\"io\":\"streams\"}", "close": 4400 },
+      { "name": "run with an unknown io", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{},\"cwd\":\".\",\"io\":\"pty\"}", "close": 4400 },
+      { "name": "run with cols but no rows", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{},\"cwd\":\".\",\"io\":\"tty\",\"cols\":80}", "close": 4400 },
+      { "name": "run with zero cols", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{},\"cwd\":\".\",\"io\":\"tty\",\"cols\":0,\"rows\":24}", "close": 4400 },
+      { "name": "run with fractional rows", "text": "{\"type\":\"run\",\"runId\":\"r1\",\"argv\":[\"telo\"],\"env\":{},\"cwd\":\".\",\"io\":\"tty\",\"cols\":80,\"rows\":1.5}", "close": 4400 },
+      { "name": "stop without graceMs", "text": "{\"type\":\"stop\",\"runId\":\"r1\"}", "close": 4400 },
+      { "name": "stop with a grace past one hour", "text": "{\"type\":\"stop\",\"runId\":\"r1\",\"graceMs\":3600001}", "close": 4400 },
+      { "name": "resize past the largest dimension", "text": "{\"type\":\"resize\",\"cols\":80,\"rows\":10001}", "close": 4400 }
+    ]
+  },
+  "supervisor": {
+    "valid": [
+      { "name": "hello while idle", "message": { "type": "hello", "generation": 1, "instance": "5f0c2a4e9b7d41c3a8e6f1b2c3d4e5f6", "state": "idle" } },
+      {
+        "name": "hello while a run is live",
+        "message": { "type": "hello", "generation": 1, "instance": "5f0c2a4e9b7d41c3a8e6f1b2c3d4e5f6", "state": "running", "runId": "r1" }
+      },
+      { "name": "started", "message": { "type": "started", "runId": "r1" } },
+      { "name": "exited with a code", "message": { "type": "exited", "runId": "r1", "code": 0 } },
+      { "name": "exited by a signal", "message": { "type": "exited", "runId": "r1", "signal": "SIGKILL" } },
+      { "name": "failed", "message": { "type": "failed", "runId": "r1", "reason": "cannot start \"telo\": No such file or directory (os error 2)" } },
+      { "name": "refused while another run is live", "message": { "type": "refused", "runId": "r2", "code": "run_active" } },
+      { "name": "refused with no such run", "message": { "type": "refused", "runId": "r3", "code": "no_run" } }
+    ],
+    "invalid": [
+      { "name": "not JSON", "text": "{", "close": 4400 },
+      { "name": "an unknown type", "text": "{\"type\":\"ended\",\"runId\":\"r1\"}", "close": 4400 },
+      { "name": "hello of another generation, judged before its fields", "text": "{\"type\":\"hello\",\"generation\":2,\"capabilities\":[]}", "close": 4426 },
+      { "name": "a field generation 1 does not define", "text": "{\"type\":\"started\",\"runId\":\"r1\",\"pid\":42}", "close": 4400 },
+      { "name": "hello running without its runId", "text": "{\"type\":\"hello\",\"generation\":1,\"instance\":\"a\",\"state\":\"running\"}", "close": 4400 },
+      { "name": "hello idle with a runId", "text": "{\"type\":\"hello\",\"generation\":1,\"instance\":\"a\",\"state\":\"idle\",\"runId\":\"r1\"}", "close": 4400 },
+      { "name": "hello without an instance", "text": "{\"type\":\"hello\",\"generation\":1,\"state\":\"idle\"}", "close": 4400 },
+      { "name": "exited with both a code and a signal", "text": "{\"type\":\"exited\",\"runId\":\"r1\",\"code\":0,\"signal\":\"SIGTERM\"}", "close": 4400 },
+      { "name": "exited with neither a code nor a signal", "text": "{\"type\":\"exited\",\"runId\":\"r1\"}", "close": 4400 },
+      { "name": "refused with an unknown code", "text": "{\"type\":\"refused\",\"runId\":\"r1\",\"code\":\"busy\"}", "close": 4400 },
+      { "name": "started with an empty runId", "text": "{\"type\":\"started\",\"runId\":\"\"}", "close": 4400 }
+    ]
+  }
+}

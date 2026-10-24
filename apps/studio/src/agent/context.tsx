@@ -26,8 +26,6 @@ import { exportJson, exportMarkdown } from "./transcript-export";
 import { dropTurnsFrom } from "./turn-actions";
 import { openAgentStream, type AgentStreamError, type AgentStreamHandle } from "./event-stream";
 import { ownWorkspace } from "./agent-workspace";
-import { launchAgentSession, type LaunchedAgent } from "./launch";
-import { TermsRequiredError, type RunnerTerms } from "../run/types";
 import { applyReverted, reconcile, seedDelta, pullFile, sharedEditorFile, type RevertedTurn } from "./sync";
 import {
   applyRecord,
@@ -74,10 +72,10 @@ import type {
   Attachment,
   AttachmentLimits,
   ChatMessage,
-  CoResidentAgent,
   Conversation,
   ConversationPage,
   JournalRecord,
+  SessionAgentState,
   ToolResult,
   TurnChanges,
   TurnRevert,
@@ -104,7 +102,7 @@ interface AgentContextValue {
   // Panel + connection settings.
   panelOpen: boolean;
   togglePanel: () => void;
-  /** Dev override URL; empty means launch a per-session agent on the runner. */
+  /** Dev override URL; empty means the workspace session's co-resident agent. */
   overrideUrl: string;
   setOverrideUrl: (url: string) => void;
   /** The bearer token for the override URL's agent. Held in memory only: a
@@ -263,22 +261,10 @@ interface AgentContextValue {
   setPanelAvailable: (available: boolean) => void;
   setConversation: (id: string | null) => void;
   registerWorkspace: (bridge: WorkspaceBridge | null) => void;
-  /** The active runner's base URL, used to launch a per-session agent. */
-  setRunner: (baseUrl: string | null) => void;
-  /** The agent riding inside a live watch session, when there is one. Preferred
-   *  over launching a session of the agent's own: it already shares the volume
-   *  the running applications watch, so a file it writes reloads them. */
-  setCoResidentAgent: (agent: CoResidentAgent | null) => void;
-  /** The runner's terms version the user has accepted (null when the runner
-   *  has no terms or they aren't accepted yet) — sent on the agent launch so
-   *  a terms-enforcing runner doesn't 428 it. */
-  setRunnerAcceptedTerms: (version: string | null) => void;
-  /** Register the shell's terms gate. A terms-enforcing runner refuses the
-   *  agent launch with its current agreement, which is the same gate a run is
-   *  refused with — so it is handed to the shell that owns the dialog rather
-   *  than reported as an error telling the user to go and run something else to
-   *  find it. Accepting it and calling `retry()` resumes the turn. */
-  registerTermsGate: (handler: ((terms: RunnerTerms) => void) | null) => void;
+  /** The co-resident agent of the workspace's session: none (with why), still
+   *  coming up with the session, or answering. A send waits while it is
+   *  starting. */
+  setSessionAgent: (state: SessionAgentState) => void;
 }
 
 /** An agent the panel can talk to: where it answers, its bearer token when it
@@ -292,15 +278,6 @@ interface ReachableAgent {
 /** One agent instance: its URL and the token it is talked to with. */
 function agentKey(agent: { url: string; token?: string }): string {
   return `${agent.url}\n${agent.token ?? ""}`;
-}
-
-/** Heuristic for "the per-session container is gone": a network-level fetch
- *  failure, or a gateway error from the proxy fronting a dead upstream. Used to
- *  decide when a cached launch should be dropped and re-created. */
-function isUpstreamGone(err: unknown): boolean {
-  if (err instanceof TypeError) return true; // fetch network failure
-  const message = err instanceof Error ? err.message : String(err);
-  return /\((502|503|504)\)/.test(message);
 }
 
 /** What the user reads for a refused turn start or continue, by the refusal's
@@ -405,6 +382,11 @@ function revertApplyError(err: unknown): Error {
 }
 
 const NO_EXCLUDED_PATHS: ReadonlySet<string> = new Set();
+
+const NO_SESSION_AGENT: SessionAgentState = {
+  kind: "none",
+  reason: "No agent serves this workspace — open it in Agent mode from the workspace menu, or set an agent URL in settings.",
+};
 
 const AgentContext = createContext<AgentContextValue | null>(null);
 
@@ -563,7 +545,8 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const bridgeRef = useRef<WorkspaceBridge | null>(null);
   // The same two as state, for what is derived from them at render.
   const [bridge, setBridge] = useState<WorkspaceBridge | null>(null);
-  const [coResident, setCoResident] = useState<CoResidentAgent | null>(null);
+  const [sessionAgent, setSessionAgentState] = useState<SessionAgentState>(NO_SESSION_AGENT);
+  const coResident = sessionAgent.kind === "ready" ? sessionAgent.agent : null;
   // The sensitive env files the last sync pass left out: the transcript's
   // links follow the same inclusion rule as the sync.
   const [syncSensitive, setSyncSensitive] = useState<ReadonlySet<string>>(NO_EXCLUDED_PATHS);
@@ -605,23 +588,22 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     composerRef.current = stored;
     setComposerState(stored);
   }, []);
-  // The effective agent base URL (a launched per-session instance, or the dev
+  // The effective agent base URL (the session's co-resident agent, or the dev
   // override). Read through a ref so the callbacks below stay stable.
   const agentUrlRef = useRef<string>("");
   // The bearer token of that agent, resolved together with its URL: the
-  // override's token, the runner-minted one of a co-resident or launched agent.
+  // override's token, the runner-minted one of the co-resident agent.
   const agentTokenRef = useRef<string | undefined>(undefined);
   const overrideRef = useRef(overrideUrl);
   overrideRef.current = overrideUrl;
   const overrideTokenRef = useRef(overrideToken);
   overrideTokenRef.current = overrideToken;
-  const runnerBaseRef = useRef<string | null>(null);
-  const runnerTermsRef = useRef<string | null>(null);
-  const termsGateRef = useRef<((terms: RunnerTerms) => void) | null>(null);
-  const launchedRef = useRef<LaunchedAgent | null>(null);
-  // The agent inside a live watch session, pushed in by the editor shell as
-  // sessions come and go. Read at the start of a send, never mid-turn.
-  const coResidentRef = useRef<CoResidentAgent | null>(null);
+  // The co-resident agent of the workspace's session, pushed in by the editor
+  // shell as the session comes and goes. Read at the start of a send, never
+  // mid-turn.
+  const sessionAgentRef = useRef<SessionAgentState>(NO_SESSION_AGENT);
+  // Sends waiting for a starting session's agent to answer.
+  const agentWaitersRef = useRef<Array<() => void>>([]);
   // Which surface the shared workspace is reached through for the agent
   // currently in use — the session's volume for a co-resident agent, the
   // agent's own directory otherwise. Resolved together with the base URL, so
@@ -642,39 +624,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   const client = useCallback(() => new AgentClient(agentUrlRef.current, agentTokenRef.current), []);
 
-  // Drop a launched per-session instance whose upstream looks gone (reaped
-  // container, dead proxy route): the next send re-launches instead of failing
-  // forever against a cached URL. Fires a best-effort DELETE so a container
-  // that is in fact still alive doesn't leak on the runner.
-  const invalidateLaunched = useCallback((reason: string) => {
-    const launched = launchedRef.current;
-    if (!launched) return;
-    launchedRef.current = null;
-    agentUrlRef.current = "";
-    agentTokenRef.current = undefined;
-    console.warn(`Dropping agent session '${launched.sessionId}': ${reason}`);
-    void launched.stop();
-    refreshIdentityRef.current();
-  }, []);
-
-  // The agent to talk to right now, without launching one, in the precedence
-  // below — and the one a conversation's records are read from and its turn
-  // continued on, since a launched per-session instance is new and holds none.
+  // The agent to talk to right now, in the precedence below — and the one a
+  // conversation's records are read from and its turn continued on.
   const reachableAgent = useCallback((): ReachableAgent | null => {
     const override = overrideRef.current;
     if (override) {
       const token = overrideTokenRef.current || undefined;
       return { url: override, token, workspace: ownWorkspace(new AgentClient(override, token)) };
     }
-    const coResident = coResidentRef.current;
-    if (coResident) return { url: coResident.baseUrl, token: coResident.token, workspace: coResident.workspace };
-    const launched = launchedRef.current;
-    if (launched) {
-      return {
-        url: launched.agentUrl,
-        token: launched.token,
-        workspace: ownWorkspace(new AgentClient(launched.agentUrl, launched.token)),
-      };
+    const session = sessionAgentRef.current;
+    if (session.kind === "ready") {
+      return { url: session.agent.baseUrl, token: session.agent.token, workspace: session.agent.workspace };
     }
     return null;
   }, []);
@@ -728,43 +688,26 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [overrideUrl, overrideToken]);
 
-  // Ensure an agent instance is reachable, and say which workspace surface goes
-  // with it. Precedence: the dev override, then a live watch session's
-  // co-resident agent, then launching a session of the agent's own.
-  //
-  // The co-resident agent outranks a launched one even when a launched one is
-  // already cached, and the cached one is torn down. It is not a preference:
-  // only the co-resident agent writes the volume the running applications
-  // watch, so only its edits reload the app the user is looking at. Switching
-  // instances loses what the previous one journaled: the transcript and the
-  // model's history live in the agent that ran the turns, and nothing is
-  // ferried to another instance.
+  // Ensure an agent is reachable, and say which workspace surface goes with it.
+  // Precedence: the dev override, then the co-resident agent of the
+  // workspace's session — the one that writes the files the running
+  // applications watch. A session still coming up is waited for; a workspace
+  // whose session runs no agent says why.
   //
   // Resolved at the start of a send, so an agent that appears mid-turn is
   // picked up on the next one rather than halfway through this one.
   const ensureAgent = useCallback(async () => {
-    const reachable = reachableAgent();
-    if (reachable) {
-      if (!overrideRef.current && coResidentRef.current && launchedRef.current) {
-        const stale = launchedRef.current;
-        launchedRef.current = null;
-        void stale.stop();
+    for (;;) {
+      const reachable = reachableAgent();
+      if (reachable) {
+        selectAgent(reachable);
+        return;
       }
-      selectAgent(reachable);
-      return;
+      const session = sessionAgentRef.current;
+      if (session.kind === "none") throw new Error(session.reason);
+      setStatus("launching");
+      await new Promise<void>((resolve) => agentWaitersRef.current.push(resolve));
     }
-    if (!runnerBaseRef.current) {
-      throw new Error("No runner selected — pick a runner in settings, or set a dev agent URL.");
-    }
-    setStatus("launching");
-    const launched = await launchAgentSession(runnerBaseRef.current, runnerTermsRef.current);
-    launchedRef.current = launched;
-    selectAgent({
-      url: launched.agentUrl,
-      token: launched.token,
-      workspace: ownWorkspace(new AgentClient(launched.agentUrl, launched.token)),
-    });
-    refreshIdentityRef.current();
   }, [reachableAgent, selectAgent]);
 
   // ── persistence ───────────────────────────────────────────────────────────
@@ -781,25 +724,23 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setSyncSensitive(NO_EXCLUDED_PATHS);
     deliverOpeningRef.current();
   }, []);
-  const setRunner = useCallback((base: string | null) => {
-    runnerBaseRef.current = base;
-  }, []);
   // Assigned below, once the transcript loader exists: a co-resident agent that
   // appears after a conversation was opened is where that conversation's
   // records are.
   const onCoResidentRef = useRef<() => void>(() => undefined);
-  const setCoResidentAgent = useCallback((agent: CoResidentAgent | null) => {
-    const appeared = agent !== null && coResidentRef.current?.baseUrl !== agent.baseUrl;
-    coResidentRef.current = agent;
-    setCoResident(agent);
+  const setSessionAgent = useCallback((state: SessionAgentState) => {
+    const previous = sessionAgentRef.current;
+    const appeared =
+      state.kind === "ready" && (previous.kind !== "ready" || previous.agent.baseUrl !== state.agent.baseUrl);
+    sessionAgentRef.current = state;
+    setSessionAgentState(state);
     refreshIdentityRef.current();
+    if (state.kind !== "starting") {
+      const waiters = agentWaitersRef.current;
+      agentWaitersRef.current = [];
+      for (const wake of waiters) wake();
+    }
     if (appeared) onCoResidentRef.current();
-  }, []);
-  const setRunnerAcceptedTerms = useCallback((version: string | null) => {
-    runnerTermsRef.current = version;
-  }, []);
-  const registerTermsGate = useCallback((handler: ((terms: RunnerTerms) => void) | null) => {
-    termsGateRef.current = handler;
   }, []);
 
   const updateAssistant = useCallback((id: string, fn: (m: AssistantMessage) => AssistantMessage) => {
@@ -1037,9 +978,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             setMessages((prev) => applyTurnError(prev, activeTurnId, { code: err.code, message: err.message }));
             return;
           }
-          // A lost connection usually means the per-session container is gone —
-          // drop it so the next send re-launches instead of failing forever.
-          invalidateLaunched("event stream connection lost");
           const assistantId = assistantIdRef.current;
           if (assistantId) updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
         },
@@ -1048,7 +986,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         },
       });
     },
-    [applyStreamRecord, endTurn, invalidateLaunched, settleUnrequestedCancel, updateAssistant],
+    [applyStreamRecord, endTurn, settleUnrequestedCancel, updateAssistant],
   );
 
   // Abort a turn this client started but will not follow — a Stop that landed
@@ -1185,9 +1123,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             return;
           }
           if (outcome.kind === "refused") {
-            if (outcome.status >= 502 && outcome.status <= 504) {
-              invalidateLaunched(`POST /chat answered ${outcome.status}`);
-            }
             setError(refusalMessage(outcome));
             setStatus("error");
             updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
@@ -1213,18 +1148,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           attachStream(turn, 0);
         } catch (err) {
           if (superseded()) return;
-          if (isUpstreamGone(err)) {
-            invalidateLaunched(err instanceof Error ? err.message : String(err));
-          }
-          if (err instanceof TermsRequiredError) {
-            // The shell shows the agreement; the turn stays in the transcript as
-            // a failed one, so accepting and retrying resumes this same request.
-            termsGateRef.current?.(err.terms);
-            setError("The runner requires accepting its usage terms before the agent can start.");
-            setStatus("error");
-            updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
-            return;
-          }
           setError(err instanceof Error ? err.message : String(err));
           setStatus("error");
           updateAssistant(assistantId, (m) => ({ ...m, pending: false }));
@@ -1236,7 +1159,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       conversationToSendTo,
       ensureAgent,
       attachStream,
-      invalidateLaunched,
       updateAssistant,
       abortUnattached,
       applyPendingReverts,
@@ -1500,9 +1422,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
             return;
           }
           if (outcome.kind === "refused" && !running) {
-            if (outcome.status >= 502 && outcome.status <= 504) {
-              invalidateLaunched(`POST /chat/${turn.id}/continue answered ${outcome.status}`);
-            }
             setError(refusalMessage(outcome));
             setStatus("error");
             return;
@@ -1514,7 +1433,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
           attachStream(turn.id, turn.lastRecordId ?? 0);
         } catch (err) {
           if (superseded()) return;
-          if (isUpstreamGone(err)) invalidateLaunched(err instanceof Error ? err.message : String(err));
           setError(err instanceof Error ? err.message : String(err));
           setStatus("error");
         }
@@ -1524,7 +1442,6 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       abortUnattached,
       attachStream,
       client,
-      invalidateLaunched,
       reachableAgent,
       updateAssistant,
       selectAgent,
@@ -1823,7 +1740,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       }
       conversationAgentRef.current = null;
       setConversationMeta(null);
-      // No agent yet: whichever one appears — or the one a send launches —
+      // No agent yet: whichever one appears — the session's, once it is up —
       // says whether the pointer is a conversation of its own, so no id is
       // opened or minted before then.
       if (!agent) {
@@ -2210,24 +2127,9 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   useEffect(
     () => () => {
       streamRef.current?.close();
-      void launchedRef.current?.stop();
     },
     [],
   );
-
-  // Tab/window close never runs the React cleanup above — fire a keepalive
-  // DELETE on pagehide so the per-session container doesn't leak on the runner.
-  // (sendBeacon can't send DELETE; a keepalive fetch survives page teardown.)
-  useEffect(() => {
-    const onPageHide = () => {
-      const launched = launchedRef.current;
-      if (!launched) return;
-      // The page is going away — there is no surface left to report a failure to.
-      void fetch(launched.deleteUrl, { method: "DELETE", keepalive: true }).catch(() => undefined);
-    };
-    window.addEventListener("pagehide", onPageHide);
-    return () => window.removeEventListener("pagehide", onPageHide);
-  }, []);
 
   const attachmentLimits =
     identity?.state === "known" && hasFeature(identity, AGENT_FEATURES.attachments)
@@ -2314,10 +2216,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setPanelAvailable,
     setConversation,
     registerWorkspace,
-    setRunner,
-    setCoResidentAgent,
-    setRunnerAcceptedTerms,
-    registerTermsGate,
+    setSessionAgent,
   };
 
   return (

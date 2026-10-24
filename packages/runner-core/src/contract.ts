@@ -1,8 +1,8 @@
 /**
  * The backend-neutral `/v1` session contract. Every field here is shared by
- * the docker and kubernetes backends and travels over the HTTP+SSE wire to the
- * editor adapter. Backend-specific concerns (how a container/pod is spawned,
- * how the bundle is delivered) live behind the `RunnerBackend` interface.
+ * every backend and travels over the HTTP+SSE wire to the editor adapter.
+ * Backend-specific concerns (how a workload is created, how a run is spawned)
+ * live behind the `RunnerBackend` interface.
  */
 
 import type { DebugFrame } from "@telorun/debug-wire";
@@ -37,10 +37,41 @@ export interface RunnerCapabilities {
    *  with `428 terms_required` unless the client sends `x-telo-accepted-terms`
    *  matching `terms.version`. The editor surfaces it and records acceptance. */
   terms?: RunnerTerms;
-  /** Operator-predefined applications this runner can launch by name
-   *  (`POST /v1/apps/:name/sessions`). Absent/empty when none are offered —
-   *  clients hide the corresponding entry points. */
-  apps?: RunnerAppDescriptor[];
+  /** Present when the runner accepts identity (`RUNNER_IDENTITY_AUDIENCE` /
+   *  `RUNNER_IDENTITY_ISSUERS`): its RFC 9728 protected-resource metadata, the
+   *  same document `/.well-known/oauth-protected-resource` serves. A client
+   *  checks `resource` against the URL it connects to and never takes it. */
+  identity?: ProtectedResourceMetadata;
+}
+
+/** RFC 9728 protected-resource metadata, as far as this runner states it. */
+export interface ProtectedResourceMetadata {
+  /** The runner's canonical https base URL: the token audience and the base
+   *  of every DPoP proof's `htu`. */
+  resource: string;
+  /** The issuers whose access tokens the runner accepts. */
+  authorization_servers: string[];
+  dpop_bound_access_tokens_required: true;
+  dpop_signing_alg_values_supported: string[];
+}
+
+/** One of the caller's sessions, as `GET /v1/sessions` lists it. */
+export interface SessionSummary {
+  sessionId: string;
+  workspace: string;
+  status: RunStatus["kind"];
+  lastActiveAt: string;
+}
+
+/** `GET /v1/sessions`, newest activity first. */
+export interface SessionList {
+  sessions: SessionSummary[];
+}
+
+/** `POST /v1/sessions/:id/owner`: adopts a resume-secret session for the
+ *  identity the request carries. */
+export interface AdoptSessionRequest {
+  resumeSecret: string;
 }
 
 /** An operator-defined agreement. `version` is opaque and operator-controlled;
@@ -55,15 +86,12 @@ export interface RunnerTerms {
 export const ACCEPTED_TERMS_HEADER = "x-telo-accepted-terms";
 
 /**
- * How an application container's byte channel is attached.
- *  - `tty`     — one merged stream, as a terminal produces. Resize works;
- *                `CLICOLOR_FORCE` is injected.
+ * How one run's byte channel is attached, chosen per Run.
+ *  - `tty`     — one merged stream from a fresh pty, as a terminal produces.
+ *                Resize works; `CLICOLOR_FORCE` is injected.
  *  - `streams` — stdout and stderr separated at the source. Resize is rejected
  *                (meaningless with no PTY) and no colour is forced, so the app
  *                sees the environment it would see in production.
- * Nothing is invented at the transport layer: docker's non-TTY attach is already
- * a multiplexed stream carrying a per-frame stream id, and the kubernetes attach
- * subresource without a TTY already gives separate stdout/stderr channels.
  */
 export type IoMode = "tty" | "streams";
 
@@ -72,9 +100,6 @@ export interface RunnerFeatures {
   io: IoMode[];
   /** Runner can publish workload ports back to the client. */
   ports: boolean;
-  /** Watch sessions (`mode: "watch"`) are requestable. Server-gated: a runner
-   *  with watch disabled advertises `false` and rejects the field. */
-  watch: boolean;
   /** Catalog names admissible as a session's co-resident `agent`. Empty/absent
    *  when the operator configured none. */
   agents?: string[];
@@ -83,18 +108,6 @@ export interface RunnerFeatures {
    *  substitute. Absent, a request naming a version is refused
    *  (`400 telo_version_unsupported`). */
   teloVersions?: boolean;
-}
-
-/** An operator-predefined application the runner can launch by name. Only the
- *  identity is advertised — the image and the operator env injected into it
- *  stay server-side, so a client can never pick the image or reach the
- *  secrets. Which apps exist is pure operator configuration (`RUNNER_APPS`);
- *  the runner has no built-in knowledge of any specific app. */
-export interface RunnerAppDescriptor {
-  /** Wire id: an app session is created via `POST /v1/apps/<name>/sessions`. */
-  name: string;
-  title?: string;
-  description?: string;
 }
 
 /** A JSON Schema document, kept structurally open so runner-core need not depend
@@ -130,18 +143,6 @@ export type AvailabilityReport =
   | { status: "needs-setup"; issues: ConfigIssue[] }
   | { status: "unavailable"; message: string; remediation?: string };
 
-export interface RunBundle {
-  entryRelativePath: string;
-  files: Array<{
-    relativePath: string;
-    contents: string;
-    /** `utf8` when omitted. A checkpoint re-seeds a resumed session through this
-     *  same shape, and a workspace may hold a binary asset, so dropping anything
-     *  that is not text would silently lose a file across a suspend. */
-    encoding?: "utf8" | "base64";
-  }>;
-}
-
 export type PortProtocol = "tcp" | "udp";
 
 export interface PortMapping {
@@ -176,39 +177,21 @@ export interface RunnerEndpoint {
 }
 
 /**
- * How long a session lives relative to its runs.
- *  - `run`   — one run. The workload exits and the session is terminal. Today's
- *              behaviour, and the default.
- *  - `watch` — a workspace that runs continuously. Each application container
- *              runs `telo run --watch`, an edit costs a kernel reload rather
- *              than a pod, and a completed one-shot run leaves the session up.
- */
-export type SessionMode = "run" | "watch";
-
-/** The name a single-app session's one application takes when the request
- *  declares no `apps` — so every `run` / `debug` / `endpoints` event names an
- *  app, and no client needs two readings of the same stream. */
-export const DEFAULT_APP_NAME = "app";
-
-/**
- * One application in a session — one container, one kernel, one watcher. Most
- * workspaces have exactly one: an Application with several Services in its
- * `targets:` is still one kernel. The multi-app case is two independent
- * Applications, which genuinely cannot be merged (importing a `Telo.Application`
- * is a hard error, so no manifest composes them).
+ * One application of a session's app set — one idle container (one directory's
+ * process slot on the local runner), started by Run. The multi-app case is two
+ * independent Applications, which genuinely cannot be merged (importing a
+ * `Telo.Application` is a hard error, so no manifest composes them).
  */
 export interface SessionAppSpec {
   /** Unique within the session and usable as a DNS label — it appears in the
    *  container name and in every run event. */
   name: string;
-  /** Bundle-relative entry manifest this app runs. */
+  /** Workspace-relative entry manifest this app runs. */
   entryRelativePath: string;
   /** Ports this app declares. Unique across the WHOLE session: session hosts are
    *  `<port>-<sessionId>.<base-domain>`, a single label, so two apps on one port
    *  would collide with nothing to tell them apart. */
   ports?: PortMapping[];
-  /** Terminal or separated streams; defaults to `tty`. */
-  io?: IoMode;
   /** The telo release this app runs on — a plain version, the one its module
    *  is edited against. Per app, never per session: two applications of one
    *  workspace may resolve to different versions. Omitted, the runner's own
@@ -231,13 +214,16 @@ export const TELO_VERSION_PATTERN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za
  * generation ever opening — neither of which tells the user the version is
  * simply too old.
  *
- * The floor is the release that first carries `--no-input`, which every
- * backend passes: an older `telo run` refuses it as an unknown option. Before
- * that flag the floor was 0.95.0, the oldest release verified by execution to
- * do the rest; raise it only for an option a runner starts passing, and lower
- * it only by running the candidate.
+ * The floor is the release whose `telo run --watch` takes no hold of its own,
+ * so a one-shot application's generation ends — torn down, `Kernel.Stopped`
+ * carrying its exit code — and the run is reported `completed`; on an older
+ * release that generation never ends until the next edit. It also carries
+ * `--no-input` (0.121.0), which every backend passes. It is forward-declared
+ * until that release is published, and verified by execution then; raise it
+ * only for behaviour a runner starts relying on, and lower it only by running
+ * the candidate.
  */
-export const MIN_SUPERVISABLE_TELO = "0.121.0";
+export const MIN_SUPERVISABLE_TELO = "0.123.0";
 
 /** Why `version` is too old to be supervised, or `undefined`. */
 export function unsupervisableTelo(version: string): string | undefined {
@@ -248,7 +234,7 @@ export function unsupervisableTelo(version: string): string | undefined {
     if (asked[i]! < floor[i]!) {
       return (
         `telo ${version} is older than ${MIN_SUPERVISABLE_TELO}, the oldest release a runner ` +
-        `is verified to supervise (watch mode, the debug stream and the workspace marker)`
+        `is verified to supervise (watch mode and a finished run's outcome, the debug stream, the workspace marker)`
       );
     }
   }
@@ -262,50 +248,79 @@ export function isUnreleasedTelo(version: string): boolean {
   return version.includes("+");
 }
 
-export interface StartSessionRequest {
-  bundle: RunBundle;
-  env: Record<string, string>;
-  ports?: PortMapping[];
-  /** The telo version of the one application a request with no `apps` runs —
-   *  the same field {@link SessionAppSpec} carries per app. */
-  telo?: string;
-  /** Whatever this runner's `/v1/capabilities` declares as editable. Omitted
-   *  against a runner that declares none. */
-  config?: SessionConfig;
-  /** Request the kernel debug stream. When true the runner launches the
-   *  workload with `--inspect`, subscribes to the in-workload inspect endpoint
-   *  (reachable only by the runner — never published outward), and relays each
-   *  frame to the client as a `debug` {@link RunEvent}. A watch session always
-   *  runs with it on — that stream is where `run` events are projected from. */
-  inspect?: boolean;
-  /** Defaults to `run`. */
-  mode?: SessionMode;
-  /** Catalog name of a co-resident agent container. At most one per session,
-   *  never per app: the agent's unit is the workspace, and two agents over one
-   *  workspace would contend on the same files and split one conversation in
-   *  half. Requires `mode: "watch"` — an agent with nothing watching its writes
-   *  is a silent no-op. */
+/**
+ * `POST /v1/sessions`. A new session holds no files — the client seeds it
+ * through `POST /v1/sessions/:id/workspace` — and no env: env arrives with each
+ * Run and is held only by the process running the app.
+ */
+export interface CreateSessionRequest {
+  /** The client's opaque name for the workspace. One session per owner and
+   *  workspace. */
+  workspace: string;
+  /** Catalog name of a co-resident agent container (`features.agents`). At most
+   *  one per session: its unit is the workspace. */
   agent?: string;
-  /** The applications this session runs, one container each. Omitted, it
-   *  defaults to a single app named `app` on the bundle's own entry with the
-   *  request's `ports` — so a single-app session is written exactly as before. */
-  apps?: SessionAppSpec[];
+  /** Every Application of the workspace, one idle container each. May be empty. */
+  apps: SessionAppSpec[];
+  /** Whatever this runner's `/v1/capabilities` declares as editable. */
+  config?: SessionConfig;
 }
+
+/** The `201` answer to a create. `resumeSecret` is present only on a session
+ *  created with no identity, and is answered this once: the runner keeps only
+ *  its SHA-256, and every session route takes it as `Authorization: Bearer`. */
+export interface CreateSessionResponse {
+  sessionId: string;
+  streamUrl: string;
+  createdAt: string;
+  resumeSecret?: string;
+}
+
+/** `POST /v1/sessions/:id/apps/:app/run`. */
+export interface RunAppRequest {
+  /** The session env of this run, held only by the process running the app. */
+  env: Record<string, string>;
+  /** One of `features.io`. */
+  io: IoMode;
+  /** The terminal's initial size under `tty`. */
+  cols?: number;
+  rows?: number;
+}
+
+/** `POST /v1/sessions/:id/io-tickets`: a single-use ticket for one app's byte
+ *  channel, valid {@link IO_TICKET_TTL_MS}. `/io` takes it as `?ticket=`, so no
+ *  credential ever appears in a URL. */
+export interface IoTicket {
+  ticket: string;
+  expiresAt: string;
+}
+
+export const IO_TICKET_TTL_MS = 30_000;
+
+/** Close codes of the byte channel (`GET /v1/sessions/:id/io`). */
+export const IO_CLOSE = {
+  /** No `?ticket=`. */
+  ticketRequired: 4401,
+  /** An origin the runner does not serve, or a ticket that is unknown, used,
+   *  expired, or minted for another session or app. */
+  forbidden: 4403,
+  /** The session or the app is gone. */
+  notFound: 4404,
+  /** The session ended and nothing is left to replay. */
+  ended: 4410,
+} as const;
 
 /**
  * The SESSION's status — how the session itself is doing, not how any one run
  * ended. The two are separate nouns on the same stream: a one-shot app finishing
- * in a watch session emits `run.completed` and leaves the session `running`, so
- * the next edit starts that app's next generation.
- *
- * `exited` belongs to a `run` session only, where the session IS the run.
+ * emits `run.completed` and leaves the session `running`, and each app reports
+ * its own `app` state.
  */
 export type RunStatus =
   | { kind: "starting" }
-  /** Every application container is up. `inspectUrl` is the kernel
-   *  debug/inspection UI fronted by a proxy (set only when the session ran with
-   *  `inspect` and the runner has a public base URL); absent when the inspect
-   *  endpoint isn't externally reachable.
+  /** The workload is up: every application container is ready and idle until
+   *  Run. `inspectUrl` is the kernel debug/inspection UI fronted by a proxy, set
+   *  only where the runner has a public base URL.
    *
    *  `agent` is where this session's co-resident agent answers, present only on
    *  a session that requested one AND that this runner could route. An ENDPOINT
@@ -322,14 +337,14 @@ export type RunStatus =
       inspectUrl?: string;
       agent?: RunnerEndpoint;
     }
-  | { kind: "exited"; code: number }
-  /** Reaped for idleness: the pod is gone, the workspace checkpoint is held, and
-   *  `POST /v1/sessions/:id/resume` brings it back under the same session id.
-   *  NOT terminal — nothing is evicted on it. Best-effort by design: the runner
-   *  holds the checkpoint in memory, so a runner restart loses it and the editor
-   *  (which holds the authoritative workspace) re-seeds from its own copy. */
+  /** The workload is gone and the session's storage is kept: idle, past its
+   *  running limit, or `POST …/suspend`. `POST …/resume` rebuilds it under the
+   *  same id. Not terminal. */
   | { kind: "suspended" }
+  /** The workload could not be created, or one of its containers ended. What was
+   *  left of it is removed and the storage kept, so `resume` rebuilds it. */
   | { kind: "failed"; message: string }
+  /** The session was deleted. */
   | { kind: "stopped" };
 
 /**
@@ -367,11 +382,28 @@ export type ReachabilityState = "checking" | "reachable" | "unreachable";
 export type RouteState = "pending" | "programmed" | "unprogrammed";
 
 /** What started one generation of an application.
- *  - `initial` — the session came up
- *  - `watch`   — a file changed under the app's watcher
- *  - `manual`  — `POST /v1/sessions/:id/reload`
- *  - `resume`  — a suspended session was brought back, or the app set changed */
-export type RunTrigger = "initial" | "watch" | "manual" | "resume";
+ *  - `run`    — `POST /v1/sessions/:id/apps/:app/run`
+ *  - `watch`  — a file changed under the app's watcher
+ *  - `manual` — `POST /v1/sessions/:id/reload` */
+export type RunTrigger = "run" | "watch" | "manual";
+
+/** How one app's run ended, as the process running it reported. */
+export interface AppRunEnding {
+  runId: string;
+  code?: number;
+  signal?: string;
+  /** Why the run never started or was cut off (a spawn that failed, the pod
+   *  recreated under it). */
+  reason?: string;
+}
+
+/** One app's state, reported as the `app` event.
+ *  - `ready`   — its container is up and nothing runs, optionally saying how
+ *                the run before ended;
+ *  - `running` — a Run is live. */
+export type AppState =
+  | { state: "ready"; ended?: AppRunEnding }
+  | { state: "running"; runId: string };
 
 /**
  * A RUN outcome — one per app per reload generation, distinct from the session
@@ -411,9 +443,10 @@ export type RunEvent =
   /** `app` is absent for session-scoped provisioning (scheduling, image pull) and
    *  present once the message belongs to one application. */
   | { type: "progress"; app?: string; phase: RunPhase; message: string; done?: boolean }
-  /** A frame relayed from one app's kernel debug stream (kernel event or log
-   *  line). Only emitted when the session was started with `inspect`. */
+  /** A kernel event frame relayed from one app's debug stream while it runs. */
   | { type: "debug"; app: string; frame: DebugFrame }
+  /** One app's state changed. */
+  | ({ type: "app"; app: string } & AppState)
   /** A reachability transition for one declared port of one app. */
   | { type: "reachability"; app: string; port: number; state: ReachabilityState }
   /** A routing-layer verdict for one published host. `app` is absent for a port
@@ -445,12 +478,12 @@ export type RunEvent =
     };
 
 /**
- * Terminal = the session is over and the registry may schedule eviction.
- * `suspended` is deliberately NOT terminal: the session record and its workspace
- * checkpoint outlive the pod, and `resume` brings it back under the same id.
+ * Terminal = the event stream and the byte channel close on it. `suspended` is
+ * not terminal: the record and the storage outlive the workload. A `failed`
+ * session's stream closes, and `resume` still rebuilds it.
  */
 export function isTerminal(status: RunStatus): boolean {
-  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
+  return status.kind === "failed" || status.kind === "stopped";
 }
 
 /**
@@ -459,6 +492,10 @@ export function isTerminal(status: RunStatus): boolean {
  * failure the deleted `stdout` / `stderr` run events represented.
  */
 export type ByteStreamTag = "tty" | "stdout" | "stderr";
+
+/** The stream byte of a byte-channel frame `[seq:4 BE][stream:1][payload]`,
+ *  on `/io` and on the session supervisor's channel alike. */
+export const BYTE_STREAM_CODES: Readonly<Record<ByteStreamTag, number>> = { tty: 0, stdout: 1, stderr: 2 };
 
 /** One file in a workspace snapshot: its path and the sha256 of its bytes.
  *  Hashing content — rather than comparing sizes or timestamps — is what makes
@@ -488,16 +525,8 @@ export interface WorkspaceApplyResult {
   deleted: number;
 }
 
-/** One file of a checkpoint — a tree entry plus the bytes needed to re-seed a
- *  fresh pod. Text stays `utf8`; anything that is not valid text is carried
- *  `base64`, so a binary asset survives a suspend/resume round trip. */
-export interface WorkspaceCheckpointFile extends WorkspaceFileEntry {
-  content: string;
-  encoding: "utf8" | "base64";
-}
-
 /**
- * Stages a session start can fail at. The docker/k8s backends share the
+ * Stages a workload creation can fail at. The docker/k8s backends share the
  * vocabulary; not every stage applies to every backend (`pull`/`inspect` are
  * image-availability stages, `create`/`attach`/`start` are workload stages).
  */

@@ -6,6 +6,9 @@ mod cloud_error;
 mod cloud_token_store;
 mod cloud_transport;
 mod local_runner;
+mod runner_identity;
+mod runner_identity_rules;
+mod runner_session_secrets;
 
 use tauri::{Manager, WindowEvent};
 
@@ -20,6 +23,8 @@ pub fn run() {
         .manage(local_runner::LocalRunnerState::default())
         .manage(cli_runner::CliRunnerState::default())
         .manage(cloud_auth::CloudState::default())
+        .manage(runner_identity::RunnerIdentityState::default())
+        .manage(runner_session_secrets::RunnerSessionSecrets::default())
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
                 // Both supervisors: a session of either kind outliving the
@@ -48,6 +53,9 @@ pub fn run() {
             cloud_auth::cloud_switch_organization,
             cloud_auth::cloud_sign_out,
             cloud_transport::cloud_request,
+            runner_identity::runner_token,
+            runner_session_secrets::runner_resume_secret_read,
+            runner_session_secrets::runner_resume_secret_write,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

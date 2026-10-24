@@ -14,7 +14,7 @@ metadata:
     only with `archived=true`. POST /chat refuses an unknown conversation (404)
     and an archived one (409); an unknown conversation's routes are 404.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
@@ -159,8 +159,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18521 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18520/v1
           secrets:
             openaiApiKey: stub-key

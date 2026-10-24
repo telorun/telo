@@ -1,7 +1,5 @@
-import { SESSION_PREFIXES } from "../../../storage-keys";
-import type { RunIo, RunIoConnection, RunIoHandlers } from "../../types";
+import { SessionGoneError, type RunIoConnection, type RunIoHandlers, type SequencedRunIo } from "../../types";
 
-const STORAGE_PREFIX = SESSION_PREFIXES.runIoSeq;
 const RESIZE_DEBOUNCE_MS = 50;
 const MAX_BACKOFF_MS = 10_000;
 const SEQ_PREFIX_BYTES = 4;
@@ -11,15 +9,21 @@ const STREAM_TAG_BYTES = 1;
 const STREAM_TAGS = ["tty", "stdout", "stderr"] as const;
 // Application-level close codes the runner emits — we do not auto-reconnect
 // on these, since they describe terminal conditions on the server side.
-const TERMINAL_CLOSE_CODES = new Set<number>([1000, 1001, 1005, 4403, 4404, 4410]);
+const TERMINAL_CLOSE_CODES = new Set<number>([1000, 1001, 1005, 4401, 4403, 4404, 4410]);
+/** The close reported when the session is gone before a ticket could be minted —
+ *  the code the runner itself closes a gone session's channel with. */
+const SESSION_GONE_CLOSE = 4404;
 
 interface IoClientDeps {
+  /** `ws(s)://…/v1/sessions/:id/io`. */
   url: string;
-  sessionId: string;
-  /** Replay the PTY transcript from the start (lastSeq=0), ignoring any per-tab
-   *  checkpoint. Used when re-attaching after a page reload so the terminal
-   *  scrollback is restored into a fresh xterm. */
-  replayFromStart?: boolean;
+  /** Deliver the output after this sequence: the previous run's last, so a
+   *  run's terminal shows that run alone, or 0 for everything buffered. */
+  fromSeq: number;
+  /** A single-use ticket for this app's channel, minted for each connection —
+   *  a browser cannot set a header on an upgrade, and a credential must never
+   *  appear in a URL. */
+  ticket(): Promise<string>;
 }
 
 interface ServerControlFrame {
@@ -29,16 +33,20 @@ interface ServerControlFrame {
 }
 
 /**
- * Builds a `RunIo` capability that resolves a fresh WebSocket on each
- * `open()` call. Reconnects transparently on transient close codes, replays
- * from `lastSeq` persisted in `sessionStorage`, and surfaces a `gap`
- * diagnostic on the byte stream when the runner reports buffer eviction.
+ * Builds a `RunIo` capability over one app's byte channel. Each connection
+ * takes a fresh ticket; it reconnects transparently on transient close codes,
+ * resumes from the last sequence it delivered, and surfaces a `gap` diagnostic
+ * on the byte stream when the runner reports buffer eviction.
  */
-export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
-  const storageKey = `${STORAGE_PREFIX}${deps.sessionId}`;
+export function makeHttpRunnerIo(deps: IoClientDeps): SequencedRunIo {
   let opened = false;
+  // The server prefixes every binary frame with the authoritative seq. The
+  // largest one consumed tells a reconnect where to resume, and skips
+  // duplicates during replay.
+  let lastSeq = deps.fromSeq;
 
   return {
+    lastSeq: () => lastSeq,
     open(handlers: RunIoHandlers): RunIoConnection {
       if (opened) {
         throw new Error("RunIo.open() may be called only once per session");
@@ -49,21 +57,6 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
       let backoffMs = 250;
       let pendingResize: { cols: number; rows: number } | null = null;
       let resizeTimer: ReturnType<typeof setTimeout> | null = null;
-      // The server prefixes every binary frame with the authoritative seq.
-      // We persist the largest one we've consumed so a reconnect (or a
-      // fresh tab via sessionStorage) tells the server where to resume,
-      // and so duplicate frames during replay/queue-drain are skipped.
-      // On a cold re-attach we replay the whole transcript from zero, so the
-      // leftover per-tab checkpoint is stale — drop it so it can't suppress the
-      // replay (and so any reconnect within this attach also starts clean).
-      let lastSeq: number;
-      if (deps.replayFromStart) {
-        lastSeq = 0;
-        clearPersistedSeq(storageKey);
-      } else {
-        lastSeq = readPersistedSeq(storageKey);
-      }
-
       const sendQueue: Uint8Array[] = [];
       const controlQueue: string[] = [];
 
@@ -79,18 +72,34 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
         }
       };
 
-      const connect = (): void => {
+      const retry = (): void => {
+        const delay = backoffMs;
+        backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
+        setTimeout(() => void connect(), delay);
+      };
+
+      const connect = async (): Promise<void> => {
+        if (closed) return;
+
+        let ticket: string;
+        try {
+          ticket = await deps.ticket();
+        } catch (err) {
+          if (closed) return;
+          if (err instanceof SessionGoneError) {
+            closed = true;
+            handlers.onClose({ code: SESSION_GONE_CLOSE, clean: true });
+            return;
+          }
+          retry();
+          return;
+        }
         if (closed) return;
 
         const url = new URL(deps.url);
-        if (lastSeq > 0) {
-          url.searchParams.set("lastSeq", String(lastSeq));
-        } else if (deps.replayFromStart) {
-          // Explicit "from zero" so the runner replays the full transcript,
-          // mirroring the SSE client's `lastEventId=0` — never rely on the
-          // server's absent-param default.
-          url.searchParams.set("lastSeq", "0");
-        }
+        url.searchParams.set("ticket", ticket);
+        // Explicit, from zero too: never rely on the server's absent-param default.
+        url.searchParams.set("lastSeq", String(lastSeq));
 
         const ws = new WebSocket(url.toString());
         ws.binaryType = "arraybuffer";
@@ -130,7 +139,6 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
           const seq = view.getUint32(0, false);
           if (seq <= lastSeq) return;
           lastSeq = seq;
-          persistSeq(storageKey, lastSeq);
           const stream = STREAM_TAGS[view.getUint8(SEQ_PREFIX_BYTES)] ?? "tty";
           handlers.onData(
             new Uint8Array(event.data, SEQ_PREFIX_BYTES + STREAM_TAG_BYTES),
@@ -146,10 +154,8 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
             handlers.onClose({ code: event.code, clean: event.wasClean });
             return;
           }
-          // Transient close — schedule a reconnect with exponential backoff.
-          const delay = backoffMs;
-          backoffMs = Math.min(backoffMs * 2, MAX_BACKOFF_MS);
-          setTimeout(connect, delay);
+          // Transient close — reconnect with a fresh ticket, backing off.
+          retry();
         });
 
         ws.addEventListener("error", () => {
@@ -158,7 +164,7 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
         });
       };
 
-      connect();
+      void connect();
 
       return {
         send(bytes: Uint8Array): void {
@@ -202,31 +208,4 @@ export function makeHttpRunnerIo(deps: IoClientDeps): RunIo {
       };
     },
   };
-}
-
-function readPersistedSeq(key: string): number {
-  try {
-    const raw = window.sessionStorage.getItem(key);
-    if (!raw) return 0;
-    const n = Number.parseInt(raw, 10);
-    return Number.isFinite(n) && n >= 0 ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function persistSeq(key: string, seq: number): void {
-  try {
-    window.sessionStorage.setItem(key, String(seq));
-  } catch {
-    // sessionStorage can be disabled/full — replay degrades to "from zero".
-  }
-}
-
-function clearPersistedSeq(key: string): void {
-  try {
-    window.sessionStorage.removeItem(key);
-  } catch {
-    /* sessionStorage unavailable — nothing to clear */
-  }
 }

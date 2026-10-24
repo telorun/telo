@@ -41,22 +41,15 @@ export function hostsForPort(
 
 /**
  * The host values a routed session's application answers its `Telo.PublicUrl`
- * needs from: each port's own host for the primary, and — where the runner
- * routes what the kernel announces, a watch session — `<label>--<port>-…` for
- * every other address on a port.
+ * needs from: each port's own host for the primary, and `<label>--<port>-…` for
+ * every other address on a port — the runner routes what the kernel announces.
  */
-export function publicUrlTemplateEnv(
-  config: K8sRunnerConfig,
-  sessionId: string,
-  routesAnnounced: boolean,
-): Record<string, string> {
+export function publicUrlTemplateEnv(config: K8sRunnerConfig, sessionId: string): Record<string, string> {
   const domain = config.sessionRouting.baseDomain;
   if (!domain) return {};
   return {
     TELO_HOST_PUBLIC_URL_TEMPLATE: `https://{port}-${sessionId}.${domain}`,
-    ...(routesAnnounced
-      ? { TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE: `https://{label}--{port}-${sessionId}.${domain}` }
-      : {}),
+    TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE: `https://{label}--{port}-${sessionId}.${domain}`,
   };
 }
 

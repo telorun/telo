@@ -62,9 +62,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
+    needs:
+      agentState: { path: !cel "variables.stateDir" }
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      stateDir: !cel "variables.stateDir"
       # No `model:` — inherited from the library. `low` effort: the case pins
       # behaviour, not answer quality, and `authors-manifest` keeps the shipped default.
       reasoningEffort: low

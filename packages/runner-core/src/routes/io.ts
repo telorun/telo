@@ -1,22 +1,22 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from "fastify";
 import type { WebSocket } from "@fastify/websocket";
 
-import { isTerminal, type ByteStreamTag } from "../contract.js";
+import { BYTE_STREAM_CODES, IO_CLOSE, isTerminal } from "../contract.js";
 import type { BufferedBytes } from "../session/byte-ring-buffer.js";
+import type { IoTickets } from "../session/io-tickets.js";
 import type { SessionRegistry } from "../session/registry.js";
+import type { SessionLifecycle } from "../session/session-lifecycle.js";
 
 export interface IoRouteDeps {
   registry: SessionRegistry;
+  lifecycle: SessionLifecycle;
+  tickets: IoTickets;
   corsOrigins: string[] | "*";
 }
 
 const RESIZE_THROTTLE_MS = 50;
 const SEQ_PREFIX_BYTES = 4;
 const STREAM_TAG_BYTES = 1;
-/** Wire codes for the per-frame stream tag. A tag rather than a labelled merged
- *  stream: under `io: "streams"` the transport really did separate stdout from
- *  stderr, and under `tty` it really did not. */
-const STREAM_CODES: Record<ByteStreamTag, number> = { tty: 0, stdout: 1, stderr: 2 };
 /** Upper bound on cols/rows accepted from the client. xterm + a fit addon
  *  produce values in the low thousands at extreme zoom; anything past this
  *  is either nonsense or a malicious client trying to feed
@@ -43,9 +43,9 @@ export function ioRoute(deps: IoRouteDeps): FastifyPluginAsync {
 
 interface IoQuery {
   lastSeq?: string;
-  /** Which application's terminal to attach to. Required whenever the session
-   *  runs more than one app — there is no defensible default among several. */
-  app?: string;
+  /** A single-use ticket from `POST /v1/sessions/:id/io-tickets`, naming the
+   *  app whose terminal this attaches to. The only credential `/io` takes. */
+  ticket?: string;
 }
 
 function handleIo(
@@ -62,34 +62,35 @@ function handleIo(
   // browser CAN read lets the client fail fast.
   const origin = headerString(req.headers.origin);
   if (!isOriginAllowed(deps.corsOrigins, origin)) {
-    closeWith(socket, 4403, "forbidden_origin");
+    closeWith(socket, IO_CLOSE.forbidden, "forbidden_origin");
     return;
   }
 
+  // A browser cannot set a header on an upgrade, so the credential is a ticket
+  // an authenticated request minted: single use, short-lived, bound to the
+  // session and the app. It is consumed here whatever the answer.
+  const ticket = req.query.ticket?.trim();
+  if (!ticket) {
+    closeWith(socket, IO_CLOSE.ticketRequired, "ticket_required");
+    return;
+  }
   const sessionId = req.params.id;
+  const appName = deps.tickets.redeem(ticket, sessionId);
+  if (appName === undefined) {
+    closeWith(socket, IO_CLOSE.forbidden, "ticket_invalid");
+    return;
+  }
+
   const entry = deps.registry.get(sessionId);
   if (!entry) {
-    closeWith(socket, 4404, "session not found");
+    closeWith(socket, IO_CLOSE.notFound, "session not found");
     return;
   }
-
-  // Resolve which app's terminal this attachment is for. An explicit name must
-  // exist; an omitted one is only defensible on a single-app session.
-  const requestedApp = req.query.app?.trim() || undefined;
-  const channel = requestedApp
-    ? entry.apps.get(requestedApp)
-    : deps.registry.soleApp(entry);
+  const channel = entry.apps.get(appName);
   if (!channel) {
-    closeWith(
-      socket,
-      4404,
-      requestedApp
-        ? `session runs no app named '${requestedApp}'`
-        : `session runs ${entry.apps.size} apps — ?app= is required`,
-    );
+    closeWith(socket, IO_CLOSE.notFound, `session runs no app named '${appName}'`);
     return;
   }
-  const appName = channel.name;
 
   const lastSeq = parseLastSeq(req.query.lastSeq);
 
@@ -117,13 +118,18 @@ function handleIo(
   // attach to — close 4410 so the client falls back to status-only display.
   if (isTerminal(entry.status) && entries.length === 0 && liveQueue.length === 0) {
     unsubscribe();
-    closeWith(socket, 4410, "session terminal, nothing to replay");
+    closeWith(socket, IO_CLOSE.ended, "session terminal, nothing to replay");
     return;
   }
 
-  // Confirm the resume point and which attachment this is, so a client knows
-  // whether to offer resize before it sends one.
-  sendJson(socket, { type: "seq", seq: lastSeq, app: appName, io: channel.io });
+  // Confirm the resume point and which attachment this is; `io` is the live
+  // run's, absent while nothing runs.
+  sendJson(socket, {
+    type: "seq",
+    seq: lastSeq,
+    app: appName,
+    ...(channel.run ? { io: channel.run.io } : {}),
+  });
   if (hasGap) {
     sendJson(socket, { type: "gap", reason: "buffer_evicted" });
   }
@@ -154,17 +160,16 @@ function handleIo(
     const next = pendingResize;
     pendingResize = null;
     if (!next) return;
-    // Session may have exited between schedule and flush; backends treat
-    // resize on a gone workload as a no-op.
-    entry.session?.resize(appName, next.cols, next.rows);
+    // The run may have ended between schedule and flush; a resize then goes
+    // nowhere.
+    deps.lifecycle.resize(entry, appName, next.cols, next.rows);
   };
 
   socket.on("message", (raw, isBinary) => {
     if (isBinary) {
-      const session = entry.session;
-      if (!session) return;
+      // Input while nothing runs is discarded.
       const buf = raw instanceof Buffer ? raw : Buffer.from(raw as ArrayBuffer);
-      session.writeStdin(appName, buf);
+      deps.lifecycle.writeStdin(entry, appName, buf);
       return;
     }
     const text = raw.toString();
@@ -178,8 +183,8 @@ function handleIo(
       // A resize is meaningless with no PTY — rejected rather than silently
       // dropped, so a client attached to a `streams` app learns it must not
       // wire its terminal's resize through.
-      if (channel.io !== "tty") {
-        sendJson(socket, { type: "error", error: "resize_unsupported", io: channel.io });
+      if (channel.run && channel.run.io !== "tty") {
+        sendJson(socket, { type: "error", error: "resize_unsupported", io: channel.run.io });
         return;
       }
       const cols = clampDimension(parsed.cols);
@@ -253,7 +258,7 @@ function sendBytesFrame(socket: WebSocket, buffered: BufferedBytes): void {
   if (socket.readyState !== socket.OPEN) return;
   const prefix = Buffer.alloc(SEQ_PREFIX_BYTES + STREAM_TAG_BYTES);
   prefix.writeUInt32BE(buffered.seq, 0);
-  prefix.writeUInt8(STREAM_CODES[buffered.stream] ?? 0, SEQ_PREFIX_BYTES);
+  prefix.writeUInt8(BYTE_STREAM_CODES[buffered.stream] ?? 0, SEQ_PREFIX_BYTES);
   try {
     socket.send(Buffer.concat([prefix, buffered.bytes]));
   } catch {

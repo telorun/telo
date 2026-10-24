@@ -176,7 +176,11 @@ export class ResourceContextImpl implements ResourceContext {
    *  manifest, `assert` analyzes one) binds to a versioned contract instead of
    *  importing the kernel. */
   get runtime(): RuntimeSeam {
-    if (!this.#runtime) this.#runtime = new KernelRuntimeSeam(this.kernel);
+    if (!this.#runtime) {
+      const name = this.metadata?.name as string | undefined;
+      const caller = name ? `${this.#resolvedKind ?? "resource"} '${name}'` : undefined;
+      this.#runtime = new KernelRuntimeSeam(this.kernel, caller);
+    }
     return this.#runtime;
   }
 

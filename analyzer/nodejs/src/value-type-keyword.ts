@@ -54,6 +54,7 @@ const codegen: CodegenTag = ajvExports._ ?? (AjvNS as any)._;
  * `x-telo-type` is deliberately absent — it is the one that emits code.
  */
 export const ANNOTATION_KEYWORDS = [
+  "x-telo-application-source",
   "x-telo-bindings-from",
   "x-telo-browser-export",
   "x-telo-catches-for",

@@ -1,0 +1,31 @@
+[package]
+# The session supervisor: the main process of every app container a container
+# runner creates. A crate with no Node twin, because it must run inside an
+# arbitrary app image with no runtime in it — no shell, no libc, no Node.
+# Versioned by nothing of its own: it ships inside the runner build that carries
+# it, and what a runner and a supervisor agree on is the protocol generation
+# (`../specs/supervisor-protocol.md`).
+name = "telo-runner-supervisor"
+version = "0.0.0"
+license-file = "../../../LICENSE"
+edition = "2021"
+publish = false
+description = "Telo runner session supervisor — runs one app process at a time inside an idle container, driven over a WebSocket."
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "supervisor"
+path = "src/main.rs"
+
+# Every dependency is pure Rust with no build script that compiles C, so the
+# binary links statically for the musl targets with nothing but a linker.
+[dependencies]
+futures-util = { version = "0.3", default-features = false, features = ["sink", "std"] }
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", default-features = false, features = ["rt", "net", "time", "sync", "signal", "macros", "io-util"] }
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["handshake"] }
+

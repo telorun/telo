@@ -14,7 +14,7 @@ metadata:
     `files: null` and `revert: null`, and reverting it is refused 409
     ERR_TURN_NOT_CHECKPOINTED.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
@@ -49,7 +49,7 @@ steps:
   - name: stateDir
     invoke: { kind: Fs.DirectoryCreation }
     inputs:
-      path: !cel "string(variables.scratch.joinPath('.telo-agent'))"
+      path: !cel "string(variables.scratch.joinPath('agent-state'))"
       createParents: true
   # The database as the previous agent left it: its schema, three turns of two
   # conversations in its `turns` table, their records in the journal.
@@ -59,7 +59,7 @@ steps:
       with:
         - kind: SQLite.Connection
           metadata: { name: legacyDb }
-          file: !cel "variables.scratch.joinPath('.telo-agent').joinPath('agent.sqlite')"
+          file: !cel "variables.scratch.joinPath('agent-state').joinPath('agent.sqlite')"
         # The previous agent's migrations, verbatim.
         - kind: SQLite.Schema
           metadata: { name: legacySchema }
@@ -214,8 +214,10 @@ steps:
           metadata: { name: agent }
           source: ../../telo.yaml
           ports: { http: 18535 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch"
+            workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             # Nothing is called: a model is never reached.
             modelEndpoint: http://127.0.0.1:9/v1
             # The seeded activity is months old; retention must not take it.

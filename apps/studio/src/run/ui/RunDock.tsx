@@ -2,9 +2,10 @@ import {
   Bug,
   ChevronDown,
   ChevronUp,
+  Clock,
+  KeyRound,
   Maximize2,
   Minimize2,
-  Play,
   RotateCw,
   Sparkles,
   TriangleAlert,
@@ -14,6 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { RUN_DOCK_MIN_HEIGHT, useRun } from "../context";
 import type { RunBlocker, RunRecord } from "../context";
+import type { RunWait, WorkspaceSessionState } from "../workspace-session";
 import { RunOutput } from "./RunOutput";
 import { RunStatusChip } from "./RunStatusChip";
 import { describeTeloAlignment, staleRunVersion, teloAlignment } from "../telo-alignment";
@@ -44,20 +46,21 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
     selectedRunForApp,
     liveRunForApp,
     blockerForApp,
-    isStartingApp,
     dockForApp,
     dockHasContent,
     setDockOpen,
     setDockHeight,
     setDockMaximized,
     getTerminal,
+    session,
+    appNameOf,
   } = useRun();
   const agentCompose = useAgentCompose();
 
   const run = selectedRunForApp(appPath);
   const live = liveRunForApp(appPath);
   const blocker = blockerForApp(appPath);
-  const starting = isStartingApp(appPath);
+  const sessionApp = appNameOf(appPath);
   const dock = dockForApp(appPath);
   const elapsed = useElapsed(live?.startedAt ?? null);
 
@@ -113,13 +116,11 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
 
   if (!dockHasContent(appPath)) return null;
 
-  const failure = run && !blocker && !starting ? describeRunFailure(run) : null;
+  const failure = run && !blocker ? describeRunFailure(run) : null;
   const explainFailure =
     run && failure && agentCompose
       ? () => {
-          const output = run.hasTerminal
-            ? (getTerminal(run.id)?.tail(FAILURE_OUTPUT_CHARS * 4) ?? "")
-            : run.lines.map((line) => line.text).join("\n");
+          const output = getTerminal(run.id)?.tail(FAILURE_OUTPUT_CHARS * 4) ?? "";
           agentCompose.compose(
             explainRunFailurePrompt({
               application: appName ?? agentCompose.workspaceFile(appPath),
@@ -131,11 +132,9 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
         }
       : null;
 
-  const headline = blocker
-    ? blockerHeadline(blocker)
-    : starting
-      ? "Starting run…"
-      : (run?.adapterDisplayName ?? "");
+  const headline = blocker ? blockerHeadline(blocker) : (run?.runnerName ?? "");
+  const wait = run?.status.kind === "queued" && session ? session.waiting.get(run.app) : undefined;
+  const inspectUrl = run?.status.kind === "running" ? session?.inspectUrl : null;
 
   if (!dock.open) {
     return (
@@ -146,7 +145,7 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
       >
         <ChevronUp className="size-3" aria-hidden />
         <span className="font-medium">{headline}</span>
-        {run && !blocker && !starting && <RunStatusChip status={run.status} />}
+        {run && !blocker && <RunStatusChip status={run.status} />}
         {elapsed && <span className="tabular-nums text-zinc-500">{elapsed}</span>}
         <span className="flex-1" />
         <span className="text-zinc-400 dark:text-zinc-500">Show output</span>
@@ -177,13 +176,13 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
         <span className="whitespace-nowrap text-xs font-medium text-zinc-600 dark:text-zinc-300">
           {headline}
         </span>
-        {run && !blocker && !starting && <RunStatusChip status={run.status} />}
+        {run && !blocker && <RunStatusChip status={run.status} />}
         {elapsed && (
           <span className="tabular-nums text-xs text-zinc-500 dark:text-zinc-400">{elapsed}</span>
         )}
-        {run?.status.kind === "running" && run.status.inspectUrl && (
+        {inspectUrl && (
           <a
-            href={run.status.inspectUrl}
+            href={inspectUrl}
             target="_blank"
             rel="noreferrer"
             title="Open inspection UI"
@@ -193,11 +192,14 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
             Inspect
           </a>
         )}
-        {run?.status.kind === "starting" && run.progress && (
+        {wait && session && <RunWaitNote wait={wait} session={session} />}
+        {(run?.status.kind === "starting" || run?.status.kind === "queued") && run.progress && (
           <span className="min-w-0 truncate text-xs text-zinc-500 dark:text-zinc-400">
             {run.progress.message}
           </span>
         )}
+        {session && sessionApp !== null && <AppSetNote session={session} />}
+        {session && <CredentialNote session={session} />}
         {run && <RunGenerations runs={run.runs} />}
         {run && <RunTeloVersions run={run} />}
         {run && <StaleRunVersion run={run} editedTelo={editedTelo} />}
@@ -234,12 +236,6 @@ export function RunDock({ appPath, appName, editedTelo, onOpenConfig }: RunDockP
   );
 }
 
-/**
- * The latest run outcome per application — deliberately separate from the
- * session status chip beside it. A one-shot app completing in a watch session
- * leaves the session `running`, so "the session is up" and "the last run
- * succeeded" are two different facts and are shown as two.
- */
 /** What the dock's header says about a run that never started. */
 function blockerHeadline(blocker: RunBlocker): string {
   switch (blocker.kind) {
@@ -247,9 +243,77 @@ function blockerHeadline(blocker: RunBlocker): string {
       return "Missing required configuration";
     case "env-files":
       return "The env files could not be read";
+    case "outside-workspace":
+      return "A file outside the workspace";
     case "unavailable":
       return blocker.adapterDisplayName;
   }
+}
+
+/** Why a Run has not started yet. */
+function RunWaitNote({ wait, session }: { wait: RunWait; session: WorkspaceSessionState }) {
+  const text =
+    wait === "session"
+      ? session.status?.kind === "suspended" || session.status?.kind === "failed"
+        ? "Resuming the workspace's session…"
+        : "Waiting for the workspace's session…"
+      : wait === "turn"
+        ? "Not in the session yet: it is added when the agent's turn ends, then this run starts."
+        : wait === "app-set"
+          ? "Not in the session yet: it runs once the session's applications are updated."
+          : "Waiting for the application's container…";
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400" title={text}>
+      <Clock size={12} className="shrink-0" aria-hidden />
+      <span className="truncate">{text}</span>
+    </span>
+  );
+}
+
+/** Why a signed-in user's session on this runner is reached with a resume
+ *  secret rather than their sign-in. */
+function CredentialNote({ session }: { session: WorkspaceSessionState }) {
+  const credential = session.credential;
+  if (credential?.kind !== "secret" || !credential.reason) return null;
+  return (
+    <span
+      className="inline-flex min-w-0 items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400"
+      title={credential.reason}
+    >
+      <KeyRound size={12} className="shrink-0" aria-hidden />
+      <span className="truncate">Not using your sign-in: {credential.reason}</span>
+    </span>
+  );
+}
+
+/** The workspace's app set while a change to it is not applied, or the runner
+ *  refused it. */
+function AppSetNote({ session }: { session: WorkspaceSessionState }) {
+  if (session.appSet.problem) {
+    return (
+      <span
+        role="alert"
+        className="inline-flex min-w-0 items-center gap-1 text-[11px] font-medium text-red-700 dark:text-red-400"
+        title={session.appSet.problem}
+      >
+        <TriangleAlert size={12} className="shrink-0" aria-hidden />
+        <span className="truncate">The session's applications could not be updated: {session.appSet.problem}</span>
+      </span>
+    );
+  }
+  if (session.appSet.pending === "none") return null;
+  const text =
+    session.appSet.pending === "turn"
+      ? "Application changes pending — applied when the agent's turn ends"
+      : session.appSet.pending === "session"
+        ? "Application changes pending — applied once the session is up"
+        : "Updating the session's applications…";
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1 text-[11px] text-zinc-500 dark:text-zinc-400" title={text}>
+      <Clock size={12} className="shrink-0" aria-hidden />
+      <span className="truncate">{text}</span>
+    </span>
+  );
 }
 
 function RunGenerations({ runs }: { runs: RunRecord["runs"] }) {
@@ -358,7 +422,7 @@ function RunTeloVersions({ run }: { run: RunRecord }) {
  * would — a run's telo is fixed when its process starts.
  */
 function StaleRunVersion({ run, editedTelo }: { run: RunRecord; editedTelo?: string }) {
-  const stale = staleRunVersion(run.status.kind, run.requestedTelo, editedTelo);
+  const stale = staleRunVersion(run.status.kind === "queued" ? "starting" : run.status.kind, run.requestedTelo, editedTelo);
   if (!stale) return null;
   return (
     <span
@@ -375,72 +439,30 @@ function StaleRunVersion({ run, editedTelo }: { run: RunRecord; editedTelo?: str
   );
 }
 
-/** Reload and Resume — the two things a watch session can do that a run session
- *  cannot. Both are absent on a run session, where the session IS the run. */
+/** Reload — re-run a live app with no file change. */
 function WatchControls({ run }: { run: RunRecord }) {
-  const { reloadRun, resumeRun } = useRun();
+  const { reloadRun } = useRun();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
-  const act = (work: Promise<void>): void => {
+  if (run.status.kind !== "running") return null;
+
+  const reload = (): void => {
     setBusy(true);
     setProblem(null);
-    void work
+    void reloadRun(run.id)
       .catch((err: unknown) => setProblem(err instanceof Error ? err.message : String(err)))
       .finally(() => setBusy(false));
   };
 
-  const note = problem ? (
-    <span className="min-w-0 max-w-64 truncate text-[11px] text-red-600 dark:text-red-400" title={problem}>
-      {problem}
-    </span>
-  ) : null;
-
-  if (run.status.kind === "suspended") {
-    return (
-      <>
-        {note}
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          title="The session was reaped for idleness; its workspace checkpoint is held"
-          onClick={() =>
-            act(
-              resumeRun(run.id).then((resumed) => {
-                // The checkpoint lives in the runner's memory, so a restart loses
-                // it. Saying so is the whole remedy the design relies on: the
-                // editor holds the authoritative workspace and re-runs to re-seed.
-                if (!resumed) {
-                  throw new Error(
-                    "The runner no longer holds this session — run it again to start a fresh one.",
-                  );
-                }
-              }),
-            )
-          }
-        >
-          <Play size={13} aria-hidden />
-          Resume
-        </Button>
-      </>
-    );
-  }
-
-  // `runs` is populated only by a session that reports run outcomes — a watch
-  // session. A run session never shows these.
-  if (run.status.kind !== "running" || Object.keys(run.runs).length === 0) return null;
-
   return (
     <>
-      {note}
-      <Button
-        size="sm"
-        variant="ghost"
-        disabled={busy}
-        title="Re-run with no file change"
-        onClick={() => act(reloadRun(run.id))}
-      >
+      {problem && (
+        <span className="min-w-0 max-w-64 truncate text-[11px] text-red-600 dark:text-red-400" title={problem}>
+          {problem}
+        </span>
+      )}
+      <Button size="sm" variant="ghost" disabled={busy} title="Re-run with no file change" onClick={reload}>
         <RotateCw size={13} aria-hidden />
         Reload
       </Button>

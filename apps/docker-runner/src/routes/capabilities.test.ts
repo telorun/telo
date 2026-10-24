@@ -1,61 +1,44 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { FastifyInstance } from "fastify";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { buildServer } from "../server.js";
-import { makeFakeDocker, makeRunnerConfig } from "../test-helpers.js";
+import { bootTestServer } from "../test-server.test-support.js";
 
 describe("GET /v1/capabilities", () => {
-  let app: FastifyInstance;
-
-  beforeEach(async () => {
-    vi.stubEnv("RUNNER_APPS", "");
-    ({ app } = await buildServer({ docker: makeFakeDocker(), runnerConfig: makeRunnerConfig() }));
-    await app.ready();
-  });
-
-  afterEach(async () => {
-    await app.close();
+  afterEach(() => {
     vi.unstubAllEnvs();
   });
 
   it("advertises the docker-runner capabilities document", async () => {
-    const res = await app.inject({ method: "GET", url: "/v1/capabilities" });
-    expect(res.statusCode).toBe(200);
-    const body = res.json();
-    expect(body.displayName).toBe("Docker runner");
-    expect(body.features).toEqual({
-      io: ["tty", "streams"],
-      ports: true,
-      watch: false,
-      teloVersions: true,
-    });
-    // No RUNNER_APPS → no predefined apps advertised.
-    expect(body.apps).toBeUndefined();
-
-    const props = body.config.schema.properties;
-    expect(props.image.default).toBe("telorun/node:0-slim");
-    // docker trusts the caller — image is editable, not readOnly.
-    expect(props.image.readOnly).toBeUndefined();
+    vi.stubEnv("RUNNER_APPS", "");
+    const server = await bootTestServer();
+    try {
+      const res = await server.app.inject({ method: "GET", url: "/v1/capabilities" });
+      expect(res.statusCode).toBe(200);
+      const body = res.json();
+      expect(body.displayName).toBe("Docker runner");
+      expect(body.features).toEqual({ io: ["tty", "streams"], ports: true, teloVersions: true });
+      const props = body.config.schema.properties;
+      expect(props.image.default).toBe("telorun/node:0-slim");
+      // docker trusts the caller — image is editable, not readOnly.
+      expect(props.image.readOnly).toBeUndefined();
+    } finally {
+      await server.close();
+    }
   });
 
-  it("advertises app identities only — image and env never surface", async () => {
+  it("advertises the agents that declare a port by name only — image and env never surface", async () => {
     vi.stubEnv(
       "RUNNER_APPS",
-      '{"tool":{"image":"acme/tool:1","title":"Acme tool","env":{"SERVICE_TOKEN":"tok-secret"}}}',
+      '{"tool":{"image":"acme/tool:1","port":8080,"env":{"SERVICE_TOKEN":"tok-secret"}},' +
+        '"portless":{"image":"acme/portless:1"}}',
     );
-    const { app: withApps } = await buildServer({
-      docker: makeFakeDocker(),
-      runnerConfig: makeRunnerConfig(),
-    });
-    await withApps.ready();
+    const server = await bootTestServer();
     try {
-      const res = await withApps.inject({ method: "GET", url: "/v1/capabilities" });
-      // Exact shape: name/title/description only — no image, no env.
-      expect(res.json().apps).toEqual([{ name: "tool", title: "Acme tool" }]);
+      const res = await server.app.inject({ method: "GET", url: "/v1/capabilities" });
+      expect(res.json().features.agents).toEqual(["tool"]);
       expect(res.body).not.toContain("tok-secret");
       expect(res.body).not.toContain("acme/tool");
     } finally {
-      await withApps.close();
+      await server.close();
     }
   });
 });

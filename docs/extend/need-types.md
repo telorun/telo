@@ -138,7 +138,8 @@ the case:
   (it would otherwise be read from a derived `TELO_NEED_<LIBRARY>__…` name).
 
 An application started with `App.Instance` is a root of its own: its address
-needs are read from its own environment, and the parent's host values are not
+needs are answered by what the parent supplies by name in the instance's
+`needs:`, else read from its own environment; the parent's host values are not
 passed to it.
 
 ## Kernel-declared address types

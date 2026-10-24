@@ -5,6 +5,7 @@ type CelFunctionInfo = ReturnType<typeof celFunctionCatalog>[number];
 import {
   AnalysisRegistry,
   assembleGraphDiagnostics,
+  collectApplicationSources,
   collectModuleDocuments,
   DiagnosticSeverity,
   flattenForAnalyzer,
@@ -134,7 +135,11 @@ export async function analyzedManifests(
   const registry = new AnalysisRegistry();
   const analysis = new StaticAnalyzer().analyze(
     manifests,
-    { moduleDocuments: collectModuleDocuments(graph), hostVersions: nodeHostVersions() },
+    {
+      moduleDocuments: collectModuleDocuments(graph),
+      applicationSources: collectApplicationSources(graph),
+      hostVersions: nodeHostVersions(),
+    },
     registry,
   );
   const errors = assembleGraphDiagnostics(graph, analysis).diagnostics.filter(

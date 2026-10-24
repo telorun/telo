@@ -80,8 +80,8 @@ export function createKubernetesSessionContainerEngine(deps: {
     return podOwnerRef(live.metadata.name, live.metadata.uid);
   }
 
-  /** Each policy present and owned by the session's current pod. A watch
-   *  session's pod is replaced on a resume, and a policy left owned by the old
+  /** Each policy present and owned by the session's current pod. A session's
+   *  pod is replaced on a resume or an app-set change, and a policy left owned by the old
    *  one would be collected with it. */
   async function ensurePolicies(sessionId: string, owner: V1OwnerReference): Promise<void> {
     for (const policy of buildSessionContainerPolicies({ config, sessionId, owner })) {
@@ -213,8 +213,8 @@ export function createKubernetesSessionContainerEngine(deps: {
       }
     },
 
-    // A run session's pod is kept after it exits, so its policies would
-    // otherwise outlive the session as long as the pod does.
+    // Called once the session is gone for good; the policies are owned by its
+    // pod and collected with it, and a pod already gone leaves nothing to own.
     async endSession(sessionId) {
       for (const direction of POLICY_DIRECTIONS) {
         try {

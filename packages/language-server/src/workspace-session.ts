@@ -3,6 +3,7 @@ import {
   Loader,
   StaticAnalyzer,
   assembleGraphDiagnostics,
+  collectApplicationSources,
   collectModuleDocuments,
   findPositions,
   flattenForAnalyzer,
@@ -285,7 +286,7 @@ export class WorkspaceSession {
     const registry = new AnalysisRegistry();
     const raw = new StaticAnalyzer().analyze(
       manifests,
-      { moduleDocuments: collectModuleDocuments(graph) },
+      { moduleDocuments: collectModuleDocuments(graph), applicationSources: collectApplicationSources(graph) },
       registry,
     );
     const { diagnostics: assembled } = assembleGraphDiagnostics(graph, raw);

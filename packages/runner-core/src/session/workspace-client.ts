@@ -1,9 +1,5 @@
 import type { WorkspaceAccess } from "../backend.js";
-import type {
-  WorkspaceChangeSet,
-  WorkspaceCheckpointFile,
-  WorkspaceTree,
-} from "../contract.js";
+import type { WorkspaceChangeSet, WorkspaceTree } from "../contract.js";
 
 /**
  * HTTP client for the `workspace` container's surface, shared by both backends:
@@ -33,14 +29,6 @@ export class WorkspaceClient implements WorkspaceAccess {
 
   async apply(changes: WorkspaceChangeSet): Promise<{ written: number; deleted: number }> {
     return this.request<{ written: number; deleted: number }>("POST", "/workspace", changes);
-  }
-
-  async snapshot(): Promise<WorkspaceCheckpointFile[]> {
-    const body = await this.request<{ files: WorkspaceCheckpointFile[] }>(
-      "GET",
-      "/workspace/snapshot",
-    );
-    return body.files;
   }
 
   /** Re-run one app with no file change: rewrite its entry manifest with the

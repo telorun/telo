@@ -1,40 +1,48 @@
 export type {
+  AppRunStatus,
   EnvFileProblem,
-  LogLine,
   MissingConfigEntry,
   RunBlocker,
   RunDockState,
   RunRecord,
   UnavailableRun,
+  WorkspaceBinding,
 } from "./context";
-export { RunProvider, useRun } from "./context";
+export { RunProvider, isRunLive, useRun } from "./context";
 export type {
   AvailabilityAction,
   AvailabilityReport,
   ConfigIssue,
   RunAdapter,
-  RunBundle,
+  RunAppRequest,
   RunEvent,
   RunIo,
   RunIoConnection,
   RunIoHandlers,
   RunnerCapabilities,
   RunnerTerms,
-  RunRequest,
-  RunSession,
   RunStatus,
+  SessionPort,
   WorkspaceChangeSet,
 } from "./types";
-export { SessionGoneError, TeloVersionRefusedError, TermsRequiredError } from "./types";
+export { TeloVersionRefusedError, TermsRequiredError } from "./types";
 export { runVersionFor } from "./run-version";
-export { buildRunBundle } from "./bundle";
-export { selectModuleFiles } from "./select-module-files";
+export { desiredAppSet, referenceOutsideWorkspace, type DesiredAppSet, type WorkspaceApplication } from "./session-apps";
+export { AGENT_APP_NAME, type WorkspaceIdentity, type WorkspaceSessionState } from "./workspace-session";
 export {
-  bundleFiles,
-  diffBundle,
-  isEmptyChangeSet,
-  type SyncedFiles,
-} from "./workspace-sync";
+  entryResumeSecretStore,
+  forgetIdentitySessions,
+  listWorkspaceSessionEntries,
+  loadWorkspaceSessionEntry,
+  newWorkspaceSessionEntry,
+  saveWorkspaceSessionEntry,
+  type WorkspaceMode,
+  type WorkspaceSessionEntry,
+} from "./workspace-session-entry";
+export { type ResumeSecretStore } from "./runner-credentials";
+export { desktopResumeSecretStore } from "./desktop-resume-secret-store";
+export { adoptDeviceSessions, type AdoptionTarget } from "./session-adoption";
+export { pageDpopKeyStore, pageWorkspaceIdentity } from "./page-workspace-identity";
 export { registry } from "./registry";
 export { RunBar } from "./ui/RunBar";
 export { RunDock } from "./ui/RunDock";

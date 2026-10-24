@@ -26,6 +26,15 @@ impl CloudError {
         Self::new("authorization_denied", message)
     }
 
+    /// A silent authorization (`prompt=none`) the user has to take part in.
+    pub fn interaction_required(message: impl Into<String>) -> Self {
+        Self::new("interaction_required", message)
+    }
+
+    pub fn not_signed_in(message: impl Into<String>) -> Self {
+        Self::new("not_signed_in", message)
+    }
+
     pub fn authorization_timeout(message: impl Into<String>) -> Self {
         Self::new("authorization_timeout", message)
     }

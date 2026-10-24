@@ -5,14 +5,15 @@ export const FAILURE_OUTPUT_LINES = 40;
 export const FAILURE_OUTPUT_CHARS = 4000;
 
 /**
- * What the dock shows as this run's failure, a line per fact: the session's own
- * failed start or non-zero exit, and each application's failed or non-zero
- * latest run. Null for a run that shows none.
+ * What the dock shows as this run's failure, a line per fact: the run's own
+ * failed start, non-zero exit or killing signal, and its application's failed
+ * or non-zero latest generation. Null for a run that shows none.
  */
 export function describeRunFailure(run: Pick<RunRecord, "status" | "runs">): string[] | null {
   const lines: string[] = [];
   if (run.status.kind === "failed") lines.push(`Run failed: ${run.status.message}`);
   if (run.status.kind === "exited" && run.status.code !== 0) lines.push(`Exited with code ${run.status.code}`);
+  if (run.status.kind === "signalled") lines.push(`Ended by signal ${run.status.signal}`);
   for (const outcome of Object.values(run.runs)) {
     if (outcome.phase === "failed") lines.push(`${outcome.app} (run #${outcome.generation}) failed: ${outcome.reason}`);
     if (outcome.phase === "completed" && outcome.code !== 0) {

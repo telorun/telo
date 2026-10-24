@@ -37,6 +37,7 @@ export function needTableDiagnostics(
   resolveDefinition: (kind: string) => ResourceDefinition | undefined,
   libraries: readonly ModuleDocuments[] = [],
   referenceSites?: (manifest: ResourceManifest) => readonly ReachSite[],
+  applicationNeedsFeed?: (kind: string) => readonly string[] | undefined,
 ): AnalysisDiagnostic[] {
   const graph = needGraphFromManifests(
     manifests,
@@ -46,6 +47,7 @@ export function needTableDiagnostics(
       needType: (kind) => needTypeOf(resolveDefinition(kind)),
       isKind: (kind) => resolveDefinition(kind) !== undefined,
       ...(referenceSites ? { referenceSites } : {}),
+      ...(applicationNeedsFeed ? { applicationNeedsFeed } : {}),
     },
     libraries,
   );

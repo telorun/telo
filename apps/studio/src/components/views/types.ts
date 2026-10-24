@@ -178,8 +178,9 @@ export interface ViewProps {
    *  Application; only the parts the editor owns (the pre-flight flow, the
    *  runner chosen in settings) are passed through. */
   run: {
-    /** The Application this pane can run — null for a Library, which is what
-     *  hides the run bar and the dock. */
+    /** The Application this pane can run — null for a Library, and in a
+     *  workspace used only on this device, which is what hides the run bar and
+     *  the dock. */
     appPath: string | null;
     /** The telo version this Application's module is edited against right now;
      *  absent while nothing serves it. A live run asked for one at its start,

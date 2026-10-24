@@ -191,26 +191,43 @@ describe("a packaged executable", () => {
         const created = await fetch(`${url}/v1/sessions`, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            bundle: {
-              entryRelativePath: "telo.yaml",
-              files: [{ relativePath: "telo.yaml", contents: "kind: Telo.Application\nmetadata: { name: Empty }\n" }],
-            },
-            env: {},
-          }),
+          body: JSON.stringify({ workspace: "packaged", apps: [{ name: "app", entryRelativePath: "telo.yaml" }] }),
         });
         expect(created.status, await created.clone().text()).toBe(201);
-        const { sessionId } = (await created.json()) as { sessionId: string };
-
-        let status: { kind: string; code?: number; message?: string } = { kind: "starting" };
-        for (let i = 0; i < 600 && (status.kind === "starting" || status.kind === "running"); i++) {
+        const { sessionId, resumeSecret } = (await created.json()) as { sessionId: string; resumeSecret: string };
+        const auth = { authorization: `Bearer ${resumeSecret}`, "content-type": "application/json" };
+        const session = async () =>
+          (await (await fetch(`${url}/v1/sessions/${sessionId}`, { headers: auth })).json()) as {
+            status: { kind: string };
+            apps: Array<{ state: string; generation: number }>;
+          };
+        for (let i = 0; i < 600 && (await session()).status.kind !== "running"; i++) {
           await new Promise((resolve) => setTimeout(resolve, 100));
-          status = ((await (await fetch(`${url}/v1/sessions/${sessionId}`)).json()) as { status: typeof status })
-            .status;
         }
-        // A run session IS its run: the telo it started ran the manifest and
-        // exited cleanly.
-        expect(status, stderr).toEqual({ kind: "exited", code: 0 });
+        const seeded = await fetch(`${url}/v1/sessions/${sessionId}/workspace`, {
+          method: "POST",
+          headers: auth,
+          body: JSON.stringify({
+            write: [{ path: "telo.yaml", content: "kind: Telo.Application\nmetadata: { name: Empty }\n" }],
+          }),
+        });
+        expect(seeded.status, await seeded.clone().text()).toBe(200);
+        const ran = await fetch(`${url}/v1/sessions/${sessionId}/apps/app/run`, {
+          method: "POST",
+          headers: auth,
+          body: JSON.stringify({ env: {}, io: "streams" }),
+        });
+        expect(ran.status, await ran.clone().text()).toBe(202);
+
+        // A generation is counted from the kernel's own debug stream, so one
+        // starting means the process the run spawned is telo running the
+        // manifest — not the application this executable carries.
+        let generation = 0;
+        for (let i = 0; i < 600 && generation === 0; i++) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+          generation = (await session()).apps[0]!.generation;
+        }
+        expect(generation, stderr).toBe(1);
       } finally {
         // Waited for, so the directory it runs from is no longer in use when the
         // suite removes it — Windows refuses to delete a running executable.

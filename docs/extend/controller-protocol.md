@@ -148,17 +148,18 @@ that is not semver, is `ERR_NEED_OBSERVATION_INVALID`. In Node the two messages
 are `ctx.resolveNeed(pointer)` and `ctx.verifyNeed(pointer, observation)` — see
 [a kind that consumes and verifies a need](./consuming-needs.md).
 
-## Generations, and `abi=telo-6`
+## Generations, and `abi=telo-7`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by
-the ABI crate's layout. Generation `6` is the one this specification defines, and
-it is the generation in which the C ABI carries the protocol's messages. `4` and
-`5` were withdrawn before any carrier spoke them: `4`'s value encoding named the
-typed frame's millisecond timestamp payload (now RFC 3339 with a trimmed
-nanosecond fraction), and `6` is `5` plus the two need messages. Every handshake
-in the vectors states `6`, and `pnpm run check:controller-protocol` refuses a
-conformance vector whose handshake states another generation.
+the ABI crate's layout. Generation `7` is the one this specification defines, and
+it is the generation in which the C ABI carries the protocol's messages. `4`, `5`
+and `6` were withdrawn before any carrier spoke them: `4`'s value encoding named
+the typed frame's millisecond timestamp payload (now RFC 3339 with a trimmed
+nanosecond fraction), `6` was `5` plus the two need messages, and `7` is `6` with
+a child run's inputs carrying the child's needs. Every handshake in the vectors
+states `7`, and `pnpm run check:controller-protocol` refuses a conformance vector
+whose handshake states another generation.
 
-**Do not write `abi=telo-6` into a module yet.** The ABI carrier has not landed,
+**Do not write `abi=telo-7` into a module yet.** The ABI carrier has not landed,
 and a kernel meeting that declaration refuses it. Published `abi=telo-3`
 candidates stay valid — specifying a new generation does not retire the old one.

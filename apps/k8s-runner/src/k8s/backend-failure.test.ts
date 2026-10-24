@@ -8,13 +8,13 @@ function pod(status: V1Pod["status"]): V1Pod {
 }
 
 describe("podFailureMessage — surfaces the real cause", () => {
-  it("reports a failed init container (the bundle-fetch case)", () => {
+  it("reports a failed init container (the supervisor copy)", () => {
     const msg = podFailureMessage(
       pod({
         phase: "Failed",
         initContainerStatuses: [
           {
-            name: "bundle-fetch",
+            name: "supervisor",
             image: "busybox",
             imageID: "",
             ready: false,
@@ -24,7 +24,7 @@ describe("podFailureMessage — surfaces the real cause", () => {
         ],
       }),
     );
-    expect(msg).toBe('init container "bundle-fetch" failed: Error (exit code 1)');
+    expect(msg).toBe('init container "supervisor" failed: Error (exit code 1)');
   });
 
   it("includes the terminated message when present", () => {
@@ -33,17 +33,17 @@ describe("podFailureMessage — surfaces the real cause", () => {
         phase: "Failed",
         initContainerStatuses: [
           {
-            name: "bundle-fetch",
+            name: "supervisor",
             image: "busybox",
             imageID: "",
             ready: false,
             restartCount: 0,
-            state: { terminated: { exitCode: 1, reason: "Error", message: "wget: download timed out" } },
+            state: { terminated: { exitCode: 1, reason: "Error", message: "cp: cannot stat" } },
           },
         ],
       }),
     );
-    expect(msg).toBe('init container "bundle-fetch" failed: Error (exit code 1): wget: download timed out');
+    expect(msg).toBe('init container "supervisor" failed: Error (exit code 1): cp: cannot stat');
   });
 
   it("surfaces a blocking waiting reason like ImagePullBackOff", () => {
@@ -52,7 +52,7 @@ describe("podFailureMessage — surfaces the real cause", () => {
         phase: "Pending",
         initContainerStatuses: [
           {
-            name: "bundle-fetch",
+            name: "supervisor",
             image: "busybox",
             imageID: "",
             ready: false,
@@ -62,7 +62,7 @@ describe("podFailureMessage — surfaces the real cause", () => {
         ],
       }),
     );
-    expect(msg).toBe('init container "bundle-fetch" waiting: ImagePullBackOff: Back-off pulling image');
+    expect(msg).toBe('init container "supervisor" waiting: ImagePullBackOff: Back-off pulling image');
   });
 
   it("skips a succeeded init container and reports the failing main container", () => {
@@ -71,7 +71,7 @@ describe("podFailureMessage — surfaces the real cause", () => {
         phase: "Failed",
         initContainerStatuses: [
           {
-            name: "bundle-fetch",
+            name: "supervisor",
             image: "busybox",
             imageID: "",
             ready: true,

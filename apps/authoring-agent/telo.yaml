@@ -6,9 +6,9 @@ metadata:
     AI manifest-authoring agent. Thin HTTP/SSE root over the `chat` library, which
     owns the chat backend (OpenAI-backed Ai.AgentStream + fs/shell tools + SQLite
     history + ChatHandler). This root exposes the library's ChatHandler over a
-    declared port and starts the conversation store, kept in `agent.sqlite` under
-    AGENT_STATE_DIR (default `<WORKSPACE_DIR>/.telo-agent`), where every turn's
-    records are journaled. POST /conversations mints a conversation, which is
+    declared port and starts the conversation store, kept in `agent.sqlite` in
+    the agent's durable state directory (AGENT_STATE_DIR, or the host's state
+    directory), where every turn's records are journaled. POST /conversations mints a conversation, which is
     listed, searched, renamed, archived, deleted, truncated and branched under
     /conversations; POST /chat admits a turn into one — at most once per
     Idempotency-Key — and its records stream from GET /chat/{turnId}/events as
@@ -39,11 +39,12 @@ imports:
     source: ./chat
     resources:
       hub: !ref hub
+    needs:
+      agentState: !ref agentState
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      stateDir: !cel "variables.stateDir == '' ? variables.workspaceDir.joinPath('.telo-agent') : variables.stateDir"
       budgetLimit: !cel "variables.budgetLimit"
       allowManifestRuns: !cel "variables.allowManifestRuns"
       reasoningEffort: !cel "variables.reasoningEffort"
@@ -70,6 +71,17 @@ ports:
   http:
     env: PORT
     default: 8080
+# Where the agent keeps its own state: `agent.sqlite`, the turns' checkpoints
+# and the attachments. Outside the workspace, so nothing syncs it and SQLite
+# runs on the filesystem it was opened on. A host names it with
+# AGENT_STATE_DIR, or answers it under TELO_HOST_STATE_DIR (a runner gives each
+# session's agent one; the image sets /var/lib/telo-agent). One writer at a
+# time, which SQLite relies on.
+needs:
+  agentState:
+    kind: Telo.DurableDirectory
+    parameters: { access: single-writer }
+    env: { path: AGENT_STATE_DIR }
 variables:
   # Where the agent's file tools and spawned commands are rooted. A runner
   # standing this up as a session's co-resident agent sets it to the shared
@@ -80,18 +92,6 @@ variables:
     type: string
     x-telo-type: Telo.HostPath
     default: ./workspace
-  # Where the agent keeps its own state (`agent.sqlite`). Unset, it is
-  # `.telo-agent` inside the workspace: on a co-resident agent that is the
-  # session volume, so conversations survive a container restart. Excluded from
-  # every workspace listing and from Studio's sync.
-  stateDir:
-    env: AGENT_STATE_DIR
-    type: string
-    # Empty stands for "unset": an Application entry with no default is required.
-    anyOf:
-      - const: ""
-      - x-telo-type: Telo.HostPath
-    default: ""
   # The model every turn runs on. A turn's recorded reasoning is replayed only to
   # the model that produced it, so changing this drops it on the next turn.
   model:
@@ -1325,8 +1325,9 @@ routes:
       method: GET
     handler: !ref Chat.treeSnapshot
     inputs:
-      # `.telo-agent` is the agent's own state directory — never workspace
-      # content, so no client syncs it in either direction.
+      # `.telo-agent` is where the agent kept its state before it had a
+      # directory of its own; a workspace from then may still hold one, which
+      # no client syncs in either direction.
       exclude: [node_modules, .telo, .git, dist, .telo-agent]
     returns:
       - status: 200

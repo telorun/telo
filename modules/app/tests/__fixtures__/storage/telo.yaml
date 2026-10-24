@@ -1,0 +1,19 @@
+kind: Telo.Library
+metadata:
+  name: Storage
+  version: 1.0.0
+  description: >-
+    A library for the App.Instance needs tests: it writes a durable directory
+    fulfilment at the location its importer names and exports it, so a test hands
+    a child a fulfilment another module owns.
+variables:
+  directory:
+    type: string
+    x-telo-type: Telo.HostPath
+exports:
+  resources: [directory]
+---
+kind: Telo.DurableDirectory
+metadata: { name: directory }
+fields:
+  path: !cel "variables.directory"

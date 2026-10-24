@@ -4,31 +4,34 @@ import {
   coResidentAgentNames,
   loadResolvedApps,
   loadTermsFromEnv,
-  stopAllSessions,
+  openSessionStore,
   type RunnerBackend,
   type ServerHandle,
   type SessionConfig,
+  type SessionStore,
 } from "@telorun/runner-core";
 import {
   optionalContainerConfig,
   validateOptionalContainerConfig,
 } from "@telorun/runner-core/container";
 
+import { pino } from "pino";
+
 import packageJson from "../package.json" with { type: "json" };
-import { BundleStore } from "./bundle-store.js";
 import { kubernetesRunnerCapabilities } from "./capabilities.js";
 import { loadK8sRunnerConfig, RunnerConfigError, type K8sRunnerConfig } from "./config.js";
 import { createKubernetesBackend } from "./k8s/backend.js";
 import { createKubeClient } from "./k8s/client.js";
 import { createSessionRouter } from "./k8s/routing/index.js";
-import { sweepWorkspaceConfigMaps } from "./k8s/workspace-configmap.js";
 
 const VERSION: string = packageJson.version;
 
 export interface ServerDeps {
   backend: RunnerBackend;
   config: K8sRunnerConfig;
-  bundleStore: BundleStore;
+  /** Opened before the server: core loads and adopts every stored session
+   *  while building it. */
+  store: SessionStore;
   /** Base-image catalog whose resolved list becomes the advertised `image`
    *  enum + the server-side allowlist. Omitted → `image` locks to defaultImage. */
   catalog?: BaseImageCatalog;
@@ -52,15 +55,14 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         defaultImage: deps.config.defaultImage,
         terms,
         imageEnum: catalog?.current(),
-        watch: deps.config.watch.enabled,
         // Only entries that declare a port: the session route refuses an agent
         // without one, and advertising what will be rejected is what makes the
-        // editor attach an agent to every run and every run fail.
-        agents: deps.config.watch.enabled ? coResidentAgentNames(apps) : undefined,
+        // editor attach an agent to every session and every session fail.
+        agents: coResidentAgentNames(apps),
       }),
-    // Operator-predefined apps (RUNNER_APPS; none when unset). Advertised on
-    // /v1/capabilities; app sessions run the catalog image directly.
+    // The operator's agent catalog (RUNNER_APPS; none when unset).
     apps,
+    store: deps.store,
     // The session config is opaque to core, so this runner enforces its own
     // shape — UNCONDITIONALLY, not only when a catalog is configured: the
     // catalog answers "which image", while the shape check answers "is this a
@@ -80,9 +82,6 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       );
     },
   });
-  // Mount the internal, tokenized fetch route on the same app so a session pod's
-  // initContainer can pull the bundle tarball.
-  deps.bundleStore.registerRoute(handle.app);
   return handle;
 }
 
@@ -99,7 +98,9 @@ async function main(): Promise<void> {
   }
 
   const kube = createKubeClient();
-  const bundleStore = new BundleStore(config.selfUrl);
+  // What runs before the server exists — the session store, adoption and the
+  // orphan sweep — logs here, to the same stdout as the server's own log.
+  const bootLog = pino({ level: config.logLevel });
 
   // Resolve the routing layer ONCE, here: an unroutable configuration must fail
   // the runner rather than every session it would otherwise accept, publish
@@ -125,9 +126,26 @@ async function main(): Promise<void> {
       })
     : undefined;
 
-  const backend = createKubernetesBackend({ kube, config, bundleStore, router: routing.router });
+  let store: SessionStore;
+  try {
+    store = await openSessionStore(config.sessionStore, { log: bootLog });
+  } catch (err) {
+    bootLog.error({ err }, "could not open the session store");
+    process.exit(1);
+  }
 
-  const { app, registry } = await buildServer({ backend, config, bundleStore, catalog });
+  const backend = createKubernetesBackend({ kube, config, router: routing.router, log: bootLog });
+
+  // Builds the server and, inside it, adopts every running session's pod and
+  // runs the orphan sweep, before the runner listens.
+  let app: ServerHandle["app"];
+  try {
+    ({ app } = await buildServer({ backend, config, store, catalog }));
+  } catch (err) {
+    bootLog.error({ err }, "the runner could not start");
+    await store.close();
+    process.exit(1);
+  }
 
   // Say which layer carries session traffic. An operator reading "logs-only" here
   // is the difference between a misconfiguration found at boot and one found as a
@@ -162,14 +180,6 @@ async function main(): Promise<void> {
     catalog.start((err) => app.log.warn({ err }, "base-image catalog refresh failed"));
   }
 
-  // Reap pods orphaned by a prior runner process (in-memory registry).
-  if (backend.reapOrphans) {
-    await backend.reapOrphans().catch((err) => app.log.warn({ err }, "orphan reap failed"));
-    // After the pods are gone: a content-addressed workspace ConfigMap outlives
-    // every release that changed the manifest, and nothing else removes it.
-    await sweepWorkspaceConfigMaps(kube, config, app.log);
-  }
-
   try {
     await app.listen({ port: config.port, host: "0.0.0.0" });
   } catch (err) {
@@ -180,9 +190,10 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string): Promise<void> => {
     app.log.info({ signal }, "shutting down");
     catalog?.stop();
-    for (const entry of registry.list()) entry.userStopped = true;
+    // Detaches every workload: session pods outlive the runner and are adopted
+    // by the next one.
     await app.close();
-    await stopAllSessions(registry, app.log);
+    await store.close();
     process.exit(0);
   };
 

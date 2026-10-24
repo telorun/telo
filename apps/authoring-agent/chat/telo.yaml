@@ -74,6 +74,15 @@ resources:
   hub:
     kind: Mcp.Client
     description: The Telo hub's MCP endpoint, which discovery reads.
+# The agent's own state — `agent.sqlite` (conversation history and the
+# admission record `Idempotency-Key` replays from), the checkpoints and the
+# attachments — read as `resources.agentState.path`. Every tool and route
+# refuses a path inside it, wherever it lies. One writer at a time, which
+# SQLite relies on.
+needs:
+  agentState:
+    kind: Telo.DurableDirectory
+    parameters: { access: single-writer }
 secrets:
   openaiApiKey:
     type: string
@@ -85,14 +94,6 @@ variables:
   # its own container. A host path the importer supplies absolute: the standalone
   # default lives on the Application, which is where a relative path is anchored.
   workspaceDir:
-    type: string
-    x-telo-type: Telo.HostPath
-  # The agent's own state — `agent.sqlite` (conversation history and the
-  # admission record `Idempotency-Key` replays from). The Application defaults it
-  # to `.telo-agent` inside the workspace, so a co-resident agent keeps its
-  # conversations on the session volume, which outlives the container. The
-  # directory is excluded from every listing the agent and its clients see.
-  stateDir:
     type: string
     x-telo-type: Telo.HostPath
   model:
@@ -325,7 +326,7 @@ exports:
 ---
 kind: SQLite.Connection
 metadata: { name: chatDb }
-file: !cel "variables.stateDir.joinPath('agent.sqlite')"
+file: !cel "resources.agentState.path.joinPath('agent.sqlite')"
 ---
 kind: SQLite.Schema
 metadata: { name: initSchema }
@@ -827,7 +828,7 @@ outputType:
       size: { type: integer }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: reject
         throw:
@@ -872,7 +873,7 @@ outputType:
             type: { type: string }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: reject
         throw:
@@ -965,7 +966,7 @@ outputType:
         items: { type: string }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: reject
         throw:
@@ -1035,7 +1036,7 @@ outputType:
         items: { $ref: "telo://Self/Change" }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: reject
         throw:
@@ -1043,7 +1044,7 @@ steps:
           message: !cel "Self.outsideWorkspaceMessage(inputs.path)"
   # Before anything is listed, captured or removed.
   - name: whole
-    if: !cel "Self.unremovable(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.unremovable(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: refuseWhole
         throw:
@@ -1176,19 +1177,19 @@ body: !cel >-
     + ' into the turn\'s checkpoint, over the ' + string(bound) + ' ' + unit + ' one call may capture. '
     + 'Nothing was changed. Ask the user to make this change themselves.'
 ---
-# The checkpoint's copies: `<stateDir>/checkpoints/<turnId>/<sha256>`, one
+# The checkpoint's copies: `<state dir>/checkpoints/<turnId>/<sha256>`, one
 # directory per turn, never shared between turns.
 kind: Fs.FileWrite
 metadata: { name: writeBlob }
-cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+cwd: !cel "resources.agentState.path.joinPath('checkpoints')"
 ---
 kind: Fs.File
 metadata: { name: readBlob }
-cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+cwd: !cel "resources.agentState.path.joinPath('checkpoints')"
 ---
 kind: Fs.DirectoryListing
 metadata: { name: listBlobs }
-cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+cwd: !cel "resources.agentState.path.joinPath('checkpoints')"
 ---
 kind: Sql.Command
 metadata: { name: checkpointCommand }
@@ -1196,7 +1197,7 @@ connection: !ref chatDb
 ---
 kind: Fs.TreeSync
 metadata: { name: blobSync }
-cwd: !cel "variables.stateDir.joinPath('checkpoints')"
+cwd: !cel "resources.agentState.path.joinPath('checkpoints')"
 ---
 # What is at each workspace path right now, from METADATA alone: a path's kind
 # and size are its entry in its parent directory's listing — a regular `file`,
@@ -2402,8 +2403,8 @@ outputType:
 steps:
   - name: outside
     value: !cel >-
-      inputs.write.map(w, w.path).filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(variables.stateDir)))
-        + inputs.delete.filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(variables.stateDir)))
+      inputs.write.map(w, w.path).filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(resources.agentState.path)))
+        + inputs.delete.filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(resources.agentState.path)))
   - name: confine
     if: !cel "size(steps.outside.result) > 0"
     then:
@@ -2415,7 +2416,7 @@ steps:
             paths: !cel "steps.outside.result"
   - name: whole
     value: !cel >-
-      inputs.delete.filter(p, Self.unremovable(p, string(variables.workspaceDir), string(variables.stateDir)))
+      inputs.delete.filter(p, Self.unremovable(p, string(variables.workspaceDir), string(resources.agentState.path)))
   - name: keep
     if: !cel "size(steps.whole.result) > 0"
     then:
@@ -2483,13 +2484,13 @@ steps:
       - name: probeWrite
         invoke: !ref writeFile
         inputs:
-          path: .telo-agent/ready-probe
+          path: .telo/agent-ready-probe
           content: ready
           createParents: true
       - name: probeRemove
         invoke: !ref removeFile
         inputs:
-          path: .telo-agent/ready-probe
+          path: .telo/agent-ready-probe
     catch:
       - name: workspaceFailure
         invoke: !ref Log.emit
@@ -5004,7 +5005,7 @@ steps:
 # same ids again.
 kind: BlobFs.Store
 metadata: { name: attachmentStore }
-root: !cel "variables.stateDir.joinPath('attachments')"
+root: !cel "resources.agentState.path.joinPath('attachments')"
 ---
 kind: Blob.Put
 metadata: { name: putAttachment }
@@ -5544,7 +5545,7 @@ outputType:
       checkMessages: { type: string }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: reject
         throw:
@@ -5616,7 +5617,7 @@ steps:
     value: !cel >-
       inputs.args
         .map(a, a.startsWith('-') && a.contains('=') ? a.substring(a.indexOf('=') + 1) : a)
-        .filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(variables.stateDir)))
+        .filter(p, Self.outsideWorkspace(p, string(variables.workspaceDir), string(resources.agentState.path)))
   - name: confine
     if: !cel "size(steps.outside.result) > 0"
     then:
@@ -5678,7 +5679,7 @@ steps:
             Running manifests is not enabled in this deployment. Validate the
             tests with telo_check instead, and say they are ready to run.
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: rejectPath
         throw:
@@ -5739,7 +5740,7 @@ outputType:
       hunks: { type: [array, "null"] }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: reject
         throw:
@@ -5815,7 +5816,7 @@ outputType:
       hunks: { type: [array, "null"] }
 steps:
   - name: confine
-    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(variables.stateDir))"
+    if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
     then:
       - name: reject
         throw:
@@ -5962,7 +5963,7 @@ tools:
       List a directory relative to the workspace root; recursive optional, and
       the whole root when `path` is omitted. The result is one path per line,
       relative to the workspace root, a directory with a trailing `/`. Caches,
-      vendor directories and the agent's own state (`.telo`, `node_modules`,
+      vendor directories and an older agent's state (`.telo`, `node_modules`,
       `.git`, `dist`, `.telo-agent`) are filtered out at any depth — their
       absence from a listing is not evidence that files are missing.
     parameters:

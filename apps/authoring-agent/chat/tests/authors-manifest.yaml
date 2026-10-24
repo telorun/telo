@@ -50,9 +50,10 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
+    needs:
+      agentState: { path: !cel "variables.stateDir" }
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      stateDir: !cel "variables.stateDir"
       # No `model:` — inherited from the library, so this exercises what ships.
       # The agent's fs tools run from the workspace directory, so point its CLI
       # at the repo entry point relative to that cwd (two levels below the root).

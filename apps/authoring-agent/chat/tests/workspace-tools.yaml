@@ -39,13 +39,14 @@ imports:
       hub: !ref hub
     secrets:
       openaiApiKey: !cel "secrets.openaiApiKey"
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
-      stateDir: !cel "variables.scratch.joinPath('state')"
       modelEndpoint: http://127.0.0.1:18504/v1
       # The repo's own CLI, relative to the workspace the tools run in.
       teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Stream: ../../../../modules/stream
@@ -158,8 +159,10 @@ with:
     metadata: { name: agent }
     source: ../../telo.yaml
     ports: { http: 18505 }
+    needs:
+      agentState: { path: !cel "variables.scratch.joinPath('routes').joinPath('agent-state')" }
     variables:
-      workspaceDir: !cel "variables.scratch.joinPath('routes')"
+      workspaceDir: !cel "variables.scratch.joinPath('routes').joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18504/v1
     secrets:
       openaiApiKey: stub-key

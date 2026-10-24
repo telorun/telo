@@ -51,52 +51,80 @@ export function validateImportInputs(
     const alias = String(metadata.name ?? "");
     const resource = { kind: manifest.kind, name: alias };
     const filePath = typeof metadata.source === "string" ? metadata.source : undefined;
-    const standIns: StandIns = new Map();
-    const substituted = substituteDecodedCelFields(written, schema, undefined, {
-      standIns,
-      external: (ref) => defs.schemaForId(ref),
-    });
-    for (const issue of defs.validateResourceConfig(substituted, schema, standIns)) {
-      const data = { resource, filePath, path: issue.path };
-      const textRefusal = valueTypeRefusalCode(issue);
-      if (textRefusal !== undefined) {
-        out.push({
-          severity: DiagnosticSeverity.Error,
-          code: textRefusal,
-          source: SOURCE,
-          message: `Telo.Import/${alias}: ${issue.message}`,
-          data,
-        });
-        continue;
-      }
-      if (issue.valueType && VALUE_TYPES.get(issue.valueType)?.fromHost !== undefined) {
-        const value = navigatePath(written, issue.path);
-        if (isTaggedSentinel(value)) continue;
-        out.push({
-          severity: DiagnosticSeverity.Error,
-          code: "HOST_PATH_RELATIVE",
-          source: SOURCE,
-          message:
-            `Telo.Import/${alias}: ${issue.message}. The imported library resolves nothing it is ` +
-            `given.${alsoAccepts(navigateSchemaToExprPath(schema, issue.path))}`,
-          data: {
-            ...data,
-            ...(typeof value === "string" ? { fix: { replacement: value, tag: "module-path" as const } } : {}),
-          },
-        });
-        continue;
-      }
+    for (const finding of declaredInputFindings(written, schema, defs, {
+      subject: `Telo.Import/${alias}`,
+      declarer: "the imported library",
+    })) {
       out.push({
         severity: DiagnosticSeverity.Error,
-        code: "SCHEMA_VIOLATION",
+        code: finding.code,
         source: SOURCE,
-        message: `Telo.Import/${alias}: ${issue.message} — the imported library declares it so.`,
-        data,
+        message: finding.message,
+        data: { resource, filePath, path: finding.path, ...(finding.fix ? { fix: finding.fix } : {}) },
       });
     }
   }
   return out;
 }
+
+/** One refusal of a supplied input, before it is anchored. */
+export interface DeclaredInputFinding {
+  code: string;
+  message: string;
+  /** Dotted path within `written`. */
+  path: string;
+  fix?: { replacement: string; tag: "module-path" };
+}
+
+/**
+ * What is wrong with `written` — maps of supplied inputs keyed by block — against
+ * `schema`, the declarations of whoever receives them. A literal is decoded
+ * through its type's plain encoding first, and an expression stands in as its
+ * slot's placeholder. `subject` begins each message and `declarer` names the
+ * module the declarations are read from.
+ */
+export function declaredInputFindings(
+  written: Record<string, unknown>,
+  schema: Record<string, any>,
+  defs: DefinitionRegistry,
+  wording: { subject: string; declarer: string },
+): DeclaredInputFinding[] {
+  const out: DeclaredInputFinding[] = [];
+  const { subject, declarer } = wording;
+  const standIns: StandIns = new Map();
+  const substituted = substituteDecodedCelFields(written, schema, undefined, {
+    standIns,
+    external: (ref) => defs.schemaForId(ref),
+  });
+  for (const issue of defs.validateResourceConfig(substituted, schema, standIns)) {
+    const textRefusal = valueTypeRefusalCode(issue);
+    if (textRefusal !== undefined) {
+      out.push({ code: textRefusal, message: `${subject}: ${issue.message}`, path: issue.path });
+      continue;
+    }
+    if (issue.valueType && VALUE_TYPES.get(issue.valueType)?.fromHost !== undefined) {
+      const value = navigatePath(written, issue.path);
+      if (isTaggedSentinel(value)) continue;
+      out.push({
+        code: "HOST_PATH_RELATIVE",
+        message:
+          `${subject}: ${issue.message}. ${capitalized(declarer)} resolves nothing it is ` +
+          `given.${alsoAccepts(navigateSchemaToExprPath(schema, issue.path))}`,
+        path: issue.path,
+        ...(typeof value === "string" ? { fix: { replacement: value, tag: "module-path" as const } } : {}),
+      });
+      continue;
+    }
+    out.push({
+      code: "SCHEMA_VIOLATION",
+      message: `${subject}: ${issue.message} — ${declarer} declares it so.`,
+      path: issue.path,
+    });
+  }
+  return out;
+}
+
+const capitalized = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
 function isEmptyBlock(value: unknown): boolean {
   return !value || typeof value !== "object" || Object.keys(value).length === 0;

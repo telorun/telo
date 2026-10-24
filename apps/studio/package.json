@@ -92,6 +92,7 @@
     "@vitejs/plugin-react": "^4",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
+    "fake-indexeddb": "^6.2.6",
     "jsdom": "^25.0.1",
     "monaco-editor": "^0.55.1",
     "tailwindcss": "^4",

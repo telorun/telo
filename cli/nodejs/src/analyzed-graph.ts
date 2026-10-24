@@ -1,6 +1,7 @@
 import {
   AnalysisRegistry,
   StaticAnalyzer,
+  collectApplicationSources,
   collectModuleDocuments,
   flattenForAnalyzer,
   DiagnosticSeverity,
@@ -81,7 +82,11 @@ export async function loadAnalyzedGraph(manifest: string, log: Logger): Promise<
   const errors = new StaticAnalyzer()
     .analyze(
       manifests,
-      { moduleDocuments: collectModuleDocuments(graph), hostVersions: nodeHostVersions() },
+      {
+        moduleDocuments: collectModuleDocuments(graph),
+        applicationSources: collectApplicationSources(graph),
+        hostVersions: nodeHostVersions(),
+      },
       registry,
     )
     .filter((d) => d.severity === DiagnosticSeverity.Error);

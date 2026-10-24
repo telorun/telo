@@ -306,7 +306,7 @@ export function AgentPanel({ className }: { className?: string }) {
       {showSettings && (
         <div className="border-b border-border px-3 py-2">
           <label className="mb-1 block text-xs text-muted-foreground">
-            Agent URL override (blank = launch on the active runner)
+            Agent URL override (blank = the workspace session's agent)
           </label>
           <Input
             value={agent.overrideUrl}
@@ -514,7 +514,7 @@ export function AgentPanel({ className }: { className?: string }) {
                 <Loader size={12} className="shrink-0" />
                 <span className="truncate">
                   {agent.status === "launching"
-                    ? "Launching agent…"
+                    ? "Waiting for the workspace session's agent…"
                     : agent.status === "seeding"
                       ? "Syncing workspace…"
                       : agent.status === "stopping"

@@ -1,9 +1,9 @@
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { RunProvider, useRun } from "../context";
-import type { RunAdapter, RunEvent, RunRequest, RunSession, RunStatus } from "../types";
+import { RunProvider, useRun, type WorkspaceBinding } from "../context";
+import { FakeRunner, emptyBridge, memoryResumeSecretStore } from "./fake-runner";
 
 const APP_A = "/workspace/a/telo.yaml";
 const APP_B = "/workspace/b/telo.yaml";
@@ -12,74 +12,61 @@ function wrapper({ children }: { children: ReactNode }) {
   return <RunProvider>{children}</RunProvider>;
 }
 
-/** A session the test drives directly: no runner, no transport — only the
- *  status transitions the context keys its per-app state on. */
-function fakeAdapter(sessionId: string): {
-  adapter: RunAdapter<unknown>;
-  emit: (event: RunEvent) => void;
-} {
-  let status: RunStatus = { kind: "starting" };
-  const listeners = new Set<(event: RunEvent) => void>();
-  const session: RunSession = {
-    id: sessionId,
-    getStatus: () => status,
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    stop: async () => {
-      status = { kind: "stopped" };
-      for (const listener of listeners) listener({ type: "status", status });
-    },
+/** Bind the provider to a workspace holding apps `a` and `b` on a fake runner,
+ *  and bring the session up. */
+async function bound(run: () => ReturnType<typeof useRun>) {
+  const runner = new FakeRunner();
+  const binding: WorkspaceBinding = {
+    workspaceKey: "/workspace",
+    entry: { mode: "manual", workspace: "device:1" },
+    mode: "manual",
+    runner: { id: "r1", name: "Fake", adapter: runner.adapter, config: {} },
+    termsAccepted: () => true,
+    secrets: memoryResumeSecretStore(),
+    identity: null,
+    saveEntry: () => undefined,
+    bridge: emptyBridge,
+    prepareRun: async () => ({ env: {}, io: "tty" }),
   };
-  const adapter = {
-    id: "fake",
-    displayName: "Fake runner",
-    description: "",
-    configSchema: {},
-    defaultConfig: {},
-    validateConfig: () => [],
-    isAvailable: async () => ({ status: "ready" }) as const,
-    start: async (_request: RunRequest) => session,
-  } as unknown as RunAdapter<unknown>;
-  return {
-    adapter,
-    emit: (event) => {
-      if (event.type === "status") status = event.status;
-      for (const listener of listeners) listener(event);
-    },
-  };
+  act(() => {
+    run().setDesiredApps({
+      settled: true,
+      versioned: false,
+      apps: [
+        { appPath: APP_A, spec: { name: "a", entryRelativePath: "a/telo.yaml" } },
+        { appPath: APP_B, spec: { name: "b", entryRelativePath: "b/telo.yaml" } },
+      ],
+    });
+    run().bindWorkspace(binding);
+  });
+  await waitFor(() => expect(runner.sessions.get("s1")).toBeDefined());
+  await waitFor(() => expect(run().session?.phase).toBe("live"));
+  const fake = runner.sessions.get("s1")!;
+  act(() => fake.up());
+  return { runner, fake };
 }
 
-const request: RunRequest = {
-  bundle: { entryRelativePath: "telo.yaml", files: [] },
-};
-
-async function start(
-  run: ReturnType<typeof useRun>,
-  appPath: string,
-  adapter: RunAdapter<unknown>,
-): Promise<void> {
+async function runApp(run: () => ReturnType<typeof useRun>, appPath: string) {
   await act(async () => {
-    await run.startRun({ appPath, adapter, config: {}, request });
+    await run().runApp(appPath, { env: {}, io: "tty" });
   });
 }
 
 describe("run state is keyed by Application", () => {
   beforeEach(() => localStorage.clear());
 
-  it("opens only the started app's dock, and leaves the other app's closed", async () => {
+  it("opens only the run app's dock, and leaves the other app's closed", async () => {
     const { result } = renderHook(() => useRun(), { wrapper });
-    const { adapter } = fakeAdapter("run-1");
+    await bound(() => result.current);
 
     expect(result.current.dockForApp(APP_A).open).toBe(false);
-    await start(result.current, APP_A, adapter);
+    await runApp(() => result.current, APP_A);
 
     expect(result.current.dockForApp(APP_A).open).toBe(true);
     expect(result.current.dockForApp(APP_B).open).toBe(false);
   });
 
-  it("keeps each app's dock height independent", async () => {
+  it("keeps each app's dock height independent", () => {
     const { result } = renderHook(() => useRun(), { wrapper });
 
     act(() => result.current.setDockHeight(APP_A, 420));
@@ -97,11 +84,12 @@ describe("run state is keyed by Application", () => {
 
   it("shows the app's live run without anything selecting it", async () => {
     const { result } = renderHook(() => useRun(), { wrapper });
-    const { adapter } = fakeAdapter("run-1");
+    await bound(() => result.current);
 
-    await start(result.current, APP_A, adapter);
+    await runApp(() => result.current, APP_A);
 
-    expect(result.current.selectedRunForApp(APP_A)?.id).toBe("run-1");
+    await waitFor(() => expect(result.current.selectedRunForApp(APP_A)?.runId).toBe("run-1"));
+    expect(result.current.selectedRunForApp(APP_A)?.status.kind).toBe("running");
     expect(result.current.selectedRunForApp(APP_B)).toBeNull();
   });
 
@@ -125,51 +113,52 @@ describe("run state is keyed by Application", () => {
     expect(result.current.blockerForApp(APP_A)).toBeNull();
   });
 
-  it("keeps a run live while another app is started", async () => {
+  it("keeps a run live while another app is run", async () => {
     const { result } = renderHook(() => useRun(), { wrapper });
-    const first = fakeAdapter("run-a");
-    const second = fakeAdapter("run-b");
+    await bound(() => result.current);
 
-    await start(result.current, APP_A, first.adapter);
-    act(() => first.emit({ type: "status", status: { kind: "running" } }));
-    await start(result.current, APP_B, second.adapter);
+    await runApp(() => result.current, APP_A);
+    await runApp(() => result.current, APP_B);
 
-    expect(result.current.liveRunForApp(APP_A)?.id).toBe("run-a");
-    expect(result.current.liveRunForApp(APP_B)?.id).toBe("run-b");
+    await waitFor(() => expect(result.current.liveRunForApp(APP_B)?.runId).toBe("run-2"));
+    expect(result.current.liveRunForApp(APP_A)?.runId).toBe("run-1");
+  });
+
+  it("reads a run Stop ended as stopped", async () => {
+    const { result } = renderHook(() => useRun(), { wrapper });
+    const { fake } = await bound(() => result.current);
+    await runApp(() => result.current, APP_A);
+    const run = result.current.liveRunForApp(APP_A)!;
+
+    await act(async () => {
+      await result.current.stopRun(run.id);
+    });
+
+    expect(fake.stopCalls).toEqual(["a"]);
+    expect(result.current.runsForApp(APP_A)[0]?.status).toEqual({ kind: "stopped" });
   });
 });
 
 describe("an Application that no longer exists", () => {
   beforeEach(() => localStorage.clear());
 
-  it("has its running session stopped and its runs dropped, leaving the other app's alone", async () => {
+  it("has its live run stopped and its runs dropped, leaving the other app's alone", async () => {
     const { result } = renderHook(() => useRun(), { wrapper });
-    const a = fakeAdapter("run-a");
-    const b = fakeAdapter("run-b");
-    await start(result.current, APP_A, a.adapter);
-    await start(result.current, APP_B, b.adapter);
-    act(() => a.emit({ type: "status", status: { kind: "running" } }));
-    act(() => b.emit({ type: "status", status: { kind: "running" } }));
-    const stopped: string[] = [];
-    const sessionA = result.current.runsForApp(APP_A)[0]!;
-    expect(sessionA.status.kind).toBe("running");
-
-    // The stop arrives through the session's own status stream.
-    const unsubscribe = (await a.adapter.start(request, {})).subscribe((event) => {
-      if (event.type === "status") stopped.push(event.status.kind);
-    });
+    const { fake } = await bound(() => result.current);
+    await runApp(() => result.current, APP_A);
+    await runApp(() => result.current, APP_B);
+    await waitFor(() => expect(result.current.liveRunForApp(APP_A)?.status.kind).toBe("running"));
 
     await act(async () => {
       result.current.forgetApp(APP_A);
     });
-    unsubscribe();
 
-    // A session left running for a deleted app is a workload nothing in the
-    // editor can reach, and every later save would try to sync into it.
-    expect(stopped).toEqual(["stopped"]);
+    // A run left going for a deleted app is a process nothing in the editor
+    // can reach.
+    expect(fake.stopCalls).toEqual(["a"]);
     expect(result.current.runsForApp(APP_A)).toEqual([]);
     expect(result.current.liveRunForApp(APP_A)).toBeNull();
     expect(result.current.dockForApp(APP_A).open).toBe(false);
-    expect(result.current.liveRunForApp(APP_B)?.id).toBe("run-b");
+    expect(result.current.liveRunForApp(APP_B)?.runId).toBe("run-2");
   });
 });

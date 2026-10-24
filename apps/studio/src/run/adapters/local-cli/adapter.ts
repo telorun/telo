@@ -1,4 +1,4 @@
-import type { AvailabilityReport, RunAdapter, RunSession } from "../../types";
+import type { AvailabilityReport, RunAdapter } from "../../types";
 import { createHttpRunnerAdapter } from "../http-runner/factory";
 import {
   localCliConfigSchema,
@@ -91,32 +91,8 @@ export const localCliAdapter: RunAdapter<LocalCliConfig> = {
     return inner.isAvailable(dial(config, status.baseUrl));
   },
 
-  async start(request, config): Promise<RunSession> {
-    const baseUrl = await ensureRunning(config);
-    return inner.start(request, dial(config, baseUrl));
-  },
-
-  async attach(sessionId, config): Promise<RunSession | null> {
-    // The runner stops every session when the editor quits, so a session
-    // recorded against a runner that is down is gone for good — and starting
-    // one to ask would prove nothing.
-    const status = await localCliRunnerStatus();
-    if (status.state !== "ready" || !status.baseUrl) return null;
-    return inner.attach!(sessionId, dial(config, status.baseUrl));
-  },
-
-  async probeSession(sessionId, config) {
-    const status = await localCliRunnerStatus();
-    if (status.state !== "ready" || !status.baseUrl) return null;
-    return inner.probeSession!(sessionId, dial(config, status.baseUrl));
-  },
-
-  async stopSession(sessionId, config) {
-    // Nothing left to stop: the runner that held it is gone, and it took its
-    // sessions with it. Resolving rather than throwing keeps Stop honest.
-    const status = await localCliRunnerStatus();
-    if (status.state !== "ready" || !status.baseUrl) return;
-    await inner.stopSession!(sessionId, dial(config, status.baseUrl));
+  async connect(config) {
+    return inner.connect(dial(config, await ensureRunning(config)));
   },
 
   async isRunning() {

@@ -29,6 +29,18 @@ A workspace is any directory containing one or more `Telo.Application` or `Telo.
 
 Module documentation (schema descriptions) is rendered inline next to each field, so authors don't need to context-switch to a docs site to know what a property does.
 
+### Running a workspace
+
+The first time a workspace opens, Studio asks how you use it; the workspace menu changes the answer later.
+
+| Mode | What it does |
+| --- | --- |
+| **Agent** | Opens a session for the workspace on the selected runner, with the authoring agent beside your applications. Run and the agent panel are available. |
+| **Manual** | The same session without the agent. |
+| **Only on this device** | Contacts no runner: Run and the agent are hidden. Editing and checking work as in every mode. |
+
+A session is the workspace on the runner. Every Application in it has a place ready to run, and nothing runs until you press **Run**; **Stop** ends it. Closing the workspace suspends the session, and opening it again resumes it with its files, its module cache and the agent's conversations. Signed in to a runner that accepts your Telo account, a Telo Cloud project resumes the same session on any of your devices. A session left suspended past the runner's retention period (30 days by default) is removed, and the next open starts a new one from your files.
+
 ## Telo Cloud projects
 
 Signing in is optional: everything above works without an account. Where Studio

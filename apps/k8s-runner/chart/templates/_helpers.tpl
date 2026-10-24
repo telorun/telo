@@ -16,6 +16,12 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/* The runner's own image: the runner container runs it, and every session
+     pod's `supervisor` init container copies the session supervisor out of it. */}}
+{{- define "k8s-runner.image" -}}
+{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}
+{{- end -}}
+
 {{- define "k8s-runner.selfUrl" -}}
 http://{{ include "k8s-runner.name" . }}.{{ .Values.runnerNamespace }}.svc:{{ .Values.runner.port }}
 {{- end -}}

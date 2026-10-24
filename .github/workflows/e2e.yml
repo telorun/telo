@@ -224,15 +224,19 @@ jobs:
             e2e-logs/
             examples/.telo.debug.jsonl
 
-  # A session's own containers through the k8s runner's chart: a kind cluster
-  # (whose CNI enforces NetworkPolicy), the runner and the kernel built from this
-  # tree, the chart installed with `session.containers.enabled=true`, and one
-  # container-backed integration test run unchanged as a RUN session over `/v1`
-  # — `scripts/runner-containers-e2e.mjs --kubernetes`, the same session the
-  # script runs against the docker runner locally. The session must exit 0 and
-  # leave no pod or network policy behind. The test's PostgreSQL runs as
-  # `999:999` with its data in the container layer, which is what the session
-  # namespace's `restricted` Pod Security standard has to admit.
+  # A workspace session's whole life through the k8s runner's chart: a kind
+  # cluster (whose CNI enforces NetworkPolicy and whose default StorageClass
+  # backs the runner's and each session's claim), the runner and the kernel
+  # built from this tree, the chart installed with
+  # `session.containers.enabled=true`, and one container-backed integration test
+  # run unchanged in a session over `/v1` — `scripts/runner-containers-e2e.mjs
+  # --kubernetes`, the same session the script runs against the docker runner
+  # locally: create with a resume secret, seed the workspace, Run (exit code 0),
+  # Stop, suspend, resume, delete. The test must leave no pod or network policy
+  # behind once its run ends, the session no pod once suspended, and nothing
+  # once deleted. The test's PostgreSQL runs as `999:999` with its data in the
+  # container layer, which is what the session namespace's `restricted` Pod
+  # Security standard has to admit.
   runner-containers:
     name: Runner session containers (kind)
     runs-on: ubuntu-latest
@@ -297,16 +301,16 @@ jobs:
           cluster_name: telo
 
       # Every image a session needs is loaded into the node, so nothing is pulled
-      # from inside the cluster: the runner and the kernel built from this tree,
-      # the bundle-fetch init image and the test's database.
+      # from inside the cluster: the runner (which is also the session pods'
+      # supervisor init image) and the kernel built from this tree, and the
+      # test's database.
       - name: Build and load the images
         if: steps.changed.outputs.run == 'true'
         run: |
           docker build -f apps/k8s-runner/Dockerfile --target production -t telo-k8s-runner:e2e .
           docker build -f cli/nodejs/Dockerfile --target lean-slim -t telo-dev/node:local .
-          docker pull busybox:stable
           docker pull pgvector/pgvector:pg18
-          kind load docker-image --name telo telo-k8s-runner:e2e telo-dev/node:local busybox:stable pgvector/pgvector:pg18
+          kind load docker-image --name telo telo-k8s-runner:e2e telo-dev/node:local pgvector/pgvector:pg18
 
       - name: Install the chart with session containers on
         if: steps.changed.outputs.run == 'true'
@@ -333,7 +337,9 @@ jobs:
       - name: Show the cluster on failure
         if: failure() && steps.changed.outputs.run == 'true'
         run: |
-          kubectl get pods,networkpolicies -A -o wide || true
+          kubectl get pods,networkpolicies,pvc -A -o wide || true
           kubectl -n telo-sessions describe pods || true
           kubectl -n telo-runner logs deploy/telo-k8s-runner --tail 300 || true
+          kubectl -n telo-runner logs deploy/telo-k8s-runner --previous --tail 300 || true
+          kubectl -n telo-runner describe pods || true
           cat port-forward.log || true

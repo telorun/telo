@@ -933,9 +933,13 @@ function emitRunFailed(
 /**
  * Watch mode. The kernel has no incremental reload, so each cycle runs a fresh
  * kernel to completion-or-change: load → snapshot the graph's local files →
- * start (held alive so one-shot apps don't exit) → wait for a file change →
- * cancel + forceIdle to drive teardown → rebuild. A load/boot failure is
- * reported but does not exit; we keep watching so the next edit retries.
+ * start → rebuild on a file change. The session takes no hold of its own, so a
+ * generation ends as a plain `telo run` would: a one-shot app runs to
+ * completion and teardown (`Kernel.Stopped` carrying its exit code) and the
+ * session then waits for the next change, kept alive by its watchers and the
+ * `--inspect` endpoint; a Service holds the kernel itself until a change
+ * cancels it and forces it idle. A load/boot failure is reported but does not
+ * exit; we keep watching so the next edit retries.
  *
  * The path is resolved again every cycle. For a packaged executable the file
  * that changes is the executable — its unpacked tree never does — so it is the
@@ -1028,10 +1032,6 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
     const kernel = await buildKernel(cycle, log, cacheRoot);
     debug?.attach(kernel);
     currentKernel = kernel;
-    // Hold the kernel alive across the cycle so apps without their own hold
-    // (e.g. script-only manifests) stay up until a change or Ctrl+C; forceIdle()
-    // overrides every hold (including a server's own) when we want to reload.
-    kernel.acquireHold("watch-mode");
 
     const writeManifestCacheOnce = manifestCacheWriter(cycle, kernel, log, cacheRoot);
     try {
@@ -1055,17 +1055,30 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
       );
       log.info(`[watch] watching ${count} file(s)`);
 
-      // start() resolves on its own only on boot error or one-shot completion
-      // without a hold; the hold keeps long-running and completed apps alive,
-      // so the cycle advances on a file change. Errors are reported, not thrown.
-      const startPromise = kernel.start().catch((err) => {
-        emitRunFailed(debug, "start", err);
-        return reportError(cycle, err, log, kernel);
-      });
-      await changed;
-      kernel.cancel("reload");
-      kernel.forceIdle();
-      await startPromise;
+      // start() resolves once the app is idle — a one-shot app when its targets
+      // finish, a Service only when a change forces it — and has torn the
+      // generation down by then. Errors are reported, not thrown.
+      let finished = false;
+      const startPromise = kernel
+        .start()
+        .catch((err) => {
+          emitRunFailed(debug, "start", err);
+          reportError(cycle, err, log, kernel);
+        })
+        .finally(() => {
+          finished = true;
+        });
+      await Promise.race([changed, startPromise]);
+      if (finished) {
+        if (!stopping) {
+          log.info(`[watch] finished with exit code ${kernel.exitCode}; waiting for changes`);
+        }
+        await changed;
+      } else {
+        kernel.cancel("reload");
+        kernel.forceIdle();
+        await startPromise;
+      }
     } catch (error) {
       if (error instanceof InputInterrupted) {
         process.exitCode = 130;

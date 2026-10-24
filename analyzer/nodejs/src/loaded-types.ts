@@ -137,7 +137,17 @@ export interface LoadedGraph {
   /** Surface-level errors that did not abort the graph load (e.g. an import
    *  whose target failed to fetch). */
   errors: GraphLoadError[];
+  /** Every child application a resource of the ENTRY's own files names at an
+   *  `x-telo-application-source` field, keyed by the declaring file and then by
+   *  the source exactly as written: the child's own graph, loaded without
+   *  following its children in turn, or why it could not be. Nothing here fails
+   *  the load — the analysis reports a failure at the field that names it, and
+   *  only for a resource whose kind really carries the annotation. */
+  applicationSources?: Map<string, Map<string, ApplicationSourceLoad>>;
 }
+
+/** One child application source, as the loader found it. */
+export type ApplicationSourceLoad = { graph: LoadedGraph } | { failure: GraphLoadError };
 
 export interface GraphLoadError {
   /** URL of the file that failed to load (resolved — may be a `file://` URL for

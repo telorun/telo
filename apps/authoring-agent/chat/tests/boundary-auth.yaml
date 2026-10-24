@@ -15,7 +15,7 @@ metadata:
     the exposure — read from an in-test OTLP collector — and a token-guarded
     agent emits none.
 imports:
-  App: oci://ghcr.io/telorun/app@0.4.0#sha256-lztFuzxL_5KCX_wITAdVmckveRilao1AVDRUlU8XNIA
+  App: ../../../../modules/app
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Run: ../../../../modules/run
@@ -111,7 +111,7 @@ steps:
   - name: seed
     invoke: { kind: Fs.FileWrite }
     inputs:
-      path: !cel "string(variables.scratch.joinPath('guarded/notes.txt'))"
+      path: !cel "string(variables.scratch.joinPath('guarded/workspace/notes.txt'))"
       content: notes
       createParents: true
   # A directory where the open agent's readiness probe writes its file, so the
@@ -119,7 +119,7 @@ steps:
   - name: blockProbe
     invoke: { kind: Fs.DirectoryCreation }
     inputs:
-      path: !cel "string(variables.scratch.joinPath('open/.telo-agent/ready-probe'))"
+      path: !cel "string(variables.scratch.joinPath('open/workspace/.telo/agent-ready-probe'))"
       createParents: true
   - name: agents
     invoke:
@@ -130,8 +130,10 @@ steps:
           metadata: { name: guarded }
           source: ../../telo.yaml
           ports: { http: 18501 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('guarded').joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch.joinPath('guarded')"
+            workspaceDir: !cel "variables.scratch.joinPath('guarded').joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18519/v1
             allowedOrigins: "https://studio.example, "
             otlpEndpoint: http://127.0.0.1:18510
@@ -144,8 +146,10 @@ steps:
           metadata: { name: open }
           source: ../../telo.yaml
           ports: { http: 18502 }
+          needs:
+            agentState: { path: !cel "variables.scratch.joinPath('open').joinPath('agent-state')" }
           variables:
-            workspaceDir: !cel "variables.scratch.joinPath('open')"
+            workspaceDir: !cel "variables.scratch.joinPath('open').joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18519/v1
             otlpEndpoint: http://127.0.0.1:18510
           secrets:

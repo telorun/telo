@@ -1,4 +1,7 @@
-import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { afterAll, describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
 import { MemorySource } from "../src/manifest-sources/memory-source.js";
 import type { ModuleContext } from "../src/module-context.js";
@@ -204,6 +207,94 @@ ${extra}`;
       undefined,
     ]);
     await kernel.teardown();
+  });
+});
+
+describe("a root need supplied by name", () => {
+  const types = `kind: Telo.Library
+metadata:
+  name: Db
+exports:
+  kinds: [Access]
+---
+kind: Telo.NeedType
+metadata:
+  name: Access
+fields:
+  url: { type: string, x-telo-sensitive: true }
+  pool: { type: integer }
+required: [url]
+supply: root
+`;
+  const app = `kind: Telo.Application
+metadata:
+  name: SuppliedNeeds
+imports:
+  Db: memory://types
+needs:
+  database:
+    kind: Db.Access
+    env: { url: DATABASE_URL }
+  state:
+    kind: Telo.DurableDirectory
+`;
+  const load = async (needs: Record<string, Record<string, unknown>>, env: Record<string, string> = {}) => {
+    const memory = new MemorySource();
+    memory.set("app", app);
+    memory.set("types", types);
+    const kernel = new Kernel({
+      sources: [memory],
+      env,
+      stderr: new Capture().stream,
+      inputs: { needs, suppliedBy: "App.Instance 'worker'" },
+    });
+    await kernel.load("memory://app");
+    return kernel;
+  };
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "telo-supplied-needs-"));
+  const state = { path: path.join(scratch, "state") };
+  afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
+
+  it("wins over the environment and the host values, for a type only a root may supply", async () => {
+    const kernel = await load(
+      { database: { url: "postgres://supplied/main" }, state },
+      {
+        DATABASE_URL: "postgres://from-env/main",
+        TELO_HOST_STATE_DIR: path.join(scratch, "host"),
+      },
+    );
+    const root = (kernel as unknown as { rootContext: ModuleContext }).rootContext;
+    const fieldsOf = (name: string) =>
+      (root.resourceInstances.get(name)?.instance as NeedFulfilment | undefined)?.fields;
+    expect([fieldsOf("database"), fieldsOf("state")]).toEqual([{ url: "postgres://supplied/main" }, state]);
+    expect(fs.existsSync(path.join(scratch, "host"))).toBe(false);
+  });
+
+  it("refuses a name the application does not declare, naming the needs it does", async () => {
+    await expect(load({ database: { url: "postgres://db" }, state, cache: {} })).rejects.toMatchObject({
+      code: "ERR_MANIFEST_VALIDATION_FAILED",
+      message: expect.stringContaining(
+        "cache: this application declares no `needs` entry by that name (it declares: database, state)",
+      ),
+    });
+  });
+
+  it("refuses a supply missing a required field as partly supplied", async () => {
+    await expect(load({ database: { pool: 4 }, state })).rejects.toMatchObject({
+      code: "ERR_NEED_PARTIALLY_SUPPLIED",
+      message: expect.stringContaining(
+        "supplied by name by App.Instance 'worker' only in part: pool is given, and the required url is not",
+      ),
+    });
+  });
+
+  it("refuses an unusable directory, naming who supplied it", async () => {
+    const file = path.join(scratch, "a-file");
+    fs.writeFileSync(file, "");
+    await expect(load({ database: { url: "postgres://db" }, state: { path: file } })).rejects.toMatchObject({
+      code: "ERR_NEED_DIRECTORY_UNUSABLE",
+      message: expect.stringContaining("from the value supplied by name by App.Instance 'worker'"),
+    });
   });
 });
 

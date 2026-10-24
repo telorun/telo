@@ -1,60 +1,118 @@
 # @telorun/docker-runner
 
-HTTP service that runs Telo Applications in Docker containers on the host daemon. Exposes `/v1/sessions`, `/v1/probe`, and `/v1/health` so the Telo editor (or any compatible client) can start, stop, and stream runs without itself having Docker access.
+HTTP service that runs Telo Applications in Docker containers on the host daemon. A backend over [`@telorun/runner-core`](../../packages/runner-core), sibling to [`k8s-runner`](../k8s-runner): it presents the identical `/v1` session contract — the routes, events, ownership and lifecycle are runner-core's and documented in its README — and runs each session as sibling containers on the daemon whose socket it holds.
 
 For running applications on your own machine with no daemon at all, `telo runner` serves the same API over local processes — no isolation and no terminal, but nothing to install. This runner is the one to reach for when a run should behave the way production does: an image, a container, published ports.
 
 ## How it works
 
-The runner binds the host Docker socket (`/var/run/docker.sock`), receives bundle files over HTTP, writes them into a shared named volume, and spawns `telorun/node:latest-slim` (or any compatible image) as a sibling container on the host daemon. Logs stream back to the client via Server-Sent Events.
+**A session is a workspace.** Its record lives in the runner's session store and its files live in a directory of its own on the shared bundle volume; its containers are the part that comes and goes. Opening a workspace (`POST /v1/sessions`) creates a `workspace` container serving the editor's file routes, one idle `app-<name>` container per application, and optionally a co-resident `agent` drawn from the `RUNNER_APPS` catalog. **Nothing runs until Run**: `POST /v1/sessions/:id/apps/:app/run` is a process start inside a container that already exists, under `telo run --watch`, so an edit costs a kernel reload rather than a container.
 
-Because the runner lives in a container and spawns other containers on the host daemon, bundle files must live on a path visible to both the runner and the spawned containers. A named Docker volume mounted at `/bundles` inside the runner and `/srv` inside every spawn satisfies that.
+Because the runner lives in a container and starts other containers on the host daemon, a session's files must live where both see them: a named Docker volume mounted at `/bundles` in the runner (`BUNDLE_VOLUME`), whose subdirectories each session container mounts.
+
+### The containers
+
+Every container is named `telo-run-<sessionId>-<role>`, joins `RUNNER_CHILD_NETWORK`, and carries the labels `telo.run/session-id=<sessionId>` and `telo.run/role` (`workspace`, `app` — with `telo.run/app=<name>` and `telo.run/supervisor-build` — or `agent`). The runner finds a session's containers by the label, never by name, and reaches each at its address on the child network.
+
+| Container | Image | Runs | Mounts | Env |
+| --- | --- | --- | --- | --- |
+| `workspace` | The runner's own kernel (`RUNNER_IMAGE`) | The runner's workspace manifest, on port 8099 | The whole bundle volume at `/srv` | `PORT`, `WORKSPACE_DIR`, `TELO_CACHE_DIR` |
+| `app-<name>` | The app's telo version (`RUNNER_TELO_IMAGE_*`), else the session's picked image | `/opt/telo-runner/supervisor`, idle until Run | `<sessionId>/workspace` at `/workspace`; the supervisor build read-only at `/opt/telo-runner` | `TELO_SUPERVISOR_LISTEN`, `TELO_SUPERVISOR_TOKEN` only |
+| `agent` | The catalog entry's | Its own entry point | `<sessionId>/workspace` at `/workspace`; `<sessionId>/agent` at `/var/lib/telo-agent-state` | The operator's env from `RUNNER_APPS`, `WORKSPACE_DIR`, `TELO_HOST_STATE_DIR=/var/lib/telo-agent-state` |
+
+**No session env reaches any container definition.** A run's env arrives with the Run, is handed to the app's supervisor, and lives only in the process it starts — so it never appears in `docker inspect`. The operator env goes on the `agent` alone; `workspace` gets neither.
+
+**The workspace is `/workspace`, exactly as on kubernetes.** App and agent containers mount only their own session's `workspace` subdirectory (`Subpath`), so a manifest is `/workspace/telo.yaml` on both backends, no session id appears in a path a workload sees, and one session cannot read another's files on disk. Only the runner's own `workspace` container mounts the volume whole, because its manifest and module cache sit beside the workspace it serves — which is also what keeps them out of the user's file tree.
+
+**One cache for the whole session.** The runner seeds `telo-workspace.yaml` at the workspace root when the session's containers come up, and the kernel anchors its `.telo` cache at the directory holding that marker — on the session's directory, so a resumed session starts warm. App runs carry no `TELO_CACHE_DIR`, because that variable outranks the marker.
+
+### Running an app: the session supervisor
+
+Every `app-<name>` container's main process is the **session supervisor**, a static executable built by this runner's own release ([`packages/runner-core/supervisor`](../../packages/runner-core/supervisor), protocol [`specs/supervisor-protocol.md`](../../packages/runner-core/specs/supervisor-protocol.md)). It depends on nothing in the app image: no shell, no libc, no Node.
+
+**Delivery.** The runner's image carries it at `/opt/telo-runner/supervisor`. At boot the runner writes it onto the bundle volume under `.supervisor/<build>/supervisor`, `<build>` being the first 16 hex digits of its SHA-256, and every app container mounts that directory read-only at `/opt/telo-runner` through `Subpath`, its `Entrypoint` replaced by `/opt/telo-runner/supervisor` so the supervisor is PID 1. A runner of another build writes a directory of its own rather than overwriting one an adopted container still runs; the orphan sweep removes a build no remaining container names in `telo.run/supervisor-build`.
+
+**The container.** No TTY, no stdin, no session env, no shell: its stdout and stderr carry the supervisor's own log. It carries `TELO_SUPERVISOR_LISTEN=0.0.0.0:<9330 + position>` and a `TELO_SUPERVISOR_TOKEN` minted per container, which the supervisor removes from its environment before it starts anything. **The container's own definition is the token's durable home** — the store holds no secret, so an adopting runner reads each token back with `docker inspect`, and the agent's `tokenEnv` value likewise.
+
+**A Run.** The runner holds one WebSocket per app container to `ws://<container address>:<9330 + position>/v1/supervisor` and sends it `telo run --watch --no-input --inspect 0.0.0.0:<9230 + position> --no-open <entry>` with the Run's env and `io`; the supervisor starts it in a process group of its own, with a fresh pty under `tty` and separate pipes under `streams`, and Stop is SIGTERM to the group, then SIGKILL after the grace period.
+
+**Ports are reserved by position**, as on kubernetes: each app's supervisor port (`9330 + position`) and kernel debug port (`9230 + position`). An app set declaring one is refused (`400 port_conflict`, naming what binds it), and a reload declaring one is `rejected` on the `endpoints` event.
+
+**A container that ends is the session's failure, never a run's**: the workspace, an app container (its supervisor) or the agent exiting, or a supervisor connection ending for good, reports `failed` naming the container; the runner removes what is left and `resume` rebuilds it over the same directory. Containers are created without `AutoRemove`, so an ended container keeps its exit code until the runner removes it.
+
+### Suspend, resume and storage
+
+A session's directory on the bundle volume, `<sessionId>/`, holds `workspace/` (the user's files and the module cache), `agent/` (the co-resident agent's state, outside the workspace tree so nothing syncs it), and the workspace application's manifest and cache. **Suspend removes the containers and keeps the directory**; resume creates them again over it, under the same session id, with every app `ready`. Deleting a session, or retention purging a suspended one (`RUNNER_SESSION_RETENTION_SECONDS`), removes both.
+
+An app-set change (`PUT …/apps`) that changes what the containers are built from replaces the app containers and keeps the `workspace` and `agent` containers; changing the agent (`PUT …/agent`) replaces the agent container. Either ends every live run, and each app reports `ready` again.
+
+### Restarting the runner
+
+Session containers outlive the runner. At boot the runner loads every stored session and, for one stored as running, **adopts** its containers by the session label: it reads each supervisor token (and the agent's token) back from the container's definition, reconnects every supervisor, and reports each app as it stands — `running` with its live run included, which Stop can then end.
+
+- Containers that are not the stored session's — another app set, another agent, one not started, or session supervisors of **another protocol generation** (containers older than this runner build) — are removed and the session becomes `suspended`, its directory kept; the editor's `resume` builds current ones.
+- A container that has **ended** fails the session, naming it.
+- Then the **orphan sweep** removes every container of a session that is not running here (its workload's, those it started through its engine, and any `telo-run-*` container of a runner from before the session label), every session directory the store does not know, and every supervisor build nothing mounts. A suspended session's directory is never touched.
+
+Closing the runner detaches from its sessions and stops nothing.
+
+### Docker 26 or newer
+
+**The runner refuses to boot on a daemon older than Engine API 1.45 (Docker 26)**, naming the requirement, and on one it cannot ask for its version. Scoping a volume mount to a subdirectory (`Subpath`) arrived there, and every session's app and agent containers mount their own directories and the supervisor that way; an older daemon ignores the field and would mount the whole volume — every session's files in every container, at a path that looks correct.
 
 ## Required environment
 
-Two variables are mandatory — the runner exits with a descriptive error if either is unset.
+The runner exits with a descriptive error if any of these is unset.
 
-- **`BUNDLE_VOLUME`** — the daemon-visible name of a Docker volume mounted at `/bundles` in this runner. The runner passes this name to `Binds` when spawning sibling containers. In a compose deployment the name is prefixed by the project name (e.g. a compose-level key `runner-bundles` under `name: telo` resolves to `telo_runner-bundles`).
-- **`RUNNER_CHILD_NETWORK`** — the Docker network name that spawned containers should join. In compose this is typically `<project>_default` so the spawned containers can reach sibling services by name. Standalone deployments set this to `bridge`.
+- **`BUNDLE_VOLUME`** — the daemon-visible name of the Docker volume mounted at `/bundles` in this runner, which session containers mount subdirectories of. In a compose deployment the name is prefixed by the project name (a compose-level key `runner-bundles` under `name: telo` resolves to `telo_runner-bundles`).
+- **`RUNNER_CHILD_NETWORK`** — the Docker network session containers join, which the runner must be on too: it reaches every container at its address there. In compose this is typically `<project>_default`; standalone deployments set this to `bridge`.
+- **`RUNNER_STATE_DIR`** — with the default SQLite session store: the runner's own state directory, on a persistent volume (compose: the `runner-state` volume at `/var/lib/telo-runner`); holds `sessions.sqlite`.
 
 Optional, with defaults:
 
 | Env var | Default | Purpose |
 | --- | --- | --- |
 | `PORT` | `8061` | HTTP listen port |
+| `BUNDLE_ROOT` | `/bundles` | Path inside the runner where the bundle volume is mounted |
+| `RUNNER_PUBLIC_BASE_URL` | _(unset)_ | Base URL of a host-matching proxy that fronts session containers by name (see [Reaching a session](#reaching-a-session)); unset, declared ports are published to the same host port |
 | `RUNNER_TELO_IMAGE_REPOSITORY` | `telorun/node` | Where the kernel image of a telo version an application names is pulled from: `<repository>:<version>-<variant>` |
 | `RUNNER_TELO_IMAGE_VARIANT` | `slim` | The variant suffix of that image tag |
 | `RUNNER_TELO_UNRELEASED_IMAGE` | _(unset → refused)_ | The kernel image an unreleased build identity (`X+unreleased`) runs on — for a development stack whose editor is built from the same tree |
 | `RUNNER_PULL_POLICY` | `missing` | How the runner pulls every image it chooses itself — a telo version's and its own workspace container's: `missing`, `always` or `never` (a host with its images preloaded) |
-| `RUNNER_IMAGE` | `telorun/node:0-slim` | The kernel image the runner's own `workspace` container runs on in a watch session whose applications name a telo version |
-| `BUNDLE_ROOT` | `/bundles` | Path inside the runner where bundles are written; must match the named-volume mount path |
+| `RUNNER_IMAGE` | `telorun/node:0-slim` | The kernel image the runner's own `workspace` container runs on |
 | `LOG_LEVEL` | `info` | Pino log level |
-| `RUNNER_MAX_SESSIONS` | `32` | Cap on retained sessions; at capacity the oldest exited session is evicted, and only an all-live runner rejects with 409 |
-| `RUNNER_EXIT_TTL_MS` | `14400000` | How long exited sessions stay in the registry (so the editor can re-attach and replay their history after a reload) before eviction |
+| `RUNNER_MAX_SESSIONS` | `8` | Most running sessions at once; suspended ones do not count |
+| `RUNNER_SESSION_STORE` | `sqlite` | Where session records are kept: `sqlite` (a file in `RUNNER_STATE_DIR`) or `postgres`. Anything else refuses to boot |
+| `RUNNER_SESSION_STORE_URL` | _(unset)_ | The Postgres connection URL; required with `postgres`, refused with `sqlite` |
 | `RUNNER_REPLAY_BUFFER_BYTES` | `5000000` | Per-session SSE replay buffer cap |
+| `RUNNER_SESSION_IDLE_SECONDS` | `300` | No SSE/WS subscriber for this long → suspend (containers removed, directory kept) |
+| `RUNNER_SESSION_MAX_RUNNING_SECONDS` | `21600` | A running session suspends after this long |
+| `RUNNER_SESSION_RETENTION_SECONDS` | `2592000` | A suspended session is deleted with its directory after this long — 30 days |
+| `RUNNER_SESSION_RELOAD_LIMIT` | `30` | Per-session reloads per minute |
+| `RUNNER_IDENTITY_AUDIENCE` / `RUNNER_IDENTITY_ISSUERS` | _(unset → resume secrets only)_ | Signed-in owners — see runner-core's README, § Identity |
+| `RUNNER_CORS_ORIGINS` | `*` | Comma-separated origins the runner serves |
 | `RUNNER_TERMS_FILE` | _(unset)_ | Path to the agreement file (plain text / markdown), read at startup — the natural fit for a bind-mounted file. Setting this (or `RUNNER_TERMS_BODY`) enables terms: the runner advertises them on `/v1/capabilities` and rejects `POST /v1/sessions` with `428` unless the client sends `x-telo-accepted-terms` matching the version. An unreadable path fails startup |
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set. Terms stay disabled unless one of these is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
-| `RUNNER_WATCH_SESSIONS` | `false` (`true` in compose) | Server-side gate for watch sessions — never client-requestable when off |
-| `RUNNER_WATCH_IDLE_SECONDS` | `300` | No SSE/WS subscriber for this long → suspend (containers deleted, workspace checkpoint held) |
-| `RUNNER_WATCH_MAX_SESSIONS` | `8` | Concurrency ceiling for watch sessions, separate from `RUNNER_MAX_SESSIONS` |
-| `RUNNER_WATCH_RELOAD_LIMIT` | `30` | Per-session reloads per minute |
-| `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` | `86400` | How long a suspended record is retained before eviction — bounds accumulation, and is not a workload deadline |
-| `RUNNER_WORKSPACE_CHECKPOINT_SECONDS` | `30` | How often the runner pulls a whole-tree workspace snapshot |
 | `RUNNER_SESSION_CONTAINERS` | `false` (`true` in compose) | Serve every session a container engine of its own — see [Session containers](#session-containers) |
 | `RUNNER_SESSION_CONTAINERS_MAX` | `4` | Most containers one session may hold at once; a create beyond it is `429` |
 | `RUNNER_INTERNAL_URL` | _(required when containers are on)_ | The runner as a session's container reaches it over `RUNNER_CHILD_NETWORK` (compose: `http://runner:8061`); the runner refuses to boot without it |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of operator-predefined apps launchable by name via `POST /v1/apps/:name/sessions`: `{"<name>": {"image", "env"?, "pullPolicy"?, "port"?, "tokenEnv"?, "title"?, "description"?}}`. `env` is injected verbatim into the app's workload and may embed secrets — clients can never set those keys, and only name/title/description are advertised on `/v1/capabilities`. `port` is the tcp port the image listens on; it is what the runner publishes when the entry is used as a session's co-resident `agent`, and there is no default, because the runner knows nothing about any specific app. `tokenEnv` names an env var under which the runner injects a token it mints per session and reports as `token` on that workload's endpoints (see [Workload tokens](#workload-tokens)); naming a key the entry's own `env` also sets is a startup error. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "<key>"}, "pullPolicy": "always", "port": 8080, "tokenEnv": "AGENT_TOKEN"}}` |
+| `RUNNER_APPS` | _(unset → no agents)_ | JSON map of the operator's agent catalog, offered as a session's co-resident `agent` (`features.agents`): `{"<name>": {"image", "env"?, "pullPolicy"?, "port"?, "tokenEnv"?, "title"?, "description"?}}`. `env` is injected verbatim into the agent container and may embed secrets; only names are advertised on `/v1/capabilities`. `port` is the tcp port the image listens on, with no default — an entry without one is not offered. `tokenEnv` names an env var under which the runner injects a token it mints per container creation and reports as `token` on `status.agent` (see [Workload tokens](#workload-tokens)); naming a key the entry's own `env` also sets is a startup error. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"OPENAI_API_KEY": "<key>"}, "pullPolicy": "always", "port": 8080, "tokenEnv": "AGENT_TOKEN"}}` |
+
+A runner started with a variable this release no longer reads refuses to boot, naming each one: `RUNNER_WATCH_MAX_SESSIONS`, `RUNNER_WATCH_IDLE_SECONDS`, `RUNNER_WATCH_MAX_TTL_SECONDS`, `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` and `RUNNER_WATCH_RELOAD_LIMIT` are renamed to `RUNNER_MAX_SESSIONS`, `RUNNER_SESSION_IDLE_SECONDS`, `RUNNER_SESSION_MAX_RUNNING_SECONDS`, `RUNNER_SESSION_RETENTION_SECONDS` and `RUNNER_SESSION_RELOAD_LIMIT`; `RUNNER_WATCH_SESSIONS`, `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`, `RUNNER_EXIT_TTL_MS`, `RUNNER_MAX_TTL_SECONDS` and `RUNNER_APP_MAX_TTL_SECONDS` are removed.
 
 ## Standalone
 
 ```bash
 docker volume create telo-runner-bundles
+docker volume create telo-runner-state
 docker run --rm \
   -v /var/run/docker.sock:/var/run/docker.sock \
   -v telo-runner-bundles:/bundles \
+  -v telo-runner-state:/var/lib/telo-runner \
   -e BUNDLE_VOLUME=telo-runner-bundles \
+  -e RUNNER_STATE_DIR=/var/lib/telo-runner \
   -e RUNNER_CHILD_NETWORK=bridge \
   -p 127.0.0.1:8061:8061 \
   telorun/docker-runner
@@ -64,251 +122,56 @@ Point an editor at `http://localhost:8061`.
 
 ### Security posture
 
-The runner has an unauthenticated HTTP API backed by host Docker socket access. Anyone who can reach `/v1/sessions` can start arbitrary containers as root on the host daemon. **Default bind is `127.0.0.1`**; exposing `0.0.0.0` is reserved for networks the operator has independently decided to trust. No auth is planned for v1.
+Sessions are owned — a resume secret, or a DPoP-bound identity on a runner configured for one — but the API is backed by host Docker socket access: anyone who can create a session can start containers on the host daemon. **Default bind is `127.0.0.1`**; exposing `0.0.0.0` is reserved for networks the operator has independently decided to trust.
+
+**Trust boundary: sessions are mutually trusted on this runner.** Every session container joins one `RUNNER_CHILD_NETWORK`, and each session's workspace API answers at its `workspace` container's address on port 8099 with no auth — so any session's workload can read and WRITE another session's workspace over the network, whatever it can see on disk. A supervisor port takes only its own container's token, so one app cannot drive another's runs. Do not deploy this runner expecting isolation between sessions; the kubernetes runner is the multi-tenant one.
 
 ## Compose
 
-The repo's [docker-compose.yml](../../docker-compose.yml) already wires the runner alongside the editor. `pnpm compose up` brings it up. The editor service picks the runner URL from `VITE_TELO_RUNNER_URL=http://runner:8061` and waits for the runner's healthcheck before starting.
+The repo's [docker-compose.yml](../../docker-compose.yml) wires the runner alongside the editor on the `development` stage, which runs this checkout's sources and carries the session supervisor built from it (rebuild with `docker compose build runner` after changing the supervisor). `pnpm compose up` brings it up; the editor reaches it through the proxy at `http://runner.telo.localhost:8060`.
 
-## API
+## Reaching a session
 
-### `GET /v1/health`
+**Without a proxy** (`RUNNER_PUBLIC_BASE_URL` unset) every declared port is published to the same host port, and endpoints carry an empty `host` the client fills from the base URL it reached the runner on. A port's bindings are fixed when its container is created, so a port a reload adds is reported `rejected` until the app set changes or the session resumes.
 
-Liveness. `200 { ok: true, version }` regardless of daemon state. Use `/v1/probe` for daemon reachability.
-
-### `GET /v1/capabilities`
-
-The runner's self-description, so the editor renders a generic runner config form without hardcoding per-backend fields. `200 { displayName, description, config: { schema }, features: { io, ports } }` where `config.schema` is a JSON Schema for the editable `SessionConfig` fields (each property carries its own `default`). docker-runner advertises `image` / `pullPolicy` as editable (it trusts the caller to pick the image). `baseUrl` is never in this schema — the client owns it.
-
-### `POST /v1/probe`
-
-Body: `{ config: { image, pullPolicy } }`. Returns an `AvailabilityReport` — either `ready`, `needs-setup` with issues, or `unavailable` with a human-readable message and remediation. Staged checks run daemon → bundle volume → child network → image; first failing stage wins.
-
-### `POST /v1/sessions`
-
-Body: `{ bundle: { entryRelativePath, files: [{ relativePath, contents }] }, env: { KEY: VALUE, ... }, config: { image, pullPolicy } }`.
-
-On success: `201 { sessionId, streamUrl, createdAt }`. Start is all-or-nothing up to `container.start()` — any failure returns non-2xx with `{ error, stage, message, daemonMessage? }`:
-
-- `400 invalid_bundle` — bundle paths or shape rejected.
-- `409 too_many_sessions` — concurrent session cap hit.
-- `502 pull_failed` (`stage: "pull" | "inspect"`) — registry unreachable or image missing under `pullPolicy: "never"`.
-- `503 start_failed` (`stage: "daemon" | "create" | "attach" | "start"`) — daemon-level failure.
-
-### `POST /v1/apps/:name/sessions`
-
-Creation door for operator-predefined applications (`RUNNER_APPS`). Body: `{ env?, ports?, inspect? }` — no bundle, no config; the runner resolves the image and injects the app's operator env from the catalog, plus the session's minted token when the entry declares `tokenEnv` (client-supplied values for those keys are dropped). On success: `201 { sessionId, streamUrl, createdAt }` — the session lives in the same collection as bundle sessions (status / DELETE / events / io under `/v1/sessions/:id`). `404 unknown_app` when the catalog doesn't offer the name; the same terms gate (`428`) applies.
-
-### `GET /v1/sessions/:id`
-
-`200 { sessionId, status, mode, agent?, apps, createdAt, exitedAt? }` or `404`.
-`apps` lists `{ name, io, generation, ports }` per running application.
-
-### `DELETE /v1/sessions/:id`
-
-Idempotent `204`. Kills the spawned container and marks the session as user-stopped; the terminal `status: stopped` event ships via SSE, not in this response.
-
-### `GET /v1/sessions/:id/events`
-
-SSE stream. Events: `status`, `progress`, `debug`, `reachability`, `run`, `endpoints`, and `gap` when the replay buffer has evicted events the client asked to resume from. Each event carries a monotonic `id`. Reconnects send `Last-Event-ID` (native) or `?lastEventId=<n>` (fresh instance, e.g. tab reload) — server prefers the header.
-
-**Workload output does not travel this stream.** It goes over the byte channel (`/v1/sessions/:id/io`), which exists precisely because per-chunk events are wasteful for high-volume output. This section previously listed `stdout` and `stderr` events; nothing ever emitted them, and they are gone.
-
-`status` is the SESSION's state, `run` is one application's outcome, and the two are deliberately separate nouns: in a watch session a one-shot app completing emits `run` with `phase: "completed"` and leaves the session `running`, so the next edit starts that app's next generation.
-
-## Session containers
-
-With `RUNNER_SESSION_CONTAINERS=true` every session gets
-`TELO_HOST_CONTAINER_ENGINE_URL` (`<RUNNER_INTERNAL_URL>/v1/sessions/<id>/engine`)
-and `TELO_HOST_CONTAINER_ENGINE_TOKEN`, so a test that starts its own database
-through `Docker.Engine` runs in a session exactly as it runs locally. No socket
-reaches the session: the runner answers the Engine API requests `Docker.Engine`
-sends behind the session's token (the contract, refusals and ceiling are
-`@telorun/runner-core`'s, in its README) and runs each container as a sibling
-on the host daemon:
-
-- joined to `RUNNER_CHILD_NETWORK`, where the session's container reaches it;
-- labelled `run.telo.session=<id>`, never named after the session, so the
-  proxy that fronts `telo-run-<id>` never routes to it;
-- publishing nothing on the host — inspect answers each requested binding with
-  the container's address on `RUNNER_CHILD_NETWORK` and its container port;
-- removed with its volumes when the session ends, stops, suspends or is
-  deleted, and at boot with every other container labelled with a session.
-
-`node scripts/runner-containers-e2e.mjs` runs a container-backed integration
-test as a run session against the runner's `production` image, on a network and
-bundles volume of its own, writing nothing in the checkout, and fails unless it
-exits 0 and leaves no container behind.
-
-## The telo version an application runs on
-
-A session request may name, per application, the telo version it runs on
-(`telo`, on each entry of `apps`, or on the request for a single-app session) —
-the version the editor checks that module against. The runner advertises
-`features.teloVersions` and runs that application's container on
-`<RUNNER_TELO_IMAGE_REPOSITORY>:<version>-<RUNNER_TELO_IMAGE_VARIANT>`
-(`telorun/node:0.80.0-slim` by default), pulled under the operator's
-`RUNNER_PULL_POLICY`. The image is pulled while the session starts, with
-progress on its event stream; one that cannot be pulled, or is not held under
-`never`, fails that session with the daemon's answer. Never a substitute. A
-release older than 0.95.0, the oldest a runner is verified to supervise, is
-refused before the session exists (`400 telo_version_unavailable`).
-
-An unreleased build (`0.80.0+unreleased`, what an editor built from an
-unreleased tree asks for) has no published image. Set
-`RUNNER_TELO_UNRELEASED_IMAGE` to a kernel image built from that same tree and
-it runs on that; unset, the request is refused before a session exists
-(`400 telo_version_unavailable`) with a reason naming the variable.
-
-The runner's own `workspace` container in a watch session does not follow the
-application's version: it runs on `RUNNER_IMAGE` (default `telorun/node:0-slim`),
-the kernel the runner's own manifest is verified against.
-
-`config.image` and `config.pullPolicy` are **deprecated**: they are what a client
-naming no version still sends, and they behave as before for that client. A
-request naming a version beside either is `400 invalid_config` — a version tag
-does not move, so how its image is pulled is a property of the deployment, not
-of a run — and a session's applications either all name a version or none does.
-
-Each generation's `run` event carries the version the runtime itself reported
-(`telo`), passed on unjudged — the editor compares it with what it asked for and
-warns on a difference.
-
-## Watch sessions
-
-**The compose stack has these on** (`RUNNER_WATCH_SESSIONS: "true"` on the `runner` service) — a workspace that reloads on save is the point of running the dev stack. The default everywhere else is off, since a watch session is a container set that outlives its runs.
-
-`POST /v1/sessions` with `mode: "watch"` makes the session a **workspace that runs continuously** rather than one run: a shared workspace directory, a `workspace` container serving the file routes below, one container per application running `telo run --watch`, and optionally a co-resident `agent` from the `RUNNER_APPS` catalog. An edit then costs a kernel reload instead of a container.
-
-Docker's containers on the child network stand in for containers in a pod, and per-session directories on the shared bundle volume stand in for pod volumes. Everything else — the routes, the events, suspend/resume — is identical to the kubernetes runner's.
-
-**The workspace is at `/workspace`, exactly as on kubernetes.** An application container and the agent mount only that session's own `workspace` subdirectory of the shared volume, at that path — so a manifest is `/workspace/telo.yaml` on both backends and no session id appears in any path a workload sees. The runner's own siblings of that directory (the file service's manifest, and its module cache) fall outside the mount, so a user's workspace listing shows only their files plus the marker.
-
-Only the `workspace` container still mounts the volume whole, at `/srv`: it is the runner's own, and it needs its manifest and cache beside the workspace it serves.
-
-**This needs Docker Engine API 1.45 (Docker 26) or newer**, which is where scoping a volume mount to a subdirectory arrived. An older daemon ignores the field and would mount the whole volume at `/workspace` — every session's files in every container, at a path that looks correct — so the runner probes the daemon at boot and **advertises `features.watch: false`** when it is too old, logging why. Run sessions are unaffected and keep their whole-volume `/srv` bind.
-
-**One cache for the whole session.** The runner seeds `telo-workspace.yaml` at the workspace root when the session starts, and the kernel anchors its `.telo` cache at the directory holding that marker — so two apps importing the same module resolve it once between them. Application containers carry no `TELO_CACHE_DIR`, because that variable outranks the marker.
-
-**Trust boundary: sessions are mutually trusted on this runner.** Every session
-container joins one `RUNNER_CHILD_NETWORK`, and the workspace API is
-name-addressable at `telo-run-<sessionId>-workspace:8099` with no auth — so any
-session's workload can read and WRITE another session's workspace over the
-network, whatever it can see on disk. Do not deploy this runner expecting
-isolation between sessions; the kubernetes runner is the multi-tenant one.
-
-On disk the exposure is narrower than it was: a watch session's application and
-agent containers mount only their own workspace, so they cannot read another
-session's files that way. A RUN session still binds the whole bundle volume at
-`/srv` and can.
-
-**Orphan reap.** A run session's container exits on its own and the daemon `--rm`s it; a watch session's containers do not, by design. So the runner removes every `telo-run-*` container at boot — a restart would otherwise leave a workspace, an agent and one container per app running with nothing able to reach them.
+**Behind a proxy** (`RUNNER_PUBLIC_BASE_URL` set) nothing is published; each tcp port is announced as `<port>-<sessionId>.<base-domain>`, which the proxy splits back into `telo-run-<sessionId>:<port>` — a network alias the one app declaring ports takes. With several port-declaring apps the name would be ambiguous (docker round-robins a shared alias), so nothing takes it and every such port is reported `rejected`. A port a reload adds is routable once something binds it.
 
 ### Reaching the co-resident agent
 
-An `agent` is only useful if a client can talk to it, so the runner publishes it
-and reports where: the `running` status carries an `agent` endpoint beside
-`endpoints`, and `POST /v1/sessions` refuses an agent whose catalog entry
-declares no `port` (`400 agent_port_undeclared`) rather than starting one nobody
-can reach. Where an application declares the agent's port, the **manifest wins**:
-the session starts without the agent and reports it on the stream, rather than
-refusing to run the user's app over a container they never asked for.
+The `running` status carries an `agent` endpoint beside `endpoints`, and a session asking for an agent whose catalog entry declares no `port` is refused (`400 agent_port_undeclared`). Where an application declares the agent's port, the **manifest wins** on a create: the session starts without the agent and says so on its stream.
 
-Behind a proxy the agent takes its **own** network alias,
-`telo-run-<sessionId>-agent`, so it is reachable at
-`<agentPort>-<sessionId>-agent.<base-domain>` with no proxy configuration — the
-session label is the proxy's trailing capture, so the existing rule already
-resolves it. Giving it the session's own alias instead would have made every app
-port a coin flip, since docker round-robins a shared alias; that is the same
-ambiguity a multi-app session has to refuse. With no proxy the port is published
-to the host like an app's, and the client fills in the hostname it reached the
-runner on.
+Behind a proxy the agent takes its **own** network alias, `telo-run-<sessionId>-agent`, reachable at `<agentPort>-<sessionId>-agent.<base-domain>` with no proxy configuration — the session label is the proxy's trailing capture. Giving it the session's alias instead would make every app port a coin flip. With no proxy the agent's port is published to the host like an app's.
 
-The agent is the only container that receives the operator env, and it is
-reachable by anyone who can reach its host for as long as the session lives —
-the same exposure an app session of the same image already has — unless the
-image itself checks a credential, which is what a workload token is for.
+**Nothing verifies that the agent listens where `port` says.** `port` tells the runner where to route; what the image binds is configured separately (the authoring agent reads `PORT`, defaulting to 8080). Keep `port` and any `PORT` in the entry's `env` in agreement.
 
 ### Workload tokens
 
-A catalog entry that declares `tokenEnv` gets a token per session: the runner
-mints 32 random base32 characters (the session-id generator at a credential's
-length, 160 bits), injects them into that workload's env under `tokenEnv` —
-through the operator-env channel, so an agent's token reaches the agent
-container and no application container — and reports the same value as `token`
-on every endpoint of that workload: `status.agent` for a co-resident agent,
-every `status.endpoints[]` entry for an app session. A client presents it to the
-workload — typically as `Authorization: Bearer <token>` to an image that
-compares it with the env var; what it guards is the image's business, the
-runner only hands out the two matching halves.
+A catalog entry that declares `tokenEnv` gets a token per container creation (create, resume, agent change): core mints it, the runner injects it into the agent container under `tokenEnv`, and core reports the same value as `token` on `status.agent`. A client presents it to the agent — typically as `Authorization: Bearer <token>` to an image that compares it with the env var. An adopted session keeps the token its container was created with, read back from it.
 
-The token is part of the session: a suspended session resumes with the same one,
-and a runner restart — which forgets every session — means a new session and so
-a new token. A client-supplied env var of the same name is dropped.
-**Nothing verifies that the agent listens where `port` says.** `port` tells the
-runner where to route; what the image actually binds is configured separately
-(the authoring agent reads `PORT`, defaulting to 8080). If the two disagree the
-runner publishes a port and routes a host with nothing behind it, and the agent
-appears to start while every request to it fails — neither backend watches the
-agent's port the way both watch an application's. Keep `port` and any `PORT` in
-the entry's `env` in agreement.
+## Session containers
 
+With `RUNNER_SESSION_CONTAINERS=true` every Run gets `TELO_HOST_CONTAINER_ENGINE_URL` (`<RUNNER_INTERNAL_URL>/v1/sessions/<id>/engine`) and `TELO_HOST_CONTAINER_ENGINE_TOKEN`, so a test that starts its own database through `Docker.Engine` runs in a session exactly as it runs locally. No socket reaches the session: the runner answers the Engine API requests `Docker.Engine` sends behind the session's token (the contract, refusals and ceiling are `@telorun/runner-core`'s, in its README) and runs each container as a sibling on the host daemon:
 
-| Route | Purpose |
-| --- | --- |
-| `GET /v1/sessions/:id/workspace` | Content-hash tree the editor diffs against its own files |
-| `POST /v1/sessions/:id/workspace` | Apply a `{ write: [{path, content, encoding?}], delete: [path] }` change set |
-| `GET /v1/sessions/:id/workspace/file?path=` | One file's contents |
-| `POST /v1/sessions/:id/reload?app=<name>` | Re-run one app with no file change (omit `app` for all) |
-| `PUT /v1/sessions/:id/apps` | Change the running app set (checkpoint + container recreate) |
-| `POST /v1/sessions/:id/resume` | Bring a suspended session back under the same id |
+- joined to `RUNNER_CHILD_NETWORK`, where the session's app container reaches it;
+- labelled `run.telo.session=<id>`, never named after the session, so the proxy that fronts `telo-run-<id>` never routes to it;
+- publishing nothing on the host — inspect answers each requested binding with the container's address on `RUNNER_CHILD_NETWORK` and its container port;
+- removed with its volumes when the session's run ends, the session suspends, fails or is deleted, and at boot when its session is not running here.
 
-A change set is an explicit write/delete list rather than a whole-tree PUT, because a deletion has to be expressible and a whole-tree PUT can only express it by treating absence as intent. There is deliberately no single-file write route: a one-file save is a change set of one, and a second write path would be a second set of concurrency rules.
+`node scripts/runner-containers-e2e.mjs` drives a whole session against the runner's `production` image, on a network and volumes of its own, writing nothing in the checkout: create, seed the workspace with a container-backed integration test, Run it to exit code 0, Stop, suspend, resume, delete — failing if the test leaves a container behind or the session leaves anything.
 
-**The editor holds the authoritative workspace; the checkpoint is a cache.** The runner is a single replica with an in-memory session registry, so a restart drops every suspended session and `resume` answers `404` — the editor creates a new session and re-seeds from its own copy in one change set.
+## The telo version an application runs on
 
-### `io` — terminal or separated streams
+Each application of a session may name the telo version it runs on (`telo`, on each entry of `apps`) — the version the editor checks that module against. The runner advertises `features.teloVersions` and runs that application's container on `<RUNNER_TELO_IMAGE_REPOSITORY>:<version>-<RUNNER_TELO_IMAGE_VARIANT>` (`telorun/node:0.123.0-slim` by default), pulled under the operator's `RUNNER_PULL_POLICY` while the session's containers are created, with progress on its event stream; one that cannot be pulled, or is not held under `never`, fails that session with the daemon's answer. Never a substitute. A release older than 0.123.0, the oldest a runner is verified to supervise, is refused when the app set is created or replaced (`400 telo_version_unavailable`).
 
-Each app declares `io: "tty"` (default) or `io: "streams"`. The difference is observable **to the application**, not just to the client: `isatty()` drives colour, line-versus-block buffering, progress bars and prompts, so a loop that is always a PTY systematically hides how the app behaves in production.
+An unreleased build (`0.123.0+unreleased`, what an editor built from an unreleased tree asks for) has no published image. Set `RUNNER_TELO_UNRELEASED_IMAGE` to a kernel image built from that same tree and it runs on that; unset, the app set is refused (`400 telo_version_unavailable`) with a reason naming the variable.
 
-| | `tty` | `streams` |
-| --- | --- | --- |
-| Output | One merged stream, as a terminal produces | Separated at the source |
-| `/io` resize | Yes | Rejected — meaningless without a PTY |
-| `CLICOLOR_FORCE` | Injected | **Not** injected |
+The runner's own `workspace` container does not follow the application's version: it runs on `RUNNER_IMAGE` (default `telorun/node:0-slim`), the kernel the runner's own manifest is verified against.
 
-Nothing is invented at the transport layer: docker's non-TTY attach already returns a multiplexed stream carrying a per-frame stream id. The TTY is what collapses it.
+`config.image` and `config.pullPolicy` are **deprecated**: they are what a client naming no version still sends, and they choose the app containers' image for that client. A request naming a version beside either is `400 invalid_config`, and a session's applications either all name a version or none does.
 
-`GET /v1/sessions/:id/io?app=<name>` attaches to one app's channel; `?app=` is required whenever the session runs more than one, since there is no defensible default among several terminals. Every binary frame is `[seq:4 BE][stream:1][payload]`, where the stream byte is `tty` / `stdout` / `stderr` — it never asserts a split that does not exist.
+## `io` — terminal or separated streams
 
-## Hand-test recipe
-
-```bash
-# bring up the runner + its prerequisites
-docker compose up -d runner
-
-# sanity probe
-curl -s http://localhost:8061/v1/health
-curl -s -X POST http://localhost:8061/v1/probe \
-  -H 'content-type: application/json' \
-  -d '{"config":{"image":"telorun/node:latest-slim","pullPolicy":"missing"}}'
-
-# start a one-file session that echoes and exits
-curl -s -X POST http://localhost:8061/v1/sessions \
-  -H 'content-type: application/json' \
-  -d '{
-    "bundle": {
-      "entryRelativePath": "telo.yaml",
-      "files": [{"relativePath":"telo.yaml","contents":"kind: Telo.Application\nmetadata:\n  name: hello\ntargets: [hello]\nresources:\n  - kind: Console.Log\n    name: hello\n    message: \"Hello from telo!\"\n"}]
-    },
-    "env": {},
-    "config": {"image":"telorun/node:latest-slim","pullPolicy":"missing"}
-  }'
-# → { sessionId, streamUrl }
-
-# stream the logs
-curl -N http://localhost:8061/v1/sessions/<sessionId>/events
-```
+Each Run chooses `io: "tty"` or `io: "streams"`, and the difference is observable **to the application**: `isatty()` drives colour, buffering, progress bars and prompts. Under `tty` the supervisor gives the run a fresh pty (and `CLICOLOR_FORCE`); under `streams` its stdout and stderr stay separate pipes. Changing it changes nothing about the containers.
 
 ## Development
 
@@ -318,4 +181,4 @@ pnpm --filter @telorun/docker-runner test    # vitest
 pnpm --filter @telorun/docker-runner build   # tsc
 ```
 
-The in-process dev server can't spawn sibling containers via a named-volume bind (the bundle dir is a host tmpdir, not a daemon-visible volume), so end-to-end testing requires the compose or standalone deployment above. Unit and route tests cover the runner logic with a fake dockerode.
+The runner needs its image's session supervisor and a daemon-visible bundle volume, so end-to-end use requires the compose or standalone deployment above. The tests drive the backend over a fake engine (`src/docker/fake-engine.test-support.ts`): containers that come up on loopback addresses of their own, with a workspace surface and a supervisor speaking the protocol (runner-core's `FakeSupervisor`, from `@telorun/runner-core/test-support`).

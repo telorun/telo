@@ -6,6 +6,28 @@ RUN corepack enable
 
 CMD ["pnpm", "run", "--filter", "@telorun/k8s-runner", "dev"]
 
+# The session supervisor every app container runs: one static musl executable
+# per target architecture, built on the build platform (see
+# packages/runner-core/supervisor/README.md). The build platform's own musl
+# target links natively; another architecture is cross-linked with rust-lld —
+# set for that target only, since proc-macros still link for the host. The whole
+# context is copied because cargo reads every workspace member's manifest.
+FROM --platform=$BUILDPLATFORM rust:1-alpine AS supervisor
+ARG TARGETARCH
+WORKDIR /src
+COPY . .
+RUN case "$TARGETARCH" in \
+      amd64) triple=x86_64-unknown-linux-musl ;; \
+      arm64) triple=aarch64-unknown-linux-musl ;; \
+      *) echo "no session supervisor target for TARGETARCH '$TARGETARCH'" >&2; exit 1 ;; \
+    esac \
+ && if [ "$triple" != "$(uname -m)-unknown-linux-musl" ]; then \
+      rustup target add "$triple" \
+      && export "CARGO_TARGET_$(echo "$triple" | tr 'a-z-' 'A-Z_')_LINKER=rust-lld"; \
+    fi \
+ && cargo build --release --locked -p telo-runner-supervisor --target "$triple" \
+ && install -D -m 0755 "target/$triple/release/supervisor" /out/supervisor
+
 FROM development AS build
 
 COPY . .
@@ -22,6 +44,9 @@ FROM node:24-slim AS production
 
 WORKDIR /app
 COPY --from=build /out ./
+# Copied into every session pod by its `supervisor` init container, which runs
+# this image (RUNNER_SUPERVISOR_IMAGE).
+COPY --from=supervisor /out/supervisor /opt/telo-runner/supervisor
 
 # The kernel image spawned for each session, baked at build time so a runner's
 # tested kernel and its runtime kernel are the same artifact. The default was a
@@ -34,9 +59,9 @@ ARG TELO_SESSION_IMAGE=telorun/node:latest-slim
 ENV RUNNER_IMAGE=${TELO_SESSION_IMAGE}
 
 ENV PORT=8062
-# No safe default for RUNNER_SELF_URL — every deployment must pass its own
-# in-cluster service URL so session initContainers can fetch the bundle. The
-# runner refuses to start when unset.
+# No safe default for RUNNER_SUPERVISOR_IMAGE — this image's own reference, which
+# only the deployment knows (the Helm chart sets it). The runner refuses to
+# start when unset.
 
 EXPOSE 8062
 CMD ["node", "dist/server.js"]

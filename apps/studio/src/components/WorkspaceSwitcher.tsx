@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useCloud } from "../cloud/context";
 import { loadWorkingCopyIndex, type WorkingCopyEntry } from "../cloud/working-copy-index";
 import { pathBasename } from "../loader/paths";
+import type { WorkspaceMode } from "../run";
 import { browserWorkspaceHasFiles } from "../storage";
 import { CopyToCloudProjectDialog } from "./cloud/CopyToCloudProjectDialog";
 import { NewCloudProjectDialog } from "./cloud/NewCloudProjectDialog";
@@ -13,9 +14,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
+import { WORKSPACE_MODE_OPTIONS } from "./workspace-mode-options";
 
 /** Which workspace is open, by the backend that holds it. */
 export type OpenWorkspaceKind =
@@ -34,6 +38,9 @@ export interface WorkspaceSwitcherProps {
   /** Opens a directory picker; absent where the environment has none. */
   onOpenFolder?: () => void;
   onClose: () => void;
+  /** How the open workspace is used, and the change to it; absent with no
+   *  workspace open or no mode chosen yet. */
+  mode?: { current: WorkspaceMode; onChange: (mode: WorkspaceMode) => void };
 }
 
 const BROWSER_WORKSPACE_LABEL = "Browser workspace";
@@ -45,9 +52,10 @@ function labelOf(current: OpenWorkspaceKind | null): string {
   return pathBasename(current.rootDir) || current.rootDir;
 }
 
-/** The top bar's workspace menu: every workspace this device can open without
- *  asking anything — the browser-stored one and the Telo Cloud working copies
- *  it holds — beside the two that ask, and closing the open one. */
+/** The top bar's workspace menu: how the open workspace is used (Agent, Manual,
+ *  Only on this device), every workspace this device can open without asking
+ *  anything — the browser-stored one and the Telo Cloud working copies it
+ *  holds — beside the two that ask, and closing the open one. */
 export function WorkspaceSwitcher({
   current,
   alwaysOfferBrowserWorkspace,
@@ -55,6 +63,7 @@ export function WorkspaceSwitcher({
   onOpenWorkingCopy,
   onOpenFolder,
   onClose,
+  mode,
 }: WorkspaceSwitcherProps) {
   const cloud = useCloud();
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
@@ -92,6 +101,22 @@ export function WorkspaceSwitcher({
             <>
               <DropdownMenuLabel className="truncate md:hidden">{labelOf(current)}</DropdownMenuLabel>
               <DropdownMenuSeparator className="md:hidden" />
+            </>
+          )}
+          {current && mode && (
+            <>
+              <DropdownMenuLabel>This workspace</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={mode.current}
+                onValueChange={(value) => mode.onChange(value as WorkspaceMode)}
+              >
+                {WORKSPACE_MODE_OPTIONS.map(({ mode: option, label, description }) => (
+                  <DropdownMenuRadioItem key={option} value={option} title={description}>
+                    {label}
+                  </DropdownMenuRadioItem>
+                ))}
+              </DropdownMenuRadioGroup>
+              <DropdownMenuSeparator />
             </>
           )}
           {(offerBrowser || workingCopies.length > 0) && (

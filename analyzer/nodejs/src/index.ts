@@ -5,10 +5,18 @@ export {
     importFailureDiagnostics,
     importResolutionDiagnostics,
 } from "./import-resolution-diagnostics.js";
+export {
+  APPLICATION_SOURCE_ANNOTATION,
+  readApplicationSourceSlot,
+  type ApplicationInputBlock,
+  type ApplicationSourceSlot,
+} from "./application-source-slot.js";
+export { collectApplicationSources, type ApplicationSourceRecords } from "./child-application.js";
 export { assembleGraphDiagnostics, compromisedFiles } from "./graph-diagnostics.js";
 export { findPositions, locateDiagnostic, resolveRange } from "./diagnostic-location.js";
 export type { DiagnosticPositions } from "./diagnostic-location.js";
 export type {
+    ApplicationSourceLoad,
     GraphLoadError,
     ImportEdge,
     LoadedFile,

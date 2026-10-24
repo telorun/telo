@@ -1,0 +1,10 @@
+modules:
+  modules/app: Added
+body: "App.Instance.source carries x-telo-application-source, so telo check follows it
+  to the child application and refuses a source that is not an application, a name under
+  variables, secrets, ports or needs the child does not declare, a literal its
+  declaration refuses, a need of the wrong type or stating less than the child's, and
+  one durable directory handed whole to two writers — wherever the instance is declared,
+  before anything runs, where the child used to refuse it when it booted. An expression
+  of the wrong type is refused statically only for an instance declared at the top
+  level; in a with: scope or inline in a step the child still refuses it when it boots."

@@ -1,6 +1,6 @@
 import type { DebugFrame } from "@telorun/debug-wire";
 import type { JSONSchema7 } from "json-schema";
-import type { PortMapping } from "../model";
+import type { RunnerCredentials } from "./runner-credentials";
 
 export interface RunAdapter<Config = unknown> {
   id: string;
@@ -25,39 +25,13 @@ export interface RunAdapter<Config = unknown> {
 
   /** The base URL the runner's HTTP contract is reachable on right now, or
    *  `null` when it isn't. For most adapters this is a config field; the
-   *  local-docker adapter resolves it from its supervisor. Consumers that dial
-   *  the runner directly (the authoring agent) use this instead of reading
-   *  config shapes. */
+   *  local-docker adapter resolves it from its supervisor. */
   resolveBaseUrl?(config: Config): Promise<string | null>;
 
-  start(request: RunRequest, config: Config): Promise<RunSession>;
-
-  /** Re-establish a session that already exists on the runner, identified by the
-   *  `sessionId` persisted in the editor's run index across a page reload.
-   *  Reconciles the session's current status, then replays its console output +
-   *  inspection events from the start so the rehydrated record is refilled.
-   *  Resolves to `null` when the session no longer exists on the runner (evicted
-   *  past its TTL, or the runner restarted) — the caller keeps the history entry
-   *  but marks it unavailable. Only adapters whose runner outlives the editor
-   *  page implement this. */
-  attach?(sessionId: string, config: Config): Promise<RunSession | null>;
-
-  /** Read a session's current status by id, opening no streams. The editor's run
-   *  record OUTLIVES its live session object — it is persisted across a page
-   *  reload, and a runner holds its registry in memory, so a restart forgets
-   *  every session — which makes a restored non-terminal status a CLAIM about
-   *  the runner that nothing else re-checks. Resolves to `null` when the runner
-   *  answers that it has no such session: definitively over. THROWS when the
-   *  answer is unknown (runner unreachable), so an outage is never recorded as a
-   *  finished run. */
-  probeSession?(sessionId: string, config: Config): Promise<RunStatus | null>;
-
-  /** Stop a session by id, with no live session object — the same reason
-   *  `probeSession` exists: Stop must work on what the record knows, which is an
-   *  id and the config the run was started with. Resolves once the session is no
-   *  longer running, INCLUDING when the runner never had it; throws only when
-   *  the outcome is genuinely unknown. */
-  stopSession?(sessionId: string, config: Config): Promise<void>;
+  /** The runner's session surface, at the address it answers on now. Throws,
+   *  saying why, when the runner cannot be reached; an adapter whose runner the
+   *  editor may start (the local CLI runner) starts it here. */
+  connect(config: Config): Promise<RunnerConnection>;
 
   /** Whether an editor-MANAGED runner is up right now — a separate question
    *  from `isAvailable`, which answers whether this runner can run anything (a
@@ -83,26 +57,24 @@ export interface RunnerCapabilities {
      *  because the runner refuses them beside one. */
     supersededByTelo?: string[];
   };
-  /** What this runner offers. `io` lists the byte-channel attach modes;
-   *  `watch` gates the editor's watch-mode entry point — a runner with it off
-   *  rejects the field, so the editor must not offer it. `agents` names the
-   *  catalog entries admissible as a session's co-resident agent. */
+  /** What this runner offers. `io` lists the byte-channel attach modes a Run
+   *  may ask for; `agents` names the catalog entries admissible as a session's
+   *  co-resident agent. */
   features: {
-    io: Array<"tty" | "streams">;
+    io: IoMode[];
     ports: boolean;
-    watch?: boolean;
     agents?: string[];
     /** The runner runs each application on the telo version the request names,
      *  or refuses; absent, it is sent none and chooses for itself. */
     teloVersions?: boolean;
   };
-  /** Operator-predefined applications the runner can launch by name (mirrors
-   *  runner-core's `RunnerAppDescriptor`). The agent entry point shows only
-   *  when an app named `authoring-agent` is offered. */
-  apps?: Array<{ name: string; title?: string; description?: string }>;
   /** Operator-defined usage agreement enforced before a session starts; absent
    *  when the runner has none. */
   terms?: RunnerTerms;
+  /** The identity the runner accepts, as RFC 9728 metadata; absent when it
+   *  takes resume secrets only. Read as untrusted until checked
+   *  (`runner-identity.ts`). */
+  identity?: unknown;
 }
 
 /** A runner's usage agreement. Mirrors `RunnerTerms` in `@telorun/runner-core`.
@@ -113,27 +85,56 @@ export interface RunnerTerms {
   body: string;
 }
 
-/** Thrown by `start` when the runner cannot run the application on the telo
- *  version the request named. Nothing was started; `reason` is the runner's own
- *  account of why, shown to the user as written. */
+/** How a Run attaches the byte channel (mirrors runner-core's `IoMode`). */
+export type IoMode = "tty" | "streams";
+
+/** A runner's refusal of one request, in its own words: `code` is the wire
+ *  `error`, `message` what the runner said. */
+export class RunnerRefusal extends Error {
+  constructor(
+    readonly status: number,
+    readonly code: string,
+    message: string,
+    readonly body: Record<string, unknown> = {},
+  ) {
+    super(message);
+    this.name = "RunnerRefusal";
+  }
+}
+
+/** Thrown when the runner cannot run an application of the set on the telo
+ *  version it names. Nothing was changed; `reason` is the runner's own account
+ *  of why, shown to the user as written. */
 export class TeloVersionRefusedError extends Error {
   constructor(
     readonly code: "telo_version_unavailable" | "telo_version_unsupported",
-    readonly version: string,
+    readonly version: string | undefined,
     readonly reason: string,
+    readonly app?: string,
   ) {
     super(reason);
     this.name = "TeloVersionRefusedError";
   }
 }
 
-/** Thrown by `start` when the runner rejects a session because the terms haven't
- *  been acknowledged (HTTP 428). Carries the runner's current terms so the caller
- *  can surface the gate and retry. */
+/** Thrown by a create when the runner refuses a session because its terms
+ *  haven't been acknowledged (HTTP 428). Carries the runner's current terms so
+ *  the caller can surface the gate and retry. */
 export class TermsRequiredError extends Error {
   constructor(readonly terms: RunnerTerms) {
     super("Runner requires accepting its terms before running.");
     this.name = "TermsRequiredError";
+  }
+}
+
+/** Thrown when the runner answers that it holds no such session for these
+ *  credentials — retention removed it, or it was never this device's. Not a
+ *  failure to report: the editor holds the workspace, so the caller creates a
+ *  new session and seeds it. */
+export class SessionGoneError extends Error {
+  constructor() {
+    super("The runner no longer holds this session.");
+    this.name = "SessionGoneError";
   }
 }
 
@@ -158,32 +159,123 @@ export interface ConfigIssue {
   message: string;
 }
 
-export interface RunRequest {
-  bundle: RunBundle;
-  env?: Record<string, string>;
-  ports?: PortMapping[];
-  /** The terms version the user accepted for this runner, sent to the runner so
-   *  it lets the session start. Omitted when the runner has no terms. */
-  acceptedTermsVersion?: string;
-  /** `run` (default) is one run: the session ends when the workload exits.
-   *  `watch` makes the session a workspace that runs continuously — saving a
-   *  file reloads the kernel instead of starting a new session. Only offered
-   *  when the runner advertises `features.watch`. */
-  mode?: "run" | "watch";
-  /** Catalog name of a co-resident agent to run beside the session's apps, on
-   *  the session's own workspace volume. Requires `mode: "watch"` — the runner
-   *  rejects the pairing otherwise, since nothing would observe the agent's
-   *  writes. Only sent when the runner advertises the name in
-   *  `features.agents`. */
-  agent?: string;
-  /** The telo version the application's module is edited against, which the
-   *  runner runs it on or refuses. Sent only to a runner advertising
-   *  `features.teloVersions`. */
+/** One port an application declares (mirrors runner-core's `PortMapping`). */
+export interface SessionPort {
+  port: number;
+  protocol: "tcp" | "udp";
+}
+
+/** One Application of a session's app set (mirrors runner-core's
+ *  `SessionAppSpec`). `name` is a DNS label unique in the session. */
+export interface SessionAppSpec {
+  name: string;
+  entryRelativePath: string;
+  ports?: SessionPort[];
   telo?: string;
-  /** Session config properties left out of this request: the ones the runner
-   *  says a telo version supersedes (`config.supersededByTelo`), which it
-   *  refuses beside one. */
-  withheldConfig?: string[];
+}
+
+/** `POST /v1/sessions`: no files and no env — a new session is seeded through
+ *  the workspace surface, and env arrives with each Run. */
+export interface CreateSessionRequest {
+  workspace: string;
+  agent?: string;
+  apps: SessionAppSpec[];
+}
+
+export type CreatedSession =
+  /** `resumeSecret` is answered once, to a create carrying no identity. */
+  | { kind: "created"; sessionId: string; resumeSecret?: string }
+  /** The owner already has a session for this workspace. */
+  | { kind: "exists"; sessionId: string };
+
+/** `POST …/apps/:app/run`. */
+export interface RunAppRequest {
+  env: Record<string, string>;
+  io: IoMode;
+  cols?: number;
+  rows?: number;
+}
+
+/** One app of the session document: its slot's state now. */
+export interface SessionAppState {
+  name: string;
+  entryRelativePath: string;
+  ports: SessionPort[];
+  telo?: string;
+  state: "pending" | "ready" | "running";
+  runId?: string;
+  io?: IoMode;
+  generation: number;
+}
+
+/** `GET /v1/sessions/:id`. */
+export interface SessionDocument {
+  sessionId: string;
+  workspace: string;
+  status: RunStatus;
+  agent: string | null;
+  apps: SessionAppState[];
+}
+
+/** One of the identity's sessions, as `GET /v1/sessions` lists it. */
+export interface ListedSession {
+  sessionId: string;
+  workspace: string;
+  status: RunStatus["kind"];
+  lastActiveAt: string;
+}
+
+/** What adopting a resume-secret session for the identity came to. */
+export type AdoptedSession =
+  | { kind: "adopted"; sessionId: string }
+  /** The identity already holds a session for that workspace. */
+  | { kind: "exists"; sessionId: string }
+  /** The secret opens no session: wrong, or the session is gone. */
+  | { kind: "gone" };
+
+/** A runner's session surface, at one address. */
+export interface RunnerConnection {
+  baseUrl: string;
+  /** `credentials` names the owner: an identity's create carries it; a create
+   *  with none is answered a resume secret. */
+  createSession(
+    request: CreateSessionRequest,
+    options: { acceptedTermsVersion?: string; withheldConfig?: string[]; credentials?: RunnerCredentials },
+  ): Promise<CreatedSession>;
+  /** The identity's sessions for `workspace`, most recently active first. */
+  listSessions(workspace: string, credentials: RunnerCredentials): Promise<ListedSession[]>;
+  /** Make a resume-secret session the identity's. */
+  adoptSession(sessionId: string, resumeSecret: string, credentials: RunnerCredentials): Promise<AdoptedSession>;
+  /** The routes of one session, authorized by `credentials`. */
+  session(sessionId: string, credentials: RunnerCredentials): RunnerSession;
+}
+
+/**
+ * One session — a workspace — on its runner. Every method throws
+ * `SessionGoneError` when the runner answers that it holds no such session,
+ * `RunnerRefusal` for any other refusal, carrying the runner's own words.
+ */
+export interface RunnerSession {
+  readonly id: string;
+  read(): Promise<SessionDocument>;
+  resume(): Promise<void>;
+  suspend(): Promise<void>;
+  setApps(apps: SessionAppSpec[]): Promise<void>;
+  setAgent(name: string | null): Promise<void>;
+  /** Starts one app; resolves with the run's id. */
+  runApp(app: string, request: RunAppRequest): Promise<string>;
+  stopApp(app: string): Promise<void>;
+  /** Re-runs a live app with no file change. */
+  reload(app: string): Promise<void>;
+  workspaceTree(): Promise<WorkspaceFileEntry[]>;
+  readWorkspaceFile(path: string): Promise<string>;
+  applyWorkspace(changes: WorkspaceChangeSet): Promise<void>;
+  /** The session's event stream: from its first event, and — opened again,
+   *  as after a failed session is resumed — from where the last one ended.
+   *  `onClosed` reports a stream that ended without being closed, in words. */
+  subscribe(onEvent: (event: RunEvent) => void, onClosed: (reason: string) => void): () => void;
+  /** One app's byte channel, from the output after `fromSeq`. */
+  io(app: string, fromSeq: number): SequencedRunIo;
 }
 
 /** An explicit write/delete list, not a whole-tree replace: a deletion has to be
@@ -200,50 +292,6 @@ export interface WorkspaceChangeSet {
 export interface WorkspaceFileEntry {
   path: string;
   hash: string;
-}
-
-export interface RunBundle {
-  entryRelativePath: string;
-  files: RunBundleFile[];
-}
-
-/** Mirrors one entry of runner-core's `RunBundle.files`; `encoding` is `utf8`
- *  when omitted. */
-export interface RunBundleFile {
-  relativePath: string;
-  contents: string;
-  encoding?: "utf8" | "base64";
-}
-
-export interface RunSession {
-  id: string;
-  getStatus(): RunStatus;
-  subscribe(listener: (event: RunEvent) => void): () => void;
-  stop(): Promise<void>;
-  /** Live PTY byte channel. Present when the adapter can stream raw terminal
-   *  bytes both directions; absent for log-only adapters. */
-  io?: RunIo;
-
-  /** True when this session is a workspace that runs continuously. The three
-   *  operations below exist only then, so a caller checks one flag rather than
-   *  three optional methods. */
-  readonly isWatch?: boolean;
-  /** Push an edit into the running workspace. The kernel's watcher reloads on
-   *  it — this is what makes a save cost a reload rather than a session. */
-  syncWorkspace?(changes: WorkspaceChangeSet): Promise<void>;
-  /** Content-hash the running workspace. The read half of the same surface: a
-   *  co-resident agent writes the volume directly with its own filesystem
-   *  tools, so this is how the editor learns what it wrote. */
-  workspaceTree?(): Promise<WorkspaceFileEntry[]>;
-  /** One file's contents out of the running workspace. */
-  readWorkspaceFile?(path: string): Promise<string>;
-  /** Re-run with no file change: pressing Run again after a one-shot app
-   *  completed is not a change, so `--watch` alone would do nothing. */
-  reload?(): Promise<void>;
-  /** Bring a suspended session back under the same id. Resolves to `false` when
-   *  the runner no longer has it — the editor holds the authoritative workspace,
-   *  so the caller starts a fresh session and re-seeds from its own copy. */
-  resume?(): Promise<boolean>;
 }
 
 /** Which source produced a byte-channel chunk. `tty` under a terminal attach,
@@ -267,8 +315,14 @@ export interface RunIo {
   /** Single-shot. Calling `open` more than once for the same `RunIo` is
    *  undefined — implementations may throw or return a no-op connection.
    *  Consumers (TerminalView) key on the `io` instance, so re-mounts pair
-   *  with a fresh `RunIo` from the next session. */
+   *  with a fresh `RunIo` from the next run. */
   open(handlers: RunIoHandlers): RunIoConnection;
+}
+
+/** The highest byte-channel sequence a `RunIo` delivered, so the next run's
+ *  channel starts after it. */
+export interface SequencedRunIo extends RunIo {
+  lastSeq(): number;
 }
 
 export interface RunnerEndpoint {
@@ -283,10 +337,10 @@ export interface RunnerEndpoint {
   token?: string;
 }
 
-/** The SESSION's status, as distinct from how any one run inside it ended.
- *  A one-shot app finishing in a watch session emits `run.completed` and leaves
- *  the session `running`; `exited` belongs to a run session, where the session
- *  IS the run. Mirrors runner-core's `RunStatus`. */
+/** The SESSION's status, as distinct from how any one run inside it ended: a
+ *  one-shot app finishing emits `run.completed` and leaves the session
+ *  `running`, and each app reports its own `app` state. Mirrors runner-core's
+ *  `RunStatus`. */
 export type RunStatus =
   | { kind: "starting" }
   /** `inspectUrl` is the kernel inspection UI fronted by a proxy, set only when
@@ -299,10 +353,9 @@ export type RunStatus =
       inspectUrl?: string;
       agent?: RunnerEndpoint;
     }
-  | { kind: "exited"; code: number }
-  /** Reaped for idleness: the pod/containers are gone, the workspace checkpoint
-   *  is held, and `resume` brings the session back under the same id. NOT
-   *  terminal — the editor keeps the session and offers to resume. */
+  /** The workload is gone and the session's storage kept: idle, past its
+   *  running limit, or suspended by the editor. `resume` rebuilds it under the
+   *  same id. Not terminal. */
   | { kind: "suspended" }
   | { kind: "failed"; message: string }
   | { kind: "stopped" };
@@ -322,8 +375,22 @@ export type RunReachabilityState = "checking" | "reachable" | "unreachable";
  *  nothing reconciles leaves every port reachable and every URL dead. */
 export type RunRouteState = "pending" | "programmed" | "unprogrammed";
 
-/** What started one generation of an application. */
-export type RunTrigger = "initial" | "watch" | "manual" | "resume";
+/** What started one generation of an application: a Run, a file change under
+ *  the app's watcher, or a reload. */
+export type RunTrigger = "run" | "watch" | "manual";
+
+/** How one app's run ended, as the process running it reported. */
+export interface AppRunEnding {
+  runId: string;
+  code?: number;
+  signal?: string;
+  reason?: string;
+}
+
+/** One app's slot, reported as the `app` event. */
+export type AppState =
+  | { state: "ready"; ended?: AppRunEnding }
+  | { state: "running"; runId: string };
 
 /** A RUN outcome — one per app per reload generation, distinct from the session
  *  status. `generation` is monotonic per app and starts at 1. */
@@ -362,6 +429,8 @@ export type RunEvent =
    *  a direct loopback SSE for the local runner), but the run dock consumes it the
    *  same way regardless. */
   | { type: "debug"; app: string; frame: DebugFrame }
+  /** One app's slot changed: up and idle, running a Run, or a run ended. */
+  | ({ type: "app"; app: string } & AppState)
   /** Per-port reachability transition, rendered on the badge. */
   | { type: "reachability"; app: string; port: number; state: RunReachabilityState }
   /** A routing-layer verdict for one published host. `reason` is the routing
@@ -387,17 +456,8 @@ export type RunEvent =
       rejected?: Array<{ port: number; reason: string }>;
     };
 
+/** Terminal = the event stream closes on it. `failed` is resumable all the
+ *  same: the session's storage is kept. */
 export function isTerminal(status: RunStatus): boolean {
-  return status.kind === "exited" || status.kind === "failed" || status.kind === "stopped";
-}
-
-/** Thrown when a watch session the editor still holds no longer exists on the
- *  runner — its checkpoint was lost to a restart. Not a failure to report: the
- *  editor holds the authoritative workspace, so the caller starts a fresh
- *  session and re-seeds from its own copy. */
-export class SessionGoneError extends Error {
-  constructor() {
-    super("The runner no longer holds this session.");
-    this.name = "SessionGoneError";
-  }
+  return status.kind === "failed" || status.kind === "stopped";
 }

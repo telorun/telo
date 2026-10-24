@@ -98,6 +98,19 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
     },
     additionalProperties: false,
   },
+  "x-telo-application-source": {
+    title: "Child application source",
+    description:
+      "This string names the source of a child application the resource runs — a path relative to the declaring module or a published module reference, never computed. Each key names one of the child's declaration blocks and holds a JSON Pointer, from the resource root, to the map that supplies it; `telo check` follows the source and holds every key of each map to what the child declares.",
+    type: "object",
+    properties: {
+      variables: { type: "string" },
+      secrets: { type: "string" },
+      ports: { type: "string" },
+      needs: { type: "string" },
+    },
+    additionalProperties: false,
+  },
   "x-telo-ref": {
     title: "Reference slot",
     description:

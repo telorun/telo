@@ -1,5 +1,8 @@
 import {
   InvokeError,
+  isKindRef,
+  refSentinelTarget,
+  RuntimeError,
   Stream,
   type ResourceContext,
   type RuntimeRun,
@@ -14,6 +17,7 @@ interface InstanceResource {
   variables?: Record<string, unknown>;
   secrets?: Record<string, unknown>;
   ports?: Record<string, number>;
+  needs?: Record<string, unknown>;
   awaitStart?: boolean;
 }
 
@@ -116,6 +120,7 @@ export class Instance implements TextChannel {
         variables: this.resource.variables,
         secrets: this.resource.secrets,
         ports: this.resource.ports,
+        needs: this.suppliedNeeds(),
       },
     });
     this.run_ = run;
@@ -218,6 +223,32 @@ export class Instance implements TextChannel {
   private async stop(): Promise<void> {
     if (!this.run_ || this.exited) return;
     await this.run_.cancel(`application ${this.resource.metadata.name} torn down`);
+  }
+
+  /**
+   * The fields of each need supplied to the child. A forwarded need or
+   * fulfilment crosses as its fields, read through the slot that names it — the
+   * child holds them to its own need type, so this kind needs no knowledge of it.
+   */
+  private suppliedNeeds(): Record<string, Record<string, unknown>> | undefined {
+    const needs = this.resource.needs;
+    if (!needs) return undefined;
+    const out: Record<string, Record<string, unknown>> = {};
+    for (const [name, value] of Object.entries(needs)) {
+      if (isKindRef(value) || refSentinelTarget(value)) {
+        out[name] = this.ctx.resolveNeed(`/needs/${name}`).fields;
+        continue;
+      }
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new RuntimeError(
+          "ERR_NEED_SLOT_MISMATCH",
+          `App.Instance "${this.resource.metadata.name}": need '${name}' must be a '!ref' to a need ` +
+            `or fulfilment of this module, or a map of the need type's fields.`,
+        );
+      }
+      out[name] = value as Record<string, unknown>;
+    }
+    return out;
   }
 
   private async resolveSource(): Promise<string> {

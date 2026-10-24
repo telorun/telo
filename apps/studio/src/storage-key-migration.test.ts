@@ -39,6 +39,7 @@ describe("the legacy key set is covered", () => {
     "telo-editor:agent-chat:",
     "telo-editor:agent-conv:",
     "telo-studio:deployments:v1",
+    "telo-studio:run:index:v1",
   ];
   const LEGACY_SESSION = ["telo-editor:io-last-seq:", "telo-editor:sse-last-event-id:"];
 

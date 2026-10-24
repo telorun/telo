@@ -1,14 +1,12 @@
 import type { V1ContainerState, V1ContainerStatus, V1Pod } from "@kubernetes/client-node";
-import type { RunStatus } from "@telorun/runner-core";
 
 import { statusCode } from "./api-error.js";
 import type { KubeClient } from "./client.js";
 
 /**
- * Reading a Pod's status — shared by the run-session and watch-session paths.
- * Pure functions over the watch payload plus the one delete that both perform;
- * extracted so the two lifecycles cannot disagree about what "failed" means or
- * which container's exit code counts.
+ * Reading a Pod's status: pure functions over a pod read or a watch payload,
+ * plus the deletes every path performs, so no two paths disagree about what
+ * "failed" means.
  */
 
 export function podStatus(obj: unknown): V1Pod["status"] | undefined {
@@ -20,7 +18,7 @@ export function podPhase(obj: unknown): string | undefined {
 }
 
 /** A coming-up message for the studio feed while the Pod is still scheduling /
- *  pulling / delivering the body / creating the container; undefined once running. */
+ *  pulling / preparing its storage / creating containers; undefined once running. */
 export function provisionMessage(obj: unknown): string | undefined {
   const status = podStatus(obj);
   if (status?.phase !== "Pending") return undefined;
@@ -40,26 +38,13 @@ function humanizeWaitReason(reason: string): string {
     case "ContainerCreating":
       return "Creating container";
     case "PodInitializing":
-      return "Delivering application";
+      return "Preparing the session";
     case "ErrImagePull":
     case "ImagePullBackOff":
       return "Pulling image";
     default:
       return reason;
   }
-}
-
-export function terminalStatus(obj: unknown, userStopped: boolean): RunStatus {
-  if (userStopped) return { kind: "stopped" };
-  const phase = podPhase(obj);
-  if (phase === "Succeeded") return { kind: "exited", code: containerExitCode(obj) ?? 0 };
-  return { kind: "failed", message: podFailureMessage(obj) };
-}
-
-// Exit code of the main session container — used to report a clean exit.
-export function containerExitCode(obj: unknown): number | null {
-  const term = podStatus(obj)?.containerStatuses?.[0]?.state?.terminated;
-  return typeof term?.exitCode === "number" ? term.exitCode : null;
 }
 
 const MAX_FAILURE_DETAIL = 500;
@@ -119,6 +104,19 @@ function truncateDetail(text: string): string {
   return trimmed.length > MAX_FAILURE_DETAIL ? `${trimmed.slice(0, MAX_FAILURE_DETAIL)}…` : trimmed;
 }
 
+/** The first container of the pod that has terminated, as the session's
+ *  infrastructure failure names it. A container ending is never a run outcome:
+ *  every container of a session pod is meant to run as long as the pod. */
+export function endedContainer(obj: unknown): string | undefined {
+  for (const cs of podStatus(obj)?.containerStatuses ?? []) {
+    const term = cs.state?.terminated;
+    if (!term) continue;
+    const reason = term.reason ? `${term.reason}, ` : "";
+    return `container '${cs.name}' ended (${reason}exit code ${term.exitCode ?? "unknown"})`;
+  }
+  return undefined;
+}
+
 export async function deletePod(kube: KubeClient, ns: string, name: string): Promise<void> {
   try {
     await kube.core.deleteNamespacedPod({ name, namespace: ns, gracePeriodSeconds: 0 });
@@ -147,5 +145,30 @@ export function msg(err: unknown): string {
     return JSON.stringify(err);
   } catch {
     return String(err);
+  }
+}
+
+const POD_GONE_POLL_MS = 500;
+const POD_GONE_DEADLINE_MS = 120_000;
+
+/**
+ * Delete a pod and wait until the API no longer has it. A session's next pod
+ * mounts the same ReadWriteOnce volume, and the agent's SQLite state must never
+ * have two writers, so a replacement is created only once the old pod is gone.
+ */
+export async function deletePodAndWait(kube: KubeClient, ns: string, name: string): Promise<void> {
+  await deletePod(kube, ns, name);
+  const deadline = Date.now() + POD_GONE_DEADLINE_MS;
+  for (;;) {
+    try {
+      await kube.core.readNamespacedPod({ name, namespace: ns });
+    } catch (err) {
+      if (is404(err)) return;
+      throw err;
+    }
+    if (Date.now() > deadline) {
+      throw new Error(`pod '${name}' was still terminating ${POD_GONE_DEADLINE_MS / 1000}s after its deletion`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, POD_GONE_POLL_MS).unref?.());
   }
 }

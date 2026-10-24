@@ -9,9 +9,6 @@ export interface KubernetesRunnerCapabilitiesOptions {
   defaultImage: string;
   terms?: RunnerTerms;
   imageEnum?: string[];
-  /** Whether the operator enabled watch sessions. Advertised so a client knows
-   *  before it asks — a runner with watch off rejects the field. */
-  watch: boolean;
   /** Catalog names admissible as a session's co-resident `agent`. */
   agents?: string[];
 }
@@ -36,12 +33,9 @@ export function kubernetesRunnerCapabilities(
     displayName,
     description,
     features: {
-      // Both attach modes: the kubernetes attach subresource without a TTY
-      // already gives separate stdout and stderr channels, so `streams` invents
-      // nothing at the transport layer.
+      // The session supervisor gives each run a fresh pty or separate pipes.
       io: ["tty", "streams"],
       ports: true,
-      watch: opts.watch,
       teloVersions: true,
       ...(opts.agents && opts.agents.length > 0 ? { agents: opts.agents } : {}),
     },

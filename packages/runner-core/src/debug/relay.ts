@@ -18,6 +18,13 @@ export interface DebugRelayOptions {
 
 const RECONNECT_DELAY_MS = 500;
 
+/** The largest frame relayed as written. An event carrying a large invocation
+ *  payload (a query's whole result set) runs to tens of megabytes; parsed and
+ *  held in the session's replay buffer and every subscriber's queue, a few of
+ *  them exhaust the runner's memory. A frame over this size is relayed as a
+ *  stand-in naming the event and the size it had. */
+export const DEBUG_FRAME_MAX_BYTES = 1024 * 1024;
+
 /**
  * Subscribe to a workload's inspect SSE endpoint and deliver each frame to
  * `onFrame`. Retries the connection until the endpoint answers or `signal`
@@ -67,6 +74,9 @@ async function pump(
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buf = "";
+  // Where the search for the next separator resumes, so a frame arriving in
+  // many chunks is scanned once rather than once per chunk.
+  let scanned = 0;
   try {
     while (!signal.aborted) {
       const { value, done } = await reader.read();
@@ -74,10 +84,11 @@ async function pump(
       buf += decoder.decode(value, { stream: true });
       let sep: number;
       // SSE frames are separated by a blank line.
-      while ((sep = buf.indexOf("\n\n")) >= 0) {
+      while ((sep = buf.indexOf("\n\n", scanned)) >= 0) {
         const block = buf.slice(0, sep);
         buf = buf.slice(sep + 2);
-        const frame = parseSseData(block);
+        scanned = 0;
+        const frame = block.length > DEBUG_FRAME_MAX_BYTES ? oversizedFrame(block) : parseSseData(block);
         if (!frame) continue;
         onFrame(frame);
         // Checkpoint AFTER delivery, so a frame the consumer never saw is not
@@ -85,6 +96,7 @@ async function pump(
         const id = parseSseId(block);
         if (id !== null) onId(id);
       }
+      scanned = Math.max(0, buf.length - 1);
     }
   } finally {
     reader.cancel().catch(() => undefined);
@@ -100,6 +112,22 @@ function parseSseId(block: string): number | null {
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
+}
+
+/** The stand-in for a frame too large to relay: the event's name and timestamp,
+ *  read off the frame's head without parsing the rest, and the size it had. */
+function oversizedFrame(block: string): DebugFrame {
+  const head = block.slice(0, 4096);
+  const field = (name: string) => new RegExp(`"${name}":"([^"\\\\]*)"`).exec(head)?.[1];
+  return {
+    kind: "event",
+    timestamp: field("timestamp") ?? new Date().toISOString(),
+    event: field("event") ?? "Runner.DebugFrameOmitted",
+    payload: {
+      omitted: `this frame was ${block.length} bytes, over the ${DEBUG_FRAME_MAX_BYTES} a runner relays; read it from the workload's own debug output`,
+      bytes: block.length,
+    },
+  };
 }
 
 /** Extract and parse the `data:` payload of one SSE frame. Ignores comment

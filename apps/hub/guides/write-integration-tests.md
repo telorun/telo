@@ -400,6 +400,13 @@ on, never written down:
   decide what this one sees.
 - **One port per test.** A server the test starts (an `App.Instance`, a mock)
   gets a port no other test uses, so tests can run concurrently.
+- **One directory per test.** An application that keeps state declares a
+  `Telo.DurableDirectory` need; the test supplies it under `App.Instance`'s
+  `needs:` by the child's need name (`needs: { state: { path: <dir> } }`, or a
+  `!ref` to a need or fulfilment of the test's own), which wins over the
+  child's environment, so no two tests share files. `telo check` holds every
+  name under `variables` / `secrets` / `ports` / `needs` to what the child
+  declares.
 - **`lifetime` above the test's duration**, so a sweep never removes a
   container a slow run is still using.
 

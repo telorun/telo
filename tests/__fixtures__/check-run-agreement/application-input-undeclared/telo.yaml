@@ -1,0 +1,15 @@
+# Supplies the child a variable under a name the child does not declare.
+kind: Telo.Application
+metadata:
+  name: ApplicationInputUndeclared
+  version: 1.0.0
+imports:
+  App: ../../../../modules/app
+targets:
+  - !ref child
+---
+kind: App.Instance
+metadata: { name: child }
+source: ./child/telo.yaml
+variables:
+  whom: the parent

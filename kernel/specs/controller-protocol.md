@@ -75,7 +75,7 @@ an incompatible controller and an incompatible peer are the same fact, discovere
 at different moments, and a second code would only invite a caller to handle one
 and not the other.
 
-### 0.3 Generation `telo-6`
+### 0.3 Generation `telo-7`
 
 One generation counter covers both carriers, reported in the handshake (§4.1) and
 written into a native controller's PURL as `abi=telo-<n>`.
@@ -84,23 +84,23 @@ written into a native controller's PURL as `abi=telo-<n>`.
   buffers across the C ABI, described only by the ABI crate's own layout. This
   specification does **not** retroactively describe it, and a generation `3`
   controller keeps loading exactly as it does today.
-- **Generations `4` and `5` are withdrawn, and nothing ever spoke either.** `4`
-  was the first generation this specification defined, and its value encoding
-  named the typed frame's millisecond timestamp payload. `5` moved the value
-  encoding to `durable-execution.md` §6's typed frame. No carrier implemented
-  either and no artifact could declare one, so each is superseded rather than
-  kept readable.
-- **Generation `6` is the generation this specification defines.** It is `5`'s
-  message set plus the two need operations (§7.5), with the same value
-  encoding: `durable-execution.md` §6's typed frame, whose timestamp payload is
-  RFC 3339 with a trimmed nanosecond fraction. It is the value in
+- **Generations `4`, `5` and `6` are withdrawn, and nothing ever spoke any of
+  them.** `4` was the first generation this specification defined, and its value
+  encoding named the typed frame's millisecond timestamp payload. `5` moved the
+  value encoding to `durable-execution.md` §6's typed frame. `6` added the two
+  need operations (§7.5). No carrier implemented any of them and no artifact
+  could declare one, so each is superseded rather than kept readable.
+- **Generation `7` is the generation this specification defines.** It is `6`'s
+  message set with `Runtime.Run`'s `inputs` carrying `needs` (§9.2), with the
+  same value encoding: `durable-execution.md` §6's typed frame, whose timestamp
+  payload is RFC 3339 with a trimmed nanosecond fraction. It is the value in
   `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
   conformance vector carries states it.
-- **No artifact may declare `abi=telo-6` until the ABI carrier lands.** A
+- **No artifact may declare `abi=telo-7` until the ABI carrier lands.** A
   declaration reaching a kernel that does not implement the carrier MUST be
   refused with `ERR_CONTROLLER_HOST_INCOMPATIBLE`. Until then the ABI crate's
   `TELO_ABI_VERSION` stays `3`, which is what keeps the published `abi=telo-3`
-  controller candidates valid: specifying `6` does not retire `3`.
+  controller candidates valid: specifying `7` does not retire `3`.
 
 ### 0.4 Related specifications
 
@@ -870,7 +870,7 @@ is judged against its text (`ERR_MESSAGE_PLACEHOLDER_UNBOUND`,
 `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`), and each `Text` crosses as the record
 `{ text, context, lang, computed }` with `computed: true`. A literal text the
 instance's manifest already holds as a record crosses as it is. This is a reading
-of the result within `telo-6`, not a new message.
+of the result within `telo-7`, not a new message.
 
 **An accessor-mode field is not a compiled value.** A field its kind annotates
 `x-telo-eval: accessor` names a value for the controller's own consumer to
@@ -1005,6 +1005,21 @@ the child's declared inputs are supplied **by the name the child declares**,
 never by the environment variable it binds them to: the child's `env:` mapping is
 its own business, and supplying a declared input by setting the variable behind it
 lets a caller reach keys the child never declared.
+
+`inputs.needs` fulfils the child's own root `needs:`, keyed by need name, each
+value the fields of the need's type. A need forwarded whole crosses as its
+fields: the child never sees the caller's fulfilment, only what it holds. At the
+child's root a need is answered, in order, by the value supplied here, then the
+environment (its `env:`-bound name or `TELO_NEED_…`), then the host values a
+kernel derives needs from (`TELO_HOST_STATE_DIR`,
+`TELO_HOST_PUBLIC_URL_TEMPLATE`), and is otherwise refused with `ERR_NEED_UNMET`.
+A supply here is a root supply, so a `supply: root` type is accepted. The child
+refuses at load a name it does not declare (`ERR_MANIFEST_VALIDATION_FAILED`,
+naming the needs it declares), a field its type does not declare or whose value
+the field's schema refuses (the same error), a required field left out
+(`ERR_NEED_PARTIALLY_SUPPLIED`), and a durable directory it cannot use
+(`ERR_NEED_DIRECTORY_UNUSABLE`, naming the calling resource as its source). A
+sensitive field is redacted in the child as the child's need type marks it.
 
 `env` is a different thing and both may be sent: it is the **host environment the
 child runs in**, which the child's own `variables:` / `secrets:` bind from. A

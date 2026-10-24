@@ -6,12 +6,24 @@ import { SessionRegistry } from "../session/registry.js";
 import { RunProjection } from "./run-projection.js";
 
 function harness(apps = [{ name: "app" }]) {
-  const registry = new SessionRegistry({
-    maxSessions: 4,
-    exitTtlMs: 1000,
-    replayBufferBytes: 100_000,
-  });
-  const entry = registry.register({ sessionId: "s1", mode: "watch", apps });
+  const registry = new SessionRegistry({ replayBufferBytes: 100_000 });
+  const now = new Date();
+  const entry = registry.register(
+    {
+      id: "s1",
+      owner: { kind: "secret", secretHash: "0".repeat(64) },
+      workspace: "w",
+      agent: null,
+      apps: apps.map(({ name }) => ({ name, entryRelativePath: "telo.yaml", ports: [] })),
+      config: {},
+      status: "running",
+      createdAt: now,
+      lastActiveAt: now,
+      suspendedAt: null,
+      containerEngine: null,
+    },
+    { kind: "running" },
+  );
   const projection = new RunProjection(registry, "s1");
   entry.attribution = projection;
   const runs = (): RunEvent[] =>
@@ -29,13 +41,13 @@ const event = (name: string, payload?: unknown): DebugFrame => ({
 describe("RunProjection", () => {
   it("brackets a generation from Kernel.Starting and Kernel.Stopped", () => {
     const h = harness();
-    h.projection.expectAll("initial");
+    h.projection.expect("app", "run");
     h.projection.frame("app", event("Kernel.Starting"));
     h.projection.frame("app", event("Kernel.Started"));
     h.projection.frame("app", event("Kernel.Stopped", { exitCode: 0 }));
 
     expect(h.runs()).toMatchObject([
-      { type: "run", app: "app", generation: 1, phase: "started", trigger: "initial" },
+      { type: "run", app: "app", generation: 1, phase: "started", trigger: "run" },
       { type: "run", app: "app", generation: 1, phase: "completed", code: 0 },
     ]);
   });
@@ -54,21 +66,19 @@ describe("RunProjection", () => {
 
   it("leaves the session running when a generation completes", () => {
     const h = harness();
-    h.projection.expectAll("initial");
+    h.projection.expect("app", "run");
     h.registry.emit("s1", { type: "status", status: { kind: "running" } });
     h.projection.frame("app", event("Kernel.Starting"));
     h.projection.frame("app", event("Kernel.Stopped", { exitCode: 0 }));
 
     // The whole point of the split: a one-shot app finishing is not the session
-    // ending, so nothing is scheduled for eviction.
+    // ending.
     expect(h.entry.status).toEqual({ kind: "running" });
-    expect(h.entry.exitedAt).toBeNull();
-    expect(h.entry.evictionTimer).toBeNull();
   });
 
   it("counts a reload as the next generation and attributes it to the watcher", () => {
     const h = harness();
-    h.projection.expectAll("initial");
+    h.projection.expect("app", "run");
     h.projection.frame("app", event("Kernel.Starting"));
     h.projection.frame("app", event("Kernel.Stopped", { exitCode: 0 }));
     h.projection.frame("app", event("Kernel.Starting"));
@@ -82,7 +92,7 @@ describe("RunProjection", () => {
 
   it("attributes a generation a route caused, then falls back to watch", () => {
     const h = harness();
-    h.projection.expectAll("initial");
+    h.projection.expect("app", "run");
     h.projection.frame("app", event("Kernel.Starting"));
     h.projection.frame("app", event("Kernel.Stopped", { exitCode: 0 }));
 
@@ -93,7 +103,7 @@ describe("RunProjection", () => {
 
     const started = h.runs().filter((e) => e.type === "run" && e.phase === "started");
     expect(started.map((e) => (e as { trigger: string }).trigger)).toEqual([
-      "initial",
+      "run",
       "manual",
       "watch",
     ]);
@@ -101,7 +111,7 @@ describe("RunProjection", () => {
 
   it("opens a generation for a load failure, which emits no Kernel.Starting", () => {
     const h = harness();
-    h.projection.expectAll("initial");
+    h.projection.expect("app", "run");
     // A manifest that fails to LOAD never reaches Kernel.Starting; reporting the
     // failure of a generation the client never saw start would be unreadable.
     h.projection.frame(
@@ -114,14 +124,14 @@ describe("RunProjection", () => {
     );
 
     expect(h.runs()).toMatchObject([
-      { generation: 1, phase: "started", trigger: "initial" },
+      { generation: 1, phase: "started", trigger: "run" },
       { generation: 1, phase: "failed", reason: "ERR_MANIFEST_VALIDATION_FAILED" },
     ]);
   });
 
   it("does not double-count a boot failure that follows Kernel.Starting", () => {
     const h = harness();
-    h.projection.expectAll("initial");
+    h.projection.expect("app", "run");
     h.projection.frame("app", event("Kernel.Starting"));
     h.projection.frame("app", event("Kernel.RunFailed", { phase: "start", message: "boom" }));
 
@@ -131,17 +141,16 @@ describe("RunProjection", () => {
     ]);
   });
 
-  it("closes a generation whose WORKLOAD ended, with no Kernel.Stopped", () => {
+  it("closes a generation whose PROCESS ended, with no Kernel.Stopped", () => {
     const h = harness();
-    h.projection.expectAll("initial");
+    h.projection.expect("app", "run");
     h.projection.frame("app", event("Kernel.Starting"));
-    // A container that goes away emits nothing — there is nothing left to emit
-    // it — so the backend reports the ending through the contract instead.
-    h.projection.endGeneration("app", { reason: "application container exited" });
+    // A killed process emits nothing, so the run's ending closes the generation.
+    h.projection.endGeneration("app", { signal: "SIGKILL" });
 
     expect(h.runs()).toMatchObject([
       { generation: 1, phase: "started" },
-      { generation: 1, phase: "failed", reason: "application container exited" },
+      { generation: 1, phase: "failed", reason: "terminated by SIGKILL" },
     ]);
   });
 
@@ -153,7 +162,6 @@ describe("RunProjection", () => {
 
   it("counts generations per app, not per session", () => {
     const h = harness([{ name: "web" }, { name: "worker" }]);
-    h.projection.expectAll("initial");
     h.projection.frame("web", event("Kernel.Starting"));
     h.projection.frame("worker", event("Kernel.Starting"));
     h.projection.frame("worker", event("Kernel.Stopped", { exitCode: 0 }));

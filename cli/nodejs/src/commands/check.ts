@@ -1,6 +1,7 @@
 import {
   StaticAnalyzer,
   assembleGraphDiagnostics,
+  collectApplicationSources,
   collectModuleDocuments,
   flattenForAnalyzer,
 } from "@telorun/analyzer";
@@ -61,6 +62,7 @@ async function checkOne(
     // the CLI analyzes once per process.
     const analysis = new StaticAnalyzer().analyze(flattenForAnalyzer(graph), {
       moduleDocuments: collectModuleDocuments(graph),
+      applicationSources: collectApplicationSources(graph),
       hostVersions: nodeHostVersions(),
     });
     const { diagnostics } = assembleGraphDiagnostics(graph, analysis);
