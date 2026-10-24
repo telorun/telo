@@ -1184,7 +1184,7 @@ dependencies = [
 
 [[package]]
 name = "telo-analyzer"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1197,7 +1197,7 @@ dependencies = [
 
 [[package]]
 name = "telo-cli"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "flate2",
  "serde_json",
@@ -1209,7 +1209,7 @@ dependencies = [
 
 [[package]]
 name = "telo-kernel"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "flate2",
  "jsonschema",
@@ -1228,7 +1228,7 @@ dependencies = [
 
 [[package]]
 name = "telo-templating"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "serde_json",
  "serde_yaml",
@@ -1240,7 +1240,7 @@ version = "0.0.0"
 
 [[package]]
 name = "telorun-cel"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "jiff-tzdb",
  "serde_json",
@@ -1249,7 +1249,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-cel-value"
-version = "0.122.0"
+version = "0.122.1"
 
 [[package]]
 name = "telorun-console"
@@ -1261,11 +1261,11 @@ dependencies = [
 
 [[package]]
 name = "telorun-message-format"
-version = "0.122.0"
+version = "0.122.1"
 
 [[package]]
 name = "telorun-sdk"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "jsonschema",
  "libloading",
@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-sdk-core"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "jsonschema",
  "serde",
@@ -1290,7 +1290,7 @@ dependencies = [
 
 [[package]]
 name = "telorun-sdk-macros"
-version = "0.122.0"
+version = "0.122.1"
 dependencies = [
  "proc-macro2",
  "quote",

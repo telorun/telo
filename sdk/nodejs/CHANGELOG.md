@@ -1,5 +1,12 @@
 # @telorun/sdk
 
+## 0.122.1
+
+### Patch Changes
+
+- @telorun/cel@0.122.1
+- @telorun/message-format@0.122.1
+
 ## 0.122.0
 
 ### Minor Changes
