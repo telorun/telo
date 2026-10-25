@@ -1,5 +1,14 @@
 # @telorun/kernel
 
+## 0.123.1
+
+### Patch Changes
+
+- Updated dependencies [7b1f7d5]
+  - @telorun/analyzer@0.123.1
+  - @telorun/cel@0.123.1
+  - @telorun/templating@0.123.1
+
 ## 0.123.0
 
 ### Minor Changes

@@ -1,5 +1,15 @@
 # @telorun/studio
 
+## 0.32.1
+
+### Patch Changes
+
+- Updated dependencies [7b1f7d5]
+  - @telorun/analyzer@0.123.1
+  - @telorun/ide-support@0.123.1
+  - @telorun/sdk@0.123.1
+  - @telorun/templating@0.123.1
+
 ## 0.32.0
 
 ### Minor Changes
