@@ -40,6 +40,7 @@ import {
 } from "./pod-spec.js";
 import {
   deletePodAndWait,
+  keepPod,
   endedContainer,
   is404,
   msg,
@@ -307,11 +308,10 @@ export class KubernetesSessionWorkload implements BackendWorkload {
       // Nothing of a pod that never came up is left behind (unless the operator
       // asked to keep it for inspection); the storage stays.
       if (rt) await closeSupervisors(rt);
-      if (!config.keepFailedPods) {
-        await deletePodAndWait(kube, ns, name).catch((cleanup) => {
-          throw withCause(new Error(`${msg(err)}; and removing the pod failed: ${msg(cleanup)}`), cleanup);
-        });
-      }
+      const gone = config.keepFailedPods ? keepPod(kube, ns, name) : deletePodAndWait(kube, ns, name);
+      await gone.catch((cleanup) => {
+        throw withCause(new Error(`${msg(err)}; and removing the pod failed: ${msg(cleanup)}`), cleanup);
+      });
       if (err instanceof SessionStartError) throw err;
       throw withCause(
         new SessionStartError(
@@ -515,7 +515,9 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     if (!rt) return;
     stopWatchers(rt);
     await closeSupervisors(rt);
-    await deletePodAndWait(this.deps.kube, this.deps.config.sessionNamespace, rt.name);
+    const { kube, config } = this.deps;
+    if (rt.failed && config.keepFailedPods) await keepPod(kube, config.sessionNamespace, rt.name);
+    else await deletePodAndWait(kube, config.sessionNamespace, rt.name);
   }
 
   // ---- Routing ----------------------------------------------------------------

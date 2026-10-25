@@ -14,7 +14,7 @@ import type { K8sRunnerConfig } from "../config.js";
 import { apiReason, withCause } from "./api-error.js";
 import type { KubeClient } from "./client.js";
 import { MANAGED_BY_LABEL, reservedPortsFor, SESSION_ID_LABEL } from "./pod-spec.js";
-import { deletePod, deletePodAndWait, endedContainer, msg, podPhase } from "./pod-status.js";
+import { deletePod, endedContainer, keepPod, msg, podHasFailed, podPhase, removeOrKeepPod } from "./pod-status.js";
 import type { SessionRouter } from "./routing/index.js";
 import { createKubernetesSessionContainerEngine } from "./session-container-engine.js";
 import { deleteSessionVolume } from "./session-volume.js";
@@ -81,8 +81,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
    *  the next. */
   async function removeSessionPods(sessionId: string): Promise<void> {
     for (const pod of await sessionPods(sessionId)) {
-      const name = pod.metadata?.name;
-      if (name) await deletePodAndWait(kube, ns, name);
+      await removeOrKeepPod(kube, ns, pod, config.keepFailedPods);
     }
   }
 
@@ -164,7 +163,8 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
       const session = labels[SESSION_ID_LABEL] ?? labels[SESSION_CONTAINER_LABEL];
       if (!name || (session !== undefined && sessions.live.has(session))) continue;
       try {
-        await deletePod(kube, ns, name);
+        if (config.keepFailedPods && podHasFailed(pod)) await keepPod(kube, ns, name);
+        else await deletePod(kube, ns, name);
       } catch (err) {
         failures.push(`pod ${name}: ${apiReason(err)}`);
       }
