@@ -1,4 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: The problem binding in a catch entry's CEL holds title, detail and data as null
-  where the problem has none; the rendered problem still omits them.

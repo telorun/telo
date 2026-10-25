@@ -1,8 +1,0 @@
-modules:
-  modules/http-server: Added
-body: "Every catch list — a route, a router, the server, a guard and `notFoundHandler` —
-  marks its caught members with `x-telo-caught-member`, so inside an entry `error.data`
-  and the new `problem.data` binding are typed from the `data` of the codes the entry
-  matches, and a `when:` comparing `problem.code` proves coverage as `error.code` does.
-  `notFoundHandler.catches` gains its context: `request` (`path`, `host`, `method`,
-  `ip`, `query`, `headers`, `params`), `error` and `problem`."

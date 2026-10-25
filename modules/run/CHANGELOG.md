@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.0 - 2026-10-25
+### Added
+* The error context of `Run.Iteration`, `Run.Projection` and `Run.Loop` reads `error.displayMessage`, the text a person is shown for the failure as its record, or null when it carries none, beside `error.message`, as every step `catch:` does.
+
 ## 0.29.1 - 2026-10-23
 ### Fixed
 * The doc paragraph on numbers reaching Run.Value is corrected: a value declared as an integer, and an integral number written literally in a parent step's value, is already an int and needs no cast.

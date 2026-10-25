@@ -1,5 +1,0 @@
-modules:
-  modules/http-server: Added
-body: "A catches: entry may omit body: only under application/problem+json, the media
-  type of the default problem it renders; telo check refuses a bodiless entry under any
-  other content key."

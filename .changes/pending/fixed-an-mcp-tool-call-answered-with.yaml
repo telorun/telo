@@ -1,5 +1,0 @@
-modules:
-  modules/ai-mcp: Fixed
-body: An MCP tool call answered with isError now raises ERR_MCP_TOOL_ERROR with the
-  server's own text in its message (and the raw content in its data), so a model reading
-  the error learns why the call failed instead of seeing only that it did.

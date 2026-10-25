@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.0 - 2026-10-25
+### Added
+* Ui.Words gains a word for every issue keyword an Http.Api validation problem may carry that it lacked — minProperties, maxProperties, format, additionalProperties and propertyNames — so a renderer words each data.issues entry as its own validation does. Breaking: a Ui.Words of your own must now declare these five ids. Ui.RequestError's code and message are documented as the problem body's code and detail, and the action, collection and record contracts describe the problem shape and data.issues instead of the old validation envelope.
+
 ## 0.6.0 - 2026-10-23
 ### Added
 * Page width: the named shape `Ui.PageWidth` (`contained` | `full`), an optional `width` on `Ui.Page`, and a `pageWidth` input the page is invoked with; the page answers `width` in its document. `@telorun/ui` exports `resolvedPageWidth`, the one reading of that chain (the value written, else the application's, else `contained`). New design tokens `width.page` (the widest a contained page is drawn) and `space.page` (the inline inset of a page and of the header), each a CSS length in `px` or `rem`, both in `DESIGN_TOKENS`.
