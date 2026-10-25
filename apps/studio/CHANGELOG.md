@@ -1,5 +1,36 @@
 # @telorun/studio
 
+## 0.32.0
+
+### Minor Changes
+
+- 3a59a93: `telo runner` serves the durable workspace session (breaking). A session is a directory under the state root, `sessions/<sessionId>/` with `workspace/` (the application's files, its seeded `telo-workspace.yaml` and its `.telo` module cache) and `agent/`, all `0700`, kept by id across suspends and runner restarts; the session store is `sessions.sqlite` in the same state root. The state root is `--state-dir`, then `RUNNER_STATE_DIR` (which now names the whole state directory rather than the store's alone), then the per-user application-state directory — `$XDG_STATE_HOME/telo/runner` (`~/.local/state/telo/runner` when unset) on Linux, `~/Library/Application Support/telo/runner` on macOS, `%LOCALAPPDATA%\telo\state\runner` on Windows — instead of the system temp directory, so sessions survive a reboot; with none resolvable or writable (no `HOME`) the runner refuses to start (exit 2), naming `--state-dir` and `RUNNER_STATE_DIR`. The `-o json` result's `stateDir` is the root in use. Nothing runs until Run: each Run spawns the argv the runner core builds (`telo run --watch --no-input --inspect … --no-open <entry>`) of the running executable, or of the release an application names, in the session workspace as its own process group, with the run's env over the runner's own; Stop sends SIGTERM to the group and SIGKILL after the grace, and the run's exit code or signal is reported as the app's ending. Suspend ends the runs and keeps the directory; deleting the session or retention removes it. At boot every stored session that was running is suspended — a local run never outlives the runner — and the sweep removes only the session directories the store does not know, replacing the per-PID directories and their sweep. The runner offers no co-resident agent, so `features.agents` is absent. `--watch-sessions` and `features.watch` are removed, with one-shot run sessions and the bundle upload; the command's `-o json` result no longer carries `watch`.
+
+  The desktop app now starts its local runner with a state root under the app's local data directory (`runner/`) instead of the system temp directory, so a workspace's local session, its files and its module cache survive an editor restart.
+
+- 3a59a93: A workspace is a runner session (breaking). The first time a workspace opens, Studio asks how it is used — Agent, Manual or Only on this device — and remembers the answer per workspace in `telo-studio:session:v1:<workspaceKey>`; the workspace menu changes it. Agent and Manual open the workspace's session on the active runner: the stored one, resumed when suspended, or a new one created with every Application of the workspace (its telo version and declared ports), seeded from the editor and kept in step with every write; closing the workspace, or switching it to Only on this device, suspends it. Only on this device contacts no runner at all and hides Run and the agent; Manual hides the agent. A request typed on the closed-workspace screen opens the workspace in Agent mode.
+
+  Run starts the application in the session's existing container and Stop ends that run; a change to the workspace's Applications is applied to the session when it changes, waits while an agent turn runs, and starts again the apps that were running. A module importing a file outside the opened folder is refused at Run, naming the import. A change the runner answers `409 session_busy` is sent again after a growing delay rather than at once. A local runner's capabilities are read once it is up, so its telo versions and agent are offered from the first session, which is created only with an app set naming telo versions exactly when the runner takes them. A send in Agent mode on a running session whose agent could not be started, or that the runner reports no address for, fails saying why instead of waiting. Every runner request carries the session's credential, the event stream is read with it, and the terminal opens with a single-use ticket. Signed out, that is the session's resume secret as a bearer credential, kept in the workspace's entry on the web build and in the OS credential store on the desktop build (service `com.telo.studio`), so a desktop restart resumes the session too.
+
+  Signed in, on a runner whose advertised `identity.resource` is exactly the https address Studio connects to and that lists Studio's identity provider in `authorization_servers`, a session is reached with the user's identity instead: a DPoP-bound access token (`Authorization: DPoP`, RFC 9449) and a proof signed per request with a non-extractable key, renewed 60 s before it expires and once when the runner answers `invalid_token`. The key is one per signed-in user on each installation, kept in the browser's IndexedDB (database `telo-studio`, store `runner-dpop-key`) so it survives reloads, and deleted at sign-out or when someone else signs in; IndexedDB that cannot be opened is an error, never a key that lasts one page load. The token comes from that runner's own grant, held by whoever holds the sign-in — the web build's own server (`POST /api/session/runner-token`) or the desktop shell — and never from the sign-in's own grant: the first time a runner needs one, a single authorization naming only that runner (silent first) creates it, its code redeemed with the page's proof. A runner grant the identity provider later refuses (`invalid_grant`, `invalid_dpop_proof`) is deleted and the runner authorized again, Studio saying "Authorizing <runner> again" on the desktop build; the web build sends the user to the same authorization a first use does. The token is kept in memory only; no refresh token reaches the page. Opening a workspace then finds the identity's session for it on that runner (`GET /v1/sessions?workspace=`) before creating one, so the same Telo Cloud project resumes on every device. Signing in moves this device's resume-secret sessions to the identity (`POST /v1/sessions/:id/owner`) and deletes their secrets; signing out leaves those sessions with the identity and forgets them on this device. Where a signed-in user's identity is not used, the run dock says why — for instance that the runner's advertised address does not match the address Studio connects to. An identity provider the runner or Studio cannot reach is shown as a failure to retry.
+
+  Removed: creating a session on Run, the one-shot run, the closure-based run bundle, the standalone agent launch (the agent is the session's co-resident one, or the one at the settings' agent URL) and the run index (`telo-studio:run:index:v1`, deleted on start).
+
+### Patch Changes
+
+- da3791b: The step list offers the `rethrow: {}` step — a leaf created as the empty object it always is — and a `throw` step's form offers its optional `displayMessage`, both read from the step grammar like every other step kind.
+- Updated dependencies [da3791b]
+- Updated dependencies [f55cc35]
+- Updated dependencies [3a59a93]
+- Updated dependencies [3a59a93]
+- Updated dependencies [da3791b]
+- Updated dependencies [3a59a93]
+- Updated dependencies [da3791b]
+  - @telorun/analyzer@0.123.0
+  - @telorun/ide-support@0.123.0
+  - @telorun/templating@0.123.0
+  - @telorun/sdk@0.123.0
+
 ## 0.31.0
 
 ### Minor Changes
