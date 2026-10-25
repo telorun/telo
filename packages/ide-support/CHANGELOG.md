@@ -1,5 +1,25 @@
 # @telorun/ide-support
 
+## 0.123.0
+
+### Minor Changes
+
+- da3791b: A catch list's context marks the members that carry the caught failure with the new annotation `x-telo-caught-member: code | data`, on a member reached through `properties` from a binding of the `x-telo-context` beside `x-telo-outcome-list: catches`. Catch-list analysis no longer reads a binding named `error`: a `when:` proves coverage when it compares any chain reaching a `code`-marked member with code literals (`==`, `in [...]`, joined by `||`), so `problem.code == 'X'` covers `X` as `error.code == 'X'` does, and inside each entry every `data`-marked member is typed as the `data` of the codes the entry matches (intersected when several, the declared schema where the union is unbounded or empty), so `CEL_UNKNOWN_FIELD`, `CEL_TYPE_ERROR`, completion and hover come from the ordinary check. The side pass that checked `error.data.<field>` chains on its own is gone, so its findings now read `'error.data.<field>' is not defined`. A mark anywhere else — an `x-telo-error-context` included — or a `code` mark on a member that is not a string is the warning `CAUGHT_MEMBER_MISPLACED`, a catch list whose context marks no `code` is the warning `CAUGHT_MEMBER_MISSING`, and a value other than `code` / `data` is `SCHEMA_VIOLATION`.
+
+  The core migration `caught-member-marks` (`DEPRECATED_IMPLICIT_CAUGHT_MEMBER`) marks the `code` and `data` members of an unmarked `error` binding in a catch list's context at load, so a published module keeps proving coverage and typing `error.data`, and gives a published `notFoundHandler.catches` that declares no context the context `http-server` 0.39.1 binds there at run time (`request`, and `error` with `code`, `message` and `data`, marks included), so a `when:` there proves coverage instead of being reported as never evaluated. The migration vocabulary gains the `add-key` operation (writes a scalar, or a mapping of plain data, under a key the matched mapping does not hold, refusing an occupied one; `telo migrate` renders a mapping fresh in the style of the mapping it joins) and the `ancestor` and `withoutKey` selectors. Editors offer `x-telo-caught-member` on a member of a context binding.
+
+### Patch Changes
+
+- Updated dependencies [da3791b]
+- Updated dependencies [f55cc35]
+- Updated dependencies [3a59a93]
+- Updated dependencies [da3791b]
+- Updated dependencies [3a59a93]
+- Updated dependencies [da3791b]
+  - @telorun/analyzer@0.123.0
+  - @telorun/templating@0.123.0
+  - @telorun/cel@0.123.0
+
 ## 0.122.0
 
 ### Patch Changes

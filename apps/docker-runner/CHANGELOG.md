@@ -1,5 +1,21 @@
 # @telorun/docker-runner
 
+## 0.14.0
+
+### Minor Changes
+
+- 3a59a93: The docker runner serves the durable workspace session (breaking). A session's containers — `workspace`, one idle `app-<name>` per application and an optional `agent` — are named `telo-run-<id>-<role>` and labelled `telo.run/session-id=<id>` and `telo.run/role`, over the session's own directory on the bundle volume: `workspace/` at `/workspace` and, for the agent, `agent/` at `/var/lib/telo-agent-state` with `TELO_HOST_STATE_DIR` pointing there. Suspend removes the containers and keeps the directory; deleting the session or retention removes both. Every app container runs the session supervisor, which the runner writes at boot from its image (`/opt/telo-runner/supervisor`) to `.supervisor/<digest>/` on the bundle volume and mounts read-only at `/opt/telo-runner`: no TTY, no stdin and no session env — only `TELO_SUPERVISOR_LISTEN` (`0.0.0.0:<9330 + position>`) and a per-container `TELO_SUPERVISOR_TOKEN`; each app's supervisor port and debug port (`9230 + position`) are reserved, refused `400 port_conflict` (or `rejected` on reload). A container that ends, or a supervisor that restarted, fails the session naming the container. At boot the runner adopts each running session's containers by label — reading every supervisor token and the agent's token back from container inspect, reconnecting, and reporting live runs as `running` — suspends a session whose containers are gone, stale or of another supervisor protocol generation (resume rebuilds them), and its orphan sweep removes containers of sessions not running here and directories the store does not know. The runner now refuses to boot on a daemon older than Docker 26 (Engine API 1.45) instead of advertising `features.watch: false`. One-shot run sessions, catalog app sessions, the bundle upload and the attach path are gone. The image gains a static musl session supervisor, built per architecture, in its `development` stage too.
+
+  App supervisors are driven through runner-core's `SupervisedApp`, and the test engine's supervisors are runner-core's `FakeSupervisor`; a supervisor that never answers is now named by its full container name (`container 'telo-run-<id>-app-<name>'`), as every other docker message names it.
+
+- 3a59a93: Runners gain a durable session store and renamed session settings. `RUNNER_SESSION_STORE` selects `sqlite` (default, Node's built-in SQLite in `sessions.sqlite` under `RUNNER_STATE_DIR`) or `postgres` (`RUNNER_SESSION_STORE_URL`); it keeps each session's owner, workspace name, agent, app set, config, status and times, never env or tokens, with one session per owner and workspace, plus the DPoP `jti`s seen, under a versioned schema whose migrations carry records forward. The k8s and docker runners open it at boot and refuse to start with SQLite and no `RUNNER_STATE_DIR`. Session settings are renamed: `RUNNER_WATCH_MAX_SESSIONS` → `RUNNER_MAX_SESSIONS` (default 8, running sessions), `RUNNER_WATCH_IDLE_SECONDS` → `RUNNER_SESSION_IDLE_SECONDS`, `RUNNER_WATCH_MAX_TTL_SECONDS` → `RUNNER_SESSION_MAX_RUNNING_SECONDS`, `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` → `RUNNER_SESSION_RETENTION_SECONDS` (default 30 days), `RUNNER_WATCH_RELOAD_LIMIT` → `RUNNER_SESSION_RELOAD_LIMIT`; `RUNNER_WATCH_SESSIONS` (every session is now a workspace session, so there is nothing to switch on), `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`, `RUNNER_EXIT_TTL_MS`, `RUNNER_MAX_TTL_SECONDS` and `RUNNER_APP_MAX_TTL_SECONDS` are removed, and a runner started with any of them set refuses to boot, naming the replacement. The k8s runner reads `RUNNER_SESSION_STORAGE_SIZE` (default `5Gi`) and `RUNNER_SESSION_STORAGE_CLASS`, and its chart's `watch.*` values become `sessions.idleSeconds` / `maxRunningSeconds` / `retentionSeconds` / `reloadLimit`, with `runner.maxSessions` defaulting to 8 and `limits.maxTtlSeconds` gone.
+
+### Patch Changes
+
+- Updated dependencies [3a59a93]
+- Updated dependencies [3a59a93]
+  - @telorun/runner-core@0.21.0
+
 ## 0.13.0
 
 ### Minor Changes
