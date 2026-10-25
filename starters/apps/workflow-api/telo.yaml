@@ -24,7 +24,7 @@ metadata:
         curl -s -XPOST localhost:8101/orders -H 'content-type: application/json' \
           -d '{"tier":"standard","items":[{"price":1200,"quantity":2}]}'
 imports:
-  WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@0.3.4#sha256-mzxwYE_2bfKu_EXqVa5x9ZA2Mlpsw0cKOoVmIV9srO0
+  WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@0.3.5#sha256-afivOldHarco4bjmWNMen2i70GaoxXm7wc5QWdD6jYk
   Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
   Cache: oci://ghcr.io/telorun/cache@0.13.1#sha256-I7DgXjd5VlbhFuAmpOALY7Fbu9LvD7hBrMmE8jOWXbE
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY
