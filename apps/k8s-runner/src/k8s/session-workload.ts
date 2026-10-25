@@ -29,13 +29,16 @@ import { clampLimits } from "../limits.js";
 import { apiFailure, apiReason, withCause } from "./api-error.js";
 import type { KubeClient } from "./client.js";
 import {
-  appContainerName,
+  APP_SLOTS,
+  APP_SLOTS_ANNOTATION,
+  APPS_CONTAINER,
   buildSessionPod,
   inspectPortFor,
   reservedPortsFor,
   SUPERVISOR_LISTEN_ENV,
   SUPERVISOR_TOKEN_ENV,
   supervisorPortFor,
+  TOOLING_SLOT,
   WORKSPACE_PORT,
 } from "./pod-spec.js";
 import {
@@ -61,6 +64,7 @@ import {
   type SessionRouter,
 } from "./routing/index.js";
 import { ensureSessionVolume } from "./session-volume.js";
+import { TeloReleaseFetcher } from "./telo-release.js";
 import { ensureWorkspaceConfigMap } from "./workspace-configmap.js";
 
 /** How long the pod may take to reach Running. `activeDeadlineSeconds` only
@@ -92,14 +96,17 @@ export interface SessionWorkloadSpec {
   config: SessionConfig;
 }
 
-/** Everything tied to ONE pod. A recreate replaces it wholesale: a pod's
- *  container list is fixed at creation. */
+/** Everything tied to ONE pod. Only an agent change replaces it: the apps
+ *  container holds every app, so the app set never changes the pod. */
 interface PodRuntime {
   name: string;
   uid: string;
   ip: string;
   workspace: WorkspaceClient;
+  /** The token every supervisor slot of the apps container accepts. */
+  token: string;
   supervisors: Map<string, SupervisedApp>;
+  fetcher: TeloReleaseFetcher;
   abort: AbortController;
   stopWatch: () => void;
   routeAbort?: AbortController;
@@ -116,12 +123,15 @@ export type AdoptionOutcome =
 
 /**
  * A session's workload on Kubernetes: one pod over the session's own volume,
- * each app's container running the session supervisor, which this drives over
- * the supervisor protocol.
+ * its one `apps` container running a session supervisor per app slot, which this
+ * drives over the supervisor protocol. Adding or removing an app takes or frees
+ * a slot and leaves the pod — and the workspace and agent in it — running.
  */
 export class KubernetesSessionWorkload implements BackendWorkload {
   private runtime: PodRuntime | null = null;
   private apps: BackendAppSpec[];
+  /** The slot each app holds in the apps container. */
+  private slots: Record<string, number> = {};
   private agent: ResolvedRunnerApp | undefined;
 
   readonly workspace: WorkspaceAccess = {
@@ -162,9 +172,10 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     if ("stale" in read) return { kind: "stale", reason: read.stale };
     const agent = withAgentToken(spec.agent, read.agentToken);
     const workload = new KubernetesSessionWorkload(deps, { ...spec, agent }, callbacks);
-    const rt = workload.newRuntime(pod.metadata!.name!, pod.metadata!.uid ?? "", read.ip);
+    workload.slots = read.slots;
+    const rt = workload.newRuntime(pod.metadata!.name!, pod.metadata!.uid ?? "", read.ip, read.supervisorToken);
     try {
-      await workload.connectSupervisors(rt, read.supervisorTokens, ADOPT_CONNECT_TIMEOUT_MS);
+      await workload.connectSupervisors(rt, ADOPT_CONNECT_TIMEOUT_MS);
     } catch (err) {
       await closeSupervisors(rt);
       if (isGenerationMismatch(err)) {
@@ -186,16 +197,24 @@ export class KubernetesSessionWorkload implements BackendWorkload {
 
   async addresses(app: string): Promise<AppAddresses> {
     const rt = this.requireRuntime();
-    const index = this.indexOf(app);
-    const port = inspectPortFor(index);
+    const port = inspectPortFor(this.slotOf(app));
     return {
       inspect: { listen: `0.0.0.0:${port}`, url: `http://${rt.ip}:${port}/events` },
       host: rt.ip,
     };
   }
 
-  runApp(app: string, run: AppRun): Promise<void> {
-    return this.supervisorOf(app).run(run);
+  /** An app naming a telo version runs that release's binary, fetched into the
+   *  container on first use; one naming none runs the image's own `telo`. */
+  async runApp(app: string, run: AppRun): Promise<void> {
+    const supervisor = this.supervisorOf(app);
+    const version = this.apps[this.indexOf(app)]!.telo;
+    if (version === undefined) return supervisor.run(run);
+    const rt = this.requireRuntime();
+    this.callbacks.onProgress("boot", `Preparing telo ${version}`, false, app);
+    const binary = await rt.fetcher.ensure(version);
+    this.callbacks.onProgress("boot", `Preparing telo ${version}`, true, app);
+    return supervisor.run({ ...run, argv: [binary, ...run.argv.slice(1)] });
   }
 
   stopApp(app: string, runId: string, graceMs: number): Promise<void> {
@@ -224,22 +243,29 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     void this.rerouteApp(appName, declared);
   }
 
+  /**
+   * Take and free slots for the new app set. The pod is untouched: the live runs
+   * end, as an app-set change always ends them, and every app's slot reports
+   * ready again.
+   */
   async setApps(next: BackendAppSpec[]): Promise<void> {
-    if (sameStructure(this.apps, next)) {
-      // Nothing the pod is built from changed: the slots stay, and only the live
-      // runs end, as an app-set change always ends them.
-      this.apps = next.map(copyApp);
-      const rt = this.requireRuntime();
-      for (const [app, supervisor] of rt.supervisors) {
-        const live = supervisor.liveRunId;
-        if (live !== undefined) await supervisor.stop(live, STOP_GRACE_MS);
-        else this.callbacks.onAppState(app, { state: "ready" });
+    const rt = this.requireRuntime();
+    const kept = new Set(next.map((a) => a.name));
+    for (const [app, supervisor] of rt.supervisors) {
+      const live = supervisor.liveRunId;
+      if (live !== undefined) await supervisor.stop(live, STOP_GRACE_MS);
+      if (!kept.has(app)) {
+        rt.supervisors.delete(app);
+        await supervisor.close();
       }
-      return;
     }
-    await this.teardown();
     this.apps = next.map(copyApp);
-    await this.bringUp();
+    this.slots = assignSlots(this.slots, this.apps);
+    const added = this.apps.filter((a) => !rt.supervisors.has(a.name)).map((a) => this.addSupervisor(rt, a.name));
+    await Promise.all(added.map((s) => s.connect(SUPERVISOR_CONNECT_TIMEOUT_MS)));
+    await this.recordSlots(rt);
+    await this.publishOrReport(rt);
+    this.reportRunning(rt);
   }
 
   async setAgent(agent: ResolvedRunnerApp | undefined, tokens: WorkloadTokens): Promise<void> {
@@ -272,13 +298,14 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     } catch (err) {
       throw apiFailure(err, "create", "could not write the workspace application's ConfigMap");
     }
-    const tokens = Object.fromEntries(this.apps.map((a) => [a.name, randomBytes(32).toString("base64url")]));
+    this.slots = assignSlots({}, this.apps);
+    const token = randomBytes(32).toString("base64url");
     const pod = buildSessionPod({
       config,
       sessionId: this.spec.sessionId,
       podName: freshPodName(this.spec.sessionId),
-      apps: this.apps,
-      supervisorTokens: tokens,
+      appSlots: this.slots,
+      supervisorToken: token,
       agent: this.agent,
       sessionConfig: this.spec.config,
       claimName,
@@ -298,12 +325,12 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     let rt: PodRuntime | undefined;
     try {
       const ip = await this.waitForRunning(name);
-      rt = this.newRuntime(name, created.metadata?.uid ?? "", ip);
+      rt = this.newRuntime(name, created.metadata?.uid ?? "", ip, token);
       await this.waitForWorkspace(rt.workspace);
       const seed = workspaceMarkerWrite(await rt.workspace.tree());
       if (seed.length > 0) await rt.workspace.apply({ write: seed });
       this.callbacks.onProgress("boot", "Starting application containers");
-      await this.connectSupervisors(rt, tokens, SUPERVISOR_CONNECT_TIMEOUT_MS);
+      await this.connectSupervisors(rt, SUPERVISOR_CONNECT_TIMEOUT_MS);
     } catch (err) {
       // Nothing of a pod that never came up is left behind (unless the operator
       // asked to keep it for inspection); the storage stays.
@@ -329,13 +356,19 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     this.reportRunning(rt);
   }
 
-  private newRuntime(name: string, uid: string, ip: string): PodRuntime {
+  private newRuntime(name: string, uid: string, ip: string, token: string): PodRuntime {
     return {
       name,
       uid,
       ip,
+      token,
       workspace: new WorkspaceClient(`http://${ip}:${WORKSPACE_PORT}`),
       supervisors: new Map(),
+      fetcher: new TeloReleaseFetcher(
+        { host: ip, port: supervisorPortFor(TOOLING_SLOT), token },
+        this.deps.config.teloReleasesUrl,
+        (termination) => this.supervisorEnded(this.runtime ?? undefined, "tooling", termination),
+      ),
       abort: new AbortController(),
       stopWatch: () => {},
       failed: false,
@@ -353,46 +386,63 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     for (const supervisor of rt.supervisors.values()) supervisor.report();
   }
 
-  private async connectSupervisors(
-    rt: PodRuntime,
-    tokens: Record<string, string>,
-    timeoutMs: number,
-  ): Promise<void> {
-    this.apps.forEach((app, index) => {
-      const supervisor = new SupervisedApp(
-        {
-          host: rt.ip,
-          port: supervisorPortFor(index),
-          token: tokens[app.name]!,
-          label: `container '${appContainerName(app.name)}'`,
+  private async connectSupervisors(rt: PodRuntime, timeoutMs: number): Promise<void> {
+    const apps = this.apps.map((app) => this.addSupervisor(rt, app.name));
+    await Promise.all([...apps.map((s) => s.connect(timeoutMs)), rt.fetcher.connect(timeoutMs)]);
+  }
+
+  /** The supervisor of the slot `app` holds, not yet connected. */
+  private addSupervisor(rt: PodRuntime, app: string): SupervisedApp {
+    const supervisor = new SupervisedApp(
+      {
+        host: rt.ip,
+        port: supervisorPortFor(this.slotOf(app)),
+        token: rt.token,
+        label: `slot ${this.slotOf(app)} of container '${APPS_CONTAINER}'`,
+      },
+      {
+        onAppState: (state) => {
+          if (this.runtime === rt) this.callbacks.onAppState(app, state);
         },
-        {
-          onAppState: (state) => {
-            if (this.runtime === rt) this.callbacks.onAppState(app.name, state);
-          },
-          onOutput: (chunk, stream) => {
-            if (this.runtime === rt) this.callbacks.onOutput(app.name, chunk, stream);
-          },
-          onTerminated: (termination) => this.supervisorEnded(rt, app.name, termination),
+        onOutput: (chunk, stream) => {
+          if (this.runtime === rt) this.callbacks.onOutput(app, chunk, stream);
         },
-      );
-      rt.supervisors.set(app.name, supervisor);
-    });
-    await Promise.all([...rt.supervisors.values()].map((s) => s.connect(timeoutMs)));
+        onTerminated: (termination) => this.supervisorEnded(rt, app, termination),
+      },
+    );
+    rt.supervisors.set(app, supervisor);
+    return supervisor;
   }
 
   /** A supervisor connection ended for good: the container can no longer be
    *  driven, which is the session's infrastructure failure. */
-  private supervisorEnded(rt: PodRuntime, app: string, termination: SupervisorTermination): void {
-    const container = appContainerName(app);
+  private supervisorEnded(rt: PodRuntime | undefined, what: string, termination: SupervisorTermination): void {
+    if (!rt) return;
     this.failPod(
       rt,
       termination.kind === "generation_mismatch"
-        ? `container '${container}' runs a session supervisor of another protocol generation; ` +
+        ? `container '${APPS_CONTAINER}' runs a session supervisor of another protocol generation; ` +
             `resume the session to recreate its pod`
-        : `the session supervisor of container '${container}' can no longer be reached ` +
+        : `the session supervisor of '${what}' in container '${APPS_CONTAINER}' can no longer be reached ` +
             `(${termination.kind}): ${termination.message}`,
     );
+  }
+
+  /** Write the slot assignment onto the pod, where an adopting runner reads it. */
+  private async recordSlots(rt: PodRuntime): Promise<void> {
+    const { kube, config } = this.deps;
+    const pod = await kube.core.readNamespacedPod({ name: rt.name, namespace: config.sessionNamespace });
+    await kube.core.replaceNamespacedPod({
+      name: rt.name,
+      namespace: config.sessionNamespace,
+      body: {
+        ...pod,
+        metadata: {
+          ...pod.metadata,
+          annotations: { ...pod.metadata?.annotations, [APP_SLOTS_ANNOTATION]: JSON.stringify(this.slots) },
+        },
+      },
+    });
   }
 
   private failPod(rt: PodRuntime, message: string): void {
@@ -669,11 +719,8 @@ export class KubernetesSessionWorkload implements BackendWorkload {
         `this session's co-resident agent '${this.agent.name}' listens on tcp port ${this.agent.port}`,
       );
     }
-    for (const r of reservedPortsFor(this.apps)) {
-      taken.set(
-        portKey(r),
-        `this runner reserves ${r.protocol} port ${r.port} for ${r.purpose} of app '${r.app}'`,
-      );
+    for (const r of reservedPortsFor()) {
+      taken.set(portKey(r), `this runner reserves ${r.protocol} port ${r.port} for ${r.purpose}`);
     }
     const rejected = added.filter((p) => taken.has(portKey(p)));
     const accepted = added.filter((p) => !taken.has(portKey(p)));
@@ -714,6 +761,12 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     return index;
   }
 
+  private slotOf(app: string): number {
+    const slot = this.slots[app];
+    if (slot === undefined) throw new Error(`the session runs no app named '${app}'`);
+    return slot;
+  }
+
   private supervisorOf(app: string): SupervisedApp {
     const supervisor = this.requireRuntime().supervisors.get(app);
     if (!supervisor) throw new Error(`the session runs no app named '${app}'`);
@@ -727,24 +780,23 @@ function readAdoptable(
   pod: V1Pod,
   spec: SessionWorkloadSpec,
 ):
-  | { ip: string; supervisorTokens: Record<string, string>; agentToken: string | undefined }
+  | { ip: string; supervisorToken: string; slots: Record<string, number>; agentToken: string | undefined }
   | { stale: string } {
   const ip = podStatus(pod)?.podIP;
   if (!ip) return { stale: "it has no address" };
   const containers = pod.spec?.containers ?? [];
-  const appContainers = containers.filter((c) => c.name.startsWith("app-"));
-  const expected = spec.apps.map((a) => appContainerName(a.name));
-  if (appContainers.map((c) => c.name).join(",") !== expected.join(",")) {
-    return { stale: "its app containers are not the stored app set" };
+  const apps = containers.find((c) => c.name === APPS_CONTAINER);
+  if (!apps) return { stale: `it has no '${APPS_CONTAINER}' container` };
+  const env = envOf(apps.env);
+  const supervisorToken = env[SUPERVISOR_TOKEN_ENV];
+  if (!supervisorToken || env[SUPERVISOR_LISTEN_ENV] !== `0.0.0.0:${supervisorPortFor(0)}`) {
+    return { stale: `container '${APPS_CONTAINER}' runs no session supervisor this runner can reach` };
   }
-  const supervisorTokens: Record<string, string> = {};
-  for (const [index, app] of spec.apps.entries()) {
-    const env = envOf(appContainers[index]!.env);
-    const token = env[SUPERVISOR_TOKEN_ENV];
-    if (!token || env[SUPERVISOR_LISTEN_ENV] !== `0.0.0.0:${supervisorPortFor(index)}`) {
-      return { stale: `container '${appContainerName(app.name)}' runs no session supervisor this runner can reach` };
-    }
-    supervisorTokens[app.name] = token;
+  const slots = readSlots(pod);
+  if (!slots) return { stale: "it records no app slots" };
+  const names = Object.keys(slots).sort().join(",");
+  if (names !== spec.apps.map((a) => a.name).sort().join(",")) {
+    return { stale: "its app slots are not the stored app set" };
   }
   const agentContainer = containers.find((c) => c.name === "agent");
   if (Boolean(agentContainer) !== Boolean(spec.agent) || (spec.agent && agentContainer!.image !== spec.agent.image)) {
@@ -755,7 +807,44 @@ function readAdoptable(
     agentToken = envOf(agentContainer!.env)[spec.agent.tokenEnv];
     if (!agentToken) return { stale: `its agent carries no ${spec.agent.tokenEnv}` };
   }
-  return { ip, supervisorTokens, agentToken };
+  return { ip, supervisorToken, slots, agentToken };
+}
+
+function readSlots(pod: V1Pod): Record<string, number> | undefined {
+  const raw = pod.metadata?.annotations?.[APP_SLOTS_ANNOTATION];
+  if (raw === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const entries = Object.entries(parsed);
+    if (entries.some(([, slot]) => !Number.isInteger(slot) || (slot as number) < 0 || (slot as number) >= APP_SLOTS)) {
+      return undefined;
+    }
+    return parsed as Record<string, number>;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Keep every kept app's slot, free the removed apps', and give each new app the
+ *  lowest free one. */
+function assignSlots(current: Record<string, number>, apps: BackendAppSpec[]): Record<string, number> {
+  const next: Record<string, number> = {};
+  const used = new Set<number>();
+  for (const app of apps) {
+    const slot = current[app.name];
+    if (slot !== undefined) {
+      next[app.name] = slot;
+      used.add(slot);
+    }
+  }
+  for (const app of apps) {
+    if (next[app.name] !== undefined) continue;
+    let slot = 0;
+    while (used.has(slot)) slot += 1;
+    next[app.name] = slot;
+    used.add(slot);
+  }
+  return next;
 }
 
 function envOf(env: Array<{ name: string; value?: string }> | undefined): Record<string, string> {
@@ -765,17 +854,6 @@ function envOf(env: Array<{ name: string; value?: string }> | undefined): Record
 function withAgentToken(agent: ResolvedRunnerApp | undefined, token: string | undefined): ResolvedRunnerApp | undefined {
   if (!agent || agent.tokenEnv === undefined || token === undefined) return agent;
   return { ...agent, env: { ...agent.env, [agent.tokenEnv]: token } };
-}
-
-/** Whether two app sets build the same pod: the same apps in the same order
- *  (ports are assigned by position), on the same telo, declaring the same ports. */
-function sameStructure(current: BackendAppSpec[], next: BackendAppSpec[]): boolean {
-  if (current.length !== next.length) return false;
-  return current.every((app, i) => {
-    const other = next[i]!;
-    const ports = (a: BackendAppSpec) => a.ports.map(portKey).sort().join(",");
-    return app.name === other.name && app.telo === other.telo && ports(app) === ports(other);
-  });
 }
 
 function copyApp(app: BackendAppSpec): BackendAppSpec {
@@ -794,6 +872,7 @@ function stopWatchers(rt: PodRuntime): void {
 
 async function closeSupervisors(rt: PodRuntime): Promise<void> {
   await Promise.all([...rt.supervisors.values()].map((s) => s.close()));
+  await rt.fetcher.close();
 }
 
 /** Every pod a session ever creates gets its own name: the pod it replaces may

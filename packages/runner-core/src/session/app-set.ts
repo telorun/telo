@@ -147,6 +147,16 @@ export async function supplyTeloVersions(
   }
 }
 
+/** Refuse an app set larger than the backend's workload has slots for. */
+export function refuseTooManyApps(backend: RunnerBackend, apps: BackendAppSpec[]): void {
+  if (backend.maxApps === undefined || apps.length <= backend.maxApps) return;
+  throw new SessionRefusal(
+    400,
+    "too_many_apps",
+    `a session runs at most ${backend.maxApps} apps on this runner; this one declares ${apps.length}`,
+  );
+}
+
 /** Refuse an app set declaring a port the backend's workload binds itself. */
 export function refuseReservedPorts(backend: RunnerBackend, apps: BackendAppSpec[]): void {
   const reserved = backend.reservedPorts?.(apps) ?? [];
@@ -158,7 +168,7 @@ export function refuseReservedPorts(backend: RunnerBackend, apps: BackendAppSpec
         400,
         "port_conflict",
         `app '${app.name}' declares ${port.protocol} port ${port.port}, which this runner reserves ` +
-          `for ${taken.purpose} of app '${taken.app}'`,
+          `for ${taken.purpose}${taken.app === undefined ? "" : ` of app '${taken.app}'`}`,
       );
     }
   }

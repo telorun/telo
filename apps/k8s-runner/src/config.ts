@@ -102,9 +102,13 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
    *  image as `RUNNER_IMAGE` at build time (the kernel version the runner was
    *  built against); the literal fallback below is for a source checkout only. */
   defaultImage: string;
-  /** Where the kernel image of a telo version an application names is pulled
-   *  from (`RUNNER_TELO_IMAGE_REPOSITORY`, `RUNNER_TELO_IMAGE_VARIANT`). */
+  /** The image pull policy of the session's containers (`RUNNER_PULL_POLICY`). */
   teloImages: TeloImageSource;
+  /** Where the `telo` binary of a version an application names is downloaded
+   *  from: `<url>/v<version>/telo-<version>-<target>.tar.gz` and its
+   *  `checksums.txt` (`RUNNER_TELO_RELEASES_URL`). Point it at a mirror where the
+   *  session pods cannot reach GitHub. */
+  teloReleasesUrl: string;
   /** The runner's own image (`RUNNER_SUPERVISOR_IMAGE`): a session pod's
    *  `supervisor` init container copies the session supervisor out of it. */
   supervisorImage: string;
@@ -348,6 +352,9 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     sessionNamespace,
     defaultImage: env.RUNNER_IMAGE?.trim() || "telorun/node:latest-slim",
     teloImages: loadTeloImageSource(env),
+    teloReleasesUrl: (
+      env.RUNNER_TELO_RELEASES_URL?.trim() || "https://github.com/telorun/telo/releases/download"
+    ).replace(/\/+$/, ""),
     supervisorImage,
     imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,

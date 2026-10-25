@@ -1,5 +1,6 @@
 import type { V1Pod } from "@kubernetes/client-node";
 import {
+  isUnreleasedTelo,
   SESSION_CONTAINER_LABEL,
   type AdoptedWorkload,
   type AvailabilityReport,
@@ -8,12 +9,11 @@ import {
   type WorkloadCallbacks,
   type WorkloadSpec,
 } from "@telorun/runner-core";
-import { teloImageRefusal } from "@telorun/runner-core/container";
 
 import type { K8sRunnerConfig } from "../config.js";
 import { apiReason, withCause } from "./api-error.js";
 import type { KubeClient } from "./client.js";
-import { MANAGED_BY_LABEL, reservedPortsFor, SESSION_ID_LABEL } from "./pod-spec.js";
+import { APP_SLOTS, MANAGED_BY_LABEL, reservedPortsFor, SESSION_ID_LABEL } from "./pod-spec.js";
 import { deletePod, endedContainer, keepPod, msg, podHasFailed, podPhase, removeOrKeepPod } from "./pod-status.js";
 import type { SessionRouter } from "./routing/index.js";
 import { createKubernetesSessionContainerEngine } from "./session-container-engine.js";
@@ -184,11 +184,14 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     await sweepWorkspaceConfigMaps(kube, config, deps.log);
   }
 
-  // Which versions may run is the telo image source's own rule; a cluster's
-  // image pull happens on a node, after the pod exists, so an image it cannot
-  // pull fails the session on its stream.
+  // A telo version is a release binary the apps container downloads, so a build
+  // identity that was never released has nothing to fetch.
   async function supplyTelo(version: string): Promise<string | undefined> {
-    return teloImageRefusal(version, config.teloImages);
+    if (!isUnreleasedTelo(version)) return undefined;
+    return (
+      `${version} is an unreleased build, which has no published binary. ` +
+      `Pin a released telo version for this workspace.`
+    );
   }
 
   return {
@@ -198,6 +201,7 @@ export function createKubernetesBackend(deps: K8sBackendDeps): RunnerBackend {
     destroy,
     supplyTelo,
     reservedPorts: reservedPortsFor,
+    maxApps: APP_SLOTS,
     reapOrphans,
     containers: createKubernetesSessionContainerEngine({ kube, config }),
   };

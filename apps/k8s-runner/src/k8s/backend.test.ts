@@ -61,8 +61,8 @@ function earlierPod(sessionId: string, agent = true): V1Pod {
     config,
     sessionId,
     podName: `telo-session-${sessionId}-old`,
-    apps: APPS,
-    supervisorTokens: { web: "token-web", worker: "token-worker" },
+    appSlots: { web: 0, worker: 1 },
+    supervisorToken: "token-apps",
     agent: agent ? { ...AGENT, env: { ...AGENT.env, AGENT_TOKEN: "agent-token" } } : undefined,
     sessionConfig: {},
     claimName: `telo-session-${sessionId}`,
@@ -121,20 +121,57 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a session's storage", () => {
     expect(cluster.claims.size).toBe(0);
   });
 
-  it("replaces the pod over the same claim when the app set changes, and keeps it when only an entry moved", async () => {
+  it("keeps the pod running while apps are added, removed and re-versioned", async () => {
     const backend = boot();
     const r = recorder();
     const workload = await backend.create(spec("s1"), r.callbacks);
-    const before = cluster.onlyPod().metadata!.name;
+    const pod = cluster.onlyPod();
+    const containers = pod.spec!.containers.map((c) => c.name);
+    expect(containers).toEqual(["workspace", "apps"]);
 
     await workload.setApps([{ ...APPS[0]!, entryRelativePath: "moved.yaml" }, APPS[1]!]);
-    expect(cluster.onlyPod().metadata!.name).toBe(before);
-
     await workload.setApps([APPS[0]!]);
+    await workload.setApps([APPS[0]!, { ...APPS[1]!, name: "extra" }]);
+    await workload.setApps([{ ...APPS[0]!, telo: "0.90.0" }, { ...APPS[1]!, name: "extra" }]);
+
     const after = cluster.onlyPod();
-    expect(after.metadata!.name).not.toBe(before);
-    expect(after.spec!.containers.map((c) => c.name)).toEqual(["workspace", "app-web"]);
+    expect(after.metadata!.name).toBe(pod.metadata!.name);
+    expect(after.metadata!.uid).toBe(pod.metadata!.uid);
+    expect(cluster.deletedPods).toEqual([]);
+    expect(after.spec!.containers.map((c) => c.name)).toEqual(containers);
+    // `worker` freed slot 1, which `extra` took.
+    expect(JSON.parse(after.metadata!.annotations!["telo.run/app-slots"]!)).toEqual({ web: 0, extra: 1 });
     expect(cluster.claims.size).toBe(1);
+  });
+
+  it("runs an app naming a telo version on that release's binary, fetched once through the tooling slot", async () => {
+    const backend = boot();
+    const workload = await backend.create(spec("s1", { apps: [{ ...APPS[0]!, telo: "0.90.0" }] }), recorder().callbacks);
+    const run = { runId: "run-1", argv: ["telo", "run", "telo.yaml"], env: {}, cwd: ".", io: "tty" as const };
+
+    const started = workload.runApp("web", run);
+    const tooling = cluster.toolingSupervisor();
+    await expect.poll(() => tooling.received.some((m) => m.type === "run")).toBe(true);
+    const fetch = tooling.received.find((m) => m.type === "run") as { runId: string; argv: string[] };
+    expect(fetch.argv.slice(0, 2)).toEqual(["node", "-e"]);
+    expect(fetch.argv.slice(3)).toEqual([
+      "0.90.0",
+      "https://github.com/telorun/telo/releases/download",
+      "/var/lib/telo-releases/0.90.0",
+    ]);
+    tooling.end({ code: 0 });
+    await started;
+
+    expect(cluster.supervisorOf("web").received.find((m) => m.type === "run")).toMatchObject({
+      argv: ["/var/lib/telo-releases/0.90.0/telo", "run", "telo.yaml"],
+    });
+  });
+
+  it("refuses an app set larger than the apps container has slots for, and an unreleased telo", async () => {
+    const backend = boot();
+    expect(backend.maxApps).toBe(8);
+    expect(await backend.supplyTelo!("0.90.0+unreleased")).toMatch(/unreleased build/);
+    expect(await backend.supplyTelo!("0.90.0")).toBeUndefined();
   });
 });
 
@@ -172,7 +209,7 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("running an app", () => {
     await expect.poll(() => r.endpoints.at(-1)).toEqual({
       app: "web",
       rejected: [
-        { port: 9331, reason: "this runner reserves tcp port 9331 for the session supervisor of app 'worker'" },
+        { port: 9331, reason: "this runner reserves tcp port 9331 for the session supervisor" },
       ],
     });
   });
@@ -189,13 +226,13 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a container that ends", () => {
       status: {
         ...pod.status,
         containerStatuses: pod.status!.containerStatuses!.map((c) =>
-          c.name === "app-worker" ? { ...c, state: { terminated: { exitCode: 137, reason: "OOMKilled" } } } : c,
+          c.name === "apps" ? { ...c, state: { terminated: { exitCode: 137, reason: "OOMKilled" } } } : c,
         ),
       },
     });
     expect(ended.statuses.at(-1)).toEqual({
       kind: "failed",
-      message: "container 'app-worker' ended (OOMKilled, exit code 137)",
+      message: "container 'apps' ended (OOMKilled, exit code 137)",
     });
 
     await cluster.close();
@@ -204,7 +241,7 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a container that ends", () => {
     cluster.supervisorOf("web").drop({ restart: true });
     await expect.poll(() => restarted.statuses.at(-1)).toMatchObject({
       kind: "failed",
-      message: expect.stringMatching(/^the session supervisor of container 'app-web' can no longer be reached \(restarted\)/),
+      message: expect.stringMatching(/^the session supervisor of 'web' in container 'apps' can no longer be reached \(restarted\)/),
     });
   });
 });
@@ -247,10 +284,10 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
     const backend = boot();
     const pod = await cluster.start(earlierPod("s1"));
     pod.status!.containerStatuses = pod.status!.containerStatuses!.map((c) =>
-      c.name === "app-web" ? { ...c, state: { terminated: { exitCode: 1, reason: "Error" } } } : c,
+      c.name === "apps" ? { ...c, state: { terminated: { exitCode: 1, reason: "Error" } } } : c,
     );
     await expect(backend.adopt!(spec("s1", { agent: AGENT }), recorder().callbacks)).rejects.toThrow(
-      "container 'app-web' ended (Error, exit code 1)",
+      "container 'apps' ended (Error, exit code 1)",
     );
   });
 });

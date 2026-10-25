@@ -18,6 +18,7 @@ import {
 import {
   admitAgent,
   refuseReservedPorts,
+  refuseTooManyApps,
   resolveApps,
   supplyTeloVersions,
 } from "../session/app-set.js";
@@ -180,6 +181,7 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
         const body = req.body;
         const config = body.config ?? {};
         const apps = resolveApps(body.apps, deps.teloVersions);
+        refuseTooManyApps(deps.backend, apps);
         refuseReservedPorts(deps.backend, apps);
         gateConfig(deps, config, apps.some((a) => a.telo !== undefined));
         await supplyTeloVersions(deps.backend, apps, config);
@@ -334,6 +336,7 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
         const entry = await ownedSession(deps, req, reply);
         if (!entry) return;
         const apps = resolveApps(req.body.apps, deps.teloVersions);
+        refuseTooManyApps(deps.backend, apps);
         refuseReservedPorts(deps.backend, apps);
         // The session's config was accepted for the apps it started with; a new
         // set must not change who chooses what runs out from under it.

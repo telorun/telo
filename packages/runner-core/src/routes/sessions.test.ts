@@ -482,6 +482,24 @@ describe("the app set and the agent", () => {
     expect(b.backend.workloadOf(s.id).apps.map((a) => a.ports)).toEqual([APPS[0]!.ports]);
   });
 
+  it("refuses an app set larger than the backend's slots, on create and on replace", async () => {
+    const backend = new FakeWorkloadBackend();
+    Object.assign(backend, { maxApps: 1 });
+    const b = await boot({ backend });
+    const refused = await b.server.app.inject({
+      method: "POST",
+      url: "/v1/sessions",
+      payload: { workspace: "ws-1", apps: [...APPS, { name: "worker", entryRelativePath: "w.yaml" }] },
+    });
+    expect([refused.statusCode, refused.json().error]).toEqual([400, "too_many_apps"]);
+
+    const s = await create(b);
+    const replaced = await call(b, s, "PUT", "/apps", {
+      apps: [APPS[0]!, { name: "worker", entryRelativePath: "w.yaml" }],
+    });
+    expect([replaced.statusCode, replaced.json().error]).toEqual([400, "too_many_apps"]);
+  });
+
   it("recreates the workload with the agent and a token minted for it, and removes it on null", async () => {
     const b = await boot({ apps: CATALOG });
     const s = await create(b);

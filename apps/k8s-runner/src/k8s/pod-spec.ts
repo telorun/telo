@@ -1,12 +1,7 @@
 import type { V1Container, V1Pod, V1Volume, V1VolumeMount } from "@kubernetes/client-node";
 
-import type {
-  BackendAppSpec,
-  PullPolicy,
-  ReservedPort,
-  ResolvedRunnerApp,
-} from "@telorun/runner-core";
-import { optionalContainerConfig, teloImage } from "@telorun/runner-core/container";
+import type { PullPolicy, ReservedPort, ResolvedRunnerApp } from "@telorun/runner-core";
+import { optionalContainerConfig } from "@telorun/runner-core/container";
 import type { SessionConfig } from "@telorun/runner-core";
 
 import type { K8sRunnerConfig } from "../config.js";
@@ -50,31 +45,55 @@ const TMP_MOUNT = "/tmp";
 /** Port the workspace container serves its HTTP surface on, inside the pod. */
 export const WORKSPACE_PORT = 8099;
 
-/** The app containers of one pod share its network namespace, so each app's
- *  inspect endpoint and supervisor take a port of their own, by position. */
+/** The most apps one session runs. They all live in the pod's one `apps`
+ *  container, which holds this many supervisor slots (and one more for the
+ *  runner's own tooling), so the pod never changes shape with the app set. */
+export const APP_SLOTS = 8;
+/** The slot after the app slots: the runner's own tasks (fetching a telo
+ *  release), never an application's. */
+export const TOOLING_SLOT = APP_SLOTS;
+
+/** The pod is one network namespace, so every slot's supervisor and every app
+ *  slot's inspect endpoint take a port of their own, by slot. */
 const INSPECT_PORT_BASE = 9230;
 const SUPERVISOR_PORT_BASE = 9330;
 
-export function inspectPortFor(index: number): number {
-  return INSPECT_PORT_BASE + index;
+export function inspectPortFor(slot: number): number {
+  return INSPECT_PORT_BASE + slot;
 }
 
-export function supervisorPortFor(index: number): number {
-  return SUPERVISOR_PORT_BASE + index;
+export function supervisorPortFor(slot: number): number {
+  return SUPERVISOR_PORT_BASE + slot;
 }
 
-/** The ports the pod binds for each app's machinery; no app may declare one,
- *  since every container of the pod shares one network namespace. */
-export function reservedPortsFor(apps: BackendAppSpec[]): ReservedPort[] {
-  return apps.flatMap((app, index) => [
-    { app: app.name, port: supervisorPortFor(index), protocol: "tcp" as const, purpose: "the session supervisor" },
-    { app: app.name, port: inspectPortFor(index), protocol: "tcp" as const, purpose: "the kernel debug stream" },
-  ]);
+/** The ports the pod binds for its machinery, whatever the app set; no app may
+ *  declare one, since every container of the pod shares one network namespace. */
+export function reservedPortsFor(): ReservedPort[] {
+  const slots = Array.from({ length: APP_SLOTS + 1 }, (_, slot) => slot);
+  return [
+    ...slots.map((slot) => ({
+      port: supervisorPortFor(slot),
+      protocol: "tcp" as const,
+      purpose: "the session supervisor",
+    })),
+    ...slots.slice(0, APP_SLOTS).map((slot) => ({
+      port: inspectPortFor(slot),
+      protocol: "tcp" as const,
+      purpose: "the kernel debug stream",
+    })),
+  ];
 }
 
-export function appContainerName(app: string): string {
-  return `app-${app}`;
-}
+/** The one container every application runs in. */
+export const APPS_CONTAINER = "apps";
+
+/** The pod annotation recording which slot each app holds, so an adopting runner
+ *  knows where a live run is. */
+export const APP_SLOTS_ANNOTATION = "telo.run/app-slots";
+
+/** Where the session volume's `telo/` — the telo releases an app version asked
+ *  for — is mounted in the apps container. */
+export const RELEASES_DIR = "/var/lib/telo-releases";
 
 export const SUPERVISOR_LISTEN_ENV = "TELO_SUPERVISOR_LISTEN";
 export const SUPERVISOR_TOKEN_ENV = "TELO_SUPERVISOR_TOKEN";
@@ -83,15 +102,15 @@ export interface BuildSessionPodArgs {
   config: K8sRunnerConfig;
   sessionId: string;
   podName: string;
-  apps: BackendAppSpec[];
-  /** The supervisor token of each app's container, by app name. The pod spec is
-   *  where an adopting runner reads it back. */
-  supervisorTokens: Record<string, string>;
+  /** The slot each app holds in the apps container. */
+  appSlots: Record<string, number>;
+  /** The token every slot's supervisor accepts. The pod spec is where an
+   *  adopting runner reads it back. */
+  supervisorToken: string;
   /** The resolved catalog entry of the co-resident agent, its `tokenEnv`
    *  already carrying this creation's token. Its env is the operator's. */
   agent?: ResolvedRunnerApp;
-  /** The session's opaque config: `image` / `pullPolicy` for apps naming no
-   *  telo version. */
+  /** The session's opaque config: the apps container's `image` / `pullPolicy`. */
   sessionConfig: SessionConfig;
   /** The session volume's claim. */
   claimName: string;
@@ -105,8 +124,8 @@ export interface BuildSessionPodArgs {
 
 /**
  * The session pod: a `workspace` container serving the editor's file routes,
- * one idle `app-<name>` container per application running the session
- * supervisor, and an optional co-resident `agent`, all over the session's own
+ * one `apps` container running the session supervisor in a slot per
+ * application, and an optional co-resident `agent`, all over the session's own
  * volume. Nothing runs an application until the runner sends a Run.
  *
  * Load-bearing properties:
@@ -120,14 +139,11 @@ export interface BuildSessionPodArgs {
  *  - **A shared GID.** Every container writes `/workspace`, so the pod needs an
  *    `fsGroup` they all share.
  *  - **The volume is not owned by the pod**, so deleting the pod (suspend, an
- *    app-set change) keeps the files, the module cache and the agent's state.
+ *    agent change) keeps the files, the module cache and the agent's state.
  */
 export function buildSessionPod(args: BuildSessionPodArgs): V1Pod {
   const { config } = args;
-  const containers: V1Container[] = [
-    workspaceContainer(args),
-    ...args.apps.map((app, index) => appContainer(args, app, index)),
-  ];
+  const containers: V1Container[] = [workspaceContainer(args), appsContainer(args)];
   if (args.agent) containers.push(agentContainer(args, args.agent));
 
   return {
@@ -140,6 +156,7 @@ export function buildSessionPod(args: BuildSessionPodArgs): V1Pod {
         [MANAGED_BY_LABEL]: config.managedByLabel,
         [SESSION_ID_LABEL]: args.sessionId,
       },
+      annotations: { [APP_SLOTS_ANNOTATION]: JSON.stringify(args.appSlots) },
     },
     spec: {
       restartPolicy: "Never",
@@ -216,7 +233,7 @@ function supervisorInitContainer(args: BuildSessionPodArgs): V1Container {
     command: [
       "sh",
       "-c",
-      `mkdir -p ${SESSION_VOLUME_ROOT}/workspace ${SESSION_VOLUME_ROOT}/agent && ` +
+      `mkdir -p ${SESSION_VOLUME_ROOT}/workspace ${SESSION_VOLUME_ROOT}/agent ${SESSION_VOLUME_ROOT}/telo && ` +
         `cp ${SUPERVISOR_PATH} ${SUPERVISOR_OUT_DIR}/supervisor`,
     ],
     resources: resourcesOf(args.limits.app),
@@ -259,35 +276,33 @@ function workspaceContainer(args: BuildSessionPodArgs): V1Container {
   };
 }
 
-/** An idle slot: the supervisor waits for a Run. No TTY and no stdin — a run
- *  gets its own pty or pipes from the supervisor — and its stdout/stderr carry
- *  the supervisor's own log only. */
-function appContainer(args: BuildSessionPodArgs, app: BackendAppSpec, index: number): V1Container {
-  const token = args.supervisorTokens[app.name];
-  if (!token) throw new Error(`no supervisor token was minted for app '${app.name}'`);
-  const image = appImage(args.config, args.sessionConfig, app);
+/** The one container of every application: `APP_SLOTS` idle supervisors plus the
+ *  tooling slot. No TTY and no stdin — a run gets its own pty or pipes from its
+ *  slot's supervisor — and its stdout/stderr carry the supervisors' own log
+ *  only. Adding, removing or re-versioning an app changes nothing here, which is
+ *  what keeps the pod (and the workspace and agent in it) running. */
+function appsContainer(args: BuildSessionPodArgs): V1Container {
+  const image = appsImage(args.config, args.sessionConfig);
   return {
-    name: appContainerName(app.name),
+    name: APPS_CONTAINER,
     image: image.image,
     imagePullPolicy: pullPolicyToK8s(image.pullPolicy),
     workingDir: WORK_DIR,
-    command: [SUPERVISOR_PATH],
+    command: [SUPERVISOR_PATH, "--slots", String(APP_SLOTS + 1)],
     env: [
-      { name: SUPERVISOR_LISTEN_ENV, value: `0.0.0.0:${supervisorPortFor(index)}` },
-      { name: SUPERVISOR_TOKEN_ENV, value: token },
+      { name: SUPERVISOR_LISTEN_ENV, value: `0.0.0.0:${supervisorPortFor(0)}` },
+      { name: SUPERVISOR_TOKEN_ENV, value: args.supervisorToken },
       ...Object.entries(args.hostEnv).map(([name, value]) => ({ name, value })),
       { name: "HOME", value: HOME_DIR },
       { name: "npm_config_cache", value: `${HOME_DIR}/.npm` },
     ],
-    ports: [
-      ...app.ports.map((p) => ({ containerPort: p.port, protocol: p.protocol.toUpperCase() })),
-      { containerPort: supervisorPortFor(index), protocol: "TCP" },
-    ],
+    ports: [{ containerPort: supervisorPortFor(0), protocol: "TCP" }],
     resources: resourcesOf(args.limits.app),
     volumeMounts: [
       workspaceMount,
+      { name: "session", mountPath: RELEASES_DIR, subPath: "telo" },
       { name: "supervisor", mountPath: SUPERVISOR_DIR, readOnly: true },
-      ...scratchMounts(app.name),
+      ...scratchMounts("apps"),
     ],
     securityContext: hardenedContainerSecurity(),
   };
@@ -324,16 +339,13 @@ function agentContainer(args: BuildSessionPodArgs, agent: ResolvedRunnerApp): V1
   };
 }
 
-/** A version's image under the operator's policy; otherwise the session's
- *  picked image (with the policy it sent) or the runner's default. */
-function appImage(
+/** The session's picked image (with the policy it sent) or the runner's default.
+ *  An app naming a telo version does not change it: that telo is fetched into
+ *  the container, never the image. */
+function appsImage(
   config: K8sRunnerConfig,
   sessionConfig: SessionConfig,
-  app: BackendAppSpec,
 ): { image: string; pullPolicy: PullPolicy } {
-  if (app.telo !== undefined) {
-    return { image: teloImage(app.telo, config.teloImages), pullPolicy: config.teloImages.pullPolicy };
-  }
   const picked = optionalContainerConfig(sessionConfig);
   return { image: picked.image ?? config.defaultImage, pullPolicy: picked.pullPolicy };
 }
