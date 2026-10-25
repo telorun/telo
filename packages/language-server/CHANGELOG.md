@@ -1,5 +1,11 @@
 # @telorun/language-server
 
+## 0.123.1
+
+### Patch Changes
+
+- 7b1f7d5: `DUPLICATE_IMPORT_ALIAS` no longer fires across two different instances of the same-named module reached through different sources in one graph (a local checkout alongside its own published artifact) — a diamond the kernel already tolerates as two module scopes. The check now keys on the declaring instance, not just the declaring module's name, so only an alias actually repeated within one file still errors.
+
 ## 0.123.0
 
 ### Minor Changes
