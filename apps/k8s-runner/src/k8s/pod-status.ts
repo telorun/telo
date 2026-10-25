@@ -2,6 +2,10 @@ import type { V1ContainerState, V1ContainerStatus, V1Pod } from "@kubernetes/cli
 
 import { statusCode } from "./api-error.js";
 import type { KubeClient } from "./client.js";
+import { MANAGED_BY_LABEL, SESSION_ID_LABEL } from "./pod-spec.js";
+
+/** Marks a failed pod the operator asked to keep (`RUNNER_KEEP_FAILED_PODS`). */
+export const KEPT_SESSION_LABEL = "telo.run/kept-session";
 
 /**
  * Reading a Pod's status: pure functions over a pod read or a watch payload,
@@ -171,4 +175,48 @@ export async function deletePodAndWait(kube: KubeClient, ns: string, name: strin
     }
     await new Promise((resolve) => setTimeout(resolve, POD_GONE_POLL_MS).unref?.());
   }
+}
+
+/** A pod that ended or failed, by the same reading every start and watch path uses. */
+export function podHasFailed(obj: unknown): boolean {
+  return podPhase(obj) === "Failed" || endedContainer(obj) !== undefined;
+}
+
+/**
+ * Keep a failed pod for inspection: take it out from under the labels every
+ * lookup, replacement and orphan sweep key on, so none of them removes it, and
+ * leave it to the operator to delete.
+ */
+export async function keepPod(kube: KubeClient, ns: string, name: string): Promise<void> {
+  let pod: V1Pod;
+  try {
+    pod = await kube.core.readNamespacedPod({ name, namespace: ns });
+  } catch (err) {
+    if (is404(err)) return;
+    throw err;
+  }
+  const labels = { ...(pod.metadata?.labels ?? {}) };
+  const session = labels[SESSION_ID_LABEL];
+  if (session === undefined) return;
+  delete labels[SESSION_ID_LABEL];
+  delete labels[MANAGED_BY_LABEL];
+  labels[KEPT_SESSION_LABEL] = session;
+  await kube.core.replaceNamespacedPod({
+    name,
+    namespace: ns,
+    body: { ...pod, metadata: { ...pod.metadata, labels } },
+  });
+}
+
+/** Delete a pod, or keep it when the operator asked to keep failed ones and it failed. */
+export async function removeOrKeepPod(
+  kube: KubeClient,
+  ns: string,
+  pod: V1Pod,
+  keepFailed: boolean,
+): Promise<void> {
+  const name = pod.metadata?.name;
+  if (!name) return;
+  if (keepFailed && podHasFailed(pod)) await keepPod(kube, ns, name);
+  else await deletePodAndWait(kube, ns, name);
 }
