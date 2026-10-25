@@ -182,6 +182,10 @@ spec:
             - name: RUNNER_RUNTIME_CLASS
               value: {{ .Values.session.runtimeClass | quote }}
             {{- end }}
+            {{- if .Values.session.keepFailedPods }}
+            - name: RUNNER_KEEP_FAILED_PODS
+              value: "true"
+            {{- end }}
             - name: SESSION_ROUTING_MODE
               value: {{ .Values.sessionRouting.mode | quote }}
             {{- if .Values.sessionRouting.baseDomain }}

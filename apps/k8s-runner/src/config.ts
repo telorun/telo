@@ -112,6 +112,9 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
    *  session images with — the kernel image, and any operator catalog image
    *  (`RUNNER_APPS`) held in a private registry. */
   imagePullSecret?: string;
+  /** Leave a session pod that failed to start in place for inspection
+   *  (`RUNNER_KEEP_FAILED_PODS`). */
+  keepFailedPods: boolean;
   /** Optional sandbox RuntimeClass (gvisor/kata). Unset → cluster default (runc). */
   runtimeClass?: string;
   /** How per-session routes are published. */
@@ -348,6 +351,7 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     supervisorImage,
     imagePullSecret: env.RUNNER_IMAGE_PULL_SECRET?.trim() || undefined,
     runtimeClass: env.RUNNER_RUNTIME_CLASS?.trim() || undefined,
+    keepFailedPods: parseBool(env.RUNNER_KEEP_FAILED_PODS, false, "RUNNER_KEEP_FAILED_PODS"),
     sessionRouting: loadSessionRoutingConfig(env, sessionNamespace),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
     // Sized for a container that resolves its own module closure into the

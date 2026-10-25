@@ -308,6 +308,7 @@ function agentContainer(args: BuildSessionPodArgs, agent: ResolvedRunnerApp): V1
       ...Object.entries(agent.env).map(([name, value]) => ({ name, value })),
       { name: "WORKSPACE_DIR", value: WORKSPACE_DIR },
       { name: "TELO_HOST_STATE_DIR", value: AGENT_STATE_DIR },
+      { name: "TELO_CACHE_DIR", value: `${TMP_MOUNT}/telo-cache` },
       { name: "CLICOLOR_FORCE", value: "1" },
     ],
     ...(agent.port !== undefined ? { ports: [{ containerPort: agent.port, protocol: "TCP" }] } : {}),
