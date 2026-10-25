@@ -265,6 +265,7 @@ declaring a port the pod reserves.
 | `RUNNER_TELO_UNRELEASED_IMAGE` | _(unset → refused)_ | The kernel image an unreleased build identity (`X+unreleased`) runs on (chart: `session.teloImages.unreleased`) |
 | `RUNNER_PULL_POLICY` | `missing` | The `imagePullPolicy` of a session whose applications name a telo version: `missing`, `always` or `never` (a cluster that preloads its images) (chart: `session.teloImages.pullPolicy`) |
 | `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls session images with — needed only for a kernel or catalog image in a private registry |
+| `RUNNER_KEEP_FAILED_PODS` | `false` | Keep a session pod that failed to start (named in the error) for `kubectl describe` / `logs`; delete it by hand |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
 | `SESSION_ROUTING_MODE` | `auto` | `auto` \| `ingress` \| `gateway` \| `none`. See [Routing layer](#routing-layer) |
 | `SESSION_ROUTING_BASE_DOMAIN` | _(unset → logs-only)_ | Wildcard base for per-session hosts |

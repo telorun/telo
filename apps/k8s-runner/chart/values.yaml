@@ -195,6 +195,10 @@ session:
   imagePullSecret: ""
   # Optional sandbox RuntimeClass (gvisor/kata). Empty → cluster default (runc).
   runtimeClass: ""
+  # Leave a session pod that failed to start in place (named in the start
+  # error) so it can be inspected with `kubectl describe` / `logs`. Delete it
+  # by hand afterwards.
+  keepFailedPods: false
   # Containers a session's workload starts itself — a test bringing up the
   # database it runs against, through `Container.Instance` over `Docker.Engine`.
   # When enabled, every session gets a container engine of its own:

@@ -304,14 +304,21 @@ export class KubernetesSessionWorkload implements BackendWorkload {
       this.callbacks.onProgress("boot", "Starting application containers");
       await this.connectSupervisors(rt, tokens, SUPERVISOR_CONNECT_TIMEOUT_MS);
     } catch (err) {
-      // Nothing of a pod that never came up is left behind; the storage stays.
+      // Nothing of a pod that never came up is left behind (unless the operator
+      // asked to keep it for inspection); the storage stays.
       if (rt) await closeSupervisors(rt);
-      await deletePodAndWait(kube, ns, name).catch((cleanup) => {
-        throw withCause(new Error(`${msg(err)}; and removing the pod failed: ${msg(cleanup)}`), cleanup);
-      });
+      if (!config.keepFailedPods) {
+        await deletePodAndWait(kube, ns, name).catch((cleanup) => {
+          throw withCause(new Error(`${msg(err)}; and removing the pod failed: ${msg(cleanup)}`), cleanup);
+        });
+      }
       if (err instanceof SessionStartError) throw err;
       throw withCause(
-        new SessionStartError("start_failed", "start", `the session pod did not come up: ${msg(err)}`),
+        new SessionStartError(
+          "start_failed",
+          "start",
+          `the session pod did not come up: ${msg(err)}` + (config.keepFailedPods ? ` (pod '${name}' kept)` : ""),
+        ),
         (err as { cause?: unknown })?.cause ?? err,
       );
     }
