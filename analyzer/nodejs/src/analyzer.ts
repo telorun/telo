@@ -1285,8 +1285,18 @@ export class StaticAnalyzer {
           | null
           | undefined;
         const ownModule = (m.metadata as { module?: string } | undefined)?.module;
+        // A module NAME is not a module INSTANCE: the same library may be
+        // reached twice in one graph through two different sources (a local
+        // checkout alongside its own published artifact — the diamond the
+        // "resolves to two modules in this graph" warning already tolerates
+        // as two scopes). Each instance's own `imports:` is declared in its
+        // own file, so folding the declaring file's stamped `source` into the
+        // scope key keeps the two instances' aliases apart, while every
+        // import actually declared in ONE file — inline map entries and
+        // authored `Telo.Import` docs alike — still shares one scope.
+        const ownSource = (m.metadata as { source?: string } | undefined)?.source;
         if (alias) {
-          const scopeKey = ownModule ?? "";
+          const scopeKey = ownModule ? `${ownModule}\0${ownSource ?? ""}` : "";
           let seen = seenAliasByScope.get(scopeKey);
           if (!seen) {
             seen = new Set<string>();

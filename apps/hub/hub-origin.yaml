@@ -29,7 +29,7 @@ requires:
 imports:
   Shell: oci://ghcr.io/telorun/shell@0.13.1#sha256-EuLg0IyhQahI2u11cyY5gqPLbLxecA6zwofr2nRT8Ow
   Yaml: oci://ghcr.io/telorun/yaml@0.11.0#sha256-KSC6vlR1yOvXgCUZzj6g4p0r_T-6SfMqQPLR_HQnktk
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
 resources:
   shellHost:
     kind: Shell.LocalHost

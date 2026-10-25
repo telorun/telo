@@ -36,8 +36,8 @@ variables:
 # unreleased, and `run` with it; `telo upgrade --pin-local` pins them again
 # once they ship.
 imports:
-  Http: ../../../modules/http-server
-  Run: ../../../modules/run
+  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
 exports:
   resources:
     - api

@@ -290,7 +290,7 @@ steps:
               # itself: bodyless writes fail their own schema, unknown turns and
               # conversations 404.
               served:
-                - { route: POST /chat, status: 400, code: null, challenge: null }
+                - { route: POST /chat, status: 400, code: ERR_INPUT_INVALID, challenge: null }
                 - { route: GET /chat/t/events, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
                 - { route: POST /chat/t/abort, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
                 - { route: POST /chat/t/continue, status: 404, code: ERR_TURN_NOT_FOUND, challenge: null }
@@ -300,15 +300,15 @@ steps:
                 - { route: POST /conversations, status: 201, code: null, challenge: null }
                 - { route: GET /conversations, status: 200, code: null, challenge: null }
                 - { route: GET /conversations/c, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
-                - { route: PATCH /conversations/c, status: 400, code: null, challenge: null }
+                - { route: PATCH /conversations/c, status: 400, code: ERR_INPUT_INVALID, challenge: null }
                 - { route: DELETE /conversations/c, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
-                - { route: DELETE /conversations/c/turns, status: 400, code: null, challenge: null }
-                - { route: POST /conversations/c/branch, status: 400, code: null, challenge: null }
+                - { route: DELETE /conversations/c/turns, status: 400, code: ERR_INPUT_INVALID, challenge: null }
+                - { route: POST /conversations/c/branch, status: 400, code: ERR_INPUT_INVALID, challenge: null }
                 # Not multipart: the server refuses a body the route cannot stream before the route runs.
-                - { route: POST /conversations/c/attachments, status: 500, code: null, challenge: null }
+                - { route: POST /conversations/c/attachments, status: 500, code: ERR_REQUEST_BODY_NOT_STREAMED, challenge: null }
                 - { route: GET /conversations/c/attachments/a, status: 404, code: ERR_CONVERSATION_NOT_FOUND, challenge: null }
                 - { route: GET /workspace, status: 200, code: null, challenge: null }
-                - { route: POST /workspace, status: 400, code: null, challenge: null }
+                - { route: POST /workspace, status: 400, code: ERR_INPUT_INVALID, challenge: null }
                 - { route: "GET /workspace/file?path=notes.txt", status: 200, code: null, challenge: null }
                 - { route: GET /capabilities, status: 200, code: null, challenge: null }
               wrongToken: [ 401, ERR_UNAUTHENTICATED ]
