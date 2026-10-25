@@ -25,7 +25,10 @@ RUN telo install ./telo-authoring-agent
 FROM telorun/node:${TELO_NODE_VERSION}-slim as production
 
 WORKDIR /srv
-COPY --from=build /build /srv
+# Owned by `node` (uid 1000, the user a runner runs the image as): the kernel
+# writes into the baked .telo cache at start (controller shims, parse and CEL
+# caches), and a root-owned copy fails every kind with EACCES.
+COPY --from=build --chown=node:node /build /srv
 
 # WORKSPACE_DIR (default ./workspace) resolves against the process cwd, so run
 # from the app dir where the manifest lives.
