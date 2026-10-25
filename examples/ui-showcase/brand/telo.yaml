@@ -13,7 +13,7 @@ imports:
   Ui: ../../../modules/ui
   UiReact: ../../../modules/ui-react
   Radix: ../../../modules/ui-react-radix
-  Font: ../../../modules/font
+  Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
 exports:
   resources: [ theme ]
 ---

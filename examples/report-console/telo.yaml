@@ -22,7 +22,7 @@ lang: en
 imports:
   Http: ../../modules/http-server
   Run: ../../modules/run
-  I18n: ../../modules/i18n
+  I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
   Ui: ../../modules/ui
   UiReact: ../../modules/ui-react
 # The backend the screen calls — stub routes answering fixture data — and the
