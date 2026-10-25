@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.19.0 - 2026-10-25
+### Added
+* The library design guide says how a kind declaring a catch list marks its caught code and data with `x-telo-caught-member`.
+* The refusals of an unknown telo version, category or entry type carry their words as a display message, with the values they name in `data`.
+### Fixed
+* get_kinds reads an empty version as the latest, as it already did an omitted one, so a model that fills every tool argument with an empty string gets the definitions instead of being told the ref is not tracked; a ref the hub tracks, asked for at a version it does not hold, is now answered with its latest version and the versions it does hold rather than as an untracked ref.
+
 ## 0.18.1 - 2026-10-23
 ### Fixed
 * The reconcile pass reads every version's digest with one `telo module versions --digests` process per module instead of one `telo module digest` process per version, which cut a pass's CPU roughly by the module's version count. It now runs hourly by default (`TRACK_CRON` still overrides it), and the chart requests 1500m CPU.

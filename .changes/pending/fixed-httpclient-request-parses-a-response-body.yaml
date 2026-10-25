@@ -1,5 +1,0 @@
-modules:
-  modules/http-client: Fixed
-body: HttpClient.Request parses a response body as JSON when its media type is
-  application/json or carries the +json structured-syntax suffix (RFC 6839), so an
-  application/problem+json error body arrives parsed instead of as text.

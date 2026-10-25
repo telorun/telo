@@ -1,7 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The refusals a client is shown — an origin not allowed, a turn or conversation
-  that is missing, removed, archived or not continuable, an attachment refused, a telo
-  subcommand not available, a file that is not text — carry their words as a display
-  message, with the values they name in `data`; a re-raised failure keeps its code,
-  messages and data unchanged.

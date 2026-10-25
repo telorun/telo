@@ -1,5 +1,0 @@
-modules:
-  modules/mcp-server: Added
-body: The `catches:` contexts of `Mcp.Tools`, `Mcp.Resources` and `Mcp.Prompts` mark
-  `error.code` and `error.data` with `x-telo-caught-member`, so inside an entry
-  `error.data` is typed from the `data` of the codes the entry matches.

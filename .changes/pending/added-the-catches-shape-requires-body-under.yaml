@@ -1,6 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: "The Catches shape requires body: under every content key but
-  application/problem+json, so telo check refuses a catch entry with no body: under
-  text/plain, application/json or any other key, whose default problem would otherwise
-  be sent as application/problem+json under a key that names another media type."

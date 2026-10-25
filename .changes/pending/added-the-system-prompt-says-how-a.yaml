@@ -1,5 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The system prompt says how a catch entry types `error.data` and `problem.data`
-  from the codes it matches, and how a kind of its own marks a catch list's caught
-  members with `x-telo-caught-member`.

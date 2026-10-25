@@ -1,9 +1,0 @@
-modules:
-  modules/ui-react: Added
-body: "The renderer reads failures as RFC 9457 problems: a failure tree shows the
-  response's own code and its detail (an unclaimed coded server error no longer shows as
-  ERR_UI_REQUEST_FAILED), falling back to its own words for 401, 403 and the status; a
-  400's data.issues land on the field their pointer names after /body, worded by
-  Ui.Words as the browser's own validation, the rest under the form. Breaking: the old
-  details[] list and a body's message are no longer read, and the application's own 404s
-  answer the bare problem { type, title, status } as application/problem+json."

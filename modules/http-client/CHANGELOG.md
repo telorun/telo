@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.23.1 - 2026-10-25
+### Fixed
+* HttpClient.Request parses a response body as JSON when its media type is application/json or carries the +json structured-syntax suffix (RFC 6839), so an application/problem+json error body arrives parsed instead of as text.
+
 ## 0.23.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.0 - 2026-10-25
+### Added
+* A list query the reader refuses is answered as a 400 problem (application/problem+json) with code ERR_CRUD_QUERY_INVALID, the declared detail The list request is not valid., and data.issues, one { pointer, keyword, params } per refused parameter with its pointer under /query. Breaking: the hand-written ValidationError envelope and its details[] are gone, and the reader's error data carries issues instead of details.
+
 ## 0.29.0 - 2026-10-23
 ### Added
 * Crud.Ui's generated filter bar now carries its kept fields in its state, following ui's shared state record; nothing it generates changes otherwise.

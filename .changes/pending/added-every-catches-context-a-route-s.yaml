@@ -1,5 +1,0 @@
-modules:
-  modules/http-server: Added
-body: Every catches context — a route's, a router's, the server's, a guard's and
-  notFoundHandler's — declares error.displayMessage, the caught failure's display
-  message as its record (null when it has none), beside error.message.

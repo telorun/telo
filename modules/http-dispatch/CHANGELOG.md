@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.17.0 - 2026-10-25
+### Added
+* dispatchCatches binds error.displayMessage in every catch entry's CEL: the caught failure's display message record, or null when it has none.
+* errorEnvelope is removed; problemDetails(status, failure?) renders an RFC 9457 problem from a status and a coded failure ({ code, data?, displayMessage? }) — type about:blank, title the registered reason phrase (httpReasonPhrase), status, detail the display message formatted with data, code and data — with PROBLEM_MEDIA_TYPE (application/problem+json) beside it. dispatchCatches takes the failure's displayMessage, binds problem, the default problem each entry renders under its own status, in every entry's CEL including when:, renders an entry with no body as that problem under application/problem+json, and renders an entry whose content keys Accept refuses under its first key rather than a 406. dispatchReturns answers a refused Accept with a 406 problem whose code is ERR_NOT_ACCEPTABLE (was NOT_ACCEPTABLE, exported) and data.available.
+* The Catches shape requires body: under every content key but application/problem+json, so telo check refuses a catch entry with no body: under text/plain, application/json or any other key, whose default problem would otherwise be sent as application/problem+json under a key that names another media type.
+* The problem binding in a catch entry's CEL holds title, detail and data as null where the problem has none; the rendered problem still omits them.
+
 ## 0.16.0 - 2026-10-17
 ### Added
 * HttpDispatch.Request publishes $defs/Hostname, one entry of a host matcher: a reference to a Telo.PublicUrl or Telo.PublicHostPattern need. The library exports the hostname matching every HTTP transport applies: normalizeRequestHost, isIpLiteral, hostnameMatcher, hostnameMatcherOfOrigin, hostnameClaim (an exact host, then the longest pattern suffix), sameHostnameMatcher and describeHostnameMatcher.

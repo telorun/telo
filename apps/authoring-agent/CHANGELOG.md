@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.29.0 - 2026-10-25
+### Added
+* The agent's state is a durable directory it asks its host for: the need agentState (Telo.DurableDirectory, access single-writer), named by AGENT_STATE_DIR or answered under TELO_HOST_STATE_DIR as <state dir>/needs/agentState, and listed by telo needs report. The image sets TELO_HOST_STATE_DIR=/var/lib/telo-agent. Breaking: the state no longer defaults to <WORKSPACE_DIR>/.telo-agent — with neither variable set the agent refuses to start (ERR_NEED_UNMET), so a deployment that relied on the old default sets AGENT_STATE_DIR to that directory to keep its conversations; the chat library's stateDir variable is replaced by its agentState need; the readiness probe writes .telo/agent-ready-probe, so the agent never creates a .telo-agent directory in the workspace.
+* The refusals a client is shown — an origin not allowed, a turn or conversation that is missing, removed, archived or not continuable, an attachment refused, a telo subcommand not available, a file that is not text — carry their words as a display message, with the values they name in `data`; a re-raised failure keeps its code, messages and data unchanged.
+* The system prompt says how a catch entry types `error.data` and `problem.data` from the codes it matches, and how a kind of its own marks a catch list's caught members with `x-telo-caught-member`.
+### Fixed
+* The agent no longer counts a new application as finished without its apps/<slug>/telo.yaml: a feature library and its tests are not the application, and with no server the application's targets run what the request asked for.
+* The agent reads a hub tool's error and acts on it before falling back to the CLI, and takes an import pin from the integrity field of telo module manifest -o json rather than from telo module digest, whose registry digest is never a pin.
+
 ## 0.28.1 - 2026-10-23
 ### Fixed
 * A conversation whose history holds a hub tool's result no longer fails its next turn with the provider's 400 "Invalid 'input[N].call_id': empty string": history is replayed as stored, and an uploaded file is a content reference (attachment:<id>) the agent's resolver reads for the model from the conversation's own uploads. Conversations stored before this are re-projected from the journal when the agent starts.
