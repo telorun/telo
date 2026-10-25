@@ -33,8 +33,8 @@ requires:
 # unreleased, and the modules beside it with it; `telo upgrade --pin-local`
 # pins them again once they ship.
 imports:
-  Http: ../../../modules/http-server
-  Run: ../../../modules/run
+  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY

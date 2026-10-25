@@ -30,9 +30,9 @@ requires:
 imports:
   AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.4.1#sha256-BiqUgkj9t--rBdDWr61r_QRPIqKzEZUQteoo3OjCL2o
   # The same versions the blueprint itself imports.
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
-  OpenAI: oci://ghcr.io/telorun/openai@0.15.0#sha256-RG60ZY-3o_xsDIbjW_wg7mjEBe4DNmXN8OcOlpRa3ro
-  Http: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  OpenAI: oci://ghcr.io/telorun/openai@0.16.0#sha256-2mb6YTv2MYk32UZ66Pmgp3Pyi65MI7LBmPZrBHFWm1A
+  Http: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
 targets:

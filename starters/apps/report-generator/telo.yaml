@@ -34,9 +34,9 @@ lang: en
 # `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Ui: oci://ghcr.io/telorun/ui@0.6.0#sha256-mqcJiijmgqdJn8ppG9AWh8TUxSz6ULdlo22E0EqfZko
-  UiReact: oci://ghcr.io/telorun/ui-react@0.7.0#sha256-wqdkNEb_EalmO-nDvoYGbnu-mxzjpReuTHVIynIWbZw
+  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Ui: oci://ghcr.io/telorun/ui@0.7.0#sha256-yeGyqO8UxW9RXkEBhkLAMehbBRxerk2ipWcw6oQkdgg
+  UiReact: oci://ghcr.io/telorun/ui-react@0.8.0#sha256-ZFk7FD_LyHwfi-_eCkn0mhOi75eF6vfDfcsXGoG1448
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
   Collection: oci://ghcr.io/telorun/collection@0.9.0#sha256-Fpb3ikCM8ANNwrM6069WEB-QjA3UofvUqMvYrgBW9sw
@@ -45,7 +45,7 @@ imports:
   BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.0#sha256-64KNO1vwB6VsYNBi9QOdsoevPOzVVCt022ONSbqX90g
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate

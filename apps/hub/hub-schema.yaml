@@ -24,7 +24,7 @@ requires:
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   Postgres: oci://ghcr.io/telorun/postgres@0.9.2#sha256-Qy-tUrCBV_ar51vfQHDBPP8oytowO4lyWwAfeyb92Pc
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
 resources:
   connection:
     kind: Postgres.Connection

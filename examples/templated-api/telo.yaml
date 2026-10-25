@@ -12,7 +12,7 @@ metadata:
         curl 'http://localhost:8845/v1/hello?name=World'
         curl 'http://localhost:8845/v2/hello?name=World'
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
+  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
   Templated: ./library.yaml
 ports:
   http:

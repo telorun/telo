@@ -9,8 +9,8 @@ metadata:
     with `telo.yaml`, which mounts the same library twice
     under `/v1` and `/v2` to show import + mount reuse.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
 exports:
   resources:
     - helloApi

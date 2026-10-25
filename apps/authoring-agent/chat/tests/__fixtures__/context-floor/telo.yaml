@@ -8,8 +8,8 @@ metadata:
     starts.
 imports:
   App: ../../../../../../modules/app
-  HttpClient: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  HttpClient: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
 variables:
   scratch:
     env: CHAT_TEST_CONTEXT_FLOOR_SCRATCH

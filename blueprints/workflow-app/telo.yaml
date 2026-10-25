@@ -23,7 +23,7 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
+  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
 exports:
   kinds: [App]
 ---

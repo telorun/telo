@@ -21,9 +21,9 @@ metadata:
     swap them for pinned `oci://ghcr.io/telorun/...` refs once ai, openai
     and fs ship it.
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.30.0#sha256-F90oqgcUzPQykjBo07Eu-t-0rwZApUi16gJki_3bCPI
-  OpenAI: oci://ghcr.io/telorun/openai@0.15.0#sha256-RG60ZY-3o_xsDIbjW_wg7mjEBe4DNmXN8OcOlpRa3ro
-  Http: oci://ghcr.io/telorun/http-client@0.23.0#sha256-6WAIh0ajnTlkWNuP-59e1qNVUXVSJDWZxvPVACQg1AM
+  Ai: oci://ghcr.io/telorun/ai@0.31.0#sha256-fvvEF5Vqyuro1t9wx7tJlDSzPoqOO5fQ-2s9nyvPAQ0
+  OpenAI: oci://ghcr.io/telorun/openai@0.16.0#sha256-2mb6YTv2MYk32UZ66Pmgp3Pyi65MI7LBmPZrBHFWm1A
+  Http: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
   Fs: oci://ghcr.io/telorun/fs@0.15.0#sha256-H4NxPag-G5AFKLIAZBTxxx1u2KgmmF2v4gqJnfCM9CQ
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 secrets:

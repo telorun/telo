@@ -24,8 +24,8 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: oci://ghcr.io/telorun/http-server@0.39.1#sha256-JfwpvR09XIVnlP3rvCYBlrBX0f9oSuuEaxdDC8ftAds
-  Run: oci://ghcr.io/telorun/run@0.29.1#sha256-EMlCpjQJfCDI8XUNNqx6z5q02zinb6Gd_yMgJ4_mcqQ
+  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
   Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.0#sha256-9__RzYEfgYTe0zBIBEqSMh87VWj4k6I0UteCLxlINZk
