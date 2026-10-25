@@ -1372,10 +1372,13 @@ entries:
       module it returns the line to write under `imports:` (ref, version and
       integrity pin), then each asked kind's `Telo.Definition` document as its
       module wrote it: `schema`, `inputType`, `outputType`, `throws`,
-      `status`. Every named shape and parent kind a definition reaches is
-      included, parents in other modules too, so one call answers what fields
-      a kind takes. A name the module does not define is reported with the
-      kinds it does export. Prefer this to `get_module_manifest`, which
+      `status`, plus the kinds it extends (in other modules too). The named
+      shapes those documents reach (`!ref Node`, `Self.RowAction`) are NOT
+      included: a trailing `# Reached, not included:` line lists each with its
+      size, and you fetch only the ones you need by naming them in `kinds` in
+      a later call. Pass `closure: true` to get every reached shape at once
+      (large). A name the module does not define is reported with the kinds
+      it does export. Prefer this to `get_module_manifest`, which
       returns a whole module.
       Built-ins (`Telo.<Kind>` parents, and the schema fragments, value types,
       zone attributes and formats a definition names) come back from the
@@ -1410,6 +1413,13 @@ entries:
             <names>`. Omitted, built-ins are read at the latest version the hub
             tracks; a version it does not track is refused, naming the ones it
             does.
+        closure:
+          type: boolean
+          default: false
+          description: >-
+            Also return every named shape and parent kind the documents reach,
+            three levels deep. Large; leave it off and name the shapes you
+            need instead.
         implementation:
           type: boolean
           default: false
@@ -1425,6 +1435,7 @@ entries:
       kinds: !cel "request.arguments.?kinds.orValue([])"
       telo: !cel "request.arguments.?telo.orValue('')"
       implementation: !cel "request.arguments.?implementation.orValue(false)"
+      closure: !cel "request.arguments.?closure.orValue(false)"
     result:
       content:
         - type: text

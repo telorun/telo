@@ -538,6 +538,12 @@ steps:
             extendsRef: ""
             runtimes: [nodejs]
             portable: false
+          - name: Shaped
+            capability: Telo.Invocable
+            extendsKind: ""
+            extendsRef: ""
+            runtimes: []
+            portable: false
           - name: Sink
             capability: ""
             extendsKind: LogSink
@@ -671,6 +677,22 @@ steps:
       kinds:
         - { ref: oci://example.test/vocab-user, kind: Sink }
         - { ref: oci://example.test/vocab-user, kind: Access }
+  - name: shaped
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds:
+        - { ref: oci://example.test/vocab-user, kind: Shaped }
+  - name: shapedClosure
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds:
+        - { ref: oci://example.test/vocab-user, kind: Shaped }
+      closure: true
+  - name: shape
+    invoke: !ref Catalog.kindDefinitions
+    inputs:
+      kinds:
+        - { ref: oci://example.test/vocab-user, kind: Row }
   - name: stepsOlder
     invoke: !ref Catalog.kindDefinitions
     inputs:
@@ -706,6 +728,16 @@ steps:
           step: !cel >-
             steps.stepsOlder.result.text.contains('description: \"Single executable step: an invocation or a conditional branch.\"')
           vocabularyHead: !cel "steps.stepsOlder.result.text.contains('# Telo — built in to telo 0.118.0: the schema fragments')"
+        shaped:
+          kind: !cel "steps.shaped.result.text.contains('\\n  name: Shaped\\n')"
+          shapeLeftOut: !cel "!steps.shaped.result.text.contains('\\n  name: Row\\n')"
+          trailer: !cel "steps.shaped.result.text.contains('# Reached, not included: Row (')"
+        shapedClosure:
+          shape: !cel "steps.shapedClosure.result.text.contains('\\n  name: Row\\n')"
+          trailer: !cel "steps.shapedClosure.result.text.contains('Reached, not included')"
+        shape:
+          shape: !cel "steps.shape.result.text.contains('\\n  name: Row\\n')"
+          trailer: !cel "steps.shape.result.text.contains('Reached, not included')"
         sink:
           parent: !cel >-
             steps.sink.result.text.contains('\n# Telo — built in to telo 0.119.0: write no import; name these kinds `Telo.<Kind>` (the prefix is fixed, not an alias).\n# Reached through `extends`: a kind above takes these fields too.\n---\nkind: Telo.Abstract\nmetadata:\n  name: LogSink\n')
@@ -744,6 +776,16 @@ steps:
             - "$defs: Step:"
           step: true
           vocabularyHead: true
+        shaped:
+          kind: true
+          shapeLeftOut: true
+          trailer: true
+        shapedClosure:
+          shape: true
+          trailer: false
+        shape:
+          shape: true
+          trailer: false
         sink:
           parent: true
           needType: true

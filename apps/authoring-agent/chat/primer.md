@@ -3690,9 +3690,12 @@ them before writing any resource from a module you did not author yourself:
     and integrity pin — and each kind's `Telo.Definition` as its module wrote
     it. Those docs ARE JSON Schemas: the EXACT field names, types and required
     fields you must produce. Read the `schema`, `inputType` and `outputType` —
-    never invent a field from a kind name alone. Every named shape a
-    definition references is included, and so is the parent a kind `extends`
-    and takes fields from, even when it lives in another module. A name the
+    never invent a field from a kind name alone. The parent a kind `extends`
+    and takes fields from is included, even when it lives in another module.
+    The named shapes a definition references (`Node`, `RowAction`) are NOT:
+    a final `# Reached, not included:` line lists each with its size — read
+    only the ones you need to write the resource, by naming them in one later
+    `get_kinds` call, and never fetch one you already have. A name the
     module does not define comes back as `NOT DEFINED`, beside the kinds the
     module does export. BUILT-INS come back too — a `Telo.<Kind>` parent
     (`Telo.LogSink`) and every schema fragment, value type, zone attribute and
