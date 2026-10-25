@@ -14,18 +14,13 @@ const config = loadK8sRunnerConfig({
 });
 
 const OPERATOR_KEY = "OPENAI_API_KEY";
-const APPS = [
-  { name: "web", entryRelativePath: "telo.yaml", ports: [{ port: 3000, protocol: "tcp" as const }], telo: "0.121.0" },
-  { name: "worker", entryRelativePath: "worker.yaml", ports: [], telo: "0.121.0" },
-];
-
 function build(overrides: Partial<Parameters<typeof buildSessionPod>[0]> = {}) {
   return buildSessionPod({
     config,
     sessionId: "abc123",
     podName: "telo-session-abc123-x",
-    apps: APPS,
-    supervisorTokens: { web: "token-web", worker: "token-worker" },
+    appSlots: { web: 0, worker: 1 },
+    supervisorToken: "token-apps",
     agent: {
       name: "authoring-agent",
       image: "ghcr.io/telorun/authoring-agent:1",
@@ -52,29 +47,35 @@ const envOf = (c: V1Container): Record<string, string> =>
 describe("the session pod", () => {
   const pod = build();
 
-  it("runs every app as an idle supervisor on its telo version's image, with no tty, no stdin and no session env", () => {
-    expect(pod.spec!.containers.map((c) => c.name)).toEqual(["workspace", "app-web", "app-worker", "agent"]);
-    APPS.forEach((app, index) => {
-      const container = byName(pod, `app-${app.name}`);
-      expect(container).toMatchObject({
-        image: "telorun/node:0.121.0-slim",
-        command: ["/opt/telo-runner/supervisor"],
-      });
-      expect(container.args).toBeUndefined();
-      expect(container.tty).toBeUndefined();
-      expect(container.stdin).toBeUndefined();
-      expect(envOf(container)).toEqual({
-        TELO_SUPERVISOR_LISTEN: `0.0.0.0:${9330 + index}`,
-        TELO_SUPERVISOR_TOKEN: `token-${app.name}`,
-        TELO_HOST_PUBLIC_URL_TEMPLATE: "https://{port}-abc123.telo.run",
-        HOME: "/home/telo",
-        npm_config_cache: "/home/telo/.npm",
-      });
-      expect(container.volumeMounts).toContainEqual({ name: "supervisor", mountPath: "/opt/telo-runner", readOnly: true });
+  it("runs every app in one container of idle supervisor slots, with no tty, no stdin and no session env", () => {
+    expect(pod.spec!.containers.map((c) => c.name)).toEqual(["workspace", "apps", "agent"]);
+    const container = byName(pod, "apps");
+    expect(container).toMatchObject({
+      image: "telorun/node:0.121.0-slim",
+      command: ["/opt/telo-runner/supervisor", "--slots", "9"],
     });
+    expect(container.args).toBeUndefined();
+    expect(container.tty).toBeUndefined();
+    expect(container.stdin).toBeUndefined();
+    expect(envOf(container)).toEqual({
+      TELO_SUPERVISOR_LISTEN: "0.0.0.0:9330",
+      TELO_SUPERVISOR_TOKEN: "token-apps",
+      TELO_HOST_PUBLIC_URL_TEMPLATE: "https://{port}-abc123.telo.run",
+      HOME: "/home/telo",
+      npm_config_cache: "/home/telo/.npm",
+    });
+    expect(container.volumeMounts).toContainEqual({ name: "supervisor", mountPath: "/opt/telo-runner", readOnly: true });
+    expect(container.volumeMounts).toContainEqual({ name: "session", mountPath: "/var/lib/telo-releases", subPath: "telo" });
   });
 
-  it("copies the supervisor out of the runner's image and prepares the volume's two directories first", () => {
+  it("is the same pod whatever the app set: only the slot annotation records it", () => {
+    const other = build({ appSlots: { docs: 3 }, supervisorToken: "token-apps" });
+    expect(other.spec).toEqual(pod.spec);
+    expect(pod.metadata!.annotations).toEqual({ "telo.run/app-slots": '{"web":0,"worker":1}' });
+    expect(other.metadata!.annotations).toEqual({ "telo.run/app-slots": '{"docs":3}' });
+  });
+
+  it("copies the supervisor out of the runner's image and prepares the volume's directories first", () => {
     expect(pod.spec!.initContainers).toEqual([
       expect.objectContaining({
         name: "supervisor",
@@ -82,7 +83,7 @@ describe("the session pod", () => {
         command: [
           "sh",
           "-c",
-          "mkdir -p /telo-session/workspace /telo-session/agent && cp /opt/telo-runner/supervisor /telo-runner-out/supervisor",
+          "mkdir -p /telo-session/workspace /telo-session/agent /telo-session/telo && cp /opt/telo-runner/supervisor /telo-runner-out/supervisor",
         ],
         volumeMounts: [
           { name: "supervisor", mountPath: "/telo-runner-out" },
@@ -116,7 +117,7 @@ describe("the session pod", () => {
   });
 
   it("sizes app and workspace containers by RUNNER_MAX_* and the agent by RUNNER_APP_MAX_*", () => {
-    for (const name of ["workspace", "app-web", "app-worker"]) {
+    for (const name of ["workspace", "apps"]) {
       expect(byName(pod, name).resources).toEqual({
         limits: { cpu: "300m", memory: "512Mi", "ephemeral-storage": "1Gi" },
         requests: { cpu: "300m", memory: "512Mi" },
@@ -131,8 +132,7 @@ describe("the session pod", () => {
   it("omits the agent container when none was asked for", () => {
     expect(build({ agent: undefined }).spec!.containers.map((c) => c.name)).toEqual([
       "workspace",
-      "app-web",
-      "app-worker",
+      "apps",
     ]);
   });
 
@@ -145,12 +145,12 @@ describe("the session pod", () => {
 });
 
 describe("reserved ports", () => {
-  it("are each app's supervisor and debug-stream port, by position", () => {
-    expect(reservedPortsFor(APPS)).toEqual([
-      { app: "web", port: 9330, protocol: "tcp", purpose: "the session supervisor" },
-      { app: "web", port: 9230, protocol: "tcp", purpose: "the kernel debug stream" },
-      { app: "worker", port: 9331, protocol: "tcp", purpose: "the session supervisor" },
-      { app: "worker", port: 9231, protocol: "tcp", purpose: "the kernel debug stream" },
-    ]);
+  it("are every slot's supervisor port and every app slot's debug-stream port, named for no app", () => {
+    const reserved = reservedPortsFor();
+    expect(reserved).toHaveLength(17);
+    expect(reserved).toContainEqual({ port: 9330, protocol: "tcp", purpose: "the session supervisor" });
+    expect(reserved).toContainEqual({ port: 9338, protocol: "tcp", purpose: "the session supervisor" });
+    expect(reserved).toContainEqual({ port: 9230, protocol: "tcp", purpose: "the kernel debug stream" });
+    expect(reserved).toContainEqual({ port: 9237, protocol: "tcp", purpose: "the kernel debug stream" });
   });
 });

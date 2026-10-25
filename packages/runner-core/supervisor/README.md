@@ -30,7 +30,7 @@ cargo build --release --locked -p telo-runner-supervisor --target <x86_64|aarch6
 
 ## Tests
 
-`cargo test -p telo-runner-supervisor` runs the unit tests and `tests/vectors.rs`: the supervisor's half of `messages.json` (it parses the runner's messages and encodes its own), every output frame, and every exchange against the built executable. runner-core's `supervisor-vectors.test.ts` runs the runner's half (it encodes the runner's messages and decodes the supervisor's), every output frame, and every exchange against this executable, built with `cargo build --locked` or named by `TELO_SUPERVISOR_BIN` (a musl build, say), and `supervisor-client.test.ts` drives `SupervisorClient` against it. Both TypeScript suites skip, naming the reason, off Linux or with no cargo and no `TELO_SUPERVISOR_BIN`.
+`cargo test -p telo-runner-supervisor` runs the unit tests and `tests/vectors.rs`: the supervisor's half of `messages.json` (it parses the runner's messages and encodes its own), every output frame, and every exchange against the built executable. runner-core's `supervisor-vectors.test.ts` runs the runner's half (it encodes the runner's messages and decodes the supervisor's), every output frame, and every exchange against this executable, built with `cargo build --locked` or named by `TELO_SUPERVISOR_BIN` (a musl build, say), and `supervisor-client.test.ts` drives `SupervisorClient` against it. Both TypeScript suites skip, naming the reason, off Linux or with no cargo and no `TELO_SUPERVISOR_BIN`. `tests/launcher.rs` covers `--slots` (`src/launcher.rs`, the one file with no counterpart in the protocol: it speaks none).
 
 ## Vectors
 

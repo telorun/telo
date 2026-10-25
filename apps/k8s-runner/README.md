@@ -30,7 +30,7 @@ serving an anonymous tier, the ceiling *is* the policy.
 **A session is a workspace.** Its record lives in the runner's session store and
 its files live on a **PersistentVolumeClaim of its own**; its pod is the part that
 comes and goes. One pod holds a `workspace` container serving the editor's file
-routes, one idle `app-<name>` container per application, and optionally a
+routes, one `apps` container holding every application, and optionally a
 co-resident `agent` drawn from the `RUNNER_APPS` catalog. **Nothing runs until
 Run**: `POST /v1/sessions/:id/apps/:app/run` is a process start inside a container
 that already exists, under `telo run --watch`, so an edit costs a kernel reload
@@ -60,14 +60,22 @@ as the error's `cause` and lands in the runner's log.
 
 | Container | Image | Runs | Mounts | Credential |
 | --- | --- | --- | --- | --- |
-| `supervisor` (init) | The runner's own (`RUNNER_SUPERVISOR_IMAGE`) | Copies the session supervisor into an `emptyDir`, creates the claim's `workspace/` and `agent/` | The `emptyDir`, the claim's root | None |
+| `supervisor` (init) | The runner's own (`RUNNER_SUPERVISOR_IMAGE`) | Copies the session supervisor into an `emptyDir`, creates the claim's `workspace/`, `telo/` and `agent/` | The `emptyDir`, the claim's root | None |
 | `workspace` | `RUNNER_IMAGE`, over a runner-supplied manifest | `telo run` of the workspace application | `workspace/` at `/workspace` | None |
-| `app-<name>` | The app's telo version (`RUNNER_TELO_IMAGE_*`), else the session's picked image or `RUNNER_IMAGE` | `/opt/telo-runner/supervisor`, idle until Run | `workspace/` at `/workspace`, the supervisor read-only at `/opt/telo-runner` | Its own supervisor token |
+| `apps` | The session's picked image, else `RUNNER_IMAGE` | `/opt/telo-runner/supervisor --slots 9`: a supervisor per app slot (eight) and one for the runner's own tasks, idle until Run | `workspace/` at `/workspace`, `telo/` at `/var/lib/telo-releases`, the supervisor read-only at `/opt/telo-runner` | One supervisor token |
 | `agent` | Operator catalog image | The image's own entrypoint | `workspace/` at `/workspace`, `agent/` at `/var/lib/telo-agent-state` | Operator env |
 
-**No session env is in the pod spec.** An app container carries
-`TELO_SUPERVISOR_LISTEN=0.0.0.0:<9330 + position>` and `TELO_SUPERVISOR_TOKEN` (one
-random token per container, minted when the pod is created — the pod spec is
+**The pod does not change with the app set.** Adding, removing or re-versioning an
+application takes or frees a slot in the `apps` container, so the workspace and the
+agent keep running; only an agent change recreates the pod. The slot of each app is
+recorded in the pod's `telo.run/app-slots` annotation, which an adopting runner
+reads back. A session runs at most eight applications (`400 too_many_apps`), and
+the `RUNNER_MAX_*` limits are the container's, shared by them.
+
+**No session env is in the pod spec.** The `apps` container carries
+`TELO_SUPERVISOR_LISTEN=0.0.0.0:9330` (slot `n` listens on `9330 + n`) and
+`TELO_SUPERVISOR_TOKEN` (one
+random token,  minted when the pod is created — the pod spec is
 where a restarted runner reads it back), the runner's public-address templates,
 `HOME` and nothing else: no `TELO_ENTRY`, no `TELO_INSPECT_ADDR`, no
 `CLICOLOR_FORCE`, no shell, no TTY and no stdin. A Run's env travels to the
@@ -76,8 +84,8 @@ removes its own two variables before starting anything. **The env split is the
 credential boundary**: the operator env goes on `agent` alone and `workspace` gets
 neither.
 
-**Each app's supervisor and kernel debug ports are reserved**: `9330 + position`
-and `9230 + position` in the app set, because every container of a pod shares one
+**The supervisor and kernel debug ports are reserved**: `9330`–`9338` and
+`9230`–`9237`, whatever the app set, because every container of a pod shares one
 network namespace. An app declaring one is refused (`400 port_conflict` on a
 create or `PUT …/apps`, `rejected` on a reload's `endpoints` event), naming what
 binds it. The runner reaches both over the pod IP; neither is published.
@@ -116,17 +124,18 @@ locked-down operator needs a CNI with FQDN policy or an egress proxy here.
 
 ### Running an app: the session supervisor
 
-Every `app-<name>` container's main process is the **session supervisor**, a
+The `apps` container's main process is the **session supervisor** in launcher mode, a
 static executable from the runner's own build
 ([`packages/runner-core/supervisor`](../../packages/runner-core/supervisor),
 protocol [`specs/supervisor-protocol.md`](../../packages/runner-core/specs/supervisor-protocol.md)).
 It depends on nothing in the app image. The runner image carries it at
 `/opt/telo-runner/supervisor`; the pod's `supervisor` init container copies it
-into an `emptyDir` each app container mounts read-only.
+into an `emptyDir` the container mounts read-only. `--slots 9` starts nine
+independent supervisors in the one container, each with its own run.
 
-The runner holds one WebSocket per app container to `ws://<podIP>:<port>/v1/supervisor`
-with that container's token. Run sends the argv core builds
-(`telo run --watch --no-input --inspect 0.0.0.0:<9230 + position> --no-open <entry>`),
+The runner holds one WebSocket per app slot to `ws://<podIP>:<9330 + slot>/v1/supervisor`
+with the container's token. Run sends the argv core builds
+(`telo run --watch --no-input --inspect 0.0.0.0:<9230 + slot> --no-open <entry>`),
 the Run's env and `io`; the supervisor starts it in a process group of its own on a
 fresh pty (`tty`) or pipes (`streams`), and reports `started` and `exited`, which
 become the app's `running` and `ready` events. Stop is SIGTERM to the group, then
@@ -260,10 +269,8 @@ declaring a port the pod reserves.
 | `RUNNER_APP_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling of the co-resident agent's container (chart: `limits.agent.maxEphemeralStorage`) |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
 | `RUNNER_IMAGE` | _(baked at build: the CLI version for a released runner, `telorun/node:latest-slim` for a dev build)_ | Default base image; always offered in the picker and the fallback when the catalog is unreachable. Leave the chart's `session.image` empty to keep the session kernel in lockstep with the runner |
-| `RUNNER_TELO_IMAGE_REPOSITORY` | `telorun/node` | Where the kernel image of a telo version an application names is pulled from: `<repository>:<version>-<variant>`. Point it at a mirror or a private registry (chart: `session.teloImages.repository`) |
-| `RUNNER_TELO_IMAGE_VARIANT` | `slim` | The variant suffix of that image tag (chart: `session.teloImages.variant`) |
-| `RUNNER_TELO_UNRELEASED_IMAGE` | _(unset → refused)_ | The kernel image an unreleased build identity (`X+unreleased`) runs on (chart: `session.teloImages.unreleased`) |
-| `RUNNER_PULL_POLICY` | `missing` | The `imagePullPolicy` of a session whose applications name a telo version: `missing`, `always` or `never` (a cluster that preloads its images) (chart: `session.teloImages.pullPolicy`) |
+| `RUNNER_TELO_RELEASES_URL` | `https://github.com/telorun/telo/releases/download` | Where the `apps` container downloads the `telo` binary of a version an application names: `<url>/v<version>/telo-<version>-<target>.tar.gz` and its `checksums.txt`. Point it at a mirror where session pods cannot reach GitHub (chart: `session.teloReleasesUrl`) |
+| `RUNNER_PULL_POLICY` | `missing` | The `imagePullPolicy` of the session's containers: `missing`, `always` or `never` (a cluster that preloads its images) (chart: `session.teloImages.pullPolicy`) |
 | `RUNNER_IMAGE_PULL_SECRET` | _(unset)_ | dockerconfig Secret (in `telo-sessions`) the kubelet pulls session images with — needed only for a kernel or catalog image in a private registry |
 | `RUNNER_KEEP_FAILED_PODS` | `false` | Keep a failed session pod (relabelled `telo.run/kept-session=<id>`, so no replacement or orphan sweep removes it) for `kubectl describe` / `logs`; delete it by hand |
 | `RUNNER_RUNTIME_CLASS` | _(unset → runc)_ | Sandbox RuntimeClass (gvisor/kata) |
@@ -275,12 +282,12 @@ declaring a port the pod reserves.
 | `SESSION_GATEWAY_NAME` | _(unset)_ | Gateway each session's HTTPRoute attaches to. Required in gateway mode |
 | `SESSION_GATEWAY_NAMESPACE` | _(= session namespace)_ | Namespace of that Gateway |
 | `SESSION_GATEWAY_SECTION_NAME` | _(unset → any listener)_ | Listener name, when only one should carry session traffic |
-| `RUNNER_MAX_CPU` | `500m` | CPU ceiling of each `app-<name>` container and the `workspace` container (chart: `limits.maxCpu`) |
-| `RUNNER_MAX_MEMORY` | `512Mi` | Memory ceiling of each `app-<name>` container and the `workspace` container (chart: `limits.maxMemory`) |
-| `RUNNER_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling of each `app-<name>` container and the `workspace` container (chart: `limits.maxEphemeralStorage`) |
+| `RUNNER_MAX_CPU` | `500m` | CPU ceiling of the `apps` container and the `workspace` container (chart: `limits.maxCpu`) |
+| `RUNNER_MAX_MEMORY` | `512Mi` | Memory ceiling of the `apps` container and the `workspace` container (chart: `limits.maxMemory`) |
+| `RUNNER_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling of the `apps` container and the `workspace` container (chart: `limits.maxEphemeralStorage`) |
 | `RUNNER_MAX_SESSIONS` | `8` | Most running sessions at once; suspended ones do not count (chart: `runner.maxSessions`) |
 | `RUNNER_SESSION_IDLE_SECONDS` | `300` | No SSE/WS subscriber for this long → suspend (chart: `sessions.idleSeconds`) |
-| `RUNNER_SESSION_MAX_RUNNING_SECONDS` | `21600` | A running session suspends after this long. One deadline covers the agent and the app containers, so it takes the longer ceiling and lets idleness do the real work (chart: `sessions.maxRunningSeconds`) |
+| `RUNNER_SESSION_MAX_RUNNING_SECONDS` | `21600` | A running session suspends after this long. One deadline covers the agent and the apps, so it takes the longer ceiling and lets idleness do the real work (chart: `sessions.maxRunningSeconds`) |
 | `RUNNER_SESSION_RETENTION_SECONDS` | `2592000` | A suspended session is deleted with its storage after this long — 30 days (chart: `sessions.retentionSeconds`) |
 | `RUNNER_SESSION_RELOAD_LIMIT` | `30` | Per-session reloads per minute (chart: `sessions.reloadLimit`) |
 | `RUNNER_SESSION_STORE` | `sqlite` | Where session records are kept: `sqlite` (a file in `RUNNER_STATE_DIR`) or `postgres`. Anything else refuses to boot (chart: `sessionStore.kind`) |
@@ -306,26 +313,22 @@ A runner started with a variable this release no longer reads refuses to boot, n
 A session request may name, per application, the telo version it runs on
 (`telo`, on each entry of `apps`, or on the request for a single-app session) —
 the version the editor checks that module against. The runner advertises
-`features.teloVersions` and runs that application's container on
-`<RUNNER_TELO_IMAGE_REPOSITORY>:<version>-<RUNNER_TELO_IMAGE_VARIANT>`, never a
-substitute. The base-image catalog does not gate this: it is the menu
-`config.image` is picked from — a bounded, newest-first list read from
-`RUNNER_BASE_IMAGE_REPO` — while which versions may run is the telo image
-source's own rule. An image the cluster cannot pull fails the session on its
-event stream, since a pull happens on a node after the pod exists. A release
-older than 0.123.0, the oldest a runner is verified to supervise, is refused
-before the session exists (`400 telo_version_unavailable`). An unreleased build
-(`0.80.0+unreleased`) has no published image: it runs on
-`RUNNER_TELO_UNRELEASED_IMAGE` when the operator set one (a development stack
-whose editor is built from the same tree), and is refused naming that variable
-otherwise. The pod's own `workspace` container always runs on `RUNNER_IMAGE`.
+`features.teloVersions` and runs that application on that release's `telo` binary,
+never a substitute: the `apps` container (the session's picked image, else
+`RUNNER_IMAGE`; it needs `node` and `tar`) downloads it from
+`RUNNER_TELO_RELEASES_URL`, checks it against the release's `checksums.txt` and
+keeps it on the session's claim, so a resume finds it. The first run of a version
+waits for the download; a failed one (no egress, no such release, a checksum that
+does not match) fails that Run with the reason. A release older than 0.123.0, the
+oldest a runner is verified to supervise, is refused before the session exists
+(`400 telo_version_unavailable`). An unreleased build (`0.80.0+unreleased`) has no
+published binary and is refused. An application naming no version runs the image's
+own `telo`. The pod's own `workspace` container always runs on `RUNNER_IMAGE`.
 
 `config.image` and `config.pullPolicy` are **deprecated**: they are what a client
 naming no version still sends, and they behave as before for that client. A
-request naming a version beside either is `400 invalid_config` — a version's
-image is pulled under the operator's `RUNNER_PULL_POLICY`, applied as the Pod's
-`imagePullPolicy` — and a session's applications either all name a version or
-none does.
+request naming a version beside either is `400 invalid_config`, and a session's
+applications either all name a version or none does.
 
 Each generation's `run` event carries the version the runtime itself reported
 (`telo`), passed on unjudged — the editor compares it with what it asked for and
@@ -439,7 +442,7 @@ namespace, no push credentials.
 | `sessionStore.url` / `.existingSecret` (+ `.existingSecretKey`, `url`) | — | The Postgres connection URL, inline or from a Secret; one of them with `postgres` |
 | `sessionStorage.size` / `.storageClass` | `5Gi` / cluster default | Each session's own claim |
 | `identity.audience` / `identity.issuers` | — | Signed-in owners; set both or neither |
-| `limits.maxCpu` / `.maxMemory` / `.maxEphemeralStorage` | `500m` / `512Mi` / `1Gi` | Each app container and the `workspace` container |
+| `limits.maxCpu` / `.maxMemory` / `.maxEphemeralStorage` | `500m` / `512Mi` / `1Gi` | The `apps` container and the `workspace` container |
 | `limits.agent.maxCpu` / `.maxMemory` / `.maxEphemeralStorage` | `500m` / `512Mi` / `1Gi` | The agent's container |
 
 A session pod's `supervisor` init container runs the runner's own image
@@ -558,6 +561,6 @@ pnpm --filter @telorun/k8s-runner test    # vitest
 
 The tests drive the backend against a fake session namespace whose "kubelet"
 brings each created pod up on a loopback address of its own, with the workspace
-surface and a supervisor speaking the protocol on each app container's port:
+surface and a supervisor speaking the protocol on each slot's port of the `apps` container:
 pod shape, storage across suspend, resume and delete, runs, adoption and the
 orphan sweep. A real cluster is `.github/workflows/e2e.yml`'s.

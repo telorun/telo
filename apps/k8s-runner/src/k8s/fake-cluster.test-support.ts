@@ -6,11 +6,19 @@ import type { V1Pod } from "@kubernetes/client-node";
 import { FakeSupervisor } from "@telorun/runner-core/test-support";
 
 import type { KubeClient } from "./client.js";
-import { SUPERVISOR_LISTEN_ENV, SUPERVISOR_TOKEN_ENV, WORKSPACE_PORT } from "./pod-spec.js";
+import {
+  APP_SLOTS,
+  APP_SLOTS_ANNOTATION,
+  SUPERVISOR_LISTEN_ENV,
+  SUPERVISOR_TOKEN_ENV,
+  TOOLING_SLOT,
+  WORKSPACE_PORT,
+} from "./pod-spec.js";
 
 interface FakePod {
   pod: V1Pod;
-  supervisors: Map<string, FakeSupervisor>;
+  /** The apps container's supervisors, by slot. */
+  supervisors: Map<number, FakeSupervisor>;
   servers: Server[];
 }
 
@@ -33,7 +41,7 @@ let nextAddress = 20;
 /**
  * A session namespace whose "kubelet" brings a created pod up on a loopback
  * address of its own: the workspace surface on its port, and a supervisor
- * speaking the protocol on each app container's listen port, accepting the
+ * speaking the protocol on each slot's port of the apps container, accepting the
  * token the pod spec carries.
  */
 export class FakeCluster {
@@ -58,6 +66,12 @@ export class FakeCluster {
         return found.pod;
       },
       createNamespacedPod: async ({ body }: { body: V1Pod }) => this.start(body),
+      replaceNamespacedPod: async ({ name, body }: { name: string; body: V1Pod }) => {
+        const found = this.pods.get(name);
+        if (!found) throw notFound();
+        found.pod = { ...body, status: found.pod.status };
+        return found.pod;
+      },
       deleteNamespacedPod: async ({ name }: { name: string }) => {
         const found = this.pods.get(name);
         if (!found) throw notFound();
@@ -114,27 +128,42 @@ export class FakeCluster {
     };
     const fake: FakePod = { pod, supervisors: new Map(), servers: [] };
     fake.servers.push(await this.workspaceServer(ip));
-    for (const container of body.spec!.containers.filter((c) => c.name.startsWith("app-"))) {
-      const env = Object.fromEntries((container.env ?? []).map((e) => [e.name, e.value ?? ""]));
-      const port = Number(env[SUPERVISOR_LISTEN_ENV]!.split(":")[1]);
-      const app = container.name.slice("app-".length);
-      const supervisor = await FakeSupervisor.start({
-        host: ip,
-        port,
-        token: env[SUPERVISOR_TOKEN_ENV]!,
-        generation: this.generation,
-        live: live[app],
-      });
-      fake.supervisors.set(app, supervisor);
+    const apps = body.spec!.containers.find((c) => c.name === "apps");
+    if (apps) {
+      const env = Object.fromEntries((apps.env ?? []).map((e) => [e.name, e.value ?? ""]));
+      const base = Number(env[SUPERVISOR_LISTEN_ENV]!.split(":")[1]);
+      const slots = JSON.parse(body.metadata!.annotations![APP_SLOTS_ANNOTATION]!) as Record<string, number>;
+      for (let slot = 0; slot <= APP_SLOTS; slot += 1) {
+        const app = Object.keys(slots).find((name) => slots[name] === slot);
+        fake.supervisors.set(
+          slot,
+          await FakeSupervisor.start({
+            host: ip,
+            port: base + slot,
+            token: env[SUPERVISOR_TOKEN_ENV]!,
+            generation: this.generation,
+            live: app === undefined ? undefined : live[app],
+          }),
+        );
+      }
     }
     this.pods.set(name, fake);
     return pod;
   }
 
   supervisorOf(app: string): FakeSupervisor {
-    const found = [...this.pods.values()].find((p) => p.supervisors.has(app))?.supervisors.get(app);
-    if (!found) throw new Error(`no supervisor for '${app}'`);
-    return found;
+    for (const fake of this.pods.values()) {
+      const slot = (JSON.parse(fake.pod.metadata!.annotations![APP_SLOTS_ANNOTATION]!) as Record<string, number>)[app];
+      if (slot !== undefined) return fake.supervisors.get(slot)!;
+    }
+    throw new Error(`no supervisor for '${app}'`);
+  }
+
+  /** The supervisor the runner's own tasks run on. */
+  toolingSupervisor(): FakeSupervisor {
+    const fake = [...this.pods.values()][0];
+    if (!fake) throw new Error("no pod");
+    return fake.supervisors.get(TOOLING_SLOT)!;
   }
 
   onlyPod(): V1Pod {

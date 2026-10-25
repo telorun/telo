@@ -4,7 +4,17 @@
 #[cfg(unix)]
 fn main() -> std::process::ExitCode {
     use std::process::ExitCode;
-    use telo_runner_supervisor::{serve, supervisor_config, supervisor_log};
+    use telo_runner_supervisor::{launcher, serve, supervisor_config, supervisor_log};
+
+    let args: Vec<_> = std::env::args_os().skip(1).collect();
+    match launcher::slots_from(&args) {
+        Ok(Some((slots, rest))) => return launcher::run(slots, rest),
+        Ok(None) => {}
+        Err(message) => {
+            supervisor_log::error(&message);
+            return ExitCode::from(2);
+        }
+    }
 
     let config = match supervisor_config::from_process() {
         Ok(config) => config,

@@ -73,6 +73,7 @@ grows with every release.
 - **Write your own modules.** When the standard library lacks something, write a module beside your app — controllers in TypeScript or Rust — and import it by relative path. No build step: TypeScript is bundled from source when the app loads and Rust is built from its crate (with `cargo` installed). Its kinds' schemas, references and contracts are checked like the standard library's, and publishing it later changes only the import's `source:`. See [`examples/local-modules`](https://github.com/telorun/telo/tree/main/examples/local-modules) for a TypeScript and a Rust module racing on the same job.
 - **Visual editing.** Studio shows Topology, Inventory, Source and Deployment views over the YAML on disk, with edits going both ways.
 - **Editor and runtime on one version.** The editor runs the exact engine of the telo version the module's `requires: telo:` selects, and the local runner runs that same release.
+- **A workspace that keeps running while you edit apps.** On the Kubernetes runner, adding, removing or re-versioning an application in a session does not restart the workspace or its authoring agent, and each application can still run its own telo release.
 - **Coding agents know the modules.** The hub's MCP server gives agents `search_resources`, `get_kinds` with exact pins and schemas, and authoring guides.
 
 ## Standard library

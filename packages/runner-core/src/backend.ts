@@ -64,6 +64,10 @@ export interface RunnerBackend {
    *  declaring one is refused with `400 port_conflict` naming its purpose. */
   reservedPorts?(apps: BackendAppSpec[]): ReservedPort[];
 
+  /** The most apps a session may run, for a backend whose workload has a fixed
+   *  number of slots. A larger set is refused with `400 too_many_apps`. */
+  readonly maxApps?: number;
+
   /** Remove what earlier runner processes left behind, run once at boot after
    *  adoption: a workload or storage of a session not in `known`, and a
    *  workload of a known session not in `live`. Storage of a known session is
@@ -90,7 +94,8 @@ export interface BackendAppSpec {
 /** A port the workload binds for one app's machinery. No app of the set may
  *  declare it, whichever app it is reserved for. */
 export interface ReservedPort {
-  app: string;
+  /** The app it is reserved for; absent for a port every app of the workload shares. */
+  app?: string;
   port: number;
   protocol: PortMapping["protocol"];
   /** What binds it, as a refusal names it: `"the session supervisor"`. */

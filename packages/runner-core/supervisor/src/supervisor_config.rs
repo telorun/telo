@@ -51,7 +51,7 @@ fn workspace_from(mut args: impl Iterator<Item = OsString>) -> Result<PathBuf, S
                 let value = args.next().ok_or("--workspace takes a directory")?;
                 workspace = PathBuf::from(value);
             }
-            _ => return Err(format!("unknown argument {arg:?}; usage: supervisor [--workspace <dir>]")),
+            _ => return Err(format!("unknown argument {arg:?}; usage: supervisor [--workspace <dir>] [--slots <n>]")),
         }
     }
     if !workspace.is_absolute() {

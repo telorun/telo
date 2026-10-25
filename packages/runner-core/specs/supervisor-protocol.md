@@ -15,6 +15,7 @@ The supervisor is one statically linked Linux executable, `supervisor`, dependin
 | `TELO_SUPERVISOR_LISTEN` | Required. The `ip:port` it listens on (`0.0.0.0:<port>`; `127.0.0.1:0` picks a free port). |
 | `TELO_SUPERVISOR_TOKEN` | Required, non-empty. The one bearer token a connection must present. |
 | `--workspace <dir>` | Optional, absolute. What a relative `run.cwd` resolves against. Default `/workspace`. |
+| `--slots <n>` | Optional, a positive count. The executable then runs no protocol of its own: it starts `n` supervisors, slot `i` listening on `TELO_SUPERVISOR_LISTEN`'s port plus `i` with the same token and `--workspace`, so one container offers `n` independent one-run supervisors. SIGTERM or SIGINT is forwarded to every slot (§ 7) and it exits `0` once they ended; a slot that ends by itself ends the others and the launcher exits with its status. The protocol is unchanged and is spoken to each slot. |
 
 Both variables are removed from the supervisor's environment before anything else starts, so no run inherits them. Any other argument is refused.
 
