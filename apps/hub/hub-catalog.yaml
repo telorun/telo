@@ -271,6 +271,10 @@ inputType:
       # Keep what says how a kind is implemented, and follow a `base:` kind's
       # parent too: what debugging an inherited kind needs to read.
       implementation: { type: boolean, default: false }
+      # Follow every named shape and parent three levels deep, rather than
+      # answering the asked kinds and their direct local parents and listing the
+      # rest in `notIncluded`.
+      closure: { type: boolean, default: false }
     required: [ref, version, names]
 steps:
   - name: meta
@@ -347,8 +351,25 @@ steps:
         value: !cel >-
           distinct(steps.wanted2.result
             + flatten(steps.docs.result.filter(d, d.name in steps.wanted2.result).map(d, d.reaches)))
+      # The asked kinds lead, then what they reach in manifest order: a reader
+      # that cuts the answer short loses the shapes, never the kinds it asked for.
+      - name: localParents
+        value: !cel >-
+          distinct(steps.meta.result.rows[0].parents
+            .filter(p, p.name in inputs.names && p.ref == inputs.ref).map(p, p.kind))
       - name: selected
-        value: !cel "steps.docs.result.filter(d, d.name in steps.wanted3.result)"
+        value: !cel >-
+          steps.docs.result.filter(d, d.name in inputs.names)
+            + steps.docs.result.filter(d, !(d.name in inputs.names)
+                && d.name in (inputs.closure ? steps.wanted3.result : steps.localParents.result))
+      # What the included documents reach and the answer leaves out, with the
+      # size of each, so a caller names exactly the ones it needs next.
+      - name: notIncluded
+        value: !cel >-
+          cel.bind(reachedNames, distinct(flatten(steps.selected.result.map(d, d.reaches))),
+            steps.docs.result
+              .filter(d, d.name in reachedNames && !steps.selected.result.exists(s, s.name == d.name))
+              .map(d, {'name': d.name, 'bytes': size(d.text)}))
       - name: reaching
         if: !cel "size(steps.selected.result) > 0"
         then:
@@ -399,6 +420,7 @@ outputs:
           + (steps.meta.result.rows[0].integrity == '' ? '' : '#' + steps.meta.result.rows[0].integrity)
   exported: !cel "'selected' in steps ? steps.meta.result.rows[0].exported : []"
   definitions: !cel "'selected' in steps ? steps.selected.result.map(d, d.text) : []"
+  notIncluded: !cel "'selected' in steps ? steps.notIncluded.result : []"
   # Each parent is named at the version this module's own `imports:` pins it
   # at — the definition the child was written against — or `latest` where the
   # import carries no version.
@@ -438,6 +460,7 @@ inputType:
             names: { type: array, items: { type: string } }
             orLatest: { type: boolean }
             implementation: { type: boolean }
+            closure: { type: boolean }
           required: [ref, version, names]
     required: [requests]
 collection: !cel "inputs.requests"
@@ -450,6 +473,7 @@ steps:
       names: !cel "item.names"
       orLatest: !cel "item.?orLatest.orValue(false)"
       implementation: !cel "item.?implementation.orValue(false)"
+      closure: !cel "item.?closure.orValue(false)"
 outputs:
   ref: !cel "steps.module.result.ref"
   found: !cel "steps.module.result.found"
@@ -464,6 +488,7 @@ outputs:
   importRef: !cel "steps.module.result.importRef"
   exported: !cel "steps.module.result.exported"
   definitions: !cel "steps.module.result.definitions"
+  notIncluded: !cel "steps.module.result.notIncluded"
   missing: !cel "steps.module.result.missing"
   parents: !cel "steps.module.result.parents"
 ---
@@ -506,6 +531,7 @@ inputType:
       # A telo version, or '' for the latest the hub tracks.
       telo: { type: string, default: "" }
       implementation: { type: boolean, default: false }
+      closure: { type: boolean, default: false }
     required: [kinds]
 steps:
   - name: teloVersions
@@ -565,7 +591,7 @@ steps:
             ? (steps.telo.result != '' ? steps.telo.result : 'latest')
             : cel.bind(v, inputs.kinds.filter(k, k.ref == ref)[0].?version.orValue(''),
                 v == '' ? 'latest' : v),
-          'implementation': inputs.implementation,
+          'implementation': inputs.implementation, 'closure': inputs.closure,
           'names': distinct(inputs.kinds.filter(k, k.ref == ref)
                               .map(k, regexReplace(k.kind, '^.*\\.', '')))})
   - name: parents
@@ -573,7 +599,7 @@ steps:
     inputs:
       requests: !cel >-
         distinct(flatten(steps.asked.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
-          'ref': ref, 'orLatest': true, 'implementation': inputs.implementation,
+          'ref': ref, 'orLatest': true, 'implementation': inputs.implementation, 'closure': inputs.closure,
           'version': ref == variables.builtinsRef
             ? (steps.telo.result != '' ? steps.telo.result : 'latest')
             : flatten(steps.asked.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
@@ -584,7 +610,7 @@ steps:
     inputs:
       requests: !cel >-
         distinct(flatten(steps.parents.result.map(m, m.parents)).map(p, p.ref)).map(ref, {
-          'ref': ref, 'orLatest': true, 'implementation': inputs.implementation,
+          'ref': ref, 'orLatest': true, 'implementation': inputs.implementation, 'closure': inputs.closure,
           'version': ref == variables.builtinsRef
             ? (steps.telo.result != '' ? steps.telo.result : 'latest')
             : flatten(steps.parents.result.map(m, m.parents)).filter(p, p.ref == ref)[0].version,
@@ -645,7 +671,12 @@ outputs:
                   ? '# NOT DEFINED by this module: ' + join(e.m.missing, ', ')
                       + '. It exports: ' + join(e.m.exported, ', ') + '\n'
                   : '')
-              + join(e.m.definitions.map(d, '---\n' + d + '\n'), ''))
+              + join(e.m.definitions.map(d, '---\n' + d + '\n'), '')
+              + (size(e.m.notIncluded) > 0
+                  ? '# Reached, not included: '
+                      + join(e.m.notIncluded.map(n, n.name + ' (' + string(n.bytes) + ' B)'), ', ')
+                      + '. Fetch only the ones you need by naming them in `kinds`.\n'
+                  : ''))
         + (size(steps.builtins.result) > 0
             ? ['# Telo — built in to telo ' + steps.telo.result
                 + ': the schema fragments, value types, zone attributes and formats the definitions above name; write no import.\n'

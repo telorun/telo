@@ -46,3 +46,24 @@ fields:
   url:
     type: string
 required: [url]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Row
+schema:
+  type: object
+  properties:
+    id:
+      type: string
+---
+kind: Telo.Definition
+metadata:
+  name: Shaped
+  description: Takes a row.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/vocab-user.mjs&local_path=./nodejs/src/index.ts#Shaped
+schema:
+  type: object
+  properties:
+    row: !ref Row
