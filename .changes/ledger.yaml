@@ -3,15 +3,15 @@
 # `telo release verify` reconciles it against the registry.
 modules:
   apps/authoring-agent:
-    version: 0.29.1
+    version: 0.29.2
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-4NUKTv4GhFYuHSrP90EPQ0nz7GbhqtaxWWj8J7Tmbh4
+      image: sha256-k61vEgv26hTcmSRNqZ7oziEhtTOF8BHNgv05qHcIU4I
   apps/hub:
-    version: 0.19.1
+    version: 0.19.2
     registry: oci://ghcr.io/telorun
     layers:
-      image: sha256-m-08SXbHzTi4CEDG6Ghci1J-IF5DINP9gp0L6Fzbe0A
+      image: sha256-o08YV54fkvFIvE5PzxcuunZSMpbKPBdWoO-l2q4Aql4
   blueprints/agent-app:
     version: 0.4.2
     registry: oci://ghcr.io/telorun/blueprints
