@@ -66,7 +66,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18586/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps: []
   # A's upload, row and blob; B's forged turn naming A's id.
@@ -131,7 +131,7 @@ steps:
                     mediaType: text/plain
                     size: 35
                     sha256: !cel "sha256('ONLY-CONVERSATION-A-HOLDS-THIS-7f3a')"
-                model: gpt-6-luna
+                model: claude-haiku-5-5
               - { type: text-delta, delta: looked }
               - type: step-finish
                 usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 }
@@ -164,7 +164,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18586/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: intruder

@@ -33,7 +33,7 @@ with:
       modelEndpoint: http://127.0.0.1:18598/v1
       maxContextTokens: 7
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
 targets: [ !ref agent ]
 steps:
   - name: health

@@ -1,0 +1,135 @@
+kind: Telo.Application
+metadata:
+  name: ChatBuildsTodoWithUi
+  version: 1.0.0
+  description: |
+    Manual live repro of a Studio session: "Build me a todo app with nice UI",
+    then the answers to the agent's questions (SQLite, a UI). Asserts the
+    second turn does not ask again, writes a `UiReact.App` and a SQLite-backed
+    store, and leaves the files with a clean check. The journal lands in the
+    state directory for inspecting how the agent got there. Skips silently when
+    ANTHROPIC_API_KEY is unset.
+secrets:
+  anthropicApiKey:
+    env: ANTHROPIC_API_KEY
+    type: string
+    default: ""
+variables:
+  workspaceDir:
+    env: TODO_UI_WORKSPACE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./workspace/builds-todo-with-ui
+  stateDir:
+    env: TODO_UI_STATE_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: apps/authoring-agent/chat/tests/.scratch/builds-todo-with-ui
+imports:
+  Mcp: ../../../../modules/mcp-client
+  Chat:
+    source: ../
+    resources:
+      hub: !ref hub
+    secrets:
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
+    needs:
+      agentState: { path: !cel "variables.stateDir" }
+    variables:
+      workspaceDir: !cel "variables.workspaceDir"
+      teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
+  Fs: ../../../../modules/fs
+  Stream: ../../../../modules/stream
+  Run: ../../../../modules/run
+  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+targets:
+  - !ref cleanWorkspace
+  - !ref Chat.ensureWorkspace
+  - !ref Chat.initSchema
+  - !ref testTodoUi
+---
+kind: Mcp.HttpClient
+metadata: { name: hub }
+url: https://telo.sh/mcp
+clientInfo: { name: authoring-agent-test, version: 0.0.0 }
+---
+kind: Run.Sequence
+metadata: { name: cleanWorkspace }
+steps:
+  - name: clean
+    try:
+      - name: remove
+        inputs:
+          path: !cel "string(variables.workspaceDir)"
+          recursive: true
+        invoke: { kind: Fs.FileRemoval }
+    catch:
+      - name: absent
+        value: true
+---
+kind: Run.Sequence
+metadata: { name: testTodoUi }
+steps:
+  - name: runIfKey
+    if: !cel "secrets.anthropicApiKey != ''"
+    then:
+      - name: conversation
+        invoke: !ref Chat.createConversation
+      - name: chat
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: !cel "steps.conversation.result.conversation.id"
+          idempotencyKey: ""
+          clientIp: test-runner
+          message: "Build me a todo app with nice UI."
+      - name: read
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.chat.result.turnId"
+          fromId: 0
+      - name: drain
+        invoke: { kind: Stream.Collect }
+        inputs:
+          input: !cel "steps.read.result.output"
+      - name: reply
+        value: !cel "steps.drain.result.items.filter(r, r.data.type == 'text-delta').map(r, r.data.delta).join('')"
+      - name: answer
+        invoke: !ref Chat.chatStart
+        inputs:
+          conversationId: !cel "steps.conversation.result.conversation.id"
+          idempotencyKey: ""
+          clientIp: test-runner
+          message: |
+            Here are my answers: use SQLite for storage, no auth, a nice web
+            UI to add, complete and delete todos, and write it under
+            apps/todo. Build it now.
+      - name: readAnswer
+        invoke: !ref Chat.journalSource
+        inputs:
+          key: !cel "steps.answer.result.turnId"
+          fromId: 0
+      - name: drainAnswer
+        invoke: { kind: Stream.Collect }
+        inputs:
+          input: !cel "steps.readAnswer.result.output"
+      - name: answerReply
+        value: !cel "steps.drainAnswer.result.items.filter(r, r.data.type == 'text-delta').map(r, r.data.delta).join('')"
+      - name: assertBuilt
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual:
+            askedAgain: !cel "steps.answerReply.result.contains('telo-questions')"
+            wroteScreen: !cel >-
+              steps.drainAnswer.result.items.exists(r, r.data.type == 'tool-call'
+                && ((r.data.toolCall.name == 'write_file' && string(r.data.toolCall.arguments.content).contains('UiReact.App'))
+                  || (r.data.toolCall.name == 'edit_file' && string(r.data.toolCall.arguments.newString).contains('UiReact.App'))))
+            lastCheck: !cel >-
+              cel.bind(checks, steps.drainAnswer.result.items.filter(r, r.data.type == 'tool-result'
+                    && has(r.data.toolResult.output) && type(r.data.toolResult.output) == type({})
+                    && 'checkExitCode' in r.data.toolResult.output)
+                  .map(r, int(r.data.toolResult.output.checkExitCode)),
+                size(checks) == 0 ? -1 : checks[size(checks) - 1])
+          expected:
+            askedAgain: false
+            wroteScreen: true
+            lastCheck: 0

@@ -257,7 +257,7 @@ steps:
             modelEndpoint: http://127.0.0.1:18528/v1
             maxContextTokens: 10
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -307,7 +307,8 @@ steps:
                 cel.bind(input, steps.t2Call.result.request.input,
                   [input.exists(i, json(i).contains('CONVERSATION SUMMARY: stub summary')),
                    json(input).contains('message t1'),
-                   input.exists(i, has(i.type) && i.type == 'reasoning')])
+                   input.exists(m, has(m.content) && type(m.content) == type([])
+                     && m.content.exists(c, has(c.type) && c.type == 'thinking'))])
               failed: !cel >-
                 cel.bind(t, steps.failedRecords.result.body.turns[2],
                   [t.status, t.error.code, t.error.data.cause.code, t.records.map(r, r.data.type)])
@@ -318,7 +319,7 @@ steps:
                    .filter(t, t in ['user-message', 'turn-continued', 'context-summary', 'finish'])]
             expected:
               t2: [ user-message, context-summary ]
-              t2Summary: [ context-summary, true, stub summary, gpt-6-luna, 15 ]
+              t2Summary: [ context-summary, true, stub summary, claude-haiku-5-5, 15 ]
               tokens: 60
               t2Call: [ true, false, false ]
               failed: [ failed, ERR_CONTEXT_COMPACTION_FAILED, ERR_MODEL_REQUEST_REJECTED, [ user-message ] ]
@@ -475,16 +476,16 @@ steps:
               summaryCalls: !cel >-
                 distinct(steps.allSent.result.body.requests
                   .filter(r, string(r.instructions).startsWith('You summarize conversations'))
-                  .map(r, string(int(r.max_output_tokens)) + ' ' + r.reasoning.effort
-                    + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
+                  .map(r, string(int(r.max_tokens)) + ' ' + r.thinking.type
+                      + ' ' + r.output_config.effort))
               agentCalls: !cel >-
                 distinct(steps.allSent.result.body.requests
                   .filter(r, !string(r.instructions).startsWith('You summarize conversations')
                     && !string(r.instructions).startsWith('You name conversations'))
-                  .map(r, r.reasoning.effort + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
+                  .map(r, r.thinking.type + ' ' + r.thinking.display + ' ' + r.output_config.effort))
             expected:
               eFailed: [ failed, ERR_CONTEXT_COMPACTION_FAILED, ERR_SUMMARY_EMPTY, [ user-message, context-summary ] ]
-              eRecord: [ false, ERR_SUMMARY_EMPTY, true, gpt-6-luna, 15 ]
+              eRecord: [ false, ERR_SUMMARY_EMPTY, true, claude-haiku-5-5, 15 ]
               eTokens: [ 45, 75 ]
               eContinued:
                 - 200
@@ -500,5 +501,5 @@ steps:
                 - [ user-message, context-summary ]
               fRecord: [ false, ERR_SUMMARY_INCOMPLETE, 15 ]
               fContinued: [ 200, finished, [ ERR_SUMMARY_INCOMPLETE, stub summary ] ]
-              summaryCalls: [ "1 low -" ]
-              agentCalls: [ "medium auto" ]
+              summaryCalls: [ "1 disabled low" ]
+              agentCalls: [ "adaptive summarized high" ]

@@ -233,7 +233,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18530/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         # ── named ───────────────────────────────────────────────────────────
@@ -390,14 +390,14 @@ steps:
               namingCalls: !cel >-
                 distinct(steps.sent.result.body.requests
                   .filter(r, string(r.instructions).startsWith('You name conversations'))
-                  .map(r, string(int(r.max_output_tokens)) + ' ' + r.reasoning.effort
-                    + ' ' + (has(r.reasoning.summary) ? string(r.reasoning.summary) : '-')))
+                  .map(r, string(int(r.max_tokens)) + ' ' + r.thinking.type
+                    + ' ' + r.output_config.effort))
             expected:
               aOrder: [ user-message, conversation-title ]
-              aRecord: [ [ Stub title, gpt-6-luna, 15 ] ]
+              aRecord: [ [ Stub title, claude-haiku-5-5, 15 ] ]
               aTitle: Stub title
               bKept: [ 200, Mine, 3, 30 ]
-              bRecord: [ [ false, false, gpt-6-luna, 15 ] ]
+              bRecord: [ [ false, false, claude-haiku-5-5, 15 ] ]
               cFailed: [ finished, [ [ false, ERR_MODEL_REQUEST_REJECTED ] ] ]
               cUntitled: null
               cRetried: [ Stub title ]
@@ -407,4 +407,4 @@ steps:
               fQuoted: Deploy 🚀 app
               gPeriod: Ship 🚀
               hPrompt: [ [ 4000, true ] ]
-              namingCalls: [ "1024 low -" ]
+              namingCalls: [ "1024 disabled low" ]

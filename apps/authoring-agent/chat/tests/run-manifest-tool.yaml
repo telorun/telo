@@ -10,7 +10,7 @@ metadata:
     These assert that it refuses before spawning anything when off, and composes
     exactly `<program> run <path>` when on.
 
-    No model and no API key: the tool never reaches OpenAI, and `echo` stands in
+    No model and no API key: the tool never reaches Anthropic, and `echo` stands in
     for the CLI so the argv itself is what gets asserted (the `telo-cli-tool`
     precedent — it also drops a dependency on which interpreter CI happens to
     run).
@@ -21,7 +21,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: dummy-key-never-used
+      anthropicApiKey: dummy-key-never-used
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state-off')" }
     variables:
@@ -35,7 +35,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: dummy-key-never-used
+      anthropicApiKey: dummy-key-never-used
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state-on')" }
     variables:

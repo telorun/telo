@@ -3,23 +3,23 @@ metadata:
   name: ProviderStub
   version: 1.0.0
   description: |
-    Test fixture: a local stand-in for the OpenAI responses endpoint, so the
-    agent's tests run whole turns offline and key-free. POST /v1/responses
+    Test fixture: a local stand-in for Anthropic's Messages API, so the
+    agent's tests run whole turns offline and key-free. POST /v1/messages
     answers with a streamed response chosen by the request's text:
-      - a naming call (instructions starting `You name conversations`)
+      - a naming call (system text starting `You name conversations`)
         answers `"Stub title."` and a second line, and a summary call
         (`You summarize conversations`) answers `stub summary`; neither
         heeds the directives below, only its own: STUB_TITLE_FAIL /
         STUB_SUMMARY_FAIL refuse it with 400, STUB_SUMMARY_EMPTY completes
         it with no text, STUB_TITLE_CUT / STUB_SUMMARY_CUT end it
-        `response.incomplete` (reason `max_output_tokens`) after part of its
+        stop with `max_tokens` after part of its
         text — each with usage, and each with an `_ONCE` form that applies
         only to the first call of its kind carrying that marker —, and
         STUB_TITLE_SLOW holds a naming call like STUB_SLOW, and
         STUB_TITLE_LONG answers it with a 94-character line whose 80th
         character is the astral `😀`, and `STUB_TITLE_REPLY:<base64 of a
         UTF-8 text>` answers it with exactly that text;
-      - a discovery call (instructions starting `You find Telo modules`)
+      - a discovery call (system text starting `You find Telo modules`)
         asks for one `search_resources` call over the query `stub need`, and
         the request that carries its result answers with the text a
         `STUB_DISCOVERY:<base64 of a UTF-8 text>` directive in the request
@@ -44,11 +44,9 @@ metadata:
         request, until one forbids tools (`tool_choice: "none"`), which gets
         the text reply `stub wrap-up`;
       - anything else gets a text reply.
-    Any request whose input holds a `function_call_output` with no `call_id`, or
-    an empty one, is refused with 400 first, as the provider refuses it.
-    Every reply carries a reasoning item, so the agent records provider state.
-    Every request body is kept, in order, and GET /requests returns them — what
-    a test reads to see what the agent sent.
+    Every agent reply carries a signed thinking block, so the agent records and
+    replays provider state. Every request body is kept in order; GET /requests
+    returns it with `input` and `instructions` aliases for test assertions.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.0#sha256-V8zjIxeI89VhzVcKOrOTqLq7AdsNh2n51k2avdcOh-k
@@ -96,13 +94,16 @@ steps:
       bindings: [ !cel "json(inputs.body)" ]
   - name: request
     value: !cel "json(inputs.body)"
-  # As the provider does: a tool result must name the call it answers.
+  # Anthropic requires each tool result to name the tool-use block it answers.
   - name: unanswerable
     value: !cel >-
-      'input' in inputs.body && type(inputs.body.input) == type([])
-        ? enumerate(inputs.body.input).filter(e, type(e.value) == type({}) && 'type' in e.value
-            && e.value.type == 'function_call_output'
-            && (!('call_id' in e.value) || e.value.call_id == '')).map(e, e.index)
+      'messages' in inputs.body && type(inputs.body.messages) == type([])
+        ? enumerate(inputs.body.messages).filter(e,
+            type(e.value) == type({}) && 'content' in e.value
+            && type(e.value.content) == type([])
+            && e.value.content.exists(c, type(c) == type({}) && 'type' in c
+              && c.type == 'tool_result'
+              && (!('tool_use_id' in c) || c.tool_use_id == ''))).map(e, e.index)
         : []
   - name: callIdMissing
     if: !cel "size(steps.unanswerable.result) > 0"
@@ -110,14 +111,14 @@ steps:
       - name: refuseCallId
         throw:
           code: ERR_STUB_REFUSED
-          message: !cel "'Invalid \\'input[' + string(steps.unanswerable.result[0]) + '].call_id\\': empty string.'"
-  # A naming or summary call is told apart by its instructions; the agent's
+          message: !cel "'Invalid \\'messages[' + string(steps.unanswerable.result[0]) + '].content.tool_use_id\\': empty string.'"
+  # A naming or summary call is told apart by its system text; the agent's
   # own directives never apply to it, only its own.
   - name: kind
     value: !cel >-
-      has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You name conversations') ? 'title'
-        : has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You summarize conversations') ? 'summary'
-        : has(inputs.body.instructions) && string(inputs.body.instructions).startsWith('You find Telo modules') ? 'discovery'
+      has(inputs.body.system) && json(inputs.body.system).contains('You name conversations') ? 'title'
+        : has(inputs.body.system) && json(inputs.body.system).contains('You summarize conversations') ? 'summary'
+        : has(inputs.body.system) && json(inputs.body.system).contains('You find Telo modules') ? 'discovery'
         : 'agent'
   # A naming or summary call's own directives; empty where its kind has none.
   - name: markers
@@ -155,7 +156,7 @@ steps:
       steps.kind.result == 'agent'
         ? (steps.request.result.contains('STUB_FAIL')
             && !(steps.request.result.contains('STUB_FAIL_ONCE') && steps.request.result.contains('TURN CONTINUED: the previous attempt')))
-          || (steps.request.result.contains('STUB_BREAK') && steps.request.result.contains('function_call_output')
+          || (steps.request.result.contains('STUB_BREAK') && steps.request.result.contains('"type":"tool_result"')
             && !steps.request.result.contains('TURN CONTINUED: the previous attempt'))
         : steps.obeys.result.fail
     then:
@@ -189,7 +190,7 @@ steps:
   - name: scripted
     value: !cel >-
       cel.bind(directive, regexExtract(steps.request.result, 'STUB_CALLS:[A-Za-z0-9+/=]+'),
-        steps.kind.result != 'agent' || directive == '' || steps.request.result.contains('function_call_output') ? []
+        steps.kind.result != 'agent' || directive == '' || steps.request.result.contains('"type":"tool_result"') ? []
           : parseJson(base64Decode(directive.substring(11))))
   - name: titleReply
     value: !cel >-
@@ -199,51 +200,85 @@ steps:
     value: !cel >-
       cel.bind(directive, regexExtract(steps.request.result, 'STUB_DISCOVERY:[A-Za-z0-9+/=]+'),
         directive == '' ? '{"found": [], "notFound": []}' : base64Decode(directive.substring(15)))
+  - name: toolResults
+    value: !cel >-
+      has(inputs.body.messages) && type(inputs.body.messages) == type([])
+        ? inputs.body.messages.exists(m, has(m.content) && type(m.content) == type([])
+            && m.content.exists(c, has(c.type) && c.type == 'tool_result'))
+        : false
+  - name: noTools
+    value: !cel >-
+      has(inputs.body.tool_choice) && type(inputs.body.tool_choice) == type({})
+        && inputs.body.tool_choice.type == 'none'
+  - name: calls
+    value: !cel >-
+      steps.kind.result == 'discovery' && !steps.toolResults.result
+        ? [{'name': 'search_resources', 'arguments': {'queries': ['stub need']}}]
+        : size(steps.scripted.result) > 0
+          ? steps.scripted.result
+          : steps.kind.result == 'agent'
+              && (steps.request.result.contains('STUB_LOOP') && !steps.noTools.result
+                || steps.request.result.contains('STUB_TOOL') && !steps.toolResults.result)
+            ? [{'name': 'list_dir', 'arguments': {}}]
+            : []
+  - name: startIndex
+    value: !cel >-
+      has(inputs.body.thinking) && type(inputs.body.thinking) == type({})
+        && inputs.body.thinking.type == 'adaptive' ? 1 : 0
   - name: events
     value: !cel >-
-      [{'type': 'response.output_item.done',
-        'item': {'type': 'reasoning', 'id': 'rs_stub', 'encrypted_content': 'stub-reasoning', 'summary': []}}]
-      + (steps.kind.result == 'title'
-          ? [{'type': 'response.output_text.delta', 'delta': steps.obeys.result.cut ? '"Stub ti'
-              : steps.titleReply.result != '' ? steps.titleReply.result
-              : steps.request.result.contains('STUB_TITLE_LONG') ? join(range(79).map(i, 'a'), '') + '😀' + ' and then more'
-              : '"Stub title."\nA second line'}]
-      : steps.kind.result == 'summary'
-          ? (steps.obeys.result.empty ? []
-              : [{'type': 'response.output_text.delta', 'delta': steps.obeys.result.cut ? 'stub sum' : 'stub summary'}])
-      : steps.kind.result == 'discovery'
-          ? (steps.request.result.contains('function_call_output')
-              ? [{'type': 'response.output_text.delta', 'delta': steps.discoveryReply.result}]
-              : [{'type': 'response.output_item.done',
-                  'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),
-                           'name': 'search_resources', 'arguments': json({'queries': ['stub need']})}}])
-      : size(steps.scripted.result) > 0
-          ? steps.scripted.result.map(c, {'type': 'response.output_item.done',
-              'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),
-                       'name': c.name, 'arguments': json(c.arguments)}})
-      : steps.request.result.contains('STUB_LOOP')
-          ? ('tool_choice' in inputs.body && inputs.body.tool_choice == 'none'
-              ? [{'type': 'response.output_text.delta', 'delta': 'stub wrap-up'}]
-              : [{'type': 'response.output_item.done',
-                  'item': {'type': 'function_call', 'id': 'fc_' + uuidv4(), 'call_id': 'call_' + uuidv4(),
-                           'name': 'list_dir', 'arguments': '{}'}}])
-      : steps.request.result.contains('STUB_TOOL') && !steps.request.result.contains('function_call_output')
-          ? [{'type': 'response.output_item.done',
-              'item': {'type': 'function_call', 'id': 'fc_stub', 'call_id': 'call_' + uuidv4(),
-                       'name': 'list_dir', 'arguments': '{}'}}]
-          : [{'type': 'response.output_text.delta', 'delta': 'stub '},
-             {'type': 'response.output_text.delta', 'delta': 'reply'}])
-      + [steps.obeys.result.cut
-          ? {'type': 'response.incomplete',
-             'response': {'status': 'incomplete', 'incomplete_details': {'reason': 'max_output_tokens'}, 'output': [],
-                          'usage': {'input_tokens': 10, 'output_tokens': 5, 'total_tokens': 15}}}
-          : {'type': 'response.completed',
-             'response': {'status': 'completed', 'output': [],
-                          'usage': {'input_tokens': 10, 'output_tokens': 5, 'total_tokens': 15}}}]
+      [{'type': 'message_start',
+        'message': {'type': 'message', 'role': 'assistant', 'content': [],
+                    'usage': {'input_tokens': 10, 'output_tokens': 0}}}]
+      + (steps.startIndex.result == 1
+          ? [{'type': 'content_block_start', 'index': 0,
+              'content_block': {'type': 'thinking', 'thinking': '', 'signature': ''}},
+             {'type': 'content_block_delta', 'index': 0,
+              'delta': {'type': 'thinking_delta', 'thinking': 'stub reasoning'}},
+             {'type': 'content_block_delta', 'index': 0,
+              'delta': {'type': 'signature_delta', 'signature': 'stub-signature'}},
+             {'type': 'content_block_stop', 'index': 0}]
+          : [])
+      + (size(steps.calls.result) > 0
+          ? flatten(enumerate(steps.calls.result).map(e,
+              [
+                {'type': 'content_block_start', 'index': steps.startIndex.result + e.index,
+                 'content_block': {'type': 'tool_use', 'id': 'toolu_' + uuidv4(),
+                                   'name': e.value.name, 'input': {}}},
+                {'type': 'content_block_delta', 'index': steps.startIndex.result + e.index,
+                 'delta': {'type': 'input_json_delta', 'partial_json': json(e.value.arguments)}},
+                {'type': 'content_block_stop', 'index': steps.startIndex.result + e.index}
+              ]))
+          : steps.kind.result == 'summary' && steps.obeys.result.empty
+            ? []
+            : [
+                {'type': 'content_block_start', 'index': steps.startIndex.result,
+                 'content_block': {'type': 'text', 'text': ''}},
+                {'type': 'content_block_delta', 'index': steps.startIndex.result,
+                 'delta': {'type': 'text_delta',
+                   'text': steps.kind.result == 'title'
+                     ? steps.obeys.result.cut ? '"Stub ti'
+                       : steps.titleReply.result != '' ? steps.titleReply.result
+                       : steps.request.result.contains('STUB_TITLE_LONG') ? join(range(79).map(i, 'a'), '') + '😀' + ' and then more'
+                       : '"Stub title."\nA second line'
+                     : steps.kind.result == 'summary'
+                       ? steps.obeys.result.cut ? 'stub sum' : 'stub summary'
+                       : steps.kind.result == 'discovery' ? steps.discoveryReply.result
+                         : steps.request.result.contains('STUB_LOOP') && steps.noTools.result
+                           ? 'stub wrap-up'
+                           : steps.request.result.contains('STUB_TOOL') ? 'stub tool result'
+                             : 'stub reply'}},
+                {'type': 'content_block_stop', 'index': steps.startIndex.result}
+              ])
+      + [{'type': 'message_delta',
+          'delta': {'stop_reason': steps.obeys.result.cut ? 'max_tokens'
+            : size(steps.calls.result) > 0 ? 'tool_use' : 'end_turn'},
+          'usage': {'output_tokens': 5}},
+         {'type': 'message_stop'}]
   - name: frames
     invoke: { kind: Stream.Of }
     inputs:
-      items: !cel "steps.events.result.map(e, 'data: ' + json(e) + '\\n\\n')"
+      items: !cel "steps.events.result.map(e, 'event: ' + e.type + '\\ndata: ' + json(e) + '\\n\\n')"
 outputs:
   output: !cel "steps.frames.result.output"
 ---
@@ -255,7 +290,7 @@ kind: Http.Api
 metadata: { name: api }
 routes:
   - request:
-      path: /v1/responses
+      path: /v1/messages
       method: POST
       schema:
         body: { type: object, additionalProperties: true }
@@ -304,7 +339,19 @@ routes:
         content:
           application/json:
             body:
-              requests: !cel "result.rows.map(r, parseJson(r.body))"
+              requests: !cel >-
+                result.rows.map(r,
+                  cel.bind(body, parseJson(r.body), {
+                    'model': body.model,
+                    'max_tokens': body.max_tokens,
+                    'thinking': has(body.thinking) ? body.thinking : null,
+                    'output_config': has(body.output_config) ? body.output_config : null,
+                    'messages': has(body.messages) ? body.messages : [],
+                    'tools': has(body.tools) ? body.tools : [],
+                    'tool_choice': has(body.tool_choice) ? body.tool_choice : null,
+                    'instructions': has(body.system) ? join(body.system.map(s, s.text), '\n') : '',
+                    'input': has(body.messages) ? body.messages : []
+                  }))
 ---
 kind: Http.Server
 metadata: { name: server }

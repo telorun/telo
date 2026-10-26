@@ -17,10 +17,10 @@ metadata:
     clean, runs, and is wrong, which is the one failure the toolchain cannot
     catch. So this asserts no file was written and that questions came back.
 
-    Skips silently when OPENAI_API_KEY is unset.
+    Skips silently when ANTHROPIC_API_KEY is unset.
 secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
+  anthropicApiKey:
+    env: ANTHROPIC_API_KEY
     type: string
     default: ""
 variables:
@@ -43,14 +43,12 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: !cel "secrets.openaiApiKey"
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
     needs:
       agentState: { path: !cel "variables.stateDir" }
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      # No `model:` — inherited from the library. `low` effort: the case pins
-      # behaviour, not answer quality, and `authors-manifest` keeps the shipped default.
-      reasoningEffort: low
+      # No `model:` — inherited from the library.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
   Fs: ../../../../modules/fs
   Stream: ../../../../modules/stream
@@ -87,7 +85,7 @@ kind: Run.Sequence
 metadata: { name: testAsksAboutData }
 steps:
   - name: runIfKey
-    if: !cel "secrets.openaiApiKey != ''"
+    if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: conversation
         invoke: !ref Chat.createConversation

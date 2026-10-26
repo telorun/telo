@@ -32,7 +32,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
     needs:
       agentState: { path: !cel "variables.libraryScratch.joinPath('state')" }
     variables:
@@ -342,7 +342,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         # ── a finished conversation ─────────────────────────────────────────
@@ -466,7 +466,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: racers
@@ -550,7 +550,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: turns
@@ -603,7 +603,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18522/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: race

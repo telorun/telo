@@ -103,7 +103,7 @@ steps:
             # Exactly one turn's reservation.
             budgetLimit: 40000
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
         # The instance's own database, reached from outside it.
         - kind: SQLite.Connection
           metadata: { name: agentDb }
@@ -207,7 +207,7 @@ steps:
             # once the first turn is settled to what it spent.
             budgetLimit: 60000
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
         - kind: SQLite.Connection
           metadata: { name: agentDb }
           file: !cel "variables.scratch.joinPath('projection').joinPath('agent-state').joinPath('agent.sqlite')"
@@ -287,7 +287,7 @@ steps:
             # exactly one — the continue's, or the next start's once refunded.
             budgetLimit: 80000
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
         - kind: SQLite.Connection
           metadata: { name: agentDb }
           file: !cel "variables.scratch.joinPath('continue').joinPath('agent-state').joinPath('agent.sqlite')"

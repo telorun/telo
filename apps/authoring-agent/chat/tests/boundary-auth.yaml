@@ -139,7 +139,7 @@ steps:
             otlpEndpoint: http://127.0.0.1:18510
             allowManifestRuns: true
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
             agentToken: test-token-2b7f
         # Open, and with no model key.
         - kind: App.Instance
@@ -153,7 +153,7 @@ steps:
             modelEndpoint: http://127.0.0.1:18519/v1
             otlpEndpoint: http://127.0.0.1:18510
           secrets:
-            openaiApiKey: ""
+            anthropicApiKey: ""
       targets: [ !ref guarded, !ref open ]
       steps:
         - name: refused
@@ -335,7 +335,7 @@ steps:
                 - 503
                 - ready: false
                   reasons:
-                    - { code: MODEL_CREDENTIAL_MISSING, message: "No model API key is configured (OPENAI_API_KEY is empty)." }
+                    - { code: MODEL_CREDENTIAL_MISSING, message: "No model API key is configured (ANTHROPIC_API_KEY is empty)." }
                     - { code: WORKSPACE_NOT_WRITABLE, message: The workspace is not writable. }
               # Exactly one, from the open agent — the guarded one said nothing.
               exposure: [ [ WARN, "18502" ] ]

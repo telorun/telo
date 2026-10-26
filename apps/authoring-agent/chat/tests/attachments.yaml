@@ -23,7 +23,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -403,7 +403,7 @@ steps:
         lead: !cel >-
           cel.bind(lead, steps.drain.result.items[0].data,
             [lead.type, lead.content] + lead.attachments.map(a, a.id + ' ' + a.name + ' ' + a.mediaType))
-        modelGotImage: !cel "steps.request.result.contains('data:image/png;base64,' + steps.png.result)"
+        modelGotImage: !cel "steps.request.result.contains(steps.png.result)"
         modelGotText: !cel >-
           steps.request.result.contains('ATTACHED FILE notes.txt (text/plain):\\nhello attachment')
         readBack: !cel "[steps.back.result.base64 == steps.png.result, steps.back.result.mediaType, steps.back.result.name]"

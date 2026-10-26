@@ -118,7 +118,7 @@ steps:
             # The repo's own CLI, relative to the workspace the check runs in.
             teloProgram: [bun, ../../../../../../../cli/nodejs/bin/telo.ts]
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -158,7 +158,7 @@ steps:
             WORKSPACE_DIR: !cel "string(variables.scratch.joinPath('console').joinPath('workspace'))"
             AGENT_STATE_DIR: !cel "string(variables.scratch.joinPath('console').joinPath('agent-state'))"
             MODEL_ENDPOINT: http://127.0.0.1:18513/v1
-            OPENAI_API_KEY: stub-key
+            ANTHROPIC_API_KEY: stub-key
             OTLP_ENDPOINT: ""
             AGENT_TOKEN: ""
       - name: scan
@@ -219,7 +219,7 @@ steps:
         sameTrace: true
         rootIsRoot: true
         rootConversation: true
-        genAi: [ "invoke_agent author", "chat gpt-6-luna", "execute_tool write_file", "chat gpt-6-luna" ]
+        genAi: [ "invoke_agent author", "chat claude-haiku-5-5", "execute_tool write_file", "chat claude-haiku-5-5" ]
         writeFailed: true
         # The turn's two agent calls and the call that named the conversation.
         usage: [ [ gen_ai.usage.input_tokens=30, gen_ai.usage.output_tokens=15 ] ]
