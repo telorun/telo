@@ -1,7 +1,7 @@
 kind: Telo.Application
 metadata:
   name: AuthoringAgent
-  version: 0.29.2
+  version: 0.29.3
   description: |
     AI manifest-authoring agent. Thin HTTP/SSE root over the `chat` library, which
     owns the chat backend (Anthropic-backed Ai.AgentStream + fs/shell tools + SQLite
