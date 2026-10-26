@@ -37,7 +37,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -368,7 +368,7 @@ steps:
           usage: !cel "steps.longEnd.result.summary.usage"
           lastRequest: !cel >-
             cel.bind(last, steps.sent.result.body.requests[size(steps.sent.result.body.requests) - 1],
-              [size(last.tools) > 0, last.tool_choice,
+              [size(last.tools) > 0, last.tool_choice.type,
                json(last.input[size(last.input) - 1]).contains('You have used every step this turn may take')])
       expected:
         mixed:

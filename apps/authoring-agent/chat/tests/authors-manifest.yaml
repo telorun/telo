@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     Live integration test for the chat library: drives the exported ChatHandler
-    with a real OpenAI model and asserts the agent authors a REAL, runnable Telo
+    with a real Anthropic model and asserts the agent authors a REAL, runnable Telo
     application — a minimal HTTP server with one static route — by DISCOVERING the
     module it needs through its hub tools (`find_kinds` / `get_kinds`) and
     importing it at its exact published version. Kept
@@ -17,13 +17,13 @@ metadata:
     succeed if the import version resolves against its origin and the http
     resources are wired correctly, and (3) the file composed the real
     http-server module and wired the /hello route. Skips silently when
-    OPENAI_API_KEY is unset (locally: drop a .env.local here; CI: secret on the
+    ANTHROPIC_API_KEY is unset (locally: drop a .env.local here; CI: secret on the
     workflow); when the key is present it also needs outbound access to the hub
     (telo.sh) for discovery and to ghcr.io for module resolution, or the run
     fails.
 secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
+  anthropicApiKey:
+    env: ANTHROPIC_API_KEY
     type: string
     default: ""
 variables:
@@ -49,7 +49,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: !cel "secrets.openaiApiKey"
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
     needs:
       agentState: { path: !cel "variables.stateDir" }
     variables:
@@ -109,7 +109,7 @@ metadata: { name: testAuthors }
 # PRs without the secret) skip it silently instead of failing on a missing key.
 steps:
   - name: runIfKey
-    if: !cel "secrets.openaiApiKey != ''"
+    if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: conversation
         invoke: !ref Chat.createConversation

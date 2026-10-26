@@ -165,7 +165,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18520/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         # ── one conversation's life ─────────────────────────────────────────
@@ -212,8 +212,8 @@ steps:
             expected:
               created: 201
               minted: [null, null, 0, 0, false, 0, true]
-              turn: [user-message, conversation-title, text-delta, text-delta, provider-state, step-finish, message, finish]
-              named: [Stub title, gpt-6-luna, 2, 30, 3]
+              turn: [user-message, conversation-title, reasoning-delta, text-delta, provider-state, step-finish, message, finish]
+              named: [Stub title, claude-haiku-5-5, 2, 30, 3]
               renamed: [200, Renamed by hand, 4]
               refused: [400, 400, 400]
         # ── the list ────────────────────────────────────────────────────────

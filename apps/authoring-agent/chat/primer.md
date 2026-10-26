@@ -160,9 +160,7 @@ slot stays the kind's own — its title, its `x-telo-topology-role: steps`
 marker, and any `x-telo-context` bindings it offers a step (`item`, `index`,
 `iteration`). One slot per kind: a one-step body IS the arbitrary-executable
 case (`steps: [{ name: work, invoke: !ref x }]`), so never declare `steps:`
-and an executable `invoke:` on the same kind. A module declaring a step body
-this way must also declare `requires: { telo: ">=0.79.0" }` — the fragment is
-syntax an older runtime cannot resolve. `x-telo-step-context` is the legacy
+and an executable `invoke:` on the same kind. `x-telo-step-context` is the legacy
 spelling, still read, never written in new manifests.
 
 A `Telo.Definition` / `Telo.Abstract` may also declare `status:` — a JSON
@@ -400,8 +398,7 @@ result:
 `outputType:`, its kind's, or the keys of its `outputs:` map) with it and
 reports `REFERENCE_OUTPUT_MISMATCH` at the slot on a definite mismatch; a
 target that declares no output gets no verdict, so your controller still
-refuses a wrong result at run time. The module declaring it needs
-`requires: telo: ">=0.102.0"`.
+refuses a wrong result at run time.
 
 `Telo.Executable` is the built-in parent of `Telo.Invocable` and
 `Telo.Runnable` — use it for any slot that accepts either. It is a SLOT
@@ -477,7 +474,7 @@ replaces the field's value for that call. Extended thinking has no field of its 
 `options: { thinking: { type: enabled, budget_tokens: 8000 } }`; the thinking
 comes back as `reasoning` parts and rides `providerState` through a tool loop
 with nothing to declare. It does not take the contract's `responseFormat`
-(`ERR_MODEL_REQUEST_REJECTED`). The module needs telo `>=0.114.0`.
+(`ERR_MODEL_REQUEST_REJECTED`).
 
 SWAPPING PROVIDERS CHANGES TWO DOCUMENTS: the model resource and its
 `Http.Client`. The operation over it, its routes and every `catches:` naming
@@ -1171,11 +1168,6 @@ replaying region and declares none, which is why a violation has to be its own
 statement rather than something inferable from the requirement. A requirement
 is also legal at the schema root, where it means EVERY instance needs the zone
 (a field-level one applies only when that field is set).
-
-A module declaring the OBJECT form must also declare
-`requires: { telo: ">=0.79.0" }` — an older analyzer reads the object as a
-malformed annotation and rejects the module, blaming its own author. The two
-scalar spellings (`true`, a pointer) are older syntax and need no bound.
 
 Read them at runtime with `ctx.zoneAttributes(invokeCtx)` — the kernel resolves
 them off the declaring kind's schema and hands them back uninterpreted, exactly
@@ -1919,8 +1911,17 @@ required; `read` and `list` declare a required `id`, `create` and `update` omit
 it and set `additionalProperties: false` — and `query: { filters: [{ property,
 operator }], sort: [{ property }] }`, all required (`[]` for none): the only
 filters and sorts the list accepts, each naming a property of `read`. Properties are camelCase, columns snake_case, the primary key is
-the integer column `id`. It does not create the table. The module needs telo
-0.112.0 or newer (`requires: telo: ">=0.112.0"`).
+the integer column `id`. It does not create the table.
+
+**The `Table` you declare for it names its columns in snake_case** — property
+`isDone` is the column `is_done`, `dueOn` is `due_on`. The `Table` / `Schema`
+kinds take a column name as written, so copying the camelCase property into
+`columns:` creates a column `Crud.Resource` never reads, and the failure is a
+500 at the first request (`no such column: "is_done"`) that `telo check` cannot
+see. Single-word names (`id`, `text`) are the same in both forms, which is why
+the mistake hides until a two-word property. Write `columns: { id: …, text: …,
+is_done: … }` beside `isDone` in the model's shapes, and test the route
+(`GET`, then `POST`) before reporting the app done.
 
 **`PUT <prefix>/<id>` replaces the row.** Its body is a whole record validated
 against the model exactly as a `POST` body is — never a partial one. Every
@@ -2662,8 +2663,7 @@ to say.
   migration key that is a lie the first time the entry is deleted.
 
   **A knowledge graph is `graph` + a backend (`graph-sql`), over tables you
-  declare.** `graph` declares `requires: telo: ">=0.108.0"`, so a graph of any
-  backend needs telo 0.108.0 or newer. Every node type and every relationship type is its OWN ordinary
+  declare.** Every node type and every relationship type is its OWN ordinary
   engine `Table`, listed in the engine `Schema` like any other — the graph
   issues no DDL. Then declare the mapping: `GraphSql.Node { table: !ref …,
   key: <column> }` (the key column is the primary key, or `unique` +
@@ -2739,9 +2739,7 @@ to say.
   kept, drafts are parallel, a stale draft is merged per property, and a
   layer is built on PINNED revisions of others instead of a declared `bases:`;
   described after DRAFTS):
-  `graph-layers-revisions-sqlite` / `graph-layers-revisions-postgres`. A
-  layered graph of ANY strategy needs telo 0.108.0 or newer: every strategy module imports `graph-layers`, which
-  declares `requires: telo: ">=0.108.0"`. Pick ONE strategy module per engine and
+  `graph-layers-revisions-sqlite` / `graph-layers-revisions-postgres`. Pick ONE strategy module per engine and
   import it under one alias (say `Layers`); never mix kinds of two strategy
   modules in one graph (`REFERENCE_KIND_MISMATCH`). Do NOT use `graph-sql` kinds or a
   plain engine `Table` for a layered graph. Storage is still DECLARED, with
@@ -3087,7 +3085,6 @@ to say.
   Controller code reaches a file by `name` through `ctx.resolveNativeFile(name)`,
   which resolves against the module declaring the kind (never the consumer's)
   and picks the first entry matching the host.
-  A module using it declares a `requires: telo:` floor.
 - `sources:` — OPTIONAL map beside `native:` saying where each prebuilt
   file is fetched from, keyed by source name (a lowercase token); `telo builtins
   ModuleSources` prints a source's fields. `url` is an `https://` template (plain `http://`
@@ -3108,8 +3105,7 @@ to say.
   candidate's `path=`, a file an `assets:` pattern selects (a platform-neutral
   upstream file, shipped in the asset layer), or one of the source's own
   notices; two sources never produce one path, and no entry path runs through
-  another. Staged paths are gitignored by the module. A module staging an asset
-  declares a `requires: telo:` floor. A source whose files are prebuilt from a crate in
+  another. Staged paths are gitignored by the module. A source whose files are prebuilt from a crate in
   the same repository also names it, `build: { cargo: ./rust }`
   (module-relative); its `build.inputs` digest is written by
   `telo release stage --pin`, never by hand, and `telo release check` fails when
@@ -3142,22 +3138,7 @@ to say.
   list are built together and share their common code, which is the only way
   two entries share a dependency. Nothing needs a `files:` entry.
 - `lang:` — the language the module's own texts are written in, an RFC 5646 tag
-  (`lang: en`), on either module kind. A module using it — or any text-vocabulary
-  syntax — declares a `requires: telo:` floor at the release that carries it.
-- `requires:` — the runtime range this module is verified against, on either
-  module kind. `telo:` is a semver range over the MANIFEST SURFACE GENERATION
-  (`requires: {telo: ">=0.80.0"}`), one scale every kernel reports; host
-  requirements nest under `host:`, where `node` is the only axis today (an
-  axis exists only once something compares it). Bare versions and
-  `^` / `~` are REJECTED — pre-1.0 the caret allows only one minor and Telo
-  ships breaking changes as minor bumps, so it would pin the module to a
-  single release generation; write `>=X.Y.Z`. Ranges are open above unless a
-  module is known broken on a newer Telo, and an upper bound must name a
-  version that already exists. A module declaring nothing carries no
-  requirement. Declare it on a library you publish; on an application only
-  when it is distributed (a starter, an example, a deployed app). When you
-  author a manifest for a user, do NOT invent a bound — omit the block unless
-  the user states the Telo version they target.
+  (`lang: en`), on either module kind.
 - `exports:` (Library only) — `kinds:` (kind names importers may use) and
   `resources:` (instance names importers may `!ref`). Declaring `kinds:` opts
   the library into a gate: ONLY the listed kinds are importable, and using an
@@ -3195,8 +3176,7 @@ to say.
 
   There is no `use:` on an entry, and no `default:`: every declared entry must
   be supplied. An injected resource is BORROWED — the application tears it
-  down, never the library. A module using this block needs
-  `requires: {telo: ">=0.83.0"}`.
+  down, never the library.
 - `needs:` (a TOP-LEVEL block of a Library or an Application) — what the module asks whoever
   runs it for, each entry naming a NEED TYPE (`telo builtins NeedRequest`
   prints an entry's fields):
@@ -3270,7 +3250,7 @@ to say.
   (`needs: { site: !ref site }`); a fulfilment written in the manifest, a
   field-by-field supply or a library address need left unforwarded is
   `NEED_ROOT_SUPPLY_REQUIRED` — a domain name is never written in a manifest.
-  An app declaring one needs `requires: { telo: ">=0.118.0" }`. An
+  An
   `Http.Server` mount answers only the hosts its `hostnames` names — a list of
   `!ref`s to those needs (`hostnames: [ !ref admin ]`, never a string:
   `INVALID_REFERENCE_FORM`); each need must name the port the server listens
@@ -3302,8 +3282,7 @@ to say.
   writes. A library declares its own and the application may forward one whole
   (`needs: { files: !ref data }`) — a `shared` one into a `single-writer` need
   or a smaller `size` into a larger one is `NEED_FORWARD_INCOMPATIBLE`, one
-  directory forwarded to two needs `NEED_DIRECTORY_FORWARDED_TWICE`. An app
-  declaring one needs `requires: { telo: ">=0.121.0" }`.
+  directory forwarded to two needs `NEED_DIRECTORY_FORWARDED_TWICE`.
 - `kind: Telo.NeedType` — declares a need type a library exports through
   `exports.kinds` (`telo builtins NeedType` prints its fields). A credential
   field is `type: string` with `x-telo-sensitive: true`, and is then redacted
@@ -3333,8 +3312,7 @@ to say.
 
   Every import of a singleton must agree: two imports supplying different
   `variables:` / `secrets:` / `resources:` / `needs:` is a hard error, and a per-import
-  `logging:` or `runtime:` on such an import is rejected. Same
-  `requires: {telo: ">=0.83.0"}` floor.
+  `logging:` or `runtime:` on such an import is rejected.
 
 ## References and CEL — strict rules
 
@@ -3457,8 +3435,7 @@ to say.
   `x-telo-type: { name: Telo.HostPath, entry: directory }` (or `entry: file`):
   `Http.Static.root`, every Fs `cwd`, a journal `directory` and a blob
   store's `root` take a directory, `SQLite.Connection.file` a file. Declare the same `entry` on the
-  variable feeding one (`dbFile` → `file`, `reportsDir` → `directory`), with
-  `requires: { telo: ">=0.121.0" }`; a variable or a `!module-path` naming the
+  variable feeding one (`dbFile` → `file`, `reportsDir` → `directory`); a variable or a `!module-path` naming the
   other kind is `HOST_PATH_ENTRY_MISMATCH`, and a database file inside a
   directory is `dir.joinPath('app.db')`, never the directory itself.
 - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);

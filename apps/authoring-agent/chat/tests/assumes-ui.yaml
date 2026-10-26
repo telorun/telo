@@ -7,7 +7,7 @@ metadata:
     screen still gets one. The request settles everything else — the records,
     the store, no auth, no tests — and says to build without asking, so the
     only open decision is the one the agent must take by default. It drives the
-    chat library with a real OpenAI model against the live hub, drains the
+    chat library with a real Anthropic model against the live hub, drains the
     turn's records and asserts that the agent asked nothing, wrote a
     `UiReact.App` through `write_file` or `edit_file`, and left the files with
     a clean check.
@@ -16,11 +16,11 @@ metadata:
     HTTP API only — no UI" and which asserts that no screen is written: the
     pair pins "a UI unless the user says otherwise", since either alone is
     satisfied by an agent that always or never builds one. Skips silently when
-    OPENAI_API_KEY is unset; with the key it needs the deployed hub (telo.sh)
+    ANTHROPIC_API_KEY is unset; with the key it needs the deployed hub (telo.sh)
     and ghcr.io for module resolution, or the run fails.
 secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
+  anthropicApiKey:
+    env: ANTHROPIC_API_KEY
     type: string
     default: ""
 variables:
@@ -42,7 +42,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: !cel "secrets.openaiApiKey"
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
     needs:
       agentState: { path: !cel "variables.stateDir" }
     variables:
@@ -88,7 +88,7 @@ kind: Run.Sequence
 metadata: { name: testAssumesUi }
 steps:
   - name: runIfKey
-    if: !cel "secrets.openaiApiKey != ''"
+    if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: conversation
         invoke: !ref Chat.createConversation

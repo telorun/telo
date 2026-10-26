@@ -19,7 +19,7 @@ imports:
       hub: !ref hub
     secrets:
       # The tool never touches the model; the key is only a required import input.
-      openaiApiKey: dummy-key-never-used
+      anthropicApiKey: dummy-key-never-used
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -38,7 +38,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: dummy-key-never-used
+      anthropicApiKey: dummy-key-never-used
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('identity/state')" }
     variables:

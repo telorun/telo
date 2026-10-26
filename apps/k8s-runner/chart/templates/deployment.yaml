@@ -68,15 +68,25 @@ spec:
             - name: RUNNER_DESCRIPTION
               value: {{ .Values.runner.description | quote }}
             {{- end }}
-            {{- if .Values.apps.catalogSecret }}
-            - name: RUNNER_APPS
+            {{- if .Values.agent.image }}
+            {{- $entry := dict "image" .Values.agent.image "port" .Values.agent.port }}
+            {{- $env := dict }}
+            {{- range $k, $v := .Values.agent.env }}{{- $_ := set $env $k $v }}{{- end }}
+            {{- /* Kubernetes expands $(VAR) from env vars defined earlier in this list. */}}
+            {{- range $k, $ref := .Values.agent.secretEnv }}
+            - name: AGENT_SECRET_{{ $k }}
               valueFrom:
                 secretKeyRef:
-                  name: {{ .Values.apps.catalogSecret | quote }}
-                  key: {{ .Values.apps.catalogSecretKey | quote }}
-            {{- else if .Values.apps.catalog }}
+                  name: {{ $ref.secretName | quote }}
+                  key: {{ $ref.key | quote }}
+            {{- $_ := set $env $k (printf "$(AGENT_SECRET_%s)" $k) }}
+            {{- end }}
+            {{- range $key := list "pullPolicy" "tokenEnv" "title" "description" }}
+            {{- if get $.Values.agent $key }}{{- $_ := set $entry $key (get $.Values.agent $key) }}{{- end }}
+            {{- end }}
+            {{- if $env }}{{- $_ := set $entry "env" $env }}{{- end }}
             - name: RUNNER_APPS
-              value: {{ .Values.apps.catalog | quote }}
+              value: {{ dict "authoring-agent" $entry | toJson | quote }}
             {{- end }}
             - name: RUNNER_MAX_SESSIONS
               value: "{{ .Values.runner.maxSessions }}"

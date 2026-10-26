@@ -146,7 +146,7 @@ steps:
             workspaceDir: !cel "variables.scratch.joinPath('workspace')"
             modelEndpoint: http://127.0.0.1:18450/v1
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -186,7 +186,7 @@ steps:
               refused: !cel >-
                 steps.refusedEvents.result.frames.map(f, f.event == 'error' ? f.error.code : f.data.type)
             expected:
-              plain: [user-message, conversation-title, text-delta, text-delta, provider-state, step-finish, message, finish]
+              plain: [user-message, conversation-title, reasoning-delta, text-delta, provider-state, step-finish, message, finish]
               toolLast: finish
               refused: [user-message, ERR_MODEL_REQUEST_REJECTED]
         - name: records
@@ -324,7 +324,7 @@ steps:
             modelEndpoint: http://127.0.0.1:18450/v1
             model: another-model
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: switched
@@ -350,7 +350,8 @@ steps:
         models: !cel "steps.sent.result.body.requests.map(r, r.model)"
         carriesReasoning: !cel >-
           steps.sent.result.body.requests.map(r,
-            r.input.exists(i, 'type' in i && i.type == 'reasoning'))
+            r.input.exists(m, has(m.content) && type(m.content) == type([])
+              && m.content.exists(c, has(c.type) && c.type == 'thinking')))
       expected:
-        models: [gpt-6-luna, gpt-6-luna, gpt-6-luna, gpt-6-luna, gpt-6-luna, another-model]
+        models: [claude-haiku-5-5, claude-haiku-5-5, claude-haiku-5-5, claude-haiku-5-5, claude-haiku-5-5, another-model]
         carriesReasoning: [false, false, true, true, true, false]

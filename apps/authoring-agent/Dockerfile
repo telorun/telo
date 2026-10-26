@@ -9,7 +9,7 @@ ARG TELO_NODE_VERSION=latest
 # agent's own state directory (its SQLite DB and journal) — that per-instance
 # isolation is what makes it multi-user.
 #
-# Runtime: inject OPENAI_API_KEY (BUDGET_LIMIT optional), listen on $PORT
+# Runtime: inject ANTHROPIC_API_KEY (BUDGET_LIMIT optional), listen on $PORT
 # (default 8080).
 
 FROM telorun/node:${TELO_NODE_VERSION}-slim as build

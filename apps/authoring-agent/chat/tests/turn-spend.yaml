@@ -20,7 +20,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:

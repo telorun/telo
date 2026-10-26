@@ -3,11 +3,11 @@ metadata:
   name: Chat
   version: 0.0.0
   description: |
-    The authoring agent's chat backend: an OpenAI-backed Ai.AgentStream with
+    The authoring agent's chat backend: an Anthropic-backed Ai.AgentStream with
     workspace-rooted fs tools (write_file / edit_file / read_file / list_dir /
     delete_file) plus telo_check and a general `telo` CLI tool. `telo check` runs
     automatically after every write/edit, so the agent always validates. Every
-    subprocess is execed without a shell as a keyless one (OPENAI_API_KEY unset),
+    subprocess is execed without a shell as a keyless one (Anthropic credentials unset),
     and the `telo` tool may only name a subcommand listed in `teloVerbs` —
     inspection verbs by default, with `run` / `publish` / `install` / `upgrade`
     absent, so an anonymous prompt can neither execute a manifest on this host nor
@@ -30,11 +30,11 @@ metadata:
     listed as diffs, reverted, and summarized on its record page; one workspace
     lease serializes those tools, a workspace push and each reverted path.
     Exported so the app and its tests drive the same handler. Parameterized by the
-    OpenAI key, the model endpoint, the workspace directory and the agent's state
+    Anthropic API key, the model endpoint, the workspace directory and the agent's state
     directory, which holds `agent.sqlite`.
 # A module this library, the application and its tests all import comes from
-# ONE origin everywhere — `Ai`, `OpenAI`, `AiMcp`, `Mcp`, `Run`, `Stream` and
-# `HttpClient` in particular, since `ai` and `openai` reach the last three: one
+# ONE origin everywhere — `Ai`, `Anthropic`, `AiMcp`, `Mcp`, `Run`, `Stream` and
+# `HttpClient` in particular, since `ai` and `anthropic` reach the last three: one
 # module loaded from two origins is two identities for one kind. When a change
 # needs one from the checkout, the whole set moves to the checkout together.
 # A caught failure is re-raised with `rethrow: {}`, a step an older runtime's
@@ -43,7 +43,7 @@ requires:
   telo: ">=0.123.0"
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.31.0#sha256-fvvEF5Vqyuro1t9wx7tJlDSzPoqOO5fQ-2s9nyvPAQ0
-  OpenAI: oci://ghcr.io/telorun/openai@0.16.0#sha256-2mb6YTv2MYk32UZ66Pmgp3Pyi65MI7LBmPZrBHFWm1A
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.5.0#sha256-mcYbvU6ZOXrWbgRdYBqsa_tD0g1TwYAEVo4D8yUWUdk
   HttpClient: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.27.0#sha256-gVBYAnpj01A5jS6KRthRH-qhpoDvRxBKrWPsBljueYU
   Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
@@ -88,7 +88,7 @@ needs:
     kind: Telo.DurableDirectory
     parameters: { access: single-writer }
 secrets:
-  openaiApiKey:
+  anthropicApiKey:
     type: string
 variables:
   # Directory every file tool and every spawned command is rooted at. Configurable
@@ -106,20 +106,7 @@ variables:
     # importer including the tests, so a test exercises what the app ships. It
     # used to be restated as a literal at the root and in four tests, which made
     # this line dead config: changing it looked like an upgrade and did nothing.
-    default: gpt-6-luna
-  reasoningEffort:
-    type: string
-    enum: [ minimal, low, medium, high ]
-    # How hard the model thinks before each turn. A variable rather than a
-    # literal for the same reason `model` is one: it is the knob an operator
-    # tunes per deployment, and it trades answer quality against latency and
-    # spend on every turn of every tool loop.
-    #
-    # `medium` because this agent's work is structural — deciding what resources
-    # an application needs and how they wire together — which is where thinking
-    # pays for itself; `minimal` exists for a deployment that wants the old
-    # behaviour back without editing the manifest.
-    default: medium
+    default: claude-haiku-5-5
   budgetLimit:
     type: integer
     # Max total tokens spent across all turns per window (operator spend cap).
@@ -181,9 +168,8 @@ variables:
     # preference. A manifest the agent wrote is arbitrary code: it can declare a
     # Shell.Command, read any file this container can, and reach the network.
     # `Shell.LocalHost.env` is an OVERLAY, so a child inherits every operator
-    # variable except the ones named there — OPENAI_API_KEY is scrubbed, and
-    # whatever else the operator set is not, because a module cannot enumerate
-    # it. So this must not be on where an anonymous prompt reaches the agent.
+    # variable; provider keys are cleared, while other variables remain because
+    # a module cannot enumerate them. So this must not be on for anonymous prompts.
     #
     # Turn it on where the caller is the person whose container this is: a
     # per-session or co-resident agent in the user's own workspace, which is
@@ -191,9 +177,8 @@ variables:
     default: false
   modelEndpoint:
     type: string
-    # The OpenAI-compatible endpoint the model is called through. A test points
-    # it at a local stub, so whole turns run offline and key-free.
-    default: https://api.openai.com/v1
+    # The Anthropic Messages API endpoint, or a gateway/test stub.
+    default: https://api.anthropic.com/v1
   retentionDays:
     type: integer
     minimum: 1
@@ -519,17 +504,16 @@ migrations:
   projection_8_attachment_references:
     statement: DELETE FROM turn_projections
 ---
-# The account, declared once: base URL and credential on the client, so the model
-# kinds carry no key and the 401 re-acquire-and-retry is inherited from
-# `http-client` rather than re-implemented per provider.
-kind: HttpClient.BearerToken
-metadata: { name: openaiKey }
-token: !cel "secrets.openaiApiKey"
+# The account credential is sent in Anthropic's required x-api-key header.
+kind: HttpClient.ApiKeyHeader
+metadata: { name: anthropicKey }
+header: x-api-key
+key: !cel "secrets.anthropicApiKey"
 ---
-kind: HttpClient.Client
-metadata: { name: openaiClient }
+kind: Anthropic.Client
+metadata: { name: anthropicClient }
 baseUrl: !cel "variables.modelEndpoint"
-credential: !ref openaiKey
+credential: !ref anthropicKey
 # A provider edge fails transiently — a 503 whose body is the proxy's own
 # "upstream connect error … Connection refused", arriving BEFORE any headers, so
 # the request never started streaming and re-sending it is sound. Without a
@@ -547,28 +531,19 @@ retry:
   honorRetryAfter: true
 ---
 kind: HttpClient.Request
-metadata: { name: openaiRequest }
-client: !ref openaiClient
+metadata: { name: anthropicRequest }
+client: !ref anthropicClient
 ---
-# The responses API, not chat completions: this agent is nothing but tools, and
-# `/v1/chat/completions` refuses a non-`none` reasoning effort alongside function
-# tools outright. The encrypted reasoning comes back as the contract's
-# `providerState` and `Ai.AgentStream` replays it, so thinking survives each tool
-# loop rather than restarting on every turn.
-kind: OpenAI.ResponsesModelStream
+# Anthropic's signed thinking blocks are carried in providerState and replayed
+# across tool calls rather than restarted on every turn.
+kind: Anthropic.MessagesModelStream
 metadata: { name: model }
 model: !cel "variables.model"
-request: !ref openaiRequest
-reasoning:
-  effort: !cel "variables.reasoningEffort"
-  # What the thinking a client can SHOW is: the reasoning itself comes back
-  # encrypted and is only ever replayed, so without this a turn emits no
-  # readable reasoning at all — which is why Studio's transcript had none. A
-  # summary is a précis the endpoint writes, delivered as `reasoning-delta`
-  # parts beside the text. Not a variable: it costs a handful of tokens and
-  # there is no `off` value to switch to — the key's ABSENCE is off, so hiding
-  # thinking is a decision for the client that renders it, not for the model.
-  summary: auto
+request: !ref anthropicRequest
+maxTokens: 24000
+options:
+  thinking: { type: adaptive, display: summarized }
+  outputConfig: { effort: high }
 ---
 kind: AiMcp.ToolProvider
 metadata: { name: hubTools }
@@ -2494,8 +2469,8 @@ outputs:
   reasons: !cel >-
     (has(steps.schemaFailure) ? [{'code': 'SCHEMA_UNAVAILABLE',
         'message': 'The conversation database cannot be read.'}] : [])
-    + (secrets.openaiApiKey == '' ? [{'code': 'MODEL_CREDENTIAL_MISSING',
-        'message': 'No model API key is configured (OPENAI_API_KEY is empty).'}] : [])
+    + (secrets.anthropicApiKey == '' ? [{'code': 'MODEL_CREDENTIAL_MISSING',
+        'message': 'No model API key is configured (ANTHROPIC_API_KEY is empty).'}] : [])
     + (has(steps.workspaceFailure) ? [{'code': 'WORKSPACE_NOT_WRITABLE',
         'message': 'The workspace is not writable.'}] : [])
 ---
@@ -5525,12 +5500,13 @@ steps:
 kind: Shell.LocalHost
 metadata: { name: localHost }
 cwd: !cel "variables.workspaceDir"
-# Scrub the operator's OpenAI key from every subprocess spawned on this host
-# (the auto-`telo check`). The key is read only in-process by OpenaiModel; no
-# exposed tool executes agent content in-process, so unsetting it here means no
+# Scrub provider keys from every subprocess spawned on this host
+# (the auto-`telo check`). They are read only in-process by the model controller;
+# no exposed tool executes agent content in-process, so unsetting them here means no
 # anonymous prompt can reach it through the one keyless subprocess we spawn.
 env:
   OPENAI_API_KEY: null
+  ANTHROPIC_API_KEY: null
 ---
 kind: Shell.Command
 metadata: { name: runCommand }
@@ -6331,12 +6307,14 @@ revalidate: sync
 # and summary calls: on this API `max_output_tokens` bounds reasoning and reply
 # together, so the operator's effort would spend a capped call's budget on
 # thinking about a title or a summary.
-kind: OpenAI.ResponsesModelStream
+kind: Anthropic.MessagesModelStream
 metadata: { name: lowEffortModel }
 model: !cel "variables.model"
-request: !ref openaiRequest
-reasoning:
-  effort: low
+request: !ref anthropicRequest
+maxTokens: 24000
+options:
+  thinking: { type: disabled }
+  outputConfig: { effort: low }
 ---
 # What the title and summary calls run on.
 kind: Ai.Buffered
@@ -7485,7 +7463,7 @@ steps:
             inputs:
               prompt: !cel "steps.message.result"
               options:
-                maxOutputTokens: 1024
+                maxTokens: 1024
           # A reply cut short is not a title, however its first line reads.
           - name: incomplete
             if: !cel "steps.call.result.finishReason != 'stop'"
@@ -7670,7 +7648,7 @@ steps:
                   steps.covered.result.rows.map(r, {'role': string(r.role), 'content': string(r.content),
                     'tool_calls': r.tool_calls == null ? null : dyn(string(r.tool_calls))}))
               options:
-                maxOutputTokens: !cel "steps.cap.result"
+                maxTokens: !cel "steps.cap.result"
           # A summary cut short would replace the turns it covers with part of
           # what they held, so only a reply that ended with `stop` is one.
           - name: incomplete

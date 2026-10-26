@@ -223,7 +223,7 @@ steps:
             # The seeded activity is months old; retention must not take it.
             retentionDays: 3650
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref agent ]
       steps:
         - name: list

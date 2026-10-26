@@ -67,7 +67,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('admitted').joinPath('workspace')"
           secrets:
-            openaiApiKey: dummy-key-never-used
+            anthropicApiKey: dummy-key-never-used
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -152,7 +152,7 @@ steps:
               first: !cel "steps.history.result.turns[0].records[0].data"
             expected:
               turns: [ !cel "steps.first.result.body.turnId" ]
-              first: { type: user-message, content: add a health endpoint, model: gpt-6-luna }
+              first: { type: user-message, content: add a health endpoint, model: claude-haiku-5-5 }
   - name: atCapacity
     invoke:
       kind: Run.Sequence
@@ -168,7 +168,7 @@ steps:
             # Below one turn's reservation, so every start is refused.
             budgetLimit: 1
           secrets:
-            openaiApiKey: dummy-key-never-used
+            anthropicApiKey: dummy-key-never-used
       targets: [ !ref agent ]
       steps:
         - name: conversation
@@ -232,7 +232,7 @@ steps:
           variables:
             workspaceDir: !cel "variables.scratch.joinPath('in-flight').joinPath('workspace')"
           secrets:
-            openaiApiKey: dummy-key-never-used
+            anthropicApiKey: dummy-key-never-used
         # The instance's own database, reached from outside it.
         - kind: SQLite.Connection
           metadata: { name: agentDb }
@@ -306,7 +306,7 @@ steps:
             # Two turns' reservations, and no more.
             budgetLimit: 80000
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref stub, !ref agent ]
       steps:
         - name: conversation

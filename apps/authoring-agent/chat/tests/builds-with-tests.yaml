@@ -38,10 +38,10 @@ metadata:
     red test, and finished the turn anyway. Read the assertion's `messages`
     before concluding anything; it carries the failing test's own output.
 
-    Skips silently when OPENAI_API_KEY is unset.
+    Skips silently when ANTHROPIC_API_KEY is unset.
 secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
+  anthropicApiKey:
+    env: ANTHROPIC_API_KEY
     type: string
     default: ""
 variables:
@@ -64,14 +64,12 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: !cel "secrets.openaiApiKey"
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
     needs:
       agentState: { path: !cel "variables.stateDir" }
     variables:
       workspaceDir: !cel "variables.workspaceDir"
-      # No `model:` — inherited from the library. `low` effort: the case pins
-      # behaviour, not answer quality, and `authors-manifest` keeps the shipped default.
-      reasoningEffort: low
+      # No `model:` — inherited from the library.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
       allowManifestRuns: true
   Fs: ../../../../modules/fs
@@ -118,7 +116,7 @@ kind: Run.Sequence
 metadata: { name: testBuilds }
 steps:
   - name: runIfKey
-    if: !cel "secrets.openaiApiKey != ''"
+    if: !cel "secrets.anthropicApiKey != ''"
     then:
       # The app's NAME is fixed by the request so the assertions below can name
       # exact paths; everything else about the shape is the agent's to decide.

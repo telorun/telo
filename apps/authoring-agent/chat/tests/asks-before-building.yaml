@@ -4,7 +4,7 @@ metadata:
   version: 1.0.0
   description: |
     Live integration test for the chat library's analysis phase, both halves of
-    it: drives the exported ChatHandler with a real OpenAI model on a
+    it: drives the exported ChatHandler with a real Anthropic model on a
     DELIBERATELY VAGUE request ("build me a todo app" — no surface, no storage,
     no routes) and asserts the agent asks before it builds, then answers the
     questions and asserts it builds instead of asking again.
@@ -30,10 +30,10 @@ metadata:
     SPECIFIED request and asserts the agent writes immediately. The pair is the
     real assertion: the question turn is conditional on the request leaving
     something material unsaid, so a specified request must never pay for a
-    round-trip. Skips silently when OPENAI_API_KEY is unset.
+    round-trip. Skips silently when ANTHROPIC_API_KEY is unset.
 secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
+  anthropicApiKey:
+    env: ANTHROPIC_API_KEY
     type: string
     default: ""
 variables:
@@ -61,14 +61,13 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: !cel "secrets.openaiApiKey"
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
     needs:
       agentState: { path: !cel "variables.stateDir" }
     variables:
       workspaceDir: !cel "variables.workspaceDir"
       # No `model:` — inherited from the library. `low` effort: the case pins
       # behaviour, not answer quality, and `authors-manifest` keeps the shipped default.
-      reasoningEffort: low
       # Resolved from the agent's cwd, which IS the workspace directory above —
       # two levels below the repo root.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]
@@ -109,7 +108,7 @@ kind: Run.Sequence
 metadata: { name: testAsks }
 steps:
   - name: runIfKey
-    if: !cel "secrets.openaiApiKey != ''"
+    if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: conversation
         invoke: !ref Chat.createConversation

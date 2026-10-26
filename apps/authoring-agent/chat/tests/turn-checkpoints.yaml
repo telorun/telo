@@ -60,7 +60,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('.telo-agent')" }
     variables:
@@ -612,7 +612,7 @@ steps:
             modelEndpoint: http://127.0.0.1:18540/v1
             teloProgram: [bun, ../../../../../../cli/nodejs/bin/telo.ts]
           secrets:
-            openaiApiKey: stub-key
+            anthropicApiKey: stub-key
       targets: [ !ref nestedAgent ]
       steps:
         - name: seeded

@@ -146,24 +146,27 @@ limits:
     maxMemory: "512Mi"
     maxEphemeralStorage: "1Gi"
 
-# Operator-predefined applications the runner can launch by name (advertised on
-# /v1/capabilities as `apps` — identity only; image and env never surface).
-# Empty catalog → no apps offered. The chart has no knowledge of any specific
-# app — the catalog and its secrets are entirely operator-supplied.
-apps:
-  # RUNNER_APPS JSON: {"<name>": {"image", "env"?, "pullPolicy"?, "port"?,
-  # "tokenEnv"?, "title"?, "description"?}}. `env` is injected verbatim into
-  # the app's workload and may embed secrets (clients can never set those
-  # keys) — use catalogSecret instead of this inline value whenever it does.
-  # `port` makes the entry usable as a session's co-resident agent. `tokenEnv`
-  # names an env var the runner fills with a token it mints per session and
-  # reports as `token` on that workload's endpoints; it must not also be a key
-  # of `env`.
-  catalog: ""
-  # Existing Secret holding the full RUNNER_APPS JSON under `key`. Takes
-  # precedence over the inline `catalog`.
-  catalogSecret: ""
-  catalogSecretKey: "RUNNER_APPS"
+# The co-resident agent a session may run beside its workspace (advertised on
+# /v1/capabilities as `features.agents` as `authoring-agent` — identity only;
+# image and env never surface). Empty `image` → no agent offered.
+agent:
+  image: ""
+  # imagePullPolicy: missing | always | never. Empty → missing.
+  pullPolicy: ""
+  # The tcp port the image listens on. No default.
+  port: 8080
+  # Env var the runner fills with a token it mints per session and reports as
+  # `token` on the agent's endpoint; it must not also be a key of `env`.
+  tokenEnv: ""
+  title: ""
+  description: ""
+  # Plain env injected into the agent container only. It lands in the
+  # Deployment spec — put secret values in secretEnv instead.
+  env: {}
+  # Secret-backed env injected into the agent container only:
+  #   ANTHROPIC_API_KEY: { secretName: agent-secrets, key: anthropic-api-key }
+  # The value must not contain `"` or `\`.
+  secretEnv: {}
 
 session:
   # Image spawned for each run. Always offered in the picker below and used as
@@ -187,7 +190,7 @@ session:
     pullPolicy: ""
   # Existing dockerconfigjson Secret in sessionNamespace the kubelet pulls
   # session images with. Needed only where the kernel image or an operator
-  # catalog image (`apps.catalog`) sits in a private registry.
+  # agent image (`agent.image`) sits in a private registry.
   imagePullSecret: ""
   # Optional sandbox RuntimeClass (gvisor/kata). Empty → cluster default (runc).
   runtimeClass: ""

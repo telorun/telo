@@ -6,7 +6,7 @@ itself a Telo Application — the model, the tools, the conversation store and t
 rate limits are all declared resources, not code.
 
 The root manifest is a thin transport over `chat/`, a `Telo.Library` that owns
-the whole chat backend: an OpenAI-backed `Ai.AgentStream`, the filesystem and
+the whole chat backend: an Anthropic-backed `Ai.AgentStream`, the filesystem and
 shell tools, the turn journal and its projections in SQLite, and the handler
 that ties them together. The split exists so the library's own tests drive the
 same handler the HTTP routes do.
@@ -235,7 +235,7 @@ strictly more than "run the tests". A manifest the agent wrote is arbitrary
 code: it can declare a `Shell.Command`, read any file the container can, and
 reach the network **with whatever credentials that container holds**.
 `Shell.LocalHost.env` is an *overlay*, so a child inherits every operator
-variable except the ones named — `OPENAI_API_KEY` is scrubbed, and whatever else
+variable except the ones named — provider keys are scrubbed, and whatever else
 is set is not, because a module cannot enumerate it. There is no narrower
 reading available: once a manifest can run, it can call your live third-party
 systems. So turn it on only where the person prompting owns the container — a
@@ -301,7 +301,7 @@ back into a question, never quietly replaced with a guess.
 | `GET /workspace/file?path=` | One file's contents |
 | `GET /capabilities` | The capability document — who this agent is and what it serves (see The capability document) |
 | `GET /health` | `200 { status: "up" }` — liveness. Unguarded |
-| `GET /ready` | `200 { ready: true, reasons: [] }`, or `503 { ready: false, reasons: [{ code, message }] }` with `SCHEMA_UNAVAILABLE` (the conversation database cannot be read), `MODEL_CREDENTIAL_MISSING` (`OPENAI_API_KEY` is empty) or `WORKSPACE_NOT_WRITABLE` (writing and removing `.telo/agent-ready-probe` failed). Each message is fixed; the failure's own text goes to the log as a `warn` record. Unguarded |
+| `GET /ready` | `200 { ready: true, reasons: [] }`, or `503 { ready: false, reasons: [{ code, message }] }` with `SCHEMA_UNAVAILABLE` (the conversation database cannot be read), `MODEL_CREDENTIAL_MISSING` (`ANTHROPIC_API_KEY` is empty) or `WORKSPACE_NOT_WRITABLE` (writing and removing `.telo/agent-ready-probe` failed). Each message is fixed; the failure's own text goes to the log as a `warn` record. Unguarded |
 
 Every route but `/health` and `/ready` passes one guard, before the request
 body is read:
@@ -850,10 +850,9 @@ and a refused call journals nothing. The raw turns stay in the records route and
 in an export.
 
 **The naming and summary calls run on a model of their own**: the agent's
-`MODEL` through the same endpoint, at `reasoning.effort: low` and with no
-reasoning summary, while the agent's own calls keep `REASONING_EFFORT`. On the
-responses API `max_output_tokens` bounds reasoning and the reply together, so
-the operator's effort would spend a capped call on thinking.
+`MODEL` through the same endpoint, without extended thinking. The main agent uses adaptive thinking at high effort with a 24,000-token total
+output cap. Title, summary and discovery calls use low effort with thinking
+disabled.
 
 **Naming.** While a conversation is untitled, every new turn (never a continue)
 asks the low-effort model, capped at 1024 output tokens, for a title from the
@@ -949,7 +948,7 @@ Secrets:
 
 | Env var | Purpose |
 | --- | --- |
-| `OPENAI_API_KEY` | Required. The model credential; any value when `MODEL_ENDPOINT` is a keyless endpoint |
+| `ANTHROPIC_API_KEY` | Required. The Anthropic API credential; any value when `MODEL_ENDPOINT` names a keyless endpoint |
 | `AGENT_TOKEN` | Default empty. The bearer token every guarded route requires; empty leaves them open (one `warn` at boot says so). A runner that mints a per-session token injects it here — its catalog entry declares `"tokenEnv": "AGENT_TOKEN"` |
 
 Variables:
@@ -959,8 +958,8 @@ Variables:
 | `PORT` | `8080` | HTTP listen port |
 | `WORKSPACE_DIR` | `./workspace` | The directory every tool is rooted at (see above) |
 | `AGENT_STATE_DIR` | none | The agent's state directory — `agent.sqlite`, checkpoints, attachments (see above). Unset, it is `<TELO_HOST_STATE_DIR>/needs/agentState`; with neither set the agent refuses to start |
-| `MODEL` | `gpt-6-luna` | The model every turn runs on. Changing it drops the recorded reasoning on the next turn |
-| `MODEL_ENDPOINT` | `https://api.openai.com/v1` | The OpenAI-compatible endpoint the model is called through — a gateway, or the local stub the tests use |
+| `MODEL` | `claude-haiku-5-5` | The Claude model every turn runs on. Changing it drops the recorded thinking on the next turn |
+| `MODEL_ENDPOINT` | `https://api.anthropic.com/v1` | The Anthropic Messages API endpoint, a gateway, or the local stub the tests use |
 | `RETENTION_DAYS` | `30` | Days a conversation may sit idle before it is deleted whole, and how long its removed turns then answer 410 rather than 404 (at least 1) |
 | `BUDGET_LIMIT` | `4000000` | Total tokens across all turns per window — the operator's spend cap. Exhausted, `POST /chat` answers 429 |
 | `MAX_CONTEXT_TOKENS` | `120000` | The context, in tokens, a conversation may reach before its older turns are summarized (see The model's history) (at least 8, so the summary's cap is at least 1 token) |
@@ -968,7 +967,6 @@ Variables:
 | `MAX_CHECKPOINT_BYTES` | `16777216` | The most bytes of "before" copies one `write_file` / `edit_file` / `delete_file` call may capture into its turn's checkpoint; over it the call is refused with `ERR_CHECKPOINT_TOO_LARGE` before anything changes |
 | `MAX_CHECKPOINT_FILES` | `1000` | The most files one such call may capture — what bounds a recursive delete (at least 1) |
 | `MAX_ATTACHMENT_BYTES` | `10485760` | The largest file one upload may store; a larger one is refused 413 and stores nothing (at least 1) |
-| `REASONING_EFFORT` | `medium` | How hard the model thinks before each turn: `minimal`, `low`, `medium` or `high`. Trades answer quality against latency and spend on every turn; `minimal` is the pre-reasoning behaviour |
 | `ALLOW_MANIFEST_RUNS` | `false` | Lets the agent execute manifests — its tests, and probes against your live systems. Arbitrary code execution in this container, with its credentials — read the section above before turning it on |
 | `ALLOWED_ORIGINS` | `*` | Comma-separated origins a browser may call the guarded routes from (see Routes) |
 | `OTLP_ENDPOINT` | empty | An OpenTelemetry collector's base URL: traces go to `<url>/v1/traces` and log records to `<url>/v1/logs`. Empty, every finished span is written as a `debug` log record instead, which the default `info` level does not print |
@@ -1051,8 +1049,8 @@ The tools are the security boundary, and they are declared:
   which *inspection* commands are available, while this one turns code execution
   on. Folding `run` into the list would hide a security decision inside a list
   read as a convenience.
-- **Every subprocess is execed without a shell and without the key** —
-  `OPENAI_API_KEY` is unset in the child, so a tool call cannot read it back out.
+- **Every subprocess is execed without a shell and without provider keys** —
+  `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` are unset in the child, so a tool call cannot read them back out.
 - **Hub discovery** reads the live hub's MCP endpoint (`https://telo.sh/mcp`)
   three ways, so the agent looks modules up live instead of from a frozen
   list. A `LIBRARY INDEX:` message leads every turn: one line per library of
@@ -1077,7 +1075,7 @@ A deployment whose callers are trusted can widen `teloVerbs` at the import.
 ## Running it
 
 ```bash
-OPENAI_API_KEY=sk-... AGENT_STATE_DIR=$PWD/.agent-state pnpm run telo apps/authoring-agent/telo.yaml
+ANTHROPIC_API_KEY=sk-ant-... AGENT_STATE_DIR=$PWD/.agent-state pnpm run telo apps/authoring-agent/telo.yaml
 ```
 
 Without `AGENT_STATE_DIR` (or `TELO_HOST_STATE_DIR`), `telo run` at a terminal
@@ -1103,19 +1101,19 @@ against the live hub, and imports the standard library at pinned published
 versions once a release is out (by in-repo path while a change to it is being
 built), so it also fails while a change has landed here but is not yet
 released and re-pinned. `Mcp` and `Run` (the application), `Mcp`, `AiMcp`,
-`Ai`, `OpenAI`, `Run`, `Stream` and `HttpClient` (the chat library), and the same
+`Ai`, `Anthropic`, `Run`, `Stream` and `HttpClient` (the chat library), and the same
 names in every test that imports the chat library, move together — all pinned
 to one version, or all from the checkout while a change to one of them is
 built — since a module loaded both from the checkout and from a published
 version is two identities for one kind. `reads-ui-guide.yaml` fails until the
 hub serving the guide tools is deployed: the agent's hub tools leave out a name
-the hub does not serve. Live cases skip themselves when `OPENAI_API_KEY` is
+the hub does not serve. Live cases skip themselves when `ANTHROPIC_API_KEY` is
 unset. CI runs it as the `Authoring Agent E2E` workflow on every pull request
 touching the agent or the checkout's `telo` (never a fork's, which holds no
 API key), and it can be started by hand against any branch.
 
 The offline cases run whole turns against `chat/tests/__fixtures__/provider-stub`,
-a local stand-in for the responses endpoint reached through `MODEL_ENDPOINT`: it replies, calls one tool, refuses, or holds a reply until a test calls its `POST /release` (an aborted turn's request ends with the abort) depending on the message, and keeps every request it was sent for a test to read.
+a local stand-in for Anthropic's Messages endpoint reached through `MODEL_ENDPOINT`: it replies, calls one tool, refuses, or holds a reply until a test calls its `POST /release` (an aborted turn's request ends with the abort) depending on the message, and keeps every request it was sent for a test to read.
 
 `find-kinds.yaml` and `guide-tools.yaml` run discovery against
 `chat/tests/__fixtures__/hub-stub`, a local stand-in for the hub serving its

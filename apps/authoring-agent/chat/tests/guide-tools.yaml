@@ -20,7 +20,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -118,7 +118,7 @@ steps:
       actual:
         offered: !cel >-
           steps.agentRequests.result[0].tools.filter(t, string(t.name) == 'guide_build_ui')
-            .map(t, {'description': t.description, 'parameters': t.parameters})
+            .map(t, {'description': t.description, 'parameters': t.input_schema})
         recorded: !cel >-
           steps.drain.result.items.filter(r, r.data.type == 'tool-result' && r.data.toolResult.name == 'guide_build_ui')
             .map(r, r.data.toolResult.content)
@@ -130,7 +130,10 @@ steps:
         nextFinished: !cel "steps.drainNext.result.items.map(r, r.data.type).filter(t, t in ['finish', 'error'])"
         replayedCall: !cel >-
           cel.bind(call, steps.drain.result.items.filter(r, r.data.type == 'tool-call')[0].data.toolCall.id,
-            steps.agentRequests.result[2].input.exists(i, i.type == 'function_call_output' && i.call_id == call))
+            steps.agentRequests.result[2].input.exists(m, has(m.content)
+              && type(m.content) == type([])
+              && m.content.exists(c, has(c.type) && c.type == 'tool_result'
+                && c.tool_use_id == call)))
       expected:
         offered:
           - description: HUB_GUIDE_DESCRIPTION How to write a stub. Read before writing one.

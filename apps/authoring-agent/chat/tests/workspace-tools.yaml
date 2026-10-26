@@ -17,11 +17,11 @@ metadata:
     Confinement: an absolute path, a `..` segment, a backslash, a drive letter
     and a `telo` argument outside the workspace are refused with
     ERR_PATH_OUTSIDE_WORKSPACE, and so are both workspace routes, which apply
-    nothing. Secrets: a write holding an OpenAI key is refused with
+    nothing. Secrets: a write holding an Anthropic key is refused with
     ERR_SECRET_IN_MANIFEST naming its line, and so is an edit whose result would
     hold one; neither file changes; an OCI integrity pin passes.
 secrets:
-  openaiApiKey:
+  anthropicApiKey:
     env: CHAT_TEST_WORKSPACE_TOOLS_KEY
     type: string
     default: stub-key
@@ -38,7 +38,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: !cel "secrets.openaiApiKey"
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
     needs:
       agentState: { path: !cel "variables.scratch.joinPath('state')" }
     variables:
@@ -145,7 +145,9 @@ steps:
 outputs:
   outputs: !cel >-
     flatten(steps.requests.result.body.requests.map(q,
-      q.input.filter(i, has(i.type) && i.type == 'function_call_output').map(i, i.output)))
+      flatten(q.input.map(m, has(m.content) && type(m.content) == type([])
+        ? m.content.filter(c, has(c.type) && c.type == 'tool_result').map(c, c.content)
+        : []))))
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -165,7 +167,7 @@ with:
       workspaceDir: !cel "variables.scratch.joinPath('routes').joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18504/v1
     secrets:
-      openaiApiKey: stub-key
+      anthropicApiKey: stub-key
 targets: [ !ref stub, !ref agent ]
 steps:
   - name: samples
@@ -255,7 +257,7 @@ steps:
           steps.saw.result.outputs[1].matches('^wrote apps/demo/bad\\.yaml\\n[^\\n]*bad\\.yaml:[0-9]+:[0-9]+ [A-Z_]+ .+')
         secretRefused: !cel >-
           steps.saw.result.outputs[2].contains('ERR_SECRET_IN_MANIFEST')
-            && steps.saw.result.outputs[2].contains('line 2 (openaiKey)')
+            && steps.saw.result.outputs[2].contains('line 2 (')
             && steps.saw.result.outputs[2].contains('secrets.<name>')
         keyNeverEchoed: !cel "!steps.saw.result.outputs.exists(o, o.contains(steps.samples.result.key))"
         outside: !cel "slice(steps.saw.result.outputs, 3, 8).map(o, o.contains('ERR_PATH_OUTSIDE_WORKSPACE'))"

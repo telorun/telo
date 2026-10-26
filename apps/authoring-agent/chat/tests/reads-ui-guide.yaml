@@ -5,15 +5,15 @@ metadata:
   description: |
     Live integration test: asked for an application with a screen, the agent
     reads the hub's UI guide before it writes the screen. It drives the chat
-    library with a real OpenAI model against the live hub, drains the turn's
+    library with a real Anthropic model against the live hub, drains the turn's
     records and asserts that a `guide_build_ui` call is recorded before the
     first `write_file` or `edit_file` call whose text holds `UiReact.App`, and
-    that such a write happened at all. Skips silently when OPENAI_API_KEY is
+    that such a write happened at all. Skips silently when ANTHROPIC_API_KEY is
     unset; with the key it needs the deployed hub serving its authoring guides
     (telo.sh) and ghcr.io for module resolution, or the run fails.
 secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
+  anthropicApiKey:
+    env: ANTHROPIC_API_KEY
     type: string
     default: ""
 variables:
@@ -35,7 +35,7 @@ imports:
     resources:
       hub: !ref hub
     secrets:
-      openaiApiKey: !cel "secrets.openaiApiKey"
+      anthropicApiKey: !cel "secrets.anthropicApiKey"
     needs:
       agentState: { path: !cel "variables.stateDir" }
     variables:
@@ -81,7 +81,7 @@ kind: Run.Sequence
 metadata: { name: testReadsGuide }
 steps:
   - name: runIfKey
-    if: !cel "secrets.openaiApiKey != ''"
+    if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: conversation
         invoke: !ref Chat.createConversation
