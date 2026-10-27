@@ -12,6 +12,7 @@ import {
   firstWorkspaceModule,
   getImportedConfig,
   hasNoWorkspaceModules,
+  moduleOwningFile,
 } from "./queries";
 
 function library(
@@ -330,5 +331,55 @@ describe("firstWorkspaceModule", () => {
   it("is null for a workspace holding only external imports", () => {
     const { workspace } = consumer([library("oci://ghcr.io/telorun/console@0.9.0/telo.yaml", "console")]);
     expect(firstWorkspaceModule(workspace)).toBeNull();
+  });
+});
+
+describe("moduleOwningFile", () => {
+  const app = (filePath: string, sourceFiles: string[] = []): ParsedManifest => ({
+    filePath,
+    kind: "Application",
+    metadata: { name: filePath },
+    targets: [],
+    imports: [],
+    resources: sourceFiles.map((sourceFile, i) => ({
+      kind: "Telo.Definition",
+      name: `r${i}`,
+      fields: {},
+      sourceFile,
+    })),
+  });
+
+  const workspace = (modules: ParsedManifest[]): Workspace => ({
+    rootDir: "/ws",
+    modules: new Map(modules.map((m) => [m.filePath, m])),
+    importGraph: new Map(),
+    importedBy: new Map(),
+    documents: new Map(),
+    resourceDocIndex: new Map(),
+  });
+
+  it("is the file itself for a module's manifest, even when another module is listed first", () => {
+    const ws = workspace([
+      app("/ws/apps/todo/telo.yaml"),
+      app("/ws/apps/todo/tests/telo.yaml"),
+    ]);
+    expect(moduleOwningFile(ws, "/ws/apps/todo/tests/telo.yaml")).toBe(
+      "/ws/apps/todo/tests/telo.yaml",
+    );
+  });
+
+  it("is the module whose include: partial the file is", () => {
+    const ws = workspace([
+      app("/ws/apps/todo/telo.yaml", ["/ws/apps/todo/resources/tables.yaml"]),
+      app("/ws/apps/todo/tests/telo.yaml"),
+    ]);
+    expect(moduleOwningFile(ws, "/ws/apps/todo/resources/tables.yaml")).toBe(
+      "/ws/apps/todo/telo.yaml",
+    );
+  });
+
+  it("is undefined for a file no loaded module owns", () => {
+    const ws = workspace([app("/ws/apps/todo/telo.yaml")]);
+    expect(moduleOwningFile(ws, "/ws/notes.md")).toBeUndefined();
   });
 });

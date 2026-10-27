@@ -59,6 +59,9 @@ export interface WorkspaceSessionState {
   status: RunStatus | null;
   /** The last session-wide progress message while it comes up. */
   progress: string | null;
+  /** Why the workspace's files could not be pushed into the session; set until
+   *  the next write or a retry, which is the only thing that tries again. */
+  syncProblem: string | null;
   /** The app set the session holds, by name. */
   applied: ReadonlySet<string>;
   /** Whether the desired set differs from the applied one, and why it is not
@@ -197,6 +200,7 @@ export class WorkspaceSession {
   private seeded = false;
   private seeding: Promise<void> | null = null;
   private syncAgain = false;
+  private seedFailure: string | null = null;
   private snapshot: WorkspaceSessionState;
 
   constructor(options: WorkspaceSessionOptions) {
@@ -226,6 +230,7 @@ export class WorkspaceSession {
    *  for its terms when they are not accepted yet, then resolve the session. */
   async open(): Promise<void> {
     if (this.disposed) return;
+    this.seedFailure = null;
     this.phase = "connecting";
     this.problem = null;
     this.terms = null;
@@ -275,6 +280,7 @@ export class WorkspaceSession {
       this.credential = eligibility.use ? { kind: "identity" } : { kind: "secret", reason: eligibility.reason };
       const sameRunner = this.entry.runner === this.options.runner.id;
       const resolved = await resolveSession({
+        resume: this.entry.resume !== "manual",
         connection,
         stored:
           sameRunner && this.entry.sessionId
@@ -409,6 +415,7 @@ export class WorkspaceSession {
    *  then, and its end-of-turn reconcile converges the two. */
   sync(): void {
     if (this.turnActive || this.status?.kind !== "running" || this.disposed) return;
+    this.seedFailure = null;
     if (this.seeding) {
       this.syncAgain = true;
       return;
@@ -425,9 +432,11 @@ export class WorkspaceSession {
    *  Only on this device. */
   async suspend(): Promise<void> {
     const session = this.session;
-    const running = this.status?.kind === "running";
+    // A session still starting is up on the runner too: switching it off must
+    // suspend it, or it stays up after the workspace has let go of it.
+    const live = this.status?.kind === "running" || this.status?.kind === "starting";
     this.dispose();
-    if (!session || !running) return;
+    if (!session || !live) return;
     await session.suspend();
   }
 
@@ -594,7 +603,7 @@ export class WorkspaceSession {
     }
     if (status !== "running") return;
 
-    if (!this.seeded && !this.seeding) this.seed();
+    if (!this.seeded && !this.seeding && this.seedFailure === null) this.seed();
 
     // A change the runner answered `session_busy` waits out its delay, and so
     // does a Run the change would end.
@@ -756,11 +765,13 @@ export class WorkspaceSession {
           this.problem = "The runner no longer holds this workspace's session.";
           return;
         }
-        // Retried on the next write. A Run waiting on it cannot start on files
-        // the session does not have, so it ends with the same reason.
+        // Not retried here: a failed push would retry from `advance` at once,
+        // forever. The next write, or a retry from the header, tries again. A
+        // Run waiting on it cannot start on files the session does not have, so
+        // it ends with the same reason.
         const text = `The workspace could not be synced to its session: ${message(err)}`;
+        this.seedFailure = text;
         this.failQueued(new Error(text));
-        this.options.listener.syncFailed(text);
       })
       .finally(() => {
         this.seeding = null;
@@ -804,6 +815,7 @@ export class WorkspaceSession {
       sessionId: this.session?.id ?? null,
       status,
       progress: this.progress,
+      syncProblem: this.seedFailure,
       applied: new Set(this.applied.map((a) => a.name)),
       appSet: { pending, problem: this.setProblem },
       slots: new Map([...this.slots].map(([name, slot]) => [name, { ...slot }])),

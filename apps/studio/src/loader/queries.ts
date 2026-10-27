@@ -5,7 +5,7 @@ import type {
   ParsedManifest,
   Workspace,
 } from "../model";
-import { toPascalCase, toRelativeSource } from "./paths";
+import { normalizePath, pathDirname, toPascalCase, toRelativeSource } from "./paths";
 
 /**
  * Rewrites the `x-telo-ref` constraints inside a kind's schema from the DECLARING
@@ -233,6 +233,29 @@ export function hasApplicationImporter(workspace: Workspace, libraryPath: string
 export function isWorkspaceModule(workspace: Workspace, filePath: string): boolean {
   const root = workspace.rootDir.endsWith("/") ? workspace.rootDir : workspace.rootDir + "/";
   return filePath.startsWith(root);
+}
+
+/** The module a file belongs to: the file itself when it is a module's manifest,
+ *  else the module whose `include:` partial it is. Undefined for a file no
+ *  loaded module owns. */
+export function moduleOwningFile(workspace: Workspace, filePath: string): string | undefined {
+  const key = normalizePath(filePath);
+  for (const modulePath of workspace.modules.keys()) {
+    if (normalizePath(modulePath) === key) return modulePath;
+  }
+  for (const [modulePath, manifest] of workspace.modules) {
+    if (manifest.resources.some((r) => r.sourceFile && normalizePath(r.sourceFile) === key)) {
+      return modulePath;
+    }
+  }
+  return undefined;
+}
+
+/** The module at `filePath` and every loaded module nested in its directory at
+ *  any depth — what deleting that module takes with it. */
+export function moduleSubtree(workspace: Workspace, filePath: string): string[] {
+  const dir = pathDirname(filePath) + "/";
+  return [...workspace.modules.keys()].filter((p) => p === filePath || p.startsWith(dir));
 }
 
 /** True when the workspace directory holds no module of its own — whatever

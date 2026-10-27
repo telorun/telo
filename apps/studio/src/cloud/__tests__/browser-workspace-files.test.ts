@@ -63,6 +63,13 @@ describe("browser workspace files", () => {
     expect(window.localStorage.length).toBe(1);
   });
 
+  it("removes the empty folders with the files", async () => {
+    const folder = `${LOCAL_PREFIXES.workspaceDir}/workspace/empty`;
+    window.localStorage.setItem(folder, "");
+    await removeBrowserWorkspaceFiles();
+    expect(window.localStorage.getItem(folder)).toBeNull();
+  });
+
   it("keeps a sensitive file no marker governs, listed until it is deleted", async () => {
     put(".env.local", "TOKEN=root\n");
     expect(await browserWorkspaceKeptFiles()).toEqual([".env.local"]);

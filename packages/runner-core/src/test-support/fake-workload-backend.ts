@@ -14,7 +14,7 @@ import {
   type WorkloadSpec,
   type WorkloadTokens,
 } from "../backend.js";
-import type { ResolvedRunnerApp, RunnerCoreConfig } from "../config.js";
+import type { RunnerAgent, RunnerCoreConfig } from "../config.js";
 import type { AppRunEnding, RunnerCapabilities, WorkspaceChangeSet } from "../contract.js";
 import { buildServer, type ServerDeps, type ServerHandle } from "../server.js";
 import type { SessionContainerEngine } from "../session-containers/session-container-engine.js";
@@ -91,7 +91,7 @@ export class FakeWorkloadBackend implements RunnerBackend {
 export class FakeWorkload implements BackendWorkload {
   readonly sessionId: string;
   apps: BackendAppSpec[];
-  agent: ResolvedRunnerApp | undefined;
+  agent: RunnerAgent | undefined;
   readonly runs: Array<{ app: string; run: AppRun }> = [];
   readonly stops: Array<{ app: string; runId: string; graceMs: number }> = [];
   readonly stdin: Array<{ app: string; runId: string; bytes: string }> = [];
@@ -190,7 +190,7 @@ export class FakeWorkload implements BackendWorkload {
     this.report();
   }
 
-  async setAgent(agent: ResolvedRunnerApp | undefined, tokens: WorkloadTokens): Promise<void> {
+  async setAgent(agent: RunnerAgent | undefined, tokens: WorkloadTokens): Promise<void> {
     this.agent = agent;
     this.tokens = tokens;
     this.live.clear();

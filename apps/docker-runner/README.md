@@ -6,7 +6,7 @@ For running applications on your own machine with no daemon at all, `telo runner
 
 ## How it works
 
-**A session is a workspace.** Its record lives in the runner's session store and its files live in a directory of its own on the shared bundle volume; its containers are the part that comes and goes. Opening a workspace (`POST /v1/sessions`) creates a `workspace` container serving the editor's file routes, one idle `app-<name>` container per application, and optionally a co-resident `agent` drawn from the `RUNNER_APPS` catalog. **Nothing runs until Run**: `POST /v1/sessions/:id/apps/:app/run` is a process start inside a container that already exists, under `telo run --watch`, so an edit costs a kernel reload rather than a container.
+**A session is a workspace.** Its record lives in the runner's session store and its files live in a directory of its own on the shared bundle volume; its containers are the part that comes and goes. Opening a workspace (`POST /v1/sessions`) creates a `workspace` container serving the editor's file routes, one idle `app-<name>` container per application, and optionally a co-resident `agent` configured by the `AGENT_*` variables. **Nothing runs until Run**: `POST /v1/sessions/:id/apps/:app/run` is a process start inside a container that already exists, under `telo run --watch`, so an edit costs a kernel reload rather than a container.
 
 Because the runner lives in a container and starts other containers on the host daemon, a session's files must live where both see them: a named Docker volume mounted at `/bundles` in the runner (`BUNDLE_VOLUME`), whose subdirectories each session container mounts.
 
@@ -18,7 +18,7 @@ Every container is named `telo-run-<sessionId>-<role>`, joins `RUNNER_CHILD_NETW
 | --- | --- | --- | --- | --- |
 | `workspace` | The runner's own kernel (`RUNNER_IMAGE`) | The runner's workspace manifest, on port 8099 | The whole bundle volume at `/srv` | `PORT`, `WORKSPACE_DIR`, `TELO_CACHE_DIR` |
 | `app-<name>` | The app's telo version (`RUNNER_TELO_IMAGE_*`), else the session's picked image | `/opt/telo-runner/supervisor`, idle until Run | `<sessionId>/workspace` at `/workspace`; the supervisor build read-only at `/opt/telo-runner` | `TELO_SUPERVISOR_LISTEN`, `TELO_SUPERVISOR_TOKEN` only |
-| `agent` | The catalog entry's | Its own entry point | `<sessionId>/workspace` at `/workspace`; `<sessionId>/agent` at `/var/lib/telo-agent-state` | The operator's env from `RUNNER_APPS`, `WORKSPACE_DIR`, `TELO_HOST_STATE_DIR=/var/lib/telo-agent-state` |
+| `agent` | `AGENT_IMAGE`, or the runner's kernel image running `telo run` on `AGENT_MODULE_REF` | Its own entry point, or `telo run` | `<sessionId>/workspace` at `/workspace`; `<sessionId>/agent` at `/var/lib/telo-agent-state` | The operator's env from `AGENT_ENV`, `WORKSPACE_DIR`, `TELO_HOST_STATE_DIR=/var/lib/telo-agent-state` |
 
 **No session env reaches any container definition.** A run's env arrives with the Run, is handed to the app's supervisor, and lives only in the process it starts — so it never appears in `docker inspect`. The operator env goes on the `agent` alone; `workspace` gets neither.
 
@@ -98,7 +98,7 @@ Optional, with defaults:
 | `RUNNER_SESSION_CONTAINERS` | `false` (`true` in compose) | Serve every session a container engine of its own — see [Session containers](#session-containers) |
 | `RUNNER_SESSION_CONTAINERS_MAX` | `4` | Most containers one session may hold at once; a create beyond it is `429` |
 | `RUNNER_INTERNAL_URL` | _(required when containers are on)_ | The runner as a session's container reaches it over `RUNNER_CHILD_NETWORK` (compose: `http://runner:8061`); the runner refuses to boot without it |
-| `RUNNER_APPS` | _(unset → no agents)_ | JSON map of the operator's agent catalog, offered as a session's co-resident `agent` (`features.agents`): `{"<name>": {"image", "env"?, "pullPolicy"?, "port"?, "tokenEnv"?, "title"?, "description"?}}`. `env` is injected verbatim into the agent container and may embed secrets; only names are advertised on `/v1/capabilities`. `port` is the tcp port the image listens on, with no default — an entry without one is not offered. `tokenEnv` names an env var under which the runner injects a token it mints per container creation and reports as `token` on `status.agent` (see [Workload tokens](#workload-tokens)); naming a key the entry's own `env` also sets is a startup error. Treat the whole value as secret material (it fits a `.env.local` file next to the runner). Example: `{"authoring-agent": {"image": "telorun/authoring-agent:latest-slim", "env": {"ANTHROPIC_API_KEY": "<key>"}, "pullPolicy": "always", "port": 8080, "tokenEnv": "AGENT_TOKEN"}}` |
+| `AGENT_IMAGE` / `AGENT_MODULE_REF` | _(unset → no agent)_ | The operator's co-resident agent, offered as a session's `agent` (`features.agents`, named `authoring-agent`). Set exactly one source: `AGENT_IMAGE` runs a container image on its own entry point; `AGENT_MODULE_REF` runs `telo run` on a module with the runner's kernel image — an `oci://` reference fetched at start, or an absolute host path bind-mounted read-only. `AGENT_PORT` is required: the tcp port the agent listens on. Companions: `AGENT_ENV` (a JSON object of plain env, may embed secrets; only names are advertised), `AGENT_PULL_POLICY` (image only), `AGENT_TOKEN_ENV` (an env var the runner fills with a per-session token it reports as `token` on `status.agent`, see [Workload tokens](#workload-tokens); naming a key `AGENT_ENV` also sets is a startup error), `AGENT_TITLE`, `AGENT_DESCRIPTION`. Both sources, or companions without a source, is a startup error. `RUNNER_APPS` is retired and refuses startup. Treat the `AGENT_*` values as secret material. Example: `AGENT_MODULE_REF=oci://ghcr.io/telorun/authoring-agent@<version> AGENT_PORT=8080 AGENT_TOKEN_ENV=AGENT_TOKEN AGENT_ENV='{"ANTHROPIC_API_KEY":"<key>"}'` |
 
 A runner started with a variable this release no longer reads refuses to boot, naming each one: `RUNNER_WATCH_MAX_SESSIONS`, `RUNNER_WATCH_IDLE_SECONDS`, `RUNNER_WATCH_MAX_TTL_SECONDS`, `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` and `RUNNER_WATCH_RELOAD_LIMIT` are renamed to `RUNNER_MAX_SESSIONS`, `RUNNER_SESSION_IDLE_SECONDS`, `RUNNER_SESSION_MAX_RUNNING_SECONDS`, `RUNNER_SESSION_RETENTION_SECONDS` and `RUNNER_SESSION_RELOAD_LIMIT`; `RUNNER_WATCH_SESSIONS`, `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`, `RUNNER_EXIT_TTL_MS`, `RUNNER_MAX_TTL_SECONDS` and `RUNNER_APP_MAX_TTL_SECONDS` are removed.
 
@@ -138,7 +138,7 @@ The repo's [docker-compose.yml](../../docker-compose.yml) wires the runner along
 
 ### Reaching the co-resident agent
 
-The `running` status carries an `agent` endpoint beside `endpoints`, and a session asking for an agent whose catalog entry declares no `port` is refused (`400 agent_port_undeclared`). Where an application declares the agent's port, the **manifest wins** on a create: the session starts without the agent and says so on its stream.
+The `running` status carries an `agent` endpoint beside `endpoints`, and `AGENT_PORT` is required: a runner without one refuses to start. Where an application declares the agent's port, the **manifest wins** on a create: the session starts without the agent and says so on its stream.
 
 Behind a proxy the agent takes its **own** network alias, `telo-run-<sessionId>-agent`, reachable at `<agentPort>-<sessionId>-agent.<base-domain>` with no proxy configuration — the session label is the proxy's trailing capture. Giving it the session's alias instead would make every app port a coin flip. With no proxy the agent's port is published to the host like an app's.
 
@@ -146,7 +146,7 @@ Behind a proxy the agent takes its **own** network alias, `telo-run-<sessionId>-
 
 ### Workload tokens
 
-A catalog entry that declares `tokenEnv` gets a token per container creation (create, resume, agent change): core mints it, the runner injects it into the agent container under `tokenEnv`, and core reports the same value as `token` on `status.agent`. A client presents it to the agent — typically as `Authorization: Bearer <token>` to an image that compares it with the env var. An adopted session keeps the token its container was created with, read back from it.
+An agent with `AGENT_TOKEN_ENV` set gets a token per container creation (create, resume, agent change): core mints it, the runner injects it into the agent container under `tokenEnv`, and core reports the same value as `token` on `status.agent`. A client presents it to the agent — typically as `Authorization: Bearer <token>` to an image that compares it with the env var. An adopted session keeps the token its container was created with, read back from it.
 
 ## Session containers
 

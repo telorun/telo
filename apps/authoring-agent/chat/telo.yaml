@@ -1,7 +1,8 @@
 kind: Telo.Library
 metadata:
   name: Chat
-  version: 0.0.0
+  version: 0.0.1
+  repository: https://github.com/telorun/telo
   description: |
     The authoring agent's chat backend: an Anthropic-backed Ai.AgentStream with
     workspace-rooted fs tools (write_file / edit_file / read_file / list_dir /
@@ -110,7 +111,7 @@ variables:
   budgetLimit:
     type: integer
     # Max total tokens spent across all turns per window (operator spend cap).
-    default: 4000000
+    default: 6000000
   budgetWindow:
     type: string
     default: "1h"
@@ -194,7 +195,7 @@ variables:
     # tokens (prompt plus completion), the next attempt compacts the history.
     # At least 8, so the summary call's cap (`maxContextTokens / 8` output
     # tokens) is at least 1.
-    default: 120000
+    default: 200000
   maxToolResultBytes:
     type: integer
     minimum: 1
@@ -535,14 +536,21 @@ metadata: { name: anthropicRequest }
 client: !ref anthropicClient
 ---
 # Anthropic's signed thinking blocks are carried in providerState and replayed
-# across tool calls rather than restarted on every turn.
+# across tool calls rather than restarted on every turn. A block whose prefix the
+# request no longer shares is dropped, not refused: the API binds each signature
+# to the conversation it was made in, and a turn's replayed history can differ
+# from that prefix (the per-turn readings are not replayed).
 kind: Anthropic.MessagesModelStream
 metadata: { name: model }
 model: !cel "variables.model"
 request: !ref anthropicRequest
 maxTokens: 24000
+betas: [thinking-binding-controls-2026-08-01]
 options:
-  thinking: { type: adaptive, display: summarized }
+  thinking:
+    type: adaptive
+    display: summarized
+    block_binding: { prefix_mismatch_behavior: drop_block }
   outputConfig: { effort: high }
 ---
 kind: AiMcp.ToolProvider

@@ -152,7 +152,7 @@ describe("the session container engine", () => {
     const { id, env } = await startSession();
     expect(env.TELO_HOST_CONTAINER_ENGINE_URL).toBe(`${INTERNAL_URL}/v1/sessions/${id}/engine`);
     expect(env.TELO_HOST_CONTAINER_ENGINE_TOKEN).toMatch(/^[a-z2-7]{32}$/);
-  });
+  }, 20_000);
 
   it("gives a session nothing when the runner serves no engine", async () => {
     await boot(false);

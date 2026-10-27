@@ -1,5 +1,5 @@
 import type { BackendAppSpec, RunnerBackend } from "../backend.js";
-import type { ResolvedRunnerApp } from "../config.js";
+import type { RunnerAgent } from "../config.js";
 import {
   TELO_VERSION_PATTERN,
   unsupervisableTelo,
@@ -176,7 +176,7 @@ export function refuseReservedPorts(backend: RunnerBackend, apps: BackendAppSpec
 
 /** The agent a session runs, and why a requested one does not run. */
 export interface AdmittedAgent {
-  agent: ResolvedRunnerApp | undefined;
+  agent: RunnerAgent | undefined;
   notice?: string;
 }
 
@@ -191,31 +191,20 @@ export interface AdmittedAgent {
  */
 export function admitAgent(
   name: string | null | undefined,
-  catalog: Record<string, ResolvedRunnerApp>,
+  offered: RunnerAgent | undefined,
   apps: BackendAppSpec[],
   onClash: "drop" | "refuse",
 ): AdmittedAgent {
   if (name === null || name === undefined) return { agent: undefined };
-  const agent = catalog[name];
-  if (!agent) {
-    const offered = Object.keys(catalog);
+  if (offered?.name !== name) {
     throw new SessionRefusal(
       400,
       "unknown_agent",
       `agent '${name}' is not offered by this runner` +
-        (offered.length > 0 ? ` — offered: ${offered.join(", ")}` : ""),
+        (offered ? ` — offered: ${offered.name}` : ""),
     );
   }
-  // An agent nothing can reach would write the workspace and never be asked
-  // to. The port is the operator's to declare, so the refusal names their config.
-  if (agent.port === undefined) {
-    throw new SessionRefusal(
-      400,
-      "agent_port_undeclared",
-      `agent '${name}' declares no port, so this runner cannot route it — ` +
-        `set RUNNER_APPS.${name}.port to the port its image listens on`,
-    );
-  }
+  const agent = offered;
   const clash = agentPortClash(agent, apps);
   if (clash && onClash === "refuse") {
     throw new SessionRefusal(
@@ -238,7 +227,7 @@ export function admitAgent(
 /** The app declaring the tcp port the agent listens on, if any: in one pod the
  *  two cannot both bind it. */
 export function agentPortClash(
-  agent: ResolvedRunnerApp,
+  agent: RunnerAgent,
   apps: BackendAppSpec[],
 ): BackendAppSpec | undefined {
   return apps.find((a) => a.ports.some((p) => p.protocol === "tcp" && p.port === agent.port));

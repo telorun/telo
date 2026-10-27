@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import type { V1Pod } from "@kubernetes/client-node";
 import {
+  agentImage,
   isGenerationMismatch,
   portKey,
   SessionStartError,
@@ -15,7 +16,7 @@ import {
   type BackendAppSpec,
   type BackendWorkload,
   type PortMapping,
-  type ResolvedRunnerApp,
+  type RunnerAgent,
   type RunnerEndpoint,
   type SessionConfig,
   type SupervisorTermination,
@@ -92,7 +93,7 @@ export interface SessionWorkloadSpec {
   sessionId: string;
   apps: BackendAppSpec[];
   /** Its `tokenEnv` already carrying this creation's token. */
-  agent?: ResolvedRunnerApp;
+  agent?: RunnerAgent;
   config: SessionConfig;
 }
 
@@ -132,7 +133,7 @@ export class KubernetesSessionWorkload implements BackendWorkload {
   private apps: BackendAppSpec[];
   /** The slot each app holds in the apps container. */
   private slots: Record<string, number> = {};
-  private agent: ResolvedRunnerApp | undefined;
+  private agent: RunnerAgent | undefined;
 
   readonly workspace: WorkspaceAccess = {
     tree: () => this.currentWorkspace().tree(),
@@ -168,7 +169,7 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     callbacks: WorkloadCallbacks,
     pod: V1Pod,
   ): Promise<AdoptionOutcome> {
-    const read = readAdoptable(pod, spec);
+    const read = readAdoptable(pod, spec, deps.config.defaultImage);
     if ("stale" in read) return { kind: "stale", reason: read.stale };
     const agent = withAgentToken(spec.agent, read.agentToken);
     const workload = new KubernetesSessionWorkload(deps, { ...spec, agent }, callbacks);
@@ -268,7 +269,7 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     this.reportRunning(rt);
   }
 
-  async setAgent(agent: ResolvedRunnerApp | undefined, tokens: WorkloadTokens): Promise<void> {
+  async setAgent(agent: RunnerAgent | undefined, tokens: WorkloadTokens): Promise<void> {
     await this.teardown();
     this.agent = agent;
     await this.bringUp();
@@ -779,6 +780,7 @@ export class KubernetesSessionWorkload implements BackendWorkload {
 function readAdoptable(
   pod: V1Pod,
   spec: SessionWorkloadSpec,
+  kernelImage: string,
 ):
   | { ip: string; supervisorToken: string; slots: Record<string, number>; agentToken: string | undefined }
   | { stale: string } {
@@ -799,7 +801,7 @@ function readAdoptable(
     return { stale: "its app slots are not the stored app set" };
   }
   const agentContainer = containers.find((c) => c.name === "agent");
-  if (Boolean(agentContainer) !== Boolean(spec.agent) || (spec.agent && agentContainer!.image !== spec.agent.image)) {
+  if (Boolean(agentContainer) !== Boolean(spec.agent) || (spec.agent && agentContainer!.image !== agentImage(spec.agent, kernelImage))) {
     return { stale: "its agent is not the stored agent" };
   }
   let agentToken: string | undefined;
@@ -851,7 +853,7 @@ function envOf(env: Array<{ name: string; value?: string }> | undefined): Record
   return Object.fromEntries((env ?? []).map((e) => [e.name, e.value ?? ""]));
 }
 
-function withAgentToken(agent: ResolvedRunnerApp | undefined, token: string | undefined): ResolvedRunnerApp | undefined {
+function withAgentToken(agent: RunnerAgent | undefined, token: string | undefined): RunnerAgent | undefined {
   if (!agent || agent.tokenEnv === undefined || token === undefined) return agent;
   return { ...agent, env: { ...agent.env, [agent.tokenEnv]: token } };
 }

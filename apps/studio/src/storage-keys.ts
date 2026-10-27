@@ -38,6 +38,9 @@ export const LOCAL_KEYS = {
 /** `localStorage`, key prefixes — the tail is a workspace path or an id. */
 export const LOCAL_PREFIXES = {
   workspace: "telo-studio:workspace:",
+  /** A directory of the browser workspace, one entry per directory path — files
+   *  imply their directories, so only a folder with nothing in it is recorded. */
+  workspaceDir: "telo-studio:workspace-dir:",
   /** Undo/redo stack, one entry per workspace root. */
   history: "telo-studio:history:v1:",
   /** Transcripts an earlier Studio stored per conversation. Nothing writes them

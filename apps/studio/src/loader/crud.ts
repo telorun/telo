@@ -10,6 +10,7 @@ import {
 } from "../yaml-document";
 import { normalizePath, pathDirname, pathJoin } from "./paths";
 import { buildResourceDocIndex, withDocs } from "./ast-ops";
+import { moduleSubtree } from "./queries";
 import { slugifyModuleName } from "./remote";
 import { fetchStarterFiles, starterManifestUrl } from "./starters";
 import type { StarterDescriptor, StarterFile } from "./starters";
@@ -203,18 +204,23 @@ export async function persistWorkspaceModule(
   return saveModuleFromDocuments(workspace, modulePath, adapter);
 }
 
-/** Deletes a module directory from disk and removes any references to it
- *  from importers (drops their Telo.Import entries pointing at the target). */
+/** Deletes a module's directory from disk, with every module nested in it, and
+ *  removes the references to any of them from importers outside it (drops their
+ *  Telo.Import entries). */
 export async function deleteModule(
   workspace: Workspace,
   filePath: string,
   adapter: WorkspaceAdapter,
 ): Promise<Workspace> {
   const moduleDir = pathDirname(filePath);
+  if (normalizePath(moduleDir) === normalizePath(workspace.rootDir)) {
+    throw new Error("The workspace's root module cannot be deleted: its directory is the whole workspace.");
+  }
+  const removed = new Set(moduleSubtree(workspace, filePath));
   await adapter.delete(moduleDir);
 
   const modules = new Map(workspace.modules);
-  modules.delete(filePath);
+  for (const path of removed) modules.delete(path);
 
   // Drop ModuleDocument entries that live under the deleted module's
   // directory. Covers the owner telo.yaml plus any partials colocated with
@@ -223,44 +229,46 @@ export async function deleteModule(
   const documents = new Map(workspace.documents);
   const dirPrefix = normalizePath(moduleDir) + "/";
   for (const key of [...documents.keys()]) {
-    if (key === normalizePath(filePath) || key.startsWith(dirPrefix)) {
-      documents.delete(key);
-    }
+    if (key.startsWith(dirPrefix)) documents.delete(key);
   }
 
-  // Drop imports in every importer that point at the deleted module —
-  // prune both the ParsedManifest projection (for views) and the AST
-  // (for the save path). Collect the importer paths here; the actual
+  // Drop imports in every importer outside the subtree that points at a
+  // deleted module — prune both the ParsedManifest projection (for views) and
+  // the AST (for the save path). Collect the importer paths here; the actual
   // disk writes happen after the new workspace is fully constructed so
   // `saveModuleFromDocuments` sees the final state.
-  const importers = workspace.importedBy.get(filePath);
-  const importersToSave: string[] = [];
-  if (importers) {
-    for (const importerPath of importers) {
-      const importer = modules.get(importerPath);
-      if (!importer) continue;
-
-      const importsToRemove = importer.imports
-        .filter((imp) => imp.resolvedPath === filePath)
-        .map((imp) => imp.name);
-
-      const importerKey = normalizePath(importerPath);
-      const importerDoc = documents.get(importerKey);
-      if (importerDoc) {
-        let docs = importerDoc.loaded.documents;
-        for (const name of importsToRemove) docs = removeImportDocument(docs, name);
-        if (docs !== importerDoc.loaded.documents) {
-          documents.set(importerKey, withDocs(importerDoc, docs));
-        }
-      }
-
-      const updated = {
-        ...importer,
-        imports: importer.imports.filter((imp) => imp.resolvedPath !== filePath),
-      };
-      modules.set(importerPath, updated);
-      importersToSave.push(importerPath);
+  const importersOfRemoved = new Set<string>();
+  for (const path of removed) {
+    for (const importerPath of workspace.importedBy.get(path) ?? []) {
+      if (!removed.has(importerPath)) importersOfRemoved.add(importerPath);
     }
+  }
+  const isRemoved = (resolvedPath: string | undefined) =>
+    resolvedPath !== undefined && removed.has(resolvedPath);
+  const importersToSave: string[] = [];
+  for (const importerPath of importersOfRemoved) {
+    const importer = modules.get(importerPath);
+    if (!importer) continue;
+
+    const importsToRemove = importer.imports
+      .filter((imp) => isRemoved(imp.resolvedPath))
+      .map((imp) => imp.name);
+
+    const importerKey = normalizePath(importerPath);
+    const importerDoc = documents.get(importerKey);
+    if (importerDoc) {
+      let docs = importerDoc.loaded.documents;
+      for (const name of importsToRemove) docs = removeImportDocument(docs, name);
+      if (docs !== importerDoc.loaded.documents) {
+        documents.set(importerKey, withDocs(importerDoc, docs));
+      }
+    }
+
+    modules.set(importerPath, {
+      ...importer,
+      imports: importer.imports.filter((imp) => !isRemoved(imp.resolvedPath)),
+    });
+    importersToSave.push(importerPath);
   }
 
   // Rebuild graphs.

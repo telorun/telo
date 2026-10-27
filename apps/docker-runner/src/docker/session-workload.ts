@@ -3,6 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
+  agentImage,
   isGenerationMismatch,
   portKey,
   SessionStartError,
@@ -18,7 +19,7 @@ import {
   type BackendAppSpec,
   type BackendWorkload,
   type PortMapping,
-  type ResolvedRunnerApp,
+  type RunnerAgent,
   type RunnerEndpoint,
   type SessionConfig,
   type SupervisorTermination,
@@ -82,7 +83,7 @@ export interface DockerWorkloadSpec {
   sessionId: string;
   apps: BackendAppSpec[];
   /** Its `tokenEnv` already carrying this creation's token. */
-  agent?: ResolvedRunnerApp;
+  agent?: RunnerAgent;
   config: SessionConfig;
 }
 
@@ -130,7 +131,7 @@ export type AdoptionOutcome =
 export class DockerSessionWorkload implements BackendWorkload {
   private runtime: Runtime | null = null;
   private apps: BackendAppSpec[];
-  private agent: ResolvedRunnerApp | undefined;
+  private agent: RunnerAgent | undefined;
   private readonly args: SessionContainerArgs;
   /** The bring-up in progress: an ending of one of its containers fails it. */
   private bringUpFailure: ((err: Error) => void) | undefined;
@@ -177,7 +178,7 @@ export class DockerSessionWorkload implements BackendWorkload {
     callbacks: WorkloadCallbacks,
     found: InspectedSessionContainer[],
   ): Promise<AdoptionOutcome> {
-    const read = readAdoptable(found, spec, deps.childNetwork);
+    const read = readAdoptable(found, spec, deps.childNetwork, deps.workspaceImage);
     if ("stale" in read) return { kind: "stale", reason: read.stale };
     const agent = withAgentToken(spec.agent, read.agentToken);
     const workload = new DockerSessionWorkload(deps, { ...spec, agent }, callbacks);
@@ -320,15 +321,15 @@ export class DockerSessionWorkload implements BackendWorkload {
     this.reportRunning(rt);
   }
 
-  async setAgent(agent: ResolvedRunnerApp | undefined, tokens: WorkloadTokens): Promise<void> {
+  async setAgent(agent: RunnerAgent | undefined, tokens: WorkloadTokens): Promise<void> {
     const rt = this.requireRuntime();
-    if (agent) await ensureImage(this.deps.docker, agent.image, agent.pullPolicy);
+    if (agent) await ensureImage(this.deps.docker, agentImage(agent, this.deps.workspaceImage), agent.pullPolicy);
     await this.endLiveRuns(rt, { report: false });
     if (rt.agent) await removeSlot(rt.agent);
     rt.agent = undefined;
     this.agent = agent;
     if (agent) {
-      rt.agent = await this.startContainer(agentContainer(this.args, agent));
+      rt.agent = await this.startContainer(agentContainer(this.args, agent, this.deps.workspaceImage));
       this.watch(rt, rt.agent);
     }
     this.reportRunning(rt);
@@ -357,7 +358,7 @@ export class DockerSessionWorkload implements BackendWorkload {
     await this.prepareStorage();
     await ensureImage(docker, workspaceImage, teloImages.pullPolicy);
     await this.pullAppImages(this.apps);
-    if (this.agent) await ensureImage(docker, this.agent.image, this.agent.pullPolicy);
+    if (this.agent) await ensureImage(docker, agentImage(this.agent, workspaceImage), this.agent.pullPolicy);
 
     const started: Slot[] = [];
     this.bringUpFailed = new Promise<never>((_, reject) => {
@@ -384,7 +385,7 @@ export class DockerSessionWorkload implements BackendWorkload {
       this.callbacks.onProgress("boot", "Starting application containers");
       await this.startApps(rt, SUPERVISOR_CONNECT_TIMEOUT_MS);
       if (this.agent) {
-        rt.agent = await this.startContainer(agentContainer(this.args, this.agent));
+        rt.agent = await this.startContainer(agentContainer(this.args, this.agent, workspaceImage));
         started.push(rt.agent);
         this.watch(rt, rt.agent);
       }
@@ -653,6 +654,7 @@ function readAdoptable(
   found: InspectedSessionContainer[],
   spec: DockerWorkloadSpec,
   network: string,
+  kernelImage: string,
 ):
   | {
       workspace: InspectedSessionContainer;
@@ -671,7 +673,7 @@ function readAdoptable(
   if (appNames !== spec.apps.map((a) => a.name).sort().join(",") || apps.size !== found.filter((c) => role(c) === "app").length) {
     return { stale: "its app containers are not the stored app set" };
   }
-  if (agents.length > 1 || Boolean(agents[0]) !== Boolean(spec.agent) || (spec.agent && agents[0]!.Config?.Image !== spec.agent.image)) {
+  if (agents.length > 1 || Boolean(agents[0]) !== Boolean(spec.agent) || (spec.agent && agents[0]!.Config?.Image !== agentImage(spec.agent, kernelImage))) {
     return { stale: "its agent is not the stored agent" };
   }
   for (const c of found) {
@@ -724,7 +726,7 @@ function envOf(c: InspectedSessionContainer): Record<string, string> {
   );
 }
 
-function withAgentToken(agent: ResolvedRunnerApp | undefined, token: string | undefined): ResolvedRunnerApp | undefined {
+function withAgentToken(agent: RunnerAgent | undefined, token: string | undefined): RunnerAgent | undefined {
   if (!agent || agent.tokenEnv === undefined || token === undefined) return agent;
   return { ...agent, env: { ...agent.env, [agent.tokenEnv]: token } };
 }

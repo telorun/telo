@@ -18,6 +18,9 @@ export interface SessionResolutionInput {
   /** What a new session is created with. */
   create: CreateSessionRequest;
   createOptions: { acceptedTermsVersion?: string; withheldConfig?: string[] };
+  /** Whether a suspended or failed session is resumed to be found. Absent,
+   *  it is; false leaves it as the runner holds it, for a Run to resume. */
+  resume?: boolean;
 }
 
 export interface ResolvedSession {
@@ -42,10 +45,15 @@ export interface ResolvedSession {
  * suspended or failed session is resumed.
  */
 export async function resolveSession(input: SessionResolutionInput): Promise<ResolvedSession> {
-  return input.identity ? resolveForIdentity(input, input.identity) : resolveWithSecret(input);
+  const resume = input.resume ?? true;
+  return input.identity ? resolveForIdentity(input, input.identity, resume) : resolveWithSecret(input, resume);
 }
 
-async function resolveForIdentity(input: SessionResolutionInput, identity: RunnerCredentials): Promise<ResolvedSession> {
+async function resolveForIdentity(
+  input: SessionResolutionInput,
+  identity: RunnerCredentials,
+  resume: boolean,
+): Promise<ResolvedSession> {
   const { connection, stored } = input;
   const found = (session: RunnerSession, document: SessionDocument): ResolvedSession => ({
     session,
@@ -63,12 +71,12 @@ async function resolveForIdentity(input: SessionResolutionInput, identity: Runne
     if (adopted.kind !== "gone") candidate = adopted.sessionId;
   }
   if (candidate) {
-    const reached = await reach(connection.session(candidate, identity));
+    const reached = await reach(connection.session(candidate, identity), resume);
     if (reached) return found(reached.session, reached.document);
   }
   const [newest] = await connection.listSessions(input.create.workspace, identity);
   if (newest) {
-    const reached = await reach(connection.session(newest.sessionId, identity));
+    const reached = await reach(connection.session(newest.sessionId, identity), resume);
     if (reached) return found(reached.session, reached.document);
   }
 
@@ -77,17 +85,20 @@ async function resolveForIdentity(input: SessionResolutionInput, identity: Runne
   const document = await session.read();
   return {
     session,
-    document: answer.kind === "exists" ? await resumed(session, document) : document,
+    document: answer.kind === "exists" ? await resumed(session, document, resume) : document,
     created: answer.kind === "created",
     owner: "identity",
     resumeSecret: null,
   };
 }
 
-async function resolveWithSecret(input: SessionResolutionInput): Promise<ResolvedSession> {
+async function resolveWithSecret(input: SessionResolutionInput, resume: boolean): Promise<ResolvedSession> {
   const { connection, stored } = input;
   if (stored?.resumeSecret) {
-    const reached = await reach(connection.session(stored.sessionId, resumeSecretCredentials(stored.resumeSecret)));
+    const reached = await reach(
+      connection.session(stored.sessionId, resumeSecretCredentials(stored.resumeSecret)),
+      resume,
+    );
     if (reached) {
       return { ...reached, created: false, owner: "secret", resumeSecret: stored.resumeSecret };
     }
@@ -108,9 +119,12 @@ async function resolveWithSecret(input: SessionResolutionInput): Promise<Resolve
 
 /** The session, resumed when suspended or failed; null when the runner holds
  *  no such session for these credentials. */
-async function reach(session: RunnerSession): Promise<{ session: RunnerSession; document: SessionDocument } | null> {
+async function reach(
+  session: RunnerSession,
+  resume: boolean,
+): Promise<{ session: RunnerSession; document: SessionDocument } | null> {
   try {
-    return { session, document: await resumed(session, await session.read()) };
+    return { session, document: await resumed(session, await session.read(), resume) };
   } catch (err) {
     if (err instanceof SessionGoneError) return null;
     throw err;
@@ -118,7 +132,12 @@ async function reach(session: RunnerSession): Promise<{ session: RunnerSession; 
 }
 
 /** The session as it is once a suspended or failed one has been asked back. */
-async function resumed(session: RunnerSession, document: SessionDocument): Promise<SessionDocument> {
+async function resumed(
+  session: RunnerSession,
+  document: SessionDocument,
+  resume: boolean,
+): Promise<SessionDocument> {
+  if (!resume) return document;
   if (document.status.kind !== "suspended" && document.status.kind !== "failed") return document;
   await session.resume();
   return { ...document, status: { kind: "starting" } };

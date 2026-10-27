@@ -8,7 +8,7 @@ import {
   FolderPlus,
   MoreVertical,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FileNode } from "../../loader";
 import { pathDirname } from "../../loader/paths";
 import { Button } from "../ui/button";
@@ -75,6 +75,18 @@ export function FileExplorer({
     return selected.isDirectory ? selected.path : pathDirname(selected.path);
   }
 
+  // A menu item starts its edit after the menu closes: an open menu traps focus, so an input mounted from its select handler is blurred at once.
+  const menuAction = useRef<(() => void) | null>(null);
+  function afterMenuClose(action: () => void) {
+    menuAction.current = action;
+  }
+  function onMenuCloseFocus(e: Event) {
+    e.preventDefault();
+    const action = menuAction.current;
+    menuAction.current = null;
+    action?.();
+  }
+
   function startCreate(parentDir: string, mode: "create-file" | "create-folder") {
     if (!expandedDirs.has(parentDir) && parentDir !== rootDir) onToggleDir(parentDir);
     setEditing({ mode, parentDir });
@@ -102,6 +114,8 @@ export function FileExplorer({
     onMove,
     onDelete,
     startCreate,
+    afterMenuClose,
+    onMenuCloseFocus,
     startRename: (path: string) => setEditing({ mode: "rename", path }),
     commitEditing,
     cancelEditing: () => setEditing(null),
@@ -173,6 +187,8 @@ interface RowContext {
   onMove: (from: string, toDir: string) => Promise<void>;
   onDelete: (path: string) => Promise<void>;
   startCreate: (parentDir: string, mode: "create-file" | "create-folder") => void;
+  afterMenuClose: (action: () => void) => void;
+  onMenuCloseFocus: (e: Event) => void;
   startRename: (path: string) => void;
   commitEditing: (name: string) => void;
   cancelEditing: () => void;
@@ -256,20 +272,21 @@ function TreeRow({ node, depth, ctx }: { node: FileNode; depth: number; ctx: Row
               <DropdownMenuContent
                 align="end"
                 className="w-44"
+                onCloseAutoFocus={ctx.onMenuCloseFocus}
                 onClick={(e) => e.stopPropagation()}
               >
                 {node.isDirectory && (
                   <>
-                    <DropdownMenuItem onSelect={() => ctx.startCreate(node.path, "create-file")}>
+                    <DropdownMenuItem onSelect={() => ctx.afterMenuClose(() => ctx.startCreate(node.path, "create-file"))}>
                       New file
                     </DropdownMenuItem>
-                    <DropdownMenuItem onSelect={() => ctx.startCreate(node.path, "create-folder")}>
+                    <DropdownMenuItem onSelect={() => ctx.afterMenuClose(() => ctx.startCreate(node.path, "create-folder"))}>
                       New folder
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                   </>
                 )}
-                <DropdownMenuItem onSelect={() => ctx.startRename(node.path)}>Rename</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => ctx.afterMenuClose(() => ctx.startRename(node.path))}>Rename</DropdownMenuItem>
                 <DropdownMenuItem
                   variant="destructive"
                   onSelect={() => void ctx.onDelete(node.path)}
@@ -280,19 +297,19 @@ function TreeRow({ node, depth, ctx }: { node: FileNode; depth: number; ctx: Row
             </DropdownMenu>
           </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-44">
+        <ContextMenuContent className="w-44" onCloseAutoFocus={ctx.onMenuCloseFocus}>
           {node.isDirectory && (
             <>
-              <ContextMenuItem onSelect={() => ctx.startCreate(node.path, "create-file")}>
+              <ContextMenuItem onSelect={() => ctx.afterMenuClose(() => ctx.startCreate(node.path, "create-file"))}>
                 New file
               </ContextMenuItem>
-              <ContextMenuItem onSelect={() => ctx.startCreate(node.path, "create-folder")}>
+              <ContextMenuItem onSelect={() => ctx.afterMenuClose(() => ctx.startCreate(node.path, "create-folder"))}>
                 New folder
               </ContextMenuItem>
               <ContextMenuSeparator />
             </>
           )}
-          <ContextMenuItem onSelect={() => ctx.startRename(node.path)}>Rename</ContextMenuItem>
+          <ContextMenuItem onSelect={() => ctx.afterMenuClose(() => ctx.startRename(node.path))}>Rename</ContextMenuItem>
           <ContextMenuItem variant="destructive" onSelect={() => void ctx.onDelete(node.path)}>
             Delete
           </ContextMenuItem>

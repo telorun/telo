@@ -1,7 +1,7 @@
 import type { ManifestSource } from "@telorun/analyzer";
 import { DEFAULT_MANIFEST_FILENAME } from "@telorun/analyzer";
 import type { DirEntry, WorkspaceAdapter } from "../../model";
-import { expandGlobViaList, pathExtname, pathResolve } from "../paths";
+import { expandGlobViaList, pathDirname, pathExtname, pathResolve } from "../paths";
 import { LOCAL_PREFIXES } from "../../storage-keys";
 
 // ---------------------------------------------------------------------------
@@ -10,6 +10,7 @@ import { LOCAL_PREFIXES } from "../../storage-keys";
 // ---------------------------------------------------------------------------
 
 const LS_WORKSPACE_PREFIX = LOCAL_PREFIXES.workspace;
+const LS_DIR_PREFIX = LOCAL_PREFIXES.workspaceDir;
 
 export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
   constructor(private readonly rootDir: string) {}
@@ -22,11 +23,15 @@ export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
     return LS_WORKSPACE_PREFIX + path;
   }
 
-  private allKeys(): string[] {
+  private dirKey(path: string): string {
+    return LS_DIR_PREFIX + path;
+  }
+
+  private allKeys(prefix: string = LS_WORKSPACE_PREFIX): string[] {
     const keys: string[] = [];
     for (let i = 0; i < window.localStorage.length; i++) {
       const k = window.localStorage.key(i);
-      if (k && k.startsWith(LS_WORKSPACE_PREFIX)) keys.push(k);
+      if (k && k.startsWith(prefix)) keys.push(k);
     }
     return keys;
   }
@@ -62,11 +67,23 @@ export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
       if (slash === -1) seen.set(rest, false);
       else seen.set(rest.slice(0, slash), true);
     }
+    for (const key of this.allKeys(LS_DIR_PREFIX)) {
+      const p = key.slice(LS_DIR_PREFIX.length);
+      if (!p.startsWith(normalized)) continue;
+      const rest = p.slice(normalized.length);
+      if (!rest) continue;
+      const slash = rest.indexOf("/");
+      seen.set(slash === -1 ? rest : rest.slice(0, slash), true);
+    }
     return [...seen].map(([name, isDirectory]) => ({ name, isDirectory, kind: isDirectory ? "directory" : "file" }));
   }
 
-  async createDir(_path: string): Promise<void> {
-    // Directories are implicit — nothing to do until a file is written under them.
+  /** Records the directory and each ancestor under the root, so a folder with
+   *  nothing in it is listed by its parent. */
+  async createDir(path: string): Promise<void> {
+    for (let dir = path; dir.startsWith(this.rootDir + "/"); dir = pathDirname(dir)) {
+      window.localStorage.setItem(this.dirKey(dir), "");
+    }
   }
 
   async delete(path: string): Promise<void> {
@@ -76,19 +93,33 @@ export class LocalStorageAdapter implements ManifestSource, WorkspaceAdapter {
         window.localStorage.removeItem(key);
       }
     }
+    const dirPrefix = this.dirKey(path);
+    for (const key of this.allKeys(LS_DIR_PREFIX)) {
+      if (key === dirPrefix || key.startsWith(dirPrefix + "/")) {
+        window.localStorage.removeItem(key);
+      }
+    }
   }
 
   async rename(from: string, to: string): Promise<void> {
     const fromKey = this.storageKey(from);
     const toKey = this.storageKey(to);
-    // Directories are implicit (key prefixes); rewrite every key whose path is
-    // the source file or lives under the source directory.
+    // Files and directories are key prefixes; rewrite every key whose path is
+    // the source or lives under it.
     for (const key of this.allKeys()) {
       if (key === fromKey || key.startsWith(fromKey + "/")) {
         const value = window.localStorage.getItem(key);
         if (value === null) continue;
         const nextKey = toKey + key.slice(fromKey.length);
         window.localStorage.setItem(nextKey, value);
+        window.localStorage.removeItem(key);
+      }
+    }
+    const fromDir = this.dirKey(from);
+    const toDir = this.dirKey(to);
+    for (const key of this.allKeys(LS_DIR_PREFIX)) {
+      if (key === fromDir || key.startsWith(fromDir + "/")) {
+        window.localStorage.setItem(toDir + key.slice(fromDir.length), "");
         window.localStorage.removeItem(key);
       }
     }

@@ -28,8 +28,8 @@ const APPS = [
   { name: "worker", entryRelativePath: "worker.yaml", ports: [] },
 ];
 const AGENT = {
-  name: "agent",
-  image: "acme/agent:1",
+  name: "authoring-agent",
+  source: { kind: "image" as const, image: "acme/agent:1" },
   env: { KEY: "operator" },
   pullPolicy: "missing" as const,
   port: 8080,

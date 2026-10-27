@@ -251,6 +251,12 @@ services:
       # signal. Build it before the first run, and again after changing the
       # runtime:  docker compose --profile kernel build kernel
       RUNNER_TELO_UNRELEASED_IMAGE: ${RUNNER_TELO_UNRELEASED_IMAGE:-telo-dev/node:local}
+      # The co-resident agent is this checkout's authoring agent, run as
+      # `telo run` on the runner's kernel image. The daemon mounts the module, so
+      # the path is the HOST's: $PWD is the checkout as the shell sees it, and
+      # the agent must be started from the repository root.
+      AGENT_MODULE_REF: ${PWD}/apps/authoring-agent
+      AGENT_PORT: "8080"
     # No published port — the runner is reached via the Caddy proxy at
     # http://runner.telo.localhost:8060 (see Caddyfile).
     healthcheck:

@@ -1,6 +1,6 @@
 import * as os from "node:os";
 
-import type { RunnerCoreConfig } from "@telorun/runner-core";
+import type { RunnerAgent, RunnerCoreConfig } from "@telorun/runner-core";
 import type { Argv } from "yargs";
 
 import { cliVersion } from "../distribution-versions.js";
@@ -102,6 +102,17 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
   const { localRunnerCapabilities, validateLocalRunnerConfig } = await import(
     "../runner/capabilities.js"
   );
+  const { loadLocalAgent } = await import("../runner/local-agent.js");
+
+  // The co-resident agent, from the operator's `AGENT_*` variables.
+  let agent: RunnerAgent | undefined;
+  try {
+    agent = loadLocalAgent(process.env);
+  } catch (err) {
+    outErrLine(`telo runner: ${message(err)}`);
+    process.exitCode = EXIT_REFUSED;
+    return;
+  }
 
   const resolution = resolveStateRoot(argv.stateDir, process.env, process.platform, process.cwd());
   if ("refusal" in resolution) {
@@ -198,7 +209,8 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
       config,
       store,
       version: cliVersion() ?? "unversioned build",
-      capabilities: localRunnerCapabilities(),
+      capabilities: localRunnerCapabilities(agent),
+      agent,
       validateConfig: validateLocalRunnerConfig,
       // The runner's own log is diagnostics, so it goes where every other
       // CLI-owned diagnostic goes: stderr. On stdout it would sit in the middle

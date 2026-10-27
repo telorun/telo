@@ -47,7 +47,8 @@ export interface ManifestInputOptions {
 const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
 
 function resolveEntryPath(inputPath: string): string {
-  const isUrl = inputPath.startsWith("http://") || inputPath.startsWith("https://");
+  const isUrl =
+    inputPath.startsWith("http://") || inputPath.startsWith("https://") || inputPath.startsWith("oci://");
   return isUrl ? inputPath : path.resolve(process.cwd(), inputPath);
 }
 

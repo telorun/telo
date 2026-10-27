@@ -100,7 +100,7 @@ export interface RunnerFeatures {
   io: IoMode[];
   /** Runner can publish workload ports back to the client. */
   ports: boolean;
-  /** Catalog names admissible as a session's co-resident `agent`. Empty/absent
+  /** The co-resident `agent` a session may name, by its name. Empty/absent
    *  when the operator configured none. */
   agents?: string[];
   /** An application's `telo` version is honoured: the runner runs exactly that
@@ -257,7 +257,7 @@ export interface CreateSessionRequest {
   /** The client's opaque name for the workspace. One session per owner and
    *  workspace. */
   workspace: string;
-  /** Catalog name of a co-resident agent container (`features.agents`). At most
+  /** Name of the co-resident agent (`features.agents`). At most
    *  one per session: its unit is the workspace. */
   agent?: string;
   /** Every Application of the workspace, one idle container each. May be empty. */

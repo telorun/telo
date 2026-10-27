@@ -5,11 +5,13 @@ import {
   buildServer,
   loadCoreConfig,
   openSessionStore,
+  type RunnerAgent,
   type SessionStore,
 } from "@telorun/runner-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { localRunnerCapabilities, validateLocalRunnerConfig } from "../src/runner/capabilities.js";
+import { loadLocalAgent } from "../src/runner/local-agent.js";
 import { createProcessBackend } from "../src/runner/process-backend.js";
 import { prepareStateRoot, sessionDirectory } from "../src/runner/state-root.js";
 import { createTeloSupply } from "../src/runner/telo-supply.js";
@@ -29,7 +31,7 @@ let stateRoot: string;
 /** What the release host answers, by URL suffix; anything else is a 404. */
 let release: Record<string, { status: number; body: string }>;
 
-async function boot(): Promise<void> {
+async function boot(agent?: RunnerAgent): Promise<void> {
   await prepareStateRoot(stateRoot);
   const base = loadCoreConfig({}, { port: 8061, stateDir: stateRoot });
   store = await openSessionStore(base.sessionStore, { log: { error: () => undefined } });
@@ -56,8 +58,9 @@ async function boot(): Promise<void> {
     },
     store,
     version: "test",
-    capabilities: localRunnerCapabilities(),
+    capabilities: localRunnerCapabilities(agent),
     validateConfig: validateLocalRunnerConfig,
+    agent,
   });
   app = built.app;
   await app.ready();
@@ -349,5 +352,120 @@ describe("session config", () => {
     expect(res.statusCode).toBe(400);
     expect(res.json()).toMatchObject({ error: "invalid_config" });
     expect(res.json().message).toMatch(/image/);
+  });
+});
+
+describe("the co-resident agent", () => {
+  const AGENT_PORT = 47311;
+  const agentRef = () => path.join(stateRoot, "agent-module");
+  const agentEnv = (extra: Record<string, string> = {}) =>
+    loadLocalAgent({
+      AGENT_MODULE_REF: agentRef(),
+      AGENT_PORT: String(AGENT_PORT),
+      AGENT_TOKEN_ENV: "AGENT_TOKEN",
+      AGENT_ENV: JSON.stringify({ AGENT_PROBE: "operator", ...extra }),
+    });
+  const seenAgent = () =>
+    until(
+      async () => {
+        const file = `${agentRef()}.seen.json`;
+        return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : undefined;
+      },
+      (value) => value !== undefined,
+    );
+
+  async function rebootWith(agent: RunnerAgent | undefined): Promise<void> {
+    await shutDown();
+    await boot(agent);
+  }
+
+  it("is refused at boot when it is an image, which this runner cannot run", () => {
+    expect(() => loadLocalAgent({ AGENT_IMAGE: "ghcr.io/x/agent:1", AGENT_PORT: "8080" })).toThrow(
+      /AGENT_IMAGE is set .* runs no container images — set AGENT_MODULE_REF/,
+    );
+  });
+
+  it("is advertised by name when the operator configured one", async () => {
+    await rebootWith(agentEnv());
+    const body = (await app.inject({ method: "GET", url: "/v1/capabilities" })).json();
+    expect(body.features.agents).toEqual(["authoring-agent"]);
+  });
+
+  it("runs as `telo run --no-input <ref>` in the session's agent directory, and ends with the workload", async () => {
+    await rebootWith(agentEnv());
+    const session = await create({ apps: [], agent: "authoring-agent" });
+    const doc = await statusOf(session, "running");
+    const dir = sessionDirectory(stateRoot, session.id);
+
+    const seen = await seenAgent();
+    expect(seen.argv).toEqual(["run", "--no-input", agentRef()]);
+    expect(fs.realpathSync(seen.cwd)).toBe(dir.agent);
+    expect(seen.env).toEqual({
+      WORKSPACE_DIR: dir.workspace,
+      TELO_HOST_STATE_DIR: dir.agent,
+      TELO_CACHE_DIR: path.join(dir.agent, "telo-cache"),
+      AGENT_TOKEN: doc.status.agent.token,
+      AGENT_PROBE: "operator",
+      AGENT_ENV: null,
+    });
+    expect(doc.status.agent).toEqual({
+      host: "",
+      port: AGENT_PORT,
+      protocol: "tcp",
+      token: expect.any(String),
+    });
+
+    await app.inject({ method: "POST", url: `/v1/sessions/${session.id}/suspend`, headers: session.auth });
+    await statusOf(session, "suspended");
+    expect(() => process.kill(seen.pid, 0)).toThrow(/ESRCH/);
+  });
+
+  it("is stopped when the session drops it and started afresh when it names it again", async () => {
+    await rebootWith(agentEnv());
+    const session = await create({ apps: [], agent: "authoring-agent" });
+    const first = await statusOf(session, "running");
+    const firstPid = (await seenAgent()).pid;
+    fs.rmSync(`${agentRef()}.seen.json`);
+
+    const setAgent = (name: string | null) =>
+      app.inject({ method: "PUT", url: `/v1/sessions/${session.id}/agent`, headers: session.auth, payload: { name } });
+    expect((await setAgent(null)).statusCode).toBeLessThan(300);
+    expect(() => process.kill(firstPid, 0)).toThrow(/ESRCH/);
+    expect((await document(session)).status.agent).toBeUndefined();
+
+    expect((await setAgent("authoring-agent")).statusCode).toBeLessThan(300);
+    const second = await seenAgent();
+    expect(second.pid).not.toBe(firstPid);
+    const doc = await until(() => document(session), (d) => d.status.agent !== undefined);
+    expect(second.env.AGENT_TOKEN).toBe(doc.status.agent.token);
+    expect(doc.status.agent.token).not.toBe(first.status.agent.token);
+  });
+
+  it("fails the session when it ends on its own, naming its log", async () => {
+    await rebootWith(agentEnv({ FAKE_TELO_EXIT: "3" }));
+    const session = await create({ apps: [], agent: "authoring-agent" });
+    const doc = await statusOf(session, "failed");
+    expect(doc.status.message).toMatch(/co-resident agent 'authoring-agent' ended \(exit code 3\)/);
+    expect(doc.status.message).toContain(path.join(sessionDirectory(stateRoot, session.id).agent, "agent.log"));
+  });
+
+  it("keeps the runner's AGENT_* configuration out of every application run", async () => {
+    const before = process.env.AGENT_ENV;
+    process.env.AGENT_ENV = "operator-secret";
+    try {
+      const session = await create({ apps: [{ name: "a", entryRelativePath: "a.yaml" }] });
+      await statusOf(session, "running");
+      await seed(session, { "a.yaml": "" });
+      expect((await run(session, "a", { env: {}, io: "streams" })).statusCode).toBe(202);
+      const file = path.join(sessionDirectory(stateRoot, session.id).workspace, "a.yaml.seen.json");
+      const seen = await until(
+        async () => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : undefined),
+        (value) => value !== undefined,
+      );
+      expect(seen.env.AGENT_ENV).toBeNull();
+    } finally {
+      if (before === undefined) delete process.env.AGENT_ENV;
+      else process.env.AGENT_ENV = before;
+    }
   });
 });

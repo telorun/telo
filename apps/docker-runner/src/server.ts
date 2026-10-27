@@ -1,7 +1,6 @@
 import {
   buildServer as coreBuildServer,
-  coResidentAgentNames,
-  loadResolvedApps,
+  loadAgentFromEnv,
   loadTermsFromEnv,
   openSessionStore,
   type RunnerBackend,
@@ -32,7 +31,7 @@ export interface ServerDeps {
 }
 
 export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
-  const apps = loadResolvedApps(process.env);
+  const agent = loadAgentFromEnv(process.env);
   return coreBuildServer({
     backend: deps.backend,
     config: deps.config,
@@ -40,14 +39,11 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     // Terms are opt-in via RUNNER_TERMS_* — a local docker-runner ships with
     // none (no gate); an operator can still require them by setting the env.
     capabilities: {
-      // Only entries that declare a port: the session route refuses an agent
-      // without one, and advertising what will be rejected is what makes the
-      // editor attach an agent to every session and every session fail.
-      ...dockerRunnerCapabilities({ agents: coResidentAgentNames(apps) }),
+      ...dockerRunnerCapabilities({ agents: agent ? [agent.name] : [] }),
       terms: loadTermsFromEnv(process.env),
     },
-    // The operator's agent catalog (RUNNER_APPS; none when unset).
-    apps,
+    // The operator's co-resident agent (AGENT_*; none when unset).
+    agent,
     store: deps.store,
     // Core carries the session config as an opaque bag, so the runner that
     // needs an image is the one that insists on it — a 400 naming the field,
@@ -80,7 +76,7 @@ async function missingDaemonObject(docker: SessionDockerClient, config: RunnerCo
 
 async function main(): Promise<void> {
   // Load `.env` / `.env.local` before reading config so secret-bearing config
-  // (e.g. the RUNNER_APPS catalog) can live in a file.
+  // (e.g. the AGENT_ENV values) can live in a file.
   loadRunnerEnvFiles();
 
   let config: RunnerConfig;

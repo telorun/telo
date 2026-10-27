@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import type { DirEntry, WorkspaceAdapter } from "../model";
-import { materializeModule, ModuleExistsError } from "./crud";
+import type { DirEntry, ParsedManifest, Workspace, WorkspaceAdapter } from "../model";
+import { deleteModule, materializeModule, ModuleExistsError } from "./crud";
 import type { StarterDescriptor } from "./starters";
 
 // The starter path calls out to the network via `fetchStarterFiles`; stub it
@@ -122,5 +122,101 @@ describe("materializeModule — atomicity", () => {
     // user's directory untouched.
     expect(deleted).toEqual([]);
     expect(writes).toEqual({});
+  });
+});
+
+describe("deleteModule — cascade", () => {
+  const app = (filePath: string, imports: Array<[string, string]> = []): ParsedManifest => ({
+    filePath,
+    kind: "Application",
+    metadata: { name: filePath.split("/").slice(-2, -1)[0] },
+    targets: [],
+    imports: imports.map(([name, resolvedPath]) => ({
+      name,
+      source: resolvedPath,
+      importKind: "local",
+      resolvedPath,
+    })),
+    resources: [],
+  });
+  const lib = (filePath: string): ParsedManifest => ({
+    filePath,
+    kind: "Library",
+    metadata: { name: filePath.split("/").slice(-2, -1)[0] },
+    imports: [],
+    resources: [],
+  });
+
+  function workspaceOf(modules: ParsedManifest[]): Workspace {
+    const importedBy = new Map<string, Set<string>>();
+    for (const m of modules) {
+      for (const imp of m.imports) {
+        if (!imp.resolvedPath) continue;
+        if (!importedBy.has(imp.resolvedPath)) importedBy.set(imp.resolvedPath, new Set());
+        importedBy.get(imp.resolvedPath)!.add(m.filePath);
+      }
+    }
+    return {
+      rootDir: "/ws",
+      modules: new Map(modules.map((m) => [m.filePath, m])),
+      importGraph: new Map(),
+      importedBy,
+      documents: new Map(),
+      resourceDocIndex: new Map(),
+    };
+  }
+
+  it("deletes the module's directory and drops every module nested in it", async () => {
+    const workspace = workspaceOf([
+      app("/ws/apps/todo/telo.yaml", [["Db", "/ws/apps/todo/libs/db/telo.yaml"]]),
+      lib("/ws/apps/todo/libs/db/telo.yaml"),
+      app("/ws/apps/todo/tests/telo.yaml", [["Todo", "/ws/apps/todo/telo.yaml"]]),
+      app("/ws/apps/other/telo.yaml", [
+        ["Db", "/ws/apps/todo/libs/db/telo.yaml"],
+        ["Shared", "/ws/libs/shared/telo.yaml"],
+      ]),
+      lib("/ws/libs/shared/telo.yaml"),
+    ]);
+    const { adapter, deleted } = memAdapter();
+
+    const next = await deleteModule(workspace, "/ws/apps/todo/telo.yaml", adapter);
+
+    expect(deleted).toEqual(["/ws/apps/todo"]);
+    expect([...next.modules.keys()].sort()).toEqual([
+      "/ws/apps/other/telo.yaml",
+      "/ws/libs/shared/telo.yaml",
+    ]);
+  });
+
+  it("prunes imports of the deleted subtree from importers outside it, and keeps the rest", async () => {
+    const workspace = workspaceOf([
+      app("/ws/apps/todo/telo.yaml"),
+      lib("/ws/apps/todo/libs/db/telo.yaml"),
+      app("/ws/apps/other/telo.yaml", [
+        ["Db", "/ws/apps/todo/libs/db/telo.yaml"],
+        ["Shared", "/ws/libs/shared/telo.yaml"],
+      ]),
+      lib("/ws/libs/shared/telo.yaml"),
+    ]);
+    const { adapter } = memAdapter();
+
+    const next = await deleteModule(workspace, "/ws/apps/todo/telo.yaml", adapter);
+
+    expect(next.modules.get("/ws/apps/other/telo.yaml")?.imports.map((i) => i.name)).toEqual([
+      "Shared",
+    ]);
+    expect(next.importedBy.get("/ws/libs/shared/telo.yaml")).toEqual(
+      new Set(["/ws/apps/other/telo.yaml"]),
+    );
+  });
+
+  it("refuses to delete the module whose directory is the whole workspace", async () => {
+    const workspace = workspaceOf([app("/ws/telo.yaml"), app("/ws/apps/todo/telo.yaml")]);
+    const { adapter, deleted } = memAdapter();
+
+    await expect(deleteModule(workspace, "/ws/telo.yaml", adapter)).rejects.toThrow(
+      "root module",
+    );
+    expect(deleted).toEqual([]);
   });
 });

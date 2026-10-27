@@ -1,7 +1,11 @@
-import { useMemo, useState } from "react";
-import { hasApplicationImporter, isWorkspaceModule } from "../../loader";
+import { ArrowUp } from "lucide-react";
+import { Fragment, useMemo, useState } from "react";
+import { hasApplicationImporter, moduleSubtree } from "../../loader";
 import type { ModuleKind, ParsedManifest, Workspace } from "../../model";
 import { useRun } from "../../run";
+import { sessionUnavailableReason } from "../../run/ui/SessionStatusChip";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import type { BulkUpgrade } from "./useImportUpgrade";
 import { getModuleFiles, summarizeFiles } from "../../diagnostics-aggregate";
 import { DiagnosticBadge } from "../diagnostics/DiagnosticBadge";
 import { useDiagnosticsState } from "../diagnostics/DiagnosticsContext";
@@ -14,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../ui/dialog";
+import { buildModuleForest, flattenModules, type ModuleNode } from "./module-tree";
 
 interface WorkspaceTreeProps {
   workspace: Workspace;
@@ -22,28 +27,34 @@ interface WorkspaceTreeProps {
   onNewModule: (kind: ModuleKind) => void;
   onDeleteModule: (filePath: string) => Promise<void>;
   onRunModule?: (filePath: string) => void;
+  importUpgrades?: ImportUpgrades;
 }
 
-interface TreeNode {
-  manifest: ParsedManifest;
-  relativeDir: string;
+export interface ImportUpgrades {
+  /** The upgrades available per module file; a module absent has none. */
+  outdated: Map<string, BulkUpgrade[]>;
+  busy: boolean;
+  onUpgrade: (filePaths: string[]) => void;
 }
 
-function buildNodes(workspace: Workspace): { applications: TreeNode[]; libraries: TreeNode[] } {
-  const root = workspace.rootDir.endsWith("/") ? workspace.rootDir : workspace.rootDir + "/";
-  const applications: TreeNode[] = [];
-  const libraries: TreeNode[] = [];
-  for (const [filePath, manifest] of workspace.modules) {
-    if (!isWorkspaceModule(workspace, filePath)) continue;
-    const relativeDir = filePath.slice(root.length).replace(/\/telo\.ya?ml$/, "");
-    const node = { manifest, relativeDir };
-    if (manifest.kind === "Application") applications.push(node);
-    else libraries.push(node);
-  }
-  const byRel = (a: TreeNode, b: TreeNode) => a.relativeDir.localeCompare(b.relativeDir);
-  applications.sort(byRel);
-  libraries.sort(byRel);
-  return { applications, libraries };
+/** The section's upgrade: every module in it that has one, or none when no
+ *  module of the section does. */
+function sectionUpgrade(
+  nodes: ModuleNode[],
+  importUpgrades: ImportUpgrades | undefined,
+): SectionUpgrade | undefined {
+  if (!importUpgrades) return undefined;
+  const filePaths = flattenModules(nodes).map((node) => node.manifest.filePath);
+  const count = filePaths.reduce(
+    (total, filePath) => total + (importUpgrades.outdated.get(filePath)?.length ?? 0),
+    0,
+  );
+  if (count === 0) return undefined;
+  return {
+    count,
+    busy: importUpgrades.busy,
+    onUpgrade: () => importUpgrades.onUpgrade(filePaths),
+  };
 }
 
 export function WorkspaceTree({
@@ -53,8 +64,11 @@ export function WorkspaceTree({
   onNewModule,
   onDeleteModule,
   onRunModule,
+  importUpgrades,
 }: WorkspaceTreeProps) {
-  const { applications, libraries } = useMemo(() => buildNodes(workspace), [workspace]);
+  const { applications, libraries } = useMemo(() => buildModuleForest(workspace), [workspace]);
+  const { session } = useRun();
+  const runUnavailable = session ? sessionUnavailableReason(session) : null;
   const [deleteTarget, setDeleteTarget] = useState<ParsedManifest | null>(null);
   const [deleting, setDeleting] = useState(false);
 
@@ -69,7 +83,40 @@ export function WorkspaceTree({
     }
   }
 
-  const importers = deleteTarget ? [...(workspace.importedBy.get(deleteTarget.filePath) ?? [])] : [];
+  const deleteSubtree = deleteTarget ? moduleSubtree(workspace, deleteTarget.filePath) : [];
+  const nested = deleteSubtree.filter((path) => path !== deleteTarget?.filePath);
+  const subtreeSet = new Set(deleteSubtree);
+  const importers = [
+    ...new Set(
+      deleteSubtree.flatMap((path) => [...(workspace.importedBy.get(path) ?? [])]),
+    ),
+  ].filter((path) => !subtreeSet.has(path));
+
+  function renderModule(node: ModuleNode) {
+    const { filePath } = node.manifest;
+    return (
+      <Fragment key={filePath}>
+        <ModuleRow
+          node={node}
+          active={filePath === activeModulePath}
+          workspace={workspace}
+          onOpen={() => onOpenModule(filePath)}
+          onDelete={() => setDeleteTarget(node.manifest)}
+          onRun={
+            onRunModule && node.manifest.kind === "Application"
+              ? () => onRunModule(filePath)
+              : undefined
+          }
+          runUnavailable={runUnavailable}
+        />
+        {node.children.length > 0 && (
+          <div className="ml-5 border-l border-zinc-200 dark:border-zinc-800">
+            {node.children.map(renderModule)}
+          </div>
+        )}
+      </Fragment>
+    );
+  }
 
   return (
     <>
@@ -78,18 +125,9 @@ export function WorkspaceTree({
         addLabel="New application"
         emptyText="No applications yet"
         onAdd={() => onNewModule("Application")}
+        upgrade={sectionUpgrade(applications, importUpgrades)}
       >
-        {applications.map((node) => (
-          <ModuleRow
-            key={node.manifest.filePath}
-            node={node}
-            active={node.manifest.filePath === activeModulePath}
-            workspace={workspace}
-            onOpen={() => onOpenModule(node.manifest.filePath)}
-            onDelete={() => setDeleteTarget(node.manifest)}
-            onRun={onRunModule ? () => onRunModule(node.manifest.filePath) : undefined}
-          />
-        ))}
+        {applications.map(renderModule)}
       </TreeSection>
 
       <div className="mx-3 border-t border-zinc-100 dark:border-zinc-800" />
@@ -99,42 +137,45 @@ export function WorkspaceTree({
         addLabel="New library"
         emptyText="No libraries yet"
         onAdd={() => onNewModule("Library")}
+        upgrade={sectionUpgrade(libraries, importUpgrades)}
       >
-        {libraries.map((node) => (
-          <ModuleRow
-            key={node.manifest.filePath}
-            node={node}
-            active={node.manifest.filePath === activeModulePath}
-            workspace={workspace}
-            onOpen={() => onOpenModule(node.manifest.filePath)}
-            onDelete={() => setDeleteTarget(node.manifest)}
-          />
-        ))}
+        {libraries.map(renderModule)}
       </TreeSection>
 
       <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Delete {deleteTarget?.metadata.name}?</DialogTitle>
-            <DialogDescription>
-              This will remove the module directory from disk.
-              {importers.length > 0 && (
-                <>
-                  {" "}
-                  {importers.length} importer{importers.length === 1 ? "" : "s"} will have their
-                  Telo.Import entries for this module removed:
-                </>
-              )}
-            </DialogDescription>
+            <DialogDescription>This will remove the module directory from disk.</DialogDescription>
           </DialogHeader>
+          {nested.length > 0 && (
+            <div className="space-y-1 text-sm">
+              <p>
+                {nested.length} nested module{nested.length === 1 ? "" : "s"} will be deleted with it:
+              </p>
+              <ul className="max-h-40 overflow-y-auto rounded border border-zinc-200 bg-zinc-50 p-2 text-xs dark:border-zinc-800 dark:bg-zinc-900">
+                {nested.map((path) => (
+                  <li key={path} className="truncate">
+                    {workspace.modules.get(path)?.metadata.name ?? path}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           {importers.length > 0 && (
-            <ul className="max-h-40 overflow-y-auto rounded border border-zinc-200 bg-zinc-50 p-2 text-xs dark:border-zinc-800 dark:bg-zinc-900">
-              {importers.map((path) => (
-                <li key={path} className="truncate">
-                  {workspace.modules.get(path)?.metadata.name ?? path}
-                </li>
-              ))}
-            </ul>
+            <div className="space-y-1 text-sm">
+              <p>
+                {importers.length} importer{importers.length === 1 ? "" : "s"} will have their
+                Telo.Import entries for these modules removed:
+              </p>
+              <ul className="max-h-40 overflow-y-auto rounded border border-zinc-200 bg-zinc-50 p-2 text-xs dark:border-zinc-800 dark:bg-zinc-900">
+                {importers.map((path) => (
+                  <li key={path} className="truncate">
+                    {workspace.modules.get(path)?.metadata.name ?? path}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <DialogFooter>
             <Button variant="ghost" onClick={() => setDeleteTarget(null)} disabled={deleting}>
@@ -150,15 +191,29 @@ export function WorkspaceTree({
   );
 }
 
+interface SectionUpgrade {
+  count: number;
+  busy: boolean;
+  onUpgrade: () => void;
+}
+
 interface TreeSectionProps {
   label: string;
   addLabel: string;
   emptyText: string;
   onAdd: () => void;
+  upgrade?: SectionUpgrade;
   children: React.ReactNode;
 }
 
-function TreeSection({ label, addLabel, emptyText, onAdd, children }: TreeSectionProps) {
+function TreeSection({
+  label,
+  addLabel,
+  emptyText,
+  onAdd,
+  upgrade,
+  children,
+}: TreeSectionProps) {
   const childCount = Array.isArray(children) ? children.length : children ? 1 : 0;
 
   return (
@@ -167,7 +222,21 @@ function TreeSection({ label, addLabel, emptyText, onAdd, children }: TreeSectio
         <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">
           {label}
         </span>
-        <Button
+        <span className="flex items-center gap-1">
+          {upgrade && (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="max-md:size-9"
+              onClick={upgrade.onUpgrade}
+              disabled={upgrade.busy}
+              title={`Upgrade ${upgrade.count} outdated ${upgrade.count === 1 ? "import" : "imports"} in ${label.toLowerCase()}`}
+              aria-label={`Upgrade imports in ${label.toLowerCase()}`}
+            >
+              <ArrowUp className="size-3.5" />
+            </Button>
+          )}
+          <Button
           variant="ghost"
           size="icon-xs"
           className="max-md:size-9 max-md:text-base"
@@ -176,6 +245,7 @@ function TreeSection({ label, addLabel, emptyText, onAdd, children }: TreeSectio
         >
           +
         </Button>
+        </span>
       </div>
       {childCount === 0 && (
         <div className="px-4 py-1 text-xs italic text-zinc-400 dark:text-zinc-600">
@@ -188,15 +258,17 @@ function TreeSection({ label, addLabel, emptyText, onAdd, children }: TreeSectio
 }
 
 interface ModuleRowProps {
-  node: TreeNode;
+  node: ModuleNode;
   active: boolean;
   workspace: Workspace;
   onOpen: () => void;
   onDelete: () => void;
   onRun?: () => void;
+  /** Why the workspace's session cannot run an application; null while it can. */
+  runUnavailable?: string | null;
 }
 
-function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleRowProps) {
+function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun, runUnavailable = null }: ModuleRowProps) {
   const isLibrary = node.manifest.kind === "Library";
   const dim = isLibrary && !hasApplicationImporter(workspace, node.manifest.filePath);
   const icon = isLibrary ? "□" : "▷";
@@ -235,18 +307,32 @@ function ModuleRow({ node, active, workspace, onOpen, onDelete, onRun }: ModuleR
         </span>
       )}
       {onRun && (
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="invisible text-zinc-400 group-hover:visible hover:text-emerald-600 touch:visible max-md:size-9 dark:hover:text-emerald-400"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRun();
-          }}
-          title="Run"
-        >
-          ▶
-        </Button>
+        <TooltipProvider>
+          <Tooltip>
+            {/* A disabled button takes no pointer events, so the trigger is the span around it. */}
+            <TooltipTrigger asChild>
+              <span className="inline-flex">
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="invisible text-zinc-400 group-hover:visible hover:text-emerald-600 touch:visible max-md:size-9 dark:hover:text-emerald-400"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRun();
+                  }}
+                  disabled={runUnavailable !== null}
+                >
+                  ▶
+                </Button>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {runUnavailable
+                ? `Can't run: the workspace's session is unavailable — ${runUnavailable}`
+                : "Run"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
       <Button
         variant="ghost"

@@ -3108,6 +3108,7 @@ schema:
     - resolve: [/model, /fields]
       in: /fields
       condition: !cel >-
+        !has(self.model) ||
         cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
           has(m.properties) && (type(this) == string ? this : this.property) in m.properties)
       code: UI_FIELD_UNKNOWN_PROPERTY
@@ -3117,6 +3118,7 @@ schema:
     - resolve: [/model]
       in: /fields
       condition: !cel >-
+        !has(self.model) ||
         cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
           type(this) != string || !has(m.properties) || !(this in m.properties)
           || Self.controlFits('auto', m.properties[this], null))
@@ -3128,6 +3130,7 @@ schema:
         kind that enters it.
     - resolve: [/model, /fields]
       condition: !cel >-
+        !has(self.model) ||
         cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
           !has(m.required) || m.required.all(r,
             has(self.fields)
@@ -3174,6 +3177,7 @@ schema:
     # Anchored at the resource: `in:` cannot reach into a named shape.
     - resolve: [/model, /fields]
       condition: !cel >-
+        !has(self.model) ||
         cel.bind(m, has(self.model.schema) ? self.model.schema : self.model,
           !has(self.state) || !has(self.state.fields) || self.state.fields.all(k,
             has(self.fields)
@@ -3620,7 +3624,7 @@ schema:
   x-telo-resource-rules:
     - resolve: [/model]
       in: /fields
-      condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
+      condition: !cel "!has(self.model) || has((has(self.model.schema) ? self.model.schema : self.model).properties) && this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
       code: UI_FILTER_UNKNOWN_PROPERTY
       message: >-
         filters by a property the model does not declare. Use a property of
@@ -3631,6 +3635,7 @@ schema:
     - resolve: [/model]
       in: /fields
       condition: !cel >-
+        !has(self.model) ||
         !has((has(self.model.schema) ? self.model.schema : self.model).properties)
         || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
         || !('type' in (has(self.model.schema) ? self.model.schema : self.model).properties[this.property])
@@ -3661,6 +3666,7 @@ schema:
     # listed field is: a declared property, and an operator its type carries.
     - resolve: [/model, /collection]
       condition: !cel >-
+        !has(self.model) ||
         has(self.fields) || !has(self.collection.query) || !has(self.collection.query.filters)
         || self.collection.query.filters.all(f,
              has((has(self.model.schema) ? self.model.schema : self.model).properties)
@@ -3689,6 +3695,7 @@ schema:
     - resolve: [/model]
       in: /fields
       condition: !cel >-
+        !has(self.model) ||
         !('default' in this)
         || ((!('control' in this) || this.control != 'toggle' || type(this.default) != bool || this.default != false)
         && (!has((has(self.model.schema) ? self.model.schema : self.model).properties)
@@ -3713,6 +3720,7 @@ schema:
     - resolve: [/model]
       in: /fields
       condition: !cel >-
+        !has(self.model) ||
         !('control' in this) || this.control in ['auto', 'none']
         || !has((has(self.model.schema) ? self.model.schema : self.model).properties)
         || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
@@ -3737,6 +3745,7 @@ schema:
     - resolve: [/model]
       in: /presets
       condition: !cel >-
+        !has(self.model) ||
         this.values.all(e,
           (!has(self.fields) || type(e.value) != bool || e.value != false
            || !self.fields.exists(f, f.property == e.property && f.operator == e.operator && 'control' in f && f.control == 'toggle'))

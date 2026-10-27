@@ -1,0 +1,7 @@
+modules:
+  apps/authoring-agent: Fixed
+body: "The agent writes a feature library as a plain file beside its application,
+  apps/<app-slug>/<area>.yaml, imported as ./<area>.yaml, rather than in a directory of
+  its own or as apps/<library-slug>/telo.yaml beside the app: the system prompt now
+  states that apps/ holds applications only and that the slug in apps/<slug>/ is the
+  application's."

@@ -58,7 +58,7 @@ export interface BulkUpgrade {
 }
 
 /** The number of upgraded imports left unpinned, phrased for the banner. */
-function pinDroppedMessage(count: number): string {
+export function pinDroppedMessage(count: number): string {
   return (
     `Upgraded ${count} import${count === 1 ? "" : "s"} without an integrity pin — ` +
     `the hub publishes no hash for the version ${count === 1 ? "it now names" : "they now name"}, ` +

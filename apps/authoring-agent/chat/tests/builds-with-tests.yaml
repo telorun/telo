@@ -150,13 +150,13 @@ steps:
         invoke: !ref Chat.treeSnapshot
       - name: paths
         value: !cel "steps.tree.result.files.map(f, f.path)"
-      # A feature library is any `<something>/telo.yaml` one level under the app
-      # that is not the app's own file and not the tests directory. Matched by
-      # shape rather than by name: how the domain is split is the agent's call,
-      # and pinning a name would assert its taste instead of the structure.
+      # A feature library is any `<area>.yaml` directly in the app's directory
+      # other than the app's own `telo.yaml`. Matched by shape rather than by
+      # name: how the domain is split is the agent's call, and pinning a name
+      # would assert its taste instead of the structure.
       - name: assertShape
         inputs:
-          hasLibrary: !cel "steps.paths.result.exists(p, p.matches('^apps/notes/[^/]+/telo[.]yaml$') && !p.startsWith('apps/notes/tests/'))"
+          hasLibrary: !cel "steps.paths.result.exists(p, p.matches('^apps/notes/[^/]+[.]yaml$') && p != 'apps/notes/telo.yaml')"
           hasSuite: !cel "steps.paths.result.exists(p, p == 'apps/notes/tests/telo.yaml')"
           hasTest: !cel "steps.paths.result.exists(p, p.matches('^apps/notes/tests/[^/]+[.]yaml$') && p != 'apps/notes/tests/telo.yaml')"
           hasApp: !cel "steps.paths.result.exists(p, p == 'apps/notes/telo.yaml')"

@@ -13,7 +13,7 @@ import { isModuleRootKind, moduleRootResource } from "../application-adapter";
 import { HistoryManager } from "../history/manager";
 import { LocalStorageHistoryStore } from "../history/store";
 import { useEditorPersistence } from "../hooks/useEditorPersistence";
-import { useImportOps } from "../hooks/useImportOps";
+import { useImportOps, type ModuleImportUpgrades } from "../hooks/useImportOps";
 import { useWorkspaceLifecycle } from "../hooks/useWorkspaceLifecycle";
 import { INITIAL_STATE, pickInitialActiveModule } from "../editor-state";
 import { knownReferences, referenceSlotsToClear, type ResourceReference } from "../resource-references";
@@ -29,6 +29,8 @@ import {
   firstWorkspaceModule,
   hasNoWorkspaceModules,
   isWorkspaceModule,
+  moduleOwningFile,
+  moduleSubtree,
   persistWorkspaceModule,
   rebuildManifestFromDocuments,
   reconcileImports,
@@ -139,6 +141,11 @@ import type { ViewModelStatus } from "../language/view-model-store";
 import { getModuleFiles } from "../diagnostics-aggregate";
 import { SettingsModal } from "./SettingsModal";
 import { Sidebar } from "./sidebar/Sidebar";
+import { pinDroppedMessage } from "./sidebar/useImportUpgrade";
+import { useModuleVersions } from "./sidebar/useModuleVersions";
+import { useVersionCompatibility } from "./sidebar/useVersionCompatibility";
+import { useWorkspaceImportUpgrades } from "./sidebar/useWorkspaceImportUpgrades";
+import { ImportLookupNotice } from "./sidebar/ImportLookupNotice";
 import { TermsGateDialog } from "./TermsGateDialog";
 import { WorkspaceModeDialog } from "./WorkspaceModeDialog";
 import { TopBar } from "./TopBar";
@@ -343,7 +350,8 @@ export function Editor() {
 
   // How the open workspace is used, chosen the first time it opens and
   // remembered per workspace; null while the choice is still to be made.
-  const { workspaceMode, chooseWorkspaceMode, openingModeRef } = useWorkspaceMode(agentRootDir);
+  const { workspaceMode, chooseWorkspaceMode, openingModeRef, resumeOnLoad, chooseResumeOnLoad } =
+    useWorkspaceMode(agentRootDir);
 
   // The resume secret's home: the web build keeps it in the workspace's entry;
   // the desktop build in the OS credential store, through the shell.
@@ -684,17 +692,25 @@ export function Editor() {
     const workspace = state.workspace;
     const adapter = workspaceAdapterRef.current;
     if (!workspace || !adapter) return;
-    const updated = await deleteModule(workspace, filePath, adapter);
+    let updated: Workspace;
+    try {
+      updated = await deleteModule(workspace, filePath, adapter);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return;
+    }
     // The run context is keyed by module path, so a deleted module's runs,
     // dock, blocker and selection would outlive it — a session still running
     // for an application that is gone, and all of it inherited by a module
-    // later created at the same path.
-    runContext.forgetApp(filePath);
+    // later created at the same path. Every module nested in it goes too.
+    for (const path of moduleSubtree(workspace, filePath)) runContext.forgetApp(path);
+    const dir = pathDirname(filePath);
+    const gone = (path: string) => path.startsWith(dir + "/");
     setState((s) => {
-      const openTabs = closeTab(s.openTabs, filePath);
-      const wasActiveTab = s.activeTabId === filePath;
+      const openTabs = s.openTabs.filter((t) => !gone(t.path));
+      const wasActiveTab = s.activeTabId !== null && gone(s.activeTabId);
       const nextActive =
-        s.activeModulePath === filePath
+        s.activeModulePath !== null && gone(s.activeModulePath)
           ? pickInitialActiveModule(updated)
           : s.activeModulePath;
       const moduleChanged = nextActive !== s.activeModulePath;
@@ -982,8 +998,42 @@ export function Editor() {
   }
 
   // Import authoring for the active module — add / remove / upgrade.
-  const { handleAddImport, handleRemoveImport, handleUpgradeImport, handleUpgradeAllImports } =
-    useImportOps({ state, setState, settings, manifestAdapterRef, persistModule });
+  const {
+    handleAddImport,
+    handleRemoveImport,
+    handleUpgradeImport,
+    handleUpgradeAllImports,
+    upgradeModuleImports,
+  } = useImportOps({ state, setState, settings, manifestAdapterRef, persistModule });
+
+  // The workspace-wide upgrade: every module's imports, one click from the top
+  // bar or a section header. The same hub lookups the module bar makes, so an
+  // upgrade offered here lands on the same version it would there.
+  const listVersions = useModuleVersions(settings.hubUrl);
+  const isCompatible = useVersionCompatibility(settings.manifestCacheUrl);
+  const { outdated: workspaceUpgrades, failures: importLookupFailures } =
+    useWorkspaceImportUpgrades(state.workspace, listVersions, isCompatible);
+  const [upgradingImports, setUpgradingImports] = useState(false);
+
+  async function handleUpgradeWorkspaceImports(filePaths: string[]) {
+    const plan: ModuleImportUpgrades[] = filePaths.flatMap((filePath) => {
+      const upgrades = workspaceUpgrades.get(filePath);
+      return upgrades?.length ? [{ filePath, upgrades }] : [];
+    });
+    if (plan.length === 0) return;
+    setUpgradingImports(true);
+    try {
+      await upgradeModuleImports(plan);
+      const unpinned = plan
+        .flatMap((entry) => workspaceUpgrades.get(entry.filePath) ?? [])
+        .filter((u) => u.wasPinned && !u.repinned).length;
+      if (unpinned > 0) setError(pinDroppedMessage(unpinned));
+    } catch (err) {
+      setError(`Failed to upgrade imports: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setUpgradingImports(false);
+    }
+  }
 
   // What the editor lends the Telo Cloud layer: it owns the open workspace, so
   // opening one, closing it and re-reading it after an update rewrote the
@@ -1339,6 +1389,17 @@ export function Editor() {
     if (editingPaused) return;
     const adapter = workspaceAdapterRef.current;
     if (!adapter) return;
+    // A module's manifest stands for the module: deleting it deletes the
+    // module's directory and every module nested in it, not the file alone.
+    const workspace = state.workspace;
+    const manifest = workspace?.modules.get(normalizePath(path));
+    if (workspace && manifest && isWorkspaceModule(workspace, manifest.filePath)) {
+      const nested = moduleSubtree(workspace, manifest.filePath).length - 1;
+      const withNested = nested > 0 ? ` and the ${nested} module${nested === 1 ? "" : "s"} nested in it` : "";
+      if (!window.confirm(`Delete ${manifest.metadata.name}? Its directory${withNested} will be removed. This cannot be undone.`)) return;
+      await handleDeleteModule(manifest.filePath);
+      return;
+    }
     if (!window.confirm(`Delete ${pathBasename(path)}? This cannot be undone.`)) return;
     try {
       await adapter.delete(path);
@@ -1633,6 +1694,14 @@ export function Editor() {
         : cloudLock === "updating"
           ? "cloud"
           : null;
+
+  // Hidden wherever nothing may be written: an upgrade is a write, and the
+  // write paths already refuse it while editing is paused.
+  const importUpgradeCount = [...workspaceUpgrades.values()].reduce(
+    (count, upgrades) => count + upgrades.length,
+    0,
+  );
+  const importUpgradesOffered = readOnlyReason === null;
 
   async function handleCreateResource(kind: string, name: string, fields: Record<string, unknown>) {
     if (!state.workspace || !state.activeModulePath) return;
@@ -2080,7 +2149,7 @@ export function Editor() {
     setState((s) => ({ ...s, workspace: persisted }));
   }
 
-  /** Commits a source-view edit for one file in the active module. Replaces
+  /** Commits a source-view edit for one file, rebuilding and saving the module that owns it. Replaces
    *  that file's `ModuleDocument` with a fresh parse, re-derives the
    *  ParsedManifest from the updated AST, reconciles imports whose source
    *  may have changed, and persists via the AST save path. Works for the
@@ -2092,7 +2161,10 @@ export function Editor() {
     moduleDoc: ModuleDocument,
     opts?: { skipHistory?: boolean },
   ) {
-    if (!state.workspace || !state.activeModulePath) return;
+    // The edited file's own module, not the one on screen: an edit to a nested
+    // module's manifest must update that module.
+    const owner = state.workspace ? moduleOwningFile(state.workspace, filePath) : undefined;
+    if (!state.workspace || !owner) return;
 
     // All writes to `documents` go through the canonical `normalizePath`
     // key, matching every other mutation site. The `ModuleDocument.filePath`
@@ -2122,21 +2194,21 @@ export function Editor() {
     documents.set(key, merged);
 
     let workspace: Workspace = { ...state.workspace, documents };
-    const prevInclude = state.workspace.modules.get(state.activeModulePath)?.include ?? [];
-    workspace = rebuildManifestFromDocuments(workspace, state.activeModulePath);
-    const nextInclude = workspace.modules.get(state.activeModulePath)?.include ?? [];
+    const prevInclude = state.workspace.modules.get(owner)?.include ?? [];
+    workspace = rebuildManifestFromDocuments(workspace, owner);
+    const nextInclude = workspace.modules.get(owner)?.include ?? [];
 
     const adapter = manifestAdapterRef.current ?? noopAdapter;
-    if (hasUnresolvedImports(workspace, state.activeModulePath)) {
+    if (hasUnresolvedImports(workspace, owner)) {
       workspace = await reconcileImports(
         workspace,
-        state.activeModulePath,
+        owner,
         adapter,
         createManifestSources(settings),
       );
     }
 
-    workspace = await persistModule(workspace, state.activeModulePath, {
+    workspace = await persistModule(workspace, owner, {
       skipHistory: opts?.skipHistory,
     });
 
@@ -2285,6 +2357,8 @@ export function Editor() {
           onOpenFolder: openMode === "chooser" ? handleOpen : undefined,
           onClose: closeWorkspace,
           mode: workspaceMode ? { current: workspaceMode, onChange: chooseWorkspaceMode } : undefined,
+          resume:
+            resumeOnLoad === undefined ? undefined : { auto: resumeOnLoad, onChange: chooseResumeOnLoad },
         }}
         onOpenNav={state.workspace ? () => setNavDrawerOpen(true) : undefined}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -2292,6 +2366,17 @@ export function Editor() {
         onRedo={canRedo ? () => void handleRedo() : undefined}
         canUndo={canUndo}
         canRedo={canRedo}
+        session={runContext.session}
+        onRetrySession={runContext.retrySession}
+        importUpgrade={
+          importUpgradesOffered && importUpgradeCount > 0
+            ? {
+                count: importUpgradeCount,
+                busy: upgradingImports,
+                onUpgrade: () => void handleUpgradeWorkspaceImports([...workspaceUpgrades.keys()]),
+              }
+            : undefined
+        }
         onToggleChat={agentVisible ? agent.togglePanel : undefined}
         chatOpen={agent.panelOpen}
         teloLanguage={teloLanguage}
@@ -2301,6 +2386,12 @@ export function Editor() {
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
           {error}
         </div>
+      )}
+      {importLookupFailures.length > 0 && (
+        <ImportLookupNotice
+          failures={importLookupFailures}
+          className="rounded-none border-b border-amber-200 px-4 py-2 dark:border-amber-900"
+        />
       )}
       {activeManifest?.loadError && (
         <div className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300">
@@ -2342,6 +2433,15 @@ export function Editor() {
           onNewModule={setCreateModuleKind}
           onDeleteModule={handleDeleteModule}
           onRunModule={sessionMode ? handleRunModule : undefined}
+          importUpgrades={
+            importUpgradesOffered
+              ? {
+                  outdated: workspaceUpgrades,
+                  busy: upgradingImports,
+                  onUpgrade: (filePaths) => void handleUpgradeWorkspaceImports(filePaths),
+                }
+              : undefined
+          }
           drawerOpen={navDrawerOpen}
           onDrawerOpenChange={setNavDrawerOpen}
         />

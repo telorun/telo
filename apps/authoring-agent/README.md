@@ -949,7 +949,7 @@ Secrets:
 | Env var | Purpose |
 | --- | --- |
 | `ANTHROPIC_API_KEY` | Required. The Anthropic API credential; any value when `MODEL_ENDPOINT` names a keyless endpoint |
-| `AGENT_TOKEN` | Default empty. The bearer token every guarded route requires; empty leaves them open (one `warn` at boot says so). A runner that mints a per-session token injects it here — its catalog entry declares `"tokenEnv": "AGENT_TOKEN"` |
+| `AGENT_TOKEN` | Default empty. The bearer token every guarded route requires; empty leaves them open (one `warn` at boot says so). A runner that mints a per-session token injects it here — the runner's `AGENT_TOKEN_ENV` names `AGENT_TOKEN` |
 
 Variables:
 
@@ -1088,11 +1088,11 @@ controller pre-fetched by `telo install` so boot does no network I/O:
 docker build -t telorun/authoring-agent apps/authoring-agent
 ```
 
-A runner offers it by naming it in `RUNNER_APPS` — as an app clients can launch
-by name, as a session's co-resident agent, or both. The image and the operator
-env stay server-side either way; a client only ever asks for it by name. See the
-runner READMEs for the catalog entry, including the `port` a co-resident agent
-must declare.
+A runner offers it as a session's co-resident agent: run the image (`AGENT_IMAGE`),
+or run this application's module on the runner's kernel image (`AGENT_MODULE_REF`,
+an `oci://` reference fetched at start, or a host path). `AGENT_PORT` names the port
+it listens on. The image or module and the operator env stay server-side; a client
+only asks for the agent by name. See the runner READMEs for the `AGENT_*` variables.
 
 ## Tests
 

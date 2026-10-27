@@ -23,7 +23,7 @@ function build(overrides: Partial<Parameters<typeof buildSessionPod>[0]> = {}) {
     supervisorToken: "token-apps",
     agent: {
       name: "authoring-agent",
-      image: "ghcr.io/telorun/authoring-agent:1",
+      source: { kind: "image" as const, image: "ghcr.io/telorun/authoring-agent:1" },
       env: { [OPERATOR_KEY]: "sk-operator-secret", AGENT_TOKEN: "agent-token" },
       pullPolicy: "missing",
       port: 8080,
@@ -134,6 +134,24 @@ describe("the session pod", () => {
       "workspace",
       "apps",
     ]);
+  });
+
+  it("runs a module agent as telo run on the runner's kernel image, fetched into the agent's state", () => {
+    const ref = "oci://ghcr.io/telorun/authoring-agent@1.0.0";
+    const agent = build({
+      agent: {
+        name: "authoring-agent",
+        source: { kind: "module", ref },
+        env: {},
+        pullPolicy: "missing",
+        port: 8080,
+      },
+    });
+    const container = byName(agent, "agent");
+    expect(container.image).toBe("telorun/node:0.121.0-slim");
+    expect(container.command).toEqual(["telo", "run", "--no-input", ref]);
+    expect(container.workingDir).toBe("/var/lib/telo-agent-state");
+    expect(envOf(container).TELO_CACHE_DIR).toBe("/var/lib/telo-agent-state/telo-cache");
   });
 
   it("labels the pod for lookup and the sweep", () => {

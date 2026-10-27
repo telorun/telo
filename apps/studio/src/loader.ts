@@ -95,6 +95,8 @@ export {
   firstWorkspaceModule,
   hasNoWorkspaceModules,
   isWorkspaceModule,
+  moduleOwningFile,
+  moduleSubtree,
   resolveCapability,
   resolveContract,
 } from "./loader/queries";

@@ -1,6 +1,6 @@
 import type { V1Container, V1Pod, V1Volume, V1VolumeMount } from "@kubernetes/client-node";
 
-import type { PullPolicy, ReservedPort, ResolvedRunnerApp } from "@telorun/runner-core";
+import { agentImage, type PullPolicy, type ReservedPort, type RunnerAgent } from "@telorun/runner-core";
 import { optionalContainerConfig } from "@telorun/runner-core/container";
 import type { SessionConfig } from "@telorun/runner-core";
 
@@ -109,7 +109,7 @@ export interface BuildSessionPodArgs {
   supervisorToken: string;
   /** The resolved catalog entry of the co-resident agent, its `tokenEnv`
    *  already carrying this creation's token. Its env is the operator's. */
-  agent?: ResolvedRunnerApp;
+  agent?: RunnerAgent;
   /** The session's opaque config: the apps container's `image` / `pullPolicy`. */
   sessionConfig: SessionConfig;
   /** The session volume's claim. */
@@ -314,15 +314,21 @@ function appsContainer(args: BuildSessionPodArgs): V1Container {
  * relaxed (an operator-curated image). `TELO_HOST_STATE_DIR` points its
  * `Telo.DurableDirectory` needs at the session volume's `agent/`.
  */
-function agentContainer(args: BuildSessionPodArgs, agent: ResolvedRunnerApp): V1Container {
+function agentContainer(args: BuildSessionPodArgs, agent: RunnerAgent): V1Container {
+  // A module runs on the runner's kernel image, fetched at start into the agent's state.
+  const module = agent.source.kind === "module" ? agent.source.ref : undefined;
   return {
     name: "agent",
-    image: agent.image,
+    image: agentImage(agent, args.config.defaultImage),
     imagePullPolicy: pullPolicyToK8s(agent.pullPolicy),
+    ...(module !== undefined
+      ? { command: ["telo", "run", "--no-input", module], workingDir: AGENT_STATE_DIR }
+      : {}),
     env: [
       ...Object.entries(agent.env).map(([name, value]) => ({ name, value })),
       { name: "WORKSPACE_DIR", value: WORKSPACE_DIR },
       { name: "TELO_HOST_STATE_DIR", value: AGENT_STATE_DIR },
+      ...(module !== undefined ? [{ name: "TELO_CACHE_DIR", value: `${AGENT_STATE_DIR}/telo-cache` }] : []),
       { name: "CLICOLOR_FORCE", value: "1" },
     ],
     ...(agent.port !== undefined ? { ports: [{ containerPort: agent.port, protocol: "TCP" }] } : {}),

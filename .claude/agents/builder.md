@@ -1,8 +1,8 @@
 ---
 name: builder
-description: Implements exactly one task — an architect's build card or any other implementation task — and reports what it did. Writes code, runs the task's checks, never commits, never wanders outside the task's scope.
+description: Implements exactly one task whose design is already settled — a build card marked `Builder: standard`, a fix round that needs judgment, or any other implementation task — and reports what it did. Writes code, runs the task's checks, never commits, never wanders outside the task's scope. For work that designs static analysis or spans kernel and analyzer, use `builder-high`.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: opus
+model: sonnet
 effort: medium
 ---
 

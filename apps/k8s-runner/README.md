@@ -31,7 +31,7 @@ serving an anonymous tier, the ceiling *is* the policy.
 its files live on a **PersistentVolumeClaim of its own**; its pod is the part that
 comes and goes. One pod holds a `workspace` container serving the editor's file
 routes, one `apps` container holding every application, and optionally a
-co-resident `agent` drawn from the `RUNNER_APPS` catalog. **Nothing runs until
+co-resident `agent` configured by the `AGENT_*` variables (chart: the `agent:` object). **Nothing runs until
 Run**: `POST /v1/sessions/:id/apps/:app/run` is a process start inside a container
 that already exists, under `telo run --watch`, so an edit costs a kernel reload
 rather than a pod. When a routing base domain is configured the runner also
@@ -63,7 +63,7 @@ as the error's `cause` and lands in the runner's log.
 | `supervisor` (init) | The runner's own (`RUNNER_SUPERVISOR_IMAGE`) | Copies the session supervisor into an `emptyDir`, creates the claim's `workspace/`, `telo/` and `agent/` | The `emptyDir`, the claim's root | None |
 | `workspace` | `RUNNER_IMAGE`, over a runner-supplied manifest | `telo run` of the workspace application | `workspace/` at `/workspace` | None |
 | `apps` | The session's picked image, else `RUNNER_IMAGE` | `/opt/telo-runner/supervisor --slots 9`: a supervisor per app slot (eight) and one for the runner's own tasks, idle until Run | `workspace/` at `/workspace`, `telo/` at `/var/lib/telo-releases`, the supervisor read-only at `/opt/telo-runner` | One supervisor token |
-| `agent` | Operator catalog image | The image's own entrypoint | `workspace/` at `/workspace`, `agent/` at `/var/lib/telo-agent-state` | Operator env |
+| `agent` | `AGENT_IMAGE`, or the kernel image running `telo run` on `AGENT_MODULE_REF` (`oci://`) | The image's own entrypoint, or `telo run` | `workspace/` at `/workspace`, `agent/` at `/var/lib/telo-agent-state` | Operator env |
 
 **The pod does not change with the app set.** Adding, removing or re-versioning an
 application takes or frees a slot in the `apps` container, so the workspace and the
@@ -93,9 +93,8 @@ binds it. The runner reaches both over the pod IP; neither is published.
 **A shared `fsGroup` is required**: every container reads and writes `/workspace`,
 so they must share a GID or the agent writes files an app cannot read.
 
-**The agent is routed like an app port, and reported like one.** Its catalog
-entry declares the `port` its image listens on, and the session refuses an agent
-without one (`400 agent_port_undeclared`). Where an application declares the
+**The agent is routed like an app port, and reported like one.** Its `AGENT_PORT`
+is the tcp port it listens on, and the runner refuses to start without one. Where an application declares the
 agent's port the **manifest wins** on a create: the session starts without the
 agent and says so on its stream. The port joins the session's Service and routing
 objects and answers at `<agentPort>-<sessionId>.<base-domain>`; the `running`
@@ -262,7 +261,7 @@ declaring a port the pod reserves.
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_DISPLAY_NAME` | `Telo Runner` | Display name advertised on `/v1/capabilities` (the editor's runner label) |
 | `RUNNER_DESCRIPTION` | `Runs the Telo application in a cloud environment` | Description advertised on `/v1/capabilities` |
-| `RUNNER_APPS` | _(unset → no apps)_ | JSON map of the operator's agent catalog, advertised as `features.agents` (chart: the root `agent:` object — `image`, `port`, `env`, … — with secret values in `agent.secretEnv`, each read from a Secret key); see the docker-runner README for the entry shape, including the `port` an entry must declare to be usable as a session's co-resident `agent` and the `tokenEnv` under which the runner injects a per-session workload token it reports as `token` on that workload's endpoints (minted per pod, read back from the pod spec when a restarted runner adopts it). |
+| `AGENT_IMAGE` / `AGENT_MODULE_REF` | _(unset → no agent)_ | The operator's co-resident agent, advertised as `features.agents`. Chart: the `agent:` object — `image` or `moduleRef` (an `oci://` reference; a host path is refused, since a pod cannot read the operator's machine), `port`, `env`, `secretEnv` (each read from a Secret key), `pullPolicy`, `tokenEnv`, `title`, `description`. The runner reads `AGENT_IMAGE`, `AGENT_MODULE_REF`, `AGENT_PORT`, `AGENT_PULL_POLICY`, `AGENT_TOKEN_ENV`, `AGENT_TITLE`, `AGENT_DESCRIPTION` and `AGENT_ENV` (a JSON object). See the docker-runner README for what each does. |
 | `RUNNER_SUPERVISOR_IMAGE` | _(required; the chart sets it to the runner's own image)_ | The runner's own image, which every session pod's `supervisor` init container copies the session supervisor out of (from `/opt/telo-runner/supervisor`) |
 | `RUNNER_APP_MAX_CPU` | `500m` | CPU ceiling of the co-resident agent's container (chart: `limits.agent.maxCpu`) |
 | `RUNNER_APP_MAX_MEMORY` | `512Mi` | Memory ceiling of the co-resident agent's container (chart: `limits.agent.maxMemory`) |

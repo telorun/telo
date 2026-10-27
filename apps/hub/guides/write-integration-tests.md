@@ -37,7 +37,7 @@ seconds per test and needs an engine; a mock costs nothing.
 ```
 myapp/
   telo.yaml                          # the application
-  orders/telo.yaml                   # a feature library the app imports
+  orders.yaml                        # a feature library the app imports
   tests/
     telo.yaml                        # the default suite: needs nothing running
     place-order.yaml                 # an ordinary test
@@ -272,7 +272,7 @@ imports:
     variables: { engineUrl: !cel "variables.engineUrl" }
     secrets: { engineToken: !cel "secrets.engineToken" }
   Orders:
-    source: ../../orders
+    source: ../../orders.yaml
     resources: { connection: !ref db }
   Sql: oci://ghcr.io/telorun/sql@<version>#<pin>
   Postgres: oci://ghcr.io/telorun/postgres@<version>#<pin>
