@@ -1,5 +1,7 @@
 # @telorun/message-format
 
+## 0.124.0
+
 ## 0.123.1
 
 ## 0.123.0

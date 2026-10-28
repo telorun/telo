@@ -1,5 +1,12 @@
 # @telorun/analyzer
 
+## 0.124.0
+
+### Patch Changes
+
+- @telorun/cel@0.124.0
+- @telorun/templating@0.124.0
+
 ## 0.123.1
 
 ### Patch Changes
