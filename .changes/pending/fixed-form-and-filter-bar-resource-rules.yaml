@@ -1,5 +1,0 @@
-modules:
-  modules/ui: Fixed
-body: 'Form and filter-bar resource rules no longer fail to evaluate on a resource whose
-  model is computed at creation (the `no such key: "model"` RESOURCE_RULE_INVALID
-  warning); each skips until the model is known.'

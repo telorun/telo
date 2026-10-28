@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-10-28
+### Fixed
+* Form and filter-bar resource rules no longer fail to evaluate on a resource whose model is computed at creation (the `no such key: "model"` RESOURCE_RULE_INVALID warning); each skips until the model is known.
+
 ## 0.7.0 - 2026-10-25
 ### Added
 * Ui.Words gains a word for every issue keyword an Http.Api validation problem may carry that it lacked — minProperties, maxProperties, format, additionalProperties and propertyNames — so a renderer words each data.issues entry as its own validation does. Breaking: a Ui.Words of your own must now declare these five ids. Ui.RequestError's code and message are documented as the problem body's code and detail, and the action, collection and record contracts describe the problem shape and data.issues instead of the old validation envelope.

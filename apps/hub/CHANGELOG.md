@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.3 - 2026-10-28
+### Fixed
+* The integration-testing guide shows a feature library as a plain file beside its application (orders.yaml, imported as ../../orders.yaml from tests/integration/) instead of a directory of its own.
+
 ## 0.19.0 - 2026-10-25
 ### Added
 * The library design guide says how a kind declaring a catch list marks its caught code and data with `x-telo-caught-member`.
