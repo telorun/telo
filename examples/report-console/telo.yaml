@@ -23,8 +23,8 @@ imports:
   Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
-  Ui: oci://ghcr.io/telorun/ui@0.7.0#sha256-yeGyqO8UxW9RXkEBhkLAMehbBRxerk2ipWcw6oQkdgg
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.0#sha256-ZFk7FD_LyHwfi-_eCkn0mhOi75eF6vfDfcsXGoG1448
+  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include:

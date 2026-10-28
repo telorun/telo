@@ -38,8 +38,8 @@ lang: en
 # pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
-  Ui: oci://ghcr.io/telorun/ui@0.7.0#sha256-yeGyqO8UxW9RXkEBhkLAMehbBRxerk2ipWcw6oQkdgg
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.0#sha256-ZFk7FD_LyHwfi-_eCkn0mhOi75eF6vfDfcsXGoG1448
+  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   KvStore: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y

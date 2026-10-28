@@ -29,13 +29,13 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
   SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
-  Crud: oci://ghcr.io/telorun/crud@0.31.0#sha256-ZqPVaE8E9JcYyXM6Q0qec-u0m3Mr16hV25Y8Zg3eW4g
+  Crud: oci://ghcr.io/telorun/crud@0.31.1#sha256-IzCauMonvChTD5wG__W6z1TfPDFZvmdlMRwh5oE3VR0
   Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
   I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
-  Ui: oci://ghcr.io/telorun/ui@0.7.0#sha256-yeGyqO8UxW9RXkEBhkLAMehbBRxerk2ipWcw6oQkdgg
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.0#sha256-ZFk7FD_LyHwfi-_eCkn0mhOi75eF6vfDfcsXGoG1448
-  Radix: oci://ghcr.io/telorun/ui-react-radix@0.4.0#sha256-LMmpyZB6NwJa-XklA3JqTp4GR0MyVJ2C3rr3fSr_pBM
-  UiLucide: oci://ghcr.io/telorun/ui-lucide@0.4.0#sha256-xbUW0Xev5bTKH_QZFu6q-0E23TI4WUtoqaAXJEp432g
+  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
+  Radix: oci://ghcr.io/telorun/ui-react-radix@0.4.1#sha256-rPVtkc4_jc3Cf551MpSvHH-E9Au6Kqbp1LB64esxjaE
+  UiLucide: oci://ghcr.io/telorun/ui-lucide@0.4.1#sha256-76CWjm-fBdd_lSRpWvZ7Itn0S3CogjDjyd4EZ6ZzxXc
   # Two libraries of the example's own: its browser components, and the theme
   # the `/brand` mount draws with.
   Components: ./components
