@@ -10,9 +10,9 @@ metadata:
 # A library rather than a theme written inline at the application, so the
 # example's tests can check the very theme the `/brand` mount draws with.
 imports:
-  Ui: oci://ghcr.io/telorun/ui@0.7.0#sha256-yeGyqO8UxW9RXkEBhkLAMehbBRxerk2ipWcw6oQkdgg
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.0#sha256-ZFk7FD_LyHwfi-_eCkn0mhOi75eF6vfDfcsXGoG1448
-  Radix: oci://ghcr.io/telorun/ui-react-radix@0.4.0#sha256-LMmpyZB6NwJa-XklA3JqTp4GR0MyVJ2C3rr3fSr_pBM
+  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
+  Radix: oci://ghcr.io/telorun/ui-react-radix@0.4.1#sha256-rPVtkc4_jc3Cf551MpSvHH-E9Au6Kqbp1LB64esxjaE
   Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
 exports:
   resources: [ theme ]

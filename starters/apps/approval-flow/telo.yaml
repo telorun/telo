@@ -43,8 +43,8 @@ lang: en
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
-  Ui: oci://ghcr.io/telorun/ui@0.7.0#sha256-yeGyqO8UxW9RXkEBhkLAMehbBRxerk2ipWcw6oQkdgg
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.0#sha256-ZFk7FD_LyHwfi-_eCkn0mhOi75eF6vfDfcsXGoG1448
+  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
+  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
