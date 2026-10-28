@@ -1,5 +1,21 @@
 # @telorun/cli
 
+## 0.124.0
+
+### Minor Changes
+
+- ad18a4f: `telo runner` runs the co-resident agent named by `AGENT_MODULE_REF` as a `telo run` process in each session that asks for it, advertises it in `features.agents`, refuses `AGENT_IMAGE` at boot, and keeps the runner's `AGENT_*` variables out of every application run.
+
+### Patch Changes
+
+- Updated dependencies [ad18a4f]
+  - @telorun/runner-core@0.22.0
+  - @telorun/sdk@0.124.0
+  - @telorun/templating@0.124.0
+  - @telorun/analyzer@0.124.0
+  - @telorun/kernel@0.124.0
+  - @telorun/ide-support@0.124.0
+
 ## 0.123.1
 
 ### Patch Changes

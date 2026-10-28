@@ -1,5 +1,26 @@
 # @telorun/studio
 
+## 0.33.0
+
+### Minor Changes
+
+- ad18a4f: The sidebar shows modules nested in another module's directory (a test application in an application, a library in an application) as a tree under their parent, and deleting a module, or its `telo.yaml` in the file explorer, deletes its directory with every module nested in it, pruning the imports of those modules from the modules outside them.
+- ad18a4f: Each workspace has a Resume session on refresh setting in the workspace menu. Off, a refresh leaves a suspended session suspended until a Run asks for it, and the mode can be switched without waking it. Switching a workspace to Only on this device also suspends a session that is still starting, instead of leaving it up on the runner.
+- ad18a4f: The top bar shows the workspace's runner session at all times — running, starting, suspended, deleted, failed or unavailable — instead of only on one application's Run bar, which also no longer goes silent while the session is up.
+- ad18a4f: Upgrade imports across the whole workspace in one click: the top bar offers "Upgrade imports" when any app or library has an import with a newer hostable version, and the Applications and Libraries headers offer the same for their modules. Each upgrade moves to the newest version the telo can host, as the module bar's "Upgrade all" does.
+
+### Patch Changes
+
+- ad18a4f: A folder created in the explorer of a browser workspace stays in the tree while it is empty, and is kept, moved and removed with its contents.
+- ad18a4f: Creating a file or folder, or renaming, from the file explorer's right-click or actions menu now opens its name field after the menu closes, so the field keeps focus and a typed name is no longer cancelled.
+- ad18a4f: Hub lookup failures for imports are shown as a warning in the Imports view, the module bar and the workspace header, naming each import and the reason, instead of being logged to the console.
+- ad18a4f: The Run button on an application, and its Run control in the application tree, are disabled while the workspace's session is unavailable, and say why: the Run bar names the failure next to its status, and the button's tooltip repeats it.
+- ad18a4f: A workspace session that fails to start, or whose files cannot be pushed to it, shows one error in the top bar's session status instead of a toast per attempt, and a Try again button there opens the session again. A failed push is no longer retried by itself, so it cannot loop.
+  - @telorun/sdk@0.124.0
+  - @telorun/templating@0.124.0
+  - @telorun/analyzer@0.124.0
+  - @telorun/ide-support@0.124.0
+
 ## 0.32.1
 
 ### Patch Changes
