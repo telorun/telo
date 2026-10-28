@@ -1,5 +1,0 @@
-modules:
-  apps/hub: Fixed
-body: The integration-testing guide shows a feature library as a plain file beside its
-  application (orders.yaml, imported as ../../orders.yaml from tests/integration/)
-  instead of a directory of its own.
