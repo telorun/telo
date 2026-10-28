@@ -156,14 +156,14 @@ if (!ociRegistry) {
 
 const queued = new Set();
 
-// The importable set — MODULES AND BLUEPRINTS, deliberately NOT the full
-// `telo-workspace.yaml` set, which also declares `apps/*`. An app is released as
-// a container image (see `.github/workflows/publish-docker.yml`), not as an OCI
-// module artifact that something else imports, so publishing one here would put
-// an artifact in the module registry that nothing resolves and that no consumer
-// expects. The workspace anchor answers "what does `telo release` version?"; this
-// answers the narrower "what is importable?", and the two are different
-// questions. Taken from the release model, so a module at any depth is included.
+// The importable set — MODULES, BLUEPRINTS and the authoring agent with its chat
+// library, deliberately NOT the full `telo-workspace.yaml` set, which also declares
+// the other `apps/*`. Those are released as container images (see
+// `.github/workflows/publish-docker.yml`) and no artifact of theirs is pushed here.
+// The agent is the exception: a runner names it by OCI reference. The workspace
+// anchor answers "what does `telo release` version?"; this answers the narrower
+// "what is importable?", and the two are different questions. Taken from the
+// release model, so a module at any depth is included.
 const importable = importableManifests().filter((abs) => existsSync(abs));
 
 // (a) version-moved gate.

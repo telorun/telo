@@ -7,7 +7,7 @@ import { config } from "dotenv-flow";
  * Load the runner's dotenv-flow files (`.env`, `.env.local`, and any
  * `.env.<node_env>[.local]`) from the runner package directory into
  * `process.env`. Lets an operator drop secret-bearing config (e.g. the
- * `RUNNER_APPS` catalog, whose entries may embed secrets in `env`) in a file
+ * `AGENT_ENV` values, which may embed secrets) in a file
  * instead of threading it through the container's environment.
  *
  * Resolved relative to this module so it works whether the runner runs from

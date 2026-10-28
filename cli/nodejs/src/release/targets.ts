@@ -116,7 +116,7 @@ export async function readImportGraph(
 
   for (const module of workspace.modules) {
     const target = targets.get(module.key);
-    if (!target || module.artifactKind === "image") {
+    if (!target) {
       imports.set(module.key, []);
       continue;
     }

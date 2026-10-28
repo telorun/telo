@@ -1,5 +1,7 @@
 import {
+  ArrowUp,
   Menu,
+  RefreshCw,
   MessageSquare,
   Monitor,
   Moon,
@@ -10,6 +12,8 @@ import {
   Undo2,
 } from "lucide-react";
 import type { ParsedManifest, Workspace } from "../model";
+import type { WorkspaceSessionState } from "../run";
+import { SessionStatusChip, sessionUnavailableReason } from "../run/ui/SessionStatusChip";
 import { FOCUS_COMPOSER_LABEL } from "../agent";
 import { type ThemePreference, useColorModeControls } from "../theme/color-mode";
 import { getModuleFiles, summarizeFiles } from "../diagnostics-aggregate";
@@ -43,6 +47,14 @@ interface TopBarProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  /** The workspace's runner session, shown whatever its state; absent where the
+   *  workspace has none ("Only on this device", or no workspace). */
+  session?: WorkspaceSessionState | null;
+  /** Opens the session again after it could not be had or a sync failed. */
+  onRetrySession?: () => void;
+  /** Upgrades every outdated import across the workspace's modules. Absent
+   *  where nothing may be written or nothing is outdated. */
+  importUpgrade?: { count: number; busy: boolean; onUpgrade: () => void };
   /** Toggle the authoring-agent chat side panel. */
   onToggleChat?: () => void;
   chatOpen?: boolean;
@@ -61,6 +73,9 @@ export function TopBar({
   onRedo,
   canUndo,
   canRedo,
+  session,
+  onRetrySession,
+  importUpgrade,
   onToggleChat,
   chatOpen,
   teloLanguage,
@@ -135,6 +150,26 @@ export function TopBar({
           <ThemeToggleButton />
         </div>
         <EditMenu onUndo={onUndo} onRedo={onRedo} canUndo={canUndo} canRedo={canRedo} />
+        {session && <SessionStatusChip session={session} showRunning />}
+        {session && onRetrySession && sessionUnavailableReason(session) !== null && (
+          <Button variant="outline" size="sm" onClick={onRetrySession} title="Try the workspace's session again">
+            <RefreshCw className="size-3.5" />
+            <span className="max-md:hidden">Try again</span>
+          </Button>
+        )}
+        {importUpgrade && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={importUpgrade.onUpgrade}
+            disabled={importUpgrade.busy}
+            title={`Upgrade ${importUpgrade.count} outdated ${importUpgrade.count === 1 ? "import" : "imports"} across the workspace`}
+            aria-label="Upgrade imports"
+          >
+            <ArrowUp className="size-4" />
+            <span className="max-md:hidden">Upgrade imports</span>
+          </Button>
+        )}
         {onToggleChat && (
           <Button
             variant={chatOpen ? "secondary" : "ghost"}

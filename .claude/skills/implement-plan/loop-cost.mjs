@@ -59,7 +59,7 @@ for (const session of readdirSync(dir, { withFileTypes: true })) {
     const meta = JSON.parse(readFileSync(join(sub, f), "utf8"));
     return { type: meta.agentType, ...measure(join(sub, f.replace(".meta.json", ".jsonl"))) };
   });
-  if (!agents.some((a) => a.type === "builder" || a.type === "builder-lite")) continue;
+  if (!agents.some((a) => a.type?.startsWith("builder"))) continue;
   const mainFile = join(dir, `${session.name}.jsonl`);
   if (!existsSync(mainFile)) continue;
   const main = measure(mainFile);

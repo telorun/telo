@@ -1,6 +1,7 @@
 import { ChevronDown, PanelBottom, Play, Server, Square } from "lucide-react";
 
 import { Button } from "../../components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../components/ui/tooltip";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,7 +11,7 @@ import {
 } from "../../components/ui/dropdown-menu";
 import { isRunLive, useRun } from "../context";
 import { RunStatusChip } from "./RunStatusChip";
-import { SessionStatusChip } from "./SessionStatusChip";
+import { SessionStatusChip, sessionUnavailableReason } from "./SessionStatusChip";
 import { useElapsed } from "./use-elapsed";
 
 interface RunBarProps {
@@ -59,6 +60,8 @@ export function RunBar({
   const elapsed = useElapsed(liveRun?.startedAt ?? null);
   const hasHistory = runs.some((r) => !isRunLive(r.status));
   const hasOutput = dockHasContent(appPath);
+  const unavailable = session ? sessionUnavailableReason(session) : null;
+  const runNote = unavailable ? `Can't run: the workspace's session is unavailable — ${unavailable}` : null;
 
   return (
     <div className="flex min-w-0 items-center gap-1">
@@ -75,6 +78,7 @@ export function RunBar({
       <div className="mx-1 h-4 w-px shrink-0 bg-zinc-200 dark:bg-zinc-800" aria-hidden />
 
       {!liveRun && session && <SessionStatusChip session={session} />}
+
       {liveRun ? (
         <>
           <RunStatusChip status={liveRun.status} />
@@ -110,16 +114,26 @@ export function RunBar({
             Stop
           </Button>
         ) : (
-          <Button
-            variant="default"
-            size="xs"
-            className="rounded-r-none"
-            onClick={onRun}
-            disabled={starting}
-          >
-            <Play className="size-2.5 fill-current" aria-hidden />
-            Run
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              {/* A disabled button takes no pointer events, so the trigger is the span around it. */}
+              <TooltipTrigger asChild>
+                <span className="inline-flex">
+                  <Button
+                    variant="default"
+                    size="xs"
+                    className="rounded-r-none"
+                    onClick={onRun}
+                    disabled={starting || unavailable !== null}
+                  >
+                    <Play className="size-2.5 fill-current" aria-hidden />
+                    Run
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {runNote && <TooltipContent>{runNote}</TooltipContent>}
+            </Tooltip>
+          </TooltipProvider>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

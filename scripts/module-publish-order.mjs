@@ -21,8 +21,10 @@ import { fileURLToPath } from "node:url";
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 // Areas whose modules are importable libraries, published as OCI module
-// artifacts. `apps/` are applications, released as container images instead.
-const IMPORTABLE_AREAS = ["modules/", "blueprints/"];
+// artifacts. Applications are released as container images, except the authoring
+// agent, which is also published as an artifact so a runner can name it with
+// `AGENT_MODULE_REF`; its chat library rides beneath it.
+const IMPORTABLE_AREAS = ["modules/", "blueprints/", "apps/authoring-agent"];
 
 function releaseOrder() {
   return JSON.parse(

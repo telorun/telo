@@ -1,8 +1,9 @@
 import {
   WORKSPACE_APP_FILENAME,
+  agentImage,
   type BackendAppSpec,
   type ReservedPort,
-  type ResolvedRunnerApp,
+  type RunnerAgent,
 } from "@telorun/runner-core";
 
 import type { CreateContainerOpts, PortBindings, VolumeMount } from "./docker-api.js";
@@ -176,31 +177,50 @@ export function appContainer(args: SessionContainerArgs, a: AppContainerArgs): C
   };
 }
 
+/** Where a host-path module is mounted in the agent container, read-only. */
+export const AGENT_MODULE_MOUNT = "/opt/agent-module";
+
 /**
- * The co-resident agent: the only container receiving the operator env, its
- * catalog image running its own entry point. `TELO_HOST_STATE_DIR` points its
- * `Telo.DurableDirectory` needs at the session's `agent/`. Its own alias,
- * `telo-run-<sessionId>-agent`, keeps the session's alias unambiguous.
+ * The co-resident agent: the only container receiving the operator env. Its
+ * image is its own, or the kernel image running `telo run` on its module — an
+ * `oci://` ref fetched at start, or a host path bind-mounted read-only.
+ * `TELO_HOST_STATE_DIR` points its `Telo.DurableDirectory` needs at the
+ * session's `agent/`. Its own alias, `telo-run-<sessionId>-agent`, keeps the
+ * session's alias unambiguous.
  */
-export function agentContainer(args: SessionContainerArgs, agent: ResolvedRunnerApp): CreateContainerOpts {
-  const key = agent.port !== undefined ? `${agent.port}/tcp` : undefined;
+export function agentContainer(
+  args: SessionContainerArgs,
+  agent: RunnerAgent,
+  kernelImage: string,
+): CreateContainerOpts {
+  const key = `${agent.port}/tcp`;
+  const module = agent.source.kind === "module" ? agent.source.ref : undefined;
+  const hostPath = module !== undefined && !module.startsWith("oci://");
   return {
     name: containerName(args.sessionId, "agent"),
-    Image: agent.image,
+    Image: agentImage(agent, kernelImage),
+    ...(module !== undefined
+      ? {
+          Cmd: ["telo", "run", "--no-input", hostPath ? AGENT_MODULE_MOUNT : module],
+          WorkingDir: AGENT_STATE_DIR,
+        }
+      : {}),
     Env: [
       ...Object.entries(agent.env).map(([k, v]) => `${k}=${v}`),
       `WORKSPACE_DIR=${WORKSPACE_MOUNT}`,
       `TELO_HOST_STATE_DIR=${AGENT_STATE_DIR}`,
+      ...(module !== undefined ? [`TELO_CACHE_DIR=${AGENT_STATE_DIR}/telo-cache`] : []),
       "CLICOLOR_FORCE=1",
     ],
     Labels: labels(args.sessionId, "agent"),
     ...idle(),
-    ...(key ? { ExposedPorts: { [key]: {} }, ...aliased(args, `telo-run-${args.sessionId}-agent`) } : {}),
+    ExposedPorts: { [key]: {} },
+    ...aliased(args, `telo-run-${args.sessionId}-agent`),
     HostConfig: {
-      Binds: [],
+      Binds: hostPath ? [`${module}:${AGENT_MODULE_MOUNT}:ro`] : [],
       AutoRemove: false,
       NetworkMode: args.childNetwork,
-      ...(key && !args.publicBaseUrl ? { PortBindings: { [key]: [{ HostIp: "", HostPort: String(agent.port) }] } } : {}),
+      ...(!args.publicBaseUrl ? { PortBindings: { [key]: [{ HostIp: "", HostPort: String(agent.port) }] } } : {}),
       Mounts: [
         workspaceMount(args),
         {

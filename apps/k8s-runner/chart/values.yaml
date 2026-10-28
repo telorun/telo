@@ -148,12 +148,18 @@ limits:
 
 # The co-resident agent a session may run beside its workspace (advertised on
 # /v1/capabilities as `features.agents` as `authoring-agent` — identity only;
-# image and env never surface). Empty `image` → no agent offered.
+# image, module and env never surface). Set exactly one of `image` (a container
+# image) or `moduleRef` (a telo module the runner's kernel image runs, fetched at
+# start). Both empty → no agent offered.
 agent:
   image: ""
+  # An `oci://` reference to the agent's application, e.g.
+  # oci://ghcr.io/telorun/authoring-agent@<version>. A host path is refused: a
+  # pod cannot read the operator's machine.
+  moduleRef: ""
   # imagePullPolicy: missing | always | never. Empty → missing.
   pullPolicy: ""
-  # The tcp port the image listens on. No default.
+  # The tcp port the agent listens on. Required with an agent.
   port: 8080
   # Env var the runner fills with a token it mints per session and reports as
   # `token` on the agent's endpoint; it must not also be a key of `env`.

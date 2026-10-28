@@ -16,12 +16,20 @@ export interface WorkspaceModeState {
   chooseWorkspaceMode(mode: WorkspaceMode): void;
   /** The mode the next workspace to open takes without asking. */
   openingModeRef: MutableRefObject<WorkspaceMode | null>;
+  /** Whether opening the workspace wakes its suspended session by itself;
+   *  undefined until the open workspace's entry has been read. */
+  resumeOnLoad: boolean | undefined;
+  chooseResumeOnLoad(auto: boolean): void;
 }
 
 /** The open workspace's mode, remembered per workspace root in its session
  *  entry and held keyed by that root. */
 export function useWorkspaceMode(rootDir: string | null): WorkspaceModeState {
-  const [held, setHeld] = useState<{ root: string; mode: WorkspaceMode | null } | null>(null);
+  const [held, setHeld] = useState<{
+    root: string;
+    mode: WorkspaceMode | null;
+    resumeOnLoad: boolean;
+  } | null>(null);
   const openingModeRef = useRef<WorkspaceMode | null>(null);
   useEffect(() => {
     if (!rootDir) {
@@ -36,10 +44,10 @@ export function useWorkspaceMode(rootDir: string | null): WorkspaceModeState {
         rootDir,
         stored ? { ...stored, mode: opening } : newWorkspaceSessionEntry(opening, cloudProjectIdOf(rootDir)),
       );
-      setHeld({ root: rootDir, mode: opening });
+      setHeld({ root: rootDir, mode: opening, resumeOnLoad: stored?.resume !== "manual" });
       return;
     }
-    setHeld({ root: rootDir, mode: stored?.mode ?? null });
+    setHeld({ root: rootDir, mode: stored?.mode ?? null, resumeOnLoad: stored?.resume !== "manual" });
   }, [rootDir]);
 
   const chooseWorkspaceMode = useCallback(
@@ -50,11 +58,26 @@ export function useWorkspaceMode(rootDir: string | null): WorkspaceModeState {
         rootDir,
         stored ? { ...stored, mode } : newWorkspaceSessionEntry(mode, cloudProjectIdOf(rootDir)),
       );
-      setHeld({ root: rootDir, mode });
+      setHeld({ root: rootDir, mode, resumeOnLoad: stored?.resume !== "manual" });
+    },
+    [rootDir],
+  );
+
+  const chooseResumeOnLoad = useCallback(
+    (auto: boolean) => {
+      if (!rootDir) return;
+      const stored = loadWorkspaceSessionEntry(rootDir);
+      if (!stored) return;
+      const next = { ...stored };
+      if (auto) delete next.resume;
+      else next.resume = "manual";
+      saveWorkspaceSessionEntry(rootDir, next);
+      setHeld((current) => (current?.root === rootDir ? { ...current, resumeOnLoad: auto } : current));
     },
     [rootDir],
   );
 
   const workspaceMode = rootDir === null ? null : held?.root === rootDir ? held.mode : undefined;
-  return { workspaceMode, chooseWorkspaceMode, openingModeRef };
+  const resumeOnLoad = rootDir === null || held?.root !== rootDir ? undefined : held.resumeOnLoad;
+  return { workspaceMode, chooseWorkspaceMode, openingModeRef, resumeOnLoad, chooseResumeOnLoad };
 }

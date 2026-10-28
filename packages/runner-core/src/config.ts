@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
 
 import type { PullPolicy, RunnerTerms } from "./contract.js";
 
@@ -153,177 +154,170 @@ function hashTermsVersion(body: string): string {
   return createHash("sha256").update(body).digest("hex").slice(0, 12);
 }
 
+/** The name the co-resident agent is offered and addressed by: `features.agents`,
+ *  a session's `agent` field and the `agent` endpoint. */
+export const AGENT_NAME = "authoring-agent";
+
 /**
- * An entry of `RUNNER_APPS`, the catalog of co-resident agents a session may
- * run (`features.agents`). The catalog is the whole gate: a client picks an
- * agent by name and can neither pick the image nor read the injected env.
- *
- * The catalog may embed secrets (`env` values), so treat the whole `RUNNER_APPS`
- * value as secret material (docker: a `.env.local` file; k8s: source it from a
- * Secret). Only `name`/`title`/`description` are ever advertised outward —
- * `image` and `env` never leave the runner.
+ * Where a co-resident agent runs from: a container image, or a telo module the
+ * runner's own kernel image runs (`telo run <ref>`, fetched at start). A `ref`
+ * is an `oci://` reference or an absolute path on the host.
  */
-export interface RunnerAppConfig {
-  image: string;
-  /** Env injected verbatim into the agent container (operator secrets
-   *  included), and into nothing else. */
-  env?: Record<string, string>;
-  /** Workload image pull policy (default `missing`); `always` keeps a moving
-   *  tag like `latest-slim` fresh. */
-  pullPolicy?: PullPolicy;
-  /** The tcp port this image listens on, published by the runner — a client
-   *  cannot supply it, because what gets published is the operator's decision.
-   *  There is deliberately NO default: the catalog is pure operator
-   *  configuration and the runner has no built-in knowledge of any specific
-   *  app, so guessing 8080 would be exactly that knowledge. An entry without it
-   *  is not offered as an agent. */
-  port?: number;
+export type AgentSource = { kind: "image"; image: string } | { kind: "module"; ref: string };
+
+/**
+ * The co-resident agent a session may run, configured by the operator's
+ * `AGENT_*` variables (`loadAgentFromEnv`). The client picks it by name and can
+ * neither pick its source nor read its env.
+ *
+ * `env` may embed secrets, so treat the `AGENT_*` variables as secret material
+ * (docker: a `.env.local` file; k8s: the chart's `agent.secretEnv`). Only
+ * `name`, `title` and `description` are advertised outward.
+ */
+export interface RunnerAgent {
+  name: string;
+  source: AgentSource;
+  /** Env injected verbatim into the agent and into nothing else. */
+  env: Record<string, string>;
+  /** Image pull policy (default `missing`); an image source only. */
+  pullPolicy: PullPolicy;
+  /** The tcp port the agent listens on, published by the runner. Required: the
+   *  runner knows nothing about any specific agent, so it cannot guess one. */
+  port: number;
   /** Env var name under which the runner injects a token it mints for every
    *  workload it creates with this agent, reported as `RunnerEndpoint.token` on
-   *  the session's `agent` endpoint. A resume or an agent change mints a new
-   *  one. A name the entry's own `env` also sets is refused. */
+   *  the session's `agent` endpoint. A name the `env` also sets is refused. */
   tokenEnv?: string;
   title?: string;
   description?: string;
 }
 
-/** A validated catalog entry with defaults applied, keyed back by its name. */
-export interface ResolvedRunnerApp {
-  name: string;
-  image: string;
-  env: Record<string, string>;
-  pullPolicy: PullPolicy;
-  /** See {@link RunnerAppConfig.port} — undefined when the operator declared
-   *  none, which is what makes the entry unusable as an `agent`. */
-  port?: number;
-  /** See {@link RunnerAppConfig.tokenEnv}. */
-  tokenEnv?: string;
-  title?: string;
-  description?: string;
+/** The image an agent's container runs on: its own, or the operator's kernel
+ *  image, which runs the module (`telo run <ref>`). */
+export function agentImage(agent: RunnerAgent, kernelImage: string): string {
+  return agent.source.kind === "image" ? agent.source.image : kernelImage;
 }
 
 const PULL_POLICIES: readonly string[] = ["missing", "always", "never"];
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
+/** The variables that configure the co-resident agent; `AGENT_ENV` may hold
+ *  secrets, so a runner keeps all of them out of what its workloads inherit. */
+export const AGENT_VARIABLES = [
+  "AGENT_IMAGE",
+  "AGENT_MODULE_REF",
+  "AGENT_PORT",
+  "AGENT_PULL_POLICY",
+  "AGENT_TOKEN_ENV",
+  "AGENT_TITLE",
+  "AGENT_DESCRIPTION",
+  "AGENT_ENV",
+] as const;
+
 /**
- * Parse the `RUNNER_APPS` JSON catalog ({ "<name>": RunnerAppConfig }).
- * Returns `undefined` when unset (no apps offered). Malformed JSON or entries
- * are a hard `RunnerConfigError` — a broken catalog must not silently drop
- * the apps.
+ * The co-resident agent from the `AGENT_*` variables, or `undefined` when none
+ * is configured. Exactly one of `AGENT_IMAGE` and `AGENT_MODULE_REF` names what
+ * runs; a malformed setting is a hard `RunnerConfigError`, so a broken agent
+ * never silently disappears from `features.agents`.
  */
-export function loadAppsFromEnv(
-  env: NodeJS.ProcessEnv,
-): Record<string, RunnerAppConfig> | undefined {
-  const raw = env.RUNNER_APPS?.trim();
-  if (!raw) return undefined;
+export function loadAgentFromEnv(env: NodeJS.ProcessEnv): RunnerAgent | undefined {
+  const get = (name: string): string | undefined => env[name]?.trim() || undefined;
+  const image = get("AGENT_IMAGE");
+  const ref = get("AGENT_MODULE_REF");
+  if (image === undefined && ref === undefined) {
+    const stray = AGENT_VARIABLES.filter((name) => get(name) !== undefined);
+    if (stray.length > 0) {
+      throw new RunnerConfigError(
+        `${stray.join(", ")} ${stray.length === 1 ? "is" : "are"} set, but the agent is configured by ` +
+          "AGENT_IMAGE or AGENT_MODULE_REF — set one of them, or unset " +
+          `${stray.length === 1 ? "it" : "them"}.`,
+      );
+    }
+    return undefined;
+  }
+  if (image !== undefined && ref !== undefined) {
+    throw new RunnerConfigError("AGENT_IMAGE and AGENT_MODULE_REF are both set — set one of them.");
+  }
+
+  const port = get("AGENT_PORT");
+  if (port === undefined) {
+    throw new RunnerConfigError(
+      "AGENT_PORT is required: set it to the tcp port the agent listens on.",
+    );
+  }
+  const portNumber = Number(port);
+  if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
+    throw new RunnerConfigError(`AGENT_PORT must be an integer in 1..65535, got '${port}'.`);
+  }
+
+  const pullPolicy = get("AGENT_PULL_POLICY") ?? "missing";
+  if (!PULL_POLICIES.includes(pullPolicy)) {
+    throw new RunnerConfigError(
+      `AGENT_PULL_POLICY must be one of ${PULL_POLICIES.join(", ")}, got '${pullPolicy}'.`,
+    );
+  }
+
+  const tokenEnv = get("AGENT_TOKEN_ENV");
+  if (tokenEnv !== undefined && !ENV_NAME.test(tokenEnv)) {
+    throw new RunnerConfigError(
+      `AGENT_TOKEN_ENV must be an environment variable name ([A-Za-z_][A-Za-z0-9_]*), got '${tokenEnv}'.`,
+    );
+  }
+
+  const agentEnv = parseAgentEnv(get("AGENT_ENV"));
+  // Two sources for one variable would leave which value the agent sees to
+  // merge order; the runner mints the token, so the operator's literal loses.
+  if (tokenEnv !== undefined && Object.hasOwn(agentEnv, tokenEnv)) {
+    throw new RunnerConfigError(
+      `AGENT_TOKEN_ENV is '${tokenEnv}', which AGENT_ENV also defines — the runner mints that value per session.`,
+    );
+  }
+
+  let source: AgentSource;
+  if (image !== undefined) {
+    source = { kind: "image", image };
+  } else {
+    if (!ref!.startsWith("oci://") && !isAbsolute(ref!)) {
+      throw new RunnerConfigError(
+        `AGENT_MODULE_REF must be an oci:// reference or an absolute host path, got '${ref}'.`,
+      );
+    }
+    source = { kind: "module", ref: ref! };
+  }
+
+  return {
+    name: AGENT_NAME,
+    source,
+    env: agentEnv,
+    pullPolicy: pullPolicy as PullPolicy,
+    port: portNumber,
+    ...(tokenEnv !== undefined ? { tokenEnv } : {}),
+    ...(get("AGENT_TITLE") !== undefined ? { title: get("AGENT_TITLE") } : {}),
+    ...(get("AGENT_DESCRIPTION") !== undefined ? { description: get("AGENT_DESCRIPTION") } : {}),
+  };
+}
+
+/** `AGENT_ENV`: a JSON object of string values, the agent's plain env. */
+function parseAgentEnv(raw: string | undefined): Record<string, string> {
+  if (raw === undefined) return {};
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
-    throw new RunnerConfigError(`RUNNER_APPS is not valid JSON: ${(err as Error).message}`);
-  }
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new RunnerConfigError("RUNNER_APPS must be a JSON object mapping app name → app config.");
-  }
-  // Null-prototype map so an app literally named `__proto__` is stored as a
-  // plain key rather than mutating the object's prototype.
-  const catalog: Record<string, RunnerAppConfig> = Object.create(null);
-  for (const [name, value] of Object.entries(parsed)) {
-    catalog[name] = validateAppEntry(name, value);
-  }
-  return catalog;
-}
-
-function validateAppEntry(name: string, value: unknown): RunnerAppConfig {
-  const fail = (detail: string): never => {
-    throw new RunnerConfigError(`RUNNER_APPS entry '${name}' ${detail}`);
-  };
-  if (name.trim() === "") fail("has an empty name.");
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
-    fail("must be an object.");
-  }
-  const entry = value as Record<string, unknown>;
-  if (typeof entry.image !== "string" || entry.image.trim() === "") {
-    fail("needs a non-empty string 'image'.");
+    throw new RunnerConfigError(`AGENT_ENV is not valid JSON: ${(err as Error).message}`);
   }
   if (
-    entry.env !== undefined &&
-    (entry.env === null ||
-      typeof entry.env !== "object" ||
-      Array.isArray(entry.env) ||
-      Object.values(entry.env).some((v) => typeof v !== "string"))
+    parsed === null ||
+    typeof parsed !== "object" ||
+    Array.isArray(parsed) ||
+    Object.values(parsed).some((v) => typeof v !== "string")
   ) {
-    fail("has an invalid 'env' — expected an object of string values.");
+    throw new RunnerConfigError("AGENT_ENV must be a JSON object of string values.");
   }
-  if (entry.pullPolicy !== undefined && !PULL_POLICIES.includes(entry.pullPolicy as string)) {
-    fail(`has an invalid 'pullPolicy' — expected one of ${PULL_POLICIES.join(", ")}.`);
-  }
-  if (
-    entry.port !== undefined &&
-    (typeof entry.port !== "number" || !Number.isInteger(entry.port) || entry.port < 1 || entry.port > 65535)
-  ) {
-    fail("has an invalid 'port' — expected an integer in 1..65535.");
-  }
-  if (entry.tokenEnv !== undefined) {
-    if (typeof entry.tokenEnv !== "string" || !ENV_NAME.test(entry.tokenEnv)) {
-      fail("has an invalid 'tokenEnv' — expected an environment variable name ([A-Za-z_][A-Za-z0-9_]*).");
-    }
-    // Two sources for one variable would leave which value the workload sees
-    // to merge order, and the operator's literal would silently shadow — or be
-    // shadowed by — the minted token.
-    if (entry.env !== undefined && Object.hasOwn(entry.env as object, entry.tokenEnv as string)) {
-      fail(`sets 'tokenEnv' to '${entry.tokenEnv}', which its own 'env' also defines — the runner mints that value per session.`);
-    }
-  }
-  for (const key of ["title", "description"] as const) {
-    if (entry[key] !== undefined && typeof entry[key] !== "string") {
-      fail(`has an invalid '${key}' — expected a string.`);
-    }
-  }
-  return entry as unknown as RunnerAppConfig;
+  return parsed as Record<string, string>;
 }
 
-/**
- * Which catalog entries may be a session's co-resident `agent` — the ones that
- * declare a `port`, because the session route refuses the rest and a runner
- * must not advertise what it will reject.
- *
- * Derived here rather than in each runner's capabilities call because this IS
- * the acceptance condition: the two used to be one list by construction
- * (`Object.keys`), and adding a second condition to the route without adding it
- * here is exactly how they drift. An operator upgrading with an existing
- * catalog has no `port` anywhere — the field is new — so an unfiltered
- * advertisement makes the editor attach an agent to every run and every run is
- * refused.
- *
- * Per entry, not per catalog: declaring a port opts an entry into co-resident
- * use.
- */
-export function coResidentAgentNames(apps: Record<string, ResolvedRunnerApp>): string[] {
-  return Object.keys(apps).filter((name) => apps[name]?.port !== undefined);
-}
-
-/** The catalog runners pass to `buildServer`: `RUNNER_APPS` validated with
- *  defaults applied; empty when unset. The catalog is pure operator
- *  configuration — runner-core knows nothing about any specific app. */
-export function loadResolvedApps(env: NodeJS.ProcessEnv): Record<string, ResolvedRunnerApp> {
-  const catalog = loadAppsFromEnv(env) ?? {};
-  const resolved: Record<string, ResolvedRunnerApp> = Object.create(null);
-  for (const [name, entry] of Object.entries(catalog)) {
-    resolved[name] = {
-      name,
-      image: entry.image,
-      env: entry.env ?? {},
-      pullPolicy: entry.pullPolicy ?? "missing",
-      port: entry.port,
-      tokenEnv: entry.tokenEnv,
-      title: entry.title,
-      description: entry.description,
-    };
-  }
-  return resolved;
-}
 
 export function parseCorsOrigins(raw: string | undefined): string[] | "*" {
   if (raw === undefined || raw.trim() === "" || raw.trim() === "*") return "*";
@@ -376,6 +370,11 @@ const RETIRED_VARIABLES: ReadonlyArray<{ name: string; replacement: string | nul
   { name: "RUNNER_EXIT_TTL_MS", replacement: null, why: "one-shot run sessions are removed" },
   { name: "RUNNER_MAX_TTL_SECONDS", replacement: null, why: "one-shot run sessions are removed" },
   { name: "RUNNER_APP_MAX_TTL_SECONDS", replacement: null, why: "catalog app sessions are removed" },
+  {
+    name: "RUNNER_APPS",
+    replacement: "AGENT_IMAGE or AGENT_MODULE_REF",
+    why: "the catalog is one co-resident agent, configured by AGENT_* variables",
+  },
 ];
 
 /** Refuses to boot with any retired variable set, naming every one at once. */

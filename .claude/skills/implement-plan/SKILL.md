@@ -43,7 +43,8 @@ which bind you here.
 ## Phases
 
 **4. Execute.** A fresh builder builds each card, in queue order: spawn one per card — the agent
-and effort its **Builder** line names — after the previous card's fix rounds are finished. Write the card's `brief.md` before you spawn the builder
+its **Builder** line names (`lite` → `builder-lite`, `standard` → `builder`, `high` →
+`builder-high`) — after the previous card's fix rounds are finished. Write the card's `brief.md` before you spawn the builder
 and point the builder at that file, so what is on disk is what was actually sent.
 
 **The brief points; it does not restate.** The card is in the loop file, the decisions are under

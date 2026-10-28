@@ -9,7 +9,7 @@ import type {
   BackendAppSpec,
   BackendWorkload,
   PortMapping,
-  ResolvedRunnerApp,
+  RunnerAgent,
   RunnerEndpoint,
   WorkloadCallbacks,
   WorkloadSpec,
@@ -22,6 +22,7 @@ import {
   WORKSPACE_MARKER_FILENAME,
 } from "@telorun/runner-core";
 
+import { spawnAgentProcess } from "./agent-process.js";
 import { hasExited, spawnAppProcess, spawned, stopAppProcess } from "./app-process.js";
 import type { SelfInvocation } from "./self-invocation.js";
 import { createSessionDirectory, type SessionDirectory } from "./state-root.js";
@@ -29,10 +30,11 @@ import { TeloVersionUnavailable, type TeloSupply } from "./telo-supply.js";
 import { WorkspaceDirectory } from "./workspace-directory.js";
 
 /**
- * A local session's workload: its directory and, while Run has started one,
- * one `telo run` process per application. A slot is "ready" by existing —
- * there is no container to stand up — so creating a workload is creating the
- * directory and getting each app's telo.
+ * A local session's workload: its directory, the co-resident agent's process
+ * when the session names one, and, while Run has started one, one `telo run`
+ * process per application. A slot is "ready" by existing — there is no
+ * container to stand up — so creating a workload is creating the directory,
+ * getting each app's telo and starting the agent.
  */
 
 /** The inspect endpoint the first app prefers; later apps prefer the next
@@ -59,6 +61,12 @@ interface LiveRun {
   ended: Promise<void>;
 }
 
+interface LiveAgent {
+  child: ChildProcess;
+  /** Set once this workload ends it, so the ending is not a failure. */
+  stopping: boolean;
+}
+
 interface AppSlot {
   app: BackendAppSpec;
   telo: SelfInvocation;
@@ -67,6 +75,8 @@ interface AppSlot {
 
 export class LocalSessionWorkload implements BackendWorkload {
   private slots = new Map<string, AppSlot>();
+  private agent: RunnerAgent | undefined;
+  private agentProcess: LiveAgent | undefined;
   /** Set once the workload is suspended or detached: an ending after that is
    *  core's to report, not this workload's. */
   private closed = false;
@@ -83,7 +93,7 @@ export class LocalSessionWorkload implements BackendWorkload {
     spec: WorkloadSpec,
     callbacks: WorkloadCallbacks,
   ): Promise<LocalSessionWorkload> {
-    refuseAgent(spec.agent);
+    const agentRef = moduleRefOf(spec.agent);
     let directory: SessionDirectory;
     try {
       directory = await createSessionDirectory(deps.stateRoot, spec.sessionId);
@@ -103,6 +113,8 @@ export class LocalSessionWorkload implements BackendWorkload {
       new WorkspaceDirectory(directory.workspace),
     );
     workload.slots = await workload.slotsFor(spec.apps);
+    workload.agent = spec.agent;
+    if (agentRef !== undefined) await workload.startAgent(agentRef);
     workload.reportRunning();
     return workload;
   }
@@ -245,13 +257,19 @@ export class LocalSessionWorkload implements BackendWorkload {
     this.reportRunning();
   }
 
-  async setAgent(agent: ResolvedRunnerApp | undefined): Promise<void> {
-    refuseAgent(agent);
+  /** Every live run ends and the agent is replaced: the workload is recreated
+   *  in place, its directory kept. */
+  async setAgent(agent: RunnerAgent | undefined): Promise<void> {
+    const ref = moduleRefOf(agent);
+    await Promise.all([this.endRuns(WORKLOAD_END_GRACE_MS), this.stopAgent()]);
+    this.agent = agent;
+    if (ref !== undefined) await this.startAgent(ref);
+    this.reportRunning();
   }
 
   async suspend(): Promise<void> {
     this.closed = true;
-    await this.endRuns(WORKLOAD_END_GRACE_MS);
+    await Promise.all([this.endRuns(WORKLOAD_END_GRACE_MS), this.stopAgent()]);
   }
 
   /** A local workload never outlives the runner: its runs end with it, and the
@@ -276,6 +294,54 @@ export class LocalSessionWorkload implements BackendWorkload {
         await live.ended;
       }),
     );
+  }
+
+  /** Start the agent; its ending on its own is the session's failure, as a
+   *  container runner reports its agent container ending. */
+  private async startAgent(ref: string): Promise<void> {
+    const agent = this.agent!;
+    let started: Awaited<ReturnType<typeof spawnAgentProcess>>;
+    try {
+      started = await spawnAgentProcess({
+        telo: await this.deps.self(),
+        ref,
+        env: agent.env,
+        directory: this.directory.agent,
+        workspace: this.directory.workspace,
+      });
+      await started.started;
+    } catch (err) {
+      throw new SessionStartError(
+        "start_failed",
+        "create",
+        `could not start the co-resident agent '${agent.name}'`,
+        messageOf(err),
+      );
+    }
+    const live: LiveAgent = { child: started.child, stopping: false };
+    this.agentProcess = live;
+    const failed = (message: string): void => {
+      if (live.stopping || this.closed || this.agentProcess !== live) return;
+      this.agentProcess = undefined;
+      this.callbacks.onStatus({ kind: "failed", message });
+    };
+    live.child.on("error", (err) =>
+      failed(`the runner lost track of the co-resident agent '${agent.name}': ${err.message}`),
+    );
+    live.child.once("exit", (code, signal) =>
+      failed(
+        `the co-resident agent '${agent.name}' ended (${signal ? `signal ${signal}` : `exit code ${code ?? 0}`}); ` +
+          `its output is in ${started.log}`,
+      ),
+    );
+  }
+
+  private async stopAgent(): Promise<void> {
+    const live = this.agentProcess;
+    if (!live) return;
+    live.stopping = true;
+    this.agentProcess = undefined;
+    await stopAppProcess(live.child, WORKLOAD_END_GRACE_MS);
   }
 
   private async slotsFor(apps: BackendAppSpec[]): Promise<Map<string, AppSlot>> {
@@ -306,6 +372,8 @@ export class LocalSessionWorkload implements BackendWorkload {
     this.callbacks.onStatus({
       kind: "running",
       endpoints: endpointsFor([...this.slots.values()].flatMap((s) => s.app.ports)),
+      // Bound by the agent itself on this host, like an app's ports; core adds its token.
+      ...(this.agent ? { agent: { host: "", port: this.agent.port, protocol: "tcp" } } : {}),
     });
     for (const name of this.slots.keys()) this.callbacks.onAppState(name, { state: "ready" });
   }
@@ -327,16 +395,18 @@ export class LocalSessionWorkload implements BackendWorkload {
   }
 }
 
-/** This runner offers no co-resident agent (`features.agents` is empty), so
- *  core never hands one over; one arriving anyway is refused, not ignored. */
-function refuseAgent(agent: ResolvedRunnerApp | undefined): void {
-  if (agent) {
+/** The module an agent runs from. `telo runner` refuses an image agent at
+ *  boot, so one arriving anyway is refused, not ignored. */
+function moduleRefOf(agent: RunnerAgent | undefined): string | undefined {
+  if (!agent) return undefined;
+  if (agent.source.kind === "image") {
     throw new SessionStartError(
       "start_failed",
       "create",
-      `this runner runs no co-resident agent, and '${agent.name}' was asked for`,
+      `this runner runs no container images, and agent '${agent.name}' is the image '${agent.source.image}'`,
     );
   }
+  return agent.source.ref;
 }
 
 /** The marker that anchors one module cache for every app in the session,

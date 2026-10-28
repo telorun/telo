@@ -1,11 +1,11 @@
 ---
 name: pr
-description: Run only when the user types /pr. Never invoke it yourself, whatever the task.
+description: Run only when the user types /pr, or when the implement skill hands over a change whose fix round is done. Never invoke it yourself otherwise.
 argument-hint: nothing (every change in the working tree), or which part of the working tree to land (`for phase 1`, `the stdlib changes`), plus anything the commit message or PR body should say
 ---
 
 The user has a change in the working tree and is away. You carry it to "a green PR", alone. The
-user's invocation is the authorization for this skill's branch creation, staging, commit, rebase
+user's invocation — of `/pr`, or of `/implement`, which hands over to this skill — is the authorization for this skill's branch creation, staging, commit, rebase
 onto the branch's base and its own remote, push, amend and force-push — for this change and its branch only. Merging is
 never yours.
 

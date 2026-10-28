@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 
 import type { RunnerBackend } from "./backend.js";
-import { RunnerConfigError, type ResolvedRunnerApp, type RunnerCoreConfig } from "./config.js";
+import { RunnerConfigError, type RunnerAgent, type RunnerCoreConfig } from "./config.js";
 import type { RunnerCapabilities } from "./contract.js";
 import { capabilitiesRoute } from "./routes/capabilities.js";
 import { healthRoute } from "./routes/health.js";
@@ -38,9 +38,9 @@ export interface ServerDeps {
   /** Backend config gate, enforced on `POST /v1/sessions` and `PUT …/apps`
    *  (e.g. an `image` allowlist). Rejects with `400 invalid_config`. */
   validateConfig?: ConfigGate;
-  /** The operator's agent catalog (usually `loadResolvedApps(process.env)`),
+  /** The operator's co-resident agent (usually `loadAgentFromEnv(process.env)`),
    *  which a session's `agent` is resolved against. */
-  apps?: Record<string, ResolvedRunnerApp>;
+  agent?: RunnerAgent;
   /** Where session records are kept (`openSessionStore`). Owned by the caller,
    *  who closes it after the server. */
   store: SessionStore;
@@ -139,7 +139,6 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         ? new IdentityVerifier({ config: identityConfig, store: deps.store, log: app.log })
         : undefined,
     });
-  const agents = deps.apps ?? {};
 
   // The advertised feature and the backend seam are one statement: a runner
   // that says it honours a telo version over a backend that cannot be asked
@@ -180,7 +179,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
     registry,
     tickets,
     containers,
-    agents,
+    agent: deps.agent,
     settings: deps.config.sessions,
     maxSessions: deps.config.maxSessions,
     log: app.log,
@@ -206,7 +205,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
       // The capabilities document is the single source of the runner's terms;
       // the create route enforces what /v1/capabilities advertises.
       terms: capabilitiesValue.terms,
-      agents,
+      agent: deps.agent,
       reloadLimitPerMinute: deps.config.sessions.reloadLimitPerMinute,
       // Read from the advertised capabilities for the same reason terms are:
       // the document a client reads and the rule the route enforces have to be

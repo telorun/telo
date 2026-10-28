@@ -1,4 +1,4 @@
-import type { ResolvedRunnerApp } from "./config.js";
+import type { RunnerAgent } from "./config.js";
 import type {
   AppState,
   AvailabilityReport,
@@ -117,7 +117,7 @@ export interface WorkloadSpec {
   /** The resolved catalog entry of the co-resident agent, its `tokenEnv`
    *  already carrying this creation's token. Its operator env goes on the agent
    *  and nowhere else. */
-  agent?: ResolvedRunnerApp;
+  agent?: RunnerAgent;
   /** Whatever this runner declares on `/v1/capabilities`; opaque to core. */
   config: SessionConfig;
   tokens: WorkloadTokens;
@@ -247,7 +247,7 @@ export interface BackendWorkload {
 
   /** Replace the co-resident agent (its `tokenEnv` already carrying a fresh
    *  token), or remove it. Recreates the workload. */
-  setAgent(agent: ResolvedRunnerApp | undefined, tokens: WorkloadTokens): Promise<void>;
+  setAgent(agent: RunnerAgent | undefined, tokens: WorkloadTokens): Promise<void>;
 
   /** Delete the workload and keep the session's storage. */
   suspend(): Promise<void>;

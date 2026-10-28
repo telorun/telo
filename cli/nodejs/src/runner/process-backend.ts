@@ -21,13 +21,17 @@ import type { TeloSupply } from "./telo-supply.js";
  *
  *  - **No PTY.** Node has no terminal to hand a child, so every run is
  *    `io: "streams"`; the run route refuses an explicit `tty`.
- *  - **No isolation.** A run inherits this process's environment and runs with
- *    its privileges, which is why the runner binds loopback by default.
+ *  - **No isolation.** A run inherits this process's environment (less the
+ *    runner's `AGENT_*` configuration) and runs with its privileges, which is
+ *    why the runner binds loopback by default.
  *  - **Ports are bound directly.** An application binds the port it declares,
  *    on this host; there is nothing to publish.
  *  - **Nothing outlives the runner.** There is no `adopt`: core suspends every
  *    stored session at boot, and the directories are resumed from.
- *  - **No co-resident agent.** The runner advertises none.
+ *  - **The co-resident agent is a process.** `AGENT_MODULE_REF` names its
+ *    module and each session naming it gets one `telo run --no-input <ref>` in
+ *    its `agent/` directory, stopped and recreated with the workload; its
+ *    ending on its own fails the session. `AGENT_IMAGE` is refused at boot.
  */
 
 export interface ProcessBackendDeps {

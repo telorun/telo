@@ -16,6 +16,8 @@ export type WorkspaceMode = "agent" | "manual" | "device";
  * `owner` is `identity` for a session the signed-in identity owns, which is
  * forgotten on sign-out; absent, the session is a resume secret's.
  * `resumeSecret` is present only where the secret store is this entry.
+ * `resume` says whether opening the workspace wakes a suspended session by
+ * itself; absent, it does. `manual` leaves it suspended until a Run asks.
  */
 export interface WorkspaceSessionEntry {
   mode: WorkspaceMode;
@@ -24,6 +26,7 @@ export interface WorkspaceSessionEntry {
   sessionId?: string;
   owner?: "identity";
   resumeSecret?: string;
+  resume?: "auto" | "manual";
 }
 
 const MODES: ReadonlySet<string> = new Set<WorkspaceMode>(["agent", "manual", "device"]);
@@ -60,6 +63,7 @@ export function loadWorkspaceSessionEntry(workspaceKey: string): WorkspaceSessio
     return null;
   }
   if (e.owner !== undefined && e.owner !== "identity") return null;
+  if (e.resume !== undefined && e.resume !== "auto" && e.resume !== "manual") return null;
   return {
     mode: e.mode as WorkspaceMode,
     workspace: e.workspace,
@@ -67,6 +71,7 @@ export function loadWorkspaceSessionEntry(workspaceKey: string): WorkspaceSessio
     ...(e.sessionId !== undefined ? { sessionId: e.sessionId } : {}),
     ...(e.owner !== undefined ? { owner: e.owner } : {}),
     ...(e.resumeSecret !== undefined ? { resumeSecret: e.resumeSecret } : {}),
+    ...(e.resume !== undefined ? { resume: e.resume } : {}),
   };
 }
 

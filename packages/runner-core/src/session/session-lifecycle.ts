@@ -11,7 +11,7 @@ import {
   type WorkloadSpec,
   type WorkloadTokens,
 } from "../backend.js";
-import type { ResolvedRunnerApp, SessionLifecycleConfig } from "../config.js";
+import type { RunnerAgent, SessionLifecycleConfig } from "../config.js";
 import {
   SessionStartError,
   type AppState,
@@ -64,8 +64,8 @@ export interface SessionLifecycleDeps {
   registry: SessionRegistry;
   tickets: IoTickets;
   containers?: SessionContainers;
-  /** The operator catalog an agent is resolved against (`RUNNER_APPS`). */
-  agents: Record<string, ResolvedRunnerApp>;
+  /** The operator's co-resident agent (`AGENT_*`), the one a session may name. */
+  agent: RunnerAgent | undefined;
   settings: SessionLifecycleConfig;
   /** Most RUNNING (or starting) sessions at once. */
   maxSessions: number;
@@ -84,7 +84,7 @@ export interface CreateArgs {
   owner: SessionOwner;
   workspace: string;
   apps: BackendAppSpec[];
-  agent: ResolvedRunnerApp | undefined;
+  agent: RunnerAgent | undefined;
   config: SessionConfig;
   /** Things decided about the session the client would otherwise infer from an
    *  absence, emitted on its stream. */
@@ -277,7 +277,7 @@ export class SessionLifecycle {
     if (entry.status.kind === "starting") {
       throw new SessionRefusal(409, "session_busy", `session '${entry.sessionId}' is starting`);
     }
-    const agent = entry.record.agent === null ? undefined : this.deps.agents[entry.record.agent];
+    const agent = this.recordedAgent(entry);
     const clash = agent && agentPortClash(agent, apps);
     if (agent && clash) {
       throw new SessionRefusal(
@@ -318,7 +318,7 @@ export class SessionLifecycle {
   }
 
   /** Replace the co-resident agent; a live workload is recreated with it. */
-  async setAgent(entry: SessionEntry, agent: ResolvedRunnerApp | undefined): Promise<void> {
+  async setAgent(entry: SessionEntry, agent: RunnerAgent | undefined): Promise<void> {
     this.requireIdleTransition(entry);
     if (entry.status.kind === "starting") {
       throw new SessionRefusal(409, "session_busy", `session '${entry.sessionId}' is starting`);
@@ -618,11 +618,11 @@ export class SessionLifecycle {
     }
   }
 
-  /** The agent the record names, as the catalog holds it now. */
-  private recordedAgent(entry: SessionEntry): ResolvedRunnerApp | undefined {
+  /** The agent the record names, as the runner offers it now. */
+  private recordedAgent(entry: SessionEntry): RunnerAgent | undefined {
     const name = entry.record.agent;
     if (name === null) return undefined;
-    const agent = this.deps.agents[name];
+    const agent = this.deps.agent?.name === name ? this.deps.agent : undefined;
     if (!agent) {
       this.deps.registry.emit(entry.sessionId, {
         type: "progress",
@@ -636,7 +636,7 @@ export class SessionLifecycle {
   private workloadSpec(
     entry: SessionEntry,
     tokens: WorkloadTokens,
-    agent: ResolvedRunnerApp | undefined = entry.agent,
+    agent: RunnerAgent | undefined = entry.agent,
   ): WorkloadSpec {
     return {
       sessionId: entry.sessionId,
@@ -998,8 +998,8 @@ function storedStatus(record: SessionRecord): RunStatus {
 }
 
 /** A fresh token for the agent's `tokenEnv`, minted per workload creation. */
-function mintAgentToken(agent: ResolvedRunnerApp | undefined): {
-  agent: ResolvedRunnerApp | undefined;
+function mintAgentToken(agent: RunnerAgent | undefined): {
+  agent: RunnerAgent | undefined;
   tokens: WorkloadTokens;
 } {
   if (agent?.tokenEnv === undefined) return { agent, tokens: {} };
@@ -1007,7 +1007,7 @@ function mintAgentToken(agent: ResolvedRunnerApp | undefined): {
   return { agent: withToken(agent, token), tokens: { agent: token } };
 }
 
-function withToken(agent: ResolvedRunnerApp, token: string | undefined): ResolvedRunnerApp {
+function withToken(agent: RunnerAgent, token: string | undefined): RunnerAgent {
   if (agent.tokenEnv === undefined || token === undefined) return agent;
   return { ...agent, env: { ...agent.env, [agent.tokenEnv]: token } };
 }

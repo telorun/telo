@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 
 import type { RunnerBackend } from "../backend.js";
-import type { ResolvedRunnerApp } from "../config.js";
+import type { RunnerAgent } from "../config.js";
 import {
   ACCEPTED_TERMS_HEADER,
   type AdoptSessionRequest,
@@ -57,7 +57,7 @@ export interface SessionsRouteDeps {
    *  `/v1/capabilities` advertises as `features.teloVersions`. */
   teloVersions: boolean;
   /** The operator catalog a session's `agent` is resolved against. */
-  agents: Record<string, ResolvedRunnerApp>;
+  agent: RunnerAgent | undefined;
   /** `SessionLifecycleConfig.reloadLimitPerMinute`. */
   reloadLimitPerMinute: number;
   /** The byte-channel modes this runner offers — the same list
@@ -185,7 +185,7 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
         refuseReservedPorts(deps.backend, apps);
         gateConfig(deps, config, apps.some((a) => a.telo !== undefined));
         await supplyTeloVersions(deps.backend, apps, config);
-        const { agent, notice } = admitAgent(body.agent, deps.agents, apps, "drop");
+        const { agent, notice } = admitAgent(body.agent, deps.agent, apps, "drop");
 
         // No identity: the session is owned by a resume secret, answered once.
         const minted = resolved.caller.kind === "anonymous" ? mintResumeSecret() : undefined;
@@ -362,7 +362,7 @@ export function sessionsRoute(deps: SessionsRouteDeps): FastifyPluginAsync {
       async (req, reply) => {
         const entry = await ownedSession(deps, req, reply);
         if (!entry) return;
-        const { agent } = admitAgent(req.body.name, deps.agents, entry.record.apps, "refuse");
+        const { agent } = admitAgent(req.body.name, deps.agent, entry.record.apps, "refuse");
         await deps.lifecycle.setAgent(entry, agent);
         reply.code(202).send({ agent: agent?.name ?? null });
       },

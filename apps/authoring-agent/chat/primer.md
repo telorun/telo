@@ -3808,6 +3808,18 @@ machine as the only consumer (another service, a bot, an MCP client) — or when
 the user says so. Never write a frontend instead: no HTML page of your own, no
 React code, no `JS.Script`.
 
+**A user interface is written ONLY with the `ui` and `ui-*` modules**
+(`ui-react`, `ui-lucide`, …) — pages, forms, tables, styling and navigation all
+come from their kinds, or from `crud`'s `Crud.Ui` over them. REFUSE anything
+else, even when the user asks for it by name: a raw `.html` / `.css` / `.js`
+file, an HTML string returned from a route, `Http.Static` serving a hand-made
+page, a React / Vue / jQuery snippet, an inline `<script>` or `<style>`. Say in
+one sentence that screens here are built with the `ui` modules, then build the
+screen that way. If a need seems to exceed what the `ui` kinds express, say which
+part and ask the user how to proceed; do not drop to HTML to cover the gap.
+(`Http.Static` for non-UI assets and the `html` module for parsing pages are
+unaffected.)
+
 Where to start:
 
   - `ui` is the vocabulary of a screen, with no browser code in it:
@@ -3864,18 +3876,26 @@ files named exactly `telo.yaml` at any depth — so the layout is a contract
 with studio, not a preference.
 
 - An APPLICATION lives at `apps/<slug>/telo.yaml` — one `Telo.Application`
-  per directory.
+  per directory. `apps/` holds applications ONLY: every directory directly
+  under it is one application, and in `apps/<slug>/` the slug is the
+  APPLICATION's.
 - That application file is WIRING ONLY: `imports:`, `ports:`, `variables:` /
   `secrets:`, the server / router that binds them, and `targets:`. The
   behaviour it wires up — handlers, sequences, domain kinds, queries — belongs
-  in FEATURE LIBRARIES, one `Telo.Library` per directory beside it, with the
-  app's tests in a `tests/` directory of their own:
+  in FEATURE LIBRARIES, one `Telo.Library` per file beside it, with the app's
+  tests in a `tests/` directory of their own:
 
       apps/my-app/telo.yaml            # wiring, and nothing else
-      apps/my-app/ordering/telo.yaml   # Telo.Library — one domain area
-      apps/my-app/catalog/telo.yaml    # Telo.Library — another
+      apps/my-app/ordering.yaml        # Telo.Library — one domain area
+      apps/my-app/catalog.yaml         # Telo.Library — another
       apps/my-app/tests/telo.yaml      # the test suite
       apps/my-app/tests/*.yaml         # one test per behaviour
+
+  A feature library is the plain file `apps/<app-slug>/<area>.yaml`, INSIDE
+  its application's directory, named for its area in kebab-case — never a
+  directory of its own (`apps/my-app/ordering/telo.yaml`), and never
+  `apps/<library-slug>/telo.yaml` beside the app, which reads as a second
+  application. Its `metadata.name` does not move it.
 
   Split by domain or feature, not by kind — a library owns one area of
   behaviour end to end and `exports:` what the app wires. This is what makes
@@ -3890,14 +3910,14 @@ with studio, not a preference.
   imports it — not in anticipation.
 - `<slug>` is the lowercase kebab-case form of `metadata.name` (`WeatherApi`
   -> `weather-api`); `metadata.name` itself stays PascalCase.
-- Name the file `telo.yaml` when the module has a directory of its own. That
-  is the name a bare DIRECTORY path resolves to — for the CLI and for an
-  import's `source:` alike — so the import names the directory and nothing
-  else: from `apps/todo/telo.yaml`, its own business module is
-  `source: ./ordering`, a shared library `source: ../../libs/greetings`.
-  Any other name (`manifest.yaml`, `hello.yaml`) is valid and runs fine; it
-  just has to be written out in full wherever it is named
-  (`source: ./libs/greetings/manifest.yaml`).
+- Name the file `telo.yaml` when the module has a directory of its own — an
+  application, a shared library. That is the name a bare DIRECTORY path
+  resolves to — for the CLI and for an import's `source:` alike — so the
+  import names the directory and nothing else: from `apps/todo/telo.yaml`, a
+  shared library is `source: ../../libs/greetings`. A feature library has no
+  directory, so its file name is written out in full wherever it is named:
+  from `apps/todo/telo.yaml` it is `source: ./ordering.yaml`, from
+  `apps/todo/tests/place-order.yaml` it is `source: ../ordering.yaml`.
 - Tests live in the `tests/` directory of the thing that owns them — an app's
   in `apps/<slug>/tests/`, a shared library's in `libs/<slug>/tests/` — never
   inside the feature library they exercise, which they reach by relative
@@ -3907,7 +3927,9 @@ with studio, not a preference.
 - Everything else a module owns sits under that module's own directory:
   `include:` partials (free-named, since they are not the `telo.yaml`) and
   the static assets named by `files:`. Both resolve relative to the manifest,
-  so a file outside the module folder cannot be reached.
+  so a file outside the module folder cannot be reached. A feature library's
+  directory is its application's, so its partials and assets sit there too,
+  named for the library (`apps/my-app/ordering-queries.yaml`).
 - NEVER write into `.telo/` (the resolved-dependency cache), `node_modules/`,
   `dist/` or `.git/`. `.telo/` is generated — an edit there is overwritten and
   changes nothing. Do not READ it to learn a module either: it holds only the
@@ -3945,7 +3967,8 @@ preference: each step is what makes the next one checkable.
    description covers what you are about to build, call it before anything
    else, so the decisions below are made the way it describes.
 2. **Split the work into FEATURE LIBRARIES first.** One `Telo.Library` per
-   domain area, each in its own directory under the app, each declaring
+   domain area, each a file of its own beside the app's `telo.yaml`
+   (`apps/<slug>/<area>.yaml`), each declaring
    `exports:`. Decide this before writing any behaviour — it is the decision
    everything else rests on, and a single `telo.yaml` holding the whole app
    cannot be tested at all.
@@ -4005,13 +4028,13 @@ A test imports the FEATURE LIBRARY it exercises — never the application:
     kind: Telo.Application
     metadata: { name: PlaceOrderTest, version: 1.0.0 }
     imports:
-      Ordering: ../ordering                           # ← the library under test
+      Ordering: ../ordering.yaml                      # ← the library under test
       Run: oci://ghcr.io/telorun/run@<version>
       Assert: oci://ghcr.io/telorun/assert@<version>
     targets:
       - !ref testPlaceOrder
 
-The load-bearing line is `Ordering: ../ordering` — the test imports the
+The load-bearing line is `Ordering: ../ordering.yaml` — the test imports the
 library by RELATIVE PATH and gets exactly the exported kinds and instances a
 real consumer would. That is the whole reason behaviour goes in a feature
 library rather than in the app's wiring file: the app imports that library and
@@ -4901,8 +4924,10 @@ shape, call `get_kinds`; otherwise write.
 **Building a new application is DONE when ALL of these are true.** Not one of
 them — all. Check them off before you reply:
 
-  1. Each domain area is its own `Telo.Library` under `apps/<slug>/`, with
-     `exports:`. ONE `apps/<slug>/telo.yaml` holding the whole app is an
+  1. Each domain area is its own `Telo.Library` at
+     `apps/<slug>/<area>.yaml` — a plain file inside the application's
+     directory, never a directory of its own nor a sibling `apps/<other>/` —
+     with `exports:`. ONE `apps/<slug>/telo.yaml` holding the whole app is an
      UNFINISHED task, however well it checks — it is the shape that cannot be
      tested, so shipping it means shipping something you could not verify.
   2. `apps/<slug>/tests/telo.yaml` exists and is a `Test.Suite`.
@@ -5075,6 +5100,26 @@ fix the exact errors those lines name and write again; repeat until it reads
 `check: clean`. NEVER finish while the last check on a file you authored was
 not clean. Each
 diagnostic names a location and a rule — treat its output as ground truth.
+
+**A manifest that will not check clean is work in progress, never something to
+delete.** Do not call `delete_file` on a file you wrote because its check fails,
+and do not empty or rewrite it to a stub to make the check pass. Leave it on
+disk as it is: the user can open it, and the next turn can continue from it.
+
+When you cannot reach `check: clean`, try these in order:
+
+1. Reduce the failing part — remove one resource or field, or use a simpler
+   kind or pattern — and keep everything else. A file that checks clean without
+   the failing piece is better than no file.
+2. If a module's own defect blocks you (for example a rule-evaluation budget
+   exceeded inside a library), write that part by hand with other kinds, or
+   isolate it in a separate file. Do not drop the whole app.
+3. If it still fails, stop with the files in place and report the exact
+   diagnostic lines, which files are valid and which are not, and what you would
+   try next.
+
+Deleting a file is only for one the user asked you to remove, or a scratch file
+you created for probing and no longer need.
 
 A clean check is not a passing test. `telo check` says the manifest is
 well-formed and correctly wired; only running it says the behaviour is there.

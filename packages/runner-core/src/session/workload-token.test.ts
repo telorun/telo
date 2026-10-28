@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { loadResolvedApps } from "../config.js";
+import { AGENT_NAME, loadAgentFromEnv } from "../config.js";
 import { bootTestServer } from "../test-support/fake-workload-backend.js";
 
 /**
@@ -8,9 +8,12 @@ import { bootTestServer } from "../test-support/fake-workload-backend.js";
  * that reports an endpoint for the agent — which is all a real backend's
  * `running` status is made of.
  */
-const CATALOG = JSON.stringify({
-  agent: { image: "acme/agent:1", env: { KEY: "operator" }, port: 8080, tokenEnv: "AGENT_TOKEN" },
-});
+const AGENT_VARIABLES = {
+  AGENT_IMAGE: "acme/agent:1",
+  AGENT_ENV: JSON.stringify({ KEY: "operator" }),
+  AGENT_PORT: "8080",
+  AGENT_TOKEN_ENV: "AGENT_TOKEN",
+};
 
 const TOKEN = /^[a-z2-7]{32}$/;
 
@@ -23,12 +26,12 @@ describe("the agent's workload token", () => {
   });
 
   it("is minted per workload creation, injected on the agent alone and reported on its endpoint", async () => {
-    booted = await bootTestServer({ apps: loadResolvedApps({ RUNNER_APPS: CATALOG }) });
+    booted = await bootTestServer({ agent: loadAgentFromEnv(AGENT_VARIABLES) });
     const { server, backend } = booted;
     const res = await server.app.inject({
       method: "POST",
       url: "/v1/sessions",
-      payload: { workspace: "w", agent: "agent", apps: [] },
+      payload: { workspace: "w", agent: AGENT_NAME, apps: [] },
     });
     const { sessionId, resumeSecret } = res.json();
     const statusOf = () => server.registry.get(sessionId)!.status;

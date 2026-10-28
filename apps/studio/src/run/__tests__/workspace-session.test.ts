@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { WorkspaceBridge } from "../../agent/types";
 import type { RunnerCredentials } from "../runner-credentials";
 import { WorkspaceSession, type WorkspaceIdentity } from "../workspace-session";
 import type { WorkspaceSessionEntry } from "../workspace-session-entry";
@@ -13,6 +14,7 @@ function open(
   mode: "agent" | "manual",
   entry: WorkspaceSessionEntry = { mode, workspace: "device:1" },
   identity: WorkspaceIdentity | null = null,
+  bridge: WorkspaceBridge = emptyBridge,
 ) {
   const secrets = memoryResumeSecretStore();
   const saved: WorkspaceSessionEntry[] = [];
@@ -26,7 +28,7 @@ function open(
     secrets,
     identity,
     saveEntry: (next) => saved.push(next),
-    bridge: emptyBridge,
+    bridge,
     listener: { changed() {}, event() {}, rerun: (name) => reruns.push(name), syncFailed() {} },
   });
   return { session, secrets, saved, reruns };
@@ -152,6 +154,67 @@ describe("a workspace's session", () => {
     await third.session.open();
     expect(runner.creates).toHaveLength(2);
     expect(third.saved.at(-1)?.sessionId).toBe("s2");
+  });
+
+  it("leaves a suspended session suspended on open when resume is manual, and wakes it for a Run", async () => {
+    const runner = new FakeRunner();
+    const first = open(runner, "manual");
+    first.session.setDesired([app("api")], true, false);
+    await first.session.open();
+    const stored = first.saved.at(-1)!;
+    runner.sessions.get("s1")!.status = { kind: "suspended" };
+
+    const again = open(runner, "manual", { ...stored, resume: "manual" });
+    await again.secrets.write(SCOPE, await first.secrets.read(SCOPE));
+    again.session.setDesired([app("api")], true, false);
+    await again.session.open();
+
+    expect(again.session.state.phase).toBe("live");
+    expect(again.session.state.status?.kind).toBe("suspended");
+    expect(runner.sessions.get("s1")!.status.kind).toBe("suspended");
+
+    void again.session.run("api", { env: {}, io: "tty" } as never);
+    await settle();
+    expect(runner.sessions.get("s1")!.status.kind).toBe("starting");
+  });
+
+  it("tries a failed push once, not in a loop, and tries again only on a write or a retry", async () => {
+    const runner = new FakeRunner();
+    let snapshots = 0;
+    const failing: WorkspaceBridge = {
+      ...emptyBridge,
+      snapshot: async () => {
+        snapshots += 1;
+        throw new Error("disk gone");
+      },
+    };
+    const { session } = open(runner, "manual", undefined, null, failing);
+    session.setDesired([app("api")], true, false);
+    await session.open();
+    runner.sessions.get("s1")!.up();
+    await settle();
+
+    expect(snapshots).toBe(1);
+    expect(session.state.syncProblem).toContain("disk gone");
+
+    await settle();
+    expect(snapshots).toBe(1);
+
+    session.sync();
+    await settle();
+    expect(snapshots).toBe(2);
+    expect(session.state.syncProblem).toContain("disk gone");
+  });
+
+  it("suspends a session still starting when it is let go, so it does not stay up on the runner", async () => {
+    const runner = new FakeRunner();
+    const { session } = open(runner, "manual");
+    session.setDesired([app("api")], true, false);
+    await session.open();
+    expect(runner.sessions.get("s1")!.status.kind).toBe("starting");
+
+    await session.suspend();
+    expect(runner.sessions.get("s1")!.status.kind).toBe("suspended");
   });
 
   it("is reached with the identity on a runner that accepts it at the address it is reached on, and says why not otherwise", async () => {

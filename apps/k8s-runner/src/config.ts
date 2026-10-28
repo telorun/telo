@@ -114,7 +114,7 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   supervisorImage: string;
   /** Optional dockerconfig Secret (in the session namespace) the kubelet pulls
    *  session images with — the kernel image, and any operator catalog image
-   *  (`RUNNER_APPS`) held in a private registry. */
+   *  (`AGENT_IMAGE`) held in a private registry. */
   imagePullSecret?: string;
   /** Leave a session pod that failed to start in place for inspection
    *  (`RUNNER_KEEP_FAILED_PODS`). */

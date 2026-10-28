@@ -6,6 +6,7 @@ import { useDiagnosticsState } from "../../diagnostics/DiagnosticsContext";
 import { outdatedTitle } from "../../sidebar/import-upgrade-notices";
 import { useModuleVersions } from "../../sidebar/useModuleVersions";
 import { useUpgradeTargets } from "../../sidebar/useUpgradeTargets";
+import { ImportLookupNotice } from "../../sidebar/ImportLookupNotice";
 import { useVersionCompatibility } from "../../sidebar/useVersionCompatibility";
 import { Badge } from "../../ui/badge";
 import type { ViewProps } from "../types";
@@ -25,7 +26,7 @@ export function ImportTable({ viewData, hubUrl, manifestCacheUrl, onOpenModule, 
   // upgrade offer are answers about the same versions.
   const listVersions = useModuleVersions(hubUrl);
   const isCompatible = useVersionCompatibility(manifestCacheUrl);
-  const targets = useUpgradeTargets(manifest.imports, listVersions, isCompatible);
+  const { targets, failures } = useUpgradeTargets(manifest.imports, listVersions, isCompatible);
   const imports = manifest.imports.filter((imp) =>
     matches(query, imp.name, imp.source, imp.resolvedPath),
   );
@@ -37,6 +38,7 @@ export function ImportTable({ viewData, hubUrl, manifestCacheUrl, onOpenModule, 
       filtered={query !== ""}
       emptyText="No imports"
     >
+      <ImportLookupNotice failures={failures} className="mb-2" />
       <table className="w-full text-left text-sm">
         <OutlineHead columns={[null, "Alias", "Source", "Type", "Resolved path"]} />
         <tbody>

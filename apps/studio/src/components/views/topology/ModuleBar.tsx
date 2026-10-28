@@ -30,6 +30,7 @@ import { isImportPinned, upgradedImportSource } from "../../sidebar/import-pin";
 import { useImportUpgrade } from "../../sidebar/useImportUpgrade";
 import { useModuleVersions } from "../../sidebar/useModuleVersions";
 import { useUpgradeTargets } from "../../sidebar/useUpgradeTargets";
+import { ImportLookupNotice } from "../../sidebar/ImportLookupNotice";
 import { useVersionCompatibility } from "../../sidebar/useVersionCompatibility";
 import { AddImportDialog } from "../../AddImportDialog";
 import { BootSection } from "./BootSection";
@@ -141,7 +142,11 @@ export function ModuleBar({
   // that asked. This offers only the ONE-CLICK move to the newest hostable
   // version; picking an arbitrary version, and the held-back explanations, stay
   // in the Imports view, which has room to say why.
-  const targets = useUpgradeTargets(viewData.manifest.imports, listVersions, isCompatible);
+  const { targets, failures: lookupFailures } = useUpgradeTargets(
+    viewData.manifest.imports,
+    listVersions,
+    isCompatible,
+  );
   const upgrade = useImportUpgrade(listVersions, isCompatible, onUpgradeImport, onUpgradeAllImports);
 
   const manifest = viewData.manifest;
@@ -453,6 +458,7 @@ export function ModuleBar({
             {blockedMessage(blocked)}
           </div>
         )}
+        <ImportLookupNotice failures={lookupFailures} className="mb-1" />
         {(upgrade.submitError || upgrade.pinNotice) && (
           <button
             className="mb-1 block w-full rounded bg-amber-50 px-1.5 py-1 text-left text-[10px] leading-tight text-amber-700 dark:bg-amber-950 dark:text-amber-300"

@@ -1,8 +1,7 @@
 import {
   BaseImageCatalog,
   buildServer as coreBuildServer,
-  coResidentAgentNames,
-  loadResolvedApps,
+  loadAgentFromEnv,
   loadTermsFromEnv,
   openSessionStore,
   type RunnerBackend,
@@ -42,7 +41,14 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   // Load terms once; the capabilities getter is re-resolved per request so a
   // refreshed catalog (new tags) shows up without restarting the runner.
   const terms = loadTermsFromEnv(process.env);
-  const apps = loadResolvedApps(process.env);
+  const agent = loadAgentFromEnv(process.env);
+  // A pod cannot read a path on the operator's machine, so a host path is refused
+  // here rather than failing every session that runs the agent.
+  if (agent?.source.kind === "module" && !agent.source.ref.startsWith("oci://")) {
+    throw new RunnerConfigError(
+      "AGENT_MODULE_REF is a host path, which a Kubernetes pod cannot read — use an oci:// reference.",
+    );
+  }
 
   const handle = await coreBuildServer({
     backend: deps.backend,
@@ -55,13 +61,10 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         defaultImage: deps.config.defaultImage,
         terms,
         imageEnum: catalog?.current(),
-        // Only entries that declare a port: the session route refuses an agent
-        // without one, and advertising what will be rejected is what makes the
-        // editor attach an agent to every session and every session fail.
-        agents: coResidentAgentNames(apps),
+        agents: agent ? [agent.name] : [],
       }),
-    // The operator's agent catalog (RUNNER_APPS; none when unset).
-    apps,
+    // The operator's co-resident agent (AGENT_*; none when unset).
+    agent,
     store: deps.store,
     // The session config is opaque to core, so this runner enforces its own
     // shape — UNCONDITIONALLY, not only when a catalog is configured: the

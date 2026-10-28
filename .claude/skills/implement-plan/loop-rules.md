@@ -5,8 +5,8 @@ the plan gate) and `implement-plan` executes it (phases 4–7 and the loop's end
 per session; a session that read it while planning does not read it again when it continues into
 `implement-plan`.
 
-*You* are the loop's architect whichever skill you entered through. *A builder* is either agent —
-`builder` (full) or `builder-lite` — chosen per card and per fix item (see *Which builder*). A
+*You* are the loop's architect whichever skill you entered through. *A builder* is any of the three
+agents — `builder-lite`, `builder` or `builder-high` — chosen per card and per fix item (see *Which builder*). A
 section named here that this file does not hold is in one of the two skills. When `implement-plan`
 runs on a plan file, the invocation naming the plan stands where the plan gate's answer stands.
 
@@ -305,9 +305,17 @@ by then it is built on, which is why it is caught here:
 
 ## Which builder
 
-Two agents build: `builder` (full — Opus, effort `medium` or `high`) and `builder-lite` (Sonnet,
-reads only what its brief names, decides nothing architectural). A card's **Builder** line is
-`lite`, `full-medium` or `full-high`, set when the card is cut.
+Three agents build: `builder-lite` (Haiku — reads only what its brief names, decides nothing
+architectural), `builder` (Sonnet) and `builder-high` (Opus). A card's **Builder** line is `lite`,
+`standard` or `high`, set when the card is cut.
+
+A card is `high` when **any** of these holds:
+
+- it adds or changes an analyzer check, a diagnostic code, or how an `x-telo-*` annotation is read,
+  or adds a kernel refusal and its analyzer twin;
+- it spans kernel/sdk and analyzer/templating, or the Node and Rust halves;
+- it touches CEL typing or evaluation, effects and teardown, init order, durable execution or
+  concurrency.
 
 A card is `lite` only when **all** of these hold:
 
@@ -317,9 +325,9 @@ A card is `lite` only when **all** of these hold:
 - it is small — about five files and two hundred lines at most;
 - its quick checks prove its acceptance.
 
-Otherwise it is `full`. When in doubt, `full`: a lite round that escalates costs more than it
-saved. With at most three cards, most first cards are `full`; `lite` earns its keep on doc,
-migration and call-site cards, and on fix work.
+Otherwise it is `standard`: new surface whose shape the decisions fully settle, in one or two
+packages. When in doubt between two tiers, take the higher: an escalation costs more than it saved.
+`lite` earns its keep on doc, migration and call-site cards, and on fix work.
 
 **Fix rounds** — a card's own fix round, an audit fix item, a gate failure — go to a **fresh**
 builder by default, not to the card's builder by `SendMessage`. A builder's context is cached for
@@ -329,24 +337,27 @@ of a loop's cache rewrites come from. A fresh builder starts small: give it the 
 its `builder.md` and the round's items, and nothing else.
 
 - A round whose every item states its one fix goes to a fresh `builder-lite`. The saving is its
-  small context; Sonnet's cache reads cost what Opus's do.
-- A round with an item that needs judgment goes to a fresh full `builder`.
+  small context and the cheaper model.
+- A round with an item that needs judgment goes to a fresh builder of the card's tier (`builder`
+  for `lite` and `standard`, `builder-high` for `high`). An audit item that spans cards goes to the
+  highest tier among them.
 - `SendMessage` to the card's own builder is reserved for two cases. One is answering its
   *Questions before building*, while its context is still small. The other is a round that needs
   the judgment it already holds, sent within four minutes of its report and while its context is
   under 450k tokens (`agent-report.mjs` prints the size each time you save a report).
 
 **Escalation.** `builder-lite` stops with an `Escalate:` heading instead of asking questions. Save
-that report to the card's `builder.md` as usual, then hand the card to a fresh full `builder` with
-its `brief.md` and `builder.md`; the hand-over is not a fix round. A `lite` card still red after its
-first fix round gets its second round from a fresh full `builder`, inside the two-round limit.
+that report to the card's `builder.md` as usual, then hand the card to a fresh `builder` with its
+`brief.md` and `builder.md`; the hand-over is not a fix round. A card still red after its first fix
+round gets its second round from a fresh builder one tier up — `builder` for a `lite` card,
+`builder-high` for a `standard` one — inside the two-round limit.
 
 ## Cost rules
 
 - At most three cards. Each extra card is another brief and fix cycle.
 - `scout` is Haiku. Recon is reading, and reading does not need a frontier model.
-- `builder-lite` for every card and fix item that qualifies (see *Which builder*); the full
-  `builder` for the rest.
+- `builder-lite` for every card and fix item that qualifies (see *Which builder*), `builder` for
+  settled work, `builder-high` only where the card meets the `high` criteria.
 - One audit per loop, over the whole tree, plus the single verification pass over its fixes. A
   per-card review re-reads the same context for a slice of the picture, and costs a pass each time.
 - One `decider` per set of related decisions; independent sets may run in parallel. Asking the

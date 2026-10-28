@@ -61,6 +61,14 @@ function twoTurns(): RecordsPage {
   return { turns: [finishedTurn("t1", "first"), finishedTurn("t2", "second")], next: null };
 }
 
+describe("AgentPanel with an agent that does not answer its capabilities", () => {
+  it("shows the failure in the panel, not only in the settings", async () => {
+    stubAgent(twoTurns(), { "GET /capabilities": { status: 502, body: {} } });
+    renderPanel();
+    expect(await screen.findByText("The agent is not answering: GET /capabilities failed (502)")).toBeTruthy();
+  });
+});
+
 describe("AgentPanel with an agent serving conversations", () => {
   it("Delete from here names the turns it removes, and asks again with the new count after a 409", async () => {
     const page = twoTurns();

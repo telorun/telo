@@ -4,7 +4,7 @@ import { useIsMobile } from "../../hooks/useIsMobile";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "../ui/sheet";
 import { FileExplorer } from "./FileExplorer";
 import { SectionDivider } from "./primitives";
-import { WorkspaceTree } from "./WorkspaceTree";
+import { WorkspaceTree, type ImportUpgrades } from "./WorkspaceTree";
 
 interface SidebarProps {
   workspace: Workspace | null;
@@ -24,6 +24,8 @@ interface SidebarProps {
   onDeleteModule: (filePath: string) => Promise<void>;
   /** Absent where nothing runs (a workspace used only on this device). */
   onRunModule?: (filePath: string) => void;
+  /** Absent where nothing may be written. */
+  importUpgrades?: ImportUpgrades;
   /** Phone width only, where the sidebar is a drawer over the content. */
   drawerOpen: boolean;
   onDrawerOpenChange: (open: boolean) => void;
@@ -46,6 +48,7 @@ export function Sidebar({
   onNewModule,
   onDeleteModule,
   onRunModule,
+  importUpgrades,
   drawerOpen,
   onDrawerOpenChange,
 }: SidebarProps) {
@@ -74,6 +77,7 @@ export function Sidebar({
         onNewModule={onNewModule}
         onDeleteModule={onDeleteModule}
         onRunModule={onRunModule}
+        importUpgrades={importUpgrades}
       />
     </div>
   );

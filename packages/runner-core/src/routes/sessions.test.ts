@@ -4,7 +4,7 @@ import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 
-import { loadResolvedApps } from "../config.js";
+import { AGENT_NAME, loadAgentFromEnv } from "../config.js";
 import type { RunEvent } from "../contract.js";
 import { resumeSecretHash } from "../session/session-credentials.js";
 import {
@@ -17,10 +17,11 @@ import {
 type Booted = Awaited<ReturnType<typeof bootTestServer>>;
 
 const APPS = [{ name: "web", entryRelativePath: "web/telo.yaml", ports: [{ port: 3000, protocol: "tcp" }] }];
-const CATALOG = loadResolvedApps({
-  RUNNER_APPS: JSON.stringify({
-    agent: { image: "acme/agent:1", env: { KEY: "operator" }, port: 8080, tokenEnv: "AGENT_TOKEN" },
-  }),
+const AGENT = loadAgentFromEnv({
+  AGENT_IMAGE: "acme/agent:1",
+  AGENT_ENV: JSON.stringify({ KEY: "operator" }),
+  AGENT_PORT: "8080",
+  AGENT_TOKEN_ENV: "AGENT_TOKEN",
 });
 
 let booted: Booted | undefined;
@@ -501,16 +502,16 @@ describe("the app set and the agent", () => {
   });
 
   it("recreates the workload with the agent and a token minted for it, and removes it on null", async () => {
-    const b = await boot({ apps: CATALOG });
+    const b = await boot({ agent: AGENT });
     const s = await create(b);
     const workload = b.backend.workloadOf(s.id);
 
-    const set = await call(b, s, "PUT", "/agent", { name: "agent" });
-    expect([set.statusCode, set.json()]).toEqual([202, { agent: "agent" }]);
+    const set = await call(b, s, "PUT", "/agent", { name: AGENT_NAME });
+    expect([set.statusCode, set.json()]).toEqual([202, { agent: AGENT_NAME }]);
     const token = workload.tokens.agent!;
     expect(workload.agent?.env).toEqual({ KEY: "operator", AGENT_TOKEN: token });
     await expect.poll(() => b.server.registry.get(s.id)!.status).toMatchObject({ agent: { token } });
-    expect((await b.store.store.get(s.id))?.agent).toBe("agent");
+    expect((await b.store.store.get(s.id))?.agent).toBe(AGENT_NAME);
 
     await call(b, s, "PUT", "/agent", { name: null });
     expect(workload.agent).toBeUndefined();

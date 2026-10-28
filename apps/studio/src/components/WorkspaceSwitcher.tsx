@@ -11,6 +11,7 @@ import { OpenCloudProjectDialog } from "./cloud/OpenCloudProjectDialog";
 import { Button } from "./ui/button";
 import {
   DropdownMenu,
+  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -41,6 +42,9 @@ export interface WorkspaceSwitcherProps {
   /** How the open workspace is used, and the change to it; absent with no
    *  workspace open or no mode chosen yet. */
   mode?: { current: WorkspaceMode; onChange: (mode: WorkspaceMode) => void };
+  /** Whether a refresh wakes this workspace's suspended session by itself;
+   *  absent where no session is held (Only on this device). */
+  resume?: { auto: boolean; onChange: (auto: boolean) => void };
 }
 
 const BROWSER_WORKSPACE_LABEL = "Browser workspace";
@@ -64,6 +68,7 @@ export function WorkspaceSwitcher({
   onOpenFolder,
   onClose,
   mode,
+  resume,
 }: WorkspaceSwitcherProps) {
   const cloud = useCloud();
   const [cloudDialogOpen, setCloudDialogOpen] = useState(false);
@@ -116,6 +121,15 @@ export function WorkspaceSwitcher({
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
+              {resume && mode.current !== "device" && (
+                <DropdownMenuCheckboxItem
+                  checked={resume.auto}
+                  onCheckedChange={(checked) => resume.onChange(checked === true)}
+                  title="When the page is refreshed, wake this workspace's suspended session. Off, it stays suspended until you run an application."
+                >
+                  Resume session on refresh
+                </DropdownMenuCheckboxItem>
+              )}
               <DropdownMenuSeparator />
             </>
           )}

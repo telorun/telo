@@ -5,6 +5,7 @@ import { LOCAL_PREFIXES } from "../storage-keys";
 import type { ImportFile } from "./working-copy";
 
 const FILE_KEY_PREFIX = `${LOCAL_PREFIXES.workspace}${VIRTUAL_WORKSPACE_ROOT}/`;
+const DIR_KEY_PREFIX = `${LOCAL_PREFIXES.workspaceDir}${VIRTUAL_WORKSPACE_ROOT}/`;
 
 function fileKeys(storage: Storage): string[] {
   const keys: string[] = [];
@@ -85,8 +86,9 @@ export async function filesDigest(files: ImportFile[]): Promise<string> {
   return out;
 }
 
-/** Removes the browser-stored workspace's files from this device, except what
- *  `browserWorkspaceKeptFiles` keeps, judged afresh. Rejects with the marker's
+/** Removes the browser-stored workspace's files and empty folders from this
+ *  device, except the files `browserWorkspaceKeptFiles` keeps, judged afresh. A
+ *  kept file keeps its folders, which it implies. Rejects with the marker's
  *  message, having deleted nothing, when a marker's `env:` is refused. */
 export async function removeBrowserWorkspaceFiles(
   storage: Storage = window.localStorage,
@@ -94,5 +96,9 @@ export async function removeBrowserWorkspaceFiles(
   const kept = new Set(await browserWorkspaceKeptFiles(storage));
   for (const key of fileKeys(storage)) {
     if (!kept.has(key.slice(FILE_KEY_PREFIX.length))) storage.removeItem(key);
+  }
+  for (let i = storage.length - 1; i >= 0; i--) {
+    const key = storage.key(i);
+    if (key?.startsWith(DIR_KEY_PREFIX)) storage.removeItem(key);
   }
 }

@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { DebugFrame } from "@telorun/debug-wire";
 
 import type { BackendWorkload, WorkloadTokens } from "../backend.js";
-import type { ResolvedRunnerApp } from "../config.js";
+import type { RunnerAgent } from "../config.js";
 import type {
   ByteStreamTag,
   IoMode,
@@ -68,7 +68,7 @@ export interface SessionEntry {
   workload: BackendWorkload | null;
   status: RunStatus;
   /** The agent the live workload was created with, its token in its env. */
-  agent: ResolvedRunnerApp | undefined;
+  agent: RunnerAgent | undefined;
   /** The tokens of the live workload. */
   tokens: WorkloadTokens;
   /** Bumped by every workload creation, so a callback from a workload that has

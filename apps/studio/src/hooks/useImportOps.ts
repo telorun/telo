@@ -14,6 +14,13 @@ export interface ImportOps {
   handleRemoveImport(name: string): Promise<void>;
   handleUpgradeImport(name: string, newSource: string): Promise<void>;
   handleUpgradeAllImports(updates: { name: string; newSource: string }[]): Promise<void>;
+  upgradeModuleImports(plan: ModuleImportUpgrades[]): Promise<void>;
+}
+
+/** The import upgrades to write into one module file. */
+export interface ModuleImportUpgrades {
+  filePath: string;
+  upgrades: { name: string; newSource: string }[];
 }
 
 export interface UseImportOpsParams {
@@ -95,5 +102,28 @@ export function useImportOps({
     });
   }
 
-  return { handleAddImport, handleRemoveImport, handleUpgradeImport, handleUpgradeAllImports };
+  // Each module is written in turn, threading the workspace through, so a
+  // module's own persist sees every earlier module's upgrade already applied.
+  async function upgradeModuleImports(plan: ModuleImportUpgrades[]) {
+    if (!state.workspace) return;
+    const adapter = manifestAdapterRef.current ?? noopAdapter;
+    const registry = createManifestSources(settings);
+    let workspace = state.workspace;
+    for (const { filePath, upgrades } of plan) {
+      if (upgrades.length === 0) continue;
+      for (const { name, newSource } of upgrades) {
+        workspace = await upgradeImportViaAst(workspace, filePath, name, newSource, adapter, registry);
+      }
+      workspace = await persistModule(workspace, filePath);
+    }
+    setState((s) => ({ ...s, workspace }));
+  }
+
+  return {
+    handleAddImport,
+    handleRemoveImport,
+    handleUpgradeImport,
+    handleUpgradeAllImports,
+    upgradeModuleImports,
+  };
 }

@@ -674,6 +674,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       if (identityKeyRef.current !== key) return;
       identityRef.current = state;
       setIdentity(state);
+      if (state.state === "failed") setError(`The agent is not answering: ${state.message}`);
       onIdentityRef.current();
     });
   };

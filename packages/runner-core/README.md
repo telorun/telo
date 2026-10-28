@@ -97,7 +97,7 @@ Refusals, each `{ error, message }`: `400` `invalid_app_name`,
 `reserved_app_name`, `duplicate_app_name`, `invalid_entry`, `port_conflict`,
 `invalid_telo_version`, `telo_version_unsupported`, `telo_version_unavailable`
 (with `app`, `version`, `reason`), `invalid_config`, `unknown_agent`,
-`agent_port_undeclared`, `agent_port_conflict`, `io_unsupported`,
+`agent_port_conflict`, `io_unsupported`,
 `invalid_path`, `resume_secret_on_create`; `401 session_auth_required`,
 `invalid_token`, `invalid_dpop_proof`; `403 identity_required`;
 `404 not_found`, `unknown_app`; `409 session_exists` (with the existing
@@ -231,14 +231,14 @@ rather than downgraded — `isatty()` is observable to the application.
 
 ## Workload tokens
 
-`RUNNER_APPS` is the catalog of co-resident agents (`features.agents`). An entry
-may declare `tokenEnv`: for every workload created with that agent — a create,
+The co-resident agent (`AGENT_*`, advertised as `features.agents`) may set
+`AGENT_TOKEN_ENV`: for every workload created with that agent — a create,
 a resume, an agent change — core mints a token (the session-id generator at 32
 characters), injects it into the agent's operator env under `tokenEnv`, so no
 other container sees it, and reports it as `RunnerEndpoint.token` on
 `status.agent`. The store never holds it; an adopted workload's token is read
-back by the backend. A `tokenEnv` the entry's own `env` also sets is a
-`RunnerConfigError` at catalog load. Core reports it, not the backend, so no
+back by the backend. An `AGENT_TOKEN_ENV` that `AGENT_ENV` also sets is a
+`RunnerConfigError` at boot. Core reports it, not the backend, so no
 backend can publish an endpoint without the token its workload holds.
 
 ## The session store

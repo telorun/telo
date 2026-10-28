@@ -1,4 +1,4 @@
-import type { RunnerCapabilities, SessionConfig } from "@telorun/runner-core";
+import type { RunnerAgent, RunnerCapabilities, SessionConfig } from "@telorun/runner-core";
 
 /**
  * What `telo runner` says about itself on `GET /v1/capabilities`.
@@ -14,11 +14,11 @@ import type { RunnerCapabilities, SessionConfig } from "@telorun/runner-core";
  * nothing.
  *
  * `teloVersions` is advertised because an application may name the telo it runs
- * on: this one as itself, any other as that release's own binary. No agent
- * catalog is passed to the server, so `features.agents` is absent: this runner
- * runs no co-resident agent.
+ * on: this one as itself, any other as that release's own binary.
+ * `features.agents` names the co-resident agent when the operator configured
+ * one (`AGENT_MODULE_REF`), and is absent otherwise.
  */
-export function localRunnerCapabilities(): RunnerCapabilities {
+export function localRunnerCapabilities(agent?: RunnerAgent): RunnerCapabilities {
   return {
     displayName: "Local (telo CLI)",
     description:
@@ -39,6 +39,7 @@ export function localRunnerCapabilities(): RunnerCapabilities {
       io: ["streams"],
       ports: true,
       teloVersions: true,
+      ...(agent ? { agents: [agent.name] } : {}),
     },
   };
 }
