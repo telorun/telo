@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 import { createRequire } from "module";
 import * as os from "os";
 import * as path from "path";
+import { pathToFileURL } from "url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Loader, defaultSources } from "@telorun/analyzer";
 import {
@@ -133,6 +134,21 @@ describe("LocalManifestCacheSource.read", () => {
     expect(text).toBe(expected);
     expect(canonical.startsWith("file://")).toBe(true);
     expect(canonical.endsWith("/oci/ghcr.io/telorun/run/0.2.4/telo.yaml")).toBe(true);
+  });
+
+  it("serves a nested module from the mirror of its artifact's manifest layer, a directory meaning its telo.yaml", async () => {
+    const digest = `sha256:${"ab".repeat(32)}`;
+    const mirror = path.join(workdir, ".telo/manifests/oci/ghcr.io/telorun/agent", digest.replace(":", "-"));
+    await fs.mkdir(path.join(mirror, "chat"), { recursive: true });
+    await fs.writeFile(path.join(mirror, "chat", "telo.yaml"), "kind: Telo.Library\nmetadata:\n  name: Chat\n");
+    await fs.writeFile(path.join(mirror, "ordering.yaml"), "kind: Telo.Library\nmetadata:\n  name: Ordering\n");
+
+    const source = new LocalManifestCacheSource(workdir);
+    const chat = await source.read(`oci://ghcr.io/telorun/agent@${digest}/chat`);
+    const ordering = await source.read(`oci://ghcr.io/telorun/agent@${digest}/ordering.yaml`);
+
+    expect(chat.source).toBe(pathToFileURL(path.join(mirror, "chat", "telo.yaml")).href);
+    expect(ordering.source).toBe(pathToFileURL(path.join(mirror, "ordering.yaml")).href);
   });
 });
 

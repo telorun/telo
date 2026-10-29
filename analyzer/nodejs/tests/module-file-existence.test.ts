@@ -176,6 +176,30 @@ describe("INCLUDE_FILE_NOT_FOUND at load", () => {
     expect(graph.modules.has("https://registry.example/chat/telo.yaml")).toBe(true);
     expect(graph.moduleFileDiagnostics).toEqual([]);
   });
+
+  it("leaves a module shipped inside an artifact to its layers, though a path import names it and a file serves it", async () => {
+    const nested = `oci://reg.example/acme/agent@sha256:${"ab".repeat(32)}/chat`;
+    const files = {
+      "/app/telo.yaml": importing("./chat"),
+      // A manifest cache serves the nested module's copy as a file.
+      [nested]: withPrompt("./primer.md"),
+    };
+    const base = source(files, []);
+    const fromCache: ManifestSource = {
+      ...base,
+      async read(url) {
+        const { text } = await base.read(url);
+        return { text, source: url === nested ? "/cache/agent/chat/telo.yaml" : url };
+      },
+      async resolveRelativeImport(fromSource, relative) {
+        return fromSource === "/app/telo.yaml" && relative === "./chat" ? nested : undefined;
+      },
+    };
+    const graph = await new Loader([fromCache]).loadGraph("/app/telo.yaml", { desugarImports: true });
+    expect(graph.errors).toEqual([]);
+    expect(graph.modules.get("/cache/agent/chat/telo.yaml")?.owner.requestedUrl).toBe(nested);
+    expect(graph.moduleFileDiagnostics).toEqual([]);
+  });
 });
 
 describe("what a missing file's directory says about it", () => {

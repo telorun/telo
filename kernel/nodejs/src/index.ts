@@ -12,6 +12,12 @@ export {
   resolveEntryDir,
   writeManifestCache,
 } from "./manifest-sources/local-manifest-cache-source.js";
+export {
+  ORIGINS_FILE,
+  originKey,
+  readOriginDigests,
+  writeOriginDigests,
+} from "./manifest-sources/origin-digests.js";
 export { MemorySource } from "./manifest-sources/memory-source.js";
 export { WORKSPACE_FILENAME, findWorkspaceRoot, realPath } from "./workspace-marker.js";
 export type { Transport } from "./transports/transport.js";
@@ -60,6 +66,7 @@ export {
   ModuleArtifact,
   moduleArtifactFor,
   moduleDirectoryFor,
+  moduleDirectoriesOf,
   hostPlatformTarget,
   NODE_HOSTED_FORMATS,
   type MaterializedLayer,
@@ -89,6 +96,7 @@ export {
 export type {
   PayloadLayer,
   PublishBundle,
+  PublishBundleNested,
   PublishResult,
   PublishOptions,
 } from "./transports/transport.js";

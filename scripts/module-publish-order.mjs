@@ -23,7 +23,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // Areas whose modules are importable libraries, published as OCI module
 // artifacts. Applications are released as container images, except the authoring
 // agent, which is also published as an artifact so a runner can name it with
-// `AGENT_MODULE_REF`; its chat library rides beneath it.
+// `AGENT_MODULE_REF`; its chat library ships inside that artifact.
 const IMPORTABLE_AREAS = ["modules/", "blueprints/", "apps/authoring-agent"];
 
 function releaseOrder() {

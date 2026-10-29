@@ -289,6 +289,34 @@ Two of the release system's invariants are enforced at publish:
   bytes other than the source the manifest names. On this path a host without
   esbuild is a hard failure, not a fallthrough.
 
+## Libraries inside a module's directory
+
+A library whose manifest lies inside the directory of the module being published
+(`./chat` holding a `telo.yaml`, or `./ordering.yaml` beside it) ships **inside that
+module's artifact**, not as an artifact of its own. "Inside" is decided at publish
+from paths on disk, against the module named on the `telo publish` command line —
+so a nested library importing another library elsewhere under the same directory
+embeds it too — and no new manifest key marks it.
+
+- The published import stays relative and pinned: `source: ./chat#sha256-<hash>`,
+  the hash of the nested library's own published `telo.yaml`. Its manifest rides in
+  the module's manifest layer at its path (`chat/telo.yaml`, `ordering.yaml`).
+- The nested library keeps its own `layers:` index: its controllers, library entry
+  points, assets and `LICENSE` are layers of its own, pushed into the module's
+  repository and listed in the module's OCI manifest.
+- A nested directory belongs to its library: the module's `files:` / `assets:`
+  patterns do not select files under it.
+- A nested library needs no `metadata.version`.
+- An import leaving the module's directory publishes exactly as before, as a
+  separate artifact at `<destination>/<path>@<version>#<pin>`.
+
+Two refusals follow. `telo publish` refuses (`import_nested`) a module importing a
+library that lies inside *another* module's directory — it has no artifact of its
+own; move the library out of that directory to share it. `telo release` refuses a
+workspace module whose directory lies inside another workspace module that imports
+it, naming the workspace entry to drop. Changes to a nested library move the
+enclosing module's digest and version.
+
 ## Staged files
 
 A file a `sources:` entry stages is digested from its **pin**, not from disk, by

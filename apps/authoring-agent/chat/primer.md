@@ -3895,7 +3895,10 @@ with studio, not a preference.
   its application's directory, named for its area in kebab-case — never a
   directory of its own (`apps/my-app/ordering/telo.yaml`), and never
   `apps/<library-slug>/telo.yaml` beside the app, which reads as a second
-  application. Its `metadata.name` does not move it.
+  application. Its `metadata.name` does not move it. A library inside its
+  application's directory ships inside that application's published artifact;
+  a library meant for other applications lives outside every application's
+  directory.
 
   Split by domain or feature, not by kind — a library owns one area of
   behaviour end to end and `exports:` what the app wires. This is what makes

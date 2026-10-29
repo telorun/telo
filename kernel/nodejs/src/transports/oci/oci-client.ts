@@ -31,6 +31,9 @@ export const TELO_PAYLOAD_LAYER_MEDIA_TYPE = "application/vnd.telo.module.layer.
 
 export const TELO_LAYER_ROLE_ANNOTATION = "run.telo.layer.role";
 export const TELO_LAYER_SELECTOR_ANNOTATION = "run.telo.layer.selector";
+/** On a nested module's payload layer: the manifest path, relative to the
+ *  artifact root, of the module whose `layers:` index lists it. */
+export const TELO_LAYER_MODULE_ANNOTATION = "run.telo.layer.module";
 
 export const OCI_MANIFEST_MEDIA_TYPE = "application/vnd.oci.image.manifest.v1+json";
 export const OCI_EMPTY_CONFIG_MEDIA_TYPE = "application/vnd.oci.empty.v1+json";
@@ -196,6 +199,14 @@ export class OciClient {
   }
 
   async pullManifest(reference: string): Promise<OciManifest> {
+    return (await this.pullManifestDigested(reference)).manifest;
+  }
+
+  /** The OCI manifest `reference` resolves to, with its content digest — the
+   *  SHA-256 of the exact bytes served, which is what a digest reference to it
+   *  names. Pulled in one request, so the digest is of the manifest returned
+   *  even while a tag is being moved. */
+  async pullManifestDigested(reference: string): Promise<{ manifest: OciManifest; digest: string }> {
     const res = await this.authedFetch(
       `${this.base()}/manifests/${reference}`,
       { headers: { accept: MANIFEST_ACCEPT } },
@@ -206,7 +217,11 @@ export class OciClient {
         `OCI pull manifest ${this.repo}:${reference} on ${this.host} failed: ${res.status} ${res.statusText}`,
       );
     }
-    return (await res.json()) as OciManifest;
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return {
+      manifest: JSON.parse(new TextDecoder().decode(bytes)) as OciManifest,
+      digest: `sha256:${sha256Hex(bytes)}`,
+    };
   }
 
   async pullBlob(digest: string): Promise<Buffer> {

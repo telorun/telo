@@ -10,6 +10,7 @@ import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 import { LocalManifestCacheSource } from "../src/manifest-sources/local-manifest-cache-source.js";
 import { RESOURCE_CREATE_COMPLETED } from "../src/resource-timing.js";
 import {
+  blobDigest,
   OciClient,
   TELO_MANIFEST_LAYER_MEDIA_TYPE,
   type OciManifest,
@@ -42,14 +43,17 @@ beforeEach(async () => {
   workdir = await fs.mkdtemp(path.join(os.tmpdir(), "telo-pinned-root-"));
   pin = `sha256-${await sha256Base64Url(new TextEncoder().encode(APP))}`;
   const layer = await makeTarGz([{ name: "telo.yaml", content: APP }]);
-  const digest = `sha256:${"1".repeat(64)}`;
+  const digest = blobDigest(layer);
   const manifest: OciManifest = {
     schemaVersion: 2,
     mediaType: "application/vnd.oci.image.manifest.v1+json",
     config: { mediaType: "application/vnd.oci.empty.v1+json", digest, size: 2 },
     layers: [{ mediaType: TELO_MANIFEST_LAYER_MEDIA_TYPE, digest, size: layer.length }],
   };
-  vi.spyOn(OciClient.prototype, "pullManifest").mockResolvedValue(manifest);
+  vi.spyOn(OciClient.prototype, "pullManifestDigested").mockResolvedValue({
+    manifest,
+    digest: `sha256:${"1".repeat(64)}`,
+  });
   vi.spyOn(OciClient.prototype, "pullBlob").mockResolvedValue(layer);
 });
 
@@ -103,6 +107,6 @@ describe("a pinned oci:// root", () => {
       `Integrity check failed for ${REF}: expected ${TAMPERED}, got ${pin}`,
     );
     expect(created).toEqual([]);
-    expect(OciClient.prototype.pullManifest).not.toHaveBeenCalled();
+    expect(OciClient.prototype.pullManifestDigested).not.toHaveBeenCalled();
   });
 });

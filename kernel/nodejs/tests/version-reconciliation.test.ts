@@ -54,7 +54,7 @@ describe("kernel version reconciliation", () => {
     // The runtime seam: the import-controller re-resolves `sub`'s lower-version
     // import through `kernel.resolveImportUrl`, which must land on the winner so
     // it loads the same module the analyzer registered — not a colliding copy.
-    expect(kernel.resolveImportUrl("memory://sub/telo.yaml", "memory://shared@0.1.0")).toBe(
+    expect(await kernel.resolveImportUrl("memory://sub/telo.yaml", "memory://shared@0.1.0")).toBe(
       "memory://shared@0.2.0/telo.yaml",
     );
 

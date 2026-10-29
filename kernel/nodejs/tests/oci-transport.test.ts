@@ -15,108 +15,7 @@ import {
 import { makeTarGz } from "../src/bundle/tar.js";
 import { computeFilesIntegrity, injectLayerIndex } from "../src/bundle/files-integrity.js";
 import { readOwnerManifest } from "../src/bundle/module-manifest.js";
-
-async function toBytes(body: unknown): Promise<Buffer> {
-  if (!body) return Buffer.alloc(0);
-  if (typeof body === "string") return Buffer.from(body);
-  if (body instanceof Uint8Array) return Buffer.from(body);
-  if (body instanceof ArrayBuffer) return Buffer.from(body);
-  return Buffer.from(String(body));
-}
-
-function json(obj: unknown, status = 200): Response {
-  return new Response(JSON.stringify(obj), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-/** A stateful in-memory OCI distribution registry as a `fetch` implementation.
- *  `requireAuth` gates every /v2 route behind a bearer token to exercise the
- *  `WWW-Authenticate` handshake. */
-function mockRegistry(opts: { requireAuth?: boolean } = {}) {
-  const blobs = new Map<string, Buffer>();
-  const manifests = new Map<string, string>(); // `${repo}|${ref}` → json
-  const uploads = new Map<string, string>();
-  let uploadSeq = 0;
-  let tokenRequests = 0;
-
-  const impl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = new URL(String(input));
-    const method = (init?.method ?? "GET").toUpperCase();
-    const p = url.pathname;
-
-    if (p === "/token") {
-      tokenRequests++;
-      return json({ token: "test-token" });
-    }
-
-    if (opts.requireAuth && p.startsWith("/v2/")) {
-      const auth = new Headers(init?.headers).get("authorization");
-      if (auth !== "Bearer test-token") {
-        return new Response(null, {
-          status: 401,
-          headers: {
-            "www-authenticate": `Bearer realm="https://${url.host}/token",service="reg.test",scope="repository:x:pull,push"`,
-          },
-        });
-      }
-    }
-
-    let m: RegExpMatchArray | null;
-    if ((m = p.match(/^\/v2\/(.+)\/blobs\/uploads\/$/)) && method === "POST") {
-      const id = `u${uploadSeq++}`;
-      uploads.set(id, m[1]);
-      return new Response(null, {
-        status: 202,
-        headers: { location: `https://${url.host}/upload/${id}` },
-      });
-    }
-    if ((m = p.match(/^\/upload\/(.+)$/)) && method === "PUT") {
-      const digest = url.searchParams.get("digest")!;
-      blobs.set(digest, await toBytes(init?.body));
-      return new Response(null, { status: 201 });
-    }
-    if ((m = p.match(/^\/v2\/(.+)\/blobs\/(.+)$/))) {
-      const digest = m[2];
-      if (method === "HEAD") {
-        return new Response(null, { status: blobs.has(digest) ? 200 : 404 });
-      }
-      const b = blobs.get(digest);
-      return b ? new Response(b, { status: 200 }) : new Response(null, { status: 404 });
-    }
-    if ((m = p.match(/^\/v2\/(.+)\/manifests\/(.+)$/))) {
-      const key = `${m[1]}|${m[2]}`;
-      if (method === "PUT") {
-        manifests.set(key, (await toBytes(init?.body)).toString("utf-8"));
-        return new Response(null, { status: 201 });
-      }
-      const man = manifests.get(key);
-      if (!man) return new Response(null, { status: 404 });
-      const headers = {
-        "content-type": "application/json",
-        "docker-content-digest": `sha256:${createHash("sha256").update(man).digest("hex")}`,
-      };
-      return method === "HEAD"
-        ? new Response(null, { status: 200, headers })
-        : new Response(man, { status: 200, headers });
-    }
-    if ((m = p.match(/^\/v2\/(.+)\/tags\/list$/))) {
-      const repo = m[1];
-      const tags = [...manifests.keys()]
-        .filter((k) => k.startsWith(`${repo}|`))
-        .map((k) => k.split("|")[1]);
-      return json({ tags });
-    }
-    return new Response("not found", { status: 404 });
-  };
-
-  return {
-    impl,
-    tokenRequests: () => tokenRequests,
-    manifestJson: (repo: string, ref: string) => JSON.parse(manifests.get(`${repo}|${ref}`) ?? "{}"),
-  };
-}
+import { mockRegistry } from "./mock-oci-registry.js";
 
 const MANIFEST =
   "kind: Telo.Application\nmetadata:\n  name: s3\n  namespace: aws\n  version: 1.2.0\n";
@@ -347,6 +246,37 @@ describe("OciTransport round-trip against a mock registry", () => {
     // own file, so the napi binary is never transferred.
     const js = await t.fetchLayer("oci://reg.test/aws/telo-s3@1.2.0", index[0].blob);
     expect(js.map((f) => f.name)).toEqual(["nodejs/c.mjs"]);
+  });
+
+  it("ships a nested library's manifest in the manifest layer and its layers beside the root's", async () => {
+    process.env.DOCKER_CONFIG = "/nonexistent/telo-oci-test";
+    const reg = mockRegistry();
+    vi.spyOn(globalThis, "fetch").mockImplementation(reg.impl);
+    const t = new OciTransport();
+    const chatLayers: PayloadLayer[] = [
+      { role: "common", files: [{ name: "prompt.md", content: Buffer.from("be helpful") }] },
+    ];
+    const chat = await bundleFor("kind: Telo.Library\nmetadata:\n  name: Chat\n", chatLayers);
+
+    await t.publish("oci://reg.test/aws/telo-s3", {
+      manifest: MANIFEST,
+      layers: [],
+      nested: [{ path: "chat/telo.yaml", manifest: chat.manifest, layers: chatLayers }],
+    });
+
+    const ociManifest = reg.manifestJson("aws/telo-s3", "1.2.0");
+    expect(ociManifest.layers).toHaveLength(2);
+    expect(ociManifest.layers[1].annotations["run.telo.layer.module"]).toBe("chat/telo.yaml");
+
+    const manifestLayer = await t.fetchLayer(
+      "oci://reg.test/aws/telo-s3@1.2.0",
+      ociManifest.layers[0].digest,
+    );
+    expect(manifestLayer.map((f) => f.name)).toEqual(["telo.yaml", "chat/telo.yaml"]);
+
+    const index = readOwnerManifest(chat.manifest).layers!;
+    const prompt = await t.fetchLayer("oci://reg.test/aws/telo-s3@1.2.0", index[0].blob);
+    expect(prompt.map((f) => f.name)).toEqual(["prompt.md"]);
   });
 
   // Every module published before layers existed is one blob carrying telo.yaml

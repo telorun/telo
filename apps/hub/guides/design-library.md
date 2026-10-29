@@ -4,7 +4,9 @@ A `Telo.Library` is Telo's unit of reuse: an importable manifest with its own
 scope, its own input contract (`variables`, `secrets`, `resources`) and an
 explicit list of what importers may see (`exports`). It is the same shape
 whether it sits in a sibling directory and is imported by relative path, or is
-published and imported by ref. This guide is about the design decisions — what
+published and imported by ref. A library inside an application's (or another
+library's) directory is private to it and ships inside its published artifact;
+one meant for other modules lives outside it. This guide is about the design decisions — what
 to export, how to make a kind, what the importer must supply — not about the
 field grammar.
 

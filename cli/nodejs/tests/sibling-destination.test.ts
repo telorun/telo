@@ -43,7 +43,9 @@ function writeModule(
   return file;
 }
 
-const ROOT_DESTINATION = "oci://registry.example/acme/modules/libs/reports/billing";
+// Siblings below are OUTSIDE the root's directory: a library inside it ships in the
+// root's artifact and has no address of its own (see nested-libraries.test.ts).
+const ROOT_DESTINATION = "oci://registry.example/acme/modules/libs/reports/billing-app";
 
 describe("sibling destinations", () => {
   it("publishes a sibling imported in file form at its directory's address", async () => {
@@ -51,8 +53,8 @@ describe("sibling destinations", () => {
     writeModule("libs/reports/billing/timesheets/telo.yaml", "Telo.Library", "Timesheets", {
       Google: "../../../google-workspace/telo.yaml",
     });
-    const root = writeModule("libs/reports/billing/telo.yaml", "Telo.Application", "Billing", {
-      Timesheets: "./timesheets/telo.yaml",
+    const root = writeModule("libs/reports/billing-app/telo.yaml", "Telo.Application", "Billing", {
+      Timesheets: "../billing/timesheets/telo.yaml",
     });
 
     const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workdir, ".telo") });
@@ -62,7 +64,12 @@ describe("sibling destinations", () => {
       "oci://registry.example/acme/modules/libs/reports/billing/timesheets@1.0.0",
     ]);
     const timesheets = path.join(workdir, "libs/reports/billing/timesheets/telo.yaml");
-    expect(await builder.relativeImportsOf(timesheets, `${ROOT_DESTINATION}/timesheets`)).toEqual([
+    expect(
+      await builder.relativeImportsOf(
+        timesheets,
+        "oci://registry.example/acme/modules/libs/reports/billing/timesheets",
+      ),
+    ).toEqual([
       {
         manifestPath: path.join(workdir, "libs/google-workspace/telo.yaml"),
         ref: "oci://registry.example/acme/modules/libs/google-workspace",
@@ -78,13 +85,13 @@ describe("sibling destinations", () => {
     writeModule("libs/shared/telo.yaml", "Telo.Library", "Shared");
     writeModule("app/a/telo.yaml", "Telo.Library", "A", { Shared: "../../libs/shared/telo.yaml" });
     writeModule("app/b/telo.yaml", "Telo.Library", "B", { Shared: "../../libs/shared" });
-    const root = writeModule("app/telo.yaml", "Telo.Application", "App", {
-      A: "./a/telo.yaml",
-      B: "./b",
+    const root = writeModule("main/telo.yaml", "Telo.Application", "App", {
+      A: "../app/a/telo.yaml",
+      B: "../app/b",
     });
 
     const builder = new ModulePayloadBuilder({ cacheRoot: path.join(workdir, ".telo") });
-    const payload = await builder.payload(root, "oci://registry.example/acme/app");
+    const payload = await builder.payload(root, "oci://registry.example/acme/main");
 
     expect(payload.relativeImports.map((entry) => entry.ref)).toEqual([
       "oci://registry.example/acme/app/a@1.0.0",
@@ -95,11 +102,11 @@ describe("sibling destinations", () => {
   it("reports the same refs for publish order as the manifest carries, in both forms", async () => {
     writeModule("app/a/telo.yaml", "Telo.Library", "A");
     writeModule("app/b/telo.yaml", "Telo.Library", "B");
-    const root = writeModule("app/telo.yaml", "Telo.Application", "App", {
-      A: "./a/telo.yaml",
-      B: "./b",
+    const root = writeModule("main/telo.yaml", "Telo.Application", "App", {
+      A: "../app/a/telo.yaml",
+      B: "../app/b",
     });
-    const destination = "oci://registry.example/acme/app";
+    const destination = "oci://registry.example/acme/main";
 
     const ordered = await new ModulePayloadBuilder({
       cacheRoot: path.join(workdir, ".telo"),
@@ -120,15 +127,15 @@ describe("sibling destinations", () => {
     writeModule("lib/other.yaml", "Telo.Library", "Other");
     writeModule("app/schema.yaml", "Telo.Library", "Schema");
     writeModule("app/example/app.yaml", "Telo.Library", "Example");
-    const root = writeModule("app/telo.yaml", "Telo.Application", "App", {
-      Other: "../lib/other.yaml",
-      Schema: "./schema.yaml",
-      Example: "./example/app.yaml",
+    const root = writeModule("app/main/telo.yaml", "Telo.Application", "App", {
+      Other: "../../lib/other.yaml",
+      Schema: "../schema.yaml",
+      Example: "../example/app.yaml",
     });
 
     const payload = await new ModulePayloadBuilder({
       cacheRoot: path.join(workdir, ".telo"),
-    }).payload(root, "oci://registry.example/acme/app");
+    }).payload(root, "oci://registry.example/acme/app/main");
 
     expect(payload.relativeImports.map((entry) => entry.ref)).toEqual([
       "oci://registry.example/acme/lib/other@1.0.0",

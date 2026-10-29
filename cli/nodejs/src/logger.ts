@@ -1,5 +1,5 @@
 import type { AnalysisDiagnostic, DiagnosticFix, LoadedGraph } from "@telorun/analyzer";
-import { DiagnosticSeverity, diagnosticFix, locateDiagnostic } from "@telorun/analyzer";
+import { DiagnosticSeverity, describeModuleSource, diagnosticFix, locateDiagnostic } from "@telorun/analyzer";
 import {
   describeBlockedGroup,
   groupBlockedResources,
@@ -54,8 +54,12 @@ function resolveLocationParts(
   const located = locateDiagnostic(graph, d);
   if (!located) return undefined;
   // 1-based for display; the analyzer's own range is 0-based.
+  // A module shipped inside another's artifact is named by its parent as
+  // written, never by the digest identity it was loaded under.
+  const source = located.file ?? fallbackSource;
+  const described = describeModuleSource(graph, source);
   return {
-    file: displaySourcePath(located.file ?? fallbackSource),
+    file: described !== source ? described : displaySourcePath(source),
     line: located.range.start.line + 1,
     column: located.range.start.character + 1,
   };

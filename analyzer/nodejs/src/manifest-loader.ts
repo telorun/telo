@@ -31,6 +31,7 @@ import {
   type ParsedYaml,
 } from "./parse-loaded-file.js";
 import type { YamlParseCache } from "./yaml-parse-cache.js";
+import { isLocalPathSource } from "./sources/local-path-ref.js";
 import { reconcileModuleVersions } from "./reconcile-module-versions.js";
 import {
   isReservedKindPrefix,
@@ -182,7 +183,7 @@ export interface ImportRequest {
 
 /** How a host resolves and reads an import target. */
 export interface ImportTargetPort {
-  resolve(fromSource: string, source: string): string;
+  resolve(fromSource: string, source: string): string | Promise<string>;
   load(resolvedUrl: string): Promise<LoadedModule>;
 }
 
@@ -235,7 +236,7 @@ export async function loadImportTarget(
 
   let resolvedUrl: string;
   try {
-    resolvedUrl = port.resolve(fromSource, source);
+    resolvedUrl = await port.resolve(fromSource, source);
   } catch (err) {
     return failure(source, err instanceof Error ? err : new Error(String(err)), undefined, false);
   }
@@ -739,7 +740,7 @@ export class Loader {
     });
     let url: string;
     try {
-      url = this.resolveImportUrl(fromSource, source);
+      url = await this.resolveImportUrl(fromSource, source);
     } catch (err) {
       return failure(source, err);
     }
@@ -781,12 +782,19 @@ export class Loader {
    *  loader used when walking the entry graph — divergent resolution
    *  would silently break optimizations like `canonicalize()`-keyed
    *  cache hits whenever a non-trivial `ManifestSource.resolveRelative`
-   *  is in play. */
-  resolveImportUrl(fromSource: string, importSource: string): string {
-    if (importSource.startsWith(".") || importSource.startsWith("/")) {
-      return this.pick(fromSource).resolveRelative(fromSource, importSource);
+   *  is in play.
+   *
+   *  A source that knows how imports inside `fromSource` resolve answers first
+   *  (`ManifestSource.resolveRelativeImport`): a module read out of an artifact
+   *  may import a module shipped inside that artifact, which no path rule over
+   *  the file's own location can name. */
+  async resolveImportUrl(fromSource: string, importSource: string): Promise<string> {
+    if (!isLocalPathSource(importSource)) return importSource;
+    for (const source of this.sources) {
+      const resolved = await source.resolveRelativeImport?.(fromSource, importSource);
+      if (resolved !== undefined) return resolved;
     }
-    return importSource;
+    return this.pick(fromSource).resolveRelative(fromSource, importSource);
   }
 
   private assertSingleModuleDeclaration(file: LoadedFile): void {

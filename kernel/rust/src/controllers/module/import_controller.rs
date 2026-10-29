@@ -27,10 +27,16 @@ pub struct ImportSpec {
 }
 
 /// Expand an `imports:` entry — a bare source string, or the object form.
+///
+/// `from_artifact` is true when the importing module was loaded from an `oci://`
+/// artifact. A relative import there names a library inside that artifact, which
+/// this kernel does not resolve (nested libraries are unsupported), so it is refused
+/// rather than joined to the artifact's cache path.
 pub fn parse_import(
     alias: &str,
     entry: &Value,
     base_source: &str,
+    from_artifact: bool,
 ) -> Result<ImportSpec, KernelError> {
     let (source, runtime) = match entry {
         Value::String(source) => (source.as_str(), None),
@@ -62,6 +68,15 @@ pub fn parse_import(
         }
     };
 
+    if from_artifact && source.starts_with('.') {
+        return Err(KernelError::new(
+            "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+            format!(
+                "import '{alias}' is a relative path, {source}, declared by a module loaded from an oci:// artifact. Nested libraries (a library shipped inside another artifact) are not supported by this kernel; import it by its own oci:// ref."
+            ),
+        ));
+    }
+
     if source.contains("://") && !is_oci_ref(source) {
         return Err(KernelError::new(
             "ERR_UNSUPPORTED_MANIFEST_FEATURE",
@@ -75,4 +90,25 @@ pub fn parse_import(
         source: resolve_source(base_source, source),
         policy: normalize_runtime(runtime)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn refuses_a_relative_import_inside_an_artifact_and_keeps_local_ones() {
+        let entry = json!("./lib");
+        let Err(refusal) = parse_import("Lib", &entry, "oci://ghcr.io/x/app@1.0.0", true) else {
+            panic!("a relative import inside an artifact must be refused");
+        };
+        assert_eq!(refusal.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE");
+        assert!(refusal.message.contains("Nested libraries"), "{}", refusal.message);
+
+        let Ok(local) = parse_import("Lib", &entry, "/work/app/telo.yaml", false) else {
+            panic!("a relative import from a local module must resolve");
+        };
+        assert_eq!(local.source, "/work/app/lib");
+    }
 }

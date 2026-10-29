@@ -22,6 +22,7 @@ import {
   type JsonDiagnostic,
   type Logger,
 } from "../logger.js";
+import { writeNestedOriginDigests } from "../bundle/nested-origin-digests.js";
 import { probeControllerTools } from "../controller-tool-probe.js";
 import { resolveManifestInput, type ManifestInput } from "../manifest-input.js";
 import { writeOriginDigests } from "../manifest-freshness.js";
@@ -34,7 +35,7 @@ interface CheckOutcome {
   diagnostics: JsonDiagnostic[];
 }
 
-async function checkOne(
+export async function checkOne(
   input: ManifestInput,
   session: CheckSession,
   cacheWrite: boolean,
@@ -81,6 +82,7 @@ async function checkOne(
       try {
         await writeManifestCache(graph, cacheTarget.entryDir, cacheTarget.manifestsDir);
         await writeOriginDigests(cacheTarget.manifestsDir, digests);
+        await writeNestedOriginDigests(graph, cacheTarget.manifestsDir);
       } catch (err) {
         outErrLine(
           `${log.err.warn(`[manifest-cache] write failed: ${err instanceof Error ? err.message : String(err)}`)}\n`,

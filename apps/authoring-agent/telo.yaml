@@ -37,8 +37,11 @@ metadata:
 # 0.123.0: the chat library re-raises with `rethrow: {}`, which 0.122.0 cannot
 # read, so it loses the codes a route here catches (`ERR_TURN_IN_PROGRESS`,
 # `ERR_CONVERSATION_CHANGED`) and refuses those entries.
+#
+# 0.125.0: the chat library ships inside this artifact; an older runtime resolves
+# the published `./chat#sha256-…` to the separate chat artifact, unpinned.
 requires:
-  telo: ">=0.123.0"
+  telo: ">=0.125.0"
 imports:
   Chat:
     source: ./chat

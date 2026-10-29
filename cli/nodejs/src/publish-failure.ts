@@ -11,7 +11,9 @@ export type PublishFailureCode =
   | "import_unpinned"
   | "import_pin_mismatch"
   | "import_unreachable"
-  | "sibling_not_published"  | "version_content_mismatch"
+  | "sibling_not_published"
+  | "import_nested"
+  | "version_content_mismatch"
   | "registry_unavailable"
   | "publish_failed";
 
@@ -19,7 +21,7 @@ export interface PublishFailureReport {
   code: PublishFailureCode;
   message: string;
   /** What the code is about: `{ alias, ref }` for an import, `{ refs }` for
-   *  unpublished siblings, `{ version, publishedIntegrity, builtIntegrity }` for
+   *  unpublished siblings, `{ alias, target, module, enclosing }` for a library imported from inside another module's directory, `{ version, publishedIntegrity, builtIntegrity }` for
    *  a version republished with other content, `{ diagnostics }` for a manifest
    *  that does not pass analysis. */
   details?: Record<string, unknown>;

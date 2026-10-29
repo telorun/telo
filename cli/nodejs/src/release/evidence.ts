@@ -75,6 +75,16 @@ export async function digestPayload(payload: ModulePayload): Promise<LayerDigest
   for (const layer of payload.layers) {
     layers[layerDigestKey(layer.role, layer.selector)] = await computeFilesIntegrity(layer.files);
   }
+  // A library shipping inside the artifact moves the module with it.
+  for (const nested of payload.nested) {
+    layers[`${nested.path}:${MANIFEST_LAYER}`] = await computeFilesIntegrity([
+      { name: MANIFEST_LAYER, content: Buffer.from(nested.manifest, "utf8") },
+    ]);
+    for (const layer of nested.layers) {
+      layers[`${nested.path}:${layerDigestKey(layer.role, layer.selector)}`] =
+        await computeFilesIntegrity(layer.files);
+    }
+  }
   return layers;
 }
 

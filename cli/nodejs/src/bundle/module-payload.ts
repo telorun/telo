@@ -65,10 +65,28 @@ import { assertSidecarNamesFree, buildBrowserClaims } from "./browser-entries.js
 import { assertLayerEntries, pinnedLayerBlob, type BuiltLayer } from "./built-layers.js";
 import { expandAndInlineIncludes, readAssetPatterns, readFilesPatterns } from "./manifest-text.js";
 import { PublishFailure } from "../publish-failure.js";
+import {
+  assertNotNestedElsewhere,
+  isInside,
+  nestedArtifactPath,
+  ownedNestedDirectories,
+  rootScopeOf,
+  type RootScope,
+} from "./nested-libraries.js";
 import { expandDirectoryClaims } from "./module-path-claims.js";
 import { partitionLayers, type Partition } from "./partition-layers.js";
 import { assertWithinModule, MODULE_LICENSE_FILE, selectFiles } from "./select-files.js";
 import { assertNamedFiles, readNativeFiles, readSources, stagedEntriesOf } from "./staged-files.js";
+
+/** A library shipped inside the root's artifact: its published manifest, which
+ *  rides in the root's manifest layer at `path`, and its own layers. */
+export interface NestedModulePayload {
+  /** Manifest path relative to the artifact root, `/`-separated. */
+  readonly path: string;
+  readonly manifest: string;
+  readonly layers: BuiltLayer[];
+  readonly partition: Partition;
+}
 
 export interface ModulePayload {
   /** The `telo.yaml` that ships, byte for byte: canonicalized, pinned, includes
@@ -93,6 +111,13 @@ export interface ModulePayload {
     readonly manifestPath: string;
     readonly ref: string;
   }[];
+  /**
+   * Libraries inside the root's directory that ship in this artifact, nested
+   * ones included, sorted by path. Empty on a nested library's own payload: the
+   * root carries the whole set, and its `relativeImports`, `authoredPins` and
+   * `buildInputs` cover them too.
+   */
+  readonly nested: readonly NestedModulePayload[];
   /**
    * Remote imports carrying an author-written pin, already split into the ref
    * and the hash it claims.
@@ -190,7 +215,7 @@ export class ModulePayloadBuilder {
     const existing = this.payloads.get(key);
     if (existing) return existing;
     this.deriving.add(key);
-    const work = this.buildPayload(key).finally(() => this.deriving.delete(key));
+    const work = this.buildRoot(key).finally(() => this.deriving.delete(key));
     this.payloads.set(key, work);
     return work;
   }
@@ -234,20 +259,33 @@ export class ModulePayloadBuilder {
     const transport = defaultTransportRegistry().forRef(destination);
     if (!transport) throw new Error(`no transport owns publish destination '${destination}'`);
 
+    // The root's own imports and those of the libraries shipping inside it. An
+    // import inside the root is listed too, because `telo release` refuses a
+    // workspace module among them.
     const imports: { manifestPath: string; ref: string }[] = [];
-    for (const entry of importSourceRefs(moduleDoc)) {
-      const source = entry.source;
-      if (!source.startsWith(".") && !source.startsWith("/")) continue;
-      const siblingManifest = resolveSiblingManifest(manifestDir, source);
-      imports.push({
-        manifestPath: siblingManifest,
-        // The destination the import resolves to, unversioned: the question here
-        // is WHERE a sibling publishes, and the version is the pin's business.
-        ref: transport.source.resolveRelative(
-          destination,
-          siblingAddressPath(key, siblingManifest),
-        ),
-      });
+    const collect = (importerDoc: typeof moduleDoc, dir: string): void => {
+      for (const entry of importSourceRefs(importerDoc)) {
+        const source = entry.source;
+        if (!source.startsWith(".") && !source.startsWith("/")) continue;
+        const siblingManifest = resolveSiblingManifest(dir, source);
+        if (imports.some((known) => known.manifestPath === siblingManifest)) continue;
+        imports.push({
+          manifestPath: siblingManifest,
+          // The destination the import resolves to, unversioned: the question here
+          // is WHERE a sibling publishes, and the version is the pin's business.
+          ref: transport.source.resolveRelative(
+            destination,
+            siblingAddressPath(key, siblingManifest),
+          ),
+        });
+      }
+    };
+    collect(moduleDoc, manifestDir);
+    for (const nested of rootScopeOf(key).nested) {
+      const nestedDoc = findModuleDoc(
+        parseAllDocuments(fs.readFileSync(nested, "utf8"), { customTags: defaultCustomTags() }),
+      );
+      if (nestedDoc) collect(nestedDoc, path.dirname(nested));
     }
     return imports;
   }
@@ -319,9 +357,13 @@ export class ModulePayloadBuilder {
    * Canonicalize, pin and inline — every rewrite that stands between the
    * author's `telo.yaml` and the published one.
    */
-  private async transformManifest(manifestPath: string): Promise<{
+  private async transformManifest(manifestPath: string, build: RootBuild): Promise<{
     text: string;
+    /** Imports leaving the root: separate artifacts. */
     relativeImports: { manifestPath: string; ref: string }[];
+    /** Every relative import, nested ones too: the libraries whose specifiers
+     *  this module's bundles must not inline. */
+    siblings: { manifestPath: string }[];
     authoredPins: { alias: string; ref: string; integrity: string }[];
     sources: ModuleSource[];
   }> {
@@ -330,6 +372,7 @@ export class ModulePayloadBuilder {
     const docs = parseAllDocuments(original, { customTags: defaultCustomTags() });
     const moduleDoc = findModuleDoc(docs);
     const relativeImports: { manifestPath: string; ref: string }[] = [];
+    const siblings: { manifestPath: string }[] = [];
     const authoredPins: { alias: string; ref: string; integrity: string }[] = [];
     const sources = readSources(moduleDoc?.toJSON(), manifestDir);
 
@@ -364,6 +407,22 @@ export class ModulePayloadBuilder {
 
         const siblingManifest = resolveSiblingManifest(manifestDir, source);
         const addressPath = siblingAddressPath(manifestPath, siblingManifest);
+        siblings.push({ manifestPath: siblingManifest });
+
+        // Inside the root's directory: the library ships in this artifact. The
+        // import stays relative, pinned to the library's own published manifest.
+        if (siblingManifest !== build.scope.manifestPath && isInside(build.scope.dir, siblingManifest)) {
+          this.claimDestination(
+            siblingManifest,
+            transport.source.resolveRelative(destination, addressPath),
+          );
+          const nested = await this.nestedPayload(siblingManifest, build);
+          const hash = `sha256-${await sha256Base64Url(new TextEncoder().encode(nested.manifest))}`;
+          moduleDoc.setIn(entry.path, `${source}#${hash}`);
+          continue;
+        }
+
+        assertNotNestedElsewhere(manifestPath, siblingManifest, entry.alias, build.scope.dir);
         const version = readSiblingVersion(siblingManifest, source);
         const ref = transport.canonicalizeSiblingRef(destination, addressPath, version);
         relativeImports.push({ manifestPath: siblingManifest, ref });
@@ -391,6 +450,7 @@ export class ModulePayloadBuilder {
     return {
       text: expandAndInlineIncludes(canonical, manifestDir),
       relativeImports,
+      siblings,
       authoredPins,
       sources,
     };
@@ -401,10 +461,77 @@ export class ModulePayloadBuilder {
     return `sha256-${await sha256Base64Url(new TextEncoder().encode(published))}`;
   }
 
-  private async buildPayload(manifestPath: string): Promise<ModulePayload> {
+  /** A root's payload: its own, plus every library shipping inside it. */
+  private async buildRoot(manifestPath: string): Promise<ModulePayload> {
+    const build: RootBuild = {
+      scope: rootScopeOf(manifestPath),
+      modules: new Map(),
+      deriving: new Set(),
+    };
+    const root = await this.buildModule(manifestPath, build);
+    const nested = await Promise.all(
+      [...build.modules].map(async ([nestedManifest, work]) => ({
+        manifestPath: nestedManifest,
+        payload: await work,
+      })),
+    );
+    nested.sort((a, b) => a.manifestPath.localeCompare(b.manifestPath));
+
+    const relativeImports = [...root.relativeImports];
+    const authoredPins = [...root.authoredPins];
+    const buildInputs = new Set(root.buildInputs);
+    for (const { payload } of nested) {
+      for (const entry of payload.relativeImports) {
+        if (!relativeImports.some((known) => known.manifestPath === entry.manifestPath)) {
+          relativeImports.push(entry);
+        }
+      }
+      for (const pin of payload.authoredPins) {
+        if (!authoredPins.some((known) => known.ref === pin.ref && known.integrity === pin.integrity)) {
+          authoredPins.push(pin);
+        }
+      }
+      for (const input of payload.buildInputs) buildInputs.add(input);
+    }
+    return {
+      ...root,
+      relativeImports,
+      authoredPins,
+      buildInputs: [...buildInputs],
+      nested: nested
+        .map(({ manifestPath: nestedManifest, payload }) => ({
+          path: nestedArtifactPath(build.scope, nestedManifest),
+          manifest: payload.manifest,
+          layers: payload.layers,
+          partition: payload.partition,
+        }))
+        .sort((a, b) => a.path.localeCompare(b.path)),
+    };
+  }
+
+  /** A library inside the root, built once per root. */
+  private nestedPayload(manifestPath: string, build: RootBuild): Promise<ModulePayload> {
+    if (build.deriving.has(manifestPath)) {
+      throw new Error(
+        `Import cycle through '${manifestPath}': a module's published manifest embeds a hash of ` +
+          `its dependency's, so a cycle has no fixed point.`,
+      );
+    }
+    const existing = build.modules.get(manifestPath);
+    if (existing) return existing;
+    build.deriving.add(manifestPath);
+    const work = this.buildModule(manifestPath, build).finally(() =>
+      build.deriving.delete(manifestPath),
+    );
+    build.modules.set(manifestPath, work);
+    return work;
+  }
+
+  private async buildModule(manifestPath: string, build: RootBuild): Promise<ModulePayload> {
     const manifestDir = path.dirname(manifestPath);
-    const { text: manifest, relativeImports, authoredPins, sources } =
-      await this.transformManifest(manifestPath);
+    const isRoot = manifestPath === build.scope.manifestPath;
+    const { text: manifest, relativeImports, siblings, authoredPins, sources } =
+      await this.transformManifest(manifestPath, build);
     const fromPins = (this.options.stagedFiles ?? "pins") === "pins";
 
     const native = readNativeFiles(manifest, manifestDir);
@@ -421,15 +548,26 @@ export class ModulePayloadBuilder {
     const notices = sources.flatMap((source) => source.notices);
     // The module's own license ships the same way, so an artifact carries the
     // text its `metadata.license` names.
-    const license = fs.existsSync(path.join(manifestDir, MODULE_LICENSE_FILE))
-      ? [MODULE_LICENSE_FILE]
-      : [];
+    // A library nested as a file shares its directory with another module, whose
+    // license it is, so it ships none of its own.
+    const sharesDirectory = !isRoot && path.basename(manifestPath) !== DEFAULT_MANIFEST_FILENAME;
+    const license =
+      !sharesDirectory && fs.existsSync(path.join(manifestDir, MODULE_LICENSE_FILE))
+        ? [MODULE_LICENSE_FILE]
+        : [];
+    // A nested library's directory belongs to it: this module's patterns leave
+    // it out, so nothing ships twice.
+    const nestedDirs = ownedNestedDirectories(build.scope, manifestDir).map((dir) =>
+      path.relative(manifestDir, dir).split(path.sep).join("/") + "/",
+    );
     // Browser entries are built first: the files a build puts beside an entry
     // — shared chunks, a stylesheet — are part of its layer, and only the build
     // knows them.
     const selected = [
       ...new Set([
-        ...selectFiles(manifestDir, readFilesPatterns(manifest), { links: true }),
+        ...selectFiles(manifestDir, readFilesPatterns(manifest), { links: true }).filter(
+          (rel) => !nestedDirs.some((dir) => rel.startsWith(dir)),
+        ),
         ...license,
         ...notices,
         ...staged.keys(),
@@ -462,7 +600,7 @@ export class ModulePayloadBuilder {
     // this loop just produced WILL be there. Checking first was a latent break:
     // on a checkout with no `.mjs` files, publish refused before the builder ran
     // and told the author to run a build step this design removed.
-    const externals = siblingLibrariesOf(relativeImports);
+    const externals = siblingLibrariesOf(siblings);
     for (const claim of claims) {
       if (claim.role !== "controller" && claim.role !== "library") continue;
       if (!claim.localPath) continue;
@@ -561,9 +699,19 @@ export class ModulePayloadBuilder {
       partition,
       buildInputs: [...buildInputs],
       relativeImports,
+      nested: [],
       authoredPins,
     };
   }
+}
+
+/** What one root's build shares between the libraries shipping inside it. */
+interface RootBuild {
+  readonly scope: RootScope;
+  /** Each nested library's payload, built once per root. */
+  readonly modules: Map<string, Promise<ModulePayload>>;
+  /** Nested manifests in flight, so a cycle is reported rather than awaited. */
+  readonly deriving: Set<string>;
 }
 
 /**

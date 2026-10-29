@@ -1,14 +1,18 @@
 import {
   DEFAULT_MANIFEST_FILENAME,
   IntegrityError,
+  nestedOciRef,
   selectorKey,
   sha256Base64Url,
+  splitIntegrity,
   verifyIntegrity,
   type ArtifactLayer,
   type ArtifactSelector,
   type ManifestCacheCoords,
   type ManifestSource,
+  type ParsedOciRef,
 } from "@telorun/analyzer";
+import { fileURLToPath } from "url";
 import {
   computeFilesIntegrity,
   type PayloadFile,
@@ -16,6 +20,7 @@ import {
 import { readOwnerManifest } from "../../bundle/module-manifest.js";
 import { makeTarGz, readTarGz, toPayloadFiles } from "../../bundle/tar.js";
 import type {
+  CachedModuleView,
   PayloadLayer,
   PublishBundle,
   PublishOptions,
@@ -26,6 +31,7 @@ import {
   blobDigest,
   OciClient,
   OCI_MANIFEST_MEDIA_TYPE,
+  TELO_LAYER_MODULE_ANNOTATION,
   TELO_LAYER_ROLE_ANNOTATION,
   TELO_LEGACY_LAYER_MEDIA_TYPE,
   TELO_LAYER_SELECTOR_ANNOTATION,
@@ -41,6 +47,7 @@ import {
   parseVersionedRef,
   withRefVersion,
 } from "./oci-ref.js";
+import { nestedImportPath, nestedManifestEntry, nestedModuleDirectory } from "./nested-modules.js";
 
 /** The `org.opencontainers.image.*` keys this transport projects from module
  *  `metadata` — one table for the projection and for refusing an author
@@ -67,13 +74,16 @@ function layerKey(role: string, selector?: ArtifactSelector): string {
 /** The `layers:` index the bundle's own manifest declares, keyed for lookup.
  *  Read back out of the text rather than passed alongside it, because the text
  *  is what ships — anything else would be a second copy to keep in agreement. */
-function declaredLayerIndex(bundle: PublishBundle): Map<string, ArtifactLayer> {
-  const declared = readOwnerManifest(bundle.manifest).layers ?? [];
+function declaredLayerIndex(manifest: string): Map<string, ArtifactLayer> {
+  const declared = readOwnerManifest(manifest).layers ?? [];
   return new Map(declared.map((layer) => [layerKey(layer.role, layer.selector), layer]));
 }
 
 /**
- * Pull only the **manifest layer** and return its verified `telo.yaml` text.
+ * Pull only the **manifest layer** and return its verified `telo.yaml` text,
+ * the digest of the OCI manifest the reference resolved to, and every file the
+ * layer carries — the manifests of the modules nested in the artifact among
+ * them, each verified against its own import's pin when it is read.
  *
  * This is the one place the OCI manifest is load-bearing: it is fetched by a
  * reference that is usually a mutable tag and Telo never hashes it, so it is used
@@ -92,9 +102,15 @@ function declaredLayerIndex(bundle: PublishBundle): Map<string, ArtifactLayer> {
  * payload gets a clear "republish" failure at the controller instead, while the
  * npm-backed majority, which ships none, is unaffected.
  */
-async function pullManifestLayer(ref: string, client: OciClient): Promise<string> {
+async function pullManifestLayer(ref: string, client: OciClient): Promise<ManifestLayerRead> {
   const { reference, integrity } = parseOciRef(ref);
-  const manifest = await client.pullManifest(reference);
+  const { manifest, digest } = await client.pullManifestDigested(reference);
+  if (reference.startsWith("sha256:") && digest !== reference) {
+    throw new IntegrityError(
+      `OCI manifest digest mismatch reading ${ref}: requested ${reference}, received ${digest}. ` +
+        `The registry returned a different manifest than the digest names.`,
+    );
+  }
   const layer =
     manifest.layers.find((l) => l.mediaType === TELO_MANIFEST_LAYER_MEDIA_TYPE) ??
     manifest.layers.find((l) => l.mediaType === TELO_LEGACY_LAYER_MEDIA_TYPE) ??
@@ -102,7 +118,25 @@ async function pullManifestLayer(ref: string, client: OciClient): Promise<string
   if (!layer) {
     throw new Error(`OCI artifact ${ref} has no layers`);
   }
-  const entries = await readTarGz(await client.pullBlob(layer.digest));
+  const blob = await client.pullBlob(layer.digest);
+  // The manifest layer is what a nested module's manifest is read out of, so
+  // its bytes are held to the descriptor that named them.
+  const received = blobDigest(blob);
+  if (received !== layer.digest) {
+    throw new IntegrityError(
+      `Blob digest mismatch reading the manifest layer of ${ref}: requested ${layer.digest}, ` +
+        `received ${received}. The registry returned different bytes than were addressed.`,
+    );
+  }
+  const entries = await readTarGz(blob);
+  const files = new Map<string, string>();
+  for (const entry of entries) {
+    if ("link" in entry) continue;
+    files.set(
+      entry.name,
+      typeof entry.content === "string" ? entry.content : entry.content.toString("utf-8"),
+    );
+  }
 
   const teloEntry = entries.find((e) => e.name === DEFAULT_MANIFEST_FILENAME);
   if (!teloEntry) {
@@ -123,7 +157,27 @@ async function pullManifestLayer(ref: string, client: OciClient): Promise<string
   if (integrity) {
     await verifyIntegrity(new TextEncoder().encode(manifestText), integrity, ref);
   }
-  return manifestText;
+  return { text: manifestText, digest, files };
+}
+
+/** One read of an artifact's manifest layer: its `telo.yaml`, the OCI manifest
+ *  digest the reference resolved to, and every regular file the layer carries
+ *  — the manifests of the modules shipped inside it among them. */
+interface ManifestLayerRead {
+  text: string;
+  digest: string;
+  files: ManifestLayerFiles;
+}
+
+/** An artifact's manifest layer, path → text. Immutable for a digest. */
+type ManifestLayerFiles = ReadonlyMap<string, string>;
+
+function artifactKey(host: string, repo: string, digest: string): string {
+  return `${host}/${repo}@${digest}`;
+}
+
+function errorText(err: unknown): string {
+  return (err instanceof Error ? err.message : String(err)).replace(/\.$/, "");
 }
 
 /**
@@ -160,16 +214,253 @@ export class OciTransport implements Transport {
    *  outlive the command. */
   private readonly readClients = new Map<string, OciClient>();
 
+  /** Manifest layers by `host/repo@sha256:…`. Content-addressed, so holding one
+   *  for the transport's lifetime can never serve a stale answer. A rejection is
+   *  dropped so the next ask retries. */
+  private readonly manifestLayers = new Map<string, Promise<ManifestLayerFiles>>();
+  /** The same layers once read, for the synchronous questions (cache
+   *  placement, a nested module's directory). */
+  private readonly manifestLayersRead = new Map<string, ManifestLayerFiles>();
+  /** The OCI manifest digest each read by tag was served, by canonical source.
+   *  Overwritten by every read, so a load after a tag moved sees the digest the
+   *  registry serves now. */
+  private readonly servedDigests = new Map<string, string>();
+  /** Digests learnt from the registry for a manifest-cache copy that had no
+   *  recorded one, by cached file — asked once per copy. */
+  private readonly learntDigests = new Map<string, Promise<{ text: string; digest: string }>>();
+  /** The ref an artifact was last requested by as an import root, by artifact —
+   *  how a message names a nested module's parent as written, never by digest. */
+  private readonly parentsWritten = new Map<string, string>();
+
   constructor() {
     this.source = {
       supports: (url) => this.supports(url),
       read: async (url) => {
-        const { host, repo, reference } = parseOciRef(url);
-        const manifest = await pullManifestLayer(url, this.readClient(host, repo));
-        return { text: manifest, source: `${OCI_SCHEME}${host}/${repo}@${reference}` };
+        const parsed = parseOciRef(url);
+        if (parsed.path !== undefined) return this.readNested(parsed);
+        const { host, repo, reference } = parsed;
+        const read = await pullManifestLayer(url, this.readClient(host, repo));
+        const source = `${OCI_SCHEME}${host}/${repo}@${reference}`;
+        this.servedDigests.set(source, read.digest);
+        this.rememberManifestLayer(host, repo, read.digest, read.files);
+        return { text: read.text, source };
       },
       resolveRelative: (base, relative) => this.resolveRelative(base, relative),
+      // Every `oci://` source a load holds was read by this transport; a copy the
+      // manifest cache served is resolved through the cache source instead.
+      resolveRelativeImport: async (fromSource, relative) =>
+        isOciRef(fromSource) ? this.resolveRelativeImport(fromSource, relative) : undefined,
     };
+  }
+
+  /**
+   * Read a nested module's manifest — `oci://host/repo@sha256:<digest>/<path>` —
+   * out of the manifest layer of the artifact the digest names, and verify it
+   * against the import's pin. Reads the manifest layer alone: no payload layer
+   * is fetched to read a manifest, the parent's or the nested module's.
+   */
+  private async readNested(parsed: ParsedOciRef): Promise<{ text: string; source: string }> {
+    const { host, repo, reference: digest, integrity } = parsed;
+    const path = parsed.path!;
+    const files = await this.manifestLayerOf(host, repo, digest);
+    const entry = nestedManifestEntry(path, (e) => files.has(e));
+    const label = this.describeNested(host, repo, digest, path);
+    if (entry === undefined) {
+      throw new Error(
+        `${label}: the artifact's manifest layer carries no module there — neither ` +
+          `'${path}/${DEFAULT_MANIFEST_FILENAME}' nor '${path}'.`,
+      );
+    }
+    const text = files.get(entry)!;
+    if (integrity) await verifyIntegrity(new TextEncoder().encode(text), integrity, label);
+    return { text, source: nestedOciRef({ host, repo, digest }, path) };
+  }
+
+  /** A nested module named by its parent as written beside its path. */
+  private describeNested(host: string, repo: string, digest: string, path: string): string {
+    const parent =
+      this.parentsWritten.get(artifactKey(host, repo, digest)) ??
+      `${OCI_SCHEME}${host}/${repo}@${digest}`;
+    return `${parent}, nested module '${path}'`;
+  }
+
+  private rememberManifestLayer(
+    host: string,
+    repo: string,
+    digest: string,
+    files: ManifestLayerFiles,
+  ): void {
+    const key = artifactKey(host, repo, digest);
+    this.manifestLayersRead.set(key, files);
+    if (!this.manifestLayers.has(key)) this.manifestLayers.set(key, Promise.resolve(files));
+  }
+
+  /** The manifest layer of the artifact `digest` names, pulled by digest when
+   *  this transport has not read it yet. */
+  private manifestLayerOf(host: string, repo: string, digest: string): Promise<ManifestLayerFiles> {
+    const key = artifactKey(host, repo, digest);
+    const known = this.manifestLayers.get(key);
+    if (known) return known;
+    const work = pullManifestLayer(`${OCI_SCHEME}${host}/${repo}@${digest}`, this.readClient(host, repo)).then(
+      (read) => {
+        this.manifestLayersRead.set(key, read.files);
+        return read.files;
+      },
+    );
+    this.manifestLayers.set(key, work);
+    work.catch(() => this.manifestLayers.delete(key));
+    return work;
+  }
+
+  /**
+   * Resolve a relative import declared by the module `ref` names.
+   *
+   * It names a module shipped inside the same artifact when its path stays
+   * inside the artifact root and the artifact's manifest layer carries a module
+   * there; the result is that module's identity,
+   * `oci://<host>/<repo>@sha256:<digest>/<path>`, carrying the import's pin —
+   * built from the digest the artifact resolved to, never a tag. Anything else
+   * resolves to a separate artifact exactly as before nested modules existed,
+   * so an artifact published before them reads unchanged.
+   *
+   * `cached` is the manifest cache's copy when that is where `ref` was served
+   * from: its digest is then the one recorded when it was cached, learnt from
+   * the registry once when none was, and what it carries is answered from the
+   * cache first.
+   */
+  async resolveRelativeImport(
+    ref: string,
+    relative: string,
+    cached?: CachedModuleView,
+  ): Promise<string> {
+    const parsed = parseOciRef(ref);
+    const { host, repo } = parsed;
+    const { base, integrity } = splitIntegrity(relative);
+    const digest = await this.artifactDigest(parsed, cached);
+    const dir =
+      parsed.path === undefined
+        ? ""
+        : cached
+          ? nestedModuleDirectory(parsed.path, cached.file)
+          : await this.nestedDirectoryFromLayer(host, repo, digest, parsed.path);
+    const path = nestedImportPath(dir, base);
+    const carried =
+      path !== null &&
+      (await this.artifactCarries(splitIntegrity(ref).base, parsed, digest, path, cached));
+    if (carried) {
+      if (parsed.path === undefined) {
+        this.parentsWritten.set(artifactKey(host, repo, digest), splitIntegrity(ref).base);
+      }
+      const nested = nestedOciRef({ host, repo, digest }, path);
+      return integrity ? `${nested}#${integrity}` : nested;
+    }
+    return this.resolveRelative(ref, relative);
+  }
+
+  /** The OCI manifest digest of the artifact `parsed` names. */
+  private async artifactDigest(parsed: ParsedOciRef, cached?: CachedModuleView): Promise<string> {
+    if (parsed.reference.startsWith("sha256:")) return parsed.reference;
+    const source = `${OCI_SCHEME}${parsed.host}/${parsed.repo}@${parsed.reference}`;
+    if (!cached) {
+      const served = this.servedDigests.get(source);
+      if (served) return served;
+      const read = await pullManifestLayer(source, this.readClient(parsed.host, parsed.repo));
+      this.servedDigests.set(source, read.digest);
+      this.rememberManifestLayer(parsed.host, parsed.repo, read.digest, read.files);
+      return read.digest;
+    }
+    const recorded = await cached.recordedDigest(source);
+    if (recorded) return recorded;
+    const learnt = await this.learnCachedDigest(source, parsed, cached);
+    if (learnt.text !== cached.text) {
+      throw new Error(
+        `The manifest cache's copy of ${source} (${cached.file}) is not what the registry serves ` +
+          `at that tag now, and nothing recorded which artifact it was cached from, so the modules ` +
+          `shipped inside it cannot be identified. Run \`telo install\` to refresh the cache.`,
+      );
+    }
+    return learnt.digest;
+  }
+
+  /** Ask the registry, once per cached copy, which artifact the tag resolves to. */
+  private learnCachedDigest(
+    source: string,
+    parsed: ParsedOciRef,
+    cached: CachedModuleView,
+  ): Promise<{ text: string; digest: string }> {
+    const known = this.learntDigests.get(cached.file);
+    if (known) return known;
+    const work = pullManifestLayer(source, this.readClient(parsed.host, parsed.repo)).then(
+      (read) => {
+        this.rememberManifestLayer(parsed.host, parsed.repo, read.digest, read.files);
+        return { text: read.text, digest: read.digest };
+      },
+      (err: unknown) => {
+        throw new Error(
+          `${source} was served from the manifest cache (${cached.file}) with no record of the ` +
+            `artifact it was cached from, and the registry could not be asked: ${errorText(err)}. ` +
+            `The modules shipped inside it are identified by that artifact's digest — run ` +
+            `\`telo install\` while the registry is reachable, which records it.`,
+        );
+      },
+    );
+    this.learntDigests.set(cached.file, work);
+    work.catch(() => this.learntDigests.delete(cached.file));
+    return work;
+  }
+
+  private async nestedDirectoryFromLayer(
+    host: string,
+    repo: string,
+    digest: string,
+    path: string,
+  ): Promise<string> {
+    const files = await this.manifestLayerOf(host, repo, digest);
+    const entry = nestedManifestEntry(path, (e) => files.has(e));
+    if (entry === undefined) {
+      throw new Error(`${this.describeNested(host, repo, digest, path)} is not in its artifact's manifest layer.`);
+    }
+    return nestedModuleDirectory(path, entry);
+  }
+
+  /** Whether the artifact `digest` names carries a module at `path`; `from` is
+   *  the module whose import asks, as requested. */
+  private async artifactCarries(
+    from: string,
+    parsed: ParsedOciRef,
+    digest: string,
+    path: string,
+    cached?: CachedModuleView,
+  ): Promise<boolean> {
+    const { host, repo } = parsed;
+    if (cached?.holds(nestedOciRef({ host, repo, digest }, path))) return true;
+    let files: ManifestLayerFiles;
+    try {
+      files = await this.manifestLayerOf(host, repo, digest);
+    } catch (err) {
+      if (!cached) throw err;
+      throw new Error(
+        `Cannot tell whether ${from} ships a module at '${path}': ` +
+          `the manifest cache holds no copy of one, and the manifest layer of ` +
+          `${OCI_SCHEME}${host}/${repo}@${digest} could not be read: ${errorText(err)}. Run ` +
+          `\`telo install\` while the registry is reachable.`,
+      );
+    }
+    return nestedManifestEntry(path, (e) => files.has(e)) !== undefined;
+  }
+
+  nestedModuleDirectory(ref: string, source: string): string | undefined {
+    let parsed: ParsedOciRef;
+    try {
+      parsed = parseOciRef(ref);
+    } catch {
+      return undefined;
+    }
+    if (parsed.path === undefined) return undefined;
+    if (source.startsWith("file://")) return nestedModuleDirectory(parsed.path, fileURLToPath(source));
+    const files = this.manifestLayersRead.get(artifactKey(parsed.host, parsed.repo, parsed.reference));
+    const entry = files && nestedManifestEntry(parsed.path, (e) => files.has(e));
+    return entry === undefined ? undefined : nestedModuleDirectory(parsed.path, entry);
   }
 
   private readClient(host: string, repo: string): OciClient {
@@ -196,6 +487,23 @@ export class OciTransport implements Transport {
     } catch {
       return null;
     }
+    if (parsed.path !== undefined) {
+      // A nested module is cached where its manifest sits in the manifest layer,
+      // under the artifact's digest: a mirror of the layer. Its exact entry is
+      // known once the layer was read; before that the cache resolves the path
+      // as a relative import resolves on disk.
+      const files = this.manifestLayersRead.get(
+        artifactKey(parsed.host, parsed.repo, parsed.reference),
+      );
+      const entry = files && nestedManifestEntry(parsed.path, (e) => files.has(e));
+      return {
+        transport: "oci",
+        host: parsed.host,
+        path: parsed.repo,
+        version: parsed.reference,
+        file: entry ?? parsed.path,
+      };
+    }
     return {
       transport: "oci",
       host: parsed.host,
@@ -204,11 +512,13 @@ export class OciTransport implements Transport {
     };
   }
 
-  /** Resolve a relative import against an `oci://` base, normalizing the repo to
-   *  a directory base so `../lib` under `oci://ghcr.io/aws/my-app` →
-   *  `oci://ghcr.io/aws/lib` (never `oci://ghcr.io/lib`). Non-relative refs pass
-   *  through. The reference/tag is dropped — the caller re-pins from the
-   *  sibling's own version. */
+  /** Resolve a relative path against an `oci://` base as a SEPARATE artifact,
+   *  normalizing the repo to a directory base so `../lib` under
+   *  `oci://ghcr.io/aws/my-app` → `oci://ghcr.io/aws/lib` (never
+   *  `oci://ghcr.io/lib`). Non-relative refs pass through. The reference/tag is
+   *  dropped — the caller re-pins from the sibling's own version. What a module
+   *  loaded from an artifact imports is {@link resolveRelativeImport}'s, which
+   *  falls back to this when the import names no module shipped inside it. */
   resolveRelative(base: string, relative: string): string {
     if (!relative.startsWith(".") && !relative.startsWith("/")) return relative;
     const { host, repo } = parseOciRef(base);
@@ -273,8 +583,11 @@ export class OciTransport implements Transport {
    *  blob per import rather than a full artifact pull, and a corrupt payload
    *  upstream no longer surfaces here as a pinning failure. */
   async manifestHash(ref: string): Promise<string> {
-    const { host, repo } = parseOciRef(ref);
-    const manifest = await pullManifestLayer(ref, this.readClient(host, repo));
+    const parsed = parseOciRef(splitIntegrity(ref).base);
+    const manifest =
+      parsed.path !== undefined
+        ? (await this.readNested(parsed)).text
+        : (await pullManifestLayer(ref, this.readClient(parsed.host, parsed.repo))).text;
     return `sha256-${await sha256Base64Url(new TextEncoder().encode(manifest))}`;
   }
 
@@ -367,40 +680,52 @@ export class OciTransport implements Transport {
     // already claims, which is also the standing test that framing stayed
     // deterministic — a claim nobody can satisfy is a hard failure, not a
     // silently corrected index.
-    const declared = declaredLayerIndex(bundle);
     const payloadDescriptors: OciDescriptor[] = [];
-    for (const layer of bundle.layers) {
-      if (layer.files.length === 0) continue;
-      const key = layerKey(layer.role, layer.selector);
-      const tar = await makeTarGz(layer.files);
-      const blob = await client.pushBlob(tar);
-      const claim = declared.get(key);
-      if (!claim) {
-        throw new Error(
-          `layer '${key}' is being pushed but the manifest's 'layers:' index does not name it. ` +
-            `The index is written by the payload builder before publish, so a layer missing ` +
-            `from it would be unaddressable by any importer.`,
-        );
+    const pushLayers = async (
+      manifestText: string,
+      layers: readonly PayloadLayer[],
+      module?: string,
+    ): Promise<void> => {
+      const declared = declaredLayerIndex(manifestText);
+      for (const layer of layers) {
+        if (layer.files.length === 0) continue;
+        const key = layerKey(layer.role, layer.selector);
+        const owner = module ? `layer '${key}' of nested module '${module}'` : `layer '${key}'`;
+        const tar = await makeTarGz(layer.files);
+        const blob = await client.pushBlob(tar);
+        const claim = declared.get(key);
+        if (!claim) {
+          throw new Error(
+            `${owner} is being pushed but the manifest's 'layers:' index does not name it. ` +
+              `The index is written by the payload builder before publish, so a layer missing ` +
+              `from it would be unaddressable by any importer.`,
+          );
+        }
+        if (claim.blob !== blob) {
+          throw new Error(
+            `${owner} framed to ${blob}, but the manifest's 'layers:' index claims ` +
+              `${claim.blob}. The published telo.yaml is hashed into every dependent's import ` +
+              `pin, so it cannot be corrected here — the archive framing must be a pure ` +
+              `function of the layer's files.`,
+          );
+        }
+        payloadDescriptors.push({
+          mediaType: TELO_PAYLOAD_LAYER_MEDIA_TYPE,
+          digest: blob,
+          size: tar.length,
+          annotations: {
+            [TELO_LAYER_ROLE_ANNOTATION]: layer.role,
+            ...(layer.selector
+              ? { [TELO_LAYER_SELECTOR_ANNOTATION]: selectorKey(layer.selector) }
+              : {}),
+            ...(module ? { [TELO_LAYER_MODULE_ANNOTATION]: module } : {}),
+          },
+        });
       }
-      if (claim.blob !== blob) {
-        throw new Error(
-          `layer '${key}' framed to ${blob}, but the manifest's 'layers:' index claims ` +
-            `${claim.blob}. The published telo.yaml is hashed into every dependent's import ` +
-            `pin, so it cannot be corrected here — the archive framing must be a pure ` +
-            `function of the layer's files.`,
-        );
-      }
-      payloadDescriptors.push({
-        mediaType: TELO_PAYLOAD_LAYER_MEDIA_TYPE,
-        digest: blob,
-        size: tar.length,
-        annotations: {
-          [TELO_LAYER_ROLE_ANNOTATION]: layer.role,
-          ...(layer.selector
-            ? { [TELO_LAYER_SELECTOR_ANNOTATION]: selectorKey(layer.selector) }
-            : {}),
-        },
-      });
+    };
+    await pushLayers(bundle.manifest, bundle.layers);
+    for (const nested of bundle.nested ?? []) {
+      await pushLayers(nested.manifest, nested.layers, nested.path);
     }
 
     // Push telo.yaml as its own layer so a manifest read never has to pull a
@@ -408,6 +733,7 @@ export class OciTransport implements Transport {
     const manifestText = bundle.manifest;
     const manifestTar = await makeTarGz([
       { name: DEFAULT_MANIFEST_FILENAME, content: manifestText },
+      ...(bundle.nested ?? []).map((nested) => ({ name: nested.path, content: nested.manifest })),
     ]);
     const manifestBlob = await client.pushBlob(manifestTar);
 

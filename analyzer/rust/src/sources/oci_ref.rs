@@ -24,6 +24,14 @@ pub struct OciRefError {
     pub message: String,
 }
 
+/// True for a tag spelled like a digest's cache folder (`sha256-<64 hex>`). Such a
+/// tag would share a directory with the digest, so a ref naming one is refused.
+pub fn is_digest_spelled_tag(reference: &str) -> bool {
+    reference.strip_prefix("sha256-").is_some_and(|hex| {
+        hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    })
+}
+
 /// True when `reference` uses the `oci://` scheme (integrity fragment tolerated).
 pub fn is_oci_ref(reference: &str) -> bool {
     split_integrity(reference).base.starts_with(OCI_SCHEME)
@@ -58,6 +66,11 @@ pub fn parse_oci_ref(reference: &str) -> Result<ParsedOciRef, OciRefError> {
     }
     if host.is_empty() || repo.is_empty() || address.is_empty() {
         return Err(invalid("expected oci://host/repo@reference"));
+    }
+    if is_digest_spelled_tag(address) {
+        return Err(invalid(
+            "a tag spelled like a digest is refused; digests are written @sha256:<hex>",
+        ));
     }
     Ok(ParsedOciRef {
         host: host.to_string(),
@@ -94,5 +107,12 @@ mod tests {
         assert_eq!(parse_oci_ref("oci://ghcr.io/aws/telo-s3").unwrap().reference, "latest");
         assert!(is_oci_ref("oci://ghcr.io/x/y@1"));
         assert!(!is_oci_ref("std/console@0.9.0"));
+    }
+
+    #[test]
+    fn refuses_a_tag_spelled_like_a_digest_folder() {
+        let folder = format!("sha256-{}", "a".repeat(64));
+        assert!(parse_oci_ref(&format!("oci://ghcr.io/x/y@{folder}")).is_err());
+        assert!(parse_oci_ref("oci://ghcr.io/x/y@sha256-abc").is_ok());
     }
 }

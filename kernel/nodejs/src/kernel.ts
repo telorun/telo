@@ -51,6 +51,7 @@ import {
   type SourceEntry,
   type StandIns,
   isKindDocument,
+  describeModuleSource,
 } from "@telorun/analyzer";
 import {
   ensureStagedEntry,
@@ -212,7 +213,7 @@ import {
 } from "./module-file-resolution.js";
 import {
   moduleArtifactFor,
-  moduleDirectoryFor,
+  moduleDirectoriesOf,
   type ModuleArtifact,
 } from "./bundle/module-artifact.js";
 import {
@@ -628,8 +629,8 @@ export class Kernel implements IKernel {
    *  `resolveImportSource` no longer second-guesses the loader for
    *  custom `ManifestSource`s — `isImportValidatedAtLoad` etc. only hit
    *  when both sides agree on the canonical URL. */
-  resolveImportUrl(fromSource: string, importSource: string): string {
-    const resolved = this.loader.resolveImportUrl(fromSource, importSource);
+  async resolveImportUrl(fromSource: string, importSource: string): Promise<string> {
+    const resolved = await this.loader.resolveImportUrl(fromSource, importSource);
     // Apply version-reconciliation overrides captured during `load()`: when the
     // entry graph hoisted this module identity to a higher version, redirect the
     // import-controller's independent re-resolution onto the winning source so a
@@ -1088,7 +1089,7 @@ export class Kernel implements IKernel {
         analysisGraph.parseDiagnostics
           .map((d) => {
             const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
-            return filePath ? `${filePath}: ${d.message}` : d.message;
+            return filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message;
           })
           .join("\n"),
         analysisGraph.parseDiagnostics.map(staticDiagnosticToRuntime),
@@ -1118,7 +1119,7 @@ export class Kernel implements IKernel {
         missingFiles
           .map((d) => {
             const filePath = (d.data as { filePath?: string } | undefined)?.filePath;
-            return filePath ? `${filePath}: ${d.message}` : d.message;
+            return filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message;
           })
           .join("\n"),
         missingFiles.map(staticDiagnosticToRuntime),
@@ -1139,7 +1140,7 @@ export class Kernel implements IKernel {
       this.logging
         .kernelLogger()
         .warn(
-          filePath ? `${filePath}: ${d.message}` : d.message,
+          filePath ? `${describeModuleSource(analysisGraph, filePath)}: ${d.message}` : d.message,
           d.code === undefined ? undefined : { "telo.diagnostic.code": d.code },
         );
     }
@@ -2050,20 +2051,13 @@ export class Kernel implements IKernel {
     // once per import edge put dozens of redundant full-YAML parses on the boot
     // path of every standard-library app.
     const owners = new Map<string, OwnerManifest>();
-    const directories = new Map<string, string | undefined>();
+    const directories = moduleDirectoriesOf(graph, entryDir, manifestsDir, legacyDir, transports);
     for (const [, module] of graph.modules) {
       const file = module.owner;
       if (owners.has(file.source)) continue;
       const owner = ownerManifestOf(file.manifests.find((m) => m && isModuleKind(m.kind)));
       owners.set(file.source, owner);
-      const moduleDir = moduleDirectoryFor(
-        file.requestedUrl,
-        file.source,
-        entryDir,
-        manifestsDir,
-        legacyDir,
-      );
-      directories.set(file.source, moduleDir ?? undefined);
+      const moduleDir = directories.get(file.source) ?? null;
       const artifact = moduleArtifactFor({
         pinnedRef: file.requestedUrl,
         layers: owner.layers,

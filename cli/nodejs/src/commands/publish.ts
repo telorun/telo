@@ -23,7 +23,7 @@ import {
 } from "../release/npm-controller-package.js";
 import { pushableLayers, type BuiltLayer } from "../bundle/built-layers.js";
 import { builtinVocabularyPayload } from "../bundle/builtin-vocabulary-payload.js";
-import { ModulePayloadBuilder, type ModulePayload } from "../bundle/module-payload.js";
+import { ModulePayloadBuilder, type ModulePayload, type NestedModulePayload } from "../bundle/module-payload.js";
 import { describePartition, type Partition } from "../bundle/partition-layers.js";
 import { checkPublishedPin, describePinMove, manifestPin } from "../bundle/payload-drift.js";
 import { parseAnnotationFlags } from "../publish-annotations.js";
@@ -675,6 +675,7 @@ async function publishOne(
     dryRun,
     authoredAnnotations,
     log,
+    nested: payload.nested,
     beforePush: (version) => publishControllerPackages(controllers, filePath, version, skipControllers, dryRun, log),
   });
 }
@@ -684,6 +685,8 @@ interface PushOptions {
   dryRun: boolean;
   authoredAnnotations: Readonly<Record<string, string>>;
   log: Logger;
+  /** Libraries shipping inside this artifact. */
+  nested?: readonly NestedModulePayload[];
   /** Runs once the pin gate and the annotations have passed and before anything
    *  is pushed; a refusal it returns ends the publish. */
   beforePush: (version: string | undefined) => Promise<PublishOutcome | undefined>;
@@ -696,7 +699,7 @@ async function pushManifest(
   content: string,
   layers: BuiltLayer[],
   partition: Partition,
-  { dryRun, authoredAnnotations, log, beforePush }: PushOptions,
+  { dryRun, authoredAnnotations, log, beforePush, nested = [] }: PushOptions,
 ): Promise<PublishOutcome> {
   // The pin, not a ledger: a version already published must be republished
   // byte-for-byte or not at all, because every import pinned to it verifies
@@ -750,12 +753,22 @@ async function pushManifest(
 
   if (dryRun) {
     for (const line of describePartition(partition)) stepDry(log, "layer", line);
+    for (const library of nested) {
+      for (const line of describePartition(library.partition)) {
+        stepDry(log, "layer", `${library.path}: ${line}`);
+      }
+    }
     for (const [key, value] of Object.entries(annotations)) stepDry(log, "annotate", `${key}=${value}`);
     stepDry(log, "push", destination);
     return { ok: true, annotations, version, integrity, identical };
   }
 
   for (const line of describePartition(partition)) stepOk(log, "layer", line);
+  for (const library of nested) {
+    for (const line of describePartition(library.partition)) {
+      stepOk(log, "layer", `${library.path}: ${line}`);
+    }
+  }
   for (const [key, value] of Object.entries(annotations)) stepOk(log, "annotate", `${key}=${value}`);
 
   // The transport pushes each layer as its own blob, injects the resulting
@@ -764,7 +777,15 @@ async function pushManifest(
   try {
     result = await defaultTransportRegistry().publish(
       destination,
-      { manifest: content, layers: pushableLayers(layers) },
+      {
+        manifest: content,
+        layers: pushableLayers(layers),
+        nested: nested.map((library) => ({
+          path: library.path,
+          manifest: library.manifest,
+          layers: pushableLayers(library.layers),
+        })),
+      },
       {
         annotations: authoredAnnotations,
         onRetry: ({ reason, attempt, maxAttempts, delayMs }) =>

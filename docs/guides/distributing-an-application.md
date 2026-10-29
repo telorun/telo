@@ -102,7 +102,9 @@ A module that was not published reports why:
 | `import_unpinned` | A remote import carries no integrity pin. | `alias`, `ref` |
 | `import_pin_mismatch` | A pinned import's origin now serves other bytes. | `alias`, `ref` |
 | `import_unreachable` | A pinned import could not be read to verify it. | `alias`, `ref` |
-| `sibling_not_published` | A relatively imported module is not at its published location. | `refs` || `version_content_mismatch` | This `metadata.version` is published with other content. | `version`, `publishedIntegrity`, `builtIntegrity` |
+| `sibling_not_published` | A relatively imported module outside the published module's directory is not at its published location. | `refs` |
+| `import_nested` | A relative import lands inside another module's directory, where the library ships inside that module's artifact. | `alias`, `target`, `module`, `enclosing` |
+| `version_content_mismatch` | This `metadata.version` is published with other content. | `version`, `publishedIntegrity`, `builtIntegrity` |
 | `registry_unavailable` | The registry could not be read or written. | |
 | `publish_failed` | Anything else; `message` says what. | |
 
