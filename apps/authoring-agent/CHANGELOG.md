@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.0 - 2026-10-29
+### Added
+* The chat library now ships inside the agent's artifact instead of as a separate artifact at oci://ghcr.io/telorun/authoring-agent/chat; the agent requires telo 0.125.0 or newer to read it.
+
 ## 0.29.4 - 2026-10-28
 ### Fixed
 * The agent writes a feature library as a plain file beside its application, apps/<app-slug>/<area>.yaml, imported as ./<area>.yaml, rather than in a directory of its own or as apps/<library-slug>/telo.yaml beside the app: the system prompt now states that apps/ holds applications only and that the slug in apps/<slug>/ is the application's.

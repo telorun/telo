@@ -1,4 +1,0 @@
-modules:
-  apps/hub: Fixed
-body: The library design guide says a library inside an application's directory ships
-  inside that application's artifact.

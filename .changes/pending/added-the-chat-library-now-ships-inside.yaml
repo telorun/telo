@@ -1,5 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The chat library now ships inside the agent's artifact instead of as a separate
-  artifact at oci://ghcr.io/telorun/authoring-agent/chat; the agent requires telo
-  0.125.0 or newer to read it.
