@@ -1,5 +1,16 @@
 # @telorun/studio
 
+## 0.33.1
+
+### Patch Changes
+
+- 8a09248: A publication refused because an import names a library inside another module's directory now says so, naming the import and the module, and tells the user to move the library out of that directory to share it.
+- Updated dependencies [8a09248]
+  - @telorun/analyzer@0.125.0
+  - @telorun/ide-support@0.125.0
+  - @telorun/sdk@0.125.0
+  - @telorun/templating@0.125.0
+
 ## 0.33.0
 
 ### Minor Changes
