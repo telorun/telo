@@ -27,6 +27,32 @@ export interface PayloadLayer {
 export interface PublishBundle {
   manifest: string;
   layers: PayloadLayer[];
+  /** Libraries that ship inside this artifact. Each manifest rides in the
+   *  manifest layer at `path` (relative to the artifact root, `/`-separated);
+   *  each library's own payload layers are pushed beside the root's and listed
+   *  in the one OCI manifest, addressed by the library's own `layers:` index. */
+  nested?: PublishBundleNested[];
+}
+
+/** What the manifest cache holds for a module it served, as a transport
+ *  resolving an import inside that module needs it. */
+export interface CachedModuleView {
+  /** The text the cache served for the module. */
+  text: string;
+  /** The file it was served from. */
+  file: string;
+  /** Whether the cache holds a copy of `ref` — a module it can serve with no
+   *  network. */
+  holds(ref: string): boolean;
+  /** The digest recorded for `ref` when its copy was cached
+   *  (`<cacheRoot>/manifests/.origins.json`), if any. */
+  recordedDigest(ref: string): Promise<string | undefined>;
+}
+
+export interface PublishBundleNested {
+  path: string;
+  manifest: string;
+  layers: PayloadLayer[];
 }
 
 export interface PublishResult {
@@ -93,6 +119,24 @@ export interface Transport {
    *  Returns `null` when the ref is not cacheable here (unsupported scheme,
    *  malformed ref, or path-traversal in the ref). */
   cacheCoords(ref: string): ManifestCacheCoords | null;
+
+  /** Resolve a relative import declared by the module `ref` names — the ref it
+   *  was requested as. A transport whose artifacts ship modules inside them
+   *  answers with that module's ref when the import names one, and with the
+   *  separate artifact it names otherwise. `cached` describes the manifest
+   *  cache's copy when the module was served from it rather than by this
+   *  transport. Optional: without it a relative import resolves as a path. */
+  resolveRelativeImport?(
+    ref: string,
+    relative: string,
+    cached?: CachedModuleView,
+  ): Promise<string>;
+
+  /** For a module shipped inside another module's artifact, its directory
+   *  inside that artifact (`""` for the artifact root), given the `source` its
+   *  manifest was read from; `undefined` for any other ref. Where its layers
+   *  extract is that directory within the artifact root's own. Optional. */
+  nestedModuleDirectory?(ref: string, source: string): string | undefined;
 
   /** The versions published for the module `ref` names, newest-first order not
    *  guaranteed (the caller sorts). Returns `null` when the module is not

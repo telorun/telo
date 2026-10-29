@@ -21,6 +21,7 @@ describe("formatDiagnostics", () => {
           {
             owner: {
               source: FILE,
+              requestedUrl: FILE,
               manifests: [{ kind, metadata: { name } }],
               positions: [
                 {
@@ -122,6 +123,7 @@ describe("formatAnalysisDiagnostics — structured payload", () => {
         {
           owner: {
             source: FILE,
+            requestedUrl: FILE,
             manifests: [{ kind: "Run.Sequence", metadata: { name: "seq" } }],
             positions: [
               {

@@ -1,7 +1,6 @@
 kind: Telo.Library
 metadata:
   name: Chat
-  version: 0.0.1
   repository: https://github.com/telorun/telo
   description: |
     The authoring agent's chat backend: an Anthropic-backed Ai.AgentStream with

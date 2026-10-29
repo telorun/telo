@@ -20,6 +20,7 @@ import {
   parsePlatformTarget,
   warmModuleLayers,
 } from "../bundle/warm-layers.js";
+import { writeNestedOriginDigests } from "../bundle/nested-origin-digests.js";
 import { countRootErrors, createLogger, formatDiagnostics, type Logger } from "../logger.js";
 import { outEmit, outErrLine, outLine, output } from "../output.js";
 
@@ -180,6 +181,7 @@ async function installOne(
     const manifestsDir = path.join(cacheRoot, "manifests");
     try {
       const written = await writeManifestCache(graph, entryDir, manifestsDir);
+      await writeNestedOriginDigests(graph, manifestsDir);
       if (written.length > 0) {
         outLine(
           `  ${log.ok("✓")}  cached ${written.length} manifest${written.length !== 1 ? "s" : ""} to ${log.dim(path.relative(process.cwd(), manifestsDir))}`,

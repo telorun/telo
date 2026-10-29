@@ -1,19 +1,13 @@
 import { isOciRef, parseOciRef, type LoadedGraph, type ManifestSource } from "@telorun/analyzer";
-import type { LocalManifestCacheSource } from "@telorun/kernel";
+import { originKey, type LocalManifestCacheSource } from "@telorun/kernel";
 import { defaultTransportRegistry } from "@telorun/kernel/transports";
-import * as fs from "fs/promises";
 import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 
-/** Sits beside `.validated.json` inside `<cacheRoot>/manifests/`. */
-const ORIGINS_FILE = ".origins.json";
-const ORIGINS_VERSION = 1;
-
-interface OriginsRecord {
-  version: number;
-  /** `host/repo@tag` → the OCI manifest digest that produced the cached copy. */
-  digests: Record<string, string>;
-}
+// The `.origins.json` record is the manifest cache's, read by the kernel when a
+// nested module needs its cached parent's digest; this pass reads and writes it
+// through the same functions.
+export { originKey, readOriginDigests, writeOriginDigests } from "@telorun/kernel";
 
 /**
  * True when `ref` names an OCI artifact by a **tag** rather than by content —
@@ -49,13 +43,6 @@ export function isPinnedOciRef(ref: string): boolean {
   } catch {
     return false;
   }
-}
-
-/** Identity under which a mutable ref's origin digest is recorded:
- *  `host/repo@tag`, independent of scheme spelling. */
-export function originKey(ref: string): string {
-  const { host, repo, reference } = parseOciRef(ref);
-  return `${host}/${repo}@${reference}`;
 }
 
 /**
@@ -114,55 +101,10 @@ export class RecordingCacheSource implements ManifestSource {
   resolveRelative(base: string, relative: string): string {
     return this.inner.resolveRelative(base, relative);
   }
-}
 
-/**
- * Read the recorded origin digests for one cache root.
- *
- * A missing, unreadable, or version-mismatched record yields an empty map,
- * which makes every cached mutable ref count as *unverified* and therefore
- * stale. That is the conservative direction — the failure mode is one extra
- * fetch, never serving a manifest whose tag has moved. It is a cache miss in
- * the same sense `LocalManifestCacheSource` treats a failed `stat`, not a
- * suppressed error.
- */
-export async function readOriginDigests(manifestsDir: string): Promise<Map<string, string>> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(path.join(manifestsDir, ORIGINS_FILE), "utf-8");
-  } catch {
-    return new Map();
+  resolveRelativeImport(fromSource: string, relative: string): Promise<string | undefined> {
+    return this.inner.resolveRelativeImport(fromSource, relative);
   }
-  let parsed: OriginsRecord;
-  try {
-    parsed = JSON.parse(raw) as OriginsRecord;
-  } catch {
-    return new Map();
-  }
-  if (parsed?.version !== ORIGINS_VERSION || typeof parsed.digests !== "object") {
-    return new Map();
-  }
-  return new Map(Object.entries(parsed.digests));
-}
-
-/** Persist origin digests, merging over whatever the record already held so a
- *  check of one entry never drops another's. */
-export async function writeOriginDigests(
-  manifestsDir: string,
-  digests: Map<string, string>,
-): Promise<void> {
-  if (digests.size === 0) return;
-  const merged = new Map([...(await readOriginDigests(manifestsDir)), ...digests]);
-  const record: OriginsRecord = {
-    version: ORIGINS_VERSION,
-    digests: Object.fromEntries([...merged].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))),
-  };
-  await fs.mkdir(manifestsDir, { recursive: true });
-  await fs.writeFile(
-    path.join(manifestsDir, ORIGINS_FILE),
-    `${JSON.stringify(record, null, 2)}\n`,
-    "utf-8",
-  );
 }
 
 export interface FreshnessResult {

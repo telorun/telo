@@ -17,7 +17,7 @@ The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**,
 
 **In scope:** the layer model and roles, the selector grammar and its matching
 rule, the `layers:` index shape, addressing and verification, the OCI mapping,
-and materialization semantics.
+materialization semantics, and the modules a module ships inside its artifact.
 
 **Out of scope:** how an author's `files:` / `assets:` patterns are matched (a
 publisher concern), controller loading and the `pkg:` PURL grammar (see the
@@ -34,7 +34,7 @@ Every layer has exactly one **role**:
 
 | Role | Cardinality | Contents |
 | --- | --- | --- |
-| `manifest` | exactly one | `telo.yaml`, and nothing else |
+| `manifest` | exactly one | `telo.yaml`, and the manifests of the modules nested inside the artifact (§6) |
 | `controller` | zero or more | the entry-point files of the controller candidates sharing one selector, plus whatever their sibling declarations claim |
 | `library` | zero or more | the entry point this module's `exports.code:` entry of one selector names — what a *dependent module's* code resolves this module's declared specifier to |
 | `native` | zero or more | the files of every `native:` entry sharing one selector — platform-specific files the runtime does not import as code |
@@ -557,3 +557,94 @@ nothing.
 A module whose assets are never read MUST NOT have its `assets` layer fetched. A
 runtime MUST NOT materialize payload layers as a side effect of reading a manifest:
 static analysis of a module reads its manifest and touches no payload.
+
+## 6. Nested modules
+
+A module may ship other modules inside its artifact: a library whose manifest
+lies inside the publishing module's directory (`chat/telo.yaml`, or a file
+manifest beside the root's, `ordering.yaml`). Such a **nested module** is not an
+artifact of its own. Nothing addresses it by version, and it needs no
+`metadata.version`.
+
+### 6.1 Placement and the pin
+
+- Its manifest rides in the parent's **manifest layer**, at its path relative to
+  the artifact root, beside `telo.yaml`. A runtime reading the parent's manifest
+  layer therefore holds every nested manifest, and reading any of them fetches
+  no payload layer (§5.1).
+- The importing manifest keeps the import relative and pinned:
+  `source: ./chat#sha256-<hash>`, the hash being of the nested module's own
+  published `telo.yaml`. The parent's pin covers the parent's `telo.yaml`, which
+  carries that hash, so the chain of §3.2 extends to every nested manifest:
+  `import pin → telo.yaml → nested pin → nested telo.yaml`.
+- A nested manifest carries its **own `layers:` index** (§3), covering only its
+  own files. Its layers are blobs of the parent's repository, listed in the
+  parent's one OCI manifest beside the parent's own; a runtime addresses them by
+  `blob` digest from the nested index, never from the OCI layer list.
+
+### 6.2 Identity
+
+A nested module's identity is
+
+```
+oci://<host>/<repo>@sha256:<digest>/<path>
+```
+
+where `<digest>` is the OCI manifest digest of the parent **as resolved** and
+`<path>` is the module's path relative to the artifact root, `/`-separated. A
+directory means its `telo.yaml`, otherwise the file — the rule a relative
+import follows on disk; `./chat` and `./chat/telo.yaml` name one module. The
+text after `@sha256:<digest>/` can only be a path, since a digest cannot contain
+`/`. Authors never write this form: a runtime builds it while resolving.
+
+The identity MUST be built from the digest, never from the tag the parent was
+loaded by. The bytes behind a digest cannot change, so a cached nested module
+cannot go stale when a tag moves, while a tag-built one would be served from a
+cache after the tag moved and then fail the new parent's pin.
+
+A parent loaded by digest supplies the digest as written. A parent loaded by
+tag supplies the digest of the OCI manifest the registry served. For a parent
+served from a local manifest cache, the digest is the one recorded when the copy
+was cached (`<cacheRoot>/manifests/.origins.json`, `host/repo@tag` → digest).
+A cached parent with no record MAY be read again from the registry to learn
+it, and MUST then be refused if the registry's `telo.yaml` differs from the
+cached copy; with no registry reachable the load MUST be refused, naming the
+parent and the command that records the digest (`telo install`).
+
+A diagnostic about a nested module SHOULD name its parent as written
+(`oci://ghcr.io/telorun/authoring-agent@0.29.3`) beside the path, so a reader
+never has to look up a digest.
+
+### 6.3 Resolution
+
+A relative import declared in a module loaded from an `oci://` artifact
+resolves to a nested module when its path, resolved against the importing
+module's directory inside the artifact, stays inside the artifact root AND the
+parent's manifest layer carries a module there. Otherwise it resolves to a
+separate artifact exactly as before nested modules existed (`../lib` under
+`oci://h/acme/app` is `oci://h/acme/lib`), so an artifact published before them
+reads unchanged.
+
+The nested manifest MUST be verified against the import's pin before it is
+used; a mismatch is refused as any pin mismatch is. A runtime MAY answer "the
+manifest layer carries it" from a cached copy of the nested manifest under the
+parent's digest, and otherwise reads the manifest layer by digest.
+
+A local manifest cache keeps a nested manifest as a mirror of the manifest
+layer: `oci/<host>/<repo…>/sha256-<hex>/<path in the layer>`. Every
+digest-addressed cache folder, the artifact's own `telo.yaml` included, is
+spelled `sha256-<hex>` because `:` cannot appear in a Windows path. The digest
+is never parsed back out of a path; it is read from the identity or a record. A
+tag spelled `sha256-<64 hex>` would share that folder and is refused (digests
+are written `@sha256:<hex>`).
+
+### 6.4 Materialization
+
+A nested module's directory is its directory inside the parent's materialized
+tree: `<parent module dir>/chat` for `chat/telo.yaml`, the parent's own
+directory for a nested file manifest. Its layers extract there under the rules
+of §5 and §5.1, applied to its own index. Concurrent materialization is
+serialized per directory (§5), which covers a nested file manifest sharing its
+parent's directory. Module-relative resolution — `ctx.resolveModuleFile`,
+`!include-*`, `!module-path` — resolves against that directory, as it does for
+a module on disk.

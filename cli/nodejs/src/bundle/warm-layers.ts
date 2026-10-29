@@ -11,7 +11,7 @@ import {
   defaultTransportRegistry,
   hostPlatformTarget,
   moduleArtifactFor,
-  moduleDirectoryFor,
+  moduleDirectoriesOf,
   readOwnerManifest,
   type ModuleArtifact,
   type OwnerManifest,
@@ -95,6 +95,9 @@ export async function warmModuleLayers(
   const seen = new Set<string>();
   const gaps: LayerGap[] = [];
   let materialized = 0;
+  // A nested module's directory is inside its parent's, not under the cache's
+  // digest folder.
+  const moduleDirectories = moduleDirectoriesOf(graph, entryDir, manifestsDir, undefined, transports);
 
   for (const [, module] of graph.modules as Map<string, LoadedModule>) {
     const file = module.owner;
@@ -105,12 +108,7 @@ export async function warmModuleLayers(
     // propagates rather than being downgraded to a warning.
     const owner = readOwnerManifest(file.text);
     owners.set(file.source, owner);
-    const moduleDir = moduleDirectoryFor(
-      file.requestedUrl,
-      file.source,
-      entryDir,
-      manifestsDir,
-    );
+    const moduleDir = moduleDirectories.get(file.source) ?? null;
     directories.set(file.source, moduleDir ?? undefined);
     const artifact = moduleArtifactFor({
       pinnedRef: file.requestedUrl,

@@ -7,6 +7,7 @@ import { pathsAtOrBeneath, readAssetPatterns, stagedModuleFiles } from "./module
 import { readNativeEntries } from "./native-entries.js";
 import { readModuleSources } from "./source-entries.js";
 import { isNeverInstantiated } from "./validate-include-placement.js";
+import { isOciRef } from "./sources/oci-ref.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic, type ManifestSource } from "./types.js";
 
 /**
@@ -34,7 +35,9 @@ export async function collectLocalModuleFileDiagnostics(
         if (!isPathImport(edge.targetRef) || seen.has(edge.targetSource)) continue;
         seen.add(edge.targetSource);
         const target = modules.get(edge.targetSource);
-        if (target) queue.push(target);
+        // A path import inside an artifact names a module shipped in it, whose
+        // files are its layers — published, verified, and fetched lazily.
+        if (target && !isOciRef(target.owner.requestedUrl)) queue.push(target);
       }
     }
   }

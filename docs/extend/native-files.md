@@ -244,7 +244,9 @@ $ telo release stage --module modules/sqlite  # narrow to one module (repeatable
 $ telo release stage --pin                    # fetch every file entry and write its pins first
 ```
 
-Plain `stage` walks the workspace's modules and, for each entry:
+Plain `stage` walks the workspace's modules — and the libraries nested inside each
+module's directory, which ship in its artifact and declare their own `sources:` —
+and, for each entry:
 
 - fails when a file entry is unpinned, naming the entry and `--pin`;
 - skips the fetch when the file is already on disk and matches its pin, so an

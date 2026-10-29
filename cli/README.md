@@ -208,9 +208,9 @@ The cache lives under the **cache root** — `.telo/` beside the manifest, or be
 
 - `.telo/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
 - `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
-- `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry.
+- `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry by tag; a digest reference is cached under `…/sha256-<hex>/telo.yaml` (`:` cannot be written on Windows), and a library shipped inside an artifact at its path in the manifest layer below it (`…/sha256-<hex>/chat/telo.yaml`, `…/sha256-<hex>/ordering.yaml`). A tag spelled `sha256-<64 hex>` is refused.
 - `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
-- `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference; a pinned import needs no entry, since its bytes are verified against the ref's own hash.
+- `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference, and a run reads it to identify the libraries shipped inside a cached artifact; a pinned import needs no entry for `check`, since its bytes are verified against the ref's own hash.
 
 Every manifest entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
 discovery hub uses for its cached manifests.

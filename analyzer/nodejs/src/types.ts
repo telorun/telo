@@ -121,6 +121,14 @@ export interface ManifestSource {
   read(url: string): Promise<{ text: string; source: string }>;
   resolveRelative(base: string, relative: string): string;
 
+  /** Resolve a relative `imports:` source declared in the file `fromSource`
+   *  names, when this source knows how imports inside that file resolve — a
+   *  module it read out of an artifact, whose relative import may name a module
+   *  shipped inside the same artifact. `undefined` leaves the import to the
+   *  `resolveRelative` of the source serving `fromSource`. Asked of every source,
+   *  the first answer wins. Optional. */
+  resolveRelativeImport?(fromSource: string, relative: string): Promise<string | undefined>;
+
   /** Expand glob patterns relative to a base source. Returns sources in the same
    *  format as read().source — suitable to pass back into read() / resolveRelative().
    *  Optional — only filesystem-capable sources implement this. */

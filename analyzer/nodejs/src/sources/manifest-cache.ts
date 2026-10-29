@@ -1,7 +1,7 @@
 import type { ManifestSource } from "../types.js";
 import { DEFAULT_MANIFEST_FILENAME } from "../types.js";
 import { splitIntegrity, verifiedFetch } from "./integrity.js";
-import { OCI_SCHEME, isOciRef, parseOciRef } from "./oci-ref.js";
+import { OCI_SCHEME, isDigestSpelledTag, isOciRef, parseOciRef } from "./oci-ref.js";
 
 /** The hub's static manifest cache: an R2 bucket bound directly to the domain,
  *  serving each tracked module version's `telo.yaml` at a deterministic key.
@@ -22,9 +22,10 @@ export interface ManifestCacheCoords {
    *  Every ref whose grammar has a version segment must supply it, or two
    *  versions of one module would collide on a single key. */
   version?: string;
-  /** File within the version directory. Defaults to the module manifest, which
-   *  is the only file the hub's bucket stores; the local install cache also
-   *  holds each `include:` partial, which is named here. */
+  /** File within the version directory, `/`-separated. Defaults to the module
+   *  manifest, which is the only file the hub's bucket stores; the local install
+   *  cache also holds each `include:` partial, and each nested module's manifest
+   *  at its path inside the artifact, which are named here. */
   file?: string;
 }
 
@@ -33,22 +34,38 @@ function invalidSegment(segment: string): boolean {
   return segment === "" || segment === "." || segment === ".." || segment.includes("\\");
 }
 
+/** An OCI manifest digest, `sha256:<64 lowercase hex>`. */
+const OCI_DIGEST = /^sha256:([0-9a-f]{64})$/;
+
+/** The ONE rendering of a version segment into a path: a digest `sha256:<hex>`
+ *  becomes `sha256-<hex>` (`:` cannot be written on Windows); a tag is itself.
+ *  `null` for a tag spelled like a digest folder. The digest is never parsed
+ *  back out of a path — it is read from the identity or a record. */
+export function versionDirectoryName(version: string): string | null {
+  const digest = OCI_DIGEST.exec(version);
+  if (digest) return `sha256-${digest[1]}`;
+  return isDigestSpelledTag(version) ? null : version;
+}
+
 /** Deterministic cache key for one module version:
- *  `<transport>/<host>/<path…>/<version>/<file>`, where `version` is omitted
+ *  `<transport>/<host>/<path…>/<version>/<file…>`, where `version` is omitted
  *  when the coordinates carry none and `file` defaults to the module manifest.
  *  Returns `null` when any coordinate is empty or would traverse out of the key
  *  space. */
 export function manifestCacheKey(coords: ManifestCacheCoords): string | null {
   const { transport, host, path, version, file } = coords;
   const segments = [transport, host, ...(path ? path.split("/") : [])];
-  if (version !== undefined) segments.push(version);
-  segments.push(file ?? DEFAULT_MANIFEST_FILENAME);
+  if (version !== undefined) {
+    const directory = versionDirectoryName(version);
+    if (directory === null) return null;
+    segments.push(directory);
+  }
+  segments.push(...(file ?? DEFAULT_MANIFEST_FILENAME).split("/"));
   if (
     segments.some(invalidSegment) ||
     transport.includes("/") ||
     host.includes("/") ||
-    (version !== undefined && version.includes("/")) ||
-    (file !== undefined && file.includes("/"))
+    (version !== undefined && version.includes("/"))
   ) {
     return null;
   }

@@ -4,6 +4,7 @@ import type { PayloadFile } from "../bundle/files-integrity.js";
 import { HttpTransport } from "./http-transport.js";
 import { OciTransport } from "./oci/oci-transport.js";
 import type {
+  CachedModuleView,
   PublishBundle,
   PublishOptions,
   PublishResult,
@@ -33,6 +34,23 @@ export class TransportRegistry {
    *  when no transport owns it or the ref is not cacheable. */
   cacheCoords(ref: string): ManifestCacheCoords | null {
     return this.forRef(ref)?.cacheCoords(ref) ?? null;
+  }
+
+  /** A relative import inside the module `ref` names, resolved by its owning
+   *  transport; `undefined` when no transport owns `ref` or the owner resolves
+   *  relative imports as paths. */
+  resolveRelativeImport(
+    ref: string,
+    relative: string,
+    cached?: CachedModuleView,
+  ): Promise<string> | undefined {
+    return this.forRef(ref)?.resolveRelativeImport?.(ref, relative, cached);
+  }
+
+  /** A nested module's directory inside its artifact, from its owning
+   *  transport; `undefined` for any other module. */
+  nestedModuleDirectory(ref: string, source: string): string | undefined {
+    return this.forRef(ref)?.nestedModuleDirectory?.(ref, source);
   }
 
   /** Published versions for `ref` via its owning transport; `null` when the

@@ -31,6 +31,7 @@ import {
   offerToSaveAnswers,
   unresolvedInputsHint,
 } from "../application-input-session.js";
+import { writeNestedOriginDigests } from "../bundle/nested-origin-digests.js";
 import { attachControllerProgress } from "../controller-progress.js";
 import { DebugEventSubscriber } from "../debug-event-subscriber.js";
 import { serializeEvent, serializeLog } from "../debug-serialize.js";
@@ -584,7 +585,7 @@ function profileKernelStart(
  * read-only filesystems (e.g. baked Docker images) we surface the error but do
  * not abort — caching is an optimization.
  */
-async function persistManifestCache(
+export async function persistManifestCache(
   argv: RunArgv,
   kernel: Kernel,
   log: Logger,
@@ -599,6 +600,7 @@ async function persistManifestCache(
     const entryDir = resolveEntryDir(argv.path) ?? "";
     const manifestsDir = path.join(cacheRoot, "manifests");
     await writeManifestCache(graph, entryDir, manifestsDir);
+    await writeNestedOriginDigests(graph, manifestsDir);
   } catch (err) {
     // Warnings belong on stderr — stdout is reserved for the manifest's own
     // output (consumers may pipe `telo run` into jq / a downstream process).

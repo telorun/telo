@@ -23,6 +23,7 @@ import {
 } from "@telorun/analyzer";
 import * as path from "node:path";
 import type { ModulePayloadBuilder } from "../bundle/module-payload.js";
+import { isInside } from "../bundle/nested-libraries.js";
 import type { ModuleTarget } from "./evidence.js";
 import type { DiscoveredModule, Workspace } from "./workspace.js";
 
@@ -113,6 +114,7 @@ export async function readImportGraph(
   const byDir = new Map(workspace.modules.map((module) => [path.resolve(module.dir), module]));
   const imports = new Map<ModuleKey, ModuleKey[]>();
   const edges: ImportDestination[] = [];
+  const diagnostics: ReleaseDiagnostic[] = [];
 
   for (const module of workspace.modules) {
     const target = targets.get(module.key);
@@ -125,6 +127,18 @@ export async function readImportGraph(
       const sibling = byDir.get(path.resolve(path.dirname(entry.manifestPath)));
       if (!sibling || sibling.key === module.key) continue;
       reached.push(sibling.key);
+      if (isInside(path.resolve(module.dir), path.resolve(sibling.dir))) {
+        diagnostics.push({
+          severity: "error",
+          code: "WORKSPACE_MODULE_NESTED",
+          message:
+            `${sibling.key} lies inside ${module.key}, which imports it, so it ships inside ` +
+            `${module.key}'s artifact and is not released on its own — drop the ` +
+            `'${path.relative(workspace.root, sibling.dir).split(path.sep).join("/")}' entry from ` +
+            `telo-workspace.yaml.`,
+        });
+        continue;
+      }
       const assigned = targets.get(sibling.key);
       if (assigned) {
         edges.push({
@@ -138,5 +152,5 @@ export async function readImportGraph(
     imports.set(module.key, reached);
   }
 
-  return { imports, diagnostics: checkImportDestinations(edges) };
+  return { imports, diagnostics: [...diagnostics, ...checkImportDestinations(edges)] };
 }

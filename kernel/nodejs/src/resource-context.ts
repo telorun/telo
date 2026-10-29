@@ -846,7 +846,7 @@ export class ResourceContextImpl implements ResourceContext {
     return this.kernel.libraryAnalysisHost();
   }
 
-  resolveImportUrl(fromSource: string, importSource: string): string {
+  resolveImportUrl(fromSource: string, importSource: string): Promise<string> {
     return this.kernel.resolveImportUrl(fromSource, importSource);
   }
 

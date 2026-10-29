@@ -50,7 +50,7 @@ import {
 } from "../release/ledger-store.js";
 import { planPayload, renderDiagnostics, renderPlan } from "../release/render.js";
 import { createArchiveReader } from "@telorun/kernel";
-import { stageModule, type StageFailure, type StageOutcome } from "../release/stage.js";
+import { stageModule, stageTargetsOf, type StageFailure, type StageOutcome } from "../release/stage.js";
 import { loadWorkspace, requireModule, type Workspace } from "../release/workspace.js";
 import { planWorkspace } from "../release/workspace-plan.js";
 
@@ -464,7 +464,7 @@ async function verify(argv: CommonArgv & { write: boolean }): Promise<void> {
 
 /**
  * Fetch, verify and (with `--pin`) pin the files every module's `sources:`
- * block declares. Each archive is fetched once per module — the decoded archive
+ * block declares, and those of every library nested inside each module. Each archive is fetched once per module — the decoded archive
  * is dropped once its module is staged — and a file already on disk matching its
  * pin is not fetched at all.
  */
@@ -478,11 +478,14 @@ async function stage(argv: CommonArgv & { module?: string[]; pin: boolean }): Pr
 
   const outcomes: StageOutcome[] = [];
   const failures: StageFailure[] = [];
-  for (const module of modules) {
-    const result = await stageModule(
-      { key: module.key, dir: module.dir, manifestPath: module.manifestPath },
-      { pin: argv.pin, archives: createArchiveReader() },
-    );
+  const seen = new Set<string>();
+  const targets = modules
+    .flatMap((module) =>
+      stageTargetsOf({ key: module.key, dir: module.dir, manifestPath: module.manifestPath }),
+    )
+    .filter((target) => !seen.has(target.manifestPath) && seen.add(target.manifestPath));
+  for (const target of targets) {
+    const result = await stageModule(target, { pin: argv.pin, archives: createArchiveReader() });
     for (const outcome of result.outcomes) {
       const mark = outcome.action === "verified" ? log.dim("·") : log.ok("✓");
       outLine(`${mark}  ${outcome.module}  ${outcome.source}  ${outcome.path}  ${log.dim(outcome.action)}`);

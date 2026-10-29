@@ -1,4 +1,5 @@
 import {
+  DEFAULT_MANIFEST_FILENAME,
   manifestCacheKey,
   splitIntegrity,
   verifyIntegrity,
@@ -13,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { hostEnv } from "../host-env.js";
 import { TransportRegistry, defaultTransportRegistry } from "../transports/transport-registry.js";
 import { findWorkspaceRoot } from "../workspace-marker.js";
+import { originKey, readOriginDigests } from "./origin-digests.js";
 
 const CACHE_SUBDIR = ".telo/manifests";
 
@@ -97,6 +99,14 @@ export class LocalManifestCacheSource implements ManifestSource {
   private readonly cacheRoot: string | null;
   private readonly legacyRoot: string | null;
   private readonly transports: TransportRegistry;
+  /** Every copy this source served, by the `file://` source it answered with:
+   *  the ref it was requested as, the file, its text and the manifest cache
+   *  directory it lives in. A relative import inside a served module resolves
+   *  against the ref, not the file. */
+  private readonly served = new Map<
+    string,
+    { request: string; file: string; text: string; root: string }
+  >();
 
   constructor(entryDir: string, manifestsDir?: string) {
     // `manifestsDir` is the resolved manifest-cache directory threaded from a
@@ -122,13 +132,14 @@ export class LocalManifestCacheSource implements ManifestSource {
     // A mismatch is a terminal error — a poisoned cache must never be trusted,
     // and unlike the compiled-validator cache this is not a self-healing miss.
     const { integrity } = splitIntegrity(url);
+    const bytes = await fs.readFile(mapped.file);
     if (integrity) {
-      const bytes = await fs.readFile(mapped);
       await verifyIntegrity(new Uint8Array(bytes), integrity, splitIntegrity(url).base);
-      return { text: bytes.toString("utf-8"), source: pathToFileURL(mapped).href };
     }
-    const text = await fs.readFile(mapped, "utf-8");
-    return { text, source: pathToFileURL(mapped).href };
+    const text = bytes.toString("utf-8");
+    const source = pathToFileURL(mapped.file).href;
+    this.served.set(source, { request: url, file: mapped.file, text, root: mapped.root });
+    return { text, source };
   }
 
   resolveRelative(base: string, relative: string): string {
@@ -140,19 +151,42 @@ export class LocalManifestCacheSource implements ManifestSource {
     return new URL(relative, baseDir).href;
   }
 
-  private tryMap(url: string): string | null {
+  /** A relative import inside a copy this source served resolves against the
+   *  ref the copy was requested as, through the transport owning it — a module
+   *  read from an artifact may import one shipped inside it, which the copy's
+   *  location in the cache cannot name. `undefined` for a file this source did
+   *  not serve, or a transport that resolves relative imports as paths. */
+  async resolveRelativeImport(fromSource: string, relative: string): Promise<string | undefined> {
+    const served = this.served.get(fromSource);
+    if (!served) return undefined;
+    return this.transports.resolveRelativeImport(served.request, relative, {
+      text: served.text,
+      file: served.file,
+      holds: (ref) => this.tryMap(ref) !== null,
+      recordedDigest: async (ref) => (await readOriginDigests(served.root)).get(originKey(ref)),
+    });
+  }
+
+  private tryMap(url: string): { file: string; root: string } | null {
     return this.tryMapIn(url, this.cacheRoot) ?? this.tryMapIn(url, this.legacyRoot);
   }
 
-  private tryMapIn(url: string, root: string | null): string | null {
+  private tryMapIn(url: string, root: string | null): { file: string; root: string } | null {
     if (root === null) return null;
     const candidate = cachePathForUrl(url, root, this.transports);
     if (!candidate) return null;
-    // Require a regular file. A directory, dangling symlink, or stat failure
-    // (ENOENT, EACCES, EISDIR-on-component) all fall through as a cache miss
-    // so the next source in the chain still gets a chance to serve the URL.
+    // A regular file is the copy; a directory is resolved as a relative import
+    // resolves on disk, to its `telo.yaml` — how a nested module's manifest is
+    // found in the mirror of its artifact's manifest layer. A dangling symlink
+    // or stat failure (ENOENT, EACCES, EISDIR-on-component) falls through as a
+    // cache miss so the next source in the chain still gets a chance to serve
+    // the URL.
     try {
-      return statSync(candidate).isFile() ? candidate : null;
+      const stat = statSync(candidate);
+      if (stat.isFile()) return { file: candidate, root };
+      if (!stat.isDirectory()) return null;
+      const inDirectory = path.join(candidate, DEFAULT_MANIFEST_FILENAME);
+      return statSync(inDirectory).isFile() ? { file: inDirectory, root } : null;
     } catch {
       return null;
     }

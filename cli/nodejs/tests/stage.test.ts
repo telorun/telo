@@ -6,7 +6,8 @@ import type { AddressInfo } from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { stageModule, type StageTarget } from "../src/release/stage.js";
+import { ModulePayloadBuilder } from "../src/bundle/module-payload.js";
+import { stageModule, stageTargetsOf, type StageTarget } from "../src/release/stage.js";
 
 const TOOL = Buffer.from("#!/bin/sh\necho tool\n");
 const LIB = Buffer.from("\x7fELF library bytes");
@@ -230,5 +231,54 @@ describe("telo release stage", () => {
     const result = await stage(before, true);
     expect(result.failures.map((f) => f.message).join("\n")).toContain("cannot write pins");
     expect(fs.readFileSync(target.manifestPath, "utf8")).toBe(before);
+  });
+});
+
+describe("telo release stage — nested libraries", () => {
+  it("--pin stages and pins a nested library's sources, and the root's disk payload reads the staged bytes", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "telo-stage-nested-"));
+    fs.mkdirSync(path.join(root, "app", "lib"), { recursive: true });
+    const appManifest = path.join(root, "app", "telo.yaml");
+    const libManifest = path.join(root, "app", "lib", "telo.yaml");
+    fs.writeFileSync(
+      appManifest,
+      "kind: Telo.Application\nmetadata:\n  name: App\n  version: 0.1.0\nimports:\n  Lib: ./lib\n",
+    );
+    fs.writeFileSync(
+      libManifest,
+      [
+        "kind: Telo.Library",
+        "metadata:",
+        "  name: Lib",
+        "sources:",
+        "  demo:",
+        "    version: 1.0.0",
+        `    url: ${base}/demo-{version}-{upstream}.tgz`,
+        "    archive: tar.gz",
+        "    notices: [./notices/LICENSE]",
+        "    entries:",
+        "      ./notices/LICENSE:",
+        "        upstream: linux-x64",
+        "        member: package/LICENSE",
+        "",
+      ].join("\n"),
+    );
+
+    const targets = stageTargetsOf({ key: "app", dir: path.dirname(appManifest), manifestPath: appManifest });
+    expect(targets.map((t) => t.key)).toEqual(["app", "app/lib/telo.yaml"]);
+    for (const t of targets) {
+      const result = await stageModule(t, { pin: true, archives: createArchiveReader() });
+      expect(result.failures).toEqual([]);
+    }
+    expect(fs.readFileSync(libManifest, "utf8")).toContain(`sha256: ${sha(LICENSE)}`);
+
+    const payload = await new ModulePayloadBuilder({
+      cacheRoot: path.join(root, ".telo-cache"),
+      stagedFiles: "disk",
+    }).payload(appManifest, "oci://reg.example.test/org/app");
+    const staged = payload.nested[0]!.layers.flatMap((layer) => layer.files);
+    const license = staged.find((file) => file.name === "notices/LICENSE");
+    expect(Buffer.from((license as { content: Uint8Array }).content)).toEqual(LICENSE);
+    fs.rmSync(root, { recursive: true, force: true });
   });
 });

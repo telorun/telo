@@ -14,6 +14,25 @@ import {
   sha256Base64Url,
 } from "../src/sources/integrity.js";
 
+describe("manifestCacheKey digest spelling", () => {
+  const hex = "ab".repeat(32);
+  const base = { transport: "oci", host: "ghcr.io", path: "a/b" };
+
+  it("spells a digest folder sha256-<hex>, with nested files beneath it", () => {
+    expect(manifestCacheKey({ ...base, version: `sha256:${hex}` })).toBe(
+      `oci/ghcr.io/a/b/sha256-${hex}/telo.yaml`,
+    );
+    expect(manifestCacheKey({ ...base, version: `sha256:${hex}`, file: "chat/telo.yaml" })).toBe(
+      `oci/ghcr.io/a/b/sha256-${hex}/chat/telo.yaml`,
+    );
+  });
+
+  it("refuses a tag spelled like the digest folder and keeps shorter sha256- tags", () => {
+    expect(manifestCacheKey({ ...base, version: `sha256-${hex}` })).toBeNull();
+    expect(manifestCacheKey({ ...base, version: "sha256-abc" })).toBe("oci/ghcr.io/a/b/sha256-abc/telo.yaml");
+  });
+});
+
 describe("manifestCacheKey", () => {
   it("builds <transport>/<host>/<path…>/<version>/telo.yaml", () => {
     expect(

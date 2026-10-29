@@ -19,6 +19,7 @@ use telo_analyzer::reserved_kind_prefix::{
     is_reserved_kind_prefix, reserved_import_alias_message, reserved_library_name_message,
     reserved_module_name_message,
 };
+use telo_analyzer::sources::oci_ref::is_oci_ref;
 use telo_analyzer::system_kinds::{
     is_module_document, skips_ref_resolution, APPLICATION, DEFINITION, JSON_SCHEMA, LIBRARY,
 };
@@ -131,7 +132,8 @@ pub fn load_module(
 
     reject_need_types(&documents, &loaded.source)?;
 
-    let imports = load_imports(env, module_doc, &loaded.source)?;
+    let from_artifact = is_oci_ref(path) || is_oci_ref(&loaded.source);
+    let imports = load_imports(env, module_doc, &loaded.source, from_artifact)?;
 
     // The language the module's texts are written in, which a kind's declared
     // error texts are read in.
@@ -419,6 +421,7 @@ fn load_imports(
     env: &LoadEnv,
     module_doc: &Value,
     base_source: &str,
+    from_artifact: bool,
 ) -> Result<HashMap<String, Rc<ModuleContext>>, KernelError> {
     let mut imports = HashMap::new();
     let Some(entries) = module_doc.get("imports").and_then(Value::as_object) else {
@@ -431,7 +434,7 @@ fn load_imports(
                 reserved_import_alias_message(alias),
             ));
         }
-        let spec = parse_import(alias, entry, base_source)?;
+        let spec = parse_import(alias, entry, base_source, from_artifact)?;
         let child = env.load_import(&spec.source, spec.policy)?;
         imports.insert(alias.clone(), child);
     }

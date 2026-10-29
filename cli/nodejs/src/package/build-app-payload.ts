@@ -37,6 +37,7 @@ import { MODULE_LICENSE_FILE, selectFiles } from "../bundle/select-files.js";
 import { expandDirectoryClaims } from "../bundle/module-path-claims.js";
 import { cliVersion } from "../distribution-versions.js";
 import { stageModule } from "../release/stage.js";
+import { writeNestedOriginDigests } from "../bundle/nested-origin-digests.js";
 import { describeGaps, warmModuleLayers } from "../bundle/warm-layers.js";
 import {
   APP_PREFIX,
@@ -120,6 +121,7 @@ export async function buildAppPayload(options: PackageBuildOptions): Promise<Pac
     const manifestsDir = path.join(cacheRoot, "manifests");
     fs.mkdirSync(manifestsDir, { recursive: true });
     await writeManifestCache(graph, entryDir, manifestsDir);
+    await writeNestedOriginDigests(graph, manifestsDir);
 
     const warmed = await warmModuleLayers(graph, entryDir, manifestsDir, platform);
     if (warmed.gaps.length > 0) throw new Error(describeGaps(warmed.gaps));

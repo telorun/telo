@@ -28,6 +28,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { isMap, isPair, isScalar, parse, parseAllDocuments, type Document, type Pair } from "yaml";
+import { rootScopeOf } from "../bundle/nested-libraries.js";
 import { crateInputsDigest } from "./crate-inputs.js";
 
 export interface StageTarget {
@@ -35,6 +36,20 @@ export interface StageTarget {
   readonly key: string;
   readonly dir: string;
   readonly manifestPath: string;
+}
+
+/**
+ * A module and every library nested inside it, transitively. A nested library
+ * ships in its owner's artifact and reads its own staged files from its own
+ * directory, so each is staged and pinned like a module.
+ */
+export function stageTargetsOf(module: StageTarget): StageTarget[] {
+  const nested = rootScopeOf(module.manifestPath).nested.map((manifestPath) => ({
+    key: `${module.key}/${path.relative(module.dir, manifestPath).split(path.sep).join("/")}`,
+    dir: path.dirname(manifestPath),
+    manifestPath,
+  }));
+  return [module, ...nested];
 }
 
 export interface StageOutcome {

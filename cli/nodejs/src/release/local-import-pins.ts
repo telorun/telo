@@ -138,6 +138,11 @@ export class LocalImportPinner {
     // own test or fixture, which exists to exercise the working copy.
     if (!workspace || !module || module.artifactKind === "image") return { kind: "unmanaged" };
     if (isWithin(path.resolve(manifestDir), targetDir)) return { kind: "unmanaged" };
+    // A target below the importer's own directory ships inside the importer's
+    // artifact (a nested library): it has no pin of its own to write.
+    if (targetDir !== path.resolve(manifestDir) && isWithin(targetDir, path.resolve(manifestDir))) {
+      return { kind: "unmanaged" };
+    }
 
     const planned = await this.planOf(workspace);
     const errors = planned.plan.diagnostics.filter((diagnostic) => diagnostic.severity === "error");

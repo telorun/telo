@@ -2,6 +2,7 @@ import {
   browserLayerFor,
   codeLayerFor,
   matchCodeLayers,
+  nestedModuleOrigin,
   selectorKey,
   selectorMatches,
   singletonLayer,
@@ -10,6 +11,7 @@ import {
   undeterminedAxesBlockingMatch,
   type ArtifactLayer,
   type ArtifactSelector,
+  type LoadedGraph,
   type PlatformAxis,
   type PlatformTarget,
 } from "@telorun/analyzer";
@@ -616,6 +618,43 @@ export function moduleDirectoryFor(
   if (source.startsWith("file://")) return path.dirname(fileURLToPath(source));
   if (path.isAbsolute(source)) return path.dirname(source);
   return null;
+}
+
+/**
+ * The directory of every module `graph` loaded, by owner source — what
+ * {@link moduleDirectoryFor} answers for each, except that a module shipped
+ * inside another module's artifact lives in that module's tree: its directory
+ * inside the artifact, under the artifact root's own (`<parent dir>/chat`, the
+ * parent's own directory for a nested file manifest). The one placement the
+ * runtime and a cache warm share, so a warmed nested layer is where a run looks
+ * for it.
+ */
+export function moduleDirectoriesOf(
+  graph: LoadedGraph,
+  entryDir: string,
+  manifestsDir: string | undefined,
+  legacyDir: string | null | undefined,
+  transports: TransportRegistry,
+): Map<string, string | undefined> {
+  const directories = new Map<string, string | undefined>();
+  for (const [, module] of graph.modules) {
+    const file = module.owner;
+    if (directories.has(file.source)) continue;
+    const dir = moduleDirectoryFor(file.requestedUrl, file.source, entryDir, manifestsDir, legacyDir);
+    directories.set(file.source, dir ?? undefined);
+  }
+  for (const [, module] of graph.modules) {
+    const file = module.owner;
+    const inArtifact = transports.nestedModuleDirectory(file.requestedUrl, file.source);
+    if (inArtifact === undefined) continue;
+    const origin = nestedModuleOrigin(graph, file.source);
+    const rootDir = origin && directories.get(origin.root.owner.source);
+    directories.set(
+      file.source,
+      rootDir === undefined ? undefined : path.join(rootDir, ...inArtifact.split("/").filter(Boolean)),
+    );
+  }
+  return directories;
 }
 
 /**

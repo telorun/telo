@@ -20,12 +20,6 @@ release:
     - "!apps/plan-approval"
     - "!apps/plan-approval-runner"
     - "!apps/plan-approval-runner-protocol"
-    # The authoring agent's chat backend is a library the agent imports by relative
-    # path, so it publishes beneath the agent's own registry base, where that import
-    # canonicalizes, and before the agent: `telo publish` refuses the agent while the
-    # sibling does not resolve there.
-    - path: apps/authoring-agent/chat
-      registry: oci://ghcr.io/telorun/authoring-agent
     # A blueprint is a whole-application kind, published apart from the module
     # namespace: `oci://ghcr.io/telorun/blueprints/<name>`.
     - path: blueprints/*

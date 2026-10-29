@@ -54,7 +54,7 @@ export interface BuiltinControllerContext extends ResourceContext {
   /** Resolve `importSource` against `fromSource` through the loader's
    *  source-chain `resolveRelative`. Identical to what `loadGraph` used
    *  internally — so the produced URL agrees with the loader's caches. */
-  resolveImportUrl(fromSource: string, importSource: string): string;
+  resolveImportUrl(fromSource: string, importSource: string): Promise<string>;
   /** The root Application's resolved logging configuration — the base an
    *  import's own `logging:` block cascades over (§12.2). */
   kernelLoggingRootScope(): ScopeConfig;

@@ -129,12 +129,14 @@ pub fn cache_path_for_canonical(canonical: &str, root: &Path) -> Option<PathBuf>
 }
 
 /// `oci/<host>/<repo…>/<reference>/telo.yaml` — the OCI transport's coordinates
-/// rendered by the Node analyzer's `manifestCacheKey`.
+/// rendered by the Node analyzer's `manifestCacheKey`. A digest `sha256:<hex>`
+/// is the folder `sha256-<hex>`, since `:` cannot appear in a Windows path.
 fn oci_cache_key(reference: &str) -> Option<String> {
     let parsed = parse_oci_ref(reference).ok()?;
+    let version = digest_folder_name(&parsed.reference);
     let mut segments = vec!["oci", parsed.host.as_str()];
     segments.extend(parsed.repo.split('/'));
-    segments.push(parsed.reference.as_str());
+    segments.push(version.as_str());
     segments.push(DEFAULT_MANIFEST_FILENAME);
     let invalid = segments
         .iter()
@@ -142,6 +144,17 @@ fn oci_cache_key(reference: &str) -> Option<String> {
         || parsed.host.contains('/')
         || parsed.reference.contains('/');
     (!invalid).then(|| segments.join("/"))
+}
+
+/// The folder a version segment is cached under: `sha256:<64 hex>` becomes
+/// `sha256-<hex>`, a tag is itself. Mirrors `versionDirectoryName` in Node.
+fn digest_folder_name(reference: &str) -> String {
+    match reference.strip_prefix("sha256:") {
+        Some(hex) if hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) => {
+            format!("sha256-{hex}")
+        }
+        _ => reference.to_string(),
+    }
 }
 
 /// `root` joined with `segments`, or `None` when the result escapes `root`.
@@ -239,6 +252,15 @@ mod tests {
         assert_eq!(
             cache_path_for_canonical("oci://ghcr.io/telorun/console@0.9.0#sha256-abc", root),
             Some(root.join("oci/ghcr.io/telorun/console/0.9.0/telo.yaml"))
+        );
+        let digest = format!("sha256:{}", "a".repeat(64));
+        assert_eq!(
+            cache_path_for_canonical(&format!("oci://ghcr.io/telorun/console@{digest}"), root),
+            Some(root.join(format!("oci/ghcr.io/telorun/console/sha256-{}/telo.yaml", "a".repeat(64))))
+        );
+        assert_eq!(
+            cache_path_for_canonical(&format!("oci://ghcr.io/telorun/console@sha256-{}", "a".repeat(64)), root),
+            None
         );
         assert_eq!(cache_path_for_canonical("oci://ghcr.io/a/../../x@1", root), None);
         assert_eq!(cache_path_for_canonical("./local/telo.yaml", root), None);

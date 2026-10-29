@@ -156,8 +156,8 @@ if (!ociRegistry) {
 
 const queued = new Set();
 
-// The importable set — MODULES, BLUEPRINTS and the authoring agent with its chat
-// library, deliberately NOT the full `telo-workspace.yaml` set, which also declares
+// The importable set — MODULES, BLUEPRINTS and the authoring agent (whose chat
+// library ships inside the agent's own artifact), deliberately NOT the full `telo-workspace.yaml` set, which also declares
 // the other `apps/*`. Those are released as container images (see
 // `.github/workflows/publish-docker.yml`) and no artifact of theirs is pushed here.
 // The agent is the exception: a runner names it by OCI reference. The workspace
@@ -278,7 +278,8 @@ console.log("");
 // modules and every in-repo module they import, transitively. Publish reads
 // staged files off disk and verifies them against their pins, and never fetches
 // one itself; a dependent's pin is derived from its sibling's published bytes,
-// which is why the import closure is staged and not only the queued set. Nothing
+// which is why the import closure is staged and not only the queued set (`release
+// stage` also stages the libraries nested inside each module it is given). Nothing
 // else is — an upstream a module outside the closure names is no reason for this
 // pass to fail. A module declaring no sources stages nothing. A staging failure
 // fails the job before anything is pushed.

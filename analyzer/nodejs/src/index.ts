@@ -895,8 +895,16 @@ export {
   IntegrityError,
   ManifestNotFoundError,
 } from "./sources/integrity.js";
-export { OCI_SCHEME, isOciRef, parseOciRef } from "./sources/oci-ref.js";
+export {
+  OCI_SCHEME,
+  artifactPath,
+  isOciRef,
+  nestedOciRef,
+  parseOciRef,
+} from "./sources/oci-ref.js";
 export type { ParsedOciRef } from "./sources/oci-ref.js";
+export { describeModuleSource, nestedModuleOrigin } from "./nested-module-origin.js";
+export type { NestedModuleOrigin } from "./nested-module-origin.js";
 export { parseVersionedRef, withRefVersion } from "./sources/versioned-ref.js";
 export type { ParsedVersionedRef } from "./sources/versioned-ref.js";
 export { isLocalPathSource } from "./sources/local-path-ref.js";
@@ -905,6 +913,7 @@ export {
   ManifestCacheSource,
   isHttpsModuleRef,
   manifestCacheKey,
+  versionDirectoryName,
   manifestCacheUrl,
   ociManifestCacheCoords,
   urlManifestCacheCoords,
