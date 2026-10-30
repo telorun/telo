@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.0 - 2026-10-30
+### Added
+* Http.Server takes a tls block to serve HTTPS: a certificate and private key (inline PEM or host files, optional passphrase) and, for mutual TLS, clientCa with clientCertificate set to required. Unreadable or mismatched material fails the server's creation with ERR_HTTP_TLS_INVALID without echoing the key. Omitted, the server speaks plain HTTP as before.
+
 ## 0.40.0 - 2026-10-25
 ### Added
 * A catches: entry may omit body: only under application/problem+json, the media type of the default problem it renders; telo check refuses a bodiless entry under any other content key.

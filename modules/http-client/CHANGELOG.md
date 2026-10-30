@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.0 - 2026-10-30
+### Added
+* Http.Client takes a tls block applied per client to every request made through it: extra or replacement CA certificates (caMode), a client certificate and key for mutual TLS (with an optional passphrase), a server name override for SNI and host name checks, and insecureSkipVerify for development. Each certificate is inline PEM or a host file. Unparseable or mismatched material fails the client when it starts with ERR_HTTP_TLS_INVALID, the TLS checks never echo the key, and the key is not published in the client's state. Requests through a client without tls are unchanged. The module now requires telo 0.98.0 or newer.
+
 ## 0.23.1 - 2026-10-25
 ### Fixed
 * HttpClient.Request parses a response body as JSON when its media type is application/json or carries the +json structured-syntax suffix (RFC 6839), so an application/problem+json error body arrives parsed instead of as text.
