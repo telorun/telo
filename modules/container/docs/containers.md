@@ -133,7 +133,7 @@ sibling's status.
 ## Running on a runner
 
 The docker and Kubernetes runners serve each session a container engine of its
-own when their operator turns it on (`RUNNER_SESSION_CONTAINERS`; the chart's
+own when their operator turns it on (docker: `RUNNER_SESSION_CONTAINERS`; Kubernetes: the chart's
 `session.containers.enabled`). Every session then gets
 `TELO_HOST_CONTAINER_ENGINE_URL` (`<runner>/v1/sessions/<id>/engine`) and
 `TELO_HOST_CONTAINER_ENGINE_TOKEN` (a token minted for that session), so the

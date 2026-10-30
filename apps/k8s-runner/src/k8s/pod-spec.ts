@@ -5,7 +5,7 @@ import { optionalContainerConfig } from "@telorun/runner-core/container";
 import type { SessionConfig } from "@telorun/runner-core";
 
 import type { K8sRunnerConfig } from "../config.js";
-import type { ResolvedLimits } from "../limits.js";
+import { podResources, type ResolvedResources } from "../limits.js";
 
 /** The label every session pod and session volume carries, valued with its id. */
 export const SESSION_ID_LABEL = "telo.run/session-id";
@@ -119,7 +119,7 @@ export interface BuildSessionPodArgs {
   /** Host values the app containers' runs inherit (`TELO_HOST_PUBLIC_URL_*`).
    *  The runner's, never the session's. */
   hostEnv: Record<string, string>;
-  limits: { app: ResolvedLimits; agent: ResolvedLimits };
+  resources: { app: ResolvedResources; agent: ResolvedResources };
 }
 
 /**
@@ -204,13 +204,6 @@ function scratchMounts(owner: string): V1VolumeMount[] {
 
 const workspaceMount: V1VolumeMount = { name: "session", mountPath: WORKSPACE_DIR, subPath: "workspace" };
 
-function resourcesOf(limits: ResolvedLimits): Record<string, unknown> {
-  return {
-    limits: { cpu: limits.cpu, memory: limits.memory, "ephemeral-storage": limits.ephemeralStorage },
-    requests: { cpu: limits.cpu, memory: limits.memory },
-  };
-}
-
 function hardenedContainerSecurity(): Record<string, unknown> {
   return {
     allowPrivilegeEscalation: false,
@@ -236,7 +229,7 @@ function supervisorInitContainer(args: BuildSessionPodArgs): V1Container {
       `mkdir -p ${SESSION_VOLUME_ROOT}/workspace ${SESSION_VOLUME_ROOT}/agent ${SESSION_VOLUME_ROOT}/telo && ` +
         `cp ${SUPERVISOR_PATH} ${SUPERVISOR_OUT_DIR}/supervisor`,
     ],
-    resources: resourcesOf(args.limits.app),
+    resources: podResources(args.resources.app),
     volumeMounts: [
       { name: "supervisor", mountPath: SUPERVISOR_OUT_DIR },
       { name: "session", mountPath: SESSION_VOLUME_ROOT },
@@ -265,7 +258,7 @@ function workspaceContainer(args: BuildSessionPodArgs): V1Container {
       { name: "npm_config_cache", value: `${HOME_DIR}/.npm` },
     ],
     ports: [{ containerPort: WORKSPACE_PORT, protocol: "TCP" }],
-    resources: resourcesOf(args.limits.app),
+    resources: podResources(args.resources.app),
     volumeMounts: [
       workspaceMount,
       { name: "telo-cache", mountPath: CACHE_ROOT },
@@ -297,7 +290,7 @@ function appsContainer(args: BuildSessionPodArgs): V1Container {
       { name: "npm_config_cache", value: `${HOME_DIR}/.npm` },
     ],
     ports: [{ containerPort: supervisorPortFor(0), protocol: "TCP" }],
-    resources: resourcesOf(args.limits.app),
+    resources: podResources(args.resources.app),
     volumeMounts: [
       workspaceMount,
       { name: "session", mountPath: RELEASES_DIR, subPath: "telo" },
@@ -332,7 +325,7 @@ function agentContainer(args: BuildSessionPodArgs, agent: RunnerAgent): V1Contai
       { name: "CLICOLOR_FORCE", value: "1" },
     ],
     ...(agent.port !== undefined ? { ports: [{ containerPort: agent.port, protocol: "TCP" }] } : {}),
-    resources: resourcesOf(args.limits.agent),
+    resources: podResources(args.resources.agent),
     volumeMounts: [
       workspaceMount,
       { name: "session", mountPath: AGENT_STATE_DIR, subPath: "agent" },

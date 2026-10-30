@@ -1,0 +1,14 @@
+# The session file the runner reads at boot (SESSION_CONFIG_FILE): the session
+# containers' resources, session containers and the base-image picker. The
+# runner refuses a key it does not read, so a misspelt value fails the rollout
+# instead of falling back to a default.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-runner.name" . }}-session
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+data:
+  session.yaml: |
+    {{- dict "resources" .Values.session.resources "containers" .Values.session.containers "baseImages" .Values.session.baseImages | toYaml | nindent 4 }}

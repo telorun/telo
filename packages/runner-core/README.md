@@ -231,13 +231,22 @@ rather than downgraded — `isatty()` is observable to the application.
 
 ## Workload tokens
 
-The co-resident agent (`AGENT_*`, advertised as `features.agents`) may set
-`AGENT_TOKEN_ENV`: for every workload created with that agent — a create,
-a resume, an agent change — core mints a token (the session-id generator at 32
-characters), injects it into the agent's operator env under `tokenEnv`, so no
-other container sees it, and reports it as `RunnerEndpoint.token` on
+The co-resident agent (advertised as `features.agents`) is configured by the
+`AGENT_*` variables (`loadAgentFromEnv`: the docker and local runners) or by a
+configuration file a runner has parsed (`loadAgentFromObject`: the k8s runner's
+agent file). The two take the same settings under the same refusals, each naming
+the variable or the file key: `image` / `AGENT_IMAGE` or `moduleRef` /
+`AGENT_MODULE_REF`, `port`, `pullPolicy`, `tokenEnv`, `title`, `description` and
+`env` (`AGENT_ENV`, a JSON object). A file is closed — an unknown key is refused —
+and holds no secret: its `secretEnv` lists names, each read from the
+`AGENT_SECRET_<NAME>` variable, and an unset one refuses to boot.
+
+The agent may set `tokenEnv`: for every workload created with that agent — a
+create, a resume, an agent change — core mints a token (the session-id generator
+at 32 characters), injects it into the agent's operator env under `tokenEnv`, so
+no other container sees it, and reports it as `RunnerEndpoint.token` on
 `status.agent`. The store never holds it; an adopted workload's token is read
-back by the backend. An `AGENT_TOKEN_ENV` that `AGENT_ENV` also sets is a
+back by the backend. A `tokenEnv` the agent's env also sets is a
 `RunnerConfigError` at boot. Core reports it, not the backend, so no
 backend can publish an endpoint without the token its workload holds.
 
@@ -287,7 +296,9 @@ to the settings above; `RUNNER_WATCH_SESSIONS`,
 
 With `RUNNER_SESSION_CONTAINERS=true` a runner serves every session a container
 engine of its own, so a test that starts the database it needs
-(`Container.Instance` over `Docker.Engine`) runs in a session unchanged:
+(`Container.Instance` over `Docker.Engine`) runs in a session unchanged. The k8s
+runner reads the first two settings from its session file instead
+(`containers.enabled`, `containers.max`):
 
 | Setting | Meaning |
 | --- | --- |

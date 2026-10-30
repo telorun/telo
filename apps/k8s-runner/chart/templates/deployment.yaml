@@ -20,6 +20,12 @@ spec:
     metadata:
       labels:
         {{- include "k8s-runner.labels" . | nindent 8 }}
+      # The runner reads its configuration files once, at boot.
+      annotations:
+        checksum/session-config: {{ include (print $.Template.BasePath "/session-configmap.yaml") . | sha256sum }}
+        {{- if or .Values.agent.image .Values.agent.moduleRef }}
+        checksum/agent-config: {{ include (print $.Template.BasePath "/agent-configmap.yaml") . | sha256sum }}
+        {{- end }}
     spec:
       serviceAccountName: {{ include "k8s-runner.name" . }}
       securityContext:
@@ -53,6 +59,14 @@ spec:
               mountPath: /etc/telo/terms
               readOnly: true
             {{- end }}
+            - name: session-config
+              mountPath: /etc/telo/session
+              readOnly: true
+            {{- if or .Values.agent.image .Values.agent.moduleRef }}
+            - name: agent-config
+              mountPath: /etc/telo/agent
+              readOnly: true
+            {{- end }}
           ports:
             - containerPort: {{ .Values.runner.port }}
           env:
@@ -68,47 +82,17 @@ spec:
             - name: RUNNER_DESCRIPTION
               value: {{ .Values.runner.description | quote }}
             {{- end }}
+            - name: SESSION_CONFIG_FILE
+              value: /etc/telo/session/session.yaml
             {{- if or .Values.agent.image .Values.agent.moduleRef }}
-            {{- $env := dict }}
-            {{- range $k, $v := .Values.agent.env }}{{- $_ := set $env $k $v }}{{- end }}
-            {{- /* Kubernetes expands $(VAR) from env vars defined earlier in this list. */}}
+            - name: AGENT_CONFIG_FILE
+              value: /etc/telo/agent/agent.yaml
             {{- range $k, $ref := .Values.agent.secretEnv }}
             - name: AGENT_SECRET_{{ $k }}
               valueFrom:
                 secretKeyRef:
                   name: {{ $ref.secretName | quote }}
                   key: {{ $ref.key | quote }}
-            {{- $_ := set $env $k (printf "$(AGENT_SECRET_%s)" $k) }}
-            {{- end }}
-            {{- if .Values.agent.image }}
-            - name: AGENT_IMAGE
-              value: {{ .Values.agent.image | quote }}
-            {{- end }}
-            {{- if .Values.agent.moduleRef }}
-            - name: AGENT_MODULE_REF
-              value: {{ .Values.agent.moduleRef | quote }}
-            {{- end }}
-            - name: AGENT_PORT
-              value: {{ .Values.agent.port | quote }}
-            {{- if .Values.agent.pullPolicy }}
-            - name: AGENT_PULL_POLICY
-              value: {{ .Values.agent.pullPolicy | quote }}
-            {{- end }}
-            {{- if .Values.agent.tokenEnv }}
-            - name: AGENT_TOKEN_ENV
-              value: {{ .Values.agent.tokenEnv | quote }}
-            {{- end }}
-            {{- if .Values.agent.title }}
-            - name: AGENT_TITLE
-              value: {{ .Values.agent.title | quote }}
-            {{- end }}
-            {{- if .Values.agent.description }}
-            - name: AGENT_DESCRIPTION
-              value: {{ .Values.agent.description | quote }}
-            {{- end }}
-            {{- if $env }}
-            - name: AGENT_ENV
-              value: {{ $env | toJson | quote }}
             {{- end }}
             {{- end }}
             - name: RUNNER_MAX_SESSIONS
@@ -164,40 +148,10 @@ spec:
             - name: RUNNER_PULL_POLICY
               value: {{ .Values.session.teloImages.pullPolicy | quote }}
             {{- end }}
-            - name: RUNNER_SESSION_CONTAINERS
-              value: "{{ .Values.session.containers.enabled }}"
             {{- if .Values.session.containers.enabled }}
-            - name: RUNNER_SESSION_CONTAINERS_MAX
-              value: "{{ .Values.session.containers.max }}"
-            - name: RUNNER_SESSION_CONTAINERS_RESOURCES
-              value: {{ toJson .Values.session.containers.resources | quote }}
             # The runner as a session's workload reaches it: its own Service.
             - name: RUNNER_INTERNAL_URL
               value: {{ include "k8s-runner.selfUrl" . | quote }}
-            {{- end }}
-            - name: RUNNER_BASE_IMAGE_CATALOG_ENABLED
-              value: "{{ .Values.session.baseImages.enabled }}"
-            {{- if .Values.session.baseImages.enabled }}
-            - name: RUNNER_BASE_IMAGE_REPO
-              value: {{ .Values.session.baseImages.repository | quote }}
-            - name: RUNNER_BASE_IMAGE_PINNED_ONLY
-              value: "{{ .Values.session.baseImages.pinnedOnly }}"
-            - name: RUNNER_BASE_IMAGE_EXCLUDE_SHA
-              value: "{{ .Values.session.baseImages.excludeSha }}"
-            - name: RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE
-              value: "{{ .Values.session.baseImages.excludePrerelease }}"
-            {{- if .Values.session.baseImages.include }}
-            - name: RUNNER_BASE_IMAGE_INCLUDE
-              value: {{ .Values.session.baseImages.include | quote }}
-            {{- end }}
-            {{- if .Values.session.baseImages.exclude }}
-            - name: RUNNER_BASE_IMAGE_EXCLUDE
-              value: {{ .Values.session.baseImages.exclude | quote }}
-            {{- end }}
-            - name: RUNNER_BASE_IMAGE_LIMIT
-              value: "{{ .Values.session.baseImages.limit }}"
-            - name: RUNNER_BASE_IMAGE_REFRESH_SECONDS
-              value: "{{ .Values.session.baseImages.refreshSeconds }}"
             {{- end }}
             {{- if .Values.session.imagePullSecret }}
             - name: RUNNER_IMAGE_PULL_SECRET
@@ -238,18 +192,6 @@ spec:
               value: {{ .Values.sessionRouting.gateway.sectionName | quote }}
             {{- end }}
             {{- end }}
-            - name: RUNNER_MAX_CPU
-              value: {{ .Values.limits.maxCpu | quote }}
-            - name: RUNNER_MAX_MEMORY
-              value: {{ .Values.limits.maxMemory | quote }}
-            - name: RUNNER_MAX_EPHEMERAL_STORAGE
-              value: {{ .Values.limits.maxEphemeralStorage | quote }}
-            - name: RUNNER_APP_MAX_CPU
-              value: {{ .Values.limits.agent.maxCpu | quote }}
-            - name: RUNNER_APP_MAX_MEMORY
-              value: {{ .Values.limits.agent.maxMemory | quote }}
-            - name: RUNNER_APP_MAX_EPHEMERAL_STORAGE
-              value: {{ .Values.limits.agent.maxEphemeralStorage | quote }}
             {{- if .Values.runner.terms.enabled }}
             - name: RUNNER_TERMS_FILE
               value: /etc/telo/terms/terms.md
@@ -287,6 +229,14 @@ spec:
         - name: terms
           configMap:
             name: {{ include "k8s-runner.name" . }}-terms
+        {{- end }}
+        - name: session-config
+          configMap:
+            name: {{ include "k8s-runner.name" . }}-session
+        {{- if or .Values.agent.image .Values.agent.moduleRef }}
+        - name: agent-config
+          configMap:
+            name: {{ include "k8s-runner.name" . }}-agent
         {{- end }}
 ---
 apiVersion: v1

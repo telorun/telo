@@ -44,3 +44,15 @@ http://{{ include "k8s-runner.name" . }}.{{ .Values.runnerNamespace }}.svc:{{ .V
 {{ .Values.sessionRouting.ingress.tls.secretName }}
 {{- end -}}
 {{- end -}}
+
+{{/* A Kubernetes quantity (plain, m, k/K/M/G/T/P/E, Ki..Ei) as a number, so two
+     can be compared; empty for any other spelling (the runner refuses it at boot). */}}
+{{- define "k8s-runner.quantityValue" -}}
+{{- $q := toString . -}}
+{{- if regexMatch "^[0-9]+(\\.[0-9]+)?(m|[KMGTPE]i?|k)?$" $q -}}
+{{- $number := float64 (regexFind "^[0-9]+(\\.[0-9]+)?" $q) -}}
+{{- $suffix := regexReplaceAll "^[0-9.]+" $q "" -}}
+{{- $scale := dict "" 1.0 "m" 0.001 "k" 1000.0 "K" 1000.0 "M" 1000000.0 "G" 1000000000.0 "T" 1000000000000.0 "P" 1000000000000000.0 "E" 1000000000000000000.0 "Ki" 1024.0 "Mi" 1048576.0 "Gi" 1073741824.0 "Ti" 1099511627776.0 "Pi" 1125899906842624.0 "Ei" 1152921504606846976.0 -}}
+{{- printf "%.6f" (mulf $number (index $scale $suffix)) -}}
+{{- end -}}
+{{- end -}}

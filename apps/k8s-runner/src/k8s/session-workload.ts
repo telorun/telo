@@ -26,7 +26,7 @@ import {
 } from "@telorun/runner-core";
 
 import type { K8sRunnerConfig } from "../config.js";
-import { clampLimits } from "../limits.js";
+import { resolveResources } from "../limits.js";
 import { apiFailure, apiReason, withCause } from "./api-error.js";
 import type { KubeClient } from "./client.js";
 import {
@@ -312,7 +312,7 @@ export class KubernetesSessionWorkload implements BackendWorkload {
       claimName,
       workspaceAppConfigMap,
       hostEnv: this.deps.router ? publicUrlTemplateEnv(config, this.spec.sessionId) : {},
-      limits: { app: clampLimits(config.limits, undefined), agent: clampLimits(config.appLimits, undefined) },
+      resources: { app: resolveResources(config.sessionResources), agent: resolveResources(config.agentResources) },
     });
     const name = pod.metadata!.name!;
 

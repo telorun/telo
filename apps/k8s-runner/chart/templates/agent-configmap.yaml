@@ -1,0 +1,21 @@
+{{- if or .Values.agent.image .Values.agent.moduleRef }}
+# The agent file the runner reads at boot (AGENT_CONFIG_FILE). It lists the
+# names of the agent's secret env only; each value reaches the runner as its
+# AGENT_SECRET_<KEY> variable, from the Secret the Deployment names.
+{{- $agent := dict "port" .Values.agent.port "resources" .Values.agent.resources }}
+{{- range $key := list "image" "moduleRef" "pullPolicy" "tokenEnv" "title" "description" }}
+{{- with index $.Values.agent $key }}{{ $_ := set $agent $key . }}{{ end }}
+{{- end }}
+{{- with .Values.agent.env }}{{ $_ := set $agent "env" . }}{{ end }}
+{{- with .Values.agent.secretEnv }}{{ $_ := set $agent "secretEnv" (keys . | sortAlpha) }}{{ end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "k8s-runner.name" . }}-agent
+  namespace: {{ .Values.runnerNamespace }}
+  labels:
+    {{- include "k8s-runner.labels" . | nindent 4 }}
+data:
+  agent.yaml: |
+    {{- toYaml $agent | nindent 4 }}
+{{- end }}

@@ -1,4 +1,29 @@
-import type { LimitCeilings } from "./config.js";
+/**
+ * Resource limits the runner will ever grant one container. These are HARD
+ * CEILINGS, not defaults a request can exceed: the effective value is
+ * `min(requested, ceiling)` (clamp-down only). For a bare runner serving an
+ * anonymous tier directly, the ceiling IS the policy. No `cpu` is no CPU limit.
+ */
+export interface LimitCeilings {
+  /** Kubernetes CPU quantity, e.g. "500m". */
+  cpu?: string;
+  /** Kubernetes memory quantity, e.g. "512Mi". */
+  memory: string;
+  /** Per-container ephemeral-storage limit, e.g. "1Gi". */
+  ephemeralStorage: string;
+}
+
+/** What the scheduler reserves for a container; never above its limit. */
+export interface ResourceRequests {
+  cpu: string;
+  memory: string;
+}
+
+/** One container's configured resources: its ceilings and its requests. */
+export interface ContainerSizing {
+  limits: LimitCeilings;
+  requests: ResourceRequests;
+}
 
 /**
  * Effective per-container resource limits. Requests may ask for LESS than the
@@ -7,7 +32,7 @@ import type { LimitCeilings } from "./config.js";
  * cap; clamp-down-only is the load-bearing invariant.
  */
 export interface ResolvedLimits {
-  cpu: string;
+  cpu?: string;
   memory: string;
   ephemeralStorage: string;
 }
@@ -18,12 +43,21 @@ export interface RequestedLimits {
   ephemeralStorage?: string;
 }
 
+export interface ResolvedResources {
+  limits: ResolvedLimits;
+  requests: ResourceRequests;
+}
+
 export function clampLimits(
   ceilings: LimitCeilings,
   requested: RequestedLimits | undefined,
 ): ResolvedLimits {
+  const cpu =
+    ceilings.cpu === undefined
+      ? uncappedCpu(requested?.cpu)
+      : clampQuantity(ceilings.cpu, requested?.cpu, parseCpuMillis);
   return {
-    cpu: clampQuantity(ceilings.cpu, requested?.cpu, parseCpuMillis),
+    ...(cpu !== undefined ? { cpu } : {}),
     memory: clampQuantity(ceilings.memory, requested?.memory, parseMemoryBytes),
     ephemeralStorage: clampQuantity(
       ceilings.ephemeralStorage,
@@ -31,6 +65,47 @@ export function clampLimits(
       parseMemoryBytes,
     ),
   };
+}
+
+/** A container's limits clamped as `clampLimits` does, and its requests held
+ *  at or below them, so a lowered limit never leaves a request above it. */
+export function resolveResources(
+  sizing: ContainerSizing,
+  requested?: RequestedLimits,
+): ResolvedResources {
+  const limits = clampLimits(sizing.limits, requested);
+  return {
+    limits,
+    requests: {
+      cpu:
+        limits.cpu === undefined
+          ? sizing.requests.cpu
+          : lowerQuantity(sizing.requests.cpu, limits.cpu, parseCpuMillis),
+      memory: lowerQuantity(sizing.requests.memory, limits.memory, parseMemoryBytes),
+    },
+  };
+}
+
+/** A pod container's `resources`. */
+export function podResources(resources: ResolvedResources): {
+  limits: Record<string, string>;
+  requests: Record<string, string>;
+} {
+  const { limits, requests } = resources;
+  return {
+    limits: {
+      ...(limits.cpu !== undefined ? { cpu: limits.cpu } : {}),
+      memory: limits.memory,
+      "ephemeral-storage": limits.ephemeralStorage,
+    },
+    requests: { cpu: requests.cpu, memory: requests.memory },
+  };
+}
+
+/** With no ceiling a requested cpu passes as it is, when it parses. */
+function uncappedCpu(requested: string | undefined): string | undefined {
+  if (!requested) return undefined;
+  return parseCpuMillis(requested) === null ? undefined : requested;
 }
 
 /** Returns `requested` only when it parses AND is <= ceiling; otherwise the
@@ -45,6 +120,13 @@ function clampQuantity(
   const c = parse(ceiling);
   if (r === null || c === null) return ceiling;
   return r <= c ? requested : ceiling;
+}
+
+function lowerQuantity(a: string, b: string, parse: (q: string) => number | null): string {
+  const x = parse(a);
+  const y = parse(b);
+  if (x === null || y === null) return a;
+  return x <= y ? a : b;
 }
 
 /** CPU → millicores. "500m" → 500; "1" → 1000; "0.5" → 500. */

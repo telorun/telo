@@ -31,7 +31,8 @@
     "@kubernetes/client-node": "^1.4.0",
     "@telorun/runner-core": "workspace:*",
     "fastify": "^5.12.1",
-    "pino": "^9.14.0"
+    "pino": "^9.14.0",
+    "yaml": "^2.8.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

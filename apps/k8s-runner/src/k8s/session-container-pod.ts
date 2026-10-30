@@ -6,6 +6,7 @@ import {
 } from "@telorun/runner-core";
 
 import type { K8sRunnerConfig } from "../config.js";
+import { podResources, resolveResources } from "../limits.js";
 
 /** The one container of a session container's pod. */
 export const SESSION_CONTAINER_NAME = "container";
@@ -68,7 +69,7 @@ export function buildSessionContainerPod(args: {
           ...(spec.ports.length > 0
             ? { ports: spec.ports.map((port) => ({ containerPort: port, protocol: "TCP" })) }
             : {}),
-          resources: config.sessionContainerResources,
+          resources: podResources(resolveResources(config.sessionContainerResources)),
           securityContext: {
             allowPrivilegeEscalation: false,
             runAsNonRoot: true,

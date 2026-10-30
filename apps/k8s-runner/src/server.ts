@@ -1,7 +1,6 @@
 import {
   BaseImageCatalog,
   buildServer as coreBuildServer,
-  loadAgentFromEnv,
   loadTermsFromEnv,
   openSessionStore,
   type RunnerBackend,
@@ -41,14 +40,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
   // Load terms once; the capabilities getter is re-resolved per request so a
   // refreshed catalog (new tags) shows up without restarting the runner.
   const terms = loadTermsFromEnv(process.env);
-  const agent = loadAgentFromEnv(process.env);
-  // A pod cannot read a path on the operator's machine, so a host path is refused
-  // here rather than failing every session that runs the agent.
-  if (agent?.source.kind === "module" && !agent.source.ref.startsWith("oci://")) {
-    throw new RunnerConfigError(
-      "AGENT_MODULE_REF is a host path, which a Kubernetes pod cannot read — use an oci:// reference.",
-    );
-  }
+  const { agent } = deps.config;
 
   const handle = await coreBuildServer({
     backend: deps.backend,
@@ -63,7 +55,7 @@ export async function buildServer(deps: ServerDeps): Promise<ServerHandle> {
         imageEnum: catalog?.current(),
         agents: agent ? [agent.name] : [],
       }),
-    // The operator's co-resident agent (AGENT_*; none when unset).
+    // The operator's co-resident agent (the agent file; none when unset).
     agent,
     store: deps.store,
     // The session config is opaque to core, so this runner enforces its own

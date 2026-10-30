@@ -167,12 +167,14 @@ export type AgentSource = { kind: "image"; image: string } | { kind: "module"; r
 
 /**
  * The co-resident agent a session may run, configured by the operator's
- * `AGENT_*` variables (`loadAgentFromEnv`). The client picks it by name and can
- * neither pick its source nor read its env.
+ * `AGENT_*` variables (`loadAgentFromEnv`) or a configuration file
+ * (`loadAgentFromObject`). The client picks it by name and can neither pick its
+ * source nor read its env.
  *
- * `env` may embed secrets, so treat the `AGENT_*` variables as secret material
- * (docker: a `.env.local` file; k8s: the chart's `agent.secretEnv`). Only
- * `name`, `title` and `description` are advertised outward.
+ * `env` may embed secrets, so treat `AGENT_ENV` as secret material (docker: a
+ * `.env.local` file); a file names its secrets only, each read from an
+ * `AGENT_SECRET_<NAME>` variable. Only `name`, `title` and `description` are
+ * advertised outward.
  */
 export interface RunnerAgent {
   name: string;
@@ -215,6 +217,31 @@ export const AGENT_VARIABLES = [
   "AGENT_ENV",
 ] as const;
 
+/** A setting of the co-resident agent, as `resolveAgent` reads it. */
+type AgentSetting = "image" | "moduleRef" | "port" | "pullPolicy" | "tokenEnv" | "title" | "description";
+
+const AGENT_SETTING_VARIABLES: Record<AgentSetting, (typeof AGENT_VARIABLES)[number]> = {
+  image: "AGENT_IMAGE",
+  moduleRef: "AGENT_MODULE_REF",
+  port: "AGENT_PORT",
+  pullPolicy: "AGENT_PULL_POLICY",
+  tokenEnv: "AGENT_TOKEN_ENV",
+  title: "AGENT_TITLE",
+  description: "AGENT_DESCRIPTION",
+};
+
+/** The agent's settings, whichever source they were read from; `env` lists
+ *  each source of its environment under the name a refusal gives it. */
+interface AgentSettings {
+  values: Partial<Record<AgentSetting, string | number>>;
+  env: ReadonlyArray<{ name: string; values: () => Record<string, string> }>;
+  /** What a refusal calls a setting: a variable, or a key of a file. */
+  nameOf: (setting: AgentSetting) => string;
+  /** Every setting given, named as `nameOf` names it — what an agent with no
+   *  source is refused for. */
+  given: string[];
+}
+
 /**
  * The co-resident agent from the `AGENT_*` variables, or `undefined` when none
  * is configured. Exactly one of `AGENT_IMAGE` and `AGENT_MODULE_REF` names what
@@ -223,54 +250,169 @@ export const AGENT_VARIABLES = [
  */
 export function loadAgentFromEnv(env: NodeJS.ProcessEnv): RunnerAgent | undefined {
   const get = (name: string): string | undefined => env[name]?.trim() || undefined;
-  const image = get("AGENT_IMAGE");
-  const ref = get("AGENT_MODULE_REF");
+  const values: AgentSettings["values"] = {};
+  for (const [setting, variable] of Object.entries(AGENT_SETTING_VARIABLES)) {
+    const value = get(variable);
+    if (value !== undefined) values[setting as AgentSetting] = value;
+  }
+  return resolveAgent({
+    values,
+    env: [{ name: "AGENT_ENV", values: () => parseAgentEnv(get("AGENT_ENV")) }],
+    nameOf: (setting) => AGENT_SETTING_VARIABLES[setting],
+    given: AGENT_VARIABLES.filter((name) => get(name) !== undefined),
+  });
+}
+
+const AGENT_FILE_KEYS = [...Object.keys(AGENT_SETTING_VARIABLES), "env", "secretEnv"];
+
+/**
+ * The co-resident agent from an already-parsed configuration file: the keys
+ * `image` | `moduleRef`, `port`, `pullPolicy`, `tokenEnv`, `title`,
+ * `description`, `env` (a map of strings) and `secretEnv` (a list of names,
+ * each read from the `AGENT_SECRET_<NAME>` variable of `env`, so a secret never
+ * sits in the file). Validated exactly as `loadAgentFromEnv`, refusals naming
+ * the file's keys; an unknown key, or a secret whose variable is unset, is a
+ * hard `RunnerConfigError`. An empty string is an absent setting.
+ */
+export function loadAgentFromObject(
+  value: unknown,
+  options: { file: string; env: NodeJS.ProcessEnv },
+): RunnerAgent | undefined {
+  const { file, env } = options;
+  const nameOf = (key: string): string => `\`${key}\` in ${file}`;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new RunnerConfigError(`${file} must hold a map of the agent's settings.`);
+  }
+  const values: AgentSettings["values"] = {};
+  const given: string[] = [];
+  let plainEnv: Record<string, string> = {};
+  let secretEnv: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!AGENT_FILE_KEYS.includes(key)) {
+      throw new RunnerConfigError(
+        `${nameOf(key)} is not an agent setting (expected one of: ${AGENT_FILE_KEYS.join(", ")}).`,
+      );
+    }
+    const setting = typeof raw === "string" ? raw.trim() : raw;
+    if (setting === null || setting === "") continue;
+    given.push(nameOf(key));
+    if (key === "env") plainEnv = stringMap(setting, nameOf(key));
+    else if (key === "secretEnv") secretEnv = secretValues(setting, nameOf(key), env);
+    else if (typeof setting === "string" || (key === "port" && typeof setting === "number")) {
+      values[key as AgentSetting] = setting;
+    } else {
+      throw new RunnerConfigError(
+        `${nameOf(key)} must be ${key === "port" ? "an integer in 1..65535" : "a string"}.`,
+      );
+    }
+  }
+  return resolveAgent({
+    values,
+    env: [
+      { name: nameOf("env"), values: () => plainEnv },
+      { name: nameOf("secretEnv"), values: () => secretEnv },
+    ],
+    nameOf,
+    given,
+  });
+}
+
+function stringMap(raw: unknown, name: string): Record<string, string> {
+  if (
+    typeof raw !== "object" ||
+    Array.isArray(raw) ||
+    Object.values(raw as object).some((v) => typeof v !== "string")
+  ) {
+    throw new RunnerConfigError(`${name} must be a map of string values.`);
+  }
+  return raw as Record<string, string>;
+}
+
+/** Each named secret's value, from its `AGENT_SECRET_<NAME>` variable. */
+function secretValues(raw: unknown, name: string, env: NodeJS.ProcessEnv): Record<string, string> {
+  if (!Array.isArray(raw) || raw.some((key) => typeof key !== "string" || !ENV_NAME.test(key))) {
+    throw new RunnerConfigError(
+      `${name} must be a list of environment variable names ([A-Za-z_][A-Za-z0-9_]*).`,
+    );
+  }
+  const secrets: Record<string, string> = {};
+  for (const key of raw as string[]) {
+    const variable = `AGENT_SECRET_${key}`;
+    const secret = env[variable];
+    if (secret === undefined) {
+      throw new RunnerConfigError(
+        `${name} lists '${key}', but ${variable} is unset: the runner reads the secret's value from it.`,
+      );
+    }
+    secrets[key] = secret;
+  }
+  return secrets;
+}
+
+function resolveAgent(settings: AgentSettings): RunnerAgent | undefined {
+  const { values, nameOf } = settings;
+  const text = (setting: AgentSetting): string | undefined =>
+    values[setting] === undefined ? undefined : String(values[setting]);
+  const image = text("image");
+  const ref = text("moduleRef");
+  const sources = `${nameOf("image")} or ${nameOf("moduleRef")}`;
   if (image === undefined && ref === undefined) {
-    const stray = AGENT_VARIABLES.filter((name) => get(name) !== undefined);
+    const stray = settings.given;
     if (stray.length > 0) {
       throw new RunnerConfigError(
         `${stray.join(", ")} ${stray.length === 1 ? "is" : "are"} set, but the agent is configured by ` +
-          "AGENT_IMAGE or AGENT_MODULE_REF — set one of them, or unset " +
-          `${stray.length === 1 ? "it" : "them"}.`,
+          `${sources} — set one of them, or unset ${stray.length === 1 ? "it" : "them"}.`,
       );
     }
     return undefined;
   }
   if (image !== undefined && ref !== undefined) {
-    throw new RunnerConfigError("AGENT_IMAGE and AGENT_MODULE_REF are both set — set one of them.");
+    throw new RunnerConfigError(`${nameOf("image")} and ${nameOf("moduleRef")} are both set — set one of them.`);
   }
 
-  const port = get("AGENT_PORT");
+  const port = text("port");
   if (port === undefined) {
     throw new RunnerConfigError(
-      "AGENT_PORT is required: set it to the tcp port the agent listens on.",
+      `${nameOf("port")} is required: set it to the tcp port the agent listens on.`,
     );
   }
   const portNumber = Number(port);
   if (!Number.isInteger(portNumber) || portNumber < 1 || portNumber > 65535) {
-    throw new RunnerConfigError(`AGENT_PORT must be an integer in 1..65535, got '${port}'.`);
+    throw new RunnerConfigError(`${nameOf("port")} must be an integer in 1..65535, got '${port}'.`);
   }
 
-  const pullPolicy = get("AGENT_PULL_POLICY") ?? "missing";
+  const pullPolicy = text("pullPolicy") ?? "missing";
   if (!PULL_POLICIES.includes(pullPolicy)) {
     throw new RunnerConfigError(
-      `AGENT_PULL_POLICY must be one of ${PULL_POLICIES.join(", ")}, got '${pullPolicy}'.`,
+      `${nameOf("pullPolicy")} must be one of ${PULL_POLICIES.join(", ")}, got '${pullPolicy}'.`,
     );
   }
 
-  const tokenEnv = get("AGENT_TOKEN_ENV");
+  const tokenEnv = text("tokenEnv");
   if (tokenEnv !== undefined && !ENV_NAME.test(tokenEnv)) {
     throw new RunnerConfigError(
-      `AGENT_TOKEN_ENV must be an environment variable name ([A-Za-z_][A-Za-z0-9_]*), got '${tokenEnv}'.`,
+      `${nameOf("tokenEnv")} must be an environment variable name ([A-Za-z_][A-Za-z0-9_]*), got '${tokenEnv}'.`,
     );
   }
 
-  const agentEnv = parseAgentEnv(get("AGENT_ENV"));
+  const agentEnv: Record<string, string> = {};
+  const definedBy = new Map<string, string>();
+  for (const source of settings.env) {
+    for (const [key, value] of Object.entries(source.values())) {
+      const earlier = definedBy.get(key);
+      if (earlier !== undefined) {
+        throw new RunnerConfigError(`'${key}' is defined by both ${earlier} and ${source.name} — define it once.`);
+      }
+      definedBy.set(key, source.name);
+      agentEnv[key] = value;
+    }
+  }
   // Two sources for one variable would leave which value the agent sees to
   // merge order; the runner mints the token, so the operator's literal loses.
-  if (tokenEnv !== undefined && Object.hasOwn(agentEnv, tokenEnv)) {
+  if (tokenEnv !== undefined && definedBy.has(tokenEnv)) {
     throw new RunnerConfigError(
-      `AGENT_TOKEN_ENV is '${tokenEnv}', which AGENT_ENV also defines — the runner mints that value per session.`,
+      `${nameOf("tokenEnv")} is '${tokenEnv}', which ${definedBy.get(tokenEnv)} also defines — ` +
+        "the runner mints that value per session.",
     );
   }
 
@@ -280,12 +422,14 @@ export function loadAgentFromEnv(env: NodeJS.ProcessEnv): RunnerAgent | undefine
   } else {
     if (!ref!.startsWith("oci://") && !isAbsolute(ref!)) {
       throw new RunnerConfigError(
-        `AGENT_MODULE_REF must be an oci:// reference or an absolute host path, got '${ref}'.`,
+        `${nameOf("moduleRef")} must be an oci:// reference or an absolute host path, got '${ref}'.`,
       );
     }
     source = { kind: "module", ref: ref! };
   }
 
+  const title = text("title");
+  const description = text("description");
   return {
     name: AGENT_NAME,
     source,
@@ -293,8 +437,8 @@ export function loadAgentFromEnv(env: NodeJS.ProcessEnv): RunnerAgent | undefine
     pullPolicy: pullPolicy as PullPolicy,
     port: portNumber,
     ...(tokenEnv !== undefined ? { tokenEnv } : {}),
-    ...(get("AGENT_TITLE") !== undefined ? { title: get("AGENT_TITLE") } : {}),
-    ...(get("AGENT_DESCRIPTION") !== undefined ? { description: get("AGENT_DESCRIPTION") } : {}),
+    ...(title !== undefined ? { title } : {}),
+    ...(description !== undefined ? { description } : {}),
   };
 }
 
@@ -481,17 +625,32 @@ export function requireStateDirectory(store: SessionStoreConfig): void {
 }
 
 export function loadSessionContainersConfig(env: NodeJS.ProcessEnv): SessionContainersConfig {
-  const enabled = parseBool(env.RUNNER_SESSION_CONTAINERS, false, "RUNNER_SESSION_CONTAINERS");
-  const max = parsePositiveInt(
-    env.RUNNER_SESSION_CONTAINERS_MAX,
-    4,
-    "RUNNER_SESSION_CONTAINERS_MAX",
+  return sessionContainersConfig(
+    {
+      enabled: parseBool(env.RUNNER_SESSION_CONTAINERS, false, "RUNNER_SESSION_CONTAINERS"),
+      max: parsePositiveInt(env.RUNNER_SESSION_CONTAINERS_MAX, 4, "RUNNER_SESSION_CONTAINERS_MAX"),
+    },
+    env,
+    "RUNNER_SESSION_CONTAINERS",
   );
+}
+
+/**
+ * Session containers from settings a runner read itself (`enabledBy` names
+ * the setting that turned them on, for the refusal), completed with the
+ * `RUNNER_INTERNAL_URL` they need.
+ */
+export function sessionContainersConfig(
+  settings: { enabled: boolean; max: number },
+  env: NodeJS.ProcessEnv,
+  enabledBy: string,
+): SessionContainersConfig {
+  const { enabled, max } = settings;
   if (!enabled) return { enabled, max };
   const raw = env.RUNNER_INTERNAL_URL?.trim();
   if (!raw) {
     throw new RunnerConfigError(
-      "RUNNER_SESSION_CONTAINERS is on, so RUNNER_INTERNAL_URL is required: the runner's base URL " +
+      `${enabledBy} is on, so RUNNER_INTERNAL_URL is required: the runner's base URL ` +
         "as a session's workload reaches it (e.g. http://runner:8061), where the session's container " +
         "engine is served.",
     );

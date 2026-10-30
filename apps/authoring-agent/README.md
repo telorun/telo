@@ -1092,7 +1092,7 @@ A runner offers it as a session's co-resident agent: run the image (`AGENT_IMAGE
 or run this application's module on the runner's kernel image (`AGENT_MODULE_REF`,
 an `oci://` reference fetched at start, or a host path). `AGENT_PORT` names the port
 it listens on. The image or module and the operator env stay server-side; a client
-only asks for the agent by name. See the runner READMEs for the `AGENT_*` variables.
+only asks for the agent by name. See the runner READMEs for the `AGENT_*` variables (the Kubernetes runner reads the same settings from its agent file).
 
 ## Tests
 

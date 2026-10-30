@@ -21,9 +21,9 @@ plane (or an equivalent abuse-control proxy), which resolves identity → tier �
 limits and forwards to the runner. Standalone, it is safe only on a
 trusted/internal network.
 
-Resource limits are **hard ceilings**: a request may ask for *less* than the
-configured cap but never more (`min(requested, ceiling)`). For a bare runner
-serving an anonymous tier, the ceiling *is* the policy.
+Resource limits are **hard ceilings**, fixed by the session file. For a bare runner
+serving an anonymous tier, the ceiling *is* the policy. A container has a CPU
+limit only when one is configured; memory and ephemeral storage always have one.
 
 ## How it works
 
@@ -31,7 +31,7 @@ serving an anonymous tier, the ceiling *is* the policy.
 its files live on a **PersistentVolumeClaim of its own**; its pod is the part that
 comes and goes. One pod holds a `workspace` container serving the editor's file
 routes, one `apps` container holding every application, and optionally a
-co-resident `agent` configured by the `AGENT_*` variables (chart: the `agent:` object). **Nothing runs until
+co-resident `agent` configured by the [agent file](#configuration-files) (chart: the `agent:` object). **Nothing runs until
 Run**: `POST /v1/sessions/:id/apps/:app/run` is a process start inside a container
 that already exists, under `telo run --watch`, so an edit costs a kernel reload
 rather than a pod. When a routing base domain is configured the runner also
@@ -63,14 +63,14 @@ as the error's `cause` and lands in the runner's log.
 | `supervisor` (init) | The runner's own (`RUNNER_SUPERVISOR_IMAGE`) | Copies the session supervisor into an `emptyDir`, creates the claim's `workspace/`, `telo/` and `agent/` | The `emptyDir`, the claim's root | None |
 | `workspace` | `RUNNER_IMAGE`, over a runner-supplied manifest | `telo run` of the workspace application | `workspace/` at `/workspace` | None |
 | `apps` | The session's picked image, else `RUNNER_IMAGE` | `/opt/telo-runner/supervisor --slots 9`: a supervisor per app slot (eight) and one for the runner's own tasks, idle until Run | `workspace/` at `/workspace`, `telo/` at `/var/lib/telo-releases`, the supervisor read-only at `/opt/telo-runner` | One supervisor token |
-| `agent` | `AGENT_IMAGE`, or the kernel image running `telo run` on `AGENT_MODULE_REF` (`oci://`) | The image's own entrypoint, or `telo run` | `workspace/` at `/workspace`, `agent/` at `/var/lib/telo-agent-state` | Operator env |
+| `agent` | The agent file's `image`, or the kernel image running `telo run` on its `moduleRef` (`oci://`) | The image's own entrypoint, or `telo run` | `workspace/` at `/workspace`, `agent/` at `/var/lib/telo-agent-state` | Operator env |
 
 **The pod does not change with the app set.** Adding, removing or re-versioning an
 application takes or frees a slot in the `apps` container, so the workspace and the
 agent keep running; only an agent change recreates the pod. The slot of each app is
 recorded in the pod's `telo.run/app-slots` annotation, which an adopting runner
 reads back. A session runs at most eight applications (`400 too_many_apps`), and
-the `RUNNER_MAX_*` limits are the container's, shared by them.
+the session file's `resources` are the container's, shared by them.
 
 **No session env is in the pod spec.** The `apps` container carries
 `TELO_SUPERVISOR_LISTEN=0.0.0.0:9330` (slot `n` listens on `9330 + n`) and
@@ -93,7 +93,7 @@ binds it. The runner reaches both over the pod IP; neither is published.
 **A shared `fsGroup` is required**: every container reads and writes `/workspace`,
 so they must share a GID or the agent writes files an app cannot read.
 
-**The agent is routed like an app port, and reported like one.** Its `AGENT_PORT`
+**The agent is routed like an app port, and reported like one.** Its `port`
 is the tcp port it listens on, and the runner refuses to start without one. Where an application declares the
 agent's port the **manifest wins** on a create: the session starts without the
 agent and says so on its stream. The port joins the session's Service and routing
@@ -261,11 +261,10 @@ declaring a port the pod reserves.
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_DISPLAY_NAME` | `Telo Runner` | Display name advertised on `/v1/capabilities` (the editor's runner label) |
 | `RUNNER_DESCRIPTION` | `Runs the Telo application in a cloud environment` | Description advertised on `/v1/capabilities` |
-| `AGENT_IMAGE` / `AGENT_MODULE_REF` | _(unset → no agent)_ | The operator's co-resident agent, advertised as `features.agents`. Chart: the `agent:` object — `image` or `moduleRef` (an `oci://` reference; a host path is refused, since a pod cannot read the operator's machine), `port`, `env`, `secretEnv` (each read from a Secret key), `pullPolicy`, `tokenEnv`, `title`, `description`. The runner reads `AGENT_IMAGE`, `AGENT_MODULE_REF`, `AGENT_PORT`, `AGENT_PULL_POLICY`, `AGENT_TOKEN_ENV`, `AGENT_TITLE`, `AGENT_DESCRIPTION` and `AGENT_ENV` (a JSON object). See the docker-runner README for what each does. |
+| `SESSION_CONFIG_FILE` | _(unset → every default)_ | The [session file](#configuration-files): the session containers' resources, session containers and the base-image picker. The chart mounts it from the `telo-k8s-runner-session` ConfigMap |
+| `AGENT_CONFIG_FILE` | _(unset → no agent)_ | The [agent file](#configuration-files): the operator's co-resident agent, advertised as `features.agents`, and its container's resources. The chart mounts it from the `telo-k8s-runner-agent` ConfigMap when `agent.image` or `agent.moduleRef` is set |
+| `AGENT_SECRET_<NAME>` | — | The value of each name the agent file lists under `secretEnv`; required for each (chart: `agent.secretEnv`, each from a Secret key) |
 | `RUNNER_SUPERVISOR_IMAGE` | _(required; the chart sets it to the runner's own image)_ | The runner's own image, which every session pod's `supervisor` init container copies the session supervisor out of (from `/opt/telo-runner/supervisor`) |
-| `RUNNER_APP_MAX_CPU` | `500m` | CPU ceiling of the co-resident agent's container (chart: `limits.agent.maxCpu`) |
-| `RUNNER_APP_MAX_MEMORY` | `512Mi` | Memory ceiling of the co-resident agent's container (chart: `limits.agent.maxMemory`) |
-| `RUNNER_APP_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling of the co-resident agent's container (chart: `limits.agent.maxEphemeralStorage`) |
 | `RUNNER_SESSION_NAMESPACE` | `telo-sessions` | Namespace for session objects |
 | `RUNNER_IMAGE` | _(baked at build: the CLI version for a released runner, `telorun/node:latest-slim` for a dev build)_ | Default base image; always offered in the picker and the fallback when the catalog is unreachable. Leave the chart's `session.image` empty to keep the session kernel in lockstep with the runner |
 | `RUNNER_TELO_RELEASES_URL` | `https://github.com/telorun/telo/releases/download` | Where the `apps` container downloads the `telo` binary of a version an application names: `<url>/v<version>/telo-<version>-<target>.tar.gz` and its `checksums.txt`. Point it at a mirror where session pods cannot reach GitHub (chart: `session.teloReleasesUrl`) |
@@ -281,9 +280,6 @@ declaring a port the pod reserves.
 | `SESSION_GATEWAY_NAME` | _(unset)_ | Gateway each session's HTTPRoute attaches to. Required in gateway mode |
 | `SESSION_GATEWAY_NAMESPACE` | _(= session namespace)_ | Namespace of that Gateway |
 | `SESSION_GATEWAY_SECTION_NAME` | _(unset → any listener)_ | Listener name, when only one should carry session traffic |
-| `RUNNER_MAX_CPU` | `500m` | CPU ceiling of the `apps` container and the `workspace` container (chart: `limits.maxCpu`) |
-| `RUNNER_MAX_MEMORY` | `512Mi` | Memory ceiling of the `apps` container and the `workspace` container (chart: `limits.maxMemory`) |
-| `RUNNER_MAX_EPHEMERAL_STORAGE` | `1Gi` | Ephemeral-storage ceiling of the `apps` container and the `workspace` container (chart: `limits.maxEphemeralStorage`) |
 | `RUNNER_MAX_SESSIONS` | `8` | Most running sessions at once; suspended ones do not count (chart: `runner.maxSessions`) |
 | `RUNNER_SESSION_IDLE_SECONDS` | `300` | No SSE/WS subscriber for this long → suspend (chart: `sessions.idleSeconds`) |
 | `RUNNER_SESSION_MAX_RUNNING_SECONDS` | `21600` | A running session suspends after this long. One deadline covers the agent and the apps, so it takes the longer ceiling and lets idleness do the real work (chart: `sessions.maxRunningSeconds`) |
@@ -296,16 +292,46 @@ declaring a port the pod reserves.
 | `RUNNER_SESSION_STORAGE_CLASS` | _(unset → cluster default)_ | StorageClass of each session's own PersistentVolumeClaim (chart: `sessionStorage.storageClass`) |
 | `RUNNER_IDENTITY_AUDIENCE` | _(unset)_ | The runner's public https base URL, the audience a signed-in owner's DPoP-bound token must name; set with `RUNNER_IDENTITY_ISSUERS` or not at all (chart: `identity.audience`) |
 | `RUNNER_IDENTITY_ISSUERS` | _(unset)_ | Comma-separated https issuers whose tokens are accepted (chart: `identity.issuers`, a list) |
-| `RUNNER_SESSION_CONTAINERS` | `false` | Serve every session a container engine of its own (chart: `session.containers.enabled`) — see [Session containers](#session-containers) |
-| `RUNNER_SESSION_CONTAINERS_MAX` | `4` | Most containers one session may hold at once; a create beyond it is `429` (chart: `session.containers.max`) |
-| `RUNNER_SESSION_CONTAINERS_RESOURCES` | _(limits 500m CPU, 512Mi memory, 1Gi ephemeral storage; requests 500m CPU, 512Mi memory)_ | Every session container's pod `resources`, as JSON `{"limits": {…}, "requests": {…}}` (chart: `session.containers.resources`) |
-| `RUNNER_INTERNAL_URL` | _(required when containers are on)_ | The runner as a session pod reaches it; the chart sets it to the runner's Service |
+| `RUNNER_INTERNAL_URL` | _(required when the session file turns containers on)_ | The runner as a session pod reaches it; the chart sets it to the runner's Service |
 | `RUNNER_TERMS_FILE` | _(unset)_ | Path to the agreement file (plain text / markdown), read at startup — mount it from a `ConfigMap` (e.g. `/etc/telo/terms.md`). Setting this (or `RUNNER_TERMS_BODY`) enables terms: the runner advertises them on `/v1/capabilities` and rejects `POST /v1/sessions` with `428` unless the client sends `x-telo-accepted-terms` matching the version. An unreadable path fails startup. The public cloud should set this |
 | `RUNNER_TERMS_BODY` | _(unset)_ | Inline agreement text, for short notes; ignored when `RUNNER_TERMS_FILE` is set |
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
 
-A runner started with a variable this release no longer reads refuses to boot, naming each one: `RUNNER_WATCH_MAX_SESSIONS`, `RUNNER_WATCH_IDLE_SECONDS`, `RUNNER_WATCH_MAX_TTL_SECONDS`, `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` and `RUNNER_WATCH_RELOAD_LIMIT` are renamed to `RUNNER_MAX_SESSIONS`, `RUNNER_SESSION_IDLE_SECONDS`, `RUNNER_SESSION_MAX_RUNNING_SECONDS`, `RUNNER_SESSION_RETENTION_SECONDS` and `RUNNER_SESSION_RELOAD_LIMIT`; `RUNNER_WATCH_SESSIONS`, `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`, `RUNNER_EXIT_TTL_MS`, `RUNNER_MAX_TTL_SECONDS` and `RUNNER_APP_MAX_TTL_SECONDS` are removed, and so are `RUNNER_SELF_URL` and `RUNNER_INIT_IMAGE`, which served the bundle fetch (the chart's `session.initImage` is refused the same way).
+A runner started with a variable this release no longer reads refuses to boot, naming each one: `RUNNER_WATCH_MAX_SESSIONS`, `RUNNER_WATCH_IDLE_SECONDS`, `RUNNER_WATCH_MAX_TTL_SECONDS`, `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` and `RUNNER_WATCH_RELOAD_LIMIT` are renamed to `RUNNER_MAX_SESSIONS`, `RUNNER_SESSION_IDLE_SECONDS`, `RUNNER_SESSION_MAX_RUNNING_SECONDS`, `RUNNER_SESSION_RETENTION_SECONDS` and `RUNNER_SESSION_RELOAD_LIMIT`; `RUNNER_WATCH_SESSIONS`, `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`, `RUNNER_EXIT_TTL_MS`, `RUNNER_MAX_TTL_SECONDS` and `RUNNER_APP_MAX_TTL_SECONDS` are removed, and so are `RUNNER_SELF_URL` and `RUNNER_INIT_IMAGE`, which served the bundle fetch (the chart's `session.initImage` is refused the same way). The settings the configuration files now hold refuse to boot as variables, each naming the file key to set: `RUNNER_MAX_CPU`, `RUNNER_MAX_MEMORY`, `RUNNER_MAX_EPHEMERAL_STORAGE`, `RUNNER_SESSION_CONTAINERS`, `RUNNER_SESSION_CONTAINERS_MAX`, `RUNNER_SESSION_CONTAINERS_RESOURCES` and every `RUNNER_BASE_IMAGE_*` (the session file), and `RUNNER_APP_MAX_CPU`, `RUNNER_APP_MAX_MEMORY`, `RUNNER_APP_MAX_EPHEMERAL_STORAGE`, `AGENT_IMAGE`, `AGENT_MODULE_REF`, `AGENT_PORT`, `AGENT_PULL_POLICY`, `AGENT_TOKEN_ENV`, `AGENT_TITLE`, `AGENT_DESCRIPTION` and `AGENT_ENV` (the agent file).
+
+### Configuration files
+
+The runner's structured settings are two YAML files, read once at boot. Each is
+**closed**: a key the runner does not read refuses to boot, naming the file and
+the key, as does a malformed quantity or a request above its limit — a misspelt
+setting never silently becomes a default. The chart renders each from its values
+into a ConfigMap, mounts it read-only and rolls the runner when it changes.
+
+A `resources` map, wherever it appears, is `limits` (`memory`, default `512Mi`;
+`ephemeral-storage`, default `1Gi`; `cpu`, no default — absent is no CPU limit)
+and `requests` (`cpu`, default `500m`; `memory`, default `512Mi`), each key
+defaulting on its own. A request is held at or below its container's effective
+limit.
+
+**The session file** (`SESSION_CONFIG_FILE`, chart: `session.resources`,
+`session.containers`, `session.baseImages`):
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `resources` | as above | The session pod's `workspace`, `apps` and `supervisor` containers; every app shares the `apps` container's |
+| `containers.enabled` | `false` | Serve every session a container engine of its own — see [Session containers](#session-containers); needs `RUNNER_INTERNAL_URL` |
+| `containers.max` | `4` | Most containers one session may hold at once; a create beyond it is `429` |
+| `containers.resources` | as above | Every session container's pod |
+| `baseImages.*` | see [Base-image picker](#base-image-picker) | The base-image picker |
+
+**The agent file** (`AGENT_CONFIG_FILE`, chart: `agent.*`): `image` or
+`moduleRef` (an `oci://` reference — a host path is refused, since a pod cannot
+read the operator's machine), `port` (required), `pullPolicy`, `tokenEnv`,
+`title`, `description`, `env` (a map of strings), `secretEnv` (a list of names,
+each read from `AGENT_SECRET_<NAME>`, so no secret is in the file) and
+`resources` (the agent's container). See the docker-runner README for what each
+agent setting does.
 
 ### The telo version an application runs on
 
@@ -351,12 +377,11 @@ and runs each container as a pod in the session namespace:
 - with `session.containers.resources`, which the namespace's `ResourceQuota`
   counts like any session pod — so enabling this requires raising
   `resourceQuota.hard` by the container term: `pods` by `runner.maxSessions` ×
-  `session.containers.max`, and `requests.cpu` / `requests.memory` (and
-  `limits.cpu` / `limits.memory`) by `runner.maxSessions` ×
-  `session.containers.max` × the container's requests (limits). At the defaults
-  that is pods 32 → 160, cpu 16 → 80 (32 × 4 × 500m = 64, plus 16) and memory
-  16Gi → 80Gi; without it the quota, not `runner.maxSessions`, caps concurrency,
-  as a 403 the client sees;
+  `session.containers.max`, and `requests.cpu`, `requests.memory` and
+  `limits.memory` by `runner.maxSessions` × `session.containers.max` × the
+  container's value. At the defaults that is pods 32 → 64, `requests.cpu`
+  16 → 32 and memory 16Gi → 32Gi; without it the quota, not
+  `runner.maxSessions`, caps concurrency, as a 403 the client sees;
 - labelled `run.telo.session=<id>` and the runner's managed-by label — never
   `telo.run/session-id`, so the session's Service does not select it — and owned
   by the session's pod, so the cluster collects it with that pod;
@@ -389,17 +414,19 @@ Pinned tags (e.g. `0.30.1-slim`) are immutable. A picked **moving** tag like
 is the Pod's own `imagePullPolicy`: the kubelet re-pulls the tag on every
 session. `missing` and `never` reuse whatever that node already cached.
 
-| Env | Default | Purpose |
+Its settings are the session file's `baseImages` (chart: `session.baseImages`):
+
+| Key | Default | Purpose |
 | --- | --- | --- |
-| `RUNNER_BASE_IMAGE_CATALOG_ENABLED` | `true` | Resolve + advertise the picker; `false` locks `image` to `RUNNER_IMAGE` |
-| `RUNNER_BASE_IMAGE_REPO` | `telorun/node` | `namespace/repository` queried on Docker Hub |
-| `RUNNER_BASE_IMAGE_PINNED_ONLY` | `true` | Keep only pinned `MAJOR.MINOR.PATCH[-variant]` tags (drops `latest`, `0`, `0.30`) |
-| `RUNNER_BASE_IMAGE_EXCLUDE_SHA` | `true` | Drop commit-hash tags |
-| `RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE` | `true` | Drop semver prereleases (`-rc.1`, `-alpha`); `-slim` / `-rust-*` variants are kept |
-| `RUNNER_BASE_IMAGE_INCLUDE` | _(unset)_ | Regex a tag must match (escape hatch) |
-| `RUNNER_BASE_IMAGE_EXCLUDE` | _(unset)_ | Regex that drops a matching tag (escape hatch) |
-| `RUNNER_BASE_IMAGE_LIMIT` | `20` | Cap on advertised tags (newest first) |
-| `RUNNER_BASE_IMAGE_REFRESH_SECONDS` | `3600` | Catalog re-fetch cadence |
+| `enabled` | `true` | Resolve + advertise the picker; `false` locks `image` to `RUNNER_IMAGE` |
+| `repository` | `telorun/node` | `namespace/repository` queried on Docker Hub |
+| `pinnedOnly` | `true` | Keep only pinned `MAJOR.MINOR.PATCH[-variant]` tags (drops `latest`, `0`, `0.30`) |
+| `excludeSha` | `true` | Drop commit-hash tags |
+| `excludePrerelease` | `true` | Drop semver prereleases (`-rc.1`, `-alpha`); `-slim` / `-rust-*` variants are kept |
+| `include` | _(empty)_ | Regex a tag must match (escape hatch) |
+| `exclude` | _(empty)_ | Regex that drops a matching tag (escape hatch) |
+| `limit` | `20` | Cap on advertised tags (newest first) |
+| `refreshSeconds` | `3600` | Catalog re-fetch cadence |
 
 ## Deploy (Helm)
 
@@ -441,8 +468,16 @@ namespace, no push credentials.
 | `sessionStore.url` / `.existingSecret` (+ `.existingSecretKey`, `url`) | — | The Postgres connection URL, inline or from a Secret; one of them with `postgres` |
 | `sessionStorage.size` / `.storageClass` | `5Gi` / cluster default | Each session's own claim |
 | `identity.audience` / `identity.issuers` | — | Signed-in owners; set both or neither |
-| `limits.maxCpu` / `.maxMemory` / `.maxEphemeralStorage` | `500m` / `512Mi` / `1Gi` | The `apps` container and the `workspace` container |
-| `limits.agent.maxCpu` / `.maxMemory` / `.maxEphemeralStorage` | `500m` / `512Mi` / `1Gi` | The agent's container |
+| `session.resources` | limits `512Mi` memory, `1Gi` ephemeral storage, no CPU; requests `500m` CPU, `512Mi` memory | The session pod's `workspace`, `apps` and `supervisor` containers |
+| `agent.resources` | the same | The agent's container |
+| `session.containers.resources` | the same | Every session container's pod |
+| `resourceQuota.hard` | `pods: 32`, `requests.cpu: 16`, `requests.memory` / `limits.memory: 16Gi` | The session namespace's quota; the arithmetic is in `values.yaml`. It names no `limits.cpu`, which would refuse every pod without a CPU limit |
+
+The chart refuses the top-level `limits:` of earlier releases, naming
+`session.resources` and `agent.resources`; to keep the old 500m CPU ceiling, set
+`limits.cpu: 500m` in `session.resources`, `agent.resources` and
+`session.containers.resources`. A quota key `limits.cpu` is refused unless every
+rendered pod class sets that limit, and a request above its limit fails the install.
 
 A session pod's `supervisor` init container runs the runner's own image
 (`image.repository:image.tag`), pulled by the node into `telo-sessions` — so a

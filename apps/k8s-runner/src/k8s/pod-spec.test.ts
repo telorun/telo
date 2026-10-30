@@ -2,16 +2,20 @@ import type { V1Container } from "@kubernetes/client-node";
 import { describe, expect, it } from "vitest";
 
 import { loadK8sRunnerConfig } from "../config.js";
-import { clampLimits } from "../limits.js";
+import { resolveResources } from "../limits.js";
 import { buildSessionPod, reservedPortsFor } from "./pod-spec.js";
 
-const config = loadK8sRunnerConfig({
-  RUNNER_SUPERVISOR_IMAGE: "telorun/k8s-runner:0.22.0",
-  RUNNER_STATE_DIR: "/var/lib/telo-runner",
-  RUNNER_IMAGE: "telorun/node:0.121.0-slim",
-  RUNNER_MAX_CPU: "300m",
-  RUNNER_APP_MAX_MEMORY: "1Gi",
-});
+const config = {
+  ...loadK8sRunnerConfig({
+    RUNNER_SUPERVISOR_IMAGE: "telorun/k8s-runner:0.22.0",
+    RUNNER_STATE_DIR: "/var/lib/telo-runner",
+    RUNNER_IMAGE: "telorun/node:0.121.0-slim",
+  }),
+  agentResources: {
+    limits: { cpu: "2", memory: "1Gi", ephemeralStorage: "1Gi" },
+    requests: { cpu: "250m", memory: "768Mi" },
+  },
+};
 
 const OPERATOR_KEY = "OPENAI_API_KEY";
 function build(overrides: Partial<Parameters<typeof buildSessionPod>[0]> = {}) {
@@ -33,7 +37,7 @@ function build(overrides: Partial<Parameters<typeof buildSessionPod>[0]> = {}) {
     claimName: "telo-session-abc123",
     workspaceAppConfigMap: "telo-workspace-app-deadbeef",
     hostEnv: { TELO_HOST_PUBLIC_URL_TEMPLATE: "https://{port}-abc123.telo.run" },
-    limits: { app: clampLimits(config.limits, undefined), agent: clampLimits(config.appLimits, undefined) },
+    resources: { app: resolveResources(config.sessionResources), agent: resolveResources(config.agentResources) },
     ...overrides,
   });
 }
@@ -116,16 +120,16 @@ describe("the session pod", () => {
     }
   });
 
-  it("sizes app and workspace containers by RUNNER_MAX_* and the agent by RUNNER_APP_MAX_*", () => {
-    for (const name of ["workspace", "apps"]) {
-      expect(byName(pod, name).resources).toEqual({
-        limits: { cpu: "300m", memory: "512Mi", "ephemeral-storage": "1Gi" },
-        requests: { cpu: "300m", memory: "512Mi" },
+  it("sizes the session's containers by the session file, with no CPU limit unless one is set, and the agent by its own", () => {
+    for (const container of [...pod.spec!.initContainers!, byName(pod, "workspace"), byName(pod, "apps")]) {
+      expect(container.resources).toEqual({
+        limits: { memory: "512Mi", "ephemeral-storage": "1Gi" },
+        requests: { cpu: "500m", memory: "512Mi" },
       });
     }
     expect(byName(pod, "agent").resources).toEqual({
-      limits: { cpu: "500m", memory: "1Gi", "ephemeral-storage": "1Gi" },
-      requests: { cpu: "500m", memory: "1Gi" },
+      limits: { cpu: "2", memory: "1Gi", "ephemeral-storage": "1Gi" },
+      requests: { cpu: "250m", memory: "768Mi" },
     });
   });
 

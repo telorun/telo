@@ -1,13 +1,24 @@
 import { loadTeloImageSource, type TeloImageSource } from "@telorun/runner-core/container";
 import {
+  loadAgentFromObject,
   loadCoreConfig,
   parseBool,
   parsePositiveInt,
   requireStateDirectory,
   RunnerConfigError,
+  sessionContainersConfig,
+  type RunnerAgent,
   type RunnerCoreConfig,
   type TagFilter,
 } from "@telorun/runner-core";
+
+import {
+  ConfigSection,
+  DEFAULT_CONTAINER_SIZING,
+  readConfigFile,
+  readContainerSizing,
+} from "./config-file.js";
+import type { ContainerSizing } from "./limits.js";
 
 export { RunnerConfigError };
 
@@ -28,21 +39,6 @@ export interface BaseImageCatalogConfig {
   limit: number;
   /** Background refresh cadence in ms. */
   refreshIntervalMs: number;
-}
-
-/**
- * Resource limits the runner will ever grant one container. These are HARD
- * CEILINGS, not defaults a request can exceed: the effective value is
- * `min(requested, ceiling)` (clamp-down only). For a bare runner serving an
- * anonymous tier directly, the ceiling IS the policy.
- */
-export interface LimitCeilings {
-  /** Kubernetes CPU quantity, e.g. "500m". */
-  cpu: string;
-  /** Kubernetes memory quantity, e.g. "512Mi". */
-  memory: string;
-  /** Per-container ephemeral-storage limit, e.g. "1Gi". */
-  ephemeralStorage: string;
 }
 
 /**
@@ -113,8 +109,8 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
    *  `supervisor` init container copies the session supervisor out of it. */
   supervisorImage: string;
   /** Optional dockerconfig Secret (in the session namespace) the kubelet pulls
-   *  session images with — the kernel image, and any operator catalog image
-   *  (`AGENT_IMAGE`) held in a private registry. */
+   *  session images with — the kernel image, and any operator agent image held
+   *  in a private registry. */
   imagePullSecret?: string;
   /** Leave a session pod that failed to start in place for inspection
    *  (`RUNNER_KEEP_FAILED_PODS`). */
@@ -125,19 +121,19 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   sessionRouting: SessionRoutingConfig;
   /** Label applied to every session object, used for orphan reaping. */
   managedByLabel: string;
-  /** Ceilings of each `app-<name>` container and the `workspace` container
-   *  (`RUNNER_MAX_*`). */
-  limits: LimitCeilings;
-  /** Ceilings of the co-resident agent's container (`RUNNER_APP_MAX_*`): an
+  /** The `apps`, `workspace` and `supervisor` containers' resources (the
+   *  session file's `resources`). */
+  sessionResources: ContainerSizing;
+  /** The operator's co-resident agent (the agent file); none when unset. */
+  agent?: RunnerAgent;
+  /** The agent's container's resources (the agent file's `resources`): an
    *  operator-curated image, sized separately from anonymous session code. */
-  appLimits: LimitCeilings;
+  agentResources: ContainerSizing;
   /** Menu of base images a session may pick (advertised as the `image` enum). */
   baseImageCatalog: BaseImageCatalogConfig;
   /** The resources of every pod a session starts through its container engine
-   *  (`RUNNER_SESSION_CONTAINERS_RESOURCES`, a pod container's `resources` as
-   *  JSON). Always set: the session namespace's quota admits no pod without
-   *  limits. */
-  sessionContainerResources: ContainerResources;
+   *  (the session file's `containers.resources`). */
+  sessionContainerResources: ContainerSizing;
   /** Each session's own volume (`RUNNER_SESSION_STORAGE_SIZE`,
    *  `RUNNER_SESSION_STORAGE_CLASS`). */
   sessionStorage: SessionStorageConfig;
@@ -171,49 +167,6 @@ function loadSessionStorageConfig(env: NodeJS.ProcessEnv): SessionStorageConfig 
   return { size, storageClassName };
 }
 
-/** A pod container's `resources`, quantities as strings. */
-export interface ContainerResources {
-  limits: Record<string, string>;
-  requests: Record<string, string>;
-}
-
-const DEFAULT_SESSION_CONTAINER_RESOURCES: ContainerResources = {
-  limits: { cpu: "500m", memory: "512Mi", "ephemeral-storage": "1Gi" },
-  requests: { cpu: "500m", memory: "512Mi" },
-};
-
-function loadSessionContainerResources(raw: string | undefined): ContainerResources {
-  const text = raw?.trim();
-  if (!text) return DEFAULT_SESSION_CONTAINER_RESOURCES;
-  const fail = (detail: string): never => {
-    throw new RunnerConfigError(
-      `RUNNER_SESSION_CONTAINERS_RESOURCES must be a pod container's resources as JSON ` +
-        `({"limits": {...}, "requests": {...}}, quantities as strings): ${detail}`,
-    );
-  };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (err) {
-    return fail((err as Error).message);
-  }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return fail("not an object");
-  const resources: ContainerResources = { limits: {}, requests: {} };
-  for (const [key, value] of Object.entries(parsed)) {
-    if (key !== "limits" && key !== "requests") return fail(`unknown key '${key}'`);
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return fail(`'${key}' is not an object`);
-    }
-    for (const [name, quantity] of Object.entries(value)) {
-      if (typeof quantity !== "string" && typeof quantity !== "number") {
-        return fail(`'${key}.${name}' is not a quantity`);
-      }
-      resources[key][name] = String(quantity);
-    }
-  }
-  return resources;
-}
-
 const DEFAULT_PORT = 8062;
 
 /** Variables this runner read before sessions became durable workspaces. */
@@ -225,17 +178,54 @@ const RETIRED_VARIABLES: Record<string, string> = {
     "it ran the bundle fetch, which is gone; a session pod's init container runs RUNNER_SUPERVISOR_IMAGE",
 };
 
-/** Compile a single optional regex env var into a one-element `RegExp[]`. */
-function parseTagRegex(raw: string | undefined, field: string): RegExp[] | undefined {
-  const v = raw?.trim();
-  if (!v) return undefined;
-  try {
-    return [new RegExp(v)];
-  } catch (err) {
-    throw new RunnerConfigError(
-      `${field} is not a valid regular expression: ${(err as Error).message}`,
-    );
-  }
+/** Variables an earlier k8s runner read, moved into its two configuration
+ *  files, each with the file and key that replaced it. */
+const MOVED_TO_FILES: ReadonlyArray<{ name: string; file: "session" | "agent"; key: string }> = [
+  { name: "RUNNER_MAX_CPU", file: "session", key: "resources.limits.cpu" },
+  { name: "RUNNER_MAX_MEMORY", file: "session", key: "resources.limits.memory" },
+  { name: "RUNNER_MAX_EPHEMERAL_STORAGE", file: "session", key: "resources.limits.ephemeral-storage" },
+  { name: "RUNNER_SESSION_CONTAINERS", file: "session", key: "containers.enabled" },
+  { name: "RUNNER_SESSION_CONTAINERS_MAX", file: "session", key: "containers.max" },
+  { name: "RUNNER_SESSION_CONTAINERS_RESOURCES", file: "session", key: "containers.resources" },
+  { name: "RUNNER_BASE_IMAGE_CATALOG_ENABLED", file: "session", key: "baseImages.enabled" },
+  { name: "RUNNER_BASE_IMAGE_REPO", file: "session", key: "baseImages.repository" },
+  { name: "RUNNER_BASE_IMAGE_PINNED_ONLY", file: "session", key: "baseImages.pinnedOnly" },
+  { name: "RUNNER_BASE_IMAGE_EXCLUDE_SHA", file: "session", key: "baseImages.excludeSha" },
+  { name: "RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE", file: "session", key: "baseImages.excludePrerelease" },
+  { name: "RUNNER_BASE_IMAGE_INCLUDE", file: "session", key: "baseImages.include" },
+  { name: "RUNNER_BASE_IMAGE_EXCLUDE", file: "session", key: "baseImages.exclude" },
+  { name: "RUNNER_BASE_IMAGE_LIMIT", file: "session", key: "baseImages.limit" },
+  { name: "RUNNER_BASE_IMAGE_REFRESH_SECONDS", file: "session", key: "baseImages.refreshSeconds" },
+  { name: "RUNNER_APP_MAX_CPU", file: "agent", key: "resources.limits.cpu" },
+  { name: "RUNNER_APP_MAX_MEMORY", file: "agent", key: "resources.limits.memory" },
+  { name: "RUNNER_APP_MAX_EPHEMERAL_STORAGE", file: "agent", key: "resources.limits.ephemeral-storage" },
+  { name: "AGENT_IMAGE", file: "agent", key: "image" },
+  { name: "AGENT_MODULE_REF", file: "agent", key: "moduleRef" },
+  { name: "AGENT_PORT", file: "agent", key: "port" },
+  { name: "AGENT_PULL_POLICY", file: "agent", key: "pullPolicy" },
+  { name: "AGENT_TOKEN_ENV", file: "agent", key: "tokenEnv" },
+  { name: "AGENT_TITLE", file: "agent", key: "title" },
+  { name: "AGENT_DESCRIPTION", file: "agent", key: "description" },
+  { name: "AGENT_ENV", file: "agent", key: "env" },
+];
+
+const FILE_VARIABLES = { session: "SESSION_CONFIG_FILE", agent: "AGENT_CONFIG_FILE" } as const;
+
+/** Refuses to boot with any variable a configuration file replaced, naming
+ *  every one at once with the file key to set instead. */
+function refuseVariablesMovedToFiles(env: NodeJS.ProcessEnv): void {
+  const found = MOVED_TO_FILES.filter(({ name }) => env[name] !== undefined);
+  if (found.length === 0) return;
+  const lines = found.map(
+    ({ name, file, key }) => `  ${name}: set \`${key}\` in the ${file} file (${FILE_VARIABLES[file]}).`,
+  );
+  const secrets = found.some(({ name }) => name === "AGENT_ENV")
+    ? "\nA secret value of the agent's env is listed by name in `secretEnv` and read from AGENT_SECRET_<NAME>."
+    : "";
+  throw new RunnerConfigError(
+    `this runner reads these settings from its configuration files, so the ${found.length === 1 ? "variable" : "variables"} ` +
+      `must be unset:\n${lines.join("\n")}${secrets}`,
+  );
 }
 
 /** Parse the routing mode, THROWING on an unrecognized one rather than degrading
@@ -301,29 +291,88 @@ function loadSessionRoutingConfig(
   };
 }
 
-function loadBaseImageCatalogConfig(env: NodeJS.ProcessEnv): BaseImageCatalogConfig {
+/** The session file (`SESSION_CONFIG_FILE`): `resources`, `containers` and
+ *  `baseImages`, every key defaulting when the file or the key is absent. */
+function loadSessionFile(env: NodeJS.ProcessEnv): {
+  resources: ContainerSizing;
+  containers: { enabled: boolean; max: number; resources: ContainerSizing; enabledBy: string };
+  baseImageCatalog: BaseImageCatalogConfig;
+} {
+  const read = readConfigFile(env, FILE_VARIABLES.session);
+  const root = ConfigSection.root(read?.file ?? FILE_VARIABLES.session, read?.value, [
+    "resources",
+    "containers",
+    "baseImages",
+  ]);
+  const containers = root.section("containers", ["enabled", "max", "resources"]);
   return {
-    enabled: parseBool(env.RUNNER_BASE_IMAGE_CATALOG_ENABLED, true, "RUNNER_BASE_IMAGE_CATALOG_ENABLED"),
-    repository: env.RUNNER_BASE_IMAGE_REPO?.trim() || "telorun/node",
-    filter: {
-      pinnedOnly: parseBool(env.RUNNER_BASE_IMAGE_PINNED_ONLY, true, "RUNNER_BASE_IMAGE_PINNED_ONLY"),
-      excludeSha: parseBool(env.RUNNER_BASE_IMAGE_EXCLUDE_SHA, true, "RUNNER_BASE_IMAGE_EXCLUDE_SHA"),
-      excludePrerelease: parseBool(
-        env.RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE,
-        true,
-        "RUNNER_BASE_IMAGE_EXCLUDE_PRERELEASE",
-      ),
-      include: parseTagRegex(env.RUNNER_BASE_IMAGE_INCLUDE, "RUNNER_BASE_IMAGE_INCLUDE"),
-      exclude: parseTagRegex(env.RUNNER_BASE_IMAGE_EXCLUDE, "RUNNER_BASE_IMAGE_EXCLUDE"),
+    resources: readContainerSizing(root, "resources"),
+    containers: {
+      enabled: containers.boolean("enabled", false),
+      max: containers.positiveInt("max", 4),
+      resources: readContainerSizing(containers, "resources"),
+      enabledBy: containers.name("enabled"),
     },
-    limit: parsePositiveInt(env.RUNNER_BASE_IMAGE_LIMIT, 20, "RUNNER_BASE_IMAGE_LIMIT"),
-    refreshIntervalMs:
-      parsePositiveInt(
-        env.RUNNER_BASE_IMAGE_REFRESH_SECONDS,
-        3600,
-        "RUNNER_BASE_IMAGE_REFRESH_SECONDS",
-      ) * 1000,
+    baseImageCatalog: readBaseImageCatalog(root),
   };
+}
+
+function readBaseImageCatalog(root: ConfigSection): BaseImageCatalogConfig {
+  const images = root.section("baseImages", [
+    "enabled",
+    "repository",
+    "pinnedOnly",
+    "excludeSha",
+    "excludePrerelease",
+    "include",
+    "exclude",
+    "limit",
+    "refreshSeconds",
+  ]);
+  const pattern = (key: string): RegExp[] | undefined => {
+    const source = images.string(key);
+    if (source === undefined) return undefined;
+    try {
+      return [new RegExp(source)];
+    } catch (err) {
+      throw new RunnerConfigError(`${images.name(key)} is not a valid regular expression: ${(err as Error).message}`);
+    }
+  };
+  return {
+    enabled: images.boolean("enabled", true),
+    repository: images.string("repository") ?? "telorun/node",
+    filter: {
+      pinnedOnly: images.boolean("pinnedOnly", true),
+      excludeSha: images.boolean("excludeSha", true),
+      excludePrerelease: images.boolean("excludePrerelease", true),
+      include: pattern("include"),
+      exclude: pattern("exclude"),
+    },
+    limit: images.positiveInt("limit", 20),
+    refreshIntervalMs: images.positiveInt("refreshSeconds", 3600) * 1000,
+  };
+}
+
+/** The agent file (`AGENT_CONFIG_FILE`): the agent's settings, read by
+ *  runner-core, and the `resources` of its container, read here. */
+function loadAgentFile(env: NodeJS.ProcessEnv): { agent?: RunnerAgent; resources: ContainerSizing } {
+  const read = readConfigFile(env, FILE_VARIABLES.agent);
+  if (!read) return { resources: DEFAULT_CONTAINER_SIZING };
+  const { file, value } = read;
+  if (value !== null && value !== undefined && (typeof value !== "object" || Array.isArray(value))) {
+    throw new RunnerConfigError(`${file} must hold a map of the agent's settings.`);
+  }
+  const { resources, ...settings } = (value ?? {}) as Record<string, unknown>;
+  const agent = loadAgentFromObject(settings, { file, env });
+  // A pod cannot read a path on the operator's machine, so a host path is refused
+  // here rather than failing every session that runs the agent.
+  if (agent?.source.kind === "module" && !agent.source.ref.startsWith("oci://")) {
+    throw new RunnerConfigError(
+      `\`moduleRef\` in ${file} is a host path, which a Kubernetes pod cannot read — use an oci:// reference.`,
+    );
+  }
+  const root = ConfigSection.root(file, { resources }, ["resources"]);
+  return { ...(agent ? { agent } : {}), resources: readContainerSizing(root, "resources") };
 }
 
 export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
@@ -332,6 +381,7 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
       throw new RunnerConfigError(`${name} is no longer read and must be unset: ${why}.`);
     }
   }
+  refuseVariablesMovedToFiles(env);
   const supervisorImage = env.RUNNER_SUPERVISOR_IMAGE?.trim();
   if (!supervisorImage) {
     throw new RunnerConfigError(
@@ -343,9 +393,12 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
   const sessionNamespace = env.RUNNER_SESSION_NAMESPACE?.trim() || "telo-sessions";
   const core = loadCoreConfig(env, { port: DEFAULT_PORT });
   requireStateDirectory(core.sessionStore);
+  const session = loadSessionFile(env);
+  const agentFile = loadAgentFile(env);
 
   return {
     ...core,
+    sessionContainers: sessionContainersConfig(session.containers, env, session.containers.enabledBy),
     displayName: env.RUNNER_DISPLAY_NAME?.trim() || "Telo Runner",
     description:
       env.RUNNER_DESCRIPTION?.trim() || "Runs the Telo application in a cloud environment",
@@ -361,20 +414,11 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     keepFailedPods: parseBool(env.RUNNER_KEEP_FAILED_PODS, false, "RUNNER_KEEP_FAILED_PODS"),
     sessionRouting: loadSessionRoutingConfig(env, sessionNamespace),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
-    // Sized for a container that resolves its own module closure into the
-    // session's storage; both remain the operator's policy to tighten.
-    limits: {
-      cpu: env.RUNNER_MAX_CPU?.trim() || "500m",
-      memory: env.RUNNER_MAX_MEMORY?.trim() || "512Mi",
-      ephemeralStorage: env.RUNNER_MAX_EPHEMERAL_STORAGE?.trim() || "1Gi",
-    },
-    appLimits: {
-      cpu: env.RUNNER_APP_MAX_CPU?.trim() || "500m",
-      memory: env.RUNNER_APP_MAX_MEMORY?.trim() || "512Mi",
-      ephemeralStorage: env.RUNNER_APP_MAX_EPHEMERAL_STORAGE?.trim() || "1Gi",
-    },
-    baseImageCatalog: loadBaseImageCatalogConfig(env),
-    sessionContainerResources: loadSessionContainerResources(env.RUNNER_SESSION_CONTAINERS_RESOURCES),
+    sessionResources: session.resources,
+    ...(agentFile.agent ? { agent: agentFile.agent } : {}),
+    agentResources: agentFile.resources,
+    baseImageCatalog: session.baseImageCatalog,
+    sessionContainerResources: session.containers.resources,
     sessionStorage: loadSessionStorageConfig(env),
   };
 }
