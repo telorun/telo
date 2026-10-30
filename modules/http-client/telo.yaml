@@ -11,6 +11,11 @@ metadata:
     — base URL, default headers, timeout, redirect handling — live in a reusable
     client that individual requests inherit. Bodies can be streamed and network
     failures retried.
+requires:
+  # `Http.Client.tls` declares a `Telo.HostPath` file member, which 0.97.0 rejects
+  # as X_TELO_TYPE_UNKNOWN (recorded by http-server's own floor of the same
+  # type); the client controller also returns its effect chain from `init()`.
+  telo: ">=0.98.0"
 exports:
   kinds:
     - ApiKeyHeader
@@ -246,6 +251,15 @@ schema:
       headers:
         Authorization: Bearer token
       timeout: 10000
+    # Mutual TLS against a service with a private CA.
+    - baseUrl: https://api.internal.example:6443
+      tls:
+        ca:
+          - pem: !cel "secrets.caCertificate"
+        cert:
+          pem: !cel "secrets.clientCertificate"
+        key:
+          pem: !cel "secrets.clientKey"
   properties:
     baseUrl:
       title: Base URL
@@ -288,6 +302,73 @@ schema:
           description: >-
             Wait as long as a `Retry-After` header asks, when it asks for longer
             than the computed delay.
+    tls:
+      title: TLS
+      type: object
+      additionalProperties: false
+      dependencies:
+        cert: [key]
+        key: [cert]
+        passphrase: [key]
+      description: >-
+        TLS settings for every request made through this client — a private or
+        corporate CA, a client certificate for mutual TLS, a server name override.
+        They belong to this client alone: another client in the same application
+        keeps its own, and nothing process-wide changes. Unreadable or mismatched
+        material fails the client when it starts, and a certificate the server
+        presents that is not trusted fails the request as a TLS error; neither
+        falls back to the defaults. Omitted, requests use the system's public CA
+        roots exactly as before.
+      properties:
+        ca:
+          title: CA certificates
+          type: array
+          items: { $ref: "#/$defs/PemSource" }
+          description: >-
+            Certificate authorities that sign the server's certificate, each a
+            PEM bundle written inline or read from a file. By default they
+            REPLACE the system roots; see `caMode`.
+        caMode:
+          title: CA mode
+          type: string
+          enum: [replace, add]
+          default: replace
+          description: >-
+            `replace` trusts only `ca` — what a Kubernetes API server needs.
+            `add` trusts the system roots as well, for a corporate CA beside
+            public services.
+        cert:
+          title: Client certificate
+          $ref: "#/$defs/PemSource"
+          description: >-
+            Certificate chain presented to the server for mutual TLS. Set
+            together with `key`.
+        key:
+          title: Client private key
+          $ref: "#/$defs/PemSource"
+          description: >-
+            Private key of `cert`, which must match it. The TLS checks never log or
+            echo it, and it is not published as the client's state. Use a secret
+            or a file, not a literal in a committed manifest.
+        passphrase:
+          title: Key passphrase
+          type: string
+          description: Passphrase of an encrypted `key`.
+        serverName:
+          title: Server name
+          type: string
+          description: >-
+            Name used for SNI and for checking the server certificate's host
+            name, instead of the host in the URL. For a server reached by an
+            address its certificate does not list.
+        insecureSkipVerify:
+          title: Insecure skip verify
+          type: boolean
+          default: false
+          description: >-
+            DANGEROUS: accept any server certificate, which removes protection
+            against impersonation and interception. Meant for local development
+            only. A warning is logged each time the client starts with it set.
     credential:
       title: Credential
       x-telo-ref:
@@ -299,6 +380,22 @@ schema:
         default headers but not a header the individual request sets, so an
         explicit per-call value always wins. A response rejecting the request as
         unauthenticated re-consults it with forceRefresh and retries once.
+  $defs:
+    PemSource:
+      type: object
+      additionalProperties: false
+      description: PEM text, given inline or as a file on the host. Exactly one of the two.
+      properties:
+        pem:
+          type: string
+          description: The PEM text.
+        file:
+          type: string
+          x-telo-type: Telo.HostPath
+          description: Absolute path of a file holding the PEM text.
+      oneOf:
+        - required: [pem]
+        - required: [file]
 ---
 kind: "Telo.Definition"
 metadata:

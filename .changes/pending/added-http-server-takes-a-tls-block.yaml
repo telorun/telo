@@ -1,0 +1,7 @@
+modules:
+  modules/http-server: Added
+body: "Http.Server takes a tls block to serve HTTPS: a certificate and private key
+  (inline PEM or host files, optional passphrase) and, for mutual TLS, clientCa with
+  clientCertificate set to required. Unreadable or mismatched material fails the
+  server's creation with ERR_HTTP_TLS_INVALID without echoing the key. Omitted, the
+  server speaks plain HTTP as before."

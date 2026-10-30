@@ -184,6 +184,57 @@ schema:
       enum: [ "serve", "reject" ]
       default: "serve"
       x-telo-eval: compile
+    tls:
+      title: TLS
+      description: >-
+        Serve HTTPS: the server's certificate and private key, and optionally
+        client certificates for mutual TLS. Unreadable or mismatched material
+        fails the server's creation. Omitted, the server speaks plain HTTP. For
+        a deployment behind a TLS-terminating proxy leave it unset.
+      type: object
+      additionalProperties: false
+      required: [cert, key]
+      x-telo-eval: compile
+      if:
+        required: [clientCertificate]
+        properties:
+          clientCertificate: { const: required }
+      then:
+        required: [clientCa]
+        properties:
+          clientCa: { minItems: 1 }
+      else:
+        not: { required: [clientCa] }
+      properties:
+        cert:
+          title: Certificate
+          $ref: "#/$defs/PemSource"
+          description: Server certificate chain, PEM.
+        key:
+          title: Private key
+          $ref: "#/$defs/PemSource"
+          description: >-
+            Private key of `cert`. The TLS checks never log or echo it; use a
+            secret or a file.
+        passphrase:
+          title: Key passphrase
+          type: string
+          description: Passphrase of an encrypted `key`.
+        clientCa:
+          title: Client CA certificates
+          type: array
+          items: { $ref: "#/$defs/PemSource" }
+          description: >-
+            Authorities that sign accepted client certificates. Required with
+            `clientCertificate` other than `none`.
+        clientCertificate:
+          title: Client certificate
+          type: string
+          enum: [none, required]
+          default: none
+          description: >-
+            Mutual TLS. `required` rejects a connection that presents no
+            certificate signed by `clientCa`; `none` does not ask.
     trustForwardedHeaders:
       title: Trust Forwarded Headers
       description: >-
@@ -766,6 +817,22 @@ schema:
         sets `unknownHosts: reject`, and none of its mounts names `hostnames`, so every request whose
         host is not an IP literal would be refused. Name the address needs each mount answers in its
         `hostnames`, or drop `unknownHosts: reject`.
+  $defs:
+    PemSource:
+      type: object
+      additionalProperties: false
+      description: PEM text, given inline or as a file on the host. Exactly one of the two.
+      properties:
+        pem:
+          type: string
+          description: The PEM text.
+        file:
+          type: string
+          x-telo-type: Telo.HostPath
+          description: Absolute path of a file holding the PEM text.
+      oneOf:
+        - required: [pem]
+        - required: [file]
 ---
 kind: "Telo.Definition"
 metadata:

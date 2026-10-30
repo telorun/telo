@@ -92,6 +92,7 @@ code: |
 - [Mount guards](docs/mount-guard.md) — `mounts[].guard`: per-mount inbound checks, their CEL context, ordering against CORS and body parsing, and how a refusal renders.
 - [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
+- [Serving HTTPS](docs/tls.md) — `tls`: the server certificate and key, mutual TLS with `clientCa` / `clientCertificate`,.
 - [Log events](docs/log-events.md) — the `event_name` and attributes every implementation of this kind emits, and how to turn request logging off.
 - [Tracing](docs/tracing.md) — the one span each request is, its name, attributes and outcome, what runs beneath it, and continuing a caller's `traceparent`.
 

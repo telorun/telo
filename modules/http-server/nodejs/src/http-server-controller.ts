@@ -43,6 +43,7 @@ import Fastify, {
 } from "fastify";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
+import { resolveHttpsOptions, type ServerTlsSettings } from "./tls-material.js";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { integerSetting } from "./integer-setting.js";
 import { requestBag } from "./request-binding.js";
@@ -127,6 +128,7 @@ type HttpServerResource = RuntimeResource & {
   unknownHosts?: "serve" | "reject";
   trustForwardedHeaders?: boolean;
   trustProxy?: boolean | number | bigint;
+  tls?: ServerTlsSettings;
   maxBodyBytes?: number;
   cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
@@ -177,6 +179,7 @@ class HttpServer implements ResourceInstance {
   /** The hosts each active mount answers, read from its `hostnames` needs at init. */
   private mountHosts = new Map<HttpMount, MountHostEntry>();
   private readonly hostRoutes: HostRoutes;
+  private readonly scheme: "http" | "https";
   private readonly resource: HttpServerResource;
   private readonly ctx: ResourceContext;
   private readonly resolvedNotFoundHandler: ResolvedHandler | null;
@@ -207,6 +210,7 @@ class HttpServer implements ResourceInstance {
     this.resolvedGuards = resolvedGuards;
     this.address = resource.listen?.address || "0.0.0.0";
     this.port = Number(resource.listen?.port || 0);
+    this.scheme = resource.tls ? "https" : "http";
     this.resolvedNotFoundHandler = resolvedNotFoundHandler;
     this.hostRoutes = new HostRoutes(resource.metadata?.name ?? "");
 
@@ -248,6 +252,8 @@ class HttpServer implements ResourceInstance {
     // A custom logger *instance* must be passed via Fastify 5's `loggerInstance`
     // option; passing it to `logger:` throws FST_ERR_LOG_INVALID_LOGGER_CONFIG.
     this.app = Fastify({
+      // Read here, so unreadable or mismatched material fails creation.
+      ...(resource.tls ? { https: resolveHttpsOptions(resource.tls) } : {}),
       loggerInstance: createFastifyTeloLogger(this.ctx.log),
       // Fastify's own per-request lines are off: this kind emits its own from
       // `onRequest` / `onResponse` instead (see `installRequestLogging`), so the
@@ -1178,11 +1184,10 @@ class HttpServer implements ResourceInstance {
         {
           "server.address": this.address,
           "server.port": this.port,
-          // The SOCKET's scheme, which this kind only ever opens as plain HTTP —
-          // there is no TLS field on `Http.Server`. A public address is routinely
+          // The SOCKET's scheme, which is `https` only when `tls` is set. A public address is routinely
           // `https://` behind a terminator, so deriving from one would claim TLS
           // for a plaintext socket on the most common production deployment.
-          "url.scheme": "http",
+          "url.scheme": this.scheme,
         },
         { eventName: "http.server.started" },
       );
