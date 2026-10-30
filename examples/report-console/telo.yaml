@@ -20,7 +20,7 @@ lang: en
 # while their changes are unreleased; `telo upgrade --pin-local` pins them again
 # once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: oci://ghcr.io/telorun/http-server@0.41.0#sha256-199CiwmAZ3jCuFetngeIA3LN0xiif6O0tmTnnOUNaDs
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
   Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY

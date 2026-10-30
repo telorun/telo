@@ -43,8 +43,8 @@ requires:
   telo: ">=0.123.0"
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.31.0#sha256-fvvEF5Vqyuro1t9wx7tJlDSzPoqOO5fQ-2s9nyvPAQ0
-  Anthropic: oci://ghcr.io/telorun/anthropic@0.5.0#sha256-mcYbvU6ZOXrWbgRdYBqsa_tD0g1TwYAEVo4D8yUWUdk
-  HttpClient: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.6.0#sha256-HlYgmpnG-CJtytiYvuKBTU-vhe_qbnps5MNylwn31dw
+  HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
   AiMcp: oci://ghcr.io/telorun/ai-mcp@0.27.0#sha256-gVBYAnpj01A5jS6KRthRH-qhpoDvRxBKrWPsBljueYU
   Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
   Fs: oci://ghcr.io/telorun/fs@0.15.0#sha256-H4NxPag-G5AFKLIAZBTxxx1u2KgmmF2v4gqJnfCM9CQ

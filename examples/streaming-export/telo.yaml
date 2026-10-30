@@ -32,7 +32,7 @@ requires:
   # expression at the in-repo sqlite's `file`.
   telo: ">=0.121.0"
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: oci://ghcr.io/telorun/http-server@0.41.0#sha256-199CiwmAZ3jCuFetngeIA3LN0xiif6O0tmTnnOUNaDs
   Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
   Ndjson: oci://ghcr.io/telorun/ndjson-codec@0.10.0#sha256-Tag5AgqFTmfBcqmPXHTTphYUfz-ygpVZrG9uF1fKwRE
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4

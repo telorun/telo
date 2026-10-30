@@ -42,11 +42,11 @@ lang: en
 # one would load a second copy of what they share; `telo upgrade --pin-local`
 # pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: oci://ghcr.io/telorun/http-server@0.41.0#sha256-199CiwmAZ3jCuFetngeIA3LN0xiif6O0tmTnnOUNaDs
   Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
   UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
-  HttpClient: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
-  OpenAI: oci://ghcr.io/telorun/openai@0.16.0#sha256-2mb6YTv2MYk32UZ66Pmgp3Pyi65MI7LBmPZrBHFWm1A
+  HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
+  OpenAI: oci://ghcr.io/telorun/openai@0.17.0#sha256-k64LfXvip54d8eKcHJAXj2mZjEBEn1R0AFFb1qhcGnQ
   Ai: oci://ghcr.io/telorun/ai@0.31.0#sha256-fvvEF5Vqyuro1t9wx7tJlDSzPoqOO5fQ-2s9nyvPAQ0
   Embedding: oci://ghcr.io/telorun/embedding@0.12.0#sha256-lQqgopkTtGP1RyYmoryM-mr1fv_Ey_xbMZsj3vlLEeM
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.0#sha256-lmCK8i7SQuTRupTSY-s5l89wUwQuikXpjJOxI5vbNwI
