@@ -1,0 +1,251 @@
+kind: Telo.Application
+metadata:
+  name: HttpClientTlsTest
+  version: 1.0.0
+  description: >-
+    Per-client TLS against real TLS servers started by the test, with a CA,
+    server certificates and client certificates generated for it (fixtures in
+    __fixtures__/tls). Covers a private CA, mutual TLS, the server-name
+    override, two clients with different CAs side by side, and a kind that
+    extends Http.Client and maps its own fields onto the TLS settings.
+imports:
+  Http: ../
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+  Private: ./__fixtures__/tls-client/telo.yaml
+targets:
+  - !ref test
+---
+# A client that trusts the private CA.
+kind: Http.Client
+metadata: { name: trusting }
+baseUrl: https://localhost:8941
+tls:
+  ca:
+    - file: !module-path ./__fixtures__/tls/ca.pem
+---
+# Default trust: the system roots do not know the private CA.
+kind: Http.Client
+metadata: { name: defaultTrust }
+baseUrl: https://localhost:8941
+---
+# Trusts a different CA, in the same application as `trusting`.
+kind: Http.Client
+metadata: { name: otherCa }
+baseUrl: https://localhost:8941
+tls:
+  ca:
+    - file: !module-path ./__fixtures__/tls/other-ca.pem
+---
+kind: Http.Client
+metadata: { name: mutual }
+baseUrl: https://localhost:8942
+tls:
+  ca:
+    - file: !module-path ./__fixtures__/tls/ca.pem
+  cert:
+    file: !module-path ./__fixtures__/tls/client.pem
+  key:
+    file: !module-path ./__fixtures__/tls/client.key
+---
+kind: Http.Client
+metadata: { name: noClientCert }
+baseUrl: https://localhost:8942
+tls:
+  ca:
+    - file: !module-path ./__fixtures__/tls/ca.pem
+---
+# A certificate signed by a CA the server does not trust.
+kind: Http.Client
+metadata: { name: rogueClientCert }
+baseUrl: https://localhost:8942
+tls:
+  ca:
+    - file: !module-path ./__fixtures__/tls/ca.pem
+  cert:
+    file: !module-path ./__fixtures__/tls/rogue-client.pem
+  key:
+    file: !module-path ./__fixtures__/tls/rogue-client.key
+---
+# The server's certificate lists only `server.test`; the URL says 127.0.0.1.
+kind: Http.Client
+metadata: { name: wrongName }
+baseUrl: https://127.0.0.1:8943
+tls:
+  ca:
+    - file: !module-path ./__fixtures__/tls/ca.pem
+---
+kind: Http.Client
+metadata: { name: overriddenName }
+baseUrl: https://127.0.0.1:8943
+tls:
+  ca:
+    - file: !module-path ./__fixtures__/tls/ca.pem
+  serverName: server.test
+---
+# A derived kind: its own fields reach the inherited tls through base:.
+kind: Private.PrivateApiClient
+metadata: { name: derived }
+host: localhost:8942
+caPem: !include-text ./__fixtures__/tls/ca.pem
+clientCertPem: !include-text ./__fixtures__/tls/client.pem
+clientKeyPem: !include-text ./__fixtures__/tls/client.key
+---
+kind: Server.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    handler: !ref pong
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+---
+kind: Run.Value
+metadata: { name: pong }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Server
+    metadata: { name: tlsServer }
+    listen: { address: 127.0.0.1, port: 8941 }
+    openapi: { info: { title: TLS, version: 1.0.0 } }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+    mounts:
+      - path: /
+        mount: !ref api
+  - kind: Server.Server
+    metadata: { name: mutualServer }
+    listen: { address: 127.0.0.1, port: 8942 }
+    openapi: { info: { title: mTLS, version: 1.0.0 } }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+      clientCa:
+        - file: !module-path ./__fixtures__/tls/ca.pem
+      clientCertificate: required
+    mounts:
+      - path: /
+        mount: !ref api
+  - kind: Server.Server
+    metadata: { name: namedServer }
+    listen: { address: 127.0.0.1, port: 8943 }
+    openapi: { info: { title: Named, version: 1.0.0 } }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/named-server.pem }
+      key: { file: !module-path ./__fixtures__/tls/named-server.key }
+    mounts:
+      - path: /
+        mount: !ref api
+targets:
+  - !ref tlsServer
+  - !ref mutualServer
+  - !ref namedServer
+steps:
+  - name: trusted
+    invoke: { kind: Http.Request, client: !ref trusting, url: /ping }
+  - name: assertTrusted
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.trusted.result.status"
+      expected: 200
+
+  - name: untrusted
+    try:
+      - name: call
+        invoke: { kind: Http.Request, client: !ref defaultTrust, url: /ping }
+    catch:
+      - name: assertUntrusted
+        invoke: { kind: Assert.Contains }
+        inputs:
+          actual: !cel "error.message"
+          value: UNABLE_TO_VERIFY_LEAF_SIGNATURE
+
+  # Two clients, two CAs, one application: neither disturbs the other.
+  - name: wrongCa
+    try:
+      - name: call
+        invoke: { kind: Http.Request, client: !ref otherCa, url: /ping }
+    catch:
+      - name: assertWrongCa
+        invoke: { kind: Assert.Contains }
+        inputs:
+          actual: !cel "error.message"
+          value: UNABLE_TO_VERIFY_LEAF_SIGNATURE
+  - name: trustedAgain
+    invoke: { kind: Http.Request, client: !ref trusting, url: /ping }
+  - name: assertTrustedAgain
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.trustedAgain.result.status"
+      expected: 200
+
+  - name: mutualOk
+    invoke: { kind: Http.Request, client: !ref mutual, url: /ping }
+  - name: assertMutualOk
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.mutualOk.result.status"
+      expected: 200
+
+  - name: withoutCert
+    try:
+      - name: call
+        invoke: { kind: Http.Request, client: !ref noClientCert, url: /ping }
+    catch:
+      - name: assertWithoutCert
+        invoke: { kind: Assert.Contains }
+        inputs:
+          actual: !cel "error.message"
+          value: UND_ERR_SOCKET
+
+  - name: rogueCert
+    try:
+      - name: call
+        invoke: { kind: Http.Request, client: !ref rogueClientCert, url: /ping }
+    catch:
+      - name: assertRogueCert
+        invoke: { kind: Assert.Contains }
+        inputs:
+          actual: !cel "error.message"
+          value: UND_ERR_SOCKET
+
+  - name: nameMismatch
+    try:
+      - name: call
+        invoke: { kind: Http.Request, client: !ref wrongName, url: /ping }
+    catch:
+      - name: assertNameMismatch
+        invoke: { kind: Assert.Contains }
+        inputs:
+          actual: !cel "error.message"
+          value: ERR_TLS_CERT_ALTNAME_INVALID
+  - name: nameOverride
+    invoke: { kind: Http.Request, client: !ref overriddenName, url: /ping }
+  - name: assertNameOverride
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.nameOverride.result.status"
+      expected: 200
+
+  - name: derivedKind
+    invoke: { kind: Http.Request, client: !ref derived, url: /ping }
+  - name: assertDerivedKind
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.derivedKind.result.status"
+      expected: 200
+
+  # The key is not published as the client's state.
+  - name: assertKeyNotPublished
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "has(resources.mutual.tls)"
+      expected: false

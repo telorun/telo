@@ -4,6 +4,15 @@ import {
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
+import { Agent, fetch as undiciFetch } from "undici";
+import { resolveConnectOptions, type TlsSettings } from "./tls-material.js";
+
+/** What a request sends through when its client sets TLS: undici's own fetch
+ *  with the client's dispatcher, so settings never touch process-wide state. */
+export interface ClientTransport {
+  fetch: typeof undiciFetch;
+  dispatcher: Agent;
+}
 
 /** Applies a credential to one outgoing request. Resolved and dispatched by the
  *  client that declares the slot, so a caller never sees the ref's raw shape. */
@@ -20,11 +29,13 @@ interface HttpClientManifest {
   throwOnHttpError?: boolean;
   retry?: Record<string, unknown>;
   credential?: unknown;
+  tls?: TlsSettings;
 }
 
 class HttpClientResource implements ResourceInstance {
   readonly metadata: { name: string; module: string; [key: string]: any };
   private applier?: CredentialApplier | null;
+  private agent?: Agent;
 
   constructor(
     private readonly manifest: any,
@@ -54,6 +65,41 @@ class HttpClientResource implements ResourceInstance {
         : null;
     }
     return this.applier ?? undefined;
+  }
+
+  /** Builds the TLS agent, so bad material fails the client's start rather than
+   *  its first request. Absent TLS settings allocate nothing. */
+  init(ctx: ResourceContext) {
+    const tls = this.manifest.tls as TlsSettings | undefined;
+    if (!tls) return;
+    return ctx.effect("tls agent", async () => {
+      const connect = resolveConnectOptions(tls);
+      if (tls.insecureSkipVerify) {
+        ctx.log.warn("TLS verification is disabled for this client", {
+          "http.client": this.metadata.name ?? "",
+        });
+      }
+      const agent = new Agent({ connect });
+      this.agent = agent;
+      return {
+        result: undefined,
+        inverse: async () => {
+          this.agent = undefined;
+          await agent.close();
+        },
+      };
+    });
+  }
+
+  transport(): ClientTransport | undefined {
+    if (!this.manifest.tls) return undefined;
+    // A client that set TLS never sends without it: no agent means it is not started.
+    if (!this.agent) {
+      throw new Error(
+        `Http.Client "${this.metadata.name ?? ""}": its TLS agent is not available (the client is not started).`,
+      );
+    }
+    return { fetch: undiciFetch, dispatcher: this.agent };
   }
 
   // Policy defaults are published only when DECLARED: `undefined` is what tells a

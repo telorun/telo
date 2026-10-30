@@ -12,6 +12,23 @@ Outgoing HTTP calls for Telo. Language- and engine-neutral request/response cont
 - **Built-in retries** — `retries: N` retries on network errors only, leaving HTTP responses to manifest logic.
 - **Authentication on the client** — attach an `Http.Credential` and every request through the client is authenticated, with one automatic retry when the server rejects it.
 
+## TLS: private CAs and mutual TLS
+
+`Http.Client` takes a `tls` block, per client, for services whose certificate
+chains to a private CA or that want a client certificate. See
+[docs/tls.md](docs/tls.md).
+
+```yaml
+kind: Http.Client
+metadata: { name: cluster }
+baseUrl: https://10.0.0.5:6443
+tls:
+  ca:
+    - pem: !cel "secrets.caCertificate"
+  cert: { pem: !cel "secrets.clientCertificate" }
+  key: { pem: !cel "secrets.clientKey" }
+```
+
 ## Kinds
 
 | Kind | Purpose |

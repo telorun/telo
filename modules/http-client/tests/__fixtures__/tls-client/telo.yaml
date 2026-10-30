@@ -1,0 +1,34 @@
+kind: Telo.Library
+metadata:
+  name: PrivateApi
+  version: 0.1.0
+  description: >-
+    Fixture: a client kind extending Http.Client that maps its own fields onto
+    the inherited TLS settings through base:.
+imports:
+  Http: ../../../
+exports:
+  kinds:
+    - PrivateApiClient
+---
+kind: Telo.Definition
+metadata:
+  name: PrivateApiClient
+extends: Http.Client
+schema:
+  type: object
+  required: [host, caPem, clientCertPem, clientKeyPem]
+  properties:
+    host: { type: string }
+    caPem: { type: string }
+    clientCertPem: { type: string }
+    clientKeyPem: { type: string }
+base:
+  baseUrl: !interpolate "https://${{ self.host }}"
+  tls:
+    ca:
+      - pem: !cel "self.caPem"
+    cert:
+      pem: !cel "self.clientCertPem"
+    key:
+      pem: !cel "self.clientKeyPem"

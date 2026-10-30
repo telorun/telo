@@ -12,7 +12,7 @@ import {
   type ResourceContext,
   type ResourceInstance,
 } from "@telorun/sdk";
-import type { CredentialApplier } from "./http-client-controller.js";
+import type { ClientTransport, CredentialApplier } from "./http-client-controller.js";
 import { PassThrough, Readable } from "stream";
 
 const MAX_REDIRECTS = 5;
@@ -129,8 +129,16 @@ function mapNetworkError(err: unknown, url: string): never {
     case "SELF_SIGNED_CERT_IN_CHAIN":
     case "UNABLE_TO_VERIFY_LEAF_SIGNATURE":
     case "EPROTO":
+    case "UNABLE_TO_GET_ISSUER_CERT":
+    case "UNABLE_TO_GET_ISSUER_CERT_LOCALLY":
+    case "CERT_UNTRUSTED":
+    case "CERT_NOT_YET_VALID":
+    case "HOSTNAME_MISMATCH":
       throw createNetworkError("SSL_ERROR", detail, url);
     default:
+      if (code?.startsWith("ERR_TLS_") || code?.startsWith("ERR_SSL_")) {
+        throw createNetworkError("SSL_ERROR", detail, url);
+      }
       throw createNetworkError("CONNECTION_REFUSED", detail, url);
   }
 }
@@ -152,6 +160,7 @@ async function executeRequest(
   responseType: ResponseType,
   isSuccess: (status: number, headers: Record<string, string>) => boolean,
   callerSignal?: AbortSignal,
+  transport?: ClientTransport,
 ): Promise<TeloResponse> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
@@ -165,7 +174,9 @@ async function executeRequest(
 
   try {
     while (true) {
-      const response = await fetch(currentUrl, {
+      const send = (transport?.fetch ?? fetch) as typeof fetch;
+      const response = await send(currentUrl, {
+        ...(transport ? { dispatcher: transport.dispatcher } : {}),
         method,
         headers,
         body: body as BodyInit | undefined,
@@ -403,6 +414,7 @@ interface RequestAttempt {
   isSuccess: (status: number, headers: Record<string, string>, body: unknown) => boolean;
   isRetryable: (status: number, headers: Record<string, string>, body: unknown) => boolean;
   callerSignal?: AbortSignal;
+  transport?: ClientTransport;
 }
 
 /** The wait before re-attempt number `resend` (1-based), and never below what the
@@ -504,6 +516,7 @@ async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> 
     isSuccess,
     isRetryable,
     callerSignal,
+    transport,
   } = attempt;
   const successForRedirect = (status: number, h: Record<string, string>): boolean =>
     isSuccess(status, h, undefined);
@@ -527,6 +540,7 @@ async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> 
         responseType,
         successForRedirect,
         callerSignal,
+        transport,
       );
       if (isSuccess(response.status, response.headers, response.body)) return response;
       if (!canResend || !isRetryable(response.status, response.headers, response.body)) {
@@ -732,6 +746,7 @@ interface ClientSnapshotInstance {
   snapshot: () => Record<string, unknown>;
   /** Present on a live Http.Client; absent on the raw-manifest fallback. */
   credential?: () => CredentialApplier | undefined;
+  transport?: () => ClientTransport | undefined;
 }
 
 function hasSnapshot(value: unknown): value is ClientSnapshotInstance {
@@ -743,10 +758,11 @@ function hasSnapshot(value: unknown): value is ClientSnapshotInstance {
 interface ResolvedClient {
   config: Record<string, unknown>;
   credential: CredentialApplier | undefined;
+  transport: ClientTransport | undefined;
 }
 
 function clientOf(instance: ClientSnapshotInstance): ResolvedClient {
-  return { config: instance.snapshot(), credential: instance.credential?.() };
+  return { config: instance.snapshot(), credential: instance.credential?.(), transport: instance.transport?.() };
 }
 
 /**
@@ -787,14 +803,16 @@ class HttpRequestResource implements ResourceInstance {
     let clientTimeout = DEFAULT_TIMEOUT;
 
     let applyCredential: CredentialApplier | undefined;
+    let transport: ClientTransport | undefined;
     // Defaults the client supplies for policy an individual request may restate.
     // Backoff especially: it is a property of the API being called, not of one
     // call, so declaring it once per client is the common case.
     const clientDefaults: { throwOnHttpError?: boolean; retry?: RetryPolicy } = {};
 
     if (m.client) {
-      const { config: clientConfig, credential } = resolveClient(m.client, ctx);
+      const { config: clientConfig, credential, transport: clientTransport } = resolveClient(m.client, ctx);
       applyCredential = credential;
+      transport = clientTransport;
       if (typeof clientConfig.throwOnHttpError === "boolean") {
         clientDefaults.throwOnHttpError = clientConfig.throwOnHttpError;
       }
@@ -946,6 +964,7 @@ class HttpRequestResource implements ResourceInstance {
         isSuccess,
         isRetryable,
         callerSignal: invokeCtx?.cancellation.signal,
+        transport,
       });
       if (ctx.log.enabled(SEVERITY.debug)) {
         ctx.log.debug("Request completed", {

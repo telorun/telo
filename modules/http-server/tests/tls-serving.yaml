@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: HttpServerTlsTest
+  version: 1.0.0
+  description: >-
+    Http.Server serves HTTPS, and with clientCertificate: required admits only
+    clients presenting a certificate signed by clientCa. Certificates are test
+    fixtures in __fixtures__/tls.
+imports:
+  Http: ../
+  Client: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Client.Client
+metadata: { name: plain }
+baseUrl: https://localhost:8951
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+---
+kind: Client.Client
+metadata: { name: withCert }
+baseUrl: https://localhost:8952
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+  cert: { file: !module-path ./__fixtures__/tls/client.pem }
+  key: { file: !module-path ./__fixtures__/tls/client.key }
+---
+kind: Client.Client
+metadata: { name: noCert }
+baseUrl: https://localhost:8952
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+---
+kind: Client.Client
+metadata: { name: rogueCert }
+baseUrl: https://localhost:8952
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+  cert: { file: !module-path ./__fixtures__/tls/rogue-client.pem }
+  key: { file: !module-path ./__fixtures__/tls/rogue-client.key }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    handler: !ref pong
+    inputs: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { ok: true }
+---
+kind: Run.Value
+metadata: { name: pong }
+value: {}
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: tlsServer }
+    listen: { address: 127.0.0.1, port: 8951 }
+    openapi: { info: { title: TLS, version: 1.0.0 } }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+    mounts: [{ path: /, mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: mutualServer }
+    listen: { address: 127.0.0.1, port: 8952 }
+    openapi: { info: { title: mTLS, version: 1.0.0 } }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+      clientCa: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+      clientCertificate: required
+    mounts: [{ path: /, mount: !ref api }]
+targets:
+  - !ref tlsServer
+  - !ref mutualServer
+steps:
+  - name: https
+    invoke: { kind: Client.Request, client: !ref plain, url: /ping }
+  - name: assertHttps
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.https.result.status"
+      expected: 200
+  - name: mutual
+    invoke: { kind: Client.Request, client: !ref withCert, url: /ping }
+  - name: assertMutual
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.mutual.result.status"
+      expected: 200
+  - name: missing
+    try:
+      - name: call
+        invoke: { kind: Client.Request, client: !ref noCert, url: /ping }
+    catch:
+      - name: assertMissing
+        invoke: { kind: Assert.Contains }
+        inputs:
+          actual: !cel "error.message"
+          value: UND_ERR_SOCKET
+  - name: rogue
+    try:
+      - name: call
+        invoke: { kind: Client.Request, client: !ref rogueCert, url: /ping }
+    catch:
+      - name: assertRogue
+        invoke: { kind: Assert.Contains }
+        inputs:
+          actual: !cel "error.message"
+          value: UND_ERR_SOCKET
