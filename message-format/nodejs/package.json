@@ -1,6 +1,6 @@
 {
   "name": "@telorun/message-format",
-  "version": "0.125.0",
+  "version": "0.125.1",
   "description": "Telo's message core: a closed profile of Unicode MessageFormat 2 — placeholders, plural selection, CLDR plural rules and decimal formatting from pinned CLDR data, and RFC 4647 language lookup. No Intl, no dependencies; one answer in Node, Rust and every browser.",
   "keywords": [
     "telo",

@@ -1,5 +1,11 @@
 # telo-kernel
 
+## 0.5.30
+
+### Patch Changes
+
+- @telorun/kernel@0.125.1
+
 ## 0.5.29
 
 ### Patch Changes

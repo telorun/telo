@@ -1,5 +1,21 @@
 # @telorun/k8s-runner
 
+## 0.24.0
+
+### Minor Changes
+
+- 3df9817: Breaking: the runner's structured settings move from environment variables into two mounted YAML files, and containers no longer get a CPU limit unless one is configured.
+
+  - `SESSION_CONFIG_FILE` (chart: the `telo-k8s-runner-session` ConfigMap) holds `resources` (the session pod's `workspace`, `apps` and `supervisor` containers), `containers` (`enabled`, `max`, `resources`) and `baseImages`. `AGENT_CONFIG_FILE` (chart: `telo-k8s-runner-agent`, rendered only with `agent.image` or `agent.moduleRef`) holds the agent's settings, `env`, the names of its `secretEnv` and its `resources`; each secret's value stays in the `AGENT_SECRET_<NAME>` variable. Both files are closed: an unknown key, a malformed quantity or a request above its limit refuses to boot, naming the file and the key. A change to either rolls the runner.
+  - A `resources` map is `limits` (`memory`, `ephemeral-storage`, optional `cpu`) and `requests` (`cpu`, `memory`), configured apart rather than requests equal to limits. Without `limits.cpu` a container has no CPU limit, which is now the default for the session pod, the agent, session containers and the runner itself.
+  - `RUNNER_MAX_*`, `RUNNER_APP_MAX_*`, `RUNNER_SESSION_CONTAINERS`, `RUNNER_SESSION_CONTAINERS_MAX`, `RUNNER_SESSION_CONTAINERS_RESOURCES`, every `RUNNER_BASE_IMAGE_*` and `AGENT_IMAGE`, `AGENT_MODULE_REF`, `AGENT_PORT`, `AGENT_PULL_POLICY`, `AGENT_TOKEN_ENV`, `AGENT_TITLE`, `AGENT_DESCRIPTION`, `AGENT_ENV` are no longer read; a runner with any of them set refuses to boot, naming the file key that replaced each.
+  - Chart: the top-level `limits:` is gone and refused, naming `session.resources` and `agent.resources`; `resourceQuota.hard` drops `limits.cpu`, which would refuse every pod without a CPU limit. The chart also refuses both `agent.image` and `agent.moduleRef`, a `moduleRef` that is not `oci://`, an `agent.port` outside 1..65535 and a `resources` map with a key other than `limits` / `requests`, a `resourceQuota.hard["limits.cpu"]` while a rendered pod class sets no `limits.cpu`, and a request above its limit. A key may be in an agent's `env` or `secretEnv`, not both: the runner refuses to boot with one in each.
+
+### Patch Changes
+
+- Updated dependencies [3df9817]
+  - @telorun/runner-core@0.23.0
+
 ## 0.23.0
 
 ### Minor Changes
