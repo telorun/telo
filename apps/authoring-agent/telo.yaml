@@ -64,7 +64,7 @@ imports:
       maxCheckpointBytes: !cel "variables.maxCheckpointBytes"
       maxCheckpointFiles: !cel "variables.maxCheckpointFiles"
       maxAttachmentBytes: !cel "variables.maxAttachmentBytes"
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: oci://ghcr.io/telorun/http-server@0.41.0#sha256-199CiwmAZ3jCuFetngeIA3LN0xiif6O0tmTnnOUNaDs
   # `Mcp` and `Run` come from where the chat library takes them, so every
   # module in this graph has one origin.
   Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc

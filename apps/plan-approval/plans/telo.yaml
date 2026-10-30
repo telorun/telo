@@ -21,7 +21,7 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Watch: oci://ghcr.io/telorun/watch@0.3.0#sha256-K_GE5u4E-uLUO025gpOLlcGcss5i0cfvVbjEvi8-8dg
-  HttpClient: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
+  HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
   RunnerProtocol: ../../plan-approval-runner-protocol
 resources:
   connection:

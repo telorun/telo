@@ -37,7 +37,7 @@ lang: en
 # one would load a second copy of what they share; `telo upgrade --pin-local`
 # pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: oci://ghcr.io/telorun/http-server@0.41.0#sha256-199CiwmAZ3jCuFetngeIA3LN0xiif6O0tmTnnOUNaDs
   Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
   UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA

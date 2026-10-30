@@ -7,7 +7,7 @@ metadata:
     http://localhost:8050: a 200 page, a 404, the sitemap index and a shard,
     and `robots.txt`, compared as one table.
 imports:
-  HttpClient: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
+  HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
 targets:
