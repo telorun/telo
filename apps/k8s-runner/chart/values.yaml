@@ -67,9 +67,9 @@ runner:
         run here.
       - No warranty. The software is provided "as is", without warranty of any
         kind, and is used at your own risk.
+  # No CPU limit: the runner is throttled by nothing but its node's contention.
   resources:
     limits:
-      cpu: "500m"
       memory: "256Mi"
     requests:
       cpu: "100m"
@@ -108,9 +108,9 @@ identity:
   issuers: []
 
 # Session lifecycle. A session is a workspace: one pod over the session's own
-# volume, with a `workspace` container serving the editor's file routes, one idle
-# container per application (running the session supervisor until Run), and
-# optionally a co-resident agent from the `apps` catalog.
+# volume, with a `workspace` container serving the editor's file routes, one
+# `apps` container holding an idle slot per application (a session supervisor
+# each until Run), and optionally the co-resident agent configured under `agent:`.
 #
 # Every session resolves its own module closure inside the pod, so the session
 # namespace's egress must reach the module registries as well as anything the
@@ -130,27 +130,13 @@ sessions:
   # Per-session reload rate limit (per minute).
   reloadLimit: 30
 
-# HARD CEILINGS per container. Requests may ask for less, never more
-# (min(requested, ceiling)). For an anonymous-tier runner these ARE the policy.
-#
-# maxCpu / maxMemory / maxEphemeralStorage size each `app-<name>` container (and
-# the `workspace` container); an app resolves its own module closure, so
-# lowering them below what a closure needs turns an ordinary run into an
-# OOMKill. `agent` sizes the co-resident agent's container.
-limits:
-  maxCpu: "500m"
-  maxMemory: "512Mi"
-  maxEphemeralStorage: "1Gi"
-  agent:
-    maxCpu: "500m"
-    maxMemory: "512Mi"
-    maxEphemeralStorage: "1Gi"
-
 # The co-resident agent a session may run beside its workspace (advertised on
 # /v1/capabilities as `features.agents` as `authoring-agent` — identity only;
 # image, module and env never surface). Set exactly one of `image` (a container
 # image) or `moduleRef` (a telo module the runner's kernel image runs, fetched at
-# start). Both empty → no agent offered.
+# start). Both empty → no agent offered. Everything here but `secretEnv`'s
+# values reaches the runner as the file `agent.yaml` of the `<name>-agent`
+# ConfigMap; a change rolls the runner.
 agent:
   image: ""
   # An `oci://` reference to the agent's application, e.g.
@@ -166,15 +152,40 @@ agent:
   tokenEnv: ""
   title: ""
   description: ""
-  # Plain env injected into the agent container only. It lands in the
-  # Deployment spec — put secret values in secretEnv instead.
+  # Plain env injected into the agent container only. It lands in a ConfigMap —
+  # put secret values in secretEnv instead. A key may be in env or secretEnv,
+  # not both: the runner refuses to boot with one in each.
   env: {}
   # Secret-backed env injected into the agent container only:
   #   ANTHROPIC_API_KEY: { secretName: agent-secrets, key: anthropic-api-key }
-  # The value must not contain `"` or `\`.
+  # The runner reads each from its own AGENT_SECRET_<KEY> variable; the
+  # ConfigMap lists the key names only.
   secretEnv: {}
+  # The agent container's resources. No `limits.cpu` → no CPU limit; a request
+  # above its limit refuses to boot.
+  resources:
+    limits:
+      memory: "512Mi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
 
 session:
+  # The resources of each session pod's `workspace`, `apps` and `supervisor`
+  # (init) containers. Every app of a session shares the `apps` container's, and
+  # an app resolves its own module closure, so a memory limit below what a
+  # closure needs turns an ordinary run into an OOMKill. No `limits.cpu` → no
+  # CPU limit; a request above its limit refuses to boot. With `resources`,
+  # `containers` and `baseImages` below, this reaches the runner as the file
+  # `session.yaml` of the `<name>-session` ConfigMap; a change rolls the runner.
+  resources:
+    limits:
+      memory: "512Mi"
+      ephemeral-storage: "1Gi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
   # Image spawned for each run. Always offered in the picker below and used as
   # the fallback when the Docker Hub catalog is unreachable.
   #
@@ -228,10 +239,9 @@ session:
     enabled: false
     # Most containers one session may hold at once; beyond it a create is 429.
     max: 4
-    # A pod container's `resources` for every session container.
+    # Every session container's resources, shaped as session.resources.
     resources:
       limits:
-        cpu: "500m"
         memory: "512Mi"
         ephemeral-storage: "1Gi"
       requests:
@@ -341,28 +351,34 @@ sessionRouting:
 
 # DoS backstop on the session namespace.
 #
-# THE ARITHMETIC IS THE POINT, and it is what silently rots: every container of
-# a session pod sets requests == limits, and a session pod holds the `workspace`
-# container plus one container per application plus the agent's. So
-# `requests.cpu` must be at least the sum over running sessions of
-# (1 + apps) x limits.maxCpu (+ limits.agent.maxCpu with an agent), memory alike,
-# or the quota — not `runner.maxSessions` — is what caps concurrency, and it does
-# so as a 403 the client sees. The defaults below are 32 containers at 500m /
-# 512Mi: eight sessions of three containers each, with headroom. Persistent
-# claims are not counted here; add `persistentvolumeclaims` /
+# THE ARITHMETIC IS THE POINT, and it is what silently rots. A session pod holds
+# the `workspace` and `apps` containers plus the agent's, so per running session
+# it takes:
+#   - requests.cpu:    2 x session.resources.requests.cpu + agent.resources.requests.cpu
+#   - requests.memory: 2 x session.resources.requests.memory + agent.resources.requests.memory
+#   - limits.memory:   2 x session.resources.limits.memory + agent.resources.limits.memory
+# (the agent's term only with an agent), and the quota must hold
+# runner.maxSessions of them, or the quota — not runner.maxSessions — is what
+# caps concurrency, as a 403 the client sees. The defaults are 8 sessions x
+# 1500m / 1.5Gi = 12 CPU / 12Gi, under the 16 / 16Gi below.
+#
+# There is deliberately no `limits.cpu` here: the containers set no CPU limit by
+# default, and a quota naming `limits.cpu` refuses every pod without one. Add it
+# only after giving session.resources, agent.resources AND
+# session.containers.resources a `limits.cpu`.
+#
+# Persistent claims are not counted; add `persistentvolumeclaims` /
 # `requests.storage` to bound session storage.
 #
 # With session.containers.enabled, every session may hold up to
 # session.containers.max container pods besides its own, each counted with
 # session.containers.resources. The quota then needs the container term on top:
 #   - pods: + maxSessions x session.containers.max
-#   - requests.cpu / requests.memory: + maxSessions x session.containers.max x
-#     the container's requests
-#   - limits.cpu / limits.memory: + the same, with the container's limits
-# At 32 sessions (this quota's pod count), 4 containers each, 500m / 512Mi per container,
-# that is pods 32 -> 160, cpu 16 -> 80 (32 x 4 x 500m = 64, plus 16) and memory
-# 16Gi -> 80Gi. Without it the quota, not runner.maxSessions, caps concurrency,
-# as a 403 the client sees.
+#   - requests.cpu / requests.memory / limits.memory: + maxSessions x
+#     session.containers.max x the container's value
+# At the defaults (8 sessions, 4 containers each, 500m / 512Mi) that is pods
+# 32 -> 64, requests.cpu 16 -> 32, and requests.memory / limits.memory
+# 16Gi -> 32Gi.
 #
 # A quota RESERVES nothing — it is a cap — so sizing it to the session ceilings
 # costs nothing on a small cluster: pods pend on the scheduler instead of being
@@ -371,7 +387,6 @@ resourceQuota:
   enabled: true
   hard:
     pods: "32"
-    limits.cpu: "16"
     limits.memory: "16Gi"
     requests.cpu: "16"
     requests.memory: "16Gi"

@@ -94,7 +94,9 @@ the start with `ERR_CONTAINER_START_FAILED`.
 - **Through a runner**: a daemon on another machine, or a socket mounted into a
   container, publishes on a loopback Telo does not share, so its bindings are
   not reachable. Such an engine is served through a runner: the docker and
-  Kubernetes runners, with `RUNNER_SESSION_CONTAINERS` on, serve each session
+  Kubernetes runners, with session containers on (docker:
+  `RUNNER_SESSION_CONTAINERS`; Kubernetes: the session file's
+  `containers.enabled`), serve each session
   an engine at `<runner>/v1/sessions/<id>/engine` behind a per-session token
   (`TELO_HOST_CONTAINER_ENGINE_URL` / `_TOKEN`). It answers exactly the
   requests above, accepts exactly the create body above (any other field is a

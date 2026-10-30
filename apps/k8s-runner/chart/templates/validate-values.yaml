@@ -25,3 +25,51 @@ upgrade path. A rename is only a breaking change if something refuses it.
 {{- if .Values.sessionIngress }}
 {{- fail (printf "sessionIngress.* was renamed to sessionRouting.*: baseDomain stays, className and tls move under sessionRouting.ingress, controllerNamespace becomes sessionRouting.dataPlaneNamespace (it must name the routing DATA PLANE, which is not an ingress controller under Gateway API). See apps/k8s-runner/README.md.") }}
 {{- end }}
+{{- if .Values.limits }}
+{{- fail "limits.* is gone: size the session pod's workspace, apps and supervisor containers with session.resources and the agent's container with agent.resources, each { limits: { memory, ephemeral-storage, cpu }, requests: { cpu, memory } }. Without limits.cpu a container has no CPU limit; to keep the old 500m ceiling, set limits.cpu: 500m in session.resources, agent.resources and session.containers.resources." }}
+{{- end }}
+{{- range $name, $resources := dict "session.resources" .Values.session.resources "session.containers.resources" .Values.session.containers.resources "agent.resources" .Values.agent.resources }}
+{{- if not (kindIs "map" $resources) }}
+{{- fail (printf "%s must be a map of limits and requests." $name) }}
+{{- end }}
+{{- range $key, $_ := $resources }}
+{{- if not (has $key (list "limits" "requests")) }}
+{{- fail (printf "%s.%s is not a resources key: write %s.limits and %s.requests." $name $key $name $name) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if and .Values.agent.image .Values.agent.moduleRef }}
+{{- fail "set one of agent.image and agent.moduleRef, not both." }}
+{{- end }}
+{{- if and .Values.agent.moduleRef (not (hasPrefix "oci://" .Values.agent.moduleRef)) }}
+{{- fail (printf "agent.moduleRef must be an oci:// reference, got %q: a session pod cannot read a path on the operator's machine." .Values.agent.moduleRef) }}
+{{- end }}
+{{- if or .Values.agent.image .Values.agent.moduleRef }}
+{{- $port := toString .Values.agent.port }}
+{{- if not (and (regexMatch "^[0-9]+$" $port) (ge (atoi $port) 1) (le (atoi $port) 65535)) }}
+{{- fail (printf "agent.port must be the tcp port the agent listens on, an integer in 1..65535, got %q." $port) }}
+{{- end }}
+{{- end }}
+{{- $classes := dict "session.resources" .Values.session.resources "agent.resources" .Values.agent.resources "session.containers.resources" .Values.session.containers.resources }}
+{{- range $name, $resources := $classes }}
+{{- range $resource := list "cpu" "memory" }}
+{{- $limit := dig "limits" $resource "" $resources }}
+{{- $request := dig "requests" $resource "" $resources }}
+{{- if and $limit $request }}
+{{- $limitValue := include "k8s-runner.quantityValue" $limit }}
+{{- $requestValue := include "k8s-runner.quantityValue" $request }}
+{{- if and $limitValue $requestValue (gt (float64 $requestValue) (float64 $limitValue)) }}
+{{- fail (printf "%s.requests.%s (%v) is above %s.limits.%s (%v): a pod whose request exceeds its limit is refused by the API server." $name $resource $request $name $resource $limit) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if hasKey (.Values.resourceQuota.hard | default dict) "limits.cpu" }}
+{{- $missing := list }}
+{{- if not (dig "limits" "cpu" "" .Values.session.resources) }}{{- $missing = append $missing "session.resources" }}{{- end }}
+{{- if and (or .Values.agent.image .Values.agent.moduleRef) (not (dig "limits" "cpu" "" .Values.agent.resources)) }}{{- $missing = append $missing "agent.resources" }}{{- end }}
+{{- if and .Values.session.containers.enabled (not (dig "limits" "cpu" "" .Values.session.containers.resources)) }}{{- $missing = append $missing "session.containers.resources" }}{{- end }}
+{{- if $missing }}
+{{- fail (printf "resourceQuota.hard[\"limits.cpu\"] refuses every pod without a CPU limit, and %s sets no limits.cpu: drop the quota key or set limits.cpu there." (join ", " $missing)) }}
+{{- end }}
+{{- end }}

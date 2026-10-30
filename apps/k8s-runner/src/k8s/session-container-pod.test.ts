@@ -5,14 +5,16 @@ import { loadK8sRunnerConfig } from "../config.js";
 import { podOwnerRef } from "./routing/session-service.js";
 import { buildSessionContainerPod, buildSessionContainerPolicies } from "./session-container-pod.js";
 
-const config = loadK8sRunnerConfig({
-  RUNNER_SUPERVISOR_IMAGE: "telorun/k8s-runner:test",
-  RUNNER_STATE_DIR: "/var/lib/telo-runner",
-  RUNNER_SESSION_CONTAINERS_RESOURCES: JSON.stringify({
-    limits: { cpu: "1", memory: "1Gi" },
-    requests: { cpu: "250m", memory: "256Mi" },
+const config = {
+  ...loadK8sRunnerConfig({
+    RUNNER_SUPERVISOR_IMAGE: "telorun/k8s-runner:test",
+    RUNNER_STATE_DIR: "/var/lib/telo-runner",
   }),
-});
+  sessionContainerResources: {
+    limits: { cpu: "1", memory: "1Gi", ephemeralStorage: "2Gi" },
+    requests: { cpu: "250m", memory: "256Mi" },
+  },
+};
 const owner = podOwnerRef("telo-run-abc", "uid-1");
 
 const SPEC: SessionContainerSpec = {
@@ -56,7 +58,10 @@ describe("a session container's pod", () => {
       args: ["postgres", "-c", "fsync=off"],
       env: [{ name: "POSTGRES_PASSWORD", value: "pa=ss" }],
       ports: [{ containerPort: 5432, protocol: "TCP" }],
-      resources: { limits: { cpu: "1", memory: "1Gi" }, requests: { cpu: "250m", memory: "256Mi" } },
+      resources: {
+        limits: { cpu: "1", memory: "1Gi", "ephemeral-storage": "2Gi" },
+        requests: { cpu: "250m", memory: "256Mi" },
+      },
     });
     expect(container.command).toBeUndefined();
   });

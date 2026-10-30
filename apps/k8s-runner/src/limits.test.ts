@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { LimitCeilings } from "./config.js";
-import { clampLimits, parseCpuMillis, parseMemoryBytes } from "./limits.js";
+import {
+  clampLimits,
+  parseCpuMillis,
+  parseMemoryBytes,
+  resolveResources,
+  type LimitCeilings,
+} from "./limits.js";
 
 const CEILINGS: LimitCeilings = {
   cpu: "50m",
@@ -34,6 +39,23 @@ describe("clampLimits — hard ceiling, clamp-down only", () => {
     const r = clampLimits(CEILINGS, { cpu: "garbage", memory: "??" });
     expect(r.cpu).toBe("50m");
     expect(r.memory).toBe("100Mi");
+  });
+
+  it("sets no cpu limit without a cpu ceiling, passing a parseable requested one through", () => {
+    const { cpu, ...uncapped } = CEILINGS;
+    expect(clampLimits(uncapped, undefined)).toEqual({ memory: "100Mi", ephemeralStorage: "512Mi" });
+    expect(clampLimits(uncapped, { cpu: "4" }).cpu).toBe("4");
+    expect(clampLimits(uncapped, { cpu: "garbage" }).cpu).toBeUndefined();
+  });
+});
+
+describe("resolveResources", () => {
+  it("holds each request at or below the limit a lower requested one leaves", () => {
+    const sizing = { limits: CEILINGS, requests: { cpu: "50m", memory: "100Mi" } };
+    expect(resolveResources(sizing, { cpu: "20m", memory: "64Mi" })).toEqual({
+      limits: { cpu: "20m", memory: "64Mi", ephemeralStorage: "512Mi" },
+      requests: { cpu: "20m", memory: "64Mi" },
+    });
   });
 });
 

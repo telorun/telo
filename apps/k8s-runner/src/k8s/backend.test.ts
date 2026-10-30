@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it } from "vitest";
 const NO_LOOPBACK_ALIASES = process.platform === "darwin";
 
 import { loadK8sRunnerConfig } from "../config.js";
-import { clampLimits } from "../limits.js";
+import { resolveResources } from "../limits.js";
 import { createKubernetesBackend } from "./backend.js";
 import { FakeCluster } from "./fake-cluster.test-support.js";
 import { buildSessionPod } from "./pod-spec.js";
@@ -68,7 +68,7 @@ function earlierPod(sessionId: string, agent = true): V1Pod {
     claimName: `telo-session-${sessionId}`,
     workspaceAppConfigMap: "telo-workspace-app-x",
     hostEnv: {},
-    limits: { app: clampLimits(config.limits, undefined), agent: clampLimits(config.appLimits, undefined) },
+    resources: { app: resolveResources(config.sessionResources), agent: resolveResources(config.agentResources) },
   });
 }
 
