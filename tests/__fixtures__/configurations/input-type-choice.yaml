@@ -1,0 +1,26 @@
+# A step reads an input a choice declares: the read is refused only where the
+# input contract leaves the member out.
+kind: Telo.Application
+metadata:
+  name: InputTypeChoice
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref sequence
+---
+kind: Run.Sequence
+metadata:
+  name: sequence
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      x: !if
+        if: !cel "variables.flag1"
+        then: { type: integer }
+steps:
+  - name: add
+    value: !cel "inputs.x"

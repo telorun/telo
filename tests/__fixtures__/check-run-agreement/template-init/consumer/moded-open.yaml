@@ -1,0 +1,13 @@
+kind: Telo.Application
+metadata:
+  name: TemplateInitModedOpen
+variables:
+  mode:
+    env: MODE
+    type: string
+    default: a
+imports:
+  Dep:
+    source: ../moded-dependent
+    variables:
+      mode: !cel "variables.mode"

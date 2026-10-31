@@ -12,6 +12,8 @@ export type AstNode = AstMap | AstSeq | AstScalar;
 export interface AstMap {
   kind: "map";
   range: [number, number];
+  /** The mapping's tag when present (`!if`, `!switch`, `!for-each`). */
+  tag?: string;
   entries: AstPair[];
 }
 
@@ -76,7 +78,8 @@ function adaptNode(node: Node, text: string): AstNode | undefined {
       const value = item.value != null ? adaptNode(item.value as Node, text) : undefined;
       entries.push({ key, value });
     }
-    return { kind: "map", range: nodeRange(node), entries };
+    const tag = typeof node.tag === "string" ? node.tag : undefined;
+    return { kind: "map", range: nodeRange(node), ...(tag ? { tag } : {}), entries };
   }
   if (isSeq(node)) {
     const items: AstNode[] = [];

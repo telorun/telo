@@ -1,0 +1,6 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedFamilyRef
+  version: 1.0.0
+targets:
+  - !ref stores[each.key]

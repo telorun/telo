@@ -1,0 +1,46 @@
+# The same read through a family's index: the reader waits for the member.
+kind: Telo.Application
+metadata:
+  name: BodyResourcesProviderFamilyReadApp
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+  Status: ../provider-status/kinds
+targets:
+  - !ref pipeline
+---
+kind: Telo.Definition
+metadata: { name: Pipeline }
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    ports:
+      type: object
+      additionalProperties: { type: integer }
+resources:
+  - kind: Status.Endpoint
+    metadata: { name: second }
+    port: !cel "resources.eps['a'].status.port"
+  - !for-each
+    metadata: { name: eps }
+    in: !cel "self.ports"
+    emit:
+      kind: Status.Endpoint
+      port: !cel "each.value"
+  - kind: Run.Sequence
+    metadata: { name: main }
+    steps:
+      - name: check
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "resources.second.status.port"
+          expected: 2005
+run: !ref main
+---
+kind: Self.Pipeline
+metadata: { name: pipeline }
+ports:
+  a: 5
+  b: 6

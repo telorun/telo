@@ -17,6 +17,8 @@
  */
 import { declaredEvalMode, scopeMatchOf, type NamedShapeLookup } from "./eval-paths.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { dispatchReads } from "./invocation-contract.js";
+import { placeAt, type ReadReporter } from "./read-place.js";
 
 export const ELEMENT_FROM_ITEM = "x-telo-context-element-from-item";
 
@@ -177,3 +179,13 @@ function memberOf(node: Schema, document: Schema, segment: string, shapes: Named
   }
   return undefined;
 }
+
+/** What `x-telo-context-element-from-item` reads: the chain at another field,
+ *  typed as at its own site — which may read anything its declaration does. */
+export const elementFromItemReads: ReadReporter = ({ value, at }) =>
+  typeof value === "string"
+    ? [
+        { kind: "value", keys: placeAt(at, value) },
+        { kind: "reference", keys: [], transitive: true, reads: dispatchReads },
+      ]
+    : [];

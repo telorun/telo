@@ -8,6 +8,7 @@ import {
   type ManifestAnalysis,
   type ModuleGraph,
   type RefSlot,
+  completeAssignment,
 } from "@telorun/analyzer";
 import type {
   KindContract,
@@ -34,6 +35,9 @@ export interface ViewModelInput {
   uriOfSource: (source: string) => string;
   /** Document URI → the LSP version of each open document the analysis read. */
   documents: Record<string, number>;
+  /** The configuration to draw the owner's choices in; a dimension it leaves
+   *  out takes its default. */
+  configuration?: Record<string, unknown>;
 }
 
 /**
@@ -101,10 +105,19 @@ export function buildViewModel(input: ViewModelInput): ViewModel {
     ? registry.resolveDefinitionIn(root.kind, (root.metadata as { module?: string }).module)
     : undefined;
 
+  const configurations = analysis.graphConfigurations;
   return {
     owner: input.owner,
     revision: input.revision,
     moduleGraph: graph,
+    ...(configurations.dimensions.length > 0
+      ? {
+          configurations: {
+            dimensions: configurations.dimensions,
+            selected: completeAssignment(configurations, input.configuration),
+          },
+        }
+      : {}),
     moduleRootSchema: (rootDefinition?.schema as Record<string, unknown> | undefined) ?? null,
     kindSpellings,
     refConstraints,
@@ -121,7 +134,7 @@ export function buildViewModel(input: ViewModelInput): ViewModel {
 }
 
 /** The owner drawn as a module, rooted at its own module document. */
-function ownerModuleGraph({ graph, registry, analysis }: ViewModelInput): ModuleGraphData | null {
+function ownerModuleGraph({ graph, registry, analysis, configuration }: ViewModelInput): ModuleGraphData | null {
   const rootDoc = analysis.manifests.find(
     (m) =>
       isModuleKind(m.kind) &&
@@ -131,6 +144,7 @@ function ownerModuleGraph({ graph, registry, analysis }: ViewModelInput): Module
   const options = {
     ...(rootDoc ? { root: rootDoc } : {}),
     ...(entryModule ? { entryModule } : {}),
+    configuration: configuration ?? {},
   };
   const built: ModuleGraph = analysis.moduleGraph(registry.moduleGraphDeps(analysis.manifests, options), options);
   return moduleGraphData(built);

@@ -1,4 +1,10 @@
-import { isModuleKind, isResolvedReference, type AnalysisRegistry, type LoadedModule } from "@telorun/analyzer";
+import {
+  isModuleKind,
+  isResolvedReference,
+  refSentinelTarget,
+  type AnalysisRegistry,
+  type LoadedModule,
+} from "@telorun/analyzer";
 import type { ReferenceSite } from "@telorun/editor-protocol";
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
@@ -99,7 +105,11 @@ function inlineImportEntries(raw: unknown): Record<string, unknown> | undefined 
  *  Undefined for an inline declaration — any other object, a `name` field
  *  included — or any other value. */
 function refTargetName(value: unknown): string | undefined {
-  if (isRefSentinel(value)) return value.source;
+  if (isRefSentinel(value)) {
+    // A family member is a reference to the family: its head, whichever index.
+    const target = refSentinelTarget(value);
+    return target ? (target.alias !== undefined ? `${target.alias}.${target.name}` : target.name) : value.source;
+  }
   if (typeof value === "string") {
     const lastDot = value.lastIndexOf(".");
     return lastDot > 0 ? value.slice(lastDot + 1) : value;

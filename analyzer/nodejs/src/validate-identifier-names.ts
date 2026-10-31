@@ -5,7 +5,7 @@ import {
   type AliasResolver,
   type ModuleScopes,
 } from "./alias-resolver.js";
-import type { CallGraph } from "./call-graph.js";
+import type { CallGraph, CallGraphNode } from "./call-graph.js";
 import {
   instanceDeclaresSignature,
   isCallableKind,
@@ -61,107 +61,156 @@ export function validateIdentifierNames(
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   const resolveDef = moduleScopedDefResolver<ResourceDefinition>(registry, aliases, scopes);
+  for (const manifest of manifests) out.push(...manifestNameFindings(manifest, resolveDef, rootModules));
+  for (const node of graph.nodes.values()) out.push(...stepNameFindings(node, graph, rootModules));
+  return out;
+}
 
-  for (const manifest of manifests) {
-    const metadata = manifest.metadata as Record<string, unknown> | undefined;
-    const name = typeof metadata?.name === "string" ? metadata.name : undefined;
-    if (!manifest.kind || !name) continue;
+/**
+ * The names one declaration writes — its own, its module block keys and its
+ * parameters — and the names of the steps the call graph gives it: the same
+ * verdicts the whole pass reaches for it, read off that declaration alone, a
+ * name's verdict reading only the name and its kind's level.
+ */
+export function declarationNameFindings(
+  manifest: ResourceManifest,
+  registry: DefinitionRegistry,
+  aliases: AliasResolver,
+  rootModules: Set<string>,
+  graph: CallGraph,
+  scopes: ModuleScopes,
+): AnalysisDiagnostic[] {
+  const resolveDef = moduleScopedDefResolver<ResourceDefinition>(registry, aliases, scopes);
+  const out = manifestNameFindings(manifest, resolveDef, rootModules);
+  for (const node of graph.nodes.values()) {
+    if (node.type !== "step") continue;
+    const owner = graph.nodes.get(node.owner);
+    if (owner?.type === "resource" && owner.manifest === manifest) out.push(...stepNameFindings(node, graph, rootModules));
+  }
+  return out;
+}
 
-    // A name synthesized by inline extraction (`TestAdd_steps_0_invoke`) is
-    // derived from the author's own names, not written — reporting its shape
-    // would blame them for a spelling this pass's own pipeline chose.
-    if (metadata?.xTeloOrigin) continue;
+/** Whether the pass may report a name `manifest` writes or a step of it. */
+export function writesJudgedNames(manifest: ResourceManifest, rootModules: ReadonlySet<string>): boolean {
+  const metadata = manifest.metadata as Record<string, unknown> | undefined;
+  if (!manifest.kind || typeof metadata?.name !== "string" || metadata.xTeloOrigin) return false;
+  const ownModule = metadata.module as string | undefined;
+  return !ownModule || rootModules.has(ownModule);
+}
 
-    // A kind-only stand-in for a `resources:` entry carries the name the author
-    // wrote in that block, and the block's own keys are checked below — on the
-    // module doc, where the name is written and a squiggle can land.
-    if (isInjectedDeclaration(manifest)) continue;
+type ScopedDefResolver = ReturnType<typeof moduleScopedDefResolver<ResourceDefinition>>;
 
-    const ownModule = metadata?.module as string | undefined;
-    if (ownModule && !rootModules.has(ownModule)) continue;
+function manifestNameFindings(
+  manifest: ResourceManifest,
+  resolveDef: ScopedDefResolver,
+  rootModules: Set<string>,
+): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
+  const metadata = manifest.metadata as Record<string, unknown> | undefined;
+  const name = typeof metadata?.name === "string" ? metadata.name : undefined;
+  if (!manifest.kind || !name) return out;
 
-    const level = levelFor(manifest, resolveDef, ownModule);
-    push(out, checkName(name, level, surfaceFor(manifest)), {
+  // A name synthesized by inline extraction (`TestAdd_steps_0_invoke`) is
+  // derived from the author's own names, not written — reporting its shape
+  // would blame them for a spelling this pass's own pipeline chose.
+  if (metadata?.xTeloOrigin) return out;
+  // A declaration a choice makes is named by the tag, judged once with it.
+  if (metadata?.xTeloChoice) return out;
+
+  // A kind-only stand-in for a `resources:` entry carries the name the author
+  // wrote in that block, and the block's own keys are checked below — on the
+  // module doc, where the name is written and a squiggle can land.
+  if (isInjectedDeclaration(manifest)) return out;
+
+  const ownModule = metadata?.module as string | undefined;
+  if (ownModule && !rootModules.has(ownModule)) return out;
+
+  const level = levelFor(manifest, resolveDef, ownModule);
+  push(out, checkName(name, level, surfaceFor(manifest)), {
+    kind: manifest.kind,
+    name,
+    filePath: metadata?.source as string | undefined,
+    path: "metadata.name",
+  });
+
+  // A module's name is a kind prefix, and two prefixes are the runtime's. An
+  // import's alias and an imported library's name are refused by the loader,
+  // which is what keeps a dependency named `Telo` out of the registry.
+  if (
+    (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") &&
+    isReservedKindPrefix(name)
+  ) {
+    out.push({
+      severity: DiagnosticSeverity.Error,
+      code: "KIND_PREFIX_RESERVED",
+      source: SOURCE,
+      message: `${manifest.kind}/${name}: ${reservedModuleNameMessage(name)}`,
+      data: {
+        resource: { kind: manifest.kind, name },
+        filePath: metadata?.source as string | undefined,
+        path: "metadata.name",
+      },
+    });
+  }
+
+  // The module doc's config contract. Each key becomes `variables.<key>` /
+  // `secrets.<key>` / `ports.<key>` in CEL, so it lives in the same
+  // identifier space as a resource name and breaks the same way. An
+  // import's `variables:` / `secrets:` are deliberately NOT checked — those
+  // keys are the imported library's declarations, so a violation there is
+  // the library author's, reported when their module is analyzed as a root.
+  if (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") {
+    // `resources:` and `needs:` join them: a library's resource inputs and
+    // needs are named in the same identifier space (`!ref connection`,
+    // `resources.connection`) and break the same way.
+    for (const field of ["variables", "secrets", "ports", "resources", "needs"] as const) {
+      const block = (manifest as Record<string, unknown>)[field];
+      if (!block || typeof block !== "object" || Array.isArray(block)) continue;
+      for (const key of Object.keys(block as Record<string, unknown>)) {
+        push(out, checkName(key, "value", `${singular(field)} name`), {
+          kind: manifest.kind,
+          name,
+          filePath: metadata?.source as string | undefined,
+          path: `${field}.${key}`,
+        });
+      }
+    }
+  }
+
+  // A function's parameters: each one is a CEL binding inside its body, read
+  // by bare name, so it breaks the way any other binding name does.
+  for (const [index, param] of (signatureParamsOf(manifest, resolveDef, ownModule) ?? []).entries()) {
+    if (typeof param.name !== "string") continue;
+    push(out, checkName(param.name, "value", "parameter name"), {
       kind: manifest.kind,
       name,
       filePath: metadata?.source as string | undefined,
-      path: "metadata.name",
-    });
-
-    // A module's name is a kind prefix, and two prefixes are the runtime's. An
-    // import's alias and an imported library's name are refused by the loader,
-    // which is what keeps a dependency named `Telo` out of the registry.
-    if (
-      (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") &&
-      isReservedKindPrefix(name)
-    ) {
-      out.push({
-        severity: DiagnosticSeverity.Error,
-        code: "KIND_PREFIX_RESERVED",
-        source: SOURCE,
-        message: `${manifest.kind}/${name}: ${reservedModuleNameMessage(name)}`,
-        data: {
-          resource: { kind: manifest.kind, name },
-          filePath: metadata?.source as string | undefined,
-          path: "metadata.name",
-        },
-      });
-    }
-
-    // The module doc's config contract. Each key becomes `variables.<key>` /
-    // `secrets.<key>` / `ports.<key>` in CEL, so it lives in the same
-    // identifier space as a resource name and breaks the same way. An
-    // import's `variables:` / `secrets:` are deliberately NOT checked — those
-    // keys are the imported library's declarations, so a violation there is
-    // the library author's, reported when their module is analyzed as a root.
-    if (manifest.kind === "Telo.Application" || manifest.kind === "Telo.Library") {
-      // `resources:` and `needs:` join them: a library's resource inputs and
-      // needs are named in the same identifier space (`!ref connection`,
-      // `resources.connection`) and break the same way.
-      for (const field of ["variables", "secrets", "ports", "resources", "needs"] as const) {
-        const block = (manifest as Record<string, unknown>)[field];
-        if (!block || typeof block !== "object" || Array.isArray(block)) continue;
-        for (const key of Object.keys(block as Record<string, unknown>)) {
-          push(out, checkName(key, "value", `${singular(field)} name`), {
-            kind: manifest.kind,
-            name,
-            filePath: metadata?.source as string | undefined,
-            path: `${field}.${key}`,
-          });
-        }
-      }
-    }
-
-    // A function's parameters: each one is a CEL binding inside its body, read
-    // by bare name, so it breaks the way any other binding name does.
-    for (const [index, param] of (signatureParamsOf(manifest, resolveDef, ownModule) ?? []).entries()) {
-      if (typeof param.name !== "string") continue;
-      push(out, checkName(param.name, "value", "parameter name"), {
-        kind: manifest.kind,
-        name,
-        filePath: metadata?.source as string | undefined,
-        path: `params[${index}].name`,
-      });
-    }
-  }
-
-  for (const node of graph.nodes.values()) {
-    if (node.type !== "step" || !node.name) continue;
-    const owner = graph.nodes.get(node.owner);
-    if (owner?.type !== "resource") continue;
-    const ownerMeta = owner.manifest.metadata as Record<string, unknown> | undefined;
-    if (ownerMeta?.xTeloOrigin) continue;
-    const ownModule = ownerMeta?.module as string | undefined;
-    if (ownModule && !rootModules.has(ownModule)) continue;
-
-    push(out, checkName(node.name, "value", "step name"), {
-      kind: owner.kind,
-      name: owner.name,
-      filePath: ownerMeta?.source as string | undefined,
-      path: `${node.path}.name`,
+      path: `params[${index}].name`,
     });
   }
+  return out;
+}
 
+function stepNameFindings(
+  node: CallGraphNode,
+  graph: CallGraph,
+  rootModules: Set<string>,
+): AnalysisDiagnostic[] {
+  const out: AnalysisDiagnostic[] = [];
+  if (node.type !== "step" || !node.name) return out;
+  const owner = graph.nodes.get(node.owner);
+  if (owner?.type !== "resource") return out;
+  const ownerMeta = owner.manifest.metadata as Record<string, unknown> | undefined;
+  if (ownerMeta?.xTeloOrigin) return out;
+  const ownModule = ownerMeta?.module as string | undefined;
+  if (ownModule && !rootModules.has(ownModule)) return out;
+
+  push(out, checkName(node.name, "value", "step name"), {
+    kind: owner.kind,
+    name: owner.name,
+    filePath: ownerMeta?.source as string | undefined,
+    path: `${node.path}.name`,
+  });
   return out;
 }
 

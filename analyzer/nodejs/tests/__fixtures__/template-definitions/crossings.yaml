@@ -1,0 +1,39 @@
+# Reading through a reference: a literal `mode` behind a `!ref`, a list of
+# references iterated into, and an imported instance read in a condition.
+kind: Telo.Application
+metadata:
+  name: Crossings
+imports:
+  Http: ../../../../../modules/http-server
+  Records: ./crossing-lib.yaml
+variables:
+  mode:
+    env: MODE
+    type: string
+    enum: [x, y]
+    default: x
+---
+kind: Records.Holder
+metadata:
+  name: literal
+mode: x
+---
+kind: Records.Holder
+metadata:
+  name: chained
+mode: !cel "variables.mode"
+---
+kind: Records.Switched
+metadata:
+  name: byLiteral
+target: !ref literal
+---
+kind: Records.Switched
+metadata:
+  name: byDimension
+target: !ref chained
+---
+kind: Records.Switched
+metadata:
+  name: byImport
+target: !ref Records.shared

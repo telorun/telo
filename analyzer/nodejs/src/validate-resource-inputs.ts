@@ -13,6 +13,7 @@ import {
   readSuppliedResources,
 } from "./resource-input.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
+import { manifestNames } from "./scoped-name-resolver.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -37,8 +38,8 @@ type RequiredResources = Record<string, string>;
  *    resolve in the DECLARING module's scope (`RESOURCE_INPUT_KIND_UNRESOLVED`).
  *    A constraint that resolves to nothing accepts anything, which is the same
  *    hole `X_TELO_REF_UNRESOLVED` exists to close one level down.
- *  - **The injection site.** Every declared entry must be supplied
- *    (`RESOURCE_INPUT_MISSING` — the same failure as a missing required
+ *  - **The injection site.** Every declared entry not `optional: true` must be
+ *    supplied (`RESOURCE_INPUT_MISSING` — the same failure as a missing required
  *    variable), nothing beyond them may be (`RESOURCE_INPUT_UNKNOWN`), the value
  *    must name a resource that exists (`RESOURCE_INPUT_UNRESOLVED`), and its
  *    kind must satisfy the declared constraint transitively
@@ -138,6 +139,7 @@ export function validateResourceInputs(
           source?: string;
           resolvedModuleName?: string;
           requiredResources?: RequiredResources;
+          optionalResources?: readonly string[];
           sharedLibrary?: boolean;
           resolvedSource?: string;
         }
@@ -181,8 +183,9 @@ export function validateResourceInputs(
     const resource = { kind: m.kind, name: alias };
     const filePath = meta.source;
 
+    const optional = new Set(meta.optionalResources ?? []);
     for (const [entryName, entryKind] of required) {
-      if (entryName in supplied) continue;
+      if (entryName in supplied || optional.has(entryName)) continue;
       out.push({
         severity: DiagnosticSeverity.Error,
         code: "RESOURCE_INPUT_MISSING",
@@ -246,8 +249,8 @@ export function validateResourceInputs(
       const suppliedName = (value as { name?: unknown }).name;
       const supplied =
         typeof suppliedName === "string"
-          ? manifests.find(
-              (c) => c.metadata?.name === suppliedName && isOwn(declaringModule(c)),
+          ? manifestNames(manifests).resolve(suppliedName, meta?.module, undefined, (c) =>
+              isOwn(declaringModule(c)),
             )
           : undefined;
       if (acceptsKind(canonical, entry, isInjectedDeclaration(supplied))) continue;
@@ -297,7 +300,9 @@ const SUPPLIED_BLOCKS = ["variables", "secrets", "resources", "needs"] as const;
  *  - A `resources:` entry names a resource by name, which means the same
  *    instance only when both imports were DECLARED in the same module — so a
  *    cross-module pair is left to the runtime. A need supplied whole by `!ref`
- *    is the same case.
+ *    is the same case. Whether an import supplies an input at all is literal
+ *    in every module, so one supplying it and one omitting it is compared
+ *    across modules too.
  *
  * Grouped by the target's RESOLVED SOURCE, the identity the kernel keys its
  * singleton registry on; `resolvedModuleName` would collapse two versions of one
@@ -357,11 +362,29 @@ function sharedLibraryConflicts(
     const [first, ...rest] = group;
     for (const later of rest) {
       for (const block of SUPPLIED_BLOCKS) {
-        // A reference means the same instance only within one module's scope.
-        if (block === "resources" && first!.module !== later.module) continue;
         const a = first!.blocks.get(block)!;
         const b = later.blocks.get(block)!;
         for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+          // Whether an import supplies a resource input is a literal fact in
+          // every module; which instance it names is one only within one module.
+          if (block === "resources" && Object.hasOwn(a, key) !== Object.hasOwn(b, key)) {
+            const [supplier, omitter] = Object.hasOwn(a, key) ? [first!, later] : [later, first!];
+            out.push(
+              sharedConflict(
+                later,
+                first!,
+                isOwn,
+                `${block}.${key}`,
+                `import '${supplier.alias}' supplies the resource input ${block}.${key} and import ` +
+                  `'${omitter.alias}' omits it, so the one instantiation would both borrow it and do ` +
+                  `without it. Supply it at both imports, omit it at both, or make the library ` +
+                  `'lifecycle: isolated'.`,
+              ),
+            );
+            continue;
+          }
+          // A reference means the same instance only within one module's scope.
+          if (block === "resources" && first!.module !== later.module) continue;
           if (findDynamicLeaf(a[key]) || findDynamicLeaf(b[key])) continue;
           // A need supplied whole names a need or fulfilment of the importer —
           // the same one only within one module, like a resource input.
@@ -373,33 +396,43 @@ function sharedLibraryConflicts(
             continue;
           }
           if (sameSuppliedValue(a[key], b[key])) continue;
-          out.push({
-            severity: DiagnosticSeverity.Error,
-            code: "SHARED_LIBRARY_CONFLICT",
-            source: SOURCE,
-            message:
-              `Import '${later.alias}' and import '${first!.alias}' both reach a ` +
-              `'lifecycle: shared' library — one instantiation for the whole application — but ` +
+          out.push(
+            sharedConflict(
+              later,
+              first!,
+              isOwn,
+              `${block}.${key}`,
               `they supply different values for ${block}.${key}. Make the two imports agree, or ` +
-              `make the library 'lifecycle: isolated'.`,
-            data: isOwn(later.module)
-              ? {
-                  resource: { kind: "Telo.Import", name: later.alias },
-                  filePath: later.filePath,
-                  path: `${block}.${key}`,
-                }
-              : {
-                  resource: { kind: "Telo.Import", name: first!.alias },
-                  filePath: first!.filePath,
-                  path: `${block}.${key}`,
-                },
-          });
+                `make the library 'lifecycle: isolated'.`,
+            ),
+          );
         }
       }
     }
   }
 
   return out;
+}
+
+/** One `SHARED_LIBRARY_CONFLICT` between two imports of one shared library, at
+ *  the later import where it is one of the entry's own, else at the first. */
+function sharedConflict(
+  later: SuppliedConfig,
+  first: SuppliedConfig,
+  isOwn: (module: string | undefined) => boolean,
+  path: string,
+  detail: string,
+): AnalysisDiagnostic {
+  const at = isOwn(later.module) ? later : first;
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "SHARED_LIBRARY_CONFLICT",
+    source: SOURCE,
+    message:
+      `Import '${later.alias}' and import '${first.alias}' both reach a 'lifecycle: shared' ` +
+      `library — one instantiation for the whole application — but ${detail}`,
+    data: { resource: { kind: "Telo.Import", name: at.alias }, filePath: at.filePath, path },
+  };
 }
 
 /** Structural equality, key-order insensitive — the analyzer's half of the rule

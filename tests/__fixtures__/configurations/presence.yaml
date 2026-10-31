@@ -1,0 +1,19 @@
+# An input's presence is a dimension: a required field an `!if` leaves absent
+# is refused in the configuration where the input is absent.
+kind: Telo.Application
+metadata:
+  name: Presence
+imports:
+  Run: ../../../modules/run
+secrets:
+  licenseKey:
+    env: LICENSE_KEY
+    type: string
+    default: null
+---
+kind: Run.Value
+metadata:
+  name: licensed
+value: !if
+  if: !cel "secrets.licenseKey != null"
+  then: !cel "secrets.licenseKey"

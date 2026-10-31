@@ -19,7 +19,7 @@ export type ViewModelStatus =
 export interface ViewModelSource {
   ownerOf(modulePath: string): string;
   supportsViewModel(modulePath: string): boolean | undefined;
-  viewModel(modulePath: string): Promise<ViewModel | null>;
+  viewModel(modulePath: string, configuration?: Record<string, unknown>): Promise<ViewModel | null>;
   statusOf(modulePath: string): TeloStatus;
   /** Start the engines that failed again. */
   retry(): Promise<void>;
@@ -42,6 +42,10 @@ interface Entry {
   fetching: boolean;
   /** Another fetch was asked for while one was under way. */
   again: boolean;
+  /** The configuration the reader picked; absent until it picks one. */
+  configuration?: Record<string, unknown>;
+  /** The configuration the held model was asked for, as text. */
+  heldFor?: string;
 }
 
 const LOADING: ViewModelStatus = { state: "loading" };
@@ -126,6 +130,16 @@ export class ViewModelStore {
     return Object.entries(model.documents).every(([uri, version]) => this.source.documentVersion(uri) === version);
   }
 
+  /** Draw the module's choices in `configuration`: the model is read again,
+   *  and an answer for it replaces the held one at the same revision. */
+  configure(modulePath: string, configuration: Record<string, unknown>): void {
+    const entry = this.entries.get(this.source.ownerOf(modulePath));
+    if (!entry) return;
+    entry.configuration = configuration;
+    entry.stale = true;
+    if (entry.listeners.size > 0) this.evaluate(entry);
+  }
+
   /** Read the module again now, for as long as it has a reader — when what it
    *  holds is known to be behind the editor. */
   refresh(modulePath: string): void {
@@ -172,22 +186,33 @@ export class ViewModelStore {
     }
     if (entry.status.state !== "ready") this.set(entry, LOADING);
     entry.fetching = true;
-    this.source.viewModel(entry.modulePath).then(
-      (model) => this.settle(entry, model ? { state: "ready", model } : { state: "absent" }),
+    const asked = JSON.stringify(entry.configuration ?? null);
+    this.source.viewModel(entry.modulePath, entry.configuration).then(
+      (model) => this.settle(entry, model ? { state: "ready", model } : { state: "absent" }, asked),
       (error: unknown) =>
-        this.settle(entry, {
-          state: "failed",
-          error: `the view model of ${entry.modulePath} could not be read: ${error instanceof Error ? error.message : String(error)}`,
-        }),
+        this.settle(
+          entry,
+          {
+            state: "failed",
+            error: `the view model of ${entry.modulePath} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+          },
+          asked,
+        ),
     );
   }
 
-  private settle(entry: Entry, status: ViewModelStatus): void {
+  private settle(entry: Entry, status: ViewModelStatus, asked: string): void {
     entry.fetching = false;
     if (this.entries.get(this.source.ownerOf(entry.modulePath)) !== entry) return;
     const held = entry.status.state === "ready" ? entry.status.model.revision : undefined;
-    const dropped = status.state === "ready" && held !== undefined && status.model.revision <= held;
-    if (!dropped) this.set(entry, status);
+    // An answer for another configuration is not behind the held one, whatever
+    // its revision.
+    const dropped =
+      status.state === "ready" && held !== undefined && status.model.revision <= held && entry.heldFor === asked;
+    if (!dropped) {
+      this.set(entry, status);
+      if (status.state === "ready") entry.heldFor = asked;
+    }
     // A failed read is tried again by the next reader or announcement.
     if (status.state === "failed") entry.stale = true;
     if (entry.again) {

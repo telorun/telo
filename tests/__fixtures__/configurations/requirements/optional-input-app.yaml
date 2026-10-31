@@ -1,0 +1,18 @@
+# One import supplies the store, one omits it: only the omitting one's library
+# requires its directory.
+kind: Telo.Application
+metadata:
+  name: OptionalBackedApp
+  version: 1.0.0
+imports:
+  Kinds: ../../resource-inputs/optional/kinds
+  Supplying:
+    source: ./optional-input
+    resources:
+      store: !ref mine
+  Omitting: ./optional-input
+---
+kind: Kinds.Store
+metadata:
+  name: mine
+label: mine

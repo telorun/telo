@@ -1,4 +1,13 @@
 export { extractAccessChains, validateChainAgainstSchema } from "@telorun/templating";
+import {
+  enclosingKeys,
+  fieldPlace,
+  placeAt,
+  READS_IDENTITY,
+  type ReadPlace,
+  type ReadReporter,
+  type ReferentReads,
+} from "./read-place.js";
 import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
 import {
   elementSchemaOf,
@@ -10,12 +19,14 @@ import { KERNEL_BUILTINS } from "./builtins.js";
 import { CONTEXT_FROM_REFERRER } from "./context-from-referrer.js";
 import { ELEMENT_FROM_ITEM } from "./element-from-item.js";
 import { kindDeclarationOf } from "./kind-declaration.js";
+import { scopeReadAt } from "./scoped-name-resolver.js";
+import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
 import { argumentRecordSchema, readParams } from "./callable-signature.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { withRefSlotsAsReadings } from "./ref-slot-reading.js";
 import { inlineNamedShapes } from "./schema-compat.js";
 import { dispatchTargetOf } from "./template-body.js";
-import { valueDerivedContract } from "./value-derived-contract.js";
+import { valueDerivedContract, valueDerivedSlot } from "./value-derived-contract.js";
 // Where CEL is evaluated is one reader (`eval-paths.ts`), and the region half of
 // it moved there so the scope walk and the `x-telo-eval` walk answer the same
 // question in one place. Re-exported: this module is where every existing
@@ -94,12 +105,18 @@ export interface ContextResolveOpts {
   /** Per-declaring-module alias tables, so a kind read off a forwarded
    *  definition resolves in the module that wrote it. */
   aliasesByModule?: ReadonlyMap<string, { resolveKind(kind: string): string | undefined }>;
-  allManifests?: Record<string, any>[];
+  /** The declarations a named type or a reference is read from. */
+  declarations?: DeclarationRequests;
+  /** A named shape by its id; absent, the registry's (`defs.schemaForId`). */
+  shapes?: NamedShapeLookup;
+  /** The concrete path on `manifestRoot` of the expression being typed — where
+   *  a reference `x-telo-context-ref-from` follows is read. */
+  sitePath?: string;
 }
 
 /**
  * Resolve a type field value (string name, inline type, or raw schema) to a JSON Schema.
- * - String: look up the named type in allManifests (Type.JsonSchema resources)
+ * - String: look up the named type by name (Type.JsonSchema resources)
  * - Object with `kind` + `schema`: inline type definition → return the `schema`
  * - Object with `type` or `properties`: raw JSON Schema, return as-is
  */
@@ -117,31 +134,41 @@ export interface ContextResolveOpts {
  * `Shapes.JsonSchema`) while the definition knows only its own module and name.
  * Memoized per manifest list — this runs on every type-field resolution.
  */
-const typeKindNames = new WeakMap<object, Set<string>>();
+/** What a reader with no declarations reads: no named type resolves. */
+const NO_DECLARATIONS: DeclarationRequests = listRequests([]);
 
-function typeCapableNames(allManifests: Record<string, any>[]): Set<string> {
-  const cached = typeKindNames.get(allManifests);
-  if (cached) return cached;
+const typeKindNames = new WeakMap<object, { documents: readonly unknown[]; names: Set<string> }>();
+
+function typeCapableNames(declarations: DeclarationRequests): Set<string> {
+  const documents = declarations.kindDocuments();
+  const cached = typeKindNames.get(declarations);
+  if (cached && cached.documents === documents) return cached.names;
   const names = new Set<string>();
-  for (const def of [...KERNEL_BUILTINS, ...allManifests] as Record<string, any>[]) {
+  for (const def of [...KERNEL_BUILTINS, ...documents] as Record<string, any>[]) {
     const declared = kindDeclarationOf(def) as Record<string, any> | undefined;
     if (declared?.capability !== "Telo.Type") continue;
     const name = declared.metadata?.name;
     if (typeof name === "string") names.add(name);
   }
-  typeKindNames.set(allManifests, names);
+  typeKindNames.set(declarations, { documents, names });
   return names;
 }
 
-export function isTypeKind(kind: unknown, allManifests: Record<string, any>[]): boolean {
+export function isTypeKind(kind: unknown, declarations: DeclarationRequests): boolean {
   if (typeof kind !== "string") return false;
   const suffix = kind.slice(kind.lastIndexOf(".") + 1);
-  return typeCapableNames(allManifests).has(suffix);
+  return typeCapableNames(declarations).has(suffix);
 }
 
+/**
+ * The schema a type field holds or names. `reader` is the declaration the field
+ * is written in: a name written in a scope member reads its scope first, where
+ * a member shadows a module-level type of the same name.
+ */
 export function resolveTypeFieldToSchema(
   value: unknown,
-  allManifests: Record<string, any>[],
+  declarations: DeclarationRequests,
+  reader?: Record<string, any>,
   ancestry: ReadonlySet<string> = new Set(),
 ): Record<string, any> | undefined {
   if (!value) return undefined;
@@ -150,24 +177,35 @@ export function resolveTypeFieldToSchema(
     // Cycle guard: a type already on the resolution path can't extend back into it.
     if (ancestry.has(value)) return undefined;
     // Named type reference — find a Telo.Type resource by name
-    const typeManifest = allManifests.find(
-      (m) =>
-        (m.metadata as any)?.name === value &&
-        isTypeKind(m.kind, allManifests) &&
-        typeof m.schema === "object" &&
-        m.schema !== null,
-    );
+    const isShape = (m: Record<string, any>): boolean =>
+      isTypeKind(m.kind, declarations) && typeof m.schema === "object" && m.schema !== null;
+    const names = declarations.names;
+    const member = names.scopeMember(value, scopeReadAt(reader));
+    const typeManifest = (
+      member ? (isShape(member) ? member : undefined) : names.declarationsOf(value).find(isShape)
+    ) as Record<string, any> | undefined;
     if (!typeManifest) return undefined;
     return applyExtends(
       typeManifest.schema as Record<string, any>,
       typeManifest.extends,
-      allManifests,
+      declarations,
       new Set(ancestry).add(value),
+      reader,
     );
   }
 
   if (typeof value === "object" && value !== null) {
     const obj = value as Record<string, any>;
+    // A reference written in a scope member names its scope's member first,
+    // whatever module-level id the canonical pass stamped beside it.
+    const written = isResolvedReference(value) ? value : undefined;
+    if (
+      written &&
+      (written.alias === undefined || written.alias === "Self") &&
+      declarations.names.scopeMember(written.name, scopeReadAt(reader))
+    ) {
+      return resolveTypeFieldToSchema(written.name, declarations, reader, ancestry);
+    }
     // A canonical, module-scoped id — what `resolveSchemaTypeRefs` normalizes
     // both the reference tag and the legacy `telo://` authority form into.
     //
@@ -179,30 +217,32 @@ export function resolveTypeFieldToSchema(
     const canonical = parseCanonicalTypeSchemaId(obj.$ref);
     if (canonical) {
       if (ancestry.has(obj.$ref)) return undefined;
-      const owned = allManifests.find(
-        (m) =>
-          (m.metadata as any)?.name === canonical.typeName &&
-          (m.metadata as any)?.module === canonical.moduleName &&
-          isTypeKind(m.kind, allManifests) &&
-          typeof m.schema === "object" &&
-          m.schema !== null,
-      );
+      const owned = declarations.names
+        .declarationsOf(canonical.typeName)
+        .find(
+          (m) =>
+            (m.metadata as { module?: unknown }).module === canonical.moduleName &&
+            isTypeKind(m.kind, declarations) &&
+            typeof (m as Record<string, any>).schema === "object" &&
+            (m as Record<string, any>).schema !== null,
+        ) as Record<string, any> | undefined;
       if (owned) {
         return applyExtends(
           owned.schema as Record<string, any>,
           owned.extends,
-          allManifests,
+          declarations,
           new Set(ancestry).add(obj.$ref),
+          reader,
         );
       }
       // A module that is not in this set — a single-file analysis, or an import
       // whose library was not forwarded. Fall through to the bare name, which is
       // what this resolved before the canonical form existed.
-      return resolveTypeFieldToSchema(canonical.typeName, allManifests, ancestry);
+      return resolveTypeFieldToSchema(canonical.typeName, declarations, reader, ancestry);
     }
     // Inline type resource: { kind: "Type.JsonSchema", schema: {...} }
     if (obj.schema && typeof obj.schema === "object") {
-      return applyExtends(obj.schema as Record<string, any>, obj.extends, allManifests, ancestry);
+      return applyExtends(obj.schema as Record<string, any>, obj.extends, declarations, ancestry, reader);
     }
     // Raw JSON Schema (has type or properties)
     if (obj.type || obj.properties) {
@@ -212,7 +252,7 @@ export function resolveTypeFieldToSchema(
     // where the canonical rewrite could not run (a scope whose aliases are not in
     // hand); resolves by bare name, as it always has.
     if (isResolvedReference(obj)) {
-      return resolveTypeFieldToSchema(obj.name, allManifests, ancestry);
+      return resolveTypeFieldToSchema(obj.name, declarations, reader, ancestry);
     }
   }
 
@@ -231,11 +271,12 @@ export function resolveTypeFieldToSchema(
 function applyExtends(
   ownSchema: Record<string, any>,
   extendsField: unknown,
-  allManifests: Record<string, any>[],
+  declarations: DeclarationRequests,
   ancestry: ReadonlySet<string>,
+  reader: Record<string, any> | undefined,
 ): Record<string, any> {
   return foldTypeExtends(ownSchema, extendsField, (parent) =>
-    resolveTypeFieldToSchema(parent, allManifests, ancestry),
+    resolveTypeFieldToSchema(parent, declarations, reader, ancestry),
   );
 }
 
@@ -311,11 +352,11 @@ function schemaAtChain(
 function resolveCollectionSchema(
   manifestRoot: Record<string, any>,
   field: string,
-  allManifests: Record<string, any>[] | undefined,
+  declarations: DeclarationRequests | undefined,
 ): Record<string, any> | undefined {
   const chain = purePathChain(manifestRoot?.[field]);
   if (!chain || chain[0] !== "inputs") return undefined;
-  const root = inputsContractSchema(manifestRoot, allManifests);
+  const root = inputsContractSchema(manifestRoot, declarations);
   if (!root) return undefined;
   return schemaAtChain(chain.slice(1), root);
 }
@@ -324,9 +365,9 @@ function resolveCollectionSchema(
  *  else the legacy `inputs:` property map. */
 function inputsContractSchema(
   manifestRoot: Record<string, any>,
-  allManifests: Record<string, any>[] | undefined,
+  declarations: DeclarationRequests | undefined,
 ): Record<string, any> | undefined {
-  const declared = resolveTypeFieldToSchema(manifestRoot.inputType, allManifests ?? []);
+  const declared = resolveTypeFieldToSchema(manifestRoot.inputType, declarations ?? NO_DECLARATIONS, manifestRoot);
   if (declared && typeof declared === "object") return declared;
   return manifestRoot.inputs && typeof manifestRoot.inputs === "object"
     ? { type: "object", properties: manifestRoot.inputs }
@@ -366,11 +407,11 @@ export function elementOfCollection(
 function collectionBindingWithheld(
   schema: Record<string, any>,
   manifestRoot: Record<string, any>,
-  allManifests: Record<string, any>[] | undefined,
+  declarations: DeclarationRequests | undefined,
 ): boolean {
   const from = schema?.["x-telo-context-collection-from"] as string | undefined;
   if (!from) return false;
-  return isLiveSlot(resolveCollectionSchema(manifestRoot, from, allManifests));
+  return isLiveSlot(resolveCollectionSchema(manifestRoot, from, declarations));
 }
 
 /**
@@ -427,21 +468,20 @@ function collectionBindingWithheld(
 export function resolveContextAnnotations(
   schema: Record<string, any>,
   manifestItem: Record<string, any>,
-  opts?: ContextResolveOpts | Record<string, any>[],
+  opts?: ContextResolveOpts,
 ): Record<string, any> {
   if (!schema || typeof schema !== "object") return schema;
 
-  // Back-compat: third positional arg used to be `allManifests: Record<string, any>[]`.
-  const normalizedOpts: ContextResolveOpts = Array.isArray(opts)
-    ? { allManifests: opts }
-    : (opts ?? {});
+  const normalizedOpts: ContextResolveOpts = opts ?? {};
   const {
     manifestRoot = manifestItem,
     contextHolder = manifestItem,
     defs,
     aliases,
     aliasesByModule,
-    allManifests,
+    declarations,
+    shapes,
+    sitePath,
   } = normalizedOpts;
 
   const from = schema["x-telo-context-from"] as string | undefined;
@@ -464,7 +504,7 @@ export function resolveContextAnnotations(
     if (isDynamicNode(navigated)) {
       return { ...schema, properties: { ...(schema.properties ?? {}) }, additionalProperties: true };
     }
-    const asType = resolveTypeFieldToSchema(navigated, allManifests ?? []);
+    const asType = resolveTypeFieldToSchema(navigated, declarations ?? NO_DECLARATIONS, manifestRoot);
     const resolved = openDynamicProperties(asType?.properties ?? navigated);
     const required = Array.isArray(asType?.required) ? asType.required : undefined;
     return {
@@ -485,8 +525,8 @@ export function resolveContextAnnotations(
   if (parametersFrom) {
     const declared = navigatePath(manifestRoot, parametersFrom.split("/"));
     const record = argumentRecordSchema(readParams({ params: declared }), (node) => {
-      const root = resolveTypeFieldToSchema(node, allManifests ?? []) ?? node;
-      const schemaForId = defs?.schemaForId?.bind(defs);
+      const root = resolveTypeFieldToSchema(node, declarations ?? NO_DECLARATIONS, manifestRoot) ?? node;
+      const schemaForId = shapes ?? defs?.schemaForId?.bind(defs);
       return schemaForId ? inlineNamedShapes(root, schemaForId) : root;
     });
     return {
@@ -504,7 +544,7 @@ export function resolveContextAnnotations(
   // untyped sources fall back to `dyn` so a wrong element type is never invented.
   const elementFrom = schema["x-telo-context-element-from"] as string | undefined;
   if (elementFrom) {
-    const items = elementOfCollection(resolveCollectionSchema(manifestRoot, elementFrom, allManifests));
+    const items = elementOfCollection(resolveCollectionSchema(manifestRoot, elementFrom, declarations));
     return items ?? {};
   }
 
@@ -515,7 +555,7 @@ export function resolveContextAnnotations(
   // recursion, so the name is simply not in scope.
   const collectionFrom = schema["x-telo-context-collection-from"] as string | undefined;
   if (collectionFrom) {
-    return resolveCollectionSchema(manifestRoot, collectionFrom, allManifests) ?? {};
+    return resolveCollectionSchema(manifestRoot, collectionFrom, declarations) ?? {};
   }
 
   // Typed by the enclosing property map, from its siblings. Reached directly it
@@ -550,7 +590,7 @@ export function resolveContextAnnotations(
         // so the variable is typed by the CONTRACT rather than by the wrapper
         // around it. A raw JSON Schema resolves to itself, and a plain property
         // map (a transport scope) resolves to nothing and is used verbatim.
-        const resolved = resolveTypeFieldToSchema(navigated, allManifests ?? []) ?? navigated;
+        const resolved = resolveTypeFieldToSchema(navigated, declarations ?? NO_DECLARATIONS, manifestRoot) ?? navigated;
         // A ref slot inside it holds a live instance at runtime, which the
         // kernel substitutes with that resource's published reading before
         // evaluating (`celSelfView`). Type it the same way, or `self.<ref>` is
@@ -582,12 +622,13 @@ export function resolveContextAnnotations(
         // The entry's own field first — a per-instance narrowing (`outputType:`
         // on the entry) is what the kernel binds — then the kind's.
         const own = target.entry?.[field];
-        const ownResolved = own !== undefined ? resolveTypeFieldToSchema(own, allManifests ?? []) : undefined;
+        const ownResolved =
+          own !== undefined ? resolveTypeFieldToSchema(own, declarations ?? NO_DECLARATIONS, manifestRoot) : undefined;
         if (ownResolved && typeof ownResolved === "object") return ownResolved;
         const canonical = scope?.resolveKind(target.kind) ?? target.kind;
         const def = defs.resolve(canonical) ?? defs.resolve(target.kind);
         const typeField = def ? (def as Record<string, unknown>)[field] : undefined;
-        const resolved = resolveTypeFieldToSchema(typeField, allManifests ?? []);
+        const resolved = resolveTypeFieldToSchema(typeField, declarations ?? NO_DECLARATIONS);
         if (resolved && typeof resolved === "object") {
           return resolved;
         }
@@ -610,18 +651,28 @@ export function resolveContextAnnotations(
   }
 
   const refFrom = schema["x-telo-context-ref-from"] as string | undefined;
-  if (refFrom && allManifests) {
+  if (refFrom && declarations) {
     const reference = readContextRefFrom(refFrom, contextHolder);
     if (reference) {
       const { ref, subpath } = reference;
       const segments = subpath.split("/");
-      const refManifest = allManifests.find(
-        (m) => m.kind === ref.kind && (m.metadata as any)?.name === ref.name,
+      // Read where the expression is written: in a region of a scope the
+      // resource declares, or in a scope member's own fields, the scope's
+      // members come first.
+      const names = declarations.names;
+      const member = names.scopeMember(ref.name, scopeReadAt(manifestRoot, sitePath));
+      const refManifest = (
+        member
+          ? member.kind === ref.kind
+            ? member
+            : undefined
+          : names.declarationsOf(ref.name).find((m) => m.kind === ref.kind)
       ) as Record<string, any> | undefined;
       if (refManifest) {
         const resolved = resolveTypeFieldToSchema(
           navigatePath(refManifest, segments) as unknown,
-          allManifests,
+          declarations,
+          refManifest,
         );
         if (resolved && typeof resolved === "object") {
           return resolved;
@@ -638,7 +689,7 @@ export function resolveContextAnnotations(
         if (def) {
           const resolved = resolveTypeFieldToSchema(
             navigatePath(def, segments) as unknown,
-            allManifests,
+            declarations,
           );
           if (resolved && typeof resolved === "object") {
             return resolved;
@@ -666,7 +717,7 @@ export function resolveContextAnnotations(
       // Withholding happens HERE rather than inside the child resolver, because
       // this is the only level that owns the property map — a child can return a
       // schema but cannot remove itself from one.
-      if (collectionBindingWithheld(v as Record<string, any>, manifestRoot, allManifests)) continue;
+      if (collectionBindingWithheld(v as Record<string, any>, manifestRoot, declarations)) continue;
       if (typeof (v as Record<string, any> | undefined)?.[ELEMENT_FROM_ITEM] === "string") {
         // Typed from the chain at another site, which only the scope rule can
         // type (`cel-scope.ts`); untyped until it does.
@@ -830,3 +881,94 @@ export function contextChainAt(
   matched.sort((a, b) => a.depth - b.depth || b.order - a.order);
   return matched.map(({ scope, schema }) => ({ scope, schema }));
 }
+
+/** What `x-telo-context` reads: what the annotations of each of its bindings
+ *  read, at any depth. */
+export const contextReads: ReadReporter = ({ value, delegate }) => {
+  const out: ReadPlace[] = [];
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return;
+    out.push(...delegate(node as Record<string, any>));
+    const properties = (node as { properties?: unknown }).properties;
+    if (properties && typeof properties === "object") for (const child of Object.values(properties)) visit(child);
+  };
+  visit(value);
+  return out;
+};
+
+/** What `x-telo-context-from` reads: the place it navigates from the region's
+ *  item — a property map, or a type field naming a shape, which a type reads
+ *  by its identity, a named shape whole. */
+export const contextFromReads: ReadReporter = ({ value, item }) => {
+  const keys = fieldPlace(item, value);
+  return keys ? [{ kind: "reference", keys, transitive: false, reads: READS_IDENTITY }] : [];
+};
+
+/** What `x-telo-context-from-root` reads: the place it navigates from the
+ *  resource's root — a type there by its identity, a named shape whole. */
+export const contextFromRootReads: ReadReporter = ({ value }) => {
+  const keys = fieldPlace([], value);
+  return keys ? [{ kind: "reference", keys, transitive: false, reads: READS_IDENTITY }] : [];
+};
+
+/** What `x-telo-context-parameters-from` reads: the parameter list on the
+ *  resource. */
+export const contextParametersFromReads: ReadReporter = contextFromRootReads;
+
+/** What `x-telo-context-from-ref-kind` reads: each place naming the kind or
+ *  the body entry whose contract types the node — the entry is the
+ *  definition's own, so a declaration named there by its identity. */
+export const contextFromRefKindReads: ReadReporter = ({ value }) => {
+  const out: ReadPlace[] = [];
+  for (const entry of Array.isArray(value) ? value : [value]) {
+    if (typeof entry !== "string" || entry.indexOf("#") <= 0) continue;
+    const keys = fieldPlace([], entry.slice(0, entry.indexOf("#")));
+    if (keys) out.push({ kind: "reference", keys, transitive: false, reads: READS_IDENTITY });
+  }
+  return out;
+};
+
+const refFromTargetReads = new Map<string, ReferentReads>();
+
+/** What `x-telo-context-ref-from` reads in the declaration its reference names:
+ *  the field at `subpath`, a type there by its identity, and — for a single
+ *  field — the value slot its kind derives that field from. */
+function refFromReads(subpath: string): ReferentReads {
+  let reads = refFromTargetReads.get(subpath);
+  if (reads) return reads;
+  const segments = subpath.split("/");
+  const field = placeAt([], `/${subpath}`);
+  reads = (referent) => {
+    const slot = segments.length === 1 ? valueDerivedSlot(referent.schema, segments[0]!) : undefined;
+    return [
+      { kind: "reference", keys: field, transitive: false, reads: READS_IDENTITY },
+      ...(slot ? [{ kind: "value" as const, keys: slot }] : []),
+    ];
+  };
+  refFromTargetReads.set(subpath, reads);
+  return reads;
+}
+
+/** What `x-telo-context-ref-from` reads: the sibling reference on the object
+ *  holding the region, and in the declaration it names the field the binding
+ *  is typed from. */
+export const contextRefFromReads: ReadReporter = ({ value, at }) => {
+  if (typeof value !== "string" || value.indexOf("/") <= 0) return [];
+  const keys = fieldPlace(enclosingKeys(at), value.slice(0, value.indexOf("/")));
+  return keys
+    ? [{ kind: "reference", keys, transitive: false, reads: refFromReads(value.slice(value.indexOf("/") + 1)) }]
+    : [];
+};
+
+/** What `x-telo-context-element-from` / `-collection-from` read: the sibling
+ *  collection on the resource, and the input contract a chain in it reads — a
+ *  type there by its identity, a named shape whole. */
+export const contextCollectionReads: ReadReporter = ({ value }) => {
+  const keys = fieldPlace([], value);
+  return keys
+    ? [
+        { kind: "value", keys },
+        { kind: "reference", keys: ["inputType"], transitive: false, reads: READS_IDENTITY },
+      ]
+    : [];
+};

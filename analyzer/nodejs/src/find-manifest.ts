@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { manifestNames } from "./scoped-name-resolver.js";
 
 /**
  * The manifest a `(kind, name)` pair addresses.
@@ -13,7 +14,5 @@ export function findManifest(
   name: string | undefined,
 ): ResourceManifest | undefined {
   if (!kind || !name) return undefined;
-  return manifests.find(
-    (m) => m.kind === kind && (m.metadata as { name?: string } | undefined)?.name === name,
-  );
+  return manifestNames(manifests).declarationsOf(name).find((m) => m.kind === kind);
 }

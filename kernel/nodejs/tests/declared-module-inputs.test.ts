@@ -1,3 +1,4 @@
+import { demandingEvery } from "./input-demand.js";
 import { describe, expect, it } from "vitest";
 import { resolveApplicationEnv } from "../src/application-env.js";
 import { normalizeModuleInputs } from "../src/declared-module-inputs.js";
@@ -13,7 +14,7 @@ describe("declared module inputs", () => {
         label: { type: "string", arg: "label", default: "none" },
       },
     };
-    const { variables } = resolveApplicationEnv(app, {}, new SchemaValidator(), undefined, [
+    const { variables } = resolveApplicationEnv(app, {}, new SchemaValidator(), demandingEvery(), undefined, [
       "--boost",
       "3",
     ]);

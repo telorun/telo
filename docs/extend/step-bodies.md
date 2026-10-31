@@ -72,7 +72,11 @@ record, so a misspelled member is `CEL_UNKNOWN_FIELD`, a list is typed by its
 elements when they all agree, and `steps.count.result * 2.0` over a literal `3`
 is `CEL_TYPE_ERROR`. A `!cel` or `!interpolate` member of a literal map or list
 is left as it evaluates and stays untyped; a step whose whole `value:` is one
-`!cel` is typed by what the expression checks to.
+`!cel` is typed by what the expression checks to where the step is written, and
+one whose whole `value:` is `!interpolate` is a string. A step forwarding a plain
+chain — `!cel "steps.load.result"`, `!cel "inputs.cfg"` — carries the shape its
+source declares, so a member read below it (`steps.fwd.result.missing`) is
+checked against that shape, and a forward of a literal keeps its closed record.
 
 **A step name is one type only when every step carrying it agrees.** Two steps
 may share a name — one per branch of an `if`, or a loop's seed and the step
@@ -115,6 +119,14 @@ your kind's `metadata.name` and `owner.resourceName` the resource's
 string gives a loaded body's targets different names. The name is durable
 identity: it is what a trace span and an `ERR_RESOURCE_NOT_FOUND` print, and what
 a durable journal records a step's target by.
+A step a template's `!for-each` emitted into a body carries no `name:`: it
+carries `__emitted`, the identity the expansion gives it — `{ repeat, key }` for
+a named repeat, `{ site, keys }` for an unnamed one. The engine journals it under
+that identity (`steps/runs['nightlyReport']`, `steps/runs[0]`), files a named
+repeat's results as the map `steps.<repeat>` by element key, and publishes an
+unnamed repeat's nowhere; `stepLabel(step)` from `@telorun/sdk` is what to print
+for any step. Only the expansion writes `__emitted` — an author writing one is
+refused. See [Templated definitions](./templated-definitions.md#step-repeats).
 `executeSteps` takes the accumulator it fills (`steps.<name>.result`), an
 optional `ScopeContext`, the extra CEL variables your kind binds, and the
 `InvokeContext` you were invoked with — forwarding the last one is what makes a

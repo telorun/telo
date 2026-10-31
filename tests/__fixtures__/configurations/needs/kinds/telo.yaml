@@ -1,0 +1,56 @@
+# A need type whose address declares a closed scheme, and a kind consuming a
+# fulfilment of it whole — so a need's presence and its scheme can decide a
+# choice with nothing running.
+kind: Telo.Library
+metadata:
+  name: PresenceKinds
+  version: 0.0.0
+  description: >-
+    Test fixture: an address need type with a closed scheme, and a provider that
+    opens its fulfilment and publishes the label it was given, and one that
+    publishes its label alone.
+exports:
+  kinds: [Access, Consumer, Labelled]
+---
+kind: Telo.NeedType
+metadata:
+  name: Access
+  description: An address whose scheme is one of two.
+fields:
+  url:
+    x-telo-type:
+      name: Telo.Url
+      scheme: { enum: [mem, file] }
+required: [url]
+---
+kind: Telo.Definition
+metadata:
+  name: Consumer
+  description: Opens the fulfilment at `access` and publishes `label`.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./consumer.mjs#Consumer
+schema:
+  type: object
+  additionalProperties: false
+  required: [access, label]
+  properties:
+    access:
+      x-telo-ref:
+        kind: Self.Access
+        use: dependency
+    label: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Labelled
+  description: Publishes `label`, needing nothing.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./consumer.mjs#Labelled
+schema:
+  type: object
+  additionalProperties: false
+  required: [label]
+  properties:
+    label: { type: string }

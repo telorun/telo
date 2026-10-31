@@ -69,6 +69,7 @@ describe("`!ref` sentinel at a top-level ref slot", () => {
       __ref: true,
       kind: "std.Script",
       name: "DoStuff",
+      indexes: [],
     });
 
     // Immutability boundary: the caller's manifest still carries the raw `!ref`

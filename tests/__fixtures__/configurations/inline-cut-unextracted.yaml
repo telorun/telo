@@ -1,0 +1,48 @@
+# An object holding a `kind` written where nothing extracts it: `config` is a
+# plain field, whose `oneOf` reads the object's `mode`, which a choice inside
+# the object decides. The holder's schema judges the object whole: where flag1
+# is false `mode` matches both branches, and `config` is refused.
+kind: Telo.Application
+metadata:
+  name: InlineCutUnextracted
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref holder
+---
+kind: Telo.Definition
+metadata:
+  name: Plain
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    mode: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    config:
+      oneOf:
+        - { properties: { mode: { enum: [a, c] } } }
+        - { properties: { mode: { enum: [b, c] } } }
+---
+kind: InlineCutUnextracted.Holder
+metadata:
+  name: holder
+config:
+  kind: InlineCutUnextracted.Plain
+  mode: !if
+    if: !cel "variables.flag1"
+    then: a
+    else: c

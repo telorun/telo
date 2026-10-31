@@ -1,0 +1,36 @@
+# A family's `emit:` is an `!if` with no `else:`: an element it is false for
+# would have no member.
+kind: Telo.Library
+metadata: { name: FamilyEmitLib }
+imports:
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Tasks]
+---
+kind: Telo.Definition
+metadata: { name: Tasks }
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          on: { type: boolean }
+resources:
+  - !for-each
+    metadata: { name: tasks }
+    in: !cel "self.jobs"
+    emit: !if
+      if: !cel "each.value.on"
+      then:
+        kind: Run.Sequence
+        steps:
+          - name: noop
+            value: 1
+targets:
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref tasks[each.key]

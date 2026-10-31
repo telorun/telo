@@ -103,7 +103,13 @@ pub fn mark_legacy_references(
         match form.form {
             ReferenceForm::Object => {
                 if let Some(Value::Object(object)) = resource.pointer_mut(&form.pointer) {
-                    object.insert(RESOLVED_REFERENCE_MARKER.to_string(), Value::Bool(true));
+                    // As the Node half marks one: the marker first, every key it
+                    // holds kept, and the empty indexes every resolved reference carries.
+                    let mut marked = serde_json::Map::with_capacity(object.len() + 2);
+                    marked.insert(RESOLVED_REFERENCE_MARKER.to_string(), Value::Bool(true));
+                    marked.extend(std::mem::take(object));
+                    marked.insert("indexes".to_string(), Value::Array(Vec::new()));
+                    *object = marked;
                 }
             }
             ReferenceForm::Marker => refused.push(form),
@@ -310,7 +316,10 @@ mod tests {
             "c": { "__ref": true, "kind": "Self.Api", "name": "usersApi" }
         });
         let refused = mark_legacy_references(&mut resource, &schema, &declares, &no_value);
-        assert_eq!(resource["a"], json!({ "__ref": true, "kind": "Self.Api", "name": "usersApi" }));
+        assert_eq!(
+            resource["a"],
+            json!({ "__ref": true, "kind": "Self.Api", "name": "usersApi", "indexes": [] })
+        );
         assert_eq!(resource["b"], json!({ "kind": "Self.Named", "name": "house" }));
         assert_eq!(
             refused.into_iter().map(|form| (form.pointer, form.form)).collect::<Vec<_>>(),

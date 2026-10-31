@@ -74,8 +74,10 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import type { DeclarationRequests } from "./declaration-requests.js";
 import type { ResourceManifest } from "@telorun/sdk";
-import { MODULE_PATH_ENGINE } from "@telorun/templating";
+import { isRefSentinel, MODULE_PATH_ENGINE } from "@telorun/templating";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { KindResolver } from "./module-alias-scope.js";
 import type { DeclaredReach, ReachSite } from "./reference-reach.js";
 import { isInjectedDeclaration } from "./resource-input.js";
@@ -95,6 +97,7 @@ import {
   type KindSchemas,
 } from "./validate-resource-rules.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { importPathThrough, scopeReadAt } from "./scoped-name-resolver.js";
 
 /**
  * The half of a definition registry both halves below need.
@@ -181,9 +184,13 @@ export interface ReferenceValue {
 }
 
 /** Resolves a reference to the manifest it names, or `undefined` when this
- *  analysis holds no such declaration. Supplied by the caller, which owns the
- *  manifest set and the alias scope. */
-export type DeclarationLookup = (ref: ReferenceValue) => ResourceManifest | undefined;
+ *  analysis holds no such declaration. `from` is where it is written — the
+ *  declaration holding it and the path there — when the binder knows it.
+ *  Supplied by the caller, which owns the manifest set and the alias scope. */
+export type DeclarationLookup = (
+  ref: ReferenceValue,
+  from?: { readonly referrer: ResourceManifest; readonly path: string },
+) => ResourceManifest | undefined;
 
 /** One concrete reference site of a referrer: the pattern that declares it, and
  *  the kinds that pattern accepts. */
@@ -260,11 +267,10 @@ function replaceAt(value: unknown, segments: readonly string[], replacement: unk
  *  reference site. */
 export function referenceValueOf(value: unknown): ReferenceValue | undefined {
   if (!isObject(value)) return undefined;
-  if (value.__tagged === true && value.engine === "ref" && typeof value.source === "string") {
-    const dot = value.source.indexOf(".");
-    return dot > 0
-      ? { alias: value.source.slice(0, dot), name: value.source.slice(dot + 1) }
-      : { name: value.source };
+  if (isRefSentinel(value)) {
+    const target = refSentinelTarget(value);
+    if (!target) return undefined;
+    return target.alias !== undefined ? { alias: target.alias, name: target.name } : { name: target.name };
   }
   if (isResolvedReference(value)) {
     return {
@@ -372,6 +378,7 @@ type EntryResult =
 /** How one entry's references are read: which concrete paths are reference
  *  sites, what a reference names, and which slots refuse what they name. */
 interface EntryResolver {
+  readonly referrer: ResourceManifest;
   readonly siteAt: (path: string) => RefSite | undefined;
   readonly lookup: DeclarationLookup;
   readonly refuses: (site: RefSite, declaration: ResourceManifest) => boolean;
@@ -421,7 +428,7 @@ function resolveReference(
   at: string,
   resolver: EntryResolver,
 ): EntryResult {
-  const declaration = resolver.lookup(reference);
+  const declaration = resolver.lookup(reference, { referrer: resolver.referrer, path: at });
   if (!declaration) return { ok: false, failure: { reason: "unresolved", at } };
   if (isInjectedDeclaration(declaration)) return { ok: false, failure: { reason: "kind-only", at } };
   // The slot refuses the kind this names, so the manifest is already refused
@@ -471,12 +478,16 @@ export class PeerBinder {
   }
 
   /** How an entry's references are read, over one manifest's sites. */
-  private resolver(siteAt: (path: string) => RefSite | undefined): EntryResolver {
+  private resolver(
+    referrer: ResourceManifest,
+    siteAt: (path: string) => RefSite | undefined,
+  ): EntryResolver {
     const accepts = this.env.slotAccepts;
     return {
+      referrer,
       siteAt,
-      lookup: (reference) => {
-        const declaration = this.env.declarationOf(reference);
+      lookup: (reference, from) => {
+        const declaration = this.env.declarationOf(reference, from);
         return declaration && this.view(declaration);
       },
       refuses: (site, declaration) => {
@@ -531,7 +542,7 @@ export class PeerBinder {
     const entry = resolveEntry(
       navigatePath(this.view(referrer), boundary),
       boundary,
-      this.resolver((path) => sites.get(path)),
+      this.resolver(referrer, (path) => sites.get(path)),
     );
     if (!entry.ok) return entry;
     return { ok: true, binding: { peers, entry: entry.value } };
@@ -556,7 +567,7 @@ export class PeerBinder {
     if (raw === undefined || raw === null) return { ok: true, value: raw };
     const own = sites.get(path);
     if (own) {
-      return resolveEntry(raw, path, this.resolver((at) => (at === path ? own : undefined)));
+      return resolveEntry(raw, path, this.resolver(manifest, (at) => (at === path ? own : undefined)));
     }
     const resolved = this.collection(manifest, pointer, path, shapes, sites);
     if (!resolved.ok) return resolved;
@@ -725,7 +736,7 @@ export class PeerBinder {
     const items = Array.isArray(raw) ? raw : Object.values(raw);
 
     const values: unknown[] = [];
-    const resolver = this.resolver((path) => sites.get(path));
+    const resolver = this.resolver(referrer, (path) => sites.get(path));
     for (let i = 0; i < items.length; i++) {
       const at = Array.isArray(raw) ? `${collectionPath}[${keys[i]}]` : `${collectionPath}.${keys[i]}`;
       const resolved = resolveEntry(items[i], at, resolver);
@@ -819,7 +830,7 @@ export type PeersTarget = "unknown" | "absent" | "plain" | "ok";
 export function analyzerPeerBinder(
   registry: PeerBinderRegistry,
   aliases: PeerAliasScope,
-  manifests: readonly ResourceManifest[],
+  requests: DeclarationRequests,
   /** The Liskov acceptance rule at a kind constraint — `kindSatisfies` over the
    *  concrete registry, supplied by the caller because the subtype index and the
    *  leniency rule live there. Omitted, a slot refuses nothing. */
@@ -827,22 +838,14 @@ export function analyzerPeerBinder(
   /** How a bound declaration is read (`RuleDeclarationViews.of`). */
   viewOf?: (declaration: ResourceManifest) => ResourceManifest,
 ): PeerBinder {
-  const byName = new Map<string, ResourceManifest>();
-  const byModuleAndName = new Map<string, ResourceManifest>();
-  for (const m of manifests) {
-    const name = m.metadata?.name as string | undefined;
-    if (!name) continue;
-    byName.set(name, m);
-    const mod = (m.metadata as { module?: string }).module;
-    if (mod) byModuleAndName.set(`${mod}\0${name}`, m);
-  }
+  const names = requests.names;
 
   /**
    * A named shape is read as the shape it IS: its `extends` parents folded into
    * its `schema`, as every other reader of a shape sees it. A rule reading the
    * declaration as written would miss every inherited property.
    */
-  const typeManifests = manifests as unknown as Record<string, any>[];
+  const typeManifests = requests;
   const folded = new WeakMap<ResourceManifest, ResourceManifest>();
   const effective = (declaration: ResourceManifest | undefined): ResourceManifest | undefined => {
     if (!declaration) return undefined;
@@ -853,6 +856,7 @@ export function analyzerPeerBinder(
       const schema = resolveTypeFieldToSchema(
         { schema: shape.schema, extends: shape.extends },
         typeManifests,
+        declaration as unknown as Record<string, any>,
       );
       view = schema ? ({ ...declaration, schema } as ResourceManifest) : declaration;
       folded.set(declaration, view);
@@ -862,18 +866,24 @@ export function analyzerPeerBinder(
 
   /**
    * An alias RESOLVES OR NOTHING DOES. Resource names are module-scoped, so two
-   * libraries each exporting a `users` share one bucket in `byName`; falling
+   * libraries each exporting a `users` share one name; falling
    * back to it when the alias names a module this analysis cannot resolve would
    * compare against a declaration from somewhere else entirely — a confident
    * wrong verdict, which is worse than the reported skip an absent binding
    * produces.
    */
-  const declarationOf: DeclarationLookup = (ref) => {
+  const declarationOf: DeclarationLookup = (ref, from) => {
     if (ref.alias && ref.alias !== "Self") {
       const module = aliases.moduleForAlias(ref.alias);
-      return module ? effective(byModuleAndName.get(`${module}\0${ref.name}`)) : undefined;
+      return module
+        ? effective(names.inModule(ref.name, module, importPathThrough(from?.referrer, ref.alias)))
+        : undefined;
     }
-    return effective(byName.get(ref.name));
+    // Read where it is written: a scope member's references name its scope's
+    // members first.
+    return effective(
+      names.resolve(ref.name, undefined, from && scopeReadAt(from.referrer, from.path)),
+    );
   };
 
   /**

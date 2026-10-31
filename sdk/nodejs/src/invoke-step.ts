@@ -26,6 +26,7 @@ import {
 } from "./durable-suspension.js";
 import type { OpenZoneAttributes } from "./zone-attribute.js";
 import { tryParseDurationMs } from "./duration.js";
+import { fileStepResult, stepLabel } from "./emitted-step.js";
 import { InvokeError } from "./invoke-error.js";
 import { RuntimeError } from "./types.js";
 import { predicateResult } from "./step-predicate.js";
@@ -222,7 +223,7 @@ export interface InvokeStepState {
 
 /**
  * Execute one invoke step: evaluate the `when` guard, expand `inputs`, resolve
- * and invoke the target, then record `steps[step.name] = { result }`. Knows
+ * and invoke the target, then record its result (`fileStepResult`). Knows
  * nothing about control flow — `if`/`while`/`switch`/`try` are the caller's
  * concern.
  */
@@ -241,7 +242,7 @@ export async function executeInvokeStep(
   // than be a prescription with nowhere to write.
   const handle =
     rawHandle && journalingSuppressed(ctx, state.invokeCtx, rawHandle) ? undefined : rawHandle;
-  const path = state.journalPath ?? step.name;
+  const path = state.journalPath ?? stepLabel(step);
 
   // The guard is a decision point like `inputs`: re-derived on a resume, a guard
   // reading a clock or observed state can turn false for a step whose effect
@@ -299,7 +300,7 @@ export async function executeInvokeStep(
     ? await handle.step(path, targetIdentityOf(raw, ctx, state), inputs, execute)
     : await execute();
 
-  state.steps[step.name] = { result };
+  fileStepResult(state.steps, step, result);
 }
 
 /**
@@ -471,8 +472,8 @@ async function withStepRetry<T>(
           // check is here rather than at the policy, because a short backoff
           // never suspends and rejecting one would forbid a retry that is
           // perfectly safe in a lease.
-          assertMaySuspend(ctx, invokeCtx, { resource: step.name ?? path });
-          await parkRun(handle, { path: attemptPath, resource: step.name ?? path }, { at: dueAt });
+          assertMaySuspend(ctx, invokeCtx, { resource: stepLabel(step) || path });
+          await parkRun(handle, { path: attemptPath, resource: stepLabel(step) || path }, { at: dueAt });
         }
         continue;
       }
@@ -570,8 +571,8 @@ async function withStepTimeout<T>(
     if (!invokeCtx?.cancellation.isCancelled) elapsed = true;
   });
   const exceeded = () =>
-    new InvokeError("ERR_STEP_TIMEOUT", `Step '${step.name}' exceeded its timeout of ${ms}ms and was cancelled`, {
-      step: step.name,
+    new InvokeError("ERR_STEP_TIMEOUT", `Step '${stepLabel(step)}' exceeded its timeout of ${ms}ms and was cancelled`, {
+      step: stepLabel(step),
       timeout: ms,
     });
   const overdue = () => elapsed || (!invokeCtx?.cancellation.isCancelled && performance.now() - startedAt >= ms);
@@ -622,9 +623,9 @@ function waitBeforeResend(
       reject(
         new InvokeError(
           ERR_INVOKE_CANCELLED,
-          `Step "${step.name}": cancelled while waiting to re-attempt` +
+          `Step "${stepLabel(step)}": cancelled while waiting to re-attempt` +
             `${reason ? ` (${reason})` : ""}.`,
-          { step: step.name, pendingFailure: describeFailure(pending) },
+          { step: stepLabel(step), pendingFailure: describeFailure(pending) },
         ),
       );
     });

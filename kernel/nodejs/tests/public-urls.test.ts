@@ -22,6 +22,19 @@ const THREE = `  site:
     parameters: { port: admin }
 `;
 
+/** A document reading `need`'s url, so every configuration requires it. */
+const reading = (need: string) => `---
+kind: Telo.NeedType
+metadata: { name: Probe }
+fields:
+  value: { type: string }
+---
+kind: Self.Probe
+metadata: { name: reader }
+fields:
+  value: !cel "string(resources.${need}.url)"
+`;
+
 const TEMPLATES = {
   TELO_HOST_PUBLIC_URL_TEMPLATE: "https://{port}-s1.example.dev",
   TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE: "https://{label}--{port}-s1.example.dev",
@@ -100,7 +113,7 @@ describe("addresses derived from the host's templates", () => {
   });
 
   it("leaves a secondary need unanswered with no secondary template", async () => {
-    const error = await failure(app(THREE), {
+    const error = await failure(app(THREE + reading("admin")), {
       TELO_HOST_PUBLIC_URL_TEMPLATE: TEMPLATES.TELO_HOST_PUBLIC_URL_TEMPLATE,
     });
     expect(error.code).toBe("ERR_NEED_UNMET");

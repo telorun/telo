@@ -451,7 +451,7 @@ Inspect a module without importing it. `<ref>` is any form the runtime resolves:
 | Subcommand | What it prints |
 | --- | --- |
 | `versions` | The module's published versions, newest first (one entry for a local path or direct URL); with `--digests`, each with the digest `digest` prints for it, read in one process (`--json` writes `[{ version, digest }]`; a version whose digest cannot be read is `{ version, error }`, also named on stderr) |
-| `manifest` | The module's `telo.yaml`, verified against the inline hash when the ref is pinned; `--json` adds the version read (`ref`) and the pin an `imports:` entry writes (`integrity`, `sha256-<base64url>`) |
+| `manifest` | The module's `telo.yaml`, verified against the inline hash when the ref is pinned; `--json` adds the version read (`ref`), the pin an `imports:` entry writes (`integrity`, `sha256-<base64url>`) and, for an application, its contract (`application`) — each `variables:` / `secrets:` / `ports:` entry with `required` (some configuration of the application requires it), `requiredWhen` (the configurations that do, as partial assignments keyed by dimension, when not every one does) and a `default` only where one is declared, and `dimensions` (`{ key, values, env, member? }`). An application's whole graph is loaded and analysed for it; one the analysis refuses prints its refusals on stderr, nothing on stdout, and exits 1 |
 | `digest` | The version's content-identity digest — a cheap read that downloads no payload. It is not an import pin, and cannot be turned into one: take the pin from `manifest --json` |
 | `resources` | The resource instances the module declares |
 | `kinds` | The resource kinds the module defines, with capability and whether each is exported |
@@ -465,14 +465,14 @@ telo module kinds oci://ghcr.io/telorun/console@<version>
 
 ### `telo needs report <manifest>`
 
-Lists every need the application reads from the environment — each need reaching it that no import supplies, its own included — with the environment variable each field is read from, whether that name was bound by the application's `env:` or derived from the need path, and whether the field is required and sensitive. Nothing is booted and no value is printed: it is what whoever starts the application provisions from.
+Lists every need the application reads from the environment — each need reaching it that no import supplies, its own included — with the environment variable each field is read from, whether that name was bound by the application's `env:` or derived from the need path, whether the field is required and sensitive, and whether the application needs the need: `optional`, `required`, `required when <sentence>` for one only some configurations need (`required when DATABASE_URL is unset`), or nothing for one no configuration reaches. Nothing is booted and no value is printed: it is what whoever starts the application provisions from.
 
 ```bash
 telo needs report ./shop
 telo needs report -o json ./shop
 ```
 
-Under `-o json` it writes a versioned document (`reportVersion: 1`, a `needs` list of `path`, `declaredBy`, `type: { module, name }`, `version` (the range the need states, or `null`), `features` (the features it asks for, `[]` when none), `parameters`, `optional` and `fields`, each field `{ env, envSource, required, sensitive }`). An application the kernel would refuse has no report: the refusals are printed on stderr, nothing on stdout, and the command exits 1. See [Providing needs](/learn/providing-needs).
+Under `-o json` it writes a versioned document (`reportVersion: 1`, a `dimensions` list of `{ key, values, env, member? }` — every dimension the application's configurations are decided over, with the environment variables its value is read from — and a `needs` list of `path`, `declaredBy`, `type: { module, name }`, `version` (the range the need states, or `null`), `features` (the features it asks for, `[]` when none), `parameters`, `optional`, `required`, `requiredWhen` (the configurations needing it, keyed by dimension, absent when every configuration or none does) and `fields`, each field `{ env, envSource, required, sensitive }`). An application the kernel would refuse has no report: the refusals are printed on stderr, nothing on stdout, and the command exits 1. See [Providing needs](/learn/providing-needs).
 
 ---
 
@@ -485,7 +485,7 @@ telo env template ./shop             # print both files
 telo env template ./shop --write     # add what is missing beside the manifest
 ```
 
-Each variable is one **commented-out** line, grouped under `# variables`, `# ports`, `# secrets` and `# needs`, with a trailing comment only for what the line does not show — `required`, the entry's `description`, and a need field's path:
+Each variable is one **commented-out** line, grouped under `# variables`, `# ports`, `# secrets` and `# needs`, with a trailing comment only for what the line does not show — `required` (or `required when <sentence>` for an input only some configurations of the application need, nothing for one none needs), the entry's `description`, and a need field's path:
 
 ```
 # variables

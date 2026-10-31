@@ -79,3 +79,26 @@ key, or a position a built-in entry declares as a schema fragment (directly or a
 union branch) — a parameter's `schema`, a result's, a need type's `parameters` and
 `fields` values. Those positions are derived from these entries, so a built-in that
 gains a schema slot makes it a root with no change to the reader.
+
+## The expansion tags' grammar
+
+Eight fragments are the grammar of the expansion tags' own mappings rather than a
+shape any schema points at: `IfValue` / `IfDeclaration`, `SwitchValue` /
+`SwitchDeclaration`, and `ForEachValue` (a list or step position), `ForEachEntry`
+(the value of a `...` splice, with `key`), `ForEachDeclaration` (a family, with
+`metadata`) and `ForEachStepRepeat` (a named repeat in a step list, with `name`).
+Each is the closed key set of one tag at one kind of position, the loaded marker
+(`__expand`) excluded. No host schema references them: the analyzer's expansion
+reader decides a tag's position, then validates the tag's keys against the
+fragment that position selects (`BRANCH_SHAPE_INVALID` / `REPEAT_SHAPE_INVALID`).
+`telo builtins IfDeclaration` prints one.
+
+`EmittedStep` is the identity a template's `!for-each` gives each step it emits
+into a step list, carried as `__emitted` in place of `name` — `{ repeat, key }` for
+a named repeat, `{ site, keys }` for an unnamed one. `Step` and `InvokeStep` admit
+it, and a step holds exactly one of `name` / `__emitted`. Only the expansion writes
+it; an author writing one is refused (`REPEAT_POSITION_INVALID`).
+
+The two reference fragments, `ResourceRef` and `DispatchTarget`, admit a `!ref`
+sentinel with the `parsed` / `refusal` member the loader attaches — the `!ref`
+engine's verdict on its text.

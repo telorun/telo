@@ -20,6 +20,7 @@
  * answer (which declaration a name means, which manifests hold named types) is
  * supplied by the caller.
  */
+import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -62,10 +63,11 @@ export interface DerivedSlotContext {
   /** Each imported library's own declarations, which a projected contract's
    *  hop may reach. */
   readonly libraries?: LibraryDeclarations;
-  /** The manifests a named type resolves against. */
-  readonly typeManifests: Record<string, any>[];
-  /** The declaration a `{kind, name, alias?}` reference names, or undefined. */
-  resolveTarget(ref: Record<string, any>): Record<string, any> | undefined;
+  /** The declarations a named type resolves against. */
+  readonly types: DeclarationRequests;
+  /** The declaration a `{kind, name, alias?}` reference written at `path` of
+   *  the context's resource names, or undefined. */
+  resolveTarget(ref: Record<string, any>, path?: string): Record<string, any> | undefined;
 }
 
 /** A call's argument map and the target it is for. */
@@ -109,11 +111,11 @@ function contractScopeOf(ctx: DerivedSlotContext) {
     ctx.defs,
     ctx.aliases,
     { aliasesByModule: ctx.aliasesByModule, rootModules: ctx.rootModules, libraries: ctx.libraries },
-    ctx.typeManifests,
+    ctx.types,
   );
 }
 
-function callSite(
+export function callSiteAt(
   origin: CallSite["origin"],
   path: string,
   values: Record<string, any>,
@@ -125,7 +127,7 @@ function callSite(
   const scope = contractScopeOf(ctx);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
   const invokedKind = typeof invoke.kind === "string" ? invoke.kind : undefined;
-  const invokedManifest = isResolvedReference(invoke) ? ctx.resolveTarget(invoke) : invoke;
+  const invokedManifest = isResolvedReference(invoke) ? ctx.resolveTarget(invoke, path) : invoke;
   const invokedDefinition = invokedKind ? scope.resolveIn(invokedKind, readingModule) : undefined;
   return {
     origin,
@@ -139,15 +141,21 @@ function callSite(
   };
 }
 
-/** Every step's argument map, found through the step grammar: the invoke field
- *  the step slot names, and whichever sibling declares `x-telo-topology-role:
- *  inputs`. */
-export function stepCallSites(
-  manifest: Record<string, any>,
-  defSchema: Record<string, any>,
-  ctx: DerivedSlotContext,
-): CallSite[] {
-  const out: CallSite[] = [];
+/** One step item of a step body, with what reading its call needs. */
+export interface StepItem {
+  readonly path: string;
+  readonly value: Record<string, any>;
+  readonly itemSchema: Record<string, any>;
+  /** The field holding its target, and the one holding its arguments. */
+  readonly invokeField: string;
+  readonly inputsField: string;
+}
+
+/** Every step item of `manifest`'s step bodies whose item schema declares an
+ *  argument map: the invoke field the step slot names, and whichever sibling
+ *  declares `x-telo-topology-role: inputs`. */
+export function stepItemsOf(manifest: Record<string, any>, defSchema: Record<string, any>): StepItem[] {
+  const out: StepItem[] = [];
   const props = defSchema.properties as Record<string, any> | undefined;
   if (!props) return out;
   for (const [fieldName, fieldSchema] of Object.entries(props)) {
@@ -162,20 +170,33 @@ export function stepCallSites(
       if (topologyRoleOf(sub) === "inputs") inputsField = key;
     }
     if (!inputsField) continue;
-    walkStepArray(steps, itemSchema, defSchema, fieldName, (step, stepPath) => {
-      const invoke = step[slot.invoke];
-      const values = step[inputsField!];
-      if (!invoke || typeof invoke !== "object") return;
-      if (!values || typeof values !== "object" || Array.isArray(values)) return;
-      out.push(
-        callSite("step", `${stepPath}.${inputsField}`, values, invoke, manifest, ctx, {
-          value: step,
-          schema: itemSchema,
-        }),
-      );
+    walkStepArray(steps, itemSchema, defSchema, fieldName, (step, path) => {
+      out.push({ path, value: step, itemSchema, invokeField: slot.invoke, inputsField: inputsField! });
     });
   }
   return out;
+}
+
+/** The call a step item makes: its argument map against its target; undefined
+ *  where it names no target or writes no argument map. */
+export function stepCallSiteOf(item: StepItem, manifest: Record<string, any>, ctx: DerivedSlotContext): CallSite | undefined {
+  const invoke = item.value[item.invokeField];
+  const values = item.value[item.inputsField];
+  if (!invoke || typeof invoke !== "object") return undefined;
+  if (!values || typeof values !== "object" || Array.isArray(values)) return undefined;
+  return callSiteAt("step", `${item.path}.${item.inputsField}`, values, invoke, manifest, ctx, {
+    value: item.value,
+    schema: item.itemSchema,
+  });
+}
+
+/** Every step's argument map, found through the step grammar. */
+export function stepCallSites(
+  manifest: Record<string, any>,
+  defSchema: Record<string, any>,
+  ctx: DerivedSlotContext,
+): CallSite[] {
+  return stepItemsOf(manifest, defSchema).flatMap((item) => stepCallSiteOf(item, manifest, ctx) ?? []);
 }
 
 /** Every argument map a reference slot names through its `x-telo-ref` `inputs:`
@@ -187,22 +208,30 @@ export function slotCallSites(
 ): CallSite[] {
   const out: CallSite[] = [];
   for (const site of sites) {
-    if (site.refs.length === 0) continue;
-    const inputs = siteRefEntry(site).inputs;
-    if (!inputs) continue;
-    const pointer = pointerSegments(inputs);
-    if (!pointer) continue;
+    const inputsPath = slotInputsPath(site);
+    if (inputsPath === undefined) continue;
     const invoke = site.data;
     if (!invoke || typeof invoke !== "object" || Array.isArray(invoke)) continue;
-    const enclosing = site.path.slice(0, Math.max(0, site.path.lastIndexOf(".")));
-    const inputsPath = [enclosing, ...pointer].filter(Boolean).join(".");
     const values = navigateConcretePath(manifest, inputsPath);
     if (!values || typeof values !== "object" || Array.isArray(values)) continue;
     out.push(
-      callSite("slot", inputsPath, values as Record<string, any>, invoke as Record<string, any>, manifest, ctx),
+      callSiteAt("slot", inputsPath, values as Record<string, any>, invoke as Record<string, any>, manifest, ctx),
     );
   }
   return out;
+}
+
+/** The concrete path of the argument map a reference slot names through its
+ *  `x-telo-ref` `inputs:` pointer, relative to the object enclosing the slot;
+ *  undefined for a slot naming none. */
+export function slotInputsPath(site: ReachSite): string | undefined {
+  if (site.refs.length === 0) return undefined;
+  const inputs = siteRefEntry(site).inputs;
+  if (!inputs) return undefined;
+  const pointer = pointerSegments(inputs);
+  if (!pointer) return undefined;
+  const enclosing = site.path.slice(0, Math.max(0, site.path.lastIndexOf(".")));
+  return [enclosing, ...pointer].filter(Boolean).join(".");
 }
 
 /** A JSON Pointer naming a sibling FIELD path. An array index is not a field,
@@ -281,20 +310,21 @@ export function templateCallSite(
  *  resolves against, and — for a location crossing a reference — the host that
  *  follows it. Without one a location stays inside the resource. */
 export interface ValueSchemaSiteContext {
-  readonly typeManifests: Record<string, any>[];
+  /** The declarations a named type resolves against. */
+  readonly types: DeclarationRequests;
   readonly valueSchemaHost?: ValueSchemaHost;
 }
 
 /** A host for a caller holding no module scope: no path is a reference site, so
  *  a location is read off the resource alone. */
-function resourceLocalHost(typeManifests: Record<string, any>[]): ValueSchemaHost {
+function resourceLocalHost(types: DeclarationRequests): ValueSchemaHost {
   return {
     scope: {
       resolveManifest: () => undefined,
       resolveDefinition: () => undefined,
       referenceSlots: () => [],
     },
-    typeSchemaOf: (value) => resolveTypeFieldToSchema(value, typeManifests),
+    typeSchemaOf: (value, holder) => resolveTypeFieldToSchema(value, types, holder),
   };
 }
 
@@ -306,7 +336,7 @@ export function valueSchemaSites(
   ctx: ValueSchemaSiteContext,
 ): ValueSchemaSite[] {
   if (!defSchema) return [];
-  const host = ctx.valueSchemaHost ?? resourceLocalHost(ctx.typeManifests);
+  const host = ctx.valueSchemaHost ?? resourceLocalHost(ctx.types);
   const out: ValueSchemaSite[] = [];
   for (const { scope, from } of valueSchemaSlots(defSchema)) {
     const label = describeValueSchemaLocation(from);
@@ -361,7 +391,10 @@ export function derivedSlotsOf(
     if (call.contract) at(call.path, call.values, call.contract.schema);
   }
   const valueSchemaHost = valueSchemaHostOf(contractScopeOf(ctx));
-  for (const site of valueSchemaSites(manifest, schema, { typeManifests: ctx.typeManifests, valueSchemaHost })) {
+  for (const site of valueSchemaSites(manifest, schema, {
+    types: ctx.types,
+    valueSchemaHost,
+  })) {
     at(site.path, site.value, site.schema);
   }
   visitManifest(

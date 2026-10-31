@@ -39,6 +39,7 @@ import {
   textSites,
   type ValuePath,
 } from "./text-slot.js";
+import { kindPlaces, type ReadReporter, type ReferentReads } from "./read-place.js";
 
 export const TEXT_CATALOG_SET_ANNOTATION = "x-telo-text-catalog-set";
 
@@ -437,3 +438,18 @@ export function textCatalogSetDuplicates<D>(
   return duplicates;
 }
 
+
+/** Where a resource a catalog set reaches is read: every catalog its kind lets
+ *  it hold, and every catalog set its kind marks. */
+const catalogReads: ReferentReads = (referent) =>
+  kindPlaces(
+    referent,
+    (node) => node[TEXT_CATALOG_SET_ANNOTATION] === true || textFragmentOf(node) === TEXT_CATALOG_FRAGMENT,
+  ).map((keys) => ({ kind: "value", keys }));
+
+/** What `x-telo-text-catalog-set` reads: the catalogs at and beneath the node,
+ *  and those of every resource a reference there names, through its own
+ *  catalog sets. */
+export const catalogSetReads: ReadReporter = ({ at }) => [
+  { kind: "reference", keys: at, transitive: true, reads: catalogReads },
+];

@@ -1,0 +1,93 @@
+# The routes and the servers examples: expanded by the analyzer's consumer check
+# and by the kernel's instance expansion, which must agree.
+kind: Telo.Application
+metadata:
+  name: Callers
+imports:
+  Http: ../../../../../modules/http-server
+  Run: ../../../../../modules/run
+---
+kind: Run.Value
+metadata: { name: accept }
+value: { accepted: true }
+---
+kind: Http.Api
+metadata: { name: admin }
+routes: []
+---
+kind: Http.Api
+metadata: { name: api }
+routes: []
+---
+kind: Telo.Definition
+metadata: { name: Receiver }
+capability: Telo.Mount
+schema:
+  type: object
+  properties:
+    hooks:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          handler: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+resources:
+  - kind: Http.Api
+    metadata: { name: routes }
+    routes:
+      - !for-each
+        in: !cel "self.hooks"
+        as: hook
+        emit:
+          - request: { path: !interpolate "/hooks/${{ hook.key }}", method: POST }
+            handler: !cel "hook.value.handler"
+            returns: [{ status: 202 }]
+          - request: { path: !interpolate "/hooks/${{ hook.key }}/who", method: GET }
+            handler: { kind: Run.Value, value: !cel "hook.key" }
+            returns: [{ status: 200 }]
+mount: !ref routes
+---
+kind: Self.Receiver
+metadata: { name: receiver }
+hooks:
+  github: { handler: !ref accept }
+  pager: { handler: !ref accept }
+---
+kind: Telo.Definition
+metadata: { name: Service }
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    port: { type: integer, x-telo-eval: compile }
+    adminPort: { type: integer, x-telo-eval: compile }
+    api: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+    admin: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+targets:
+  - kind: Http.Server
+    listen: { port: !cel "self.port" }
+    mounts:
+      - { path: /, mount: !cel "self.api" }
+      - !if
+        if: !cel "self.adminPort == self.port"
+        then: { path: /admin, mount: !cel "self.admin" }
+  - !if
+    if: !cel "self.adminPort != self.port"
+    then:
+      kind: Http.Server
+      listen: { port: !cel "self.adminPort" }
+      mounts: [{ path: /, mount: !cel "self.admin" }]
+---
+kind: Self.Service
+metadata: { name: same }
+port: 9761
+adminPort: 9761
+api: !ref api
+admin: !ref admin
+---
+kind: Self.Service
+metadata: { name: differ }
+port: 9762
+adminPort: 9763
+api: !ref api
+admin: !ref admin

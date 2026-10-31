@@ -1,0 +1,30 @@
+# A `targets:` item names a family member by a binding that iterates another
+# source: nothing proves that member exists.
+kind: Telo.Library
+metadata: { name: FamilyMemberLib }
+imports:
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Tasks]
+---
+kind: Telo.Definition
+metadata: { name: Tasks }
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    jobs: { type: object, additionalProperties: { type: object } }
+    others: { type: object, additionalProperties: { type: object } }
+resources:
+  - !for-each
+    metadata: { name: tasks }
+    in: !cel "self.jobs"
+    emit:
+      kind: Run.Sequence
+      steps:
+        - name: noop
+          value: 1
+targets:
+  - !for-each
+    in: !cel "self.others"
+    emit: !ref tasks[each.key]

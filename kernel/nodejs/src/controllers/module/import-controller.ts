@@ -19,7 +19,8 @@ import {
   reservedImportAliasMessage,
   isResolvedReference,
 } from "@telorun/analyzer";
-import type { ParsedExportEntry } from "@telorun/analyzer";
+import type { AnalysisDiagnostic, ParsedExportEntry } from "@telorun/analyzer";
+import { refuseExpansionConstructs } from "../../expansion-refusals.js";
 import type { ResourceInstance, ResourceManifest } from "@telorun/sdk";
 import { RuntimeError, TEARDOWN_LAST } from "@telorun/sdk";
 import { publishedPropsOf } from "../../evaluation-context.js";
@@ -37,6 +38,7 @@ import { isDefinitionRegistered } from "../resource-definition/registered-defini
 import { isNeedFulfilment, needFulfilment, type NeedFulfilment } from "../../need-fulfilment.js";
 import { refuseUnusableDirectories } from "../../durable-directories.js";
 import { environmentNeed } from "./environment-needs.js";
+import { expandForImport } from "../../running-configuration.js";
 import {
   assertNoSharedOverride,
   assertSharedInputsAgree,
@@ -51,6 +53,15 @@ const markerRefusals = new WeakMap<object, string[]>();
 function markerRefusalsOf(scope: object, judge: () => { message: string }[]): string[] {
   let found = markerRefusals.get(scope);
   if (!found) markerRefusals.set(scope, (found = judge().map((d) => d.message)));
+  return found;
+}
+
+/** A library's expansion refusals, judged once per library scope for the same
+ *  reason. */
+const expansionRefusals = new WeakMap<object, AnalysisDiagnostic[]>();
+function expansionRefusalsOf(scope: object, judge: () => AnalysisDiagnostic[]): AnalysisDiagnostic[] {
+  let found = expansionRefusals.get(scope);
+  if (!found) expansionRefusals.set(scope, (found = judge()));
   return found;
 }
 
@@ -131,39 +142,27 @@ export async function create(
   // An author-written `__ref` key, which only resolution may write, is refused
   // here as `telo check` refuses it at the library itself; the entry's own
   // modules are refused by the load's analysis, a library's are not part of it.
+  // Its expansion constructs — a tag or a `...` splice where none may stand, a
+  // tag's mapping of the wrong shape, a `!ref` outside the grammar — refused here
+  // as `telo check` refuses them at the library itself.
+  refuseExpansionConstructs(
+    expansionRefusalsOf(scope, () =>
+      analyzer.expansionRefusals(
+        scope.rawManifests,
+        libraryRegistry,
+        ctx.libraryAnalysisHost().loadTimeDocuments,
+      ),
+    ),
+  );
   const forms = markerRefusalsOf(scope, () => analyzer.referenceForms(scope.rawManifests, libraryRegistry));
   if (forms.length > 0) {
     throw new RuntimeError("ERR_INVALID_REFERENCE_FORM", forms.join("\n"));
   }
-  const manifests = analyzer.normalize(
-    scope.rawManifests,
-    libraryRegistry,
-    scope.crossModuleTargets,
-  );
-  const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library")!;
-  const targetModule: string = moduleManifest.metadata.name;
+  const libraryDocument = scope.rawManifests.find((m: any) => m.kind === "Telo.Library")! as any;
 
   // Validate required inputs before injecting.
-  validateRequiredInputs(moduleManifest.variables ?? {}, resource.variables ?? {}, "variables");
-  validateRequiredInputs(moduleManifest.secrets ?? {}, resource.secrets ?? {}, "secrets");
-  const declaredInputs = readResourceInputs(moduleManifest);
-  validateResourceInputs(declaredInputs, borrowed, targetModule);
-  // Where this module instance sits in the import tree, which is what names its
-  // needs: beneath the importer's own path, or — for a singleton — beneath the
-  // library's name directly under the root.
-  const needPath = readLibraryLifecycle(moduleManifest) === "shared"
-    ? [targetModule]
-    : [...(ctx.moduleContext as unknown as ModuleContext).needPath, alias];
-  // What fulfils each need the library declares — the need table refused every
-  // defect here at load; these are its backstops for a load that never ran it.
-  const needBindings = bindNeedSupplies(
-    moduleManifest,
-    supplies,
-    scope.registry,
-    alias,
-    needPath,
-    ctx,
-  );
+  validateRequiredInputs(libraryDocument.variables ?? {}, resource.variables ?? {}, "variables");
+  validateRequiredInputs(libraryDocument.secrets ?? {}, resource.secrets ?? {}, "secrets");
 
   // Evaluate the import's variables/secrets ONCE against the IMPORTER's config
   // scope, instead of baking the raw compiled-value objects verbatim. Resolution
@@ -190,12 +189,73 @@ export async function create(
   // validated (`settleImportInputs`), the one decode site an import is.
   const settledInputs = settleImportBlocks(
     resource,
-    (moduleManifest.variables ?? {}) as Record<string, unknown>,
-    (moduleManifest.secrets ?? {}) as Record<string, unknown>,
+    (libraryDocument.variables ?? {}) as Record<string, unknown>,
+    (libraryDocument.secrets ?? {}) as Record<string, unknown>,
     alias,
     ctx,
   );
   const { variables: importVariables, secrets: importSecrets } = settledInputs;
+
+  // Where this module instance sits in the import tree, which is what names its
+  // needs: beneath the importer's own path, or — for a singleton — beneath the
+  // library's name directly under the root.
+  const needPath = readLibraryLifecycle(libraryDocument) === "shared"
+    ? [libraryDocument.metadata.name as string]
+    : [...(ctx.moduleContext as unknown as ModuleContext).needPath, alias];
+  // What fulfils each need the library declares — the need table refused every
+  // defect here at load; these are its backstops for a load that never ran it.
+  const { bindings: needBindings, unrequired: unrequiredNeeds } = bindNeedSupplies(
+    libraryDocument,
+    supplies,
+    scope.registry,
+    alias,
+    needPath,
+    ctx,
+  );
+
+  // The library's documents as this import's inputs and bound needs decide
+  // every choice in them, before any is registered: an unchosen branch never
+  // exists here.
+  const manifests = analyzer.normalize(
+    expandForImport(
+      scope.rawManifests,
+      {
+        variables: importVariables,
+        secrets: importSecrets,
+        // A resource input's presence is read as a need's is: by name, `null`
+        // when this import omits it.
+        needs: new Map([
+          ...[...needBindings].map(([name, binding]) => [name, binding?.fulfilment.fields ?? null] as const),
+          ...readResourceInputs(libraryDocument).map(
+            (input) => [input.name, borrowed.has(input.name) ? {} : null] as const,
+          ),
+        ]),
+      },
+      libraryRegistry,
+      scope.targetsAt(needPath),
+    ),
+    libraryRegistry,
+    scope.targetsAt(needPath),
+  );
+  const moduleManifest = manifests.find((m: any) => m.kind === "Telo.Library")!;
+  const targetModule: string = moduleManifest.metadata.name;
+  const declaredInputs = readResourceInputs(moduleManifest);
+  validateResourceInputs(declaredInputs, borrowed, targetModule);
+  // An optional input this import omits is referenced nowhere the expansion
+  // kept — refused before any of the library's resources registers.
+  const omittedRefusals = analyzer.omittedInputRefusals(
+    manifests,
+    libraryRegistry,
+    new Set(declaredInputs.filter((input) => input.optional && !borrowed.has(input.name)).map((i) => i.name)),
+  );
+  if (omittedRefusals.length > 0) {
+    throw new RuntimeError(
+      "ERR_RESOURCE_INPUT_OPTIONAL_REFERENCED",
+      `Import '${alias}' omits a resource input module '${targetModule}' references where it may be ` +
+        `absent: ${omittedRefusals.join(" ")}`,
+    );
+  }
+
   const childCtx = new ModuleContext(
     // The LIBRARY's own manifest URL, not the importer's. `source` is what every
     // module-relative file reference is measured from — `ctx.resolveModuleFile`
@@ -225,6 +285,9 @@ export async function create(
     authoredModuleMetadata(moduleManifest.metadata as Record<string, unknown> | undefined),
   );
   childCtx.needPath = needPath;
+  // Every kernel read of a named shape for a kind this library declares goes
+  // through the configuration these inputs decided.
+  childCtx.setAnalysisView(libraryRegistry.forConfiguration(manifests));
   // A built value holding a sensitive member (a URL's password) is redacted in the
   // library's context and the importer's — the import is a load-time site.
   if (settledInputs.redacted.length > 0) {
@@ -342,7 +405,7 @@ export async function create(
     await ctx
       .effect(`needs ${alias}`, async () => {
         const inverses = [...needBindings].map(([name, binding]) =>
-          childCtx.bindNeed(name, binding),
+          childCtx.bindNeed(name, binding, unrequiredNeeds.has(name)),
         );
         return {
           result: undefined,
@@ -796,12 +859,12 @@ function resolveBorrowedResources(
  *  here too. Kind acceptance is deliberately NOT re-tested — that is a static
  *  question about declarations, and the kernel holds instances. */
 function validateResourceInputs(
-  declared: ReadonlyArray<{ name: string; kind: string }>,
+  declared: ReadonlyArray<{ name: string; kind: string; optional: boolean }>,
   supplied: ReadonlyMap<string, BorrowedResource>,
   targetModule: string,
 ): void {
   for (const entry of declared) {
-    if (supplied.has(entry.name)) continue;
+    if (supplied.has(entry.name) || entry.optional) continue;
     throw new RuntimeError(
       "ERR_MANIFEST_VALIDATION_FAILED",
       `Required resource input "${entry.name}" (kind '${entry.kind}') not provided for import of ` +
@@ -820,10 +883,11 @@ function validateResourceInputs(
 }
 
 /** One need an import supplies, resolved in the importer's scope: a fulfilment
- *  handed down whole (null for an optional need of the importer bound to
- *  nothing), or the evaluated values of a field-by-field supply. */
+ *  handed down whole (null for a need of the importer bound to nothing —
+ *  `unrequired` when it is not optional, so the running configuration does not
+ *  require it), or the evaluated values of a field-by-field supply. */
 export type NeedSupplyValue =
-  | { form: "whole"; source: string; fulfilment: NeedFulfilment | null }
+  | { form: "whole"; source: string; fulfilment: NeedFulfilment | null; unrequired?: boolean }
   | { form: "fields"; values: Record<string, unknown> };
 
 /**
@@ -874,7 +938,12 @@ function resolveNeedSupplies(
       );
     }
     if (importer.isAbsentNeed(target.name)) {
-      out.set(name, { form: "whole", source: target.source, fulfilment: null });
+      out.set(name, {
+        form: "whole",
+        source: target.source,
+        fulfilment: null,
+        unrequired: importer.isUnrequiredNeed(target.name),
+      });
       continue;
     }
     const instance = importer.resourceInstances.get(target.name)?.instance;
@@ -904,7 +973,9 @@ function resolveNeedSupplies(
  * (owned by the importer, whose redaction set its sensitive values join), one
  * built from what the environment holds for a need nothing supplies (owned by
  * the library, whose context it is bound in), or — for an optional need with
- * none of those — nothing.
+ * none of those, or one the running configuration does not require — nothing.
+ * The load bound such a need to `null` (`environmentNeed`), or the importer
+ * forwards one it does not require; each is returned in `unrequired`.
  */
 function bindNeedSupplies(
   moduleManifest: ResourceManifest,
@@ -913,8 +984,12 @@ function bindNeedSupplies(
   alias: string,
   needPath: readonly string[],
   ctx: BuiltinControllerContext,
-): Map<string, { manifest: ResourceManifest; fulfilment: NeedFulfilment } | null> {
+): {
+  bindings: Map<string, { manifest: ResourceManifest; fulfilment: NeedFulfilment } | null>;
+  unrequired: Set<string>;
+} {
   const out = new Map<string, { manifest: ResourceManifest; fulfilment: NeedFulfilment } | null>();
+  const unrequired = new Set<string>();
   const targetModule = moduleManifest.metadata.name as string;
   const needs = readNeeds(moduleManifest);
   const declared = new Set(needs.map((need) => need.name));
@@ -948,7 +1023,10 @@ function bindNeedSupplies(
         out.set(need.name, { manifest, fulfilment: needFulfilment(type, shape, fromEnvironment) });
         continue;
       }
-      if (need.optional) {
+      if (need.optional || fromEnvironment === null) {
+        // The load read nothing for a need it requires only where the running
+        // configuration does, so `null` for a required one is that verdict.
+        if (!need.optional) unrequired.add(need.name);
         out.set(need.name, null);
         continue;
       }
@@ -961,7 +1039,8 @@ function bindNeedSupplies(
     }
     if (supply.form === "whole") {
       if (supply.fulfilment === null) {
-        if (!need.optional) {
+        if (!need.optional && supply.unrequired) unrequired.add(need.name);
+        else if (!need.optional) {
           throw new RuntimeError(
             "ERR_NEED_FORWARD_INCOMPATIBLE",
             `Import '${alias}': need '${need.name}' is required by module '${targetModule}', and ` +
@@ -1044,7 +1123,7 @@ function bindNeedSupplies(
     (ctx.moduleContext as unknown as ModuleContext).addRedactedValues(fulfilment.sensitiveValues);
     out.set(need.name, { manifest, fulfilment });
   }
-  return out;
+  return { bindings: out, unrequired };
 }
 
 /** A controller context's validator as the question an argument check asks. */

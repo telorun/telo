@@ -1,0 +1,30 @@
+# A `with:` member chosen by a boolean variable, its unchosen branch holding a typo.
+kind: Telo.Application
+metadata:
+  name: ScopeChoice
+imports:
+  Run: ../../../modules/run
+variables:
+  verbose:
+    env: VERBOSE
+    type: boolean
+    default: false
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+with:
+  - !if
+    metadata: { name: greeting }
+    if: !cel "variables.verbose"
+    then:
+      kind: Run.Value
+      vaule: hello there
+    else:
+      kind: Run.Value
+      value: hi
+steps:
+  - name: greet
+    invoke: !ref greeting

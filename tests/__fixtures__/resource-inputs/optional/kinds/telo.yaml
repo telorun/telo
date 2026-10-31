@@ -1,0 +1,59 @@
+kind: Telo.Library
+metadata:
+  name: OptionalKinds
+  version: 0.0.0
+  description: >-
+    Test fixture: a store publishing its label, a holder publishing the label of
+    the store it holds, and a collector listing its members.
+exports:
+  kinds: [Store, Holder, Collector]
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: Publishes `label`.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./kinds.mjs#Store
+schema:
+  type: object
+  additionalProperties: false
+  required: [label]
+  properties:
+    label: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+  description: Holds a store and publishes its label.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./kinds.mjs#Holder
+schema:
+  type: object
+  additionalProperties: false
+  required: [store]
+  properties:
+    store:
+      x-telo-ref:
+        kind: Self.Store
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: Collector
+  description: Holds every store it lists.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./kinds.mjs#Collector
+schema:
+  type: object
+  additionalProperties: false
+  required: [members]
+  properties:
+    members:
+      type: array
+      items:
+        x-telo-ref:
+          kind: Self.Store
+          use: dependency

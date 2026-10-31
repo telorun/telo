@@ -1,0 +1,49 @@
+# Every position a tag may stand at, each written in the form that position takes.
+kind: Telo.Library
+metadata:
+  name: ExpansionLegal
+imports:
+  Run: ../../../../modules/run
+---
+kind: Run.Sequence
+metadata:
+  name: sequence
+with:
+  - !if
+    metadata: { name: member }
+    if: true
+    then: { kind: Run.Value, value: 1 }
+steps:
+  - !switch
+    switch: a
+    cases:
+      a: { name: chosen, value: 1 }
+---
+kind: Telo.Definition
+metadata:
+  name: Templated
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    items: { type: array, items: { type: integer } }
+resources:
+  - !for-each
+    metadata: { name: family }
+    in: !cel "self.items"
+    emit: { kind: Run.Value, value: 1 }
+  - kind: Run.Sequence
+    metadata: { name: body }
+    steps:
+      - !for-each
+        name: runs
+        in: !cel "self.items"
+        emit: { value: 1 }
+      - !for-each
+        in: !cel "self.items"
+        emit: [{ value: 1 }]
+      - name: map
+        value:
+          fixed: 1
+          ...: !for-each { in: !cel "self.items", key: k, emit: 1 }
+run: !ref body

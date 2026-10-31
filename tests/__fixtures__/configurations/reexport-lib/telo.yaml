@@ -1,0 +1,11 @@
+# A library re-exporting the instance its inner import's choice decides.
+kind: Telo.Library
+metadata:
+  name: ReExporter
+imports:
+  Inner:
+    source: ../instances-lib
+    variables:
+      dialect: first
+exports:
+  resources: [Inner.db]

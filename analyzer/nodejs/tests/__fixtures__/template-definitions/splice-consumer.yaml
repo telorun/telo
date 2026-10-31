@@ -1,0 +1,32 @@
+kind: Telo.Application
+metadata:
+  name: SpliceConsumer
+imports:
+  Records: ./splice.yaml
+  Servers: ./servers.yaml
+  Http: ../../../../../modules/http-server
+variables:
+  adminPort:
+    env: ADMIN_PORT
+    type: integer
+    default: 9090
+---
+kind: Records.Columns
+metadata:
+  name: records
+fields:
+  id: { type: text }
+  name: { type: text }
+---
+kind: Http.Api
+metadata:
+  name: api
+routes: []
+---
+kind: Servers.Service
+metadata:
+  name: service
+port: 8080
+adminPort: !cel "variables.adminPort"
+api: !ref api
+admin: !ref api

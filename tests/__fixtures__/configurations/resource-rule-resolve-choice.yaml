@@ -1,0 +1,50 @@
+# A rule reads, through the reference it resolves, a member of the declaration
+# it names that a choice decides: the rule holds only where the member is
+# written.
+kind: Telo.Application
+metadata:
+  name: ResourceRuleResolveChoice
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref store
+---
+kind: Telo.Definition
+metadata:
+  name: Table
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    size: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    table:
+      x-telo-ref: { kind: Self.Table, use: dependency }
+  x-telo-resource-rules:
+    - resolve: ["/table"]
+      condition: !cel "self.table.?size.orValue(0) > 0"
+      code: TABLE_SIZED
+      message: The table the store names has no size.
+---
+kind: Self.Table
+metadata:
+  name: table
+size: !if
+  if: !cel "variables.flag1"
+  then: 5
+---
+kind: Self.Store
+metadata:
+  name: store
+table: !ref table

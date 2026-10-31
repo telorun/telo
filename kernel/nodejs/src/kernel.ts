@@ -10,6 +10,11 @@ import {
   extractCelRegionScopes,
   collectApplicationSources,
   collectModuleDocuments,
+  inputRequirements,
+  requirementDimensions,
+  requirementDimensionsOf,
+  type ApplicationUsageRequirements,
+  type InputRequirements,
   declarationSignature,
   diffManifests,
   flattenForAnalyzer,
@@ -39,6 +44,7 @@ import {
   resolveSignature,
   type NeedTable,
   type NeedTableEntry,
+  type NeedTypeShape,
   StaticAnalyzer,
   withoutStandInFindings,
   type AnalysisDiagnostic,
@@ -51,6 +57,7 @@ import {
   type SourceEntry,
   type StandIns,
   isKindDocument,
+  listRequests,
   describeModuleSource,
 } from "@telorun/analyzer";
 import {
@@ -73,6 +80,7 @@ import {
   textCatalogSetProblems,
   type NamedContractShape,
   type ProjectionScope,
+  type ReachSite,
   isResolvedReference,
 } from "@telorun/analyzer";
 import {
@@ -150,7 +158,11 @@ import {
   declarationScopeOf,
   recordDeclarationScope,
 } from "./declaration-scope.js";
-import { declarationOfInstance, recordInstanceDeclaration } from "./instance-declaration.js";
+import {
+  declarationOfInstance,
+  recordInstanceDeclaration,
+  recordOutermostDeclaration,
+} from "./instance-declaration.js";
 import { recordPayloadView, recordSensitivePaths, REDACTED } from "./instance-sensitive-paths.js";
 import { recordSpanAttributes } from "./instance-span-attributes.js";
 import {
@@ -225,6 +237,7 @@ import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
   collectDeclaredEnvKeys,
   type ApplicationInputs,
+  type InputDemand,
   inputSupplier,
   precompileApplicationEnvSchemas,
   precompileDefinitionSchemas,
@@ -233,12 +246,19 @@ import {
   suppliedNeedEntries,
 } from "./application-env.js";
 import type { ApplicationInputResolver } from "./unresolved-inputs.js";
+import {
+  applicationChoices,
+  decideRunningConfiguration,
+  expandForConfiguration,
+  withDimensionInputs,
+  type RunningConfiguration,
+} from "./running-configuration.js";
 import { policyFingerprint } from "./runtime-registry.js";
 import { describeValue, SchemaValidationError, SchemaValidator } from "./schema-validator.js";
 import { declaredDisplayMessageOf, errorDataRefusal, errorDataValidatorOver } from "./declared-display-messages.js";
 import { staticDiagnosticToRuntime } from "./static-analysis-diagnostics.js";
 import { importLoadFailure } from "./import-load-failure.js";
-import { needRefusalError } from "./need-refusals.js";
+import { needRefusalError, type NeedRefusal } from "./need-refusals.js";
 import { refuseReservedKindPrefix } from "./reserved-kind-prefix.js";
 
 /** Walks up the EvaluationContext parent chain to the nearest enclosing
@@ -313,6 +333,9 @@ export class Kernel implements IKernel {
    *  becomes the entry-only normalized set, because an import normalizes its
    *  library against these as cross-module targets. */
   private loadTimeManifests: ResourceManifest[] = [];
+  /** The load-time flattened set as written, every choice still in it — what a
+   *  library's own choices are judged against at its import. */
+  private loadTimeDocuments: ResourceManifest[] = [];
   private _entryUrl?: string;
   /** Root Application `ports:` resolved in `load()` — integer + declared protocol
    *  per name. Surfaced via {@link getResolvedPorts} so a host can advertise where
@@ -380,6 +403,14 @@ export class Kernel implements IKernel {
     analyzeOnly: boolean;
     analysisKey?: string;
   };
+  /** The configuration the process started in: its dimensions' values and the
+   *  documents' expansion decided by them. A reconciliation reuses it — a
+   *  dimension comes from the process's inputs, so changing one is a restart. */
+  private _runningConfiguration?: RunningConfiguration;
+  /** Which of the application's inputs the running configuration demands —
+   *  derived from the load's analysed set only when an input is missing or
+   *  `--help` asks, since a load supplying everything needs no verdict. */
+  private _inputDemand?: InputDemand;
   // Lifecycle state — guards boot/runTargets/teardown/invoke transitions.
   // teardown() is the only idempotent method; everything else throws on misuse.
   private _bootCalled = false;
@@ -588,6 +619,7 @@ export class Kernel implements IKernel {
       analyzer: this.analyzer,
       registry: this.registry,
       loadTimeManifests: this.loadTimeManifests,
+      loadTimeDocuments: this.loadTimeDocuments,
       entryModule: this._appName,
       loadModule: (url, options) => this.loadAdoptedModule(url, options),
       loadLibrary: async (url) => {
@@ -781,6 +813,7 @@ export class Kernel implements IKernel {
       writeCache,
       analyzeOnly: options?.analyzeOnly === true,
       ...(options?.analysisKey !== undefined ? { analysisKey: options.analysisKey } : {}),
+      ...(options?.inputResolver ? { inputResolver: options.inputResolver } : {}),
     });
     // `analyzeOnly` stops before instantiation, so there is nothing to install.
     if (!produced) return;
@@ -875,6 +908,7 @@ export class Kernel implements IKernel {
       this._loadedGraph = previousGraph;
       this.staticManifests = previousManifests;
       this.loadTimeManifests = previousLoadTimeManifests;
+      this.loadTimeDocuments = previousLoadTimeManifests;
       this._declarationSignatures = previousSignatures;
     };
 
@@ -1059,6 +1093,7 @@ export class Kernel implements IKernel {
       writeCache: boolean;
       analyzeOnly: boolean;
       analysisKey?: string;
+      inputResolver?: ApplicationInputResolver;
     },
   ): Promise<
     | { graph: LoadedGraph; manifests: ResourceManifest[]; signatures: Map<string, string> }
@@ -1147,6 +1182,7 @@ export class Kernel implements IKernel {
     const staticManifests = flattenForAnalyzer(analysisGraph);
     this.staticManifests = staticManifests;
     this.loadTimeManifests = staticManifests;
+    this.loadTimeDocuments = staticManifests;
 
     // Register legacy module identities so an already-published module version
     // whose `x-telo-ref` slots still name their target as
@@ -1213,6 +1249,7 @@ export class Kernel implements IKernel {
         analysisGraph,
         rootModuleDoc,
         errors.filter((d) => !isNeedTableDiagnostic(d)),
+        errors.filter(isNeedTableDiagnostic),
       );
     }
     if (errors.length > 0) {
@@ -1301,6 +1338,81 @@ export class Kernel implements IKernel {
       return;
     }
 
+    // The configuration this process starts in: the dimensions' inputs —
+    // everything a choice reads, the application's own and a library's through
+    // its import binding — resolved and held to their domains first, before
+    // anything is registered, so an unchosen branch never exists.
+    const choices = applicationChoices(staticManifests, this.registry, this._needTable);
+    let requirements: InputRequirements | undefined;
+    const requirementsOf = () =>
+      (requirements ??= inputRequirements(
+        staticManifests,
+        choices,
+        this._needTable,
+        collectModuleDocuments(analysisGraph),
+      ));
+    const usage = (): ApplicationUsageRequirements => {
+      const environment = this._needTable?.environment ?? [];
+      const derived = requirementsOf();
+      return {
+        inputs: derived.inputs,
+        dimensions: requirementDimensions(derived, rootModuleDoc, environment),
+        needs: environment,
+      };
+    };
+    const running =
+      this._runningConfiguration ??
+      (await decideRunningConfiguration(
+        requirementDimensionsOf(choices, this._needTable),
+        async (only) => {
+          if (rootModuleDoc?.kind !== "Telo.Application") return { variables: {}, secrets: {} };
+          // A need a choice reads is read here, from the environment the full
+          // read uses — a partial supply refused before anything exists.
+          const resolved = await resolveApplicationInputs(
+            rootModuleDoc as Record<string, any>,
+            this.env,
+            this.sharedSchemaValidator,
+            {
+              // Every dimension is required: it decides the configuration.
+              demand: { required: () => true, usage },
+              inputs: this._inputs,
+              argv: this.argv,
+              only,
+              needs: { entries: this._needTable?.environment ?? [], shapeOf: (entry) => this.needShapeOf(entry) },
+            },
+            opts.inputResolver,
+          );
+          if (resolved.help !== undefined) {
+            this._applicationHelp = resolved.help;
+            return undefined;
+          }
+          return {
+            variables: resolved.variables,
+            secrets: resolved.secrets,
+            ...(resolved.needs ? { needs: resolved.needs } : {}),
+          };
+        },
+      ));
+    // `--help` answered while deciding the configuration: nothing is installed.
+    if (!running) return { graph: analysisGraph, manifests: [], signatures: new Map() };
+    this._runningConfiguration = running;
+    this._inputDemand = {
+      required: (block, name) => requirementsOf().requiredIn({ block, name }, running.configuration),
+      usage,
+    };
+    // What the runtime resolves a cross-module reference against is this
+    // configuration's: a library's exported choice is the instance it declares.
+    const configured = expandForConfiguration(
+      staticManifests,
+      running.configuration,
+      this.registry,
+      undefined,
+      this._needTable,
+    );
+    this.staticManifests = configured;
+    this.loadTimeManifests = configured;
+    this.rootContext.setAnalysisView(this.registry.forConfiguration(configured));
+
     // Load runtime configuration — root module gets access to host env.
     // Imports are loaded separately via the import-controller; this load is
     // entry-only with compile-time CEL.
@@ -1311,7 +1423,13 @@ export class Kernel implements IKernel {
     // and then never execute.
     const lm = await this.loader.loadModule(sourceUrl, { compile: true, desugarImports: true, migrate: true });
     await this.celModules?.adopt(lm);
-    const allManifests = flattenLoadedModule(lm);
+    const allManifests = expandForConfiguration(
+      flattenLoadedModule(lm),
+      running.configuration,
+      this.registry,
+      staticManifests,
+      this._needTable,
+    );
 
     // Phase 2: normalize inline resources — extract inline values from x-telo-ref slots
     // into first-class named manifests and replace them in-place with {kind, name} references.
@@ -1320,11 +1438,7 @@ export class Kernel implements IKernel {
     // Pass the analyzer-flattened set (entry + forwarded library exports) as cross-module
     // resolution targets so `!ref Alias.name` in the entry-only runtime manifests resolves
     // to imported libraries' exported instances.
-    const normalizedManifests = this.analyzer.normalize(
-      allManifests,
-      this.registry,
-      staticManifests,
-    );
+    const normalizedManifests = this.analyzer.normalize(allManifests, this.registry, configured);
     this.staticManifests = normalizedManifests;
     // Signed HERE, while these are still declarations. Installing them hands
     // the very same objects to the context, and resolving a reference writes a
@@ -1336,6 +1450,11 @@ export class Kernel implements IKernel {
     return { graph: analysisGraph, manifests: normalizedManifests, signatures };
   }
 
+  /** The type a need of the load's need table is of. */
+  private needShapeOf(entry: NeedTableEntry): NeedTypeShape | undefined {
+    return entry.need.type ? needTypeOf(this.registry.resolveDefinition(entry.need.type)) : undefined;
+  }
+
   /** Resolve the need table of the whole loaded graph and raise its refusals
    *  as their kernel twins, with `others` — the analysis's errors from outside
    *  the table — in the same error. A need nothing supplies is not one of them:
@@ -1344,6 +1463,7 @@ export class Kernel implements IKernel {
     graph: LoadedGraph,
     rootModuleDoc: ResourceManifest | undefined,
     others: readonly AnalysisDiagnostic[],
+    analysed: readonly AnalysisDiagnostic[] = [],
   ): NeedTable {
     const table = resolveNeedTable(
       needGraphFromLoadedGraph(
@@ -1351,7 +1471,25 @@ export class Kernel implements IKernel {
         needGraphScopeOf(this.registry, rootModuleDoc?.metadata?.name as string | undefined),
       ),
     );
-    if (table.problems.length > 0) throw needRefusalError(table.problems, others);
+    // A refusal the analysis made in some configurations only stands where a
+    // choice expands, which the loaded graph's documents hold unexpanded: it is
+    // raised as its twin from the analysis's own finding.
+    const refusals: NeedRefusal[] = [...table.problems];
+    for (const d of analysed) {
+      const data = d.data as
+        | { filePath?: string; path?: string; resource?: { kind: string; name: string }; configurations?: unknown }
+        | undefined;
+      if (!data?.configurations || d.code === undefined) continue;
+      if (table.problems.some((p) => p.code === d.code && p.path === data.path && p.filePath === data.filePath)) continue;
+      refusals.push({
+        runtimeCode: `ERR_${d.code}`,
+        message: d.message,
+        path: data.path ?? "",
+        ...(data.filePath !== undefined ? { filePath: data.filePath } : {}),
+        ...(data.resource ? { resource: data.resource } : {}),
+      });
+    }
+    if (refusals.length > 0) throw needRefusalError(refusals, others);
     return table;
   }
 
@@ -1455,15 +1593,21 @@ export class Kernel implements IKernel {
         ...collectDeclaredEnvKeys(rootApplicationManifest as Record<string, any>),
         ...this._needEnvKeys,
       ];
-      const shapeOf = (entry: NeedTableEntry) =>
-        entry.need.type ? needTypeOf(this.registry.resolveDefinition(entry.need.type)) : undefined;
+      const shapeOf = (entry: NeedTableEntry) => this.needShapeOf(entry);
       // An answer the resolver gives is the host's fifth source: it is decoded
       // like the environment's text, and never written to the environment.
+      // The dimensions resolved already decided the expansion; they are handed
+      // on by name so nothing is read or asked twice.
       const { variables, secrets, ports, help, needs } = await resolveApplicationInputs(
         rootApplicationManifest as Record<string, any>,
         this.env,
         this.sharedSchemaValidator,
-        { inputs: this._inputs, argv: this.argv, needs: { entries: environment, shapeOf } },
+        {
+          demand: this._inputDemand!,
+          inputs: withDimensionInputs(this._inputs, this._runningConfiguration?.inputs),
+          argv: this.argv,
+          needs: { entries: environment, shapeOf },
+        },
         inputResolver,
       );
       if (help !== undefined) {
@@ -1512,11 +1656,14 @@ export class Kernel implements IKernel {
               `${values === undefined ? "a value read for it" : !shape ? "a resolved need type" : "its declaration"}.`,
           );
         }
+        // A need with nothing set that is not optional is one this
+        // configuration does not require: the read refused every other.
         this.rootContext.bindNeed(
           entry.need.name,
           values === null
             ? null
             : { manifest, fulfilment: needFulfilment(entry.need.type!, shape, values) },
+          values === null && !entry.need.optional,
         );
       }
       if (this._needEnvKeys.size > 0) {
@@ -1874,7 +2021,10 @@ export class Kernel implements IKernel {
 
     // The runtime names itself: a runner passes this on, and an editor compares
     // it with the version it asked to run on.
-    await this.eventBus.emit("Kernel.Starting", { telo: TELO_RUNTIME_VERSION });
+    await this.eventBus.emit("Kernel.Starting", {
+      telo: TELO_RUNTIME_VERSION,
+      configuration: { ...(this._runningConfiguration?.configuration ?? {}) },
+    });
     await this.rootContext.runTargets(this.bootCancellation.context, this._appName);
     await this.eventBus.emit("Kernel.Started", {});
   }
@@ -1925,6 +2075,7 @@ export class Kernel implements IKernel {
     this._loadedGraph = undefined;
     this.staticManifests = [];
     this.loadTimeManifests = [];
+    this.loadTimeDocuments = [];
     await this.eventBus.emit("Kernel.Stopped", { exitCode: this._exitCode });
   }
 
@@ -2408,6 +2559,33 @@ export class Kernel implements IKernel {
    * run init() separately in its second phase. Returns null when the controller
    * is not yet registered (retry signal).
    */
+  /** The analysis view of the context declaring `kind` as `evalContext` spells
+   *  it; a kind no context declares (a built-in) reads the root's. */
+  private analysisViewOf(evalContext: IEvaluationContext, kind: string): AnalysisRegistry {
+    const module = findEnclosingModule(evalContext) ?? this.rootContext;
+    return (module.resolveKindScope(kind) ?? module).analysisView ?? this.registry;
+  }
+
+  /** The analysis view of the module that declared `declaration` — `context`'s,
+   *  or the one recorded for `declaration`; the root's when neither is known.
+   *  Its kind is spelled through that module's aliases, so the view of the
+   *  module declaring the kind could not resolve it. */
+  private declaringViewOf(context: unknown, declaration: ResourceManifest): AnalysisRegistry {
+    const scope = context instanceof EvaluationContext ? context : declarationScopeOf(declaration);
+    const module = (scope instanceof EvaluationContext ? findEnclosingModule(scope) : undefined) ?? this.rootContext;
+    return module.analysisView ?? this.registry;
+  }
+
+  /** The concrete reference sites of `declaration` (over `data`), read through
+   *  the view of the module that declared it. */
+  private referenceSitesIn(
+    context: unknown,
+    declaration: ResourceManifest,
+    data: unknown = declaration,
+  ): ReachSite[] {
+    return this.declaringViewOf(context, declaration).referenceSitesOf(declaration, data);
+  }
+
   private async _createInstance(
     evalContext: IEvaluationContext,
     resource: ResourceManifest,
@@ -2518,9 +2696,11 @@ export class Kernel implements IKernel {
     const parentDef = definition?.capability
       ? this.controllers.getDefinition(definition.capability)
       : undefined;
-    // Named shapes are read through the analysis registry, the lookup `telo
-    // check` reads them through, so both halves see the same sites.
-    const shapes = this.registry.shapeLookup;
+    // Named shapes are read through the configuration view of the context that
+    // declares the kind, the lookup `telo check` reads them through for that
+    // configuration, so both halves see the same sites.
+    const view = this.analysisViewOf(evalContext, kind);
+    const shapes = view.shapeLookup;
     const parentEval = parentDef?.schema
       ? buildEvalPaths(parentDef.schema, shapes)
       : { compile: [], runtime: [] };
@@ -2658,7 +2838,7 @@ export class Kernel implements IKernel {
     if (compile.length || runtime.length || regions.length) {
       refuseComputedRefSlots(
         resourceLabel,
-        this.registry.referencePositionsOf(resource),
+        this.declaringViewOf(evalContext, resource).referencePositionsOf(resource),
         { isEvaluated: (path) => evaluatedField({ compile, runtime, regions, accessor }, path) },
       );
     }
@@ -2791,7 +2971,7 @@ export class Kernel implements IKernel {
         label: resourceLabel,
         declaration: processedResource,
         base: received,
-        sites: this.registry.referenceSitesOf(processedResource),
+        sites: this.referenceSitesIn(evalContext, processedResource),
         resolve: (name, alias) =>
           resolveReference(
             { name, ...(alias ? { alias } : {}) },
@@ -2872,6 +3052,7 @@ export class Kernel implements IKernel {
       (processedResource.metadata?.name as string | undefined) ?? "<unnamed>",
     );
     recordInstanceDeclaration(instance, processedResource);
+    recordOutermostDeclaration(instance, processedResource);
     recordDeclarationScope(processedResource, evalContext, resource);
     // Stamp the DECLARATION SITE here rather than at Phase-5 injection, because
     // this is the only point where the instance and the context that declared it
@@ -2887,7 +3068,7 @@ export class Kernel implements IKernel {
     (ctx as ResourceContextImpl).bindResourceIdentity(handle, resolvedKind, processedResource);
     // The observations this instance owes the kernel: one per concrete pointer
     // at an observing slot, due by the deadline its capability has.
-    const observing = observingPointers(this.registry.referenceSitesOf(processedResource));
+    const observing = observingPointers(this.referenceSitesIn(evalContext, processedResource));
     if (observing.size > 0) {
       const tracker = new NeedObservations(
         `${resolvedKind} '${(processedResource.metadata?.name as string | undefined) ?? "<unnamed>"}'`,
@@ -2975,7 +3156,7 @@ export class Kernel implements IKernel {
    *  declaration's sites, and a reference it writes resolved in the context that
    *  declared it, as Phase-5 injection resolves it there. */
   private readonly dataViewHost: DataViewHost = {
-    sitesOf: (declaration, configuration) => this.registry.referenceSitesOf(declaration, configuration),
+    sitesOf: (declaration, configuration) => this.referenceSitesIn(undefined, declaration, configuration),
     instanceFor: (declaration, name, alias) => {
       const scope = declarationScopeOf(declaration);
       return scope instanceof EvaluationContext ? scope.injectionInstance(name, alias) : undefined;
@@ -3005,7 +3186,7 @@ export class Kernel implements IKernel {
         this.registry.schemaForId(ref);
       return schema ? { schema, root: schema } : undefined;
     },
-    sitesOf: (declaration) => this.registry.referenceSitesOf(declaration),
+    sitesOf: (declaration) => this.referenceSitesIn(undefined, declaration),
     instanceFor: (declaration, name, alias) => this.dataViewHost.instanceFor(declaration, name, alias),
   };
 
@@ -3027,7 +3208,7 @@ export class Kernel implements IKernel {
   ): NamedContractShape | undefined {
     return this.registry.namedShapeOf(typeField, holder, {
       rootModules: this.literalDecodingHost.rootModules(),
-      typeManifests: this.typeDeclarations(),
+      types: listRequests(this.typeDeclarations() as unknown as ResourceManifest[]),
     });
   }
 
@@ -3124,8 +3305,11 @@ export class Kernel implements IKernel {
         const module = declaration.metadata?.module ?? scope.metadata?.module;
         const view = { ...declaration, metadata: { ...declaration.metadata, module } };
         if (!this.registry.resolveDefinitionIn(String(declaration.kind), module)) return undefined;
-        return this.registry
-          .referenceSitesOf(view as ResourceManifest, declaration)
+        return this.referenceSitesIn(
+          declarationScopeOf(declaration) ?? declarationScopeOf(scope),
+          view as ResourceManifest,
+          declaration,
+        )
           .filter((site) => site.refs.length > 0)
           .map((site) => site.path);
       },
@@ -3222,7 +3406,7 @@ export class Kernel implements IKernel {
     isPending: ((name: string) => boolean) | undefined,
     owner: IEvaluationContext,
   ): void {
-    for (const site of this.registry.referenceSitesOf(resource)) {
+    for (const site of this.referenceSitesIn(owner, resource)) {
       if (site.scopes.length > 0) {
         if (!Array.isArray(site.data) || !site.holder) continue;
         for (const entry of site.data) {

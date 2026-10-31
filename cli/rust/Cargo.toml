@@ -17,6 +17,7 @@ telo-kernel = { path = "../../kernel/rust" }
 # For the loopback registry support the kernel's integration tests share.
 [dev-dependencies]
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
-serde_json = "1"
+# Manifest key order is part of what a manifest says, and what the Node half keeps.
+serde_json = { version = "1", features = ["preserve_order"] }
 tar = { version = "0.4", default-features = false }
 tempfile = "3"

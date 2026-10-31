@@ -1,9 +1,10 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { listRequests } from "../src/declaration-requests.js";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
 import {
-  manifestListScope,
+  projectionScopeOf,
   resolveSchemaProjections,
   type ProjectionFailure,
 } from "../src/schema-projection.js";
@@ -72,7 +73,7 @@ const extract = {
 
 function projectedFields(manifest: Record<string, any>) {
   const failures: ProjectionFailure[] = [];
-  const scope = manifestListScope([manifest], () => extractDefinition);
+  const scope = projectionScopeOf(listRequests([manifest] as any), () => extractDefinition);
   const schema = resolveSchemaProjections(
     extractDefinition.outputType,
     manifest,

@@ -21,6 +21,8 @@
  * whole point: a completion list is a claim about what the checker accepts, and
  * a second implementation of any of these could not be held to it.
  */
+import { moduleCallNamesByModule } from "./module-call-names.js";
+import { listRequests } from "./declaration-requests.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
 import type { NameLevel } from "./identifier-name.js";
@@ -29,7 +31,7 @@ import { CelScopeQuery, type CelScopeQueryContext } from "./cel-scope-query.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import type { ContractDirection } from "./extends-resolution.js";
 import { analyzerContractScope, resolveContract } from "./invocation-contract.js";
-import { buildCallGraph, type CallGraph } from "./call-graph.js";
+import { buildCallGraph, referrerSlotsOf, type CallGraph } from "./call-graph.js";
 import { findManifest } from "./find-manifest.js";
 import {
   buildModuleGraph,
@@ -47,6 +49,19 @@ import type { ModuleDocuments } from "./module-documents.js";
 import { needGraphFromManifests, resolveNeedTable, type NeedGraph, type NeedTable } from "./need-table.js";
 import { needTypeOf } from "./need-type.js";
 import { buildOutline, type OutlineDocument } from "./outline.js";
+import { isExpansionSentinel } from "@telorun/templating";
+import type { ContractRequirements } from "./application-contract.js";
+import type { ChoiceScope } from "./choice-scope.js";
+import { readChoices, type ChoiceReading } from "./choice-reading.js";
+import { expandChoices } from "./choice-expansion.js";
+import {
+  annotateChoices,
+  completeAssignment,
+  graphConfigurationsOf,
+  type GraphConfigurations,
+} from "./graph-configurations.js";
+import { inputRequirements, requirementDimensions } from "./input-requirements.js";
+import { importPathThrough, manifestNames } from "./scoped-name-resolver.js";
 
 /** An answer kept for the exact `(deps, options)` objects it was built from. */
 interface Memo<T> {
@@ -83,13 +98,17 @@ export class ManifestAnalysis {
   private outlineMemo: Memo<OutlineDocument> | undefined;
   private needsMemo: { graph: NeedGraph; table: NeedTable } | null | undefined;
   private catchLadderMemo: CatchLadder | undefined;
+  private requirementsMemo: ContractRequirements | null | undefined;
+  private choiceReadingMemo: ChoiceReading | undefined;
 
   constructor(
     readonly manifests: ResourceManifest[],
     private readonly ctx: CelScopeQueryContext,
     /** Every imported library's full document set — what the flattened set
      *  forwards only the export surface of. */
-    private readonly moduleDocuments: readonly ModuleDocuments[] = [],
+    private readonly moduleDocuments: readonly ModuleDocuments[],
+    /** The scope this set's choices are read in — the registry's. */
+    private readonly choiceScope: (set: readonly ResourceManifest[], needTable: NeedTable | undefined) => ChoiceScope,
   ) {
     const rootModules = new Set<string>();
     for (const m of manifests) {
@@ -102,10 +121,11 @@ export class ManifestAnalysis {
    *  the whole set, and a host that never opens a CEL body should not pay for
    *  them. */
   get celScope(): CelScopeQuery {
-    return (this.celScopeQuery ??= new CelScopeQuery(this.manifests, {
-      ...this.ctx,
-      caughtDataAt: (m, path) => this.catchLadder.caughtDataAt(m, path),
-    }));
+    return (this.celScopeQuery ??= new CelScopeQuery(
+      listRequests(this.manifests, { referrersOf: (m) => referrerSlotsOf(this.callGraph, m) }),
+      { ...this.ctx, caughtDataAt: (m, path) => this.catchLadder.caughtDataAt(m, path) },
+      moduleCallNamesByModule(this.manifests),
+    ));
   }
 
   /** What calls what. Built on first use and kept, so the projection and any
@@ -132,9 +152,48 @@ export class ManifestAnalysis {
   moduleGraph(deps: ModuleGraphDeps, options: BuildModuleGraphOptions = {}): ModuleGraph {
     const memo = this.moduleGraphMemo;
     if (memo && memo.deps === deps && memo.options === options) return memo.value;
-    const value = buildModuleGraph(this.manifests, this.callGraph, deps, options);
+    const value = this.configurationGraph(deps, options) ?? buildModuleGraph(this.manifests, this.callGraph, deps, options);
     this.moduleGraphMemo = { deps, options, value };
     return value;
+  }
+
+  /** The module's own choices (`!if` / `!switch` outside a template body),
+   *  read once. */
+  private get choiceReading(): ChoiceReading {
+    if (this.choiceReadingMemo) return this.choiceReadingMemo;
+    const declarations = this.manifests.filter((m) => !isExpansionSentinel(m));
+    return (this.choiceReadingMemo = readChoices(
+      declarations,
+      this.manifests.filter(isExpansionSentinel),
+      this.choiceScope(declarations, this.needs?.table),
+    ));
+  }
+
+  /**
+   * The configurations the module can be drawn in: the dimensions its choices
+   * read, each with the value a picker starts at, and that starting assignment.
+   * No dimensions when the module writes no choice.
+   */
+  get graphConfigurations(): GraphConfigurations {
+    return graphConfigurationsOf(this.choiceReading.dimensions);
+  }
+
+  /** The module graph drawn in `options.configuration`, completed with each
+   *  dimension's default; undefined when no configuration is asked for or the
+   *  module writes no choice. */
+  private configurationGraph(deps: ModuleGraphDeps, options: BuildModuleGraphOptions): ModuleGraph | undefined {
+    if (options.configuration === undefined) return undefined;
+    const reading = this.choiceReading;
+    if (reading.sites.length === 0) return undefined;
+    const assignment = completeAssignment(this.graphConfigurations, options.configuration);
+    const expansion = expandChoices(this.manifests, reading.decide(assignment), undefined, true);
+    const callGraph = buildCallGraph(expansion.manifests, this.ctx.defs, {
+      aliases: this.ctx.aliases,
+      aliasesByModule: this.ctx.aliasesByModule,
+    });
+    const graph = buildModuleGraph(expansion.manifests, callGraph, deps, options);
+    annotateChoices(graph, reading, assignment);
+    return graph;
   }
 
   /**
@@ -159,12 +218,13 @@ export class ManifestAnalysis {
       definition: (kind, module) => deps.definition(kind, module),
       ladder: this.catchLadder,
       needs: this.needs?.table,
+      requirements: this.applicationRequirements,
       contract: (manifest, direction) =>
         resolveContract(
           direction,
           manifest as Record<string, any>,
           deps.definition(manifest.kind, (manifest.metadata as { module?: string } | undefined)?.module),
-          analyzerContractScope(this.ctx.defs, this.ctx.aliases, this.scopes, this.manifests as Record<string, any>[]),
+          analyzerContractScope(this.ctx.defs, this.ctx.aliases, this.scopes, listRequests(this.manifests)),
         )?.schema,
       expressionType: (manifest, path, engine, source) => {
         if (engine !== CEL_ENGINE) return producedTypeName(producedTypeOf(engine));
@@ -185,7 +245,7 @@ export class ManifestAnalysis {
     const libraries = new Map<string, ResourceManifest[]>();
     for (const doc of this.moduleDocuments) libraries.set(doc.module, doc.manifests);
     return (this.catchLadderMemo = new CatchLadder(
-      this.manifests,
+      listRequests(this.manifests),
       this.ctx.defs,
       this.ctx.aliases,
       buildCelEnvironment(),
@@ -216,6 +276,35 @@ export class ManifestAnalysis {
       this.moduleDocuments,
     );
     return (this.needsMemo = graph ? { graph, table: resolveNeedTable(graph) } : null);
+  }
+
+  /**
+   * An Application's requirements over this set: which configurations require
+   * each input and need (`inputRequirements`, over this analysis's need table and
+   * every imported library's documents), and the dimensions that is decided over
+   * with the environment variables each is read from. Undefined when the set
+   * holds no Application. What `telo describe` and `telo module manifest --json`
+   * report, so the two agree.
+   */
+  get applicationRequirements(): ContractRequirements | undefined {
+    if (this.requirementsMemo !== undefined) return this.requirementsMemo ?? undefined;
+    const root = this.manifests.find((m) => m.kind === "Telo.Application");
+    if (!root) {
+      this.requirementsMemo = null;
+      return undefined;
+    }
+    const table = this.needs?.table;
+    const declarations = this.manifests.filter((m) => !isExpansionSentinel(m));
+    const choices = readChoices(
+      declarations,
+      this.manifests.filter(isExpansionSentinel),
+      this.choiceScope(declarations, table),
+    );
+    const requirements = inputRequirements(this.manifests, choices, table, this.moduleDocuments);
+    return (this.requirementsMemo = {
+      inputs: requirements.inputs,
+      dimensions: requirementDimensions(requirements, root, table?.environment ?? []),
+    });
   }
 
   /** Whether a resource's name denotes a type or a value — the rule the naming
@@ -251,7 +340,7 @@ export class ManifestAnalysis {
         this.ctx.defs,
         this.ctx.aliases,
         this.scopes,
-        this.manifests as Record<string, any>[],
+        listRequests(this.manifests),
       ),
     )?.schema;
   }
@@ -272,7 +361,7 @@ export class ManifestAnalysis {
       this.ctx.defs,
       this.ctx.aliases,
       this.scopes,
-      this.manifests as Record<string, any>[],
+      listRequests(this.manifests),
     );
     return referenceOutputRefusal(
       slot,
@@ -292,23 +381,16 @@ export class ManifestAnalysis {
    */
   private resolveRef(ref: ManifestRef): ResourceManifest | undefined {
     if (!ref.name) return undefined;
-    const byName = this.manifests.filter(
-      (m) => (m.metadata as { name?: string } | undefined)?.name === ref.name,
-    );
-    if (byName.length === 0) return undefined;
-    if (byName.length === 1) return byName[0];
-
+    const names = manifestNames(this.manifests);
     const targetModule = ref.alias ? this.ctx.aliases.moduleForAlias?.(ref.alias) : undefined;
-    if (targetModule) {
-      const scoped = byName.find(
-        (m) => (m.metadata as { module?: string } | undefined)?.module === targetModule,
-      );
-      if (scoped) return scoped;
-    }
-    // Several candidates and nothing to choose between them: refusing is the
-    // honest answer, since typing a call site against the wrong resource's
-    // contract is worse than typing it against none.
-    return ref.kind ? byName.find((m) => m.kind === ref.kind) : undefined;
+    // Several candidates the kind cannot choose between resolve to nothing:
+    // typing a call site against the wrong resource's contract is worse than
+    // typing it against none.
+    return (
+      (targetModule ? names.inModule(ref.name, targetModule, importPathThrough(undefined, ref.alias!)) : undefined) ??
+      names.resolve(ref.name, undefined) ??
+      (ref.kind ? names.resolve(ref.name, undefined, undefined, (m) => m.kind === ref.kind) : undefined)
+    );
   }
 
   private definitionFor(kind: string): ResourceDefinition | undefined {

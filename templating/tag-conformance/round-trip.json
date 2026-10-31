@@ -1,0 +1,15 @@
+[
+  {
+    "name": "every tag form and a splice, block style",
+    "yaml": "kind: Telo.Definition\nmetadata:\n  name: Jobs\nresources:\n  - !for-each\n    metadata:\n      name: crons\n    in: !cel \"self.jobs\"\n    emit:\n      kind: Scheduler.Cron\n      schedule: !cel \"each.value.schedule\"\n  - kind: Http.Api\n    metadata:\n      name: api\n    routes:\n      - !if\n        if: !cel \"self.admin\"\n        then:\n          path: /admin\n        else:\n          path: /public\n      - !switch\n        switch: !cel \"self.mode\"\n        cases:\n          a:\n            path: /a\n        default:\n          path: /other\n    columns:\n      id: integer\n      ...: !for-each\n        in: !cel \"self.fields\"\n        key: !cel \"each.key\"\n        emit: text\n    target: !ref \"stores[each.key]\"\n"
+  },
+  {
+    "name": "flow style tags and an indexed reference in block context",
+    "yaml": "steps:\n  - !for-each { in: !cel \"self.jobs\", name: runs, emit: { invoke: !ref \"crons[each.key]\" } }\n  - !if { if: true, then: { value: 1 } }\n"
+  },
+  {
+    "name": "a whole document behind a tag",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\n--- !switch\nmetadata:\n  name: db\nswitch: !cel \"variables.dialect\"\ncases:\n  postgres:\n    kind: Pg.Connection\n  sqlite:\n    kind: Lite.Connection\n",
+    "written": "kind: Telo.Application\nmetadata:\n  name: App\n---\n!switch\nmetadata:\n  name: db\nswitch: !cel \"variables.dialect\"\ncases:\n  postgres:\n    kind: Pg.Connection\n  sqlite:\n    kind: Lite.Connection\n"
+  }
+]

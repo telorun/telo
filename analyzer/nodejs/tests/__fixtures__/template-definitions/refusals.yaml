@@ -1,0 +1,126 @@
+# Every refusal a template definition is owed with no consumer.
+kind: Telo.Library
+metadata:
+  name: Refusals
+imports:
+  Http: ../../../../../modules/http-server
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Choices, Repeats]
+---
+kind: Telo.Definition
+metadata:
+  name: Choices
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    mode: { type: string, enum: [a, b] }
+    flavour: { type: string }
+    flag: { type: boolean }
+    count: { type: integer, enum: [1, 2] }
+    api: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+resources:
+  - !switch
+    metadata: { name: server }
+    switch: !cel "self.mode"
+    cases:
+      a:
+        kind: Http.Server
+        listen: { port: 8080 }
+      c:
+        kind: Http.Server
+        listen: { port: 8081 }
+  - !switch
+    metadata: { name: other }
+    switch: !cel "self.flavour"
+    cases:
+      x:
+        kind: Http.Server
+        listen: { port: 8082 }
+  - kind: Http.Server
+    metadata: { name: third }
+    listen:
+      port: !switch
+        switch: !cel "self.mode"
+        cases:
+          a: 9000
+          b: 9001
+    mounts:
+      - !switch
+        switch: !cel "self.mode"
+        cases:
+          a: { path: /, mount: !cel "self.api" }
+          b: { path: /, mount: !cel "self.api", mountt: 1 }
+      - !switch
+        switch: !cel "self.flag"
+        cases:
+          yes: { path: /f, mount: !cel "self.api" }
+          true: { path: /f, mount: !cel "self.api" }
+          false: { path: /g, mount: !cel "self.api" }
+      - !switch
+        switch: !cel "self.count"
+        cases:
+          "01": { path: /c, mount: !cel "self.api" }
+          1: { path: /c, mount: !cel "self.api" }
+          2: { path: /d, mount: !cel "self.api" }
+      - !if
+        if: !cel "request.path == '/'"
+        then: { path: /r, mount: !cel "self.api" }
+targets: [!ref server]
+---
+kind: Telo.Definition
+metadata:
+  name: Repeats
+capability: Telo.Mount
+schema:
+  type: object
+  properties:
+    name: { type: string }
+    items:
+      type: array
+      items:
+        type: object
+        properties:
+          path: { type: string }
+          handler: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes:
+      - !for-each
+        in: !cel "self.name"
+        emit:
+          request: { path: /x, method: GET }
+          handler: !cel "each.value"
+          returns: [{ status: 200 }]
+      - !for-each
+        in: !cel "self.items"
+        emit:
+          - !for-each
+            in: !cel "self.items"
+            emit:
+              request: { path: !cel "each.value.path", method: GET }
+              handler: !cel "each.value.handler"
+              returns: [{ status: 200 }]
+      - !for-each
+        in: !cel "self.items"
+        as: request
+        emit:
+          request: { path: /y, method: GET }
+          handler: !cel "request.value.handler"
+          returns: [{ status: 200 }]
+      - !for-each
+        in: !cel "self.items"
+        emit:
+          kind: Run.Value
+          metadata: { name: named }
+  - kind: Run.Value
+    metadata: { name: bound }
+    bindings:
+      each: 1
+    value:
+      - !for-each
+        in: !cel "self.items"
+        emit: !cel "each.index"
+mount: !ref api

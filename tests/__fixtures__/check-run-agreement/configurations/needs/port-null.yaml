@@ -1,0 +1,6 @@
+# A port never admits absence: under any runner every declared port is assigned.
+kind: Telo.Application
+metadata:
+  name: PortDefaultNull
+ports:
+  http: { env: AGREEMENT_PORT_NULL, default: null }

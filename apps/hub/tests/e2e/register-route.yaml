@@ -363,6 +363,7 @@ steps:
               env: OPENAI_API_KEY
               schema: { type: string }
           ports: []
+          dimensions: []
         kinds: []
         exportedResources: []
         runtime: null

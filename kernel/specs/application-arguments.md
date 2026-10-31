@@ -96,7 +96,19 @@ For each entry the first source with a value wins:
 4. `default:`;
 5. an answer the host gives when asked (§4.1), reached only for an entry 1–4 leave empty.
 
-An entry with none of them is an error naming each channel it binds.
+An entry with none of them is an error naming each channel it binds — when the
+configuration the application starts in requires it (§4.2); an entry it does not require
+is left out, unrefused and unasked. A value that is supplied is read and validated whether
+or not the configuration requires it.
+
+`default: null` on a `variables:` / `secrets:` entry declares that the input may be
+absent, whatever its `type:`: with none of 1–3 it is `null` — never validated against the
+entry's schema, and never asked for — and a parent may supply `null` for it by name. Its
+presence (`… != null`) may decide a choice, and a dimension a choice reads is resolved
+before the rest of the inputs (the configuration the application starts in decides which
+documents exist). A `ports:` entry never admits absence: `default: null` on one is refused
+at load (`DEFAULT_INVALID` from `telo check`), since every declared port is assigned
+wherever the application runs.
 
 ### 4.1 Asking the host
 
@@ -106,7 +118,8 @@ when every failure of the reading above is a missing value; any other failure �
 application does not declare — is refused at once, and nothing is asked. `--help` asks
 nothing.
 
-1. **What is missing.** The resolver is handed one entry per input with no value:
+1. **What is missing.** The resolver is handed one entry per input with no value that the
+   configuration the application starts in requires (§4.2):
    - a `variables:`, `secrets:` or `ports:` entry with no value from 1–4 and no `default:`;
    - each required field of a required need reaching the root with nothing set in the
      environment its fields are read from (`telo needs report` lists the names) — the
@@ -143,10 +156,38 @@ nothing.
    without a resolver — carries the same entries a resolver would have been handed, so a
    host can say what to supply.
 
+### 4.2 Requiredness per configuration
+
+An entry with no `default:` is **required in exactly the configurations a manifest read
+reaches it**: a CEL read in a resource or field that exists in that configuration (a kind
+document's where its kind is instantiated, only the taken arm of a ternary whose guard the
+configuration decides, every entry for a whole `variables` / `secrets` / `ports` read), or
+an import's `variables:` / `secrets:` entry forwarding it. A dimension — an input a choice
+reads — is required in every configuration, since it decides which one starts. A need that
+is not optional is required where its fields' reads, its `!ref`s or an import forwarding it
+reach; a library's need is required where the library's own documents reach it, translated
+through each import's binding at every level between it and the application. An entry or
+need no configuration reaches is never required.
+
+The kernel resolves the dimensions first — the inputs every choice reads, and the presence
+of each optional need a library leaves to the environment — then demands the inputs and
+needs that configuration requires: a missing one is refused (`ERR_MANIFEST_VALIDATION_FAILED`
+for an input, `ERR_NEED_UNMET` for a need, naming only its variables) before any resource
+is created. A need the configuration does not require, with nothing set, is bound to
+nothing; one set only in part is still `ERR_NEED_PARTIALLY_SUPPLIED`.
+
+Requiredness is reported as `requiredWhen`: a list of partial assignments keyed by
+dimension path (`variables.<name>`, `secrets.<name>[.<member>]`, `resources.<need path>`),
+present only when some but not every configuration requires the entry — `telo module
+manifest --json` gives one per Application input beside its `required`, with the
+`dimensions` its keys name (`{ key, values, env }`, `env` the environment variables the
+value is read from), and `telo needs report` one per need.
+
 ## 5. Usage
 
-`--help` answers, on standard output, a usage built only from the declarations. Nothing
-is resolved, validated or started, and the process exits 0.
+`--help` answers, on standard output, a usage built from the declarations and the
+application's requirements (§4.2), which the load's analysis derives. No input is
+resolved, validated or started, and the process exits 0.
 
 Its first line is `Usage: <metadata.name> <synopsis>`. The synopsis lists every binding,
 flags in declaration order and then positions in order, each written as:
@@ -160,17 +201,30 @@ flags in declaration order and then positions in order, each written as:
 An entry with a `default:` or an `env:` may be left out, so its item is bracketed
 (`[<name>]`, `[--flag <type>]`); an array-typed one repeats, so its item is followed by
 `...` (`[--tag <string>]...`). The lines after it list each positional, then each flag with
-its short, value type, `default:`, `env:` and its `title` or `description`. The synopsis is
-the same line the documentation shows above an example's command.
+its short, value type, `default:` or requiredness, `env:` and its `title` or `description`.
+The synopsis is the same line the documentation shows above an example's command.
+
+**Requiredness** is written `required` for an entry every configuration requires,
+`required when <sentence>` for one some configurations require, and not at all for one
+none requires. The sentence names each dimension by the environment variables its value is
+read from: `<ENV> is <value>` for an `enum`, `const` or `boolean` value, `the <member> of
+<ENV> is <value>` for a member, `<ENV> is unset` / `none of <A>, <B> is set` for an absent
+input or need, `<A> is set` / `<A>, <B> are set` for a present one — conjuncts joined by
+` and `, alternatives by ` or `, and a dimension no variable names spelled by its key
+(`required when OPENAI_API_KEY is unset`). `telo needs report` and `telo env template` print
+the same sentence.
 
 Then, under `Environment:`, every `variables:`, `secrets:` and `ports:` entry — in that block
 order, then declaration order — that binds `env:` and no argument (an entry with both is
 listed under its argument), each as its environment variable followed by its `title` or
-`description` and `[<type>; <default: …> | required; <block>.<name>]`. The type is the
-entry's `x-telo-type` name, else its `type`; a port's is `tcp port` or `udp port`. A secret
-is written `secret` in place of its default, with `required` when it declares none — a
-secret's value is never printed.
+`description` and `[<type>; <default: …> | <requiredness>; <block>.<name>]`, the
+requiredness left out for an entry no configuration requires. The type is the entry's
+`x-telo-type` name, else its `type`; a port's is `tcp port` or `udp port`. A secret is
+written `secret` in place of its default, followed by its requiredness — a secret's value is
+never printed.
 
-When the application declares `needs:`, a last line names them and points at
-`telo needs report`: a need's environment variables are derived from its type's fields,
-which only the loaded graph knows, and `--help` resolves nothing.
+Then, under `Needs:`, every need the application reads from the environment — its own and
+each library's it leaves unsupplied — as its need path followed by every variable it is read
+from (each field's, and a kernel-declared type's host value: `TELO_HOST_STATE_DIR` for a
+`Telo.DurableDirectory`, the URL templates for a `Telo.PublicUrl`) and
+`[<type>; <requiredness>]`.

@@ -1,0 +1,30 @@
+# An input read only by an expression a choice keeps counts as read, and one
+# nothing reads is unused in every configuration.
+kind: Telo.Application
+metadata:
+  name: UnusedDeclarationChoice
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  onlyWhenFlag: { env: ONLY_WHEN_FLAG, type: string, default: x }
+  never: { env: NEVER, type: string, default: y }
+targets:
+  - !ref shown
+---
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    text: { type: string, x-telo-eval: compile }
+---
+kind: Self.Probe
+metadata:
+  name: shown
+text: !if
+  if: !cel "variables.flag1"
+  then: !cel "variables.onlyWhenFlag"
+  else: plain

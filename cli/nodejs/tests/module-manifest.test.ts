@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildManifestJsonPayload } from "../src/commands/module.js";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadAnalyzedGraph } from "../src/analyzed-graph.js";
+import { analysedRequirements, buildManifestJsonPayload } from "../src/commands/module.js";
 import { createLogger } from "../src/logger.js";
 
 /** The contract `telo module manifest --json` owes the hub's tracker.
@@ -47,6 +52,31 @@ function stubFetch(impl: () => { ok: boolean; body?: string }): void {
 
 afterEach(() => vi.unstubAllGlobals());
 
+/** A library and the built-in vocabulary are reported from their text alone. */
+const NOT_ANALYSED = async (): Promise<never> => {
+  throw new Error("only an Application's graph is analysed");
+};
+
+const temporary: string[] = [];
+afterEach(() => {
+  for (const dir of temporary.splice(0)) fs.rmSync(dir, { recursive: true, force: true });
+});
+
+/** The payload of `manifest` written to a directory of its own, its
+ *  requirements from its analysed graph, as the command builds it. */
+async function applicationPayload(manifest: string) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "telo-module-manifest-"));
+  temporary.push(dir);
+  const file = path.join(dir, "telo.yaml");
+  fs.writeFileSync(file, manifest);
+  return buildManifestJsonPayload(file, manifest, log, () => analysedRequirements(file, log));
+}
+
+const CONFIGURATIONS = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../../tests/__fixtures__/configurations",
+);
+
 describe("buildManifestJsonPayload", () => {
   it("carries the import pin for a resolvable remote ref", async () => {
     stubFetch(() => ({ ok: true, body: MANIFEST }));
@@ -54,8 +84,7 @@ describe("buildManifestJsonPayload", () => {
     const payload = await buildManifestJsonPayload(
       "https://reg.example.test/console/telo.yaml",
       MANIFEST,
-      log,
-    );
+      log, NOT_ANALYSED);
 
     // The exact form an `imports:` entry carries as a `#sha256-…` fragment, and
     // the form the analyzer's `isCanonicalIntegrity` will accept before an
@@ -77,8 +106,7 @@ describe("buildManifestJsonPayload", () => {
     const payload = await buildManifestJsonPayload(
       "https://reg.example.test/console/telo.yaml",
       MANIFEST,
-      log,
-    );
+      log, NOT_ANALYSED);
 
     // Degrades rather than failing the command — the manifest itself resolved —
     // but never silently: "nothing owns this ref", an auth rejection and a
@@ -106,7 +134,7 @@ capability: Telo.Type
 `;
     stubFetch(() => ({ ok: true, body: archive }));
 
-    const payload = await buildManifestJsonPayload("https://reg.example.test/telo/telo.yaml", archive, log);
+    const payload = await buildManifestJsonPayload("https://reg.example.test/telo/telo.yaml", archive, log, NOT_ANALYSED);
 
     expect(payload.manifest).toBe(archive);
     expect(payload.runtime).toBeNull();
@@ -119,8 +147,7 @@ capability: Telo.Type
     const payload = await buildManifestJsonPayload(
       "https://reg.example.test/console/telo.yaml",
       KIND_MANIFEST,
-      log,
-    );
+      log, NOT_ANALYSED);
 
     expect(payload.runtime!.runtimes).toEqual({ nodejs: "full", rust: "partial" });
     expect(payload.runtime!.kinds).toEqual([
@@ -149,8 +176,7 @@ fields:
     const payload = await buildManifestJsonPayload(
       "https://reg.example.test/console/telo.yaml",
       manifest,
-      log,
-    );
+      log, NOT_ANALYSED);
 
     expect(payload.runtime!.runtimes).toEqual({ nodejs: "full", rust: "partial" });
     expect(payload.runtime!.kinds).toEqual([
@@ -173,7 +199,7 @@ fields:
       "",
     ].join("\n");
 
-    const payload = await buildManifestJsonPayload("./sqlite", manifest, log);
+    const payload = await buildManifestJsonPayload("./sqlite", manifest, log, NOT_ANALYSED);
 
     expect(payload.runtime!.native).toEqual({
       platforms: [
@@ -215,9 +241,11 @@ fields:
       "",
     ].join("\n");
 
-    const payload = await buildManifestJsonPayload("./hello-app", manifest, log);
+    const payload = await applicationPayload(manifest);
 
-    expect(payload.application).toEqual({
+    // Nothing reads an input, so no configuration requires one; a default is
+    // reported exactly where one is declared.
+    expect(payload!.application).toEqual({
       variables: [
         {
           name: "greeting",
@@ -231,14 +259,13 @@ fields:
         {
           name: "name",
           description: "",
-          required: true,
+          required: false,
           env: "NAME",
-          default: null,
           arg: { form: "position", position: 0 },
           schema: { type: "string" },
         },
       ],
-      secrets: [{ name: "apiKey", description: "", required: true, env: "API_KEY", schema: { type: "string" } }],
+      secrets: [{ name: "apiKey", description: "", required: false, env: "API_KEY", schema: { type: "string" } }],
       ports: [
         {
           name: "http",
@@ -250,11 +277,63 @@ fields:
           protocol: "tcp",
         },
       ],
+      dimensions: [],
     });
   });
 
+  it("reports which configurations require each input, and the dimensions they are keyed by", async () => {
+    const file = path.join(CONFIGURATIONS, "requirements/provider.yaml");
+    const payload = await buildManifestJsonPayload(file, fs.readFileSync(file, "utf8"), log, () =>
+      analysedRequirements(file, log),
+    );
+    expect(payload!.application!.secrets).toEqual([
+      { name: "openaiApiKey", description: "", required: false, env: "OPENAI_API_KEY", schema: { type: "string" } },
+      {
+        name: "anthropicApiKey",
+        description: "",
+        required: true,
+        requiredWhen: [{ "secrets.openaiApiKey": "absent" }],
+        env: "ANTHROPIC_API_KEY",
+        schema: { type: "string" },
+      },
+    ]);
+    expect(payload!.application!.dimensions).toEqual([
+      { key: "secrets.openaiApiKey", values: ["present", "absent"], env: ["OPENAI_API_KEY"] },
+    ]);
+  });
+
+  it("reports the requirements telo describe reports for the same application", async () => {
+    const file = path.join(CONFIGURATIONS, "needs/database.yaml");
+    const analyzed = (await loadAnalyzedGraph(file, log))!;
+    const options = { root: analyzed.root!, entryModule: analyzed.root!.metadata!.name as string };
+    const outline = analyzed.registry
+      .analysisOf(analyzed.manifests)
+      .outline(analyzed.registry.moduleGraphDeps(analyzed.manifests, options), options);
+    const requirements = (await analysedRequirements(file, log))!;
+    const data = outline.inputs.find((input) => input.block === "needs" && input.name === "data")!;
+    const derived = requirements.inputs.find((input) => input.block === "needs" && input.name === "data")!;
+    expect({ required: data.required, requiredWhen: data.requiredWhen }).toEqual({
+      required: derived.required,
+      requiredWhen: derived.requiredWhen,
+    });
+    expect(data.requiredWhen).toEqual([{ "resources.databaseAccess": "absent" }]);
+  });
+
+  it("prints no payload for an Application its analysis refuses, naming the refusal", async () => {
+    const stderr = vi
+      .spyOn(process.stderr, "write")
+      .mockImplementation((() => true) as typeof process.stderr.write);
+    const manifest = "kind: Telo.Application\nmetadata:\n  name: Broken\n---\nkind: Nope.Thing\nmetadata: { name: thing }\n";
+    const payload = await applicationPayload(manifest);
+    expect(payload).toBeUndefined();
+    expect(process.exitCode).toBe(1);
+    expect(stderr.mock.calls.map((c) => String(c[0])).join("")).toContain("Nope.Thing");
+    stderr.mockRestore();
+    process.exitCode = 0;
+  });
+
   it("reports no application for a library", async () => {
-    const payload = await buildManifestJsonPayload("./console", MANIFEST, log);
+    const payload = await buildManifestJsonPayload("./console", MANIFEST, log, NOT_ANALYSED);
     expect(payload.application).toBeNull();
   });
 
@@ -274,9 +353,9 @@ fields:
       "",
     ].join("\n");
 
-    const payload = await buildManifestJsonPayload("./hello-app", manifest, log);
+    const payload = await applicationPayload(manifest);
 
-    expect(payload.application?.secrets).toEqual([
+    expect(payload!.application?.secrets).toEqual([
       { name: "token", description: "", required: false, env: "TOKEN", schema: { type: "string" } },
     ]);
     const derived = JSON.stringify({ ...payload, manifest: undefined });
@@ -288,7 +367,7 @@ fields:
       throw new Error("a local ref must not reach the network");
     });
 
-    const payload = await buildManifestJsonPayload("./some/module", MANIFEST, log);
+    const payload = await buildManifestJsonPayload("./some/module", MANIFEST, log, NOT_ANALYSED);
 
     expect(payload).toMatchObject({ integrity: null, cacheKey: null, manifest: MANIFEST });
   });

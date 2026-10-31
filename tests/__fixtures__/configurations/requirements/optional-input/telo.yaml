@@ -1,0 +1,32 @@
+# Its default store reads a durable directory, so the directory is required
+# only where the importer omits the store.
+kind: Telo.Library
+metadata:
+  name: OptionalBacked
+  version: 0.0.0
+  description: Test fixture whose default for an optional input reads a need.
+imports:
+  Kinds: ../../../resource-inputs/optional/kinds
+resources:
+  store:
+    kind: Kinds.Store
+    optional: true
+needs:
+  data:
+    kind: Telo.DurableDirectory
+exports:
+  resources: [holder]
+--- !if
+metadata: { name: fallback }
+if: !cel "resources.store == null"
+then:
+  kind: Kinds.Store
+  label: !cel "string(resources.data.path)"
+---
+kind: Kinds.Holder
+metadata:
+  name: holder
+store: !if
+  if: !cel "resources.store != null"
+  then: !ref store
+  else: !ref fallback

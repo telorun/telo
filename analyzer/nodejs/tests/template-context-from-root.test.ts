@@ -1,4 +1,4 @@
-import type { ResourceManifest } from "@telorun/sdk";
+import { listRequests } from "../src/declaration-requests.js";
 import { describe, expect, it } from "vitest";
 import { resolveContextAnnotations } from "../src/validate-cel-context.js";
 
@@ -100,7 +100,7 @@ describe("x-telo-context-from-root", () => {
     });
   });
 
-  it("accepts back-compat third positional argument (Record<string,any>[] form)", () => {
+  it("reads a property map with the declarations it is handed", () => {
     const manifestItem = {
       request: { schema: { q: { type: "string" } } },
     };
@@ -109,7 +109,7 @@ describe("x-telo-context-from-root", () => {
       properties: { request: { "x-telo-context-from": "request/schema" } },
     };
 
-    const resolved = resolveContextAnnotations(contextSchema, manifestItem, [] as ResourceManifest[]);
+    const resolved = resolveContextAnnotations(contextSchema, manifestItem, { declarations: listRequests([]) });
     expect(resolved.properties.request.properties.q).toEqual({ type: "string" });
   });
 });

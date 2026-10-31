@@ -12,6 +12,9 @@
       "description": "Publishes this dispatch's result as `steps.<name>.result`.",
       "type": "string"
     },
+    "__emitted": {
+      "$ref": "telo://manifest#/$defs/EmittedStep"
+    },
     "invoke": {
       "title": "Invoke",
       "description": "Resource to invoke.",

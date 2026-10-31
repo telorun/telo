@@ -21,6 +21,7 @@ pub mod capability_roster;
 pub mod host_path_slot;
 pub mod levenshtein;
 pub mod loaded_types;
+pub mod loader_expansion_refusals;
 pub mod manifest_loader;
 pub mod manifest_navigation;
 pub mod native_entries;

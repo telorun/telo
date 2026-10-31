@@ -1,0 +1,44 @@
+# A step forwards an input the kind's own input contract declares closed — the
+# instance declares none — and a later step reads a member the input leaves
+# out. The forward is typed as its producer navigates it, so the read is refused
+# in every configuration; the step flag1 adds is read by nothing.
+kind: Telo.Application
+metadata:
+  name: StepResultForwardInputs
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Telo.Definition
+metadata:
+  name: Configured
+capability: Telo.Runnable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      cfg:
+        type: object
+        additionalProperties: false
+        properties:
+          a: { type: integer }
+schema:
+  type: object
+  properties:
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+---
+kind: StepResultForwardInputs.Configured
+metadata:
+  name: main
+steps:
+  - name: fwd
+    value: !cel "inputs.cfg"
+  - name: reader
+    value: !cel "steps.fwd.result.missing"
+  - !if
+    if: !cel "variables.flag1"
+    then: { name: extra, value: 1 }

@@ -9,3 +9,9 @@ needs:
   databaseAccess:
     kind: Types.DatabaseAccess
     parameters: { extensions: [pgvector] }
+---
+# Reads the database, so every configuration of an importer requires it.
+kind: Types.SigningKey
+metadata: { name: connection }
+fields:
+  value: !cel "resources.databaseAccess.url"

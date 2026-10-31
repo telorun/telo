@@ -30,4 +30,4 @@ export interface YamlParseCache {
 /** Changes whenever what a {@link CachedYamlParse} holds, or how the parse
  *  derives it, changes — so a host keys its entries on it and an entry written
  *  by other parse code is never served. */
-export const YAML_PARSE_CACHE_FORMAT = 1;
+export const YAML_PARSE_CACHE_FORMAT = 2;

@@ -1,0 +1,31 @@
+# The library's choice decided by the importer's `enum` variable, through a ternary.
+kind: Telo.Application
+metadata:
+  name: BindingTernary
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+  Lib:
+    source: ./binding-lib
+    variables:
+      dialect: !cel "variables.speed == 'fast' ? 'lite' : 'pg'"
+variables:
+  speed:
+    env: SPEED
+    type: string
+    enum: [fast, safe]
+    default: safe
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: read
+    invoke: !ref Lib.store
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result"
+      expected: !cel "variables.speed == 'fast' ? 'sqlite-store' : 'postgres-store'"

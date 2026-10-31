@@ -22,6 +22,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import type { DeclarationRequests } from "./declaration-requests.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isCompiledValue } from "@telorun/sdk";
 import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
@@ -45,6 +46,7 @@ import {
 } from "./extends-resolution.js";
 import { isForwardedExport, isForwardedShape } from "./forwarded-declaration.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { importPathOf, importPathThrough, ofInstance } from "./scoped-name-resolver.js";
 import {
   declaringModuleKey,
   ROOT_MODULE_KEY,
@@ -96,24 +98,34 @@ export class ModuleFunctionIndex {
   /** Every declaration by owning module (the entry's own under the root key) and
    *  name. */
   private readonly declared = new Map<string, Map<string, ResourceManifest[]>>();
-  /** Exported instances forwarded from a dependency, by module and name. */
-  private readonly exported = new Map<string, Map<string, ResourceManifest>>();
+  /** Exported instances forwarded from a dependency, by module and name — one
+   *  per instance of a module imported several times. */
+  private readonly exported = new Map<string, Map<string, ResourceManifest[]>>();
   private readonly imports = new Map<string, Map<string, ResourceManifest>>();
   private readonly memo = new Map<string, FunctionResolution>();
+  /** The functions each receiver offers from one module instance, over this
+   *  layer alone — what a layer above reads without walking it again. */
+  private readonly through = new Map<string, Array<{ name: string; function: ResolvedFunction }>>();
   private readonly resolveDef: DefResolver;
 
   constructor(
-    manifests: readonly ResourceManifest[],
+    declarations: DeclarationRequests,
     private readonly defs: DefinitionRegistry,
     private readonly aliases: AliasResolver,
     private readonly aliasesByModule: ReadonlyMap<string, AliasResolver>,
     private readonly rootModules: ReadonlySet<string>,
+    /** An index over declarations beside `declarations`, read as if one set:
+     *  a name either layer declares is resolved over both, in `order`. */
+    private readonly base?: {
+      readonly index: ModuleFunctionIndex;
+      readonly order: (a: ResourceManifest, b: ResourceManifest) => number;
+    },
   ) {
     this.resolveDef = (kind, from) => {
       const scope = moduleAliasScope(from?.metadata, aliases, aliasesByModule);
       return defs.resolve(kind) ?? defs.resolve(scope.resolveKind(kind) ?? kind);
     };
-    for (const m of manifests) {
+    for (const m of declarations.callables()) {
       const name = m.metadata?.name;
       if (typeof name !== "string" || !name || isModuleKind(m.kind as string)) continue;
       if (isForwardedShape(m)) continue;
@@ -123,10 +135,8 @@ export class ModuleFunctionIndex {
         // stamped with — not by the module that declared it, which is where its
         // own names resolve and which a re-export does not change.
         const exporter = (m.metadata as { module?: unknown } | undefined)?.module;
-        bucket(this.exported, typeof exporter === "string" && exporter ? exporter : module).set(
-          name,
-          m,
-        );
+        const byName = bucket(this.exported, typeof exporter === "string" && exporter ? exporter : module);
+        byName.set(name, [...(byName.get(name) ?? []), m]);
         // An export is still a declaration of the module that wrote it, so its
         // own `Self.` and module-name calls — a rule condition's above all —
         // reach it in an importer's analysis. A re-export's copy is not: it is
@@ -200,10 +210,36 @@ export class ModuleFunctionIndex {
     return this.moduleKeyOf(manifest) === ROOT_MODULE_KEY;
   }
 
+  private merged(own: readonly ResourceManifest[] | undefined, below: readonly ResourceManifest[] | undefined): ResourceManifest[] {
+    if (!below || below.length === 0) return [...(own ?? [])];
+    if (!own || own.length === 0) return [...below];
+    const seen = new Set(own);
+    return [...own, ...below.filter((d) => !seen.has(d))].sort(this.base!.order);
+  }
+
+  private declaredIn(module: string, name: string): ResourceManifest[] {
+    return this.merged(this.declared.get(module)?.get(name), this.base?.index.declaredIn(module, name));
+  }
+
+  private exportedBy(module: string, name: string): ResourceManifest[] {
+    return this.merged(this.exported.get(module)?.get(name), this.base?.index.exportedBy(module, name));
+  }
+
+  private importOf(module: string, alias: string): ResourceManifest | undefined {
+    return this.imports.get(module)?.get(alias) ?? this.base?.index.importOf(module, alias);
+  }
+
+  /** Whether this layer alone declares `name` in `module` or exports it. */
+  private holdsName(module: string, name: string): boolean {
+    return this.declared.get(module)?.has(name) === true || this.exported.get(module)?.has(name) === true;
+  }
+
   /** What `qualified`, written in `caller`'s module, names. */
   resolve(caller: ResourceManifest, qualified: string): FunctionResolution {
     const module = this.moduleKeyOf(caller);
-    const key = `${module}\0${qualified}`;
+    // The instance a call is written in decides which instance of a module it
+    // imports several times it reaches.
+    const key = `${module}\0${(importPathOf(caller) ?? []).join("/")}\0${qualified}`;
     let resolution = this.memo.get(key);
     if (!resolution) {
       resolution = this.resolveUncached(caller, module, qualified);
@@ -223,21 +259,37 @@ export class ModuleFunctionIndex {
     receiver: string,
   ): Array<{ name: string; function: ResolvedFunction }> {
     const module = this.moduleKeyOf(caller);
+    const key = `${module}\0${(importPathOf(caller) ?? []).join("/")}\0${receiver}`;
+    const known = this.through.get(key);
+    if (known) return known;
     const ownNames = module === ROOT_MODULE_KEY ? this.rootModules : new Set<string>([module]);
     let names: Iterable<string>;
+    let source: string | undefined;
     if (receiver === SELF_ALIAS || ownNames.has(receiver)) {
+      source = module;
       names = this.declared.get(module)?.keys() ?? [];
     } else {
       const scope = moduleAliasScope(caller.metadata, this.aliases, this.aliasesByModule);
-      const targetModule = scope.moduleForAlias(receiver);
-      names = targetModule ? (this.exported.get(targetModule)?.keys() ?? []) : [];
+      source = scope.moduleForAlias(receiver);
+      names = source ? (this.exported.get(source)?.keys() ?? []) : [];
     }
     const out: Array<{ name: string; function: ResolvedFunction }> = [];
     for (const name of names) {
       const resolution = this.resolve(caller, `${receiver}.${name}`);
       if (resolution.status === "resolved") out.push({ name, function: resolution });
     }
-    return out;
+    // What the layer below offers, less a name this layer declares too, which
+    // resolves over both above.
+    const below =
+      this.base && source !== undefined
+        ? this.base.index.callablesThrough(caller, receiver).filter((entry) => !this.holdsName(source!, entry.name))
+        : [];
+    const all =
+      below.length === 0
+        ? out
+        : [...out, ...below].sort((a, b) => this.base!.order(a.function.manifest, b.function.manifest));
+    this.through.set(key, all);
+    return all;
   }
 
   private resolveUncached(
@@ -257,7 +309,7 @@ export class ModuleFunctionIndex {
     const ownNames =
       module === ROOT_MODULE_KEY ? this.rootModules : new Set<string>([module]);
     if (receiver === SELF_ALIAS || ownNames.has(receiver)) {
-      const candidates = this.declared.get(module)?.get(name) ?? [];
+      const candidates = this.declaredIn(module, name);
       const target = candidates[0];
       if (!target) {
         return owned
@@ -274,13 +326,16 @@ export class ModuleFunctionIndex {
       // keys, so a receiver that is none of them does not reach here. One whose
       // import did not resolve registered no alias, and that failure is its own
       // diagnostic.
-      return this.imports.get(module)?.has(receiver)
+      return this.importOf(module, receiver) !== undefined
         ? UNKNOWN
         : { status: "unresolved", reason: `'${receiver}' is not an import of this module.` };
     }
-    const exported = this.exported.get(targetModule)?.get(name);
+    const exported = ofInstance(
+      this.exportedBy(targetModule, name),
+      importPathThrough(caller, receiver),
+    )[0];
     if (exported) return this.classify(exported);
-    const importDoc = this.imports.get(module)?.get(receiver);
+    const importDoc = this.importOf(module, receiver);
     const declared = (importDoc?.metadata as { declaredResources?: unknown } | undefined)
       ?.declaredResources;
     if (!Array.isArray(declared)) return UNKNOWN;

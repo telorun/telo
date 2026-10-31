@@ -1,0 +1,7 @@
+# Imports a library holding an indexed `!ref` outside a template body.
+kind: Telo.Application
+metadata: { name: FamilyOutsideApp }
+imports:
+  Lib: ../outside-lib
+targets:
+  - !ref Lib.sequence

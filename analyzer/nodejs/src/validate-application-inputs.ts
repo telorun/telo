@@ -21,11 +21,12 @@ import {
   type ForwardedNeed,
 } from "./need-table.js";
 import { injectedNeedOf, readNeeds, type NeedTypeShape } from "./need-type.js";
-import type { ReachSite } from "./reference-reach.js";
-import { residualEntrySchema } from "./residual-schema.js";
+import { inputValueSchema } from "./residual-schema.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import { isInjectedDeclaration } from "./resource-input.js";
-import { declaredScopes, isScopeMember } from "./scope-declarations.js";
+import type { ScopeSite } from "./scope-address.js";
+import { declaringScopeOf, isScopeMemberDeclaration, scopeMemberOf } from "./scope-members.js";
+import { MANIFEST_READING, ScopedNameResolver } from "./scoped-name-resolver.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { declaredInputFindings } from "./validate-import-inputs.js";
 
@@ -44,8 +45,6 @@ const SINGULAR: Record<ApplicationInputBlock, string> = {
 export interface ApplicationInputsScope {
   /** The author schema of `resource`'s kind, resolved in `module`'s scope. */
   authorSchemaOf(resource: ResourceManifest, module: string | undefined): Record<string, any> | undefined;
-  /** The concrete reference sites of `resource`, in `module`'s scope. */
-  referenceSites(resource: ResourceManifest, module: string | undefined): readonly ReachSite[];
   /** `kind` canonicalized in `module`'s scope. */
   resolveKind(module: string | undefined, kind: string): string | undefined;
   /** The need type a canonical kind registers, or undefined. */
@@ -93,35 +92,40 @@ export function validateApplicationInputs(
   const out: AnalysisDiagnostic[] = [];
 
   const moduleDocs = new Map<string, ResourceManifest>();
-  const declarations = new Map<string, ResourceManifest>();
-  /** Every named document by declaring module and name — what an extraction's
-   *  `xTeloOrigin` names its holder by. */
+  const declared: ResourceManifest[] = [];
+  /** Every named top-level document by declaring module and name — what an
+   *  extraction's `xTeloOrigin` names its holder by. */
   const holders = new Map<string, ResourceManifest>();
   for (const m of manifests) {
     const meta = m.metadata as { name?: unknown; module?: unknown } | undefined;
     if (typeof meta?.name !== "string") continue;
-    holders.set(`${typeof meta.module === "string" ? meta.module : ""}\0${meta.name}`, m);
+    if (!isScopeMemberDeclaration(m)) {
+      holders.set(`${typeof meta.module === "string" ? meta.module : ""}\0${meta.name}`, m);
+    }
     if (isModuleKind(m.kind)) {
       moduleDocs.set(meta.name, m);
       continue;
     }
     if (isDeclarationDocument(m) || isForwardedDeclaration(m)) continue;
-    const module = typeof meta.module === "string" ? meta.module : "";
-    declarations.set(`${module}\0${meta.name}`, m);
+    declared.push(m);
   }
+  // What a `!ref` names, a scope member's siblings first.
+  const declarations = new ScopedNameResolver(declared, MANIFEST_READING);
 
   const judge = (
     node: ResourceManifest,
     module: string | undefined,
     prefix: string,
     anchor: { resource: { kind: string; name: string }; filePath: string | undefined },
+    /** The file the source is resolved against. */
+    file: string | undefined,
   ): void => {
     const schema = scope.authorSchemaOf(node, module);
     const slot = schema ? readApplicationSourceSlot(schema) : undefined;
     if (!slot) return;
     const source = (node as Record<string, unknown>)[slot.field];
     if (typeof source !== "string") return;
-    const record = anchor.filePath ? records[anchor.filePath]?.[source] : undefined;
+    const record = file ? records[file]?.[source] : undefined;
     if (!record) return;
     const extracted = (node.metadata as { xTeloOrigin?: unknown } | undefined)?.xTeloOrigin !== undefined;
     const label = extracted ? `the inline ${node.kind}` : `${node.kind}/${String(node.metadata?.name)}`;
@@ -173,7 +177,7 @@ export function validateApplicationInputs(
       const properties: Record<string, unknown> = {};
       for (const name of Object.keys(accepted)) {
         properties[name] =
-          block === "ports" ? PORT_SCHEMA : residualEntrySchema(child[block][name] as Record<string, unknown>);
+          block === "ports" ? PORT_SCHEMA : inputValueSchema(child[block][name] as Record<string, unknown>);
       }
       const blockSchema = nestedSchema(keys, { type: "object", properties });
       const nestedValue = nestedValueOf(keys, accepted);
@@ -189,7 +193,7 @@ export function validateApplicationInputs(
       const shape = need.shape ?? (need.type?.startsWith("Telo.") ? scope.needType(need.type) : undefined);
       if (isResolvedReference(value)) {
         const written = value.alias ? `${value.alias}.${value.name}` : value.name;
-        const supplied = suppliedBy(value, module);
+        const supplied = suppliedBy(value, module, declaringScopeOf(node));
         if (!supplied || !need.type) return;
         if (!supplied.type || !scope.needType(supplied.type)) {
           report(
@@ -231,11 +235,12 @@ export function validateApplicationInputs(
   const suppliedBy = (
     ref: { kind: string; name: string; alias?: string },
     module: string | undefined,
+    within: ScopeSite | undefined,
   ): { kind: string; type?: string; need?: ForwardedNeed } | undefined => {
     if (ref.alias !== undefined && ref.alias !== "Self") {
       return { kind: ref.kind, type: scope.resolveKind(module, ref.kind) ?? ref.kind };
     }
-    const declaration = declarations.get(`${module ?? ""}\0${ref.name}`);
+    const declaration = declarations.resolve(ref.name, module, within);
     if (!declaration) return undefined;
     const kind = declaration.kind as string;
     const type = scope.resolveKind(module, kind);
@@ -245,25 +250,6 @@ export function validateApplicationInputs(
       return declared ? { kind, ...(type ? { type } : {}), need: { ...declared, ...(type ? { type } : {}) } } : undefined;
     }
     return { kind, ...(type ? { type } : {}) };
-  };
-
-  const visit = (
-    node: ResourceManifest,
-    module: string | undefined,
-    prefix: string,
-    anchor: { resource: { kind: string; name: string }; filePath: string | undefined },
-  ): void => {
-    judge(node, module, prefix, anchor);
-    const view =
-      module !== undefined && typeof node.metadata?.module !== "string"
-        ? ({ ...node, metadata: { ...node.metadata, module } } as ResourceManifest)
-        : node;
-    for (const declared of declaredScopes(scope.referenceSites(view, module) as ReachSite[])) {
-      declared.declarations.forEach((member, i) => {
-        if (!isScopeMember(member) || isKindDocument(member)) return;
-        visit(member, module, `${prefix ? `${prefix}.` : ""}${declared.path}[${i}]`, anchor);
-      });
-    }
   };
 
   /** The file `m` was written in: its own, or for an extraction its outermost
@@ -283,14 +269,16 @@ export function validateApplicationInputs(
 
   for (const m of manifests) {
     if (!m.kind || isDeclarationDocument(m) || isForwardedDeclaration(m) || isInjectedDeclaration(m)) continue;
-    const meta = m.metadata as { name?: unknown; module?: unknown } | undefined;
+    const meta = m.metadata as { name?: unknown; module?: unknown; source?: string } | undefined;
     if (typeof meta?.name !== "string") continue;
     const module = typeof meta.module === "string" ? meta.module : undefined;
     if (module !== undefined && !rootModules.has(module)) continue;
-    visit(m, module, "", {
-      resource: { kind: m.kind, name: meta.name },
-      filePath: declaringFile(m, module),
-    });
+    // A scope member's source is resolved against the file its outermost holder
+    // is written in; it is reported at itself, which the analysis moves there.
+    let root: ResourceManifest = m;
+    for (let member = scopeMemberOf(root); member; member = scopeMemberOf(root)) root = member.holder;
+    const file = declaringFile(root, module);
+    judge(m, module, "", { resource: { kind: m.kind, name: meta.name }, filePath: root === m ? file : meta.source }, file);
   }
   return out;
 }
@@ -358,7 +346,7 @@ export function applicationInputsSlotSchema(
       }
     } else {
       for (const [name, entry] of Object.entries(child[block])) {
-        properties[name] = block === "ports" ? PORT_SCHEMA : residualEntrySchema(entry);
+        properties[name] = block === "ports" ? PORT_SCHEMA : inputValueSchema(entry);
       }
     }
     schema = mergeNested(schema, keys, { type: "object", properties });

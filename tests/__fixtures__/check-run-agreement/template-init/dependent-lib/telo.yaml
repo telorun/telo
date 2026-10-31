@@ -1,0 +1,15 @@
+# A library that declares an instance of another library's templated kind, with a
+# map a repeat iterates holding an integer-like key.
+kind: Telo.Library
+metadata:
+  name: TemplateInitDependent
+exports:
+  resources: [hooks]
+imports:
+  Lib: ../lib
+---
+kind: Lib.Hooks
+metadata: { name: hooks }
+hooks:
+  "2024": {}
+  github: {}

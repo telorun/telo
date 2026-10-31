@@ -126,7 +126,7 @@ export class FakeEngine {
           capabilities: {
             ...(this.harness.capabilities[this.version] ?? DEFAULT_CAPABILITIES),
             experimental: {
-              telo: { protocol: 1, ...(this.harness.viewModelEngines.has(this.version) ? { viewModel: true } : {}) },
+              telo: { protocol: this.harness.protocols[this.version] ?? 2, ...(this.harness.viewModelEngines.has(this.version) ? { viewModel: true } : {}) },
             },
           },
           serverInfo: { name: "telo", version: reported },
@@ -177,6 +177,8 @@ export interface HarnessOptions {
   capabilities?: Record<string, ServerCapabilities>;
   /** Engine versions advertising `experimental.telo.viewModel`. */
   viewModelEngines?: string[];
+  /** The protocol generation each engine version's handshake reports (default 2). */
+  protocols?: Record<string, number>;
 }
 
 export class RouterHarness {
@@ -188,6 +190,7 @@ export class RouterHarness {
   readonly handlers: Record<string, (engine: FakeEngine, params: any) => unknown> = {};
   readonly capabilities: Record<string, ServerCapabilities>;
   readonly viewModelEngines: Set<string>;
+  readonly protocols: Record<string, number>;
   /** Every `telo/viewModelChanged` the editor received, in order. */
   readonly viewModelChanges: Array<{ owner: string; revision: number }> = [];
   readonly diagnostics = new Map<string, string[]>();
@@ -211,6 +214,7 @@ export class RouterHarness {
     this.storedCatalog = options.catalog;
     this.capabilities = options.capabilities ?? {};
     this.viewModelEngines = new Set(options.viewModelEngines ?? []);
+    this.protocols = options.protocols ?? {};
     this.bundledCode = options.bundledCode ?? engineCode(BUNDLED);
     for (const [version, engine] of Object.entries(options.cached ?? {})) this.cache.set(version, engine);
     const transports = createInProcessTransports();

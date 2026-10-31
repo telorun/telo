@@ -9,6 +9,7 @@ import {
 import { walkCel } from "../cel-chain.js";
 import { moduleCallSites } from "../cel/module-calls.js";
 import { scalarString } from "../completions/resolve-node.js";
+import { readRefScalar, type ForEachLoop } from "../repeats/for-each.js";
 
 /**
  * Every place a name is written, found over the read-only YAML AST plus the CEL
@@ -74,37 +75,24 @@ function scopeMemberSite(node: CelNode, scope: string, name: string): NameSite |
   return { range: node.propertyRange };
 }
 
-const SELF_PREFIX = "Self.";
-
 /** The span of `name` inside a `!ref` scalar, or undefined when the scalar names
- *  something else. Accepts the bare form and the `Self.`-qualified one, which
- *  also resolves locally; `<Alias>.<name>` is a different module's export and is
- *  deliberately not matched. */
-function refSite(scalar: AstScalar, name: string): NameSite | undefined {
-  if (scalar.tag !== "!ref") return undefined;
-  const [start, end] = scalar.range;
-  const raw = refText(scalar);
-  if (raw === name) return { range: [start, end] };
-  if (raw === `${SELF_PREFIX}${name}`) return { range: [start + SELF_PREFIX.length, end] };
-  return undefined;
-}
-
-/** A `!ref` scalar's resolved value is a `TaggedSentinel`, so the written text
- *  is read off the sentinel rather than assumed to be a plain string. */
-function refText(scalar: AstScalar): string | undefined {
-  const value = scalar.value as { source?: unknown } | string | undefined;
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && typeof value.source === "string") return value.source;
-  return undefined;
+ *  something else. Accepts the bare form, the `Self.`-qualified one and a
+ *  family's indexed form (the head is the name); `<Alias>.<name>` is a different
+ *  module's export and is deliberately not matched. */
+function refSite(scalar: AstScalar, text: string, name: string): NameSite | undefined {
+  const reading = readRefScalar(scalar, text);
+  if (!reading || reading.name !== name) return undefined;
+  if (reading.alias !== undefined && reading.alias !== "Self") return undefined;
+  return { range: reading.head };
 }
 
 /** A resource's references within one document: `!ref <name>` (and its `Self.`
  *  form) plus `resources.<name>` in CEL. */
-export function resourceSites(doc: AstDocument, name: string): NameSite[] {
+export function resourceSites(doc: AstDocument, text: string, name: string): NameSite[] {
   const sites: NameSite[] = [];
   if (!doc.root) return sites;
   eachScalar(doc.root, (scalar) => {
-    const ref = refSite(scalar, name);
+    const ref = refSite(scalar, text, name);
     if (ref) sites.push(ref);
     eachCelNode(scalar, (node) => {
       const site = scopeMemberSite(node, "resources", name);
@@ -112,6 +100,26 @@ export function resourceSites(doc: AstDocument, name: string): NameSite[] {
     });
   });
   return sites;
+}
+
+/**
+ * Every place a `!for-each` binding is written: its `as:` value, each index
+ * naming it in a `!ref` inside the loop, and each CEL read rooted at it. A
+ * nested loop may not reuse the name, so the loop's own mapping is the scope.
+ */
+export function bindingSites(loop: ForEachLoop, text: string): Array<[number, number]> {
+  const spans: Array<[number, number]> = [];
+  if (loop.asRange) spans.push(loop.asRange);
+  eachScalar(loop.map, (scalar) => {
+    const reading = readRefScalar(scalar, text);
+    reading?.indexes.forEach((index, i) => {
+      if (index.binding === loop.binding) spans.push(reading.bindings[i]!);
+    });
+    eachCelNode(scalar, (node) => {
+      if (node.kind === "ident" && node.name === loop.binding) spans.push(node.range);
+    });
+  });
+  return spans;
 }
 
 /** A function's calls within one document: `<receiver>.<name>(…)` in CEL, for a
@@ -201,7 +209,10 @@ export function resourceDeclarations(doc: AstDocument, name: string): Array<[num
           }
         }
       }
-      if (hasKind && nameNode && scalarString(nameNode) === name) found.push(nameNode.range);
+      // A declaration-position `!if` / `!switch` / `!for-each` names the
+      // resource once, on its tag; its branches write no name.
+      const tagged = node.tag === "!if" || node.tag === "!switch" || node.tag === "!for-each";
+      if ((hasKind || tagged) && nameNode && scalarString(nameNode) === name) found.push(nameNode.range);
       for (const pair of node.entries) if (pair.value) visit(pair.value);
       return;
     }

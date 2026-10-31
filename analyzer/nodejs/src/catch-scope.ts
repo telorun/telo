@@ -13,6 +13,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import type { DeclarationRequests } from "./declaration-requests.js";
 import type { CelEnvironment, CelNode } from "@telorun/cel";
 import { CEL_ENGINE, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
@@ -21,9 +22,11 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { visitManifest } from "./manifest-visitor.js";
 import { forEachDrivenSlot } from "./schema-walk.js";
+import { manifestNames, scopeReadAt } from "./scoped-name-resolver.js";
 import {
   createResolveCtx,
   resolveRefManifest,
+  type RefOrigin,
   resolveScopeUnion,
   resolveThrowsUnion,
   type ResolveCtx,
@@ -34,8 +37,10 @@ import { isResolvedReference } from "./resolved-reference.js";
 import {
   caughtCodeChains,
   catchListContext,
+  drivenReads,
   intersectDataSchemas,
 } from "./caught-member.js";
+import { enclosingKeys, fieldPlace, type ReadReporter } from "./read-place.js";
 
 /** One entry of an outcome list, as written. */
 export interface OutcomeEntry {
@@ -125,27 +130,30 @@ export interface ScopedManifest {
   path: string;
 }
 
-/** Every `with:`-scoped declaration in the set, once each.
+/** Every `with:`-scoped declaration the set does not already hold, once each.
  *
- *  Scoped resources are absent from the flat manifest list, so every check that
- *  iterates it skips them — and standing a server up around a test is exactly
- *  that shape, so the sanctioned pattern was the one the pass could not see.
- *  Discovered through the shared visitor rather than a second scope walk. */
+ *  `telo check`'s set holds every scope member as a declaration of its own; an
+ *  editor's projection holds only the top-level documents, so a member is found
+ *  through its holder there — standing a server up around a test is exactly
+ *  that shape. Discovered through the shared visitor rather than a second scope
+ *  walk. */
 export function collectScopedManifests(
-  manifests: ResourceManifest[],
+  declarations: DeclarationRequests,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver>,
   rootModules: Set<string>,
 ): ScopedManifest[] {
   const scoped: ScopedManifest[] = [];
+  const manifests = [...declarations.catchScope()];
+  const held = new Set<ResourceManifest>(manifests);
   visitManifest(
     manifests,
     defs,
     {
       onScope: (event) => {
         for (const { manifest, path } of event.declarations) {
-          if (!manifest?.kind || !manifest.metadata?.name) continue;
+          if (!manifest?.kind || !manifest.metadata?.name || held.has(manifest)) continue;
           scoped.push({ manifest, owner: event.source, path });
         }
       },
@@ -344,7 +352,10 @@ function buildEnclosers(
     if (!definition?.schema) continue;
     forEachDrivenSlot(definition.schema, manifest, (driven) => {
       if (driven.kind !== "ref" || !driven.slots.some(({ slot }) => slot.throwsThrough)) return;
-      const target = resolveRefManifest(driven.data, ctx, moduleOf(manifest));
+      const target = resolveRefManifest(driven.data, ctx, {
+        module: moduleOf(manifest),
+        within: scopeReadAt(manifest, driven.path),
+      });
       if (!target || target === manifest) return;
       const list = enclosers.get(target);
       if (list) list.push(manifest);
@@ -390,7 +401,7 @@ export class CatchLadder {
   private readonly caughtData = new Map<CatchList, Array<Record<string, any> | null>>();
 
   constructor(
-    manifests: ResourceManifest[],
+    declarations: DeclarationRequests,
     private readonly defs: DefinitionRegistry,
     private readonly aliases: AliasResolver,
     env: CelEnvironment,
@@ -400,9 +411,9 @@ export class CatchLadder {
      *  exported entry point into the siblings it invokes. */
     moduleManifests: Map<string, ResourceManifest[]> = new Map(),
   ) {
-    const scoped = collectScopedManifests(manifests, defs, aliases, aliasesByModule, rootModules);
+    const scoped = collectScopedManifests(declarations, defs, aliases, aliasesByModule, rootModules);
     for (const s of scoped) this.scopedBy.set(s.manifest, s);
-    this.allManifests = [...manifests, ...scoped.map((s) => s.manifest)];
+    this.allManifests = [...declarations.catchScope(), ...scoped.map((s) => s.manifest)];
     this.resolveCtx = createResolveCtx(
       this.allManifests,
       defs,
@@ -549,6 +560,18 @@ export class CatchLadder {
    * unbounded or empty, or no matched code declares data: the member then keeps
    * the schema it declares.
    */
+  /** Whether `path` of `manifest` lies inside an entry of one of its catch
+   *  lists — where {@link caughtDataAt} may answer. */
+  holdsCatchEntryAt(manifest: ResourceManifest, path: string): boolean {
+    return (this.listsByManifest.get(manifest) ?? []).some((list) => {
+      const prefix = `${list.ownPath}[`;
+      if (!path.startsWith(prefix)) return false;
+      const close = path.indexOf("]", prefix.length);
+      const after = close < 0 ? undefined : path[close + 1];
+      return close >= 0 && (after === undefined || after === ".") && Number.isInteger(Number(path.slice(prefix.length, close)));
+    });
+  }
+
   caughtDataAt(manifest: ResourceManifest, path: string): Record<string, any> | undefined {
     for (const list of this.listsByManifest.get(manifest) ?? []) {
       const prefix = `${list.ownPath}[`;
@@ -593,7 +616,11 @@ export class CatchLadder {
     if (!union) {
       union = list.isScope
         ? resolveScopeUnion(list.manifest, list.definition, this.resolveCtx)
-        : this.handlerUnion(list.handler, this.moduleOf(list.manifest), list.scopeResolver);
+        : this.handlerUnion(
+            list.handler,
+            { module: this.moduleOf(list.manifest), within: scopeReadAt(list.manifest, list.handlerPath) },
+            list.scopeResolver,
+          );
       this.unions.set(list, union);
     }
     return union;
@@ -604,25 +631,27 @@ export class CatchLadder {
    *  kind's own declared codes when no name is given. */
   private handlerUnion(
     handler: unknown,
-    ownerModule: string | undefined,
+    origin: RefOrigin,
     scopeResolver: AliasResolver | undefined,
   ): ThrowsUnion {
     const ctx = this.resolveCtx;
     if (isRefSentinel(handler)) {
-      const target = resolveRefManifest(handler, ctx, ownerModule);
+      const target = resolveRefManifest(handler, ctx, origin);
       return target ? resolveThrowsUnion(target, ctx) : { codes: new Map(), unbounded: false };
     }
     const handlerRef = handlerRefOf(handler);
     if (!handlerRef) return { codes: new Map(), unbounded: false };
     if (handlerRef.name) {
       const resolvedKind = scopeResolver?.resolveKind(handlerRef.kind) ?? ctx.aliases.resolveKind(handlerRef.kind);
-      const targetManifest = ctx.allManifests.find(
+      const targetManifest = manifestNames(ctx.allManifests).resolve(
+        handlerRef.name,
+        origin.module,
+        origin.within,
         (m) =>
-          m.metadata?.name === handlerRef.name &&
-          (m.kind === handlerRef.kind ||
-            m.kind === resolvedKind ||
-            scopeResolver?.resolveKind(m.kind) === handlerRef.kind ||
-            ctx.aliases.resolveKind(m.kind) === handlerRef.kind),
+          m.kind === handlerRef.kind ||
+          m.kind === resolvedKind ||
+          scopeResolver?.resolveKind(m.kind) === handlerRef.kind ||
+          ctx.aliases.resolveKind(m.kind) === handlerRef.kind,
       );
       if (targetManifest) return resolveThrowsUnion(targetManifest, ctx);
     }
@@ -659,3 +688,16 @@ export class CatchLadder {
     );
   }
 }
+
+/** What `x-telo-catches-for` reads: the sibling naming the handler whose
+ *  failures the list renders — and what it reaches — or, for the empty string,
+ *  everything the resource drives. */
+export const catchesForReads: ReadReporter = ({ value, at }) => {
+  if (value === "") return [{ kind: "reference", keys: [], transitive: true, reads: drivenReads }];
+  const keys = fieldPlace(enclosingKeys(at), value);
+  return keys ? [{ kind: "reference", keys, transitive: true, reads: drivenReads }] : [];
+};
+
+/** What `x-telo-outcome-list` reads: a catch list answers for what the
+ *  resource drives. */
+export const outcomeListReads: ReadReporter = () => [{ kind: "reference", keys: [], transitive: true, reads: drivenReads }];

@@ -1,0 +1,9 @@
+# The Notes library one import deeper: both of its needs pass through this
+# library unsupplied, so the application reads them under `Shelf.Notes`.
+kind: Telo.Library
+metadata:
+  name: Shelf
+  version: 0.0.0
+  description: Test fixture importing a library whose needs it leaves to the application.
+imports:
+  Notes: ../notes

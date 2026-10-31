@@ -1,0 +1,5 @@
+kind: Telo.Application
+metadata:
+  name: NotesApp
+imports:
+  Notes: ./notes

@@ -1,6 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import type { DeclarationRequests } from "./declaration-requests.js";
 import type { AliasResolver, ModuleScopes } from "./alias-resolver.js";
-import { resolveReferenceTarget } from "./call-graph.js";
+import { resolveReference, scopeReadAt } from "./scoped-name-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import {
   analyzerContractScope,
@@ -16,6 +17,7 @@ import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { plainChainOf } from "@telorun/templating";
 import { isLiveSlot } from "@telorun/sdk";
 import { manifestFragmentOf } from "./manifest-schemas.js";
+import { isGeneratedDeclaration } from "./generated-name.js";
 import {
   slotCallSites,
   stepCallSites,
@@ -72,31 +74,12 @@ function writtenAncestor(path: string, filled: readonly string[]): string {
   return inside === undefined ? path : containerOf(inside);
 }
 
-const declarationsByName = new WeakMap<object, Map<string, ResourceManifest[]>>();
-
-/** The analyzed set's declarations by name, built once per set. */
-function byNameOf(allManifests: Record<string, any>[]): Map<string, ResourceManifest[]> {
-  let byName = declarationsByName.get(allManifests);
-  if (!byName) {
-    byName = new Map();
-    for (const m of allManifests as ResourceManifest[]) {
-      const name = m.metadata?.name;
-      if (typeof name !== "string" || m.kind === "Telo.Import") continue;
-      const list = byName.get(name);
-      if (list) list.push(m);
-      else byName.set(name, [m]);
-    }
-    declarationsByName.set(allManifests, byName);
-  }
-  return byName;
-}
-
 /** The reader's context for these checks: a call target resolves in the scope of
  *  the module `manifest` belongs to — a bare name same module first, an alias
  *  through that module's import — as the kernel resolves it at dispatch. */
 export function callSiteContext(
   manifest: Record<string, any>,
-  allManifests: Record<string, any>[],
+  types: DeclarationRequests,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
@@ -109,16 +92,19 @@ export function callSiteContext(
     aliasesByModule: scopes.aliasesByModule,
     rootModules: scopes.rootModules,
     libraries: scopes.libraries,
-    typeManifests: allManifests,
-    resolveTarget: (ref) =>
-      typeof ref.name === "string"
-        ? (resolveReferenceTarget(
-            byNameOf(allManifests),
-            { name: ref.name, ...(typeof ref.alias === "string" ? { alias: ref.alias } : {}) },
-            fromModule,
-            (alias) => scope.moduleForAlias(alias),
-          ) as Record<string, any> | undefined)
-        : undefined,
+    types,
+    // An import's alias is no call target.
+    resolveTarget: (ref, path) => {
+      if (typeof ref.name !== "string") return undefined;
+      const target = resolveReference(
+        types.names,
+        { name: ref.name, ...(typeof ref.alias === "string" ? { alias: ref.alias } : {}) },
+        fromModule,
+        (alias) => scope.moduleForAlias(alias),
+        scopeReadAt(manifest, path),
+      );
+      return target?.kind === "Telo.Import" ? undefined : (target as Record<string, any> | undefined);
+    },
   };
 }
 
@@ -138,7 +124,7 @@ export function callSiteContext(
 export function collectStepInputIssues(
   manifest: Record<string, any>,
   defSchema: Record<string, any>,
-  allManifests: Record<string, any>[],
+  types: DeclarationRequests,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
@@ -149,9 +135,9 @@ export function collectStepInputIssues(
   /** Receives each site's argument map, for the CEL value/slot join. */
   argumentMaps?: CallSiteArguments[],
 ): StepInputIssue[] {
-  const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
+  const ctx = callSiteContext(manifest, types, defs, aliases, scopes);
   return stepCallSites(manifest, defSchema, ctx).flatMap((site) =>
-    checkCallSite(site, manifest, allManifests, defs, aliases, scopes, stepContext, argumentMaps),
+    checkCallSite(site, manifest, types, defs, aliases, scopes, stepContext, argumentMaps),
   );
 }
 
@@ -168,27 +154,28 @@ export function collectStepInputIssues(
 export function collectRefInputIssues(
   manifest: Record<string, any>,
   sites: readonly ReachSite[],
-  allManifests: Record<string, any>[],
+  types: DeclarationRequests,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
   /** Receives each site's argument map, for the CEL value/slot join. */
   argumentMaps?: CallSiteArguments[],
 ): StepInputIssue[] {
-  const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
+  const ctx = callSiteContext(manifest, types, defs, aliases, scopes);
   return slotCallSites(manifest, sites, ctx).flatMap((site) =>
-    checkCallSite(site, manifest, allManifests, defs, aliases, scopes, undefined, argumentMaps),
+    checkCallSite(site, manifest, types, defs, aliases, scopes, undefined, argumentMaps),
   );
 }
 
 /**
  * The check itself, shared by both drivers: the arguments written at a call site
- * against the contract the target declares.
+ * against the contract the target declares. `manifest` is the declaration
+ * making the call — its module and, for a step, its own input contract.
  */
-function checkCallSite(
+export function checkCallSite(
   site: CallSite,
   manifest: Record<string, any>,
-  allManifests: Record<string, any>[],
+  types: DeclarationRequests,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
@@ -198,15 +185,16 @@ function checkCallSite(
   const out: StepInputIssue[] = [];
   const { contract, values, invoke, invokedManifest, invokedDefinition } = site;
   if (!contract) return out;
-  const targetLabel =
-    (invoke.name as string | undefined) ?? (invoke.kind as string | undefined) ?? "the invoked resource";
+  const targetLabel = invokedManifest && isGeneratedDeclaration(invokedManifest)
+    ? `the inline ${String(invoke.kind)}`
+    : ((invoke.name as string | undefined) ?? (invoke.kind as string | undefined) ?? "the invoked resource");
   argumentMaps?.push({
     path: site.path,
     values,
     schema: contract.schema,
     targetLabel,
   });
-  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
+  const contractScope = analyzerContractScope(defs, aliases, scopes, types);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
   // A stand-in is not what the author wrote, so the validator drops what it
@@ -229,14 +217,16 @@ function checkCallSite(
   // ENCLOSING kind's own declared inputType — how a value produced outside this
   // resource reaches a step at all.
   const roots: Array<[string, Record<string, any>]> = [];
-  if (stepContext) roots.push(["steps.", stepContext]);
-  const ownContract = resolveContract(
-    "inputType",
-    manifest,
-    contractScope.resolveIn(manifest.kind as string, readingModule),
-    contractScope,
-  );
-  if (ownContract) roots.push(["inputs.", ownContract.schema]);
+  if (site.step) {
+    if (stepContext) roots.push(["steps.", stepContext]);
+    const ownContract = resolveContract(
+      "inputType",
+      manifest,
+      contractScope.resolveIn(manifest.kind as string, readingModule),
+      contractScope,
+    );
+    if (ownContract) roots.push(["inputs.", ownContract.schema]);
+  }
 
   if (roots.length > 0 && site.step) {
     for (const [inputName, inputValue] of Object.entries(values)) {
@@ -338,6 +328,12 @@ const RETRY_BUDGET: Record<string, (value: unknown) => number> = {
   },
   RetryAttempts: (value) => (typeof value === "number" ? value : 0),
 };
+
+/** The fields of a kind's `schema` declaring a re-attempt of its dispatch: what
+ *  a call to an instance of it reads of the instance beside its contract. */
+export function retryFieldsOf(schema: Record<string, any> | undefined): string[] {
+  return retryFields(schema).map(([field]) => field);
+}
 
 /** Every property of `schema` whose shape came from a retry fragment, paired with
  *  the reader for that fragment's budget. */

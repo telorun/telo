@@ -99,7 +99,7 @@ Supporting needs is env reads and local derivation, so it needs no network clien
 
 Every module adopting new surface declares a `requires: telo:` floor on the same change.
 
-1. **Directory entries**: `Telo.HostPath`'s `entry: directory | file` (`analyzer/nodejs/plans/host-path-followups.md` §1), first or in the same release as step 2, so the durable directory's `path` declares `entry: directory` and `telo check` refuses wiring it straight into a file slot such as `SQLite.Connection.file` (it needs `.joinPath('app.db')`).
+1. **Directory entries**: `Telo.HostPath`'s `entry: directory | file` (`plans/host-path-followups.md` §1), first or in the same release as step 2, so the durable directory's `path` declares `entry: directory` and `telo check` refuses wiring it straight into a file slot such as `SQLite.Connection.file` (it needs `.joinPath('app.db')`).
 2. **Durable directories**: `Telo.DurableDirectory` alone, released on its own — the type with its parameters and defaults, defaults filled in the needs report, per-need supply through the env name, the load check, the forwarding refusals, `TELO_HOST_STATE_DIR` with its orphan refusal, and hiding and child-stripping of `TELO_HOST_STATE_DIR`. It waits for nothing in steps 3–5. A host relies on the type from the release that ships this step, and Telo Cloud recognises it from that release on.
 3. **Started applications and the other kernel-declared types**: `App.Instance` `needs:`, stripping the remaining host values, `Telo.GeneratedSecret`, its markers and its orphan refusal.
 4. **Public URLs**: built as `plans/2026-10-17-public-urls.md` states.

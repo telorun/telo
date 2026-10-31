@@ -1,0 +1,14 @@
+# Declares the template's kind with a mode chained to its own variable.
+kind: Telo.Library
+metadata:
+  name: TemplateInitModedDependent
+imports:
+  Lib: ../moded-lib
+variables:
+  mode:
+    type: string
+    enum: [a, b]
+---
+kind: Lib.Moded
+metadata: { name: moded }
+mode: !cel "variables.mode"

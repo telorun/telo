@@ -1,0 +1,57 @@
+# A library's `optional: true` resource input with a default of its own: an
+# import supplying the input has the library hold it, one omitting it has the
+# library declare and hold its default. And a reference through an import alias
+# is a hard init-order edge: a collector listing a member exported by a library
+# that borrows nothing boots, as does a step calling an export of the library
+# its sequence is handed to.
+kind: Telo.Application
+metadata:
+  name: OptionalResourceInputs
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref librarySelfCheck
+  - !ref supplied
+  - !ref omitted
+  - !ref leafMember
+  - !ref stepThroughImport
+---
+kind: Assert.Manifest
+metadata:
+  name: librarySelfCheck
+source: ./__fixtures__/resource-inputs/optional/lib/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata:
+  name: supplied
+source: ./__fixtures__/resource-inputs/optional/supplying.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: omitted
+source: ./__fixtures__/resource-inputs/optional/omitting.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: leafMember
+source: ./__fixtures__/resource-inputs/optional/cycle/leaf.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata:
+  name: stepThroughImport
+source: ./__fixtures__/resource-inputs/optional/cycle/sweeper.yaml
+expect:
+  errors: []
+  runs: true

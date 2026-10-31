@@ -33,6 +33,28 @@ targets:
   - !ref templateTargetsAtRuntime
   - !ref templateTargetsCapability
   - !ref templateTargetsCapabilityAtRuntime
+  - !ref templateInitDefinition
+  - !ref templateInitAvoiding
+  - !ref templateInitReaching
+  - !ref templateInitNumericKey
+  - !ref templateInitInlineTarget
+  - !ref templateInitInlineTargetAtRuntime
+  - !ref templateInitUndecidable
+  - !ref templateInitUndecidableAtRuntime
+  - !ref templateInitDependent
+  - !ref templateInitBoth
+  - !ref templateInitCrossing
+  - !ref templateInitModedLiteral
+  - !ref templateInitModedUnknown
+  - !ref templateInitModedOpen
+  - !ref familyMemberUnproven
+  - !ref familyMemberUnprovenAtRuntime
+  - !ref familyEmitPartial
+  - !ref familyEmitPartialAtRuntime
+  - !ref familyEmittedWritten
+  - !ref familyEmittedWrittenAtRuntime
+  - !ref familyIndexOutsideBody
+  - !ref familyIndexOutsideBodyAtRuntime
   - !ref templateEntrySchema
   - !ref templateEntrySchemaAtRuntime
   - !ref templateDuplicateEntry
@@ -105,6 +127,11 @@ targets:
   - !ref hostPathInterpolatedAtRuntime
   - !ref dependencyCycle
   - !ref dependencyCycleAtRuntime
+  - !ref importCycle
+  - !ref importCycleAtRuntime
+  - !ref optionalInputReferenced
+  - !ref optionalInputReferencedAtRuntime
+  - !ref optionalInputReferencedSupplied
   - !ref kindThroughDependency
   - !ref kindThroughDependencyAtRuntime
   - !ref undeclaredResourceRead
@@ -211,6 +238,7 @@ targets:
   - !ref templateRefComputedChainedAtRuntime
   - !ref refSlotComputed
   - !ref refSlotComputedAtRuntime
+  - !ref refSlotComputedRootKind
   - !ref templateForwardInvalid
   - !ref templateForwardInvalidAtRuntime
   - !ref throwsCeiling
@@ -524,6 +552,64 @@ targets:
   - !ref rethrowInFinallyAtRuntime
   - !ref rethrowOutsideCatch
   - !ref rethrowOutsideCatchAtRuntime
+  - !ref scopeMemberDefects
+  - !ref scopeMemberSequenceSchemaAtRuntime
+  - !ref scopeMemberSequenceRefAtRuntime
+  - !ref scopeMemberHostSchemaAtRuntime
+  - !ref scopeMemberHostRefAtRuntime
+  - !ref scopeMemberCel
+  - !ref scopeMemberSequenceDuplicateAtRuntime
+  - !ref scopeMemberSequenceCycleAtRuntime
+  - !ref scopeMemberCelSibling
+  - !ref scopeMemberCelNested
+  - !ref scopeMemberCelStatus
+  - !ref scopeMemberCompileRegion
+  - !ref scopeMemberCompileRegionAtRuntime
+  - !ref expansionBranchPosition
+  - !ref expansionBranchPositionAtRuntime
+  - !ref expansionSchemaRefusedBody
+  - !ref expansionBranchShape
+  - !ref expansionBranchShapeAtRuntime
+  - !ref expansionRepeat
+  - !ref expansionRepeatAtRuntime
+  - !ref refMemberInvalid
+  - !ref refMemberInvalidAtRuntime
+  - !ref expansionLoaderPosition
+  - !ref expansionLoaderPositionAtRuntime
+  - !ref expansionLoaderPositionInDependency
+  - !ref expansionFirstDocument
+  - !ref expansionOnSequence
+  - !ref expansionMissingKey
+  - !ref configurationChoices
+  - !ref configurationChoicesUndecidableAtRuntime
+  - !ref configurationChoicesConditionAtRuntime
+  - !ref configurationChoicesCaseKeyAtRuntime
+  - !ref configurationChoicesNotExhaustiveAtRuntime
+  - !ref configurationChoicesCaseInvalidAtRuntime
+  - !ref configurationBindingOpen
+  - !ref configurationBindingTernary
+  - !ref configurationBindingInLibrary
+  - !ref configurationBindingInLibraryAtRuntime
+  - !ref configurationReExportDecided
+  - !ref configurationReExportOpen
+  - !ref configurationReExportOpenAtRuntime
+  - !ref configurationCallRefused
+  - !ref configurationMixedLevel
+  - !ref configurationNarrowedLiteral
+  - !ref configurationShapeAccessor
+  - !ref needReferencedInBranch
+  - !ref needReferencedOutsideBranch
+  - !ref needReferencedOutsideBranchInLibrary
+  - !ref needReferencedOutsideBranchInLibraryAtRuntime
+  - !ref needPresenceUnsuppliedLibrary
+  - !ref portDefaultNull
+  - !ref bodyResourcesSibling
+  - !ref bodyResourcesTypo
+  - !ref bodyResourcesStartup
+  - !ref bodyResourcesOutside
+  - !ref bodyResourcesStartupFamily
+  - !ref bodyResourcesProviderRead
+  - !ref bodyResourcesProviderFamilyRead
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -939,6 +1025,60 @@ source: ./__fixtures__/check-run-agreement/dependency-cycle/telo.yaml
 expect:
   runFails: "ERR_CIRCULAR_DEPENDENCY"
 ---
+# A resource handed to an import that holds an export of that same import: the
+# import initializes after what it is handed, and its export exists only once it
+# has — reported at the import…
+kind: Assert.Manifest
+metadata:
+  name: importCycle
+source: ./__fixtures__/resource-inputs/optional/cycle/library/telo.yaml
+expect:
+  errors:
+    - code: DEPENDENCY_CYCLE
+      message: "Circular dependency detected:\n  Kinds.Collector \"collector\"\n    → Telo.Import \"Lib\"\n    → Kinds.Collector \"collector\"\nImport 'Lib' initializes after the resources it is handed"
+---
+# …and refused by the kernel, before the library's resources initialize, from a
+# consumer whose entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: importCycleAtRuntime
+source: ./__fixtures__/resource-inputs/optional/cycle/consumer.yaml
+expect:
+  errors: []
+  runFails: "ERR_CIRCULAR_DEPENDENCY"
+---
+# A library's optional resource input referenced outside a branch proving it
+# present — refused at the library, labelled with the configuration it is absent
+# in…
+kind: Assert.Manifest
+metadata:
+  name: optionalInputReferenced
+source: ./__fixtures__/resource-inputs/optional/referenced/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_OPTIONAL_REFERENCED
+      message: "Kinds.Holder/holder: 'store' references resource input 'store', which is optional and may be absent."
+---
+# …at the import of a consumer omitting it, whose run is refused…
+kind: Assert.Manifest
+metadata:
+  name: optionalInputReferencedAtRuntime
+source: ./__fixtures__/resource-inputs/optional/referenced/omitting.yaml
+expect:
+  errors:
+    - code: RESOURCE_INPUT_OPTIONAL_REFERENCED
+      message: "Imported library 'UnprovenStore', reached through import 'Lib': Kinds.Holder/holder: 'store' references resource input 'store'"
+  runFails: "[RESOURCE_INPUT_OPTIONAL_REFERENCED] Imported library 'UnprovenStore', reached through import 'Lib'"
+---
+# …while a consumer supplying it boots.
+kind: Assert.Manifest
+metadata:
+  name: optionalInputReferencedSupplied
+source: ./__fixtures__/resource-inputs/optional/referenced/supplying.yaml
+expect:
+  errors: []
+  runs: true
+---
 # A kind spelled by the name of a module only a dependency imports. The graph
 # holds that module's definitions, which the analyzer used to resolve by their
 # canonical name from anywhere, while the kernel resolves a kind through the
@@ -1078,20 +1218,19 @@ expect:
   errors: []
   runFails: "[ERR_HOST_PATH_ENTRY_MISMATCH]"
 ---
-# A provider declared in a `with:` scope is created when the scope opens, so its
-# status in a scoped sibling's startup field is refused where the read is
-# written…
+# A `with:` member's own fields never see a sibling in `resources` — a
+# provider's status included — so the read is refused where it is written…
 kind: Assert.Manifest
 metadata:
   name: scopedProviderStatusAtStartup
 source: ./__fixtures__/check-run-agreement/provider-status/scoped-lib/telo.yaml
 expect:
   errors:
-    - code: OBSERVED_STATE_IN_STARTUP_FIELD
-      message: "'first' is declared in the 'with' scope of Run.Sequence/check"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.first' is not defined"
 ---
-# …and by the kernel when the scope opens, from a consumer whose entry-scoped
-# check is silent.
+# …and by the kernel when the scope opens and creates the member, from a
+# consumer whose entry-scoped check is silent.
 kind: Assert.Manifest
 metadata:
   name: scopedProviderStatusAtStartupAtRuntime
@@ -1883,6 +2022,19 @@ source: ./__fixtures__/check-run-agreement/ref-slot-computed/telo.yaml
 expect:
   errors: []
   runFails: "RefSlotComputedLib.Bus/bus: 'routes: !cel"
+---
+# A library's kind declared at the ROOT: its kind is spelled through the root's
+# alias, so both halves read its reference positions through the view of the
+# module declaring the resource, never the library's (which cannot spell it).
+kind: Assert.Manifest
+metadata:
+  name: refSlotComputedRootKind
+source: ./__fixtures__/check-run-agreement/ref-slot-computed/root-kind/telo.yaml
+expect:
+  errors:
+    - code: REF_SLOT_COMPUTED
+      message: "Lib.Bus/rootBus: 'handler: !cel"
+  runFails: "[REF_SLOT_COMPUTED] Lib.Bus/rootBus: 'handler: !cel"
 ---
 # A value a template body forwards with a bare `self.<path>` is a field of the
 # ENTRY's kind at boot, so it is checked as one: a forwarded route whose status
@@ -5705,3 +5857,868 @@ source: ./__fixtures__/check-run-agreement/rethrow-outside-catch/telo.yaml
 expect:
   errors: []
   runFails: "Step \"again\" is a rethrow with no caught failure to re-raise"
+---
+# A member of an `x-telo-scope` array is a declaration of its holder's module:
+# a misspelled field and an unresolved `!ref` inside one — in `Run.Sequence`'s
+# `with:` and in a third-party kind's `members:`, found through `x-telo-scope`
+# alone — two members of one scope sharing a name, and two members holding each
+# other, are reported at the library that writes them…
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberDefects
+source: ./__fixtures__/check-run-agreement/scope-members/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Run.Value/answer: / is missing required property 'value'"
+    - code: UNRESOLVED_REFERENCE
+      message: "Run.Sequence/inner: step invoke at 'steps[0].invoke' → resource 'nowhere' not found"
+    - code: SCHEMA_VIOLATION
+      message: "Kinds.Target/answer: / must NOT have additional properties ('answr' is not allowed)"
+    - code: UNRESOLVED_REFERENCE
+      message: "Kinds.Target/answer: reference at 'target' → resource 'nowhere' not found"
+    - code: DUPLICATE_RESOURCE_NAME
+      message: "in the 'with' scope of Run.Sequence/sequenceDuplicate, so opening that scope fails"
+    - code: DEPENDENCY_CYCLE
+      message: "Run.Sequence \"first\""
+---
+# …and, from a consumer whose entry-scoped check is silent about a dependency's
+# members, refused by the kernel when each scope opens.
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberSequenceSchemaAtRuntime
+source: ./__fixtures__/check-run-agreement/scope-members/sequence-schema.yaml
+expect:
+  errors: []
+  runFails: "is missing required property 'value'"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberSequenceRefAtRuntime
+source: ./__fixtures__/check-run-agreement/scope-members/sequence-ref.yaml
+expect:
+  errors: []
+  runFails: "Resource not found for invocation: .nowhere"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberHostSchemaAtRuntime
+source: ./__fixtures__/check-run-agreement/scope-members/host-schema.yaml
+expect:
+  errors: []
+  runFails: "'answr' is not allowed"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberHostRefAtRuntime
+source: ./__fixtures__/check-run-agreement/scope-members/host-ref.yaml
+expect:
+  errors: []
+  runFails: "Resource 'nowhere' not found in module context"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberSequenceDuplicateAtRuntime
+source: ./__fixtures__/check-run-agreement/scope-members/sequence-duplicate.yaml
+expect:
+  errors: []
+  runFails: "Resource 'answer' is already registered"
+---
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberSequenceCycleAtRuntime
+source: ./__fixtures__/check-run-agreement/scope-members/sequence-cycle.yaml
+expect:
+  errors: []
+  runFails: "Local reference 'second' is registered but not initialized yet"
+---
+# A CEL typo inside a scope member. An exported resource's expressions are typed
+# in its consumer's analysis as well, its members' with them, so the consumer's
+# check reports both and its run is refused at load with them.
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberCel
+source: ./__fixtures__/check-run-agreement/scope-members/cel.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Run.Value/answer: !cel: \"limt\" is not declared here (declared: limit)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Kinds.Target/answer: !cel: \"limt\" is not declared here (declared: limit)"
+  runFails: "[CEL_UNKNOWN_FIELD] Run.Value/answer: !cel: \"limt\" is not declared here"
+---
+# `resources.<member>` is readable only inside the regions of the resource
+# declaring the scope, as the kernel's scope run binds it: a member's own field
+# reading its sibling is refused…
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberCelSibling
+source: ./__fixtures__/check-run-agreement/scope-members/cel-sibling.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Run.Value/second: !cel: 'resources.first' is not defined"
+  runFails: "[CEL_UNKNOWN_FIELD] Run.Value/second: !cel: 'resources.first' is not defined"
+---
+# …an inner sequence's steps reading an outer member are refused…
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberCelNested
+source: ./__fixtures__/check-run-agreement/scope-members/cel-nested.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Run.Sequence/inner: !cel: 'resources.outer' is not defined"
+  runFails: "[CEL_UNKNOWN_FIELD] Run.Sequence/inner: !cel: 'resources.outer' is not defined"
+---
+# …and the holder's own steps read a started member's observed state.
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberCelStatus
+source: ./__fixtures__/check-run-agreement/scope-members/cel-status.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A field evaluated at load inside a scope's region is expanded when the holder
+# is created, before any scope run opens, so a member read there is refused at
+# the library…
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberCompileRegion
+source: ./__fixtures__/check-run-agreement/scope-members/compile-region-lib/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'resources.answer' is not defined"
+---
+# …and by the kernel when it creates the holder, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: scopeMemberCompileRegionAtRuntime
+source: ./__fixtures__/check-run-agreement/scope-members/compile-region.yaml
+expect:
+  errors: []
+  runFails: 'Expression !cel "string(resources.answer)" failed'
+---
+# `!if` / `!switch` where nothing is chosen — a library's `variables:` entry and
+# a kind's `schema:` — refused at the library…
+kind: Assert.Manifest
+metadata:
+  name: expansionBranchPosition
+source: ./__fixtures__/check-run-agreement/expansion/branch-position/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_POSITION_INVALID
+      message: "'!if' in a Telo.Library document outside 'targets:'"
+    - code: BRANCH_POSITION_INVALID
+      message: "'!switch' in a Telo.Definition document outside its template body"
+---
+# …and when a consumer's import loads it, the consumer's own check silent.
+kind: Assert.Manifest
+metadata:
+  name: expansionBranchPositionAtRuntime
+source: ./__fixtures__/check-run-agreement/expansion/branch-position/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_POSITION_INVALID] Telo.Library/BranchPositionLib: '!if' in a Telo.Library document outside 'targets:'"
+---
+# A refused `schema:` takes the body's reads of `self` with it: the refusal is
+# the one report.
+kind: Assert.Manifest
+metadata:
+  name: expansionSchemaRefusedBody
+source: ./__fixtures__/check-run-agreement/expansion/schema-refused-body.yaml
+expect:
+  errors:
+    - code: BRANCH_POSITION_INVALID
+      message: "'!if' in a Telo.Definition document outside its template body"
+  runFails: "[BRANCH_POSITION_INVALID]"
+---
+# A tag's mapping that does not fit its position: a `with:` member without the
+# declaration's `metadata`, and `metadata` on a value-position tag…
+kind: Assert.Manifest
+metadata:
+  name: expansionBranchShape
+source: ./__fixtures__/check-run-agreement/expansion/branch-shape/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_SHAPE_INVALID
+      message: "at a declaration position (an 'x-telo-scope' member) carries the declaration's 'metadata'"
+    - code: BRANCH_SHAPE_INVALID
+      message: "'!switch' at the value of a field carries no 'metadata'"
+---
+kind: Assert.Manifest
+metadata:
+  name: expansionBranchShapeAtRuntime
+source: ./__fixtures__/check-run-agreement/expansion/branch-shape/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_SHAPE_INVALID] Run.Sequence/sequence: '!if' at a declaration position (an 'x-telo-scope' member)"
+---
+# `!for-each` and `...` where no repeat stands, and a repeat's `key:` off a
+# splice…
+kind: Assert.Manifest
+metadata:
+  name: expansionRepeat
+source: ./__fixtures__/check-run-agreement/expansion/repeat/telo.yaml
+expect:
+  errors:
+    - code: REPEAT_OUTSIDE_TEMPLATE
+      message: "'!for-each' outside a template body"
+    - code: REPEAT_POSITION_INVALID
+      message: "'!for-each' at the value of a field"
+    - code: REPEAT_POSITION_INVALID
+      message: "A '...' key holds a '!for-each' or a list of them"
+    - code: REPEAT_SHAPE_INVALID
+      message: "The 'key:' of '!for-each' is written only on a repeat spliced under a '...' key"
+---
+kind: Assert.Manifest
+metadata:
+  name: expansionRepeatAtRuntime
+source: ./__fixtures__/check-run-agreement/expansion/repeat/app.yaml
+expect:
+  errors: []
+  runFails: "[REPEAT_OUTSIDE_TEMPLATE] Run.Sequence/outside: '!for-each' outside a template body"
+---
+# A `!ref` outside the grammar…
+kind: Assert.Manifest
+metadata:
+  name: refMemberInvalid
+source: ./__fixtures__/check-run-agreement/expansion/ref-member/telo.yaml
+expect:
+  errors:
+    - code: REF_MEMBER_INVALID
+      message: "'!ref Run.value.extra' is not a reference: '.' at offset 9"
+---
+kind: Assert.Manifest
+metadata:
+  name: refMemberInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/expansion/ref-member/app.yaml
+expect:
+  errors: []
+  runFails: "[REF_MEMBER_INVALID] Run.Sequence/sequence: '!ref Run.value.extra' is not a reference"
+---
+# A tag at a value the loader reads before anything is expanded — an import —
+# refused at load, whether the file is the entry or a dependency.
+kind: Assert.Manifest
+metadata:
+  name: expansionLoaderPosition
+source: ./__fixtures__/check-run-agreement/expansion/loader-position/entry.yaml
+expect:
+  errors:
+    - code: BRANCH_POSITION_INVALID
+      message: "'!if' at 'imports.Run' of the Telo.Application document"
+  runFails: "[BRANCH_POSITION_INVALID] '!if' at 'imports.Run' of the Telo.Application document"
+---
+kind: Assert.Manifest
+metadata:
+  name: expansionLoaderPositionAtRuntime
+source: ./__fixtures__/check-run-agreement/expansion/loader-position/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_POSITION_INVALID
+      message: "'!if' at 'imports.Run' of the Telo.Library document"
+---
+kind: Assert.Manifest
+metadata:
+  name: expansionLoaderPositionInDependency
+source: ./__fixtures__/check-run-agreement/expansion/loader-position/app.yaml
+expect:
+  errors:
+    - code: BRANCH_POSITION_INVALID
+      message: "'!if' at 'imports.Run' of the Telo.Library document"
+  runFails: "[BRANCH_POSITION_INVALID] '!if' at 'imports.Run' of the Telo.Library document"
+---
+# `--- !if` as a file's first document: one refusal at the tag, nothing else.
+kind: Assert.Manifest
+metadata:
+  name: expansionFirstDocument
+source: ./__fixtures__/check-run-agreement/expansion/first-document.yaml
+expect:
+  errors:
+    - code: BRANCH_POSITION_INVALID
+      message: "is the first document of a module file"
+  runFails: "[BRANCH_POSITION_INVALID] !if/first: '!if' is the first document of a module file"
+---
+# A tag on a sequence, refused by the loader.
+kind: Assert.Manifest
+metadata:
+  name: expansionOnSequence
+source: ./__fixtures__/check-run-agreement/expansion/on-sequence.yaml
+expect:
+  errors:
+    - code: BRANCH_SHAPE_INVALID
+      message: "'!if' is written on a sequence"
+  runFails: "[BRANCH_SHAPE_INVALID] '!if' is written on a sequence"
+---
+# A choice missing the key that decides it: refused by its shape, at check and
+# at run alike, never read as a condition that yields null.
+kind: Assert.Manifest
+metadata:
+  name: expansionMissingKey
+source: ./__fixtures__/check-run-agreement/expansion/missing-key.yaml
+expect:
+  errors:
+    - code: BRANCH_SHAPE_INVALID
+      message: "'!if' needs 'if:'."
+    - code: BRANCH_SHAPE_INVALID
+      message: "'!switch' needs 'switch:'."
+  runFails: "[BRANCH_SHAPE_INVALID] Telo.Application/MissingKey: '!if' needs 'if:'."
+---
+# A library's own choices, each refused where the library is checked…
+kind: Assert.Manifest
+metadata:
+  name: configurationChoices
+source: ./__fixtures__/check-run-agreement/configurations/choices/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "but 'variables.name' is not declared 'enum', 'const' or 'type: boolean'"
+    - code: BRANCH_CONDITION_INVALID
+      message: "The condition of '!if' is a 'string', where a condition is a boolean."
+    - code: BRANCH_CASE_INVALID
+      message: "The 'else:' branch of '!if' at a declaration position is a list."
+    - code: BRANCH_CASE_KEY_INVALID
+      message: "Case 'yes' of '!switch' is not a value of the selector's type 'bool'"
+    - code: BRANCH_NOT_EXHAUSTIVE
+      message: "'!switch' selects no case for 'b' and has no 'default:'."
+---
+# …and when a consumer's import loads it, with the consumer's own check silent.
+kind: Assert.Manifest
+metadata:
+  name: configurationChoicesUndecidableAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_UNDECIDABLE] Run.Sequence/sequence: The condition of '!if' is decided before boot, but 'variables.name'"
+---
+kind: Assert.Manifest
+metadata:
+  name: configurationChoicesConditionAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_CONDITION_INVALID] Run.Sequence/sequence: The condition of '!if' is a 'string'"
+---
+kind: Assert.Manifest
+metadata:
+  name: configurationChoicesCaseKeyAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_CASE_KEY_INVALID] Run.Sequence/sequence: Case 'yes' of '!switch'"
+---
+kind: Assert.Manifest
+metadata:
+  name: configurationChoicesNotExhaustiveAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_NOT_EXHAUSTIVE] Run.Sequence/sequence: '!switch' selects no case for 'b'"
+---
+kind: Assert.Manifest
+metadata:
+  name: configurationChoicesCaseInvalidAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_CASE_INVALID] !if/listed: The 'else:' branch of '!if' at a declaration position is a list."
+---
+# A library's choice its importer binds to a value nothing decides before boot:
+# refused at the entry's own binding, by check and by run…
+kind: Assert.Manifest
+metadata:
+  name: configurationBindingOpen
+source: ./__fixtures__/configurations/binding-open.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "Import 'Lib' binds a value a choice of the library decides on before boot"
+  runFails: "[BRANCH_UNDECIDABLE] Import 'Lib' binds a value a choice of the library decides on before boot"
+---
+# …while a binding reading only a dimension decides it, and the run boots.
+kind: Assert.Manifest
+metadata:
+  name: configurationBindingTernary
+source: ./__fixtures__/configurations/binding-ternary.yaml
+expect:
+  errors: []
+  runs: true
+---
+# The same open binding one import deeper: refused at the library writing it…
+kind: Assert.Manifest
+metadata:
+  name: configurationBindingInLibrary
+source: ./__fixtures__/check-run-agreement/configurations/binding-mid/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "Import 'Lib' binds a value a choice of the library decides on before boot"
+---
+# …and by the import loading it, with the consumer's own check silent.
+kind: Assert.Manifest
+metadata:
+  name: configurationBindingInLibraryAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/binding-mid/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_UNDECIDABLE] Import 'Lib' binds a value a choice of the library decides on before boot"
+---
+# A choice declaration a library re-exports: decided by the inner binding, it
+# checks clean and boots…
+kind: Assert.Manifest
+metadata:
+  name: configurationReExportDecided
+source: ./__fixtures__/configurations/reexport-decided.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …and bound to an open input it is the one refusal at the binding, with no crash,
+# at the library writing it…
+kind: Assert.Manifest
+metadata:
+  name: configurationReExportOpen
+source: ./__fixtures__/check-run-agreement/configurations/reexport-open/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "Import 'Inner' binds a value a choice of the library decides on before boot"
+---
+# …and by the import loading it.
+kind: Assert.Manifest
+metadata:
+  name: configurationReExportOpenAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/reexport-open/app.yaml
+expect:
+  errors: []
+  runFails: "[BRANCH_UNDECIDABLE] Import 'Inner' binds a value a choice of the library decides on before boot"
+---
+# A condition calling a function nothing can run before boot — a native one, or
+# one whose body reads the clock — refused by check and by run.
+kind: Assert.Manifest
+metadata:
+  name: configurationCallRefused
+source: ./__fixtures__/configurations/call-refused.yaml
+expect:
+  errors:
+    - code: BRANCH_CONDITION_INVALID
+      message: "The condition of '!if' calls 'Self.native', which needs the runtime's host"
+    - code: BRANCH_CONDITION_INVALID
+      message: "The condition of '!if' calls 'Self.afterEpoch', which re-evaluates per call"
+  runFails: "[BRANCH_CONDITION_INVALID] Run.Value/byNative: The condition of '!if' calls 'Self.native'"
+---
+# One name chosen as a named shape in one configuration and an instance in the
+# other, refused by check and by run.
+kind: Assert.Manifest
+metadata:
+  name: configurationMixedLevel
+source: ./__fixtures__/check-run-agreement/configurations/mixed-level/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_CASE_INVALID
+      message: "The 'else:' branch of '!if' declares a resource instance"
+  runFails: "[BRANCH_CASE_INVALID] !if/Amount: The 'else:' branch of '!if' declares a resource instance"
+---
+# A dimension read whole at a narrower slot is that configuration's literal
+# there: a schema violation in the configuration it falls outside, by check
+# and by run.
+kind: Assert.Manifest
+metadata:
+  name: configurationNarrowedLiteral
+source: ./__fixtures__/configurations/narrowing.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/dialect must be equal to one of the allowed values (postgres | sqlite) (when variables.dialect is mysql)"
+  runFails: "[SCHEMA_VIOLATION] Self.Store/store: /dialect must be equal to one of the allowed values (postgres | sqlite) (when variables.dialect is mysql)"
+---
+# A field a named shape makes an accessor in one configuration only: a value
+# that is no plain chain is refused there, labelled with that configuration,
+# by check and by run.
+kind: Assert.Manifest
+metadata:
+  name: configurationShapeAccessor
+source: ./__fixtures__/check-run-agreement/configurations/shape-accessor/telo.yaml
+expect:
+  errors:
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "is not a plain chain the field can name: it starts at 'variables'"
+  runFails: "[ACCESSOR_NOT_PLAIN_CHAIN] Self.Probe/probe: 'result.at: !cel \"variables.mode\"' is not a plain chain"
+---
+# A reference to an optional need is legal inside the branch proving it present:
+# clean, and it boots with the need absent…
+kind: Assert.Manifest
+metadata:
+  name: needReferencedInBranch
+source: ./__fixtures__/check-run-agreement/configurations/needs/in-branch.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …and refused outside every such branch, in the configuration where it is absent.
+kind: Assert.Manifest
+metadata:
+  name: needReferencedOutsideBranch
+source: ./__fixtures__/check-run-agreement/configurations/needs/outside-branch.yaml
+expect:
+  errors:
+    - code: NEED_OPTIONAL_REFERENCED
+      message: "or make it required. (when resources.a is absent)"
+  runFails: "ERR_NEED_OPTIONAL_REFERENCED"
+---
+# A library's own optional need, referenced in and out of a branch proving it
+# present: only the reference outside is refused…
+kind: Assert.Manifest
+metadata:
+  name: needReferencedOutsideBranchInLibrary
+source: ./__fixtures__/check-run-agreement/configurations/needs/optional-lib/telo.yaml
+expect:
+  errors:
+    - code: NEED_OPTIONAL_REFERENCED
+      message: "or make it required. (when resources.access is absent)"
+---
+# …reported at the import of a consumer supplying it, and refused at its run.
+kind: Assert.Manifest
+metadata:
+  name: needReferencedOutsideBranchInLibraryAtRuntime
+source: ./__fixtures__/check-run-agreement/configurations/needs/optional-app.yaml
+expect:
+  errors:
+    - code: NEED_OPTIONAL_REFERENCED
+      message: "Imported library 'NeedReferencedByBranch', reached through import 'Lib'"
+  runFails: "ERR_NEED_OPTIONAL_REFERENCED"
+---
+# A library's optional need left unsupplied at its import is read from the
+# application's environment, keyed by its need path: clean, and it boots with
+# the need absent (`tests/configurations.yaml` boots it present).
+kind: Assert.Manifest
+metadata:
+  name: needPresenceUnsuppliedLibrary
+source: ./__fixtures__/configurations/needs/library.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A port never admits absence: `default: null` on one is refused by check and at load.
+kind: Assert.Manifest
+metadata:
+  name: portDefaultNull
+source: ./__fixtures__/check-run-agreement/configurations/needs/port-null.yaml
+expect:
+  errors:
+    - code: DEFAULT_INVALID
+      message: "the default of ports.http is null, but a port never admits absence"
+  runFails: "a port never admits absence"
+---
+# A template's `targets:` item names an entry that exists only when `a < b`,
+# while the item is chosen when `a >= b`: the two unrelated conditions leave one
+# combination naming no entry, reported at the declaring library with both atoms…
+kind: Assert.Manifest
+metadata:
+  name: templateInitDefinition
+source: ./__fixtures__/check-run-agreement/template-init/lib/telo.yaml
+expect:
+  errors:
+    - code: TEMPLATE_TARGET_UNKNOWN
+      message: "(when 'self.a < self.b' is false and 'self.a >= self.b' is true)"
+---
+# …a consumer whose values avoid that combination is silent and boots…
+kind: Assert.Manifest
+metadata:
+  name: templateInitAvoiding
+source: ./__fixtures__/check-run-agreement/template-init/consumer/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …and one that reaches it is refused by its own check, at the instance, and the
+# run fails with the same code.
+kind: Assert.Manifest
+metadata:
+  name: templateInitReaching
+source: ./__fixtures__/check-run-agreement/template-init/consumer/reaching.yaml
+expect:
+  errors:
+    - code: TEMPLATE_TARGET_UNKNOWN
+      message: "expanded for this instance: 'targets[0]: !ref other' names no entry in 'resources:'"
+  runFails: "[TEMPLATE_TARGET_UNKNOWN] Lib.Unrelated/unrelated"
+---
+# An integer-like key of a map a repeat iterates is refused where the consumer
+# wrote it, and the run fails with the same code.
+kind: Assert.Manifest
+metadata:
+  name: templateInitNumericKey
+source: ./__fixtures__/check-run-agreement/template-init/consumer/numeric-key.yaml
+expect:
+  errors:
+    - code: REPEAT_NUMERIC_KEY
+      message: "'2024' is an integer-like key of a map the template of TemplateInitLib.Hooks repeats over"
+  runFails: "[REPEAT_NUMERIC_KEY] Lib.Hooks/hooks"
+---
+# An inline `targets:` item of a kind nothing starts, refused at the library…
+kind: Assert.Manifest
+metadata:
+  name: templateInitInlineTarget
+source: ./__fixtures__/check-run-agreement/template-init/inline-lib/telo.yaml
+expect:
+  errors:
+    - code: TEMPLATE_TARGETS_CAPABILITY
+      message: "'targets[0]' declares a Run.Value, whose capability is 'Telo.Invocable'"
+---
+# …and when a consumer's import loads it, the consumer's own check silent.
+kind: Assert.Manifest
+metadata:
+  name: templateInitInlineTargetAtRuntime
+source: ./__fixtures__/check-run-agreement/template-init/consumer/inline.yaml
+expect:
+  errors: []
+  runFails: "ERR_TEMPLATE_TARGETS_CAPABILITY"
+---
+# A choice reading another resource's published state is decided by nothing before
+# boot: refused at the library, never taken both ways…
+kind: Assert.Manifest
+metadata:
+  name: templateInitUndecidable
+source: ./__fixtures__/check-run-agreement/template-init/undecidable-lib/telo.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "it reads 'resources.other.x', which no consumer's manifest can decide"
+---
+# …and refused at the consumer's instance, whose run fails with the same code.
+kind: Assert.Manifest
+metadata:
+  name: templateInitUndecidableAtRuntime
+source: ./__fixtures__/check-run-agreement/template-init/consumer/undecidable.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "no such variable: resources.other.x"
+  runFails: "[BRANCH_UNDECIDABLE] Lib.Reads/reads"
+---
+# A dependency's declaration of another library's templated kind reaches a bad
+# combination (an integer-like key): refused at the entry's import reaching it,
+# and the run fails with the same code.
+kind: Assert.Manifest
+metadata:
+  name: templateInitDependent
+source: ./__fixtures__/check-run-agreement/template-init/consumer/dependent.yaml
+expect:
+  errors:
+    - code: REPEAT_NUMERIC_KEY
+      message: "Imported library 'TemplateInitDependent', reached through import 'Dep': Lib.Hooks/hooks: '2024' is an integer-like key"
+  runFails: "[REPEAT_NUMERIC_KEY]"
+---
+# A consumer reaching two refusals at once is refused for both, in one error.
+kind: Assert.Manifest
+metadata:
+  name: templateInitBoth
+source: ./__fixtures__/check-run-agreement/template-init/consumer/both.yaml
+expect:
+  errors:
+    - code: REPEAT_COMPUTED
+      message: "repeats over this value, but it is computed, and no configuration decides it"
+    - code: BRANCH_UNDECIDABLE
+      message: "is decided by this value when the instance is created, but it is computed, and no configuration decides it"
+  runFails: "[REPEAT_COMPUTED] Lib.Both/both"
+---
+# A choice reading a declaration of another module through a reference is not this
+# consumer's to decide.
+kind: Assert.Manifest
+metadata:
+  name: templateInitCrossing
+source: ./__fixtures__/check-run-agreement/template-init/consumer/crossing.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "it crosses into a declaration of module 'CrossingLib'"
+  runFails: "[BRANCH_UNDECIDABLE] Lib.Switched/byImport"
+---
+# A dependency's declaration of a template's kind with a mode chained to its own
+# variable: a literal binding that avoids the bad combination is silent and runs…
+kind: Assert.Manifest
+metadata:
+  name: templateInitModedLiteral
+source: ./__fixtures__/check-run-agreement/template-init/consumer/moded-a.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …one that reaches it is refused at the import, with the same code at run…
+kind: Assert.Manifest
+metadata:
+  name: templateInitModedUnknown
+source: ./__fixtures__/check-run-agreement/template-init/consumer/moded-b.yaml
+expect:
+  errors:
+    - code: TEMPLATE_TARGET_UNKNOWN
+      message: "Imported library 'TemplateInitModedDependent', reached through import 'Dep': Lib.Moded/moded"
+  runFails: "[TEMPLATE_TARGET_UNKNOWN]"
+---
+# …and an open binding is the one refusal at the binding, with nothing beside it.
+kind: Assert.Manifest
+metadata:
+  name: templateInitModedOpen
+source: ./__fixtures__/check-run-agreement/template-init/consumer/moded-open.yaml
+expect:
+  errors:
+    - code: BRANCH_UNDECIDABLE
+      message: "Import 'Dep' binds a value a choice of the library decides on before boot, but 'variables.mode' is not declared 'enum'"
+  runFails: "[BRANCH_UNDECIDABLE] Import 'Dep' binds"
+---
+# A family member named by a binding that iterates another source is refused at
+# the declaring library…
+kind: Assert.Manifest
+metadata:
+  name: familyMemberUnproven
+source: ./__fixtures__/check-run-agreement/families/member-lib/telo.yaml
+expect:
+  errors:
+    - code: REF_MEMBER_INVALID
+      message: "'!ref tasks[each.key]' indexes by 'each', which iterates 'self.others', not the family's own source"
+---
+# …and a consumer whose own check is silent fails at the import.
+kind: Assert.Manifest
+metadata:
+  name: familyMemberUnprovenAtRuntime
+source: ./__fixtures__/check-run-agreement/families/consumer/member.yaml
+expect:
+  errors: []
+  runFails: "[REF_MEMBER_INVALID] Telo.Definition/Tasks: '!ref tasks[each.key]' indexes by 'each'"
+---
+# A family whose `emit:` is an `!if` with no `else:` would leave an element with
+# no member: refused at the library…
+kind: Assert.Manifest
+metadata:
+  name: familyEmitPartial
+source: ./__fixtures__/check-run-agreement/families/emit-lib/telo.yaml
+expect:
+  errors:
+    - code: REPEAT_EMIT_INVALID
+      message: "A family's '!for-each' emits an '!if' with no 'else:'"
+---
+kind: Assert.Manifest
+metadata:
+  name: familyEmitPartialAtRuntime
+source: ./__fixtures__/check-run-agreement/families/consumer/emit.yaml
+expect:
+  errors: []
+  runFails: "[REPEAT_EMIT_INVALID] Telo.Definition/Tasks: A family's '!for-each' emits an '!if' with no 'else:'"
+---
+# A step written with `__emitted`, the identity only the expansion writes:
+# refused at the library…
+kind: Assert.Manifest
+metadata:
+  name: familyEmittedWritten
+source: ./__fixtures__/check-run-agreement/families/emitted-lib/telo.yaml
+expect:
+  errors:
+    - code: REPEAT_POSITION_INVALID
+      message: "'__emitted' is the identity a template's '!for-each' gives a step it emits"
+---
+kind: Assert.Manifest
+metadata:
+  name: familyEmittedWrittenAtRuntime
+source: ./__fixtures__/check-run-agreement/families/consumer/emitted.yaml
+expect:
+  errors: []
+  runFails: "[REPEAT_POSITION_INVALID] Telo.Definition/Steps: '__emitted' is the identity"
+---
+# An indexed `!ref` outside a template body, where no family is declared:
+# refused in the entry's own module by check and run alike…
+kind: Assert.Manifest
+metadata:
+  name: familyIndexOutsideBody
+source: ./__fixtures__/check-run-agreement/families/consumer/indexed.yaml
+expect:
+  errors:
+    - code: REF_MEMBER_INVALID
+      message: "'!ref noop[each.key]' indexes a family member, but a family is declared only inside a template body"
+  runFails: "REF_MEMBER_INVALID"
+---
+# …and in a library, at the import of a consumer whose own check is silent.
+kind: Assert.Manifest
+metadata:
+  name: familyIndexOutsideBodyAtRuntime
+source: ./__fixtures__/check-run-agreement/families/consumer/outside.yaml
+expect:
+  errors: []
+  runFails: "[REF_MEMBER_INVALID] Run.Sequence/sequence: '!ref noop[each.key]' indexes a family member"
+
+---
+# A template body's `resources` holds its own entries: a sibling's observed
+# state and a family's member are read typed and at run, and a body entry
+# shadows a module resource of the same name as its `!ref` does…
+kind: Assert.Manifest
+metadata:
+  name: bodyResourcesSibling
+source: ./template-body-resources.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …a misspelled field of a sibling's observed state is refused by both…
+kind: Assert.Manifest
+metadata:
+  name: bodyResourcesTypo
+source: ./__fixtures__/check-run-agreement/body-resources/typo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Telo.Definition/Pipeline: !cel: 'resources.tally.status.runz' is not defined"
+  runFails: "[CEL_UNKNOWN_FIELD] Telo.Definition/Pipeline: !cel: 'resources.tally.status.runz' is not defined"
+---
+# …so is a startup read of a non-Provider sibling's observed state…
+kind: Assert.Manifest
+metadata:
+  name: bodyResourcesStartup
+source: ./__fixtures__/check-run-agreement/body-resources/startup.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_IN_STARTUP_FIELD
+      message: "so 'resources.tally.status.runs' does not exist yet"
+  runFails: "[OBSERVED_STATE_IN_STARTUP_FIELD]"
+---
+# …and a module resource cannot read a body's entry.
+kind: Assert.Manifest
+metadata:
+  name: bodyResourcesOutside
+source: ./__fixtures__/check-run-agreement/body-resources/outside.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Run.Sequence/outside: !cel: 'resources.counters' is not defined"
+  runFails: "[CEL_UNKNOWN_FIELD] Run.Sequence/outside: !cel: 'resources.counters' is not defined"
+---
+# …through a family's index too: the read is of the family's kind, whatever the key.
+kind: Assert.Manifest
+metadata:
+  name: bodyResourcesStartupFamily
+source: ./__fixtures__/check-run-agreement/body-resources/startup-family.yaml
+expect:
+  errors:
+    - code: OBSERVED_STATE_IN_STARTUP_FIELD
+      message: "does not exist yet"
+  runFails: "[OBSERVED_STATE_IN_STARTUP_FIELD]"
+---
+# A body entry's startup field may read a Provider sibling's observed state, the
+# reader written first: the read orders it after the provider…
+kind: Assert.Manifest
+metadata:
+  name: bodyResourcesProviderRead
+source: ./__fixtures__/check-run-agreement/body-resources/provider-read.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …and through a family's index it waits for the member.
+kind: Assert.Manifest
+metadata:
+  name: bodyResourcesProviderFamilyRead
+source: ./__fixtures__/check-run-agreement/body-resources/provider-family-read.yaml
+expect:
+  errors: []
+  runs: true

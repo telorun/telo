@@ -1,0 +1,30 @@
+# An import supplying the optional store: the library holds it, and its default is never declared.
+kind: Telo.Application
+metadata:
+  name: OptionalSupplied
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+  Kinds: ./kinds
+  Lib:
+    source: ./lib
+    resources:
+      store: !ref mine
+targets:
+  - !ref verify
+---
+kind: Kinds.Store
+metadata:
+  name: mine
+label: mine
+---
+kind: Run.Sequence
+metadata:
+  name: verify
+steps:
+  - name: held
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.Lib.holder.label"
+      expected: mine

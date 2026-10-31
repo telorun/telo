@@ -1,13 +1,21 @@
 import {
+  choiceScopeOf,
+  collectModuleDocuments,
+  inputRequirements,
   needGraphFromLoadedGraph,
   needGraphScopeOf,
+  readChoices,
+  requirementDimensions,
   resolveNeedTable,
   DiagnosticSeverity,
   type AnalysisDiagnostic,
+  type InputRequirements,
   type LoadedGraph,
   type NeedTable,
   type NeedTypeShape,
+  type RequirementDimension,
 } from "@telorun/analyzer";
+import { isExpansionSentinel } from "@telorun/templating";
 import { loadAnalyzedGraph, printRefusals } from "./analyzed-graph.js";
 import type { Logger } from "./logger.js";
 import type { ManifestInput } from "./manifest-input.js";
@@ -21,6 +29,11 @@ export interface LoadedNeedTable {
   /** The root `Telo.Application` document. */
   root: Record<string, any>;
   table: NeedTable;
+  /** Which inputs and needs each configuration requires, and the dimensions
+   *  that is decided over with the environment variables each is read from —
+   *  the verdict the kernel demands inputs by. */
+  requirements: InputRequirements;
+  dimensions: RequirementDimension[];
   /** The need type a canonical kind registers, in the graph's registry. */
   needType(kind: string): NeedTypeShape | undefined;
 }
@@ -73,5 +86,14 @@ export async function loadNeedTable(
     printRefusals(analyzed, refusals, log, "application", product);
     return undefined;
   }
-  return { input, entryPath, graph, root, table, needType: scope.needType };
+  const { manifests, registry: analysis } = analyzed;
+  const declarations = manifests.filter((m) => !isExpansionSentinel(m));
+  const choices = readChoices(
+    declarations,
+    manifests.filter(isExpansionSentinel),
+    choiceScopeOf(declarations, analysis, undefined, table),
+  );
+  const requirements = inputRequirements(manifests, choices, table, collectModuleDocuments(graph));
+  const dimensions = requirementDimensions(requirements, root, table.environment);
+  return { input, entryPath, graph, root, table, requirements, dimensions, needType: scope.needType };
 }

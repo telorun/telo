@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { withQuotedPath } from "./quoted-place.js";
 import { abstractKindMessage, isInstantiableDefinition } from "./instantiable-kind.js";
 import { collectRefs } from "./reference-field-map.js";
 import { isInlineDeclaration } from "./resolved-reference.js";
@@ -9,6 +10,8 @@ import type { StandIns } from "./stand-in-findings.js";
 import type { SchemaIssue } from "./schema-error-report.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { collectValueSchemaIssues } from "./validate-value-schema.js";
+import type { DeclarationRequests } from "./declaration-requests.js";
+import { parseKeys, pathText } from "./template-expansion.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -57,30 +60,92 @@ export interface InlineConfigValidator {
  * own kind's schema, then recursed into so inline resources nested inside
  * inline resources are covered.
  *
- * Non-mutating: reads `manifest` and emits diagnostics anchored to its identity
- * and a concrete dotted path matching the position-index key format;
- * `rewriteSyntheticOrigins` reroutes those on inline-extracted (synthetic)
- * manifests back to the root doc.
+ * {@link nestedInlineAnchors} finds each such declaration, and
+ * {@link validateNestedInline} judges one. Non-mutating: diagnostics are
+ * anchored to the holder's identity and a concrete dotted path matching the
+ * position-index key format; `rewriteSyntheticOrigins` reroutes those on
+ * inline-extracted (synthetic) manifests back to the root doc.
+ *
+ * This finds every such declaration at a reference slot of `root` — not one
+ * nested inside another, which its holder's check reaches — with its keys.
  */
-export function validateNestedInlineResources(
-  manifest: ResourceManifest,
+export function nestedInlineAnchors(
+  root: unknown,
   rootSchema: Record<string, any>,
+): { readonly keys: readonly (string | number)[]; readonly value: Record<string, any> }[] {
+  const out: { keys: readonly (string | number)[]; value: Record<string, any> }[] = [];
+  walkSlots(root, rootSchema, rootSchema, [], (data, keys) => {
+    if (data && typeof data === "object" && !Array.isArray(data) && isInlineDeclaration(data)) {
+      out.push({ keys, value: data as Record<string, any> });
+    }
+  });
+  return out;
+}
+
+/** The reference slots `data` holds a value at, walking it with its schema
+ *  where the schema declares structure. */
+function walkSlots(
+  data: unknown,
+  schema: Record<string, any> | undefined,
+  schemaRoot: Record<string, any>,
+  keys: readonly (string | number)[],
+  atSlot: (data: unknown, keys: readonly (string | number)[]) => void,
+): void {
+  if (!schema || typeof schema !== "object") return;
+  const resolved = resolveRef(schema, schemaRoot);
+
+  // Reference slot: the value is either a named reference (`{kind, name}`,
+  // validated as its own manifest) or an inline resource to validate here.
+  if (collectRefs(resolved).length > 0) {
+    atSlot(data, keys);
+    return;
+  }
+
+  if (Array.isArray(data)) {
+    const itemSchema = resolved.items as Record<string, any> | undefined;
+    if (!itemSchema) return;
+    for (let i = 0; i < data.length; i++) {
+      walkSlots(data[i], itemSchema, schemaRoot, [...keys, i], atSlot);
+    }
+    return;
+  }
+
+  if (data && typeof data === "object") {
+    const props = collectProperties(resolved);
+    const additional =
+      resolved.additionalProperties &&
+      typeof resolved.additionalProperties === "object" &&
+      !Array.isArray(resolved.additionalProperties)
+        ? (resolved.additionalProperties as Record<string, any>)
+        : undefined;
+    // Descend only where the schema declares structure. Freeform fields
+    // (`additionalProperties: true`, e.g. step `inputs`) carry caller data
+    // that may coincidentally look like `{kind: …}`; not descending there
+    // keeps the inline-resource detection anchored to real ref slots.
+    for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
+      const propSchema = props[key] ?? additional;
+      if (!propSchema) continue;
+      walkSlots(value, propSchema as Record<string, any>, schemaRoot, [...keys, key], atSlot);
+    }
+  }
+}
+
+/**
+ * One inline declaration at `path` of the declaration `resource` names:
+ * whether its kind exists, whether it can be instantiated, and its config
+ * schema — then every inline declaration nested inside it, recursively.
+ */
+export function validateNestedInline(
+  inline: Record<string, any>,
+  path: string,
+  at: { readonly resource: { kind: string; name: string }; readonly filePath: string | undefined },
   lookupDefinition: InlineDefinitionLookup,
-  /** Needed to resolve a `telo#Type` field a value slot is validated against. */
-  allManifests: Record<string, any>[],
-  /** REQUIRED, and deliberately not defaulted: a default would be a second
-   *  validator answering the same question, and omitting it would silently stop
-   *  checking rather than fail. */
+  types: DeclarationRequests,
   validator: InlineConfigValidator,
-  /** The alias-form kinds an author could write in place of an abstract one, by
-   *  canonical kind. Required for the same reason `validator` is: the aliases in
-   *  scope are the caller's to know, and defaulting to "none reachable" would
-   *  turn a missing argument into a message that reads as an answer. */
   implementationsOf: (canonicalKind: string) => string[],
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
-  const resource = { kind: manifest.kind, name: manifest.metadata?.name as string };
-  const filePath = (manifest.metadata as { source?: string } | undefined)?.source;
+  const { resource, filePath } = at;
 
   function validateInline(inline: Record<string, any>, path: string): void {
     const kind = inline.kind as string;
@@ -155,74 +220,35 @@ export function validateNestedInlineResources(
     // resource, which are present either way.
     const inlineIssues = [
       ...validator.validate(substituted, effectiveSchema, standIns),
-      ...collectValueSchemaIssues(data, schema, allManifests, validator),
+      ...collectValueSchemaIssues(data, schema, types, validator),
     ];
     for (const issue of inlineIssues) {
-      diagnostics.push({
-        severity: DiagnosticSeverity.Error,
-        code: "SCHEMA_VIOLATION",
-        source: SOURCE,
-        message: `${resource.kind}/${resource.name}: inline ${kind} at '${path}': ${issue.message}`,
-        data: { resource, filePath, path: issue.path ? `${path}.${issue.path}` : path },
-      });
+      diagnostics.push(
+        withQuotedPath(
+          {
+            severity: DiagnosticSeverity.Error,
+            code: "SCHEMA_VIOLATION",
+            source: SOURCE,
+            message: `${resource.kind}/${resource.name}: inline ${kind} at '${path}': ${issue.message}`,
+            data: { resource, filePath, path: issue.path ? `${path}.${issue.path}` : path },
+          },
+          [
+            path,
+            // The inline declaration's own places, written relative to it.
+            ...(issue.places ?? []).map((text, i) => ({ text, relativeTo: path, mark: "`" as const, anywhere: i > 0 })),
+          ],
+        ),
+      );
     }
     // Recurse into the inline body against its own schema so deeper inline
     // resources (e.g. an inline Run.Sequence's own steps) are validated too.
-    walk(inline, schema, schema, path);
+    walkSlots(inline, schema, schema, parseKeys(path), (data, keys) => {
+      if (data && typeof data === "object" && !Array.isArray(data) && isInlineDeclaration(data)) {
+        validateInline(data as Record<string, any>, pathText(keys));
+      }
+    });
   }
 
-  function walk(
-    data: unknown,
-    schema: Record<string, any> | undefined,
-    schemaRoot: Record<string, any>,
-    path: string,
-  ): void {
-    if (!schema || typeof schema !== "object") return;
-    const resolved = resolveRef(schema, schemaRoot);
-
-    // Reference slot: the value is either a named reference (`{kind, name}`,
-    // validated as its own manifest) or an inline resource to validate here.
-    if (collectRefs(resolved).length > 0) {
-      if (
-        data &&
-        typeof data === "object" &&
-        !Array.isArray(data) &&
-        isInlineDeclaration(data)
-      ) {
-        validateInline(data as Record<string, any>, path);
-      }
-      return;
-    }
-
-    if (Array.isArray(data)) {
-      const itemSchema = resolved.items as Record<string, any> | undefined;
-      if (!itemSchema) return;
-      for (let i = 0; i < data.length; i++) {
-        walk(data[i], itemSchema, schemaRoot, `${path}[${i}]`);
-      }
-      return;
-    }
-
-    if (data && typeof data === "object") {
-      const props = collectProperties(resolved);
-      const additional =
-        resolved.additionalProperties &&
-        typeof resolved.additionalProperties === "object" &&
-        !Array.isArray(resolved.additionalProperties)
-          ? (resolved.additionalProperties as Record<string, any>)
-          : undefined;
-      // Descend only where the schema declares structure. Freeform fields
-      // (`additionalProperties: true`, e.g. step `inputs`) carry caller data
-      // that may coincidentally look like `{kind: …}`; not descending there
-      // keeps the inline-resource detection anchored to real ref slots.
-      for (const [key, value] of Object.entries(data as Record<string, unknown>)) {
-        const propSchema = props[key] ?? additional;
-        if (!propSchema) continue;
-        walk(value, propSchema as Record<string, any>, schemaRoot, path ? `${path}.${key}` : key);
-      }
-    }
-  }
-
-  walk(manifest, rootSchema, rootSchema, "");
+  validateInline(inline, path);
   return diagnostics;
 }

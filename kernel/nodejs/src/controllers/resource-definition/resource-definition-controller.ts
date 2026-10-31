@@ -28,7 +28,7 @@ import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guar
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
 import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js";
 import { refuseInvalidObserves } from "./observes-guard.js";
-import { createTemplateController } from "./resource-template-controller.js";
+import { createTemplateController, type TemplateHost } from "./resource-template-controller.js";
 import type { RefPositionHost } from "../../refuse-computed-ref-slots.js";
 import { createInheritedController } from "./resource-inherited-controller.js";
 import {
@@ -266,6 +266,9 @@ class ResourceDefinition implements ResourceInstance {
         this.resource as unknown as Record<string, unknown>,
         inheritedCapability(this.resource as ResourceDefinitionManifest, resolveDef),
         nearestName,
+        (kind) =>
+          (ctx as unknown as { resolveDefinitionIn(kind: string, module: string | undefined): ResourceDefinitionManifest | undefined })
+            .resolveDefinitionIn(kind, this.resource.metadata.module)?.capability,
       );
       if (targetProblem) {
         throw new RuntimeError(
@@ -280,7 +283,7 @@ class ResourceDefinition implements ResourceInstance {
       // registered the kind.
       const controllerInstance = createTemplateController(
         this.resource as any,
-        ctx as unknown as RefPositionHost & { shapeLookup: NamedShapeLookup },
+        ctx as unknown as RefPositionHost & TemplateHost,
       );
       register();
       await ctx.registerController(

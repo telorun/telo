@@ -36,10 +36,19 @@ Orders.cache  DatabaseAccess (oci://ghcr.io/acme/postgres-types)  optional
   declared by ./orders
   url  TELO_NEED_ORDERS__CACHE__URL  derived, required, sensitive
   schema  TELO_NEED_ORDERS__CACHE__SCHEMA  derived, optional
+
+data  DurableDirectory (Telo)  required when DATABASE_URL is unset
+  declared by ./
+  parameters {"size":"1Gi","access":"single-writer"}
+  path  TELO_NEED_DATA__PATH  derived, required
 ```
 
 A need supplied at an import is not in it: it is the importer's, not the
-environment's. The report carries no values.
+environment's. The report carries no values. Beside each need's type it says
+whether the application needs it: `optional`, `required`, `required when
+<sentence>` for one only some configurations need, or nothing for one no
+configuration reaches — the sentence names the variables that decide it, as
+`telo run <app> --help` does.
 
 Under `-o json` it is a versioned document — fields are added within a
 version, never changed:
@@ -47,6 +56,9 @@ version, never changed:
 ```json
 {
   "reportVersion": 1,
+  "dimensions": [
+    { "key": "resources.databaseAccess", "values": ["present", "absent"], "env": ["DATABASE_URL"] }
+  ],
   "needs": [
     {
       "path": "Orders.cache",
@@ -56,6 +68,7 @@ version, never changed:
       "features": [],
       "parameters": {},
       "optional": true,
+      "required": false,
       "fields": {
         "url": {
           "env": "TELO_NEED_ORDERS__CACHE__URL",
@@ -77,6 +90,7 @@ version, never changed:
 
 | Field | Meaning |
 |---|---|
+| `dimensions` | Every dimension the application's configurations are decided over — a `variables:` / `secrets:` value a choice reads, an optional need's presence (`resources.<need path>`) — as `{ key, values, env, member? }`: its key, its values (`present` / `absent` for a presence), the environment variables its value is read from (a need's required field variables, plus `TELO_HOST_STATE_DIR` for a `Telo.DurableDirectory` and the URL templates for a `Telo.PublicUrl`), and `member` for a dimension projecting one member off its input. A `requiredWhen` is keyed by these. |
 | `path` | The need path: its name beneath each importer's alias, `.`-separated. A `lifecycle: shared` library's needs sit beneath its own name, directly under the root. |
 | `declaredBy` | The module declaring the need. |
 | `type.module`, `type.name` | The need type: the module declaring it, and its name there — `Telo` for a type the kernel declares (`Telo.PublicUrl`, `Telo.PublicHostPattern`, `Telo.DurableDirectory`). A type's identity does not depend on the module's version. |
@@ -84,6 +98,8 @@ version, never changed:
 | `features` | The features the fulfilment must carry, `[]` when it asks for none. Checked the same way. |
 | `parameters` | What the need asks of its fulfilment, as the need type's `parameters` schema admits, with every default that schema declares filled in — so a host reads `size: 1Gi` from a `Telo.DurableDirectory` that wrote no parameters, and never restates a type's defaults. `{}` when the type declares none. |
 | `optional` | Whether the application runs without it. |
+| `required` | Whether some configuration of the application needs it — one whose resources and fields that exist there read it, `!ref` it or forward it to a library needing it. An optional need is never required. |
+| `requiredWhen` | The configurations needing it, as partial assignments keyed by dimension (`[{ "resources.databaseAccess": "absent" }]`; a dimension an entry leaves out holds every value); absent when every configuration or none needs it. |
 | `fields.<field>.env` | The one environment variable the field is read from. |
 | `fields.<field>.envSource` | `bound` — named by the application's `env:`; `derived` — from the need path. |
 | `fields.<field>.required` | Whether the need type requires the field. |
@@ -143,14 +159,31 @@ one.
    - when any variable of a need is set, every required one must be
      (`ERR_NEED_PARTIALLY_SUPPLIED`, naming which are set and which are not);
    - a required need with none set is `ERR_NEED_UNMET`, naming its path, its
-     type, the declaring module and every variable to set;
-   - an optional need with none set is `null`.
+     type, the declaring module and every variable to set — when the
+     configuration the application starts in needs it (`required`,
+     `requiredWhen` above). One it does not need, and an optional need, with
+     none set is `null`, so the database example starting on PostgreSQL never
+     asks for the `data` directory it reads only on SQLite.
 3. **Otherwise asked for**, when `telo run` is at a terminal and those two
    refusals are the only reason the load would fail: each missing required field
    is asked like any other missing input (a sensitive one without echo), its
    answer read as the variable's text would be and delivered only into the need
    — never set as the variable. See
    [Being asked for what is missing](./configuration.md#being-asked-for-what-is-missing).
+
+A need whose presence, or a closed member of whose field, decides an `!if` /
+`!switch` (`resources.<need> != null`, `resources.<need>.url.scheme`) is read
+first, before the documents are expanded, so the branch the application starts
+on is known before anything is created: an optional need is `present` when
+every required variable of it is set (or, for `Telo.DurableDirectory`, when
+`TELO_HOST_STATE_DIR` answers it), `absent` when none is, and some but not all
+set is `ERR_NEED_PARTIALLY_SUPPLIED` there. So is the presence of every optional
+need a library leaves to the environment, whether or not a choice reads it,
+since it decides which of the library's needs the application needs. The value
+each such dimension took is in `Kernel.Starting`'s `configuration`, keyed by the
+need's path (`resources.databaseAccess`, `resources.Orders.databaseAccess`). A
+library's choice reads the need its import bound, never the environment a
+second time.
 
 Once read, a need's variables are hidden from the running application, by
 exact name: a controller reading one through `process.env` or `ctx.env` gets

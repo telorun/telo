@@ -1,0 +1,24 @@
+# The same library with its need supplied at the import: present whatever the
+# environment holds, so there is one configuration.
+kind: Telo.Application
+metadata:
+  name: NeedPresenceSupplied
+imports:
+  Assert: ../../../../modules/assert
+  Run: ../../../../modules/run
+  Orders:
+    source: ./orders
+    needs:
+      databaseAccess: { url: "mem://orders" }
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.Orders.db.label"
+      expected: need

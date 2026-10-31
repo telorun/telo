@@ -16,6 +16,7 @@ import { forwardedShapeFieldsOf, refSentinelsIn } from "./contract-shapes.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { moduleCallSites } from "./cel-access-chains.js";
 import { moduleCallNamesOfFile, SELF_ALIAS } from "./module-call-names.js";
+import { isExpansionSentinel } from "@telorun/templating";
 
 /** One parsed `exports.resources` / `exports.kinds` entry. `name` is the exported
  *  instance name or kind suffix (the part after the dot, or the whole entry); `alias`
@@ -363,6 +364,7 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
 
   result.push(...selectModuleManifestsForAnalysis(collectModuleManifests(graph.entry), true));
 
+  const paths = importPathsOf(graph);
   const seen = new Set<string>([graph.rootSource]);
   const queue: string[] = [graph.rootSource];
 
@@ -379,7 +381,29 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
       const targetModule = graph.modules.get(edge.targetSource);
       if (!targetModule) continue;
 
-      result.push(...selectModuleManifestsForAnalysis(collectModuleManifests(targetModule), false));
+      const selected = selectModuleManifestsForAnalysis(collectModuleManifests(targetModule), false);
+      const reached = paths.get(edge.targetSource) ?? [];
+      const instances = (source: string) => paths.get(source)?.length ?? 0;
+      // A library imported more than once is one module instance per import,
+      // and a library importing one says which instance its references reach
+      // by its own path: each instance document is forwarded once per import
+      // path, stamped `metadata.importPath`, as that instance's.
+      const stamped =
+        instances(edge.targetSource) > 1 ||
+        [...(graph.importEdges.get(edge.targetSource)?.values() ?? [])].some((e) => instances(e.targetSource) > 1);
+      if (!stamped) {
+        result.push(...selected);
+        continue;
+      }
+      for (const m of selected) {
+        if (!isForwardedInstance(m)) {
+          result.push(m);
+          continue;
+        }
+        for (const importPath of reached) {
+          result.push({ ...m, metadata: { ...m.metadata, importPath } as ResourceManifest["metadata"] });
+        }
+      }
     }
   }
 
@@ -407,6 +431,43 @@ export function flattenForAnalyzer(graph: LoadedGraph): ResourceManifest[] {
   }
 
   return result;
+}
+
+/** An exported instance or an internal one it calls — a module instance's own
+ *  document, as opposed to the module's kinds, imports and named shapes. */
+function isForwardedInstance(m: ResourceManifest): boolean {
+  const meta = m.metadata as { forwardedExport?: unknown; forwardedInternal?: unknown } | undefined;
+  return meta?.forwardedExport === true || meta?.forwardedInternal === true;
+}
+
+/**
+ * Every import path from the root reaching each library — the aliases from the
+ * root down, the module-instance identity the need table names needs by. A
+ * `lifecycle: shared` library is one instance, named by the library itself
+ * whatever reaches it, and the libraries beneath it are reached under its name.
+ */
+function importPathsOf(graph: LoadedGraph): Map<string, string[][]> {
+  const out = new Map<string, string[][]>();
+  const walk = (source: string, path: readonly string[], stack: ReadonlySet<string>) => {
+    for (const [alias, edge] of graph.importEdges.get(source) ?? []) {
+      if (stack.has(edge.targetSource)) continue;
+      const target = graph.modules.get(edge.targetSource);
+      const libDoc = target?.owner.manifests.find((m) => m && isModuleKind(m.kind));
+      if (readLibraryLifecycle(libDoc) === "shared") {
+        // One instance, walked once.
+        if (out.has(edge.targetSource)) continue;
+        const reached = [edge.targetModuleName];
+        out.set(edge.targetSource, [reached]);
+        walk(edge.targetSource, reached, new Set([...stack, edge.targetSource]));
+        continue;
+      }
+      const reached = [...path, alias];
+      out.set(edge.targetSource, [...(out.get(edge.targetSource) ?? []), reached]);
+      walk(edge.targetSource, reached, new Set([...stack, edge.targetSource]));
+    }
+  };
+  walk(graph.rootSource, [], new Set([graph.rootSource]));
+  return out;
 }
 
 /** A re-export declared in a library's `exports.resources` as a dotted `Alias.Name`:
@@ -438,8 +499,8 @@ export function reExportSpecsFromExports(
 /** Forward re-exported instances (`exports.resources: [!ref Alias.name]`) transitively so a
  *  consumer's `!ref Consumer.name` resolves in `resolveRefSentinels` (keyed by the RE-EXPORTING
  *  module). The owning instance is already forwarded under its own module; here we emit an
- *  additional copy stamped under each re-exporting module, with an already-canonical kind. A
- *  fixpoint loop forwards chains of arbitrary depth (`app → api → domain → …`): each pass can
+ *  additional copy stamped under each re-exporting module (a declaration behind `!if`/`!switch`
+ *  is forwarded as its choice, see `reExportedChoice`). A fixpoint loop forwards chains of arbitrary depth (`app → api → domain → …`): each pass can
  *  resolve a re-export whose source was emitted in a prior pass. Graph-agnostic: `aliasToModule`
  *  maps `(module, alias)` to the imported module's name. Mutates `result` in place. */
 export function forwardReExportManifests(
@@ -447,13 +508,13 @@ export function forwardReExportManifests(
   specs: readonly ReExportSpec[],
   aliasToModule: (module: string, alias: string) => string | undefined,
 ): void {
-  // Index forwarded instances by `module\0name` (only re-export TARGETS are forwarded).
-  const forwarded = new Map<string, ResourceManifest>();
+  // Index forwarded instances by `module\0name` (only re-export TARGETS are
+  // forwarded) — one per module instance, where flatten forwarded one per import.
+  const forwarded = new Map<string, ResourceManifest[]>();
+  const add = (key: string, m: ResourceManifest) => forwarded.set(key, [...(forwarded.get(key) ?? []), m]);
   for (const m of result) {
     const meta = m.metadata as { module?: string; name?: string; forwardedExport?: boolean };
-    if (meta?.forwardedExport && meta.module && meta.name) {
-      forwarded.set(`${meta.module}\0${meta.name}`, m);
-    }
+    if (meta?.forwardedExport && meta.module && meta.name) add(`${meta.module}\0${meta.name}`, m);
   }
 
   // Canonicalize an authored/forwarded kind to a scope-independent `<module>.<Kind>` using the
@@ -475,29 +536,98 @@ export function forwardReExportManifests(
       if (forwarded.has(key)) continue;
       const sourceModule = aliasToModule(spec.module, spec.alias);
       if (!sourceModule) continue;
-      const src = forwarded.get(`${sourceModule}\0${spec.name}`);
-      if (!src) continue; // source not forwarded yet — a later pass may satisfy it
-      const kind = canonicalKind(src.kind as string, sourceModule);
-      const manifest: ResourceManifest = {
-        ...src,
-        kind,
-        metadata: {
-          ...src.metadata,
-          name: spec.name,
-          module: spec.module,
-          forwardedExport: true,
-          // The module that DECLARED it, whose scope its own references are
-          // written in — a projection hop through the copy resolves there.
-          declaringModule:
-            (src.metadata as { declaringModule?: string }).declaringModule ?? sourceModule,
-        } as ResourceManifest["metadata"],
-      };
-      result.push(manifest);
-      forwarded.set(key, manifest);
-      added = true;
+      const sources = forwarded.get(`${sourceModule}\0${spec.name}`);
+      if (!sources) continue; // source not forwarded yet — a later pass may satisfy it
+      // A copy per instance of the re-exporting module: the source instance it
+      // reaches through `spec.alias` is the one whose import path ends there.
+      for (const src of sources) {
+        const sourceMeta = src.metadata as {
+          importPath?: readonly string[];
+          reExport?: { importPath?: readonly string[] };
+        };
+        // A re-exported choice keeps its own stamps for deciding; the path its
+        // instance is reached by is the re-export's.
+        const sourcePath = sourceMeta.reExport ? sourceMeta.reExport.importPath : sourceMeta.importPath;
+        if (sourcePath && sourcePath[sourcePath.length - 1] !== spec.alias) continue;
+        if (isExpansionSentinel(src)) {
+          const manifest = reExportedChoice(src, spec, sourceModule, sourcePath, canonicalKind);
+          result.push(manifest);
+          add(key, manifest);
+          added = true;
+          continue;
+        }
+        const kind = canonicalKind(src.kind as string, sourceModule);
+        const manifest: ResourceManifest = {
+          ...src,
+          kind,
+          metadata: {
+            ...src.metadata,
+            name: spec.name,
+            module: spec.module,
+            forwardedExport: true,
+            // The module that DECLARED it, whose scope its own references are
+            // written in — a projection hop through the copy resolves there.
+            declaringModule:
+              (src.metadata as { declaringModule?: string }).declaringModule ?? sourceModule,
+            ...(sourcePath ? { importPath: sourcePath.slice(0, -1) } : {}),
+          } as ResourceManifest["metadata"],
+        };
+        result.push(manifest);
+        add(key, manifest);
+        added = true;
+      }
     }
     if (!added) break;
   }
+}
+
+/**
+ * A re-export of a declaration written behind `!if` / `!switch`. The copy stays
+ * the source's own document — its module and import path decide the choice,
+ * since its condition reads the declaring library's inputs through the import
+ * that library was reached by — with each branch's kind made canonical, so the
+ * chosen declaration needs no alias of the library. `metadata.reExport` carries
+ * the stamps the expansion puts on the declaration it yields (`expandChoices`).
+ */
+function reExportedChoice(
+  src: ResourceManifest,
+  spec: ReExportSpec,
+  sourceModule: string,
+  sourcePath: readonly string[] | undefined,
+  canonicalKind: (kind: string, ownerModule: string) => string,
+): ResourceManifest {
+  const meta = src.metadata as {
+    declaringModule?: string;
+    reExport?: { declaringModule: string; importPath?: readonly string[] };
+  };
+  const previous = meta.reExport;
+  const canonicalBranches = (value: unknown): unknown => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+    const record = value as Record<string, unknown>;
+    if (isExpansionSentinel(value)) {
+      const out: Record<string, unknown> = { ...record };
+      for (const key of ["then", "else", "default"]) if (key in out) out[key] = canonicalBranches(out[key]);
+      const cases = out.cases;
+      if (cases && typeof cases === "object" && !Array.isArray(cases)) {
+        out.cases = Object.fromEntries(Object.entries(cases).map(([k, v]) => [k, canonicalBranches(v)]));
+      }
+      return out;
+    }
+    return typeof record.kind === "string" ? { ...record, kind: canonicalKind(record.kind, sourceModule) } : value;
+  };
+  const body = previous ? src : (canonicalBranches(src) as ResourceManifest);
+  return {
+    ...body,
+    metadata: {
+      ...src.metadata,
+      reExport: {
+        name: spec.name,
+        module: spec.module,
+        declaringModule: previous?.declaringModule ?? meta.declaringModule ?? sourceModule,
+        ...(sourcePath ? { importPath: sourcePath.slice(0, -1) } : {}),
+      },
+    } as ResourceManifest["metadata"],
+  };
 }
 
 /** Resolve every library's `exports.kinds` to a per-module map `suffix → canonical
@@ -742,7 +872,8 @@ export function stampSharedLifecycle(
  *  `exportedKinds` is — the `Telo.Import` schema forbids extra top-level
  *  fields. An entry whose alias resolves to nothing is stamped with its kind
  *  unchanged; `validate-resource-inputs.ts` reports that against the library
- *  that wrote it. */
+ *  that wrote it. The entries declared `optional: true` are stamped beside it
+ *  as `metadata.optionalResources`, by name. */
 export function stampRequiredResources(
   imports: ReadonlyArray<{ manifest: ResourceManifest; targetModule: string }>,
   declared: ReadonlyMap<string, readonly ResourceInput[]>,
@@ -761,6 +892,8 @@ export function stampRequiredResources(
       table[input.name] = canonicalizeInputKind(input.kind, targetModule, aliasToModule);
     }
     (manifest.metadata as Record<string, unknown>).requiredResources = table;
+    const optional = inputs.filter((input) => input.optional).map((input) => input.name);
+    if (optional.length > 0) (manifest.metadata as Record<string, unknown>).optionalResources = optional;
   }
 }
 

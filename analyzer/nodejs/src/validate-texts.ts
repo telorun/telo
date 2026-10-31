@@ -33,6 +33,7 @@
  * and one union per catalog's closure, memoized per module — linear in what the
  * closure writes. Browser-safe.
  */
+import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { celExpressionsOf, isTaggedSentinel, writtenCalls } from "@telorun/templating";
 import { resolveSignature } from "./callable-signature.js";
@@ -125,6 +126,19 @@ function valueAt(container: unknown, path: ValuePath): unknown {
   return at;
 }
 
+const libraryModules = new WeakMap<readonly ModuleDocuments[], readonly ResourceManifest[]>();
+
+/** The module documents among each imported library's full documents, read
+ *  once per list: every scope over one analysis reads the same list. */
+function libraryModuleDocuments(documents: readonly ModuleDocuments[]): readonly ResourceManifest[] {
+  let found = libraryModules.get(documents);
+  if (!found) {
+    found = documents.flatMap((doc) => doc.manifests).filter((m) => isModuleKind(m.kind as string));
+    libraryModules.set(documents, found);
+  }
+  return found;
+}
+
 /**
  * Which module wrote a manifest, and what language that module writes in. An
  * entry-owned manifest carries no module stamp; with several entry modules it
@@ -135,11 +149,12 @@ export class TextLanguageScope {
   private readonly rootBySource = new Map<string, string>();
 
   constructor(
-    manifests: readonly ResourceManifest[],
+    declarations: DeclarationRequests,
     private readonly rootModules: ReadonlySet<string>,
+    /** Each imported library's full documents. */
     documents: readonly ModuleDocuments[] = [],
   ) {
-    for (const manifest of [...manifests, ...documents.flatMap((doc) => doc.manifests)]) {
+    for (const manifest of [...declarations.moduleDocuments(), ...libraryModuleDocuments(documents)]) {
       if (!isModuleKind(manifest.kind as string)) continue;
       const name = manifest.metadata?.name;
       if (typeof name !== "string") continue;
@@ -224,7 +239,7 @@ interface TextWriting {
 
 export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
   const { manifests, rootModules, resolveDef, moduleDocuments } = options;
-  const scope = new TextLanguageScope(manifests, rootModules, moduleDocuments);
+  const scope = new TextLanguageScope(listRequests(manifests), rootModules, moduleDocuments);
   const resolveNamed = (ref: string) => {
     const schema = options.schemaForId(ref);
     return schema ? { schema, root: schema } : undefined;

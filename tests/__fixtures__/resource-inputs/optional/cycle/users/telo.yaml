@@ -1,0 +1,11 @@
+# Borrows the collector and exports nothing a collector lists.
+kind: Telo.Library
+metadata:
+  name: Users
+  version: 0.0.0
+  description: Test fixture borrowing a collector.
+imports:
+  Kinds: ../../kinds
+resources:
+  collector:
+    kind: Kinds.Collector

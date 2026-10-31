@@ -1,0 +1,27 @@
+# A member's own fields are evaluated where the scope run creates it, whose
+# `resources` holds the module's readings and nothing of the scope: a sibling
+# read there is refused by `telo check` and at load.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberCelSiblingApp
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+with:
+  - kind: Run.Value
+    metadata:
+      name: first
+    value: 1
+  - kind: Run.Value
+    metadata:
+      name: second
+    value: !cel "resources.first"
+steps:
+  - name: read
+    invoke: !ref second

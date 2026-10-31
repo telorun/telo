@@ -231,6 +231,16 @@ export interface AnalysisOptions {
    *  no supplied version is skipped rather than guessed. The kernel and the CLI
    *  supply it because they are the host. */
   hostVersions?: HostVersions;
+  /** The configurations the analysis covers: a partial assignment in the
+   *  `data.configurations` entry encoding (dimension key → JSON value; a
+   *  need's presence `"present"` / `"absent"`; an input's absence `null`),
+   *  each dimension it names narrowed to that one value before anything is
+   *  judged. A dimension it leaves out holds every value; `{}` (or none) is
+   *  every configuration. Labels are relative to what it keeps; a finding
+   *  holding in none of those configurations, but in another one, is not
+   *  reported, and one holding in no configuration at all still is. A key
+   *  naming no dimension, or a value outside its domain, throws. */
+  within?: Readonly<Record<string, unknown>>;
 }
 
 /** Pre-seeded state for incremental analysis. Passed to StaticAnalyzer.analyze() so it does

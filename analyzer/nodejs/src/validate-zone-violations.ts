@@ -34,6 +34,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { isGeneratedDeclaration } from "./generated-name.js";
 import {
   SUSPENDING_BACKOFF_MS,
   ZONE_ATTRIBUTES,
@@ -102,7 +103,7 @@ export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnos
                   `whose last backoff reaches ${SUSPENDING_BACKOFF_MS}ms, at which point a ` +
                   `re-attempt waits by PARKING the run rather than by sleeping — but it is ` +
                   `inside a ${region.provider.kind} ` +
-                  `'${region.provider.name}' region that declares 'noSuspend' ` +
+                  `${labelled(region.provider)} region that declares 'noSuspend' ` +
                   `(${region.reason}). Shorten the backoff, or move the retry outside the ` +
                   `region so it re-attempts the region as a whole.`,
                 data: {
@@ -134,8 +135,8 @@ export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnos
           code: "ZONE_ATTRIBUTE_VIOLATED",
           source: SOURCE,
           message:
-            `${contained.node.kind} '${contained.node.name}' is inside a ` +
-            `${region.provider.kind} '${region.provider.name}' region that declares ` +
+            `${labelled(contained.node)} is inside a ` +
+            `${labelled(region.provider)} region that declares ` +
             `'${attribute}' (${region.reason}), but ${contained.node.kind} cannot honour ` +
             `it: ${rebuttal}. Reached by ${path}. Move it outside the region, or use a ` +
             `region that does not make that promise.`,
@@ -187,4 +188,9 @@ function isStaticValue(value: unknown): boolean {
 function owned(manifest: ResourceManifest, reportModules: ReadonlySet<string>): boolean {
   const module = (manifest.metadata as { module?: string } | undefined)?.module;
   return !module || reportModules.size === 0 || reportModules.has(module);
+}
+
+/** A resource as a message names it: the kind and its name, or "the inline <Kind>" when an extraction generated the name. */
+function labelled(node: { kind: string; name: string; manifest: ResourceManifest }): string {
+  return isGeneratedDeclaration(node.manifest) ? `the inline ${node.kind}` : `${node.kind} '${node.name}'`;
 }

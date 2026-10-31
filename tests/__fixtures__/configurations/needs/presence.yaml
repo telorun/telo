@@ -1,0 +1,46 @@
+# An optional need's presence is a dimension: `chosen` consumes `a` where the
+# environment supplies it, and `b` otherwise. Inside the `then:` branch `a` is
+# proven present, so a reference to it is legal there.
+kind: Telo.Application
+metadata:
+  name: NeedPresence
+imports:
+  Assert: ../../../../modules/assert
+  Run: ../../../../modules/run
+  Kinds: ./kinds
+needs:
+  a:
+    kind: Kinds.Access
+    optional: true
+    env: { url: NEED_A_URL }
+  b:
+    kind: Kinds.Access
+    env: { url: NEED_B_URL }
+variables:
+  expected:
+    env: EXPECTED_LABEL
+    type: string
+    default: a
+targets:
+  - !ref main
+--- !if
+metadata: { name: chosen }
+if: !cel "resources.a != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref a
+  label: a
+else:
+  kind: Kinds.Consumer
+  access: !ref b
+  label: b
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.chosen.label"
+      expected: !cel "variables.expected"

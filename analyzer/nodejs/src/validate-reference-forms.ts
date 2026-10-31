@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { withQuotedPath } from "./quoted-place.js";
 import { isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
@@ -18,6 +19,8 @@ import { isKindDocument } from "./kind-declaration.js";
 import { forEachStep, stepBodiesOf } from "./step-bodies.js";
 import { templateBodyEntries } from "./template-body.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { scopeAddress } from "./scope-address.js";
+import { manifestNames } from "./scoped-name-resolver.js";
 
 const SOURCE = "telo-analyzer";
 const CODE = "INVALID_REFERENCE_FORM";
@@ -123,7 +126,7 @@ export function validateReferenceForms(
         if (typeof value === "string") {
           // A bare string at a ref slot is the removed string / dotted-FQN form.
           const hint = refHint(value);
-          diagnostics.push({
+          diagnostics.push(withQuotedPath({
             severity: DiagnosticSeverity.Error,
             code: CODE,
             source: SOURCE,
@@ -138,19 +141,19 @@ export function validateReferenceForms(
                 ? { fix: { replacement: value, tag: "ref" } }
                 : {}),
             },
-          });
+          }, path));
           return;
         }
 
         const form = objectForm(value, r.metadata);
         if (form) {
-          const refusal: AnalysisDiagnostic = {
+          const refusal: AnalysisDiagnostic = withQuotedPath({
             severity: DiagnosticSeverity.Error,
             code: CODE,
             source: SOURCE,
             message: `${resourceLabel}: ${formMessage(form, path)}`,
             data: { resource: resourceData, filePath, path },
-          };
+          }, path);
           if (!e.nested || stepTargets.has(path)) {
             refusedSites.set(refusal, {
               module: moduleOf(r.metadata),
@@ -190,17 +193,20 @@ export function validateReferenceForms(
         if (isValueAtSlot(site.data, site.refs, registry)) continue;
         const form = objectForm(site.data, view.metadata);
         if (!form) continue;
-        const refusal: AnalysisDiagnostic = {
-          severity: DiagnosticSeverity.Error,
-          code: CODE,
-          source: SOURCE,
-          message: `${definition.kind}/${meta.name}: ${formMessage(form, site.path, `the ${entry.kind} entry`)}`,
-          data: {
-            resource: { kind: definition.kind, name: meta.name },
-            filePath: meta.source,
-            path: `${entry.prefix}.${site.path}`,
+        const refusal: AnalysisDiagnostic = withQuotedPath(
+          {
+            severity: DiagnosticSeverity.Error,
+            code: CODE,
+            source: SOURCE,
+            message: `${definition.kind}/${meta.name}: ${formMessage(form, site.path, `the ${entry.kind} entry`)}`,
+            data: {
+              resource: { kind: definition.kind, name: meta.name },
+              filePath: meta.source,
+              path: `${entry.prefix}.${site.path}`,
+            },
           },
-        };
+          { text: site.path, relativeTo: entry.prefix },
+        );
         const entryName = (entry.manifest.metadata as { name?: unknown } | undefined)?.name;
         if (typeof entryName === "string") {
           refusedSites.set(refusal, { module: meta.module, holder: entryName, path: site.path, form: form.form });
@@ -270,7 +276,8 @@ const moduleOf = (metadata: unknown): string | undefined => {
 
 /** A declaration's identity across modules: a name is unique only within the
  *  module declaring it. */
-const declarationKey = (module: string | undefined, name: string): string => `${module ?? ""}\0${name}`;
+const declarationKey = (module: string | undefined, name: string): string =>
+  scopeAddress(module, name).key;
 
 /** The refusals of an author-written `__ref` key at a place normalization acts
  *  on, among `diagnostics` — the one spelling the kernel refuses in a
@@ -307,13 +314,12 @@ export function withoutRefusedFormConsequences(
   }
   if (marked.size === 0) return diagnostics;
   const byKey = new Map<string, ResourceManifest>();
-  const byName = new Map<string, ResourceManifest[]>();
   for (const m of manifests) {
     const name = m.metadata?.name;
     if (typeof name !== "string") continue;
     byKey.set(declarationKey(moduleOf(m.metadata), name), m);
-    byName.set(name, [...(byName.get(name) ?? []), m]);
   }
+  const names = manifestNames(manifests);
   // The declaration a diagnostic is about: a name reported by kind and file,
   // since several modules may each declare it. Ambiguous is none — a finding is
   // dropped only when it is certainly about a refused object.
@@ -323,7 +329,7 @@ export function withoutRefusedFormConsequences(
   }): ResourceManifest | undefined => {
     const name = data.resource?.name;
     if (typeof name !== "string") return undefined;
-    let candidates = (byName.get(name) ?? []).filter(
+    let candidates = names.declarationsOf(name).filter(
       (m) => typeof data.resource?.kind !== "string" || m.kind === data.resource.kind,
     );
     if (candidates.length > 1 && typeof data.filePath === "string") {

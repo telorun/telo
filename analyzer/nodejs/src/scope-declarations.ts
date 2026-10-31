@@ -1,8 +1,11 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
+import { celEvalModeAt, type CelEvalSites } from "./eval-paths.js";
 import type { ReachSite } from "./reference-reach.js";
 import { pointerSegments } from "./resource-rule.js";
 import { isInlineDeclaration } from "./resolved-reference.js";
+import { forEachStep, stepBodiesOf } from "./step-bodies.js";
+import { placeAt, READS_IDENTITY, type ReadPlace, type ReadReporter } from "./read-place.js";
 
 /**
  * The execution scopes ONE resource declares — the `x-telo-scope` arrays it
@@ -54,6 +57,66 @@ export function scopeEncloses(scope: DeclaredScope, keys: readonly (string | num
   return scope.regions.some((region) => keysUnder(keys, region));
 }
 
+/**
+ * What decides where a declaration's CEL sees a scope's members: the places it
+ * holds an inline declaration — a reference site or a step's dispatch slot
+ * holding one, decided by where the kind says a reference is and never by an
+ * object's shape — and how each of its fields is evaluated.
+ */
+export interface CelScopeHolder {
+  readonly inline: readonly (readonly (string | number)[])[];
+  readonly evalSites: CelEvalSites | undefined;
+}
+
+/** The {@link CelScopeHolder} of `declaration`, from its reach `sites`, its
+ *  kind's author `schema` (for its step bodies) and its eval sites. */
+export function celScopeHolder(
+  declaration: unknown,
+  sites: readonly ReachSite[],
+  schema: Record<string, any> | undefined,
+  evalSites: CelEvalSites | undefined,
+): CelScopeHolder {
+  const inline: (readonly (string | number)[])[] = [];
+  for (const site of sites) {
+    if (site.refs.length > 0 && isInlineDeclaration(site.data)) inline.push(site.keys);
+  }
+  if (schema && declaration && typeof declaration === "object") {
+    for (const body of stepBodiesOf(declaration as Record<string, unknown>, schema)) {
+      forEachStep(body, schema, (step, stepPath) => {
+        if (isInlineDeclaration(step[body.invokeField])) {
+          inline.push(pathKeys(`${stepPath}.${body.invokeField}`));
+        }
+      });
+    }
+  }
+  return { inline, evalSites };
+}
+
+/**
+ * The scope among `scopes` whose members a CEL `resources` read at `path` on
+ * the declaration `holder` describes sees: the one whose region holds the place
+ * — unless an inline declaration written there holds it, whose fields are its
+ * own and read where it is created, or the field is evaluated at load, before
+ * any scope run opens. A scope run's `resources` is the module's readings plus
+ * that run's own members, so the answer is one scope, never a chain.
+ */
+export function celScopeAt<S extends { readonly regions: readonly (readonly string[])[] }>(
+  holder: CelScopeHolder,
+  scopes: readonly S[],
+  path: string,
+): S | undefined {
+  if (scopes.length === 0) return undefined;
+  const keys = pathKeys(path);
+  if (holder.inline.some((at) => keysUnder(keys, at))) return undefined;
+  if (holder.evalSites && celEvalModeAt(holder.evalSites, path) === "compile") return undefined;
+  return scopes.find((scope) => scope.regions.some((region) => keysUnder(keys, region)));
+}
+
+/** A dotted concrete path (`steps[0].invoke`) as its keys. */
+function pathKeys(path: string): string[] {
+  return path.split(/[.[\]]/).filter((key) => key !== "");
+}
+
 /** True when `keys` is `prefix` or lies beneath it; an index matches the
  *  pointer segment spelling it. */
 export function keysUnder(
@@ -100,6 +163,17 @@ export interface OutsideScope {
   names: string[];
 }
 
+/** Why `name`, declared in `scope`, does not reach an inline declaration written
+ *  in that scope's region, and what to write instead — the one wording every
+ *  diagnostic about such a name uses. */
+export function outOfReachSentence(name: string, scope: OutsideScope): string {
+  return (
+    `'${name}' is declared in '${scope.field}:' of ${scope.ownerKind}/${scope.ownerName}, but this ` +
+    `inline declaration is created where '${scope.ownerName}' is declared, outside that scope. ` +
+    `Declare it under '${scope.field}:' with a name of its own and point at it with '!ref'.`
+  );
+}
+
 /** The scopes recorded as out of reach for an extracted declaration. */
 export function outsideScopesOf(manifest: unknown): OutsideScope[] {
   const origin = (
@@ -108,3 +182,12 @@ export function outsideScopesOf(manifest: unknown): OutsideScope[] {
   )?.outsideScopes;
   return Array.isArray(origin) ? (origin as OutsideScope[]) : [];
 }
+
+/** What `x-telo-scope` reads: each field holding the scope's members — a
+ *  declaration a name written there may resolve to, by its identity. */
+export const scopeReads: ReadReporter = ({ value }) => {
+  const pointers = Array.isArray(value) ? value : [value];
+  return pointers.flatMap((pointer): ReadPlace[] =>
+    typeof pointer === "string" ? [{ kind: "reference", keys: placeAt([], pointer), transitive: false, reads: READS_IDENTITY }] : [],
+  );
+};

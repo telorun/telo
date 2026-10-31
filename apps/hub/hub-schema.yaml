@@ -663,6 +663,66 @@ migrations:
     statements:
       - ALTER TABLE module_versions ADD COLUMN first_tracked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       - UPDATE module_versions SET first_tracked_at = tracked_at
+  # An application's requiredness, stored as `telo module manifest --json`
+  # reports it: each input's `requiredWhen` (NULL when it is required in every
+  # configuration or in none), and the version's `dimensions` those are keyed by.
+  # The contract reports a `default` exactly where the entry declares one — a
+  # declared `default: null` is the JSON null, none at all is SQL NULL.
+  "20261028090000_AddApplicationRequirements":
+    statements:
+      - ALTER TABLE application_inputs ADD COLUMN required_when JSONB
+      - ALTER TABLE module_versions ADD COLUMN application_dimensions JSONB
+      - |
+        CREATE OR REPLACE FUNCTION application_contract(mid BIGINT, ver TEXT) RETURNS JSON
+        LANGUAGE sql STABLE STRICT AS $$
+          SELECT CASE WHEN mv.root_kind = 'Application' THEN json_build_object(
+            'variables', (SELECT COALESCE(json_agg((jsonb_build_object(
+                'name', i.name, 'description', i.description, 'required', i.required,
+                'env', i.env,
+                'arg', CASE i.arg_form
+                         WHEN 'flag' THEN jsonb_build_object('form', 'flag', 'flag', i.arg_flag,
+                                                             'short', i.arg_short)
+                         WHEN 'position' THEN jsonb_build_object('form', 'position',
+                                                                 'position', i.arg_position)
+                       END,
+                'schema', i.schema)
+                || CASE WHEN i.default_value IS NULL THEN '{}'::jsonb
+                        ELSE jsonb_build_object('default', i.default_value) END
+                || CASE WHEN i.required_when IS NULL THEN '{}'::jsonb
+                        ELSE jsonb_build_object('requiredWhen', i.required_when) END
+              ) ORDER BY i.ordinal), '[]'::json)
+              FROM application_inputs i
+              WHERE i.module_id = mid AND i.version = ver AND i.block = 'variables'),
+            'secrets', (SELECT COALESCE(json_agg((jsonb_build_object(
+                'name', i.name, 'description', i.description, 'required', i.required,
+                'env', i.env, 'schema', i.schema)
+                || CASE WHEN i.required_when IS NULL THEN '{}'::jsonb
+                        ELSE jsonb_build_object('requiredWhen', i.required_when) END
+              ) ORDER BY i.ordinal), '[]'::json)
+              FROM application_inputs i
+              WHERE i.module_id = mid AND i.version = ver AND i.block = 'secrets'),
+            'ports', (SELECT COALESCE(json_agg((jsonb_build_object(
+                'name', i.name, 'description', i.description, 'required', i.required,
+                'env', i.env,
+                'arg', CASE i.arg_form
+                         WHEN 'flag' THEN jsonb_build_object('form', 'flag', 'flag', i.arg_flag,
+                                                             'short', i.arg_short)
+                         WHEN 'position' THEN jsonb_build_object('form', 'position',
+                                                                 'position', i.arg_position)
+                       END,
+                'protocol', i.protocol)
+                || CASE WHEN i.default_value IS NULL THEN '{}'::jsonb
+                        ELSE jsonb_build_object('default', i.default_value) END
+                || CASE WHEN i.required_when IS NULL THEN '{}'::jsonb
+                        ELSE jsonb_build_object('requiredWhen', i.required_when) END
+              ) ORDER BY i.ordinal), '[]'::json)
+              FROM application_inputs i
+              WHERE i.module_id = mid AND i.version = ver AND i.block = 'ports'),
+            'dimensions', COALESCE(mv.application_dimensions, '[]'::jsonb)
+          ) END
+          FROM module_versions mv
+          WHERE mv.module_id = mid AND mv.version = ver
+        $$
 ---
 # CLAIM — the single statement that decides a version is due and mints the
 # identity of the attempt that will ingest it.

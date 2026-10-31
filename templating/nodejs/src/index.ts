@@ -71,7 +71,32 @@ export {
 export { interpolateEngine } from "./engines/interpolate.js";
 export { literalEngine } from "./engines/literal.js";
 export { modulePathEngine } from "./engines/module-path.js";
-export { refEngine } from "./engines/ref.js";
+export {
+  parseRefSource,
+  REF_MEMBER_INVALID,
+  refEngine,
+  refRefusalMessage,
+  type ParsedRef,
+  type RefIndex,
+  type RefRefusal,
+  type RefVerdict,
+} from "./engines/ref.js";
+export {
+  buildExpansionTags,
+  EXPANSION_MARKER,
+  EXPANSION_TAGS,
+  expansionBody,
+  expansionShapeCode,
+  expansionTagLabel,
+  expansionTagMisuse,
+  expansionTagOf,
+  isExpansionSentinel,
+  isExpansionTag,
+  SPLICE_KEY,
+  type ExpansionSentinel,
+  type ExpansionTag,
+  type ExpansionTagMisuse,
+} from "./expansion-tags.js";
 export { sqlEngine, isParameterizedSql, type ParameterizedSql } from "./engines/sql.js";
 
 export { TemplatingEngineRegistry } from "./registry.js";
@@ -109,6 +134,8 @@ export {
   MODULE_FILE_ENGINE_NAMES,
   MODULE_PATH_ENGINE,
   plainChainOf,
+  REF_ENGINE,
+  type RefSentinel,
   type TaggedSentinel,
 } from "./sentinel.js";
-export { buildCustomTags, defaultCustomTags } from "./yaml-tags.js";
+export { buildCustomTags, defaultCustomTags, type ManifestTag } from "./yaml-tags.js";

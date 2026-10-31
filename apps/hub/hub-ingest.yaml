@@ -81,9 +81,13 @@ variables:
   # a `Telo.` prefix to `builtinsRef` and a module's own name to the module, and
   # records the built-in vocabulary's root kind. 9 records a need type's runtime
   # reach — the kernels serving need types — where 8 stored it as no kernel.
+  # 10 records an application's requiredness: each input's `requiredWhen` and
+  # the dimensions it is keyed by, and a `default` only where one is declared.
+  # 11 records a member dimension's `member` with its dimension, which a reader
+  # no longer splits out of the key.
   ingestRev:
     type: integer
-    default: 9
+    default: 11
   # The one ref whose `Telo.Builtins` root is indexed — the built-in vocabulary
   # every `Telo.<Kind>` names. Registration is open, so at any other ref such a
   # root is refused: nobody else may publish "built-in" kinds.
@@ -183,24 +187,26 @@ steps:
                           + variables.builtinsRef
                       : '; only a Telo.Library or Telo.Application is indexed')
       # An application is indexed by its declared contract, which the CLI reports
-      # as `application`. A CLI too old to report it would leave the application
-      # indexed with an empty contract, which reads as "asks for nothing" — so the
-      # version is refused. A refused version never reaches the current
-      # `ingest_rev`, so every reconcile pass claims it again, and it is indexed on
-      # the first pass after the origin reads run a telo that reports the field.
+      # as `application`, with the `dimensions` its requiredness is keyed by. A
+      # CLI too old to report either would leave the application indexed with an
+      # empty contract, which reads as "asks for nothing", or with `required`
+      # meaning only "declares no default" — so the version is refused. A refused
+      # version never reaches the current `ingest_rev`, so every reconcile pass
+      # claims it again, and it is indexed on the first pass after the origin
+      # reads run a telo that reports both.
       - name: contractGate
         if: !cel >-
           steps.manifest.result.docs[0].kind == 'Telo.Application'
-            && steps.manifest.result.payload.?application.orValue(null) == null
+            && steps.manifest.result.payload.?application.?dimensions.orValue(null) == null
         then:
           - name: refuseContract
             throw:
               code: INGEST_CONTRACT_MISSING
               message: !cel >-
                 'telo module manifest ' + inputs.ref + '@' + inputs.version
-                  + ' --json reported no `application` field for a Telo.Application — '
-                  + 'the telo running the origin reads predates it; point TELO_COMMAND '
-                  + 'at the telo that runs this hub'
+                  + ' --json reported no `application` contract with its `dimensions` for a '
+                  + 'Telo.Application — the telo running the origin reads predates it; point '
+                  + 'TELO_COMMAND at the telo that runs this hub'
       # The CLI gives a local module no cache location, since no editor reads
       # one from the public cache; the hub still keeps its manifest so
       # `get_module_manifest` answers for it, under a key of its own that no
@@ -373,10 +379,10 @@ steps:
         : {'reported': false, 'report': {}}
   - name: kindRows
     value: !cel >-
-      inputs.docs.filter(d, d.kind in ['Telo.Definition', 'Telo.Abstract', 'Telo.NeedType']).map(d, {
+      inputs.docs.filter(d, d.?kind.orValue('') in ['Telo.Definition', 'Telo.Abstract', 'Telo.NeedType']).map(d, {
         'name': d.metadata.name,
         'capability': d.?capability.orValue(''),
-        'abstract': d.kind == 'Telo.Abstract',
+        'abstract': d.?kind.orValue('') == 'Telo.Abstract',
         'description': d.metadata.?description.orValue(''),
         'categories': d.metadata.?categories.orValue(inputs.docs[0].metadata.?categories.orValue([])),
         'exported': inputs.docs[0].kind == 'Telo.Application' ? false
@@ -447,26 +453,26 @@ steps:
           'declared': string(e),
           'name': string(e).split('.')[size(string(e).split('.')) - 1],
           'kind': inputs.docs.filter(d,
-            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+            (!d.?kind.orValue('').startsWith('Telo.') || d.?kind.orValue('') == 'Telo.Function') &&
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
-            .map(d, d.kind.contains('.')
-              ? d.kind.split('.')[size(d.kind.split('.')) - 1] : '')
+            .map(d, d.?kind.orValue('').contains('.')
+              ? d.?kind.orValue('').split('.')[size(d.?kind.orValue('').split('.')) - 1] : '')
             .size() > 0
             ? inputs.docs.filter(d,
-                (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+                (!d.?kind.orValue('').startsWith('Telo.') || d.?kind.orValue('') == 'Telo.Function') &&
                 d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
-                .map(d, d.kind.contains('.')
-                  ? d.kind.split('.')[size(d.kind.split('.')) - 1] : '')[0]
+                .map(d, d.?kind.orValue('').contains('.')
+                  ? d.?kind.orValue('').split('.')[size(d.?kind.orValue('').split('.')) - 1] : '')[0]
             : '',
           'kindIsOwn': inputs.docs.filter(d,
-            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+            (!d.?kind.orValue('').startsWith('Telo.') || d.?kind.orValue('') == 'Telo.Function') &&
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1] &&
-            (d.kind.split('.')[0] == 'Self' || d.kind.split('.')[0] == inputs.docs[0].metadata.name))
+            (d.?kind.orValue('').split('.')[0] == 'Self' || d.?kind.orValue('').split('.')[0] == inputs.docs[0].metadata.name))
             .size() > 0,
           'kindRef': inputs.docs.filter(d,
-            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+            (!d.?kind.orValue('').startsWith('Telo.') || d.?kind.orValue('') == 'Telo.Function') &&
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
-            .map(d, d.kind.split('.')[0])
+            .map(d, d.?kind.orValue('').split('.')[0])
             .map(p, p == 'Self' || p == inputs.docs[0].metadata.name ? inputs.ref
               : ('imports' in inputs.docs[0] && p in inputs.docs[0].imports
                 ? (type(inputs.docs[0].imports[p]) == type('')
@@ -475,9 +481,9 @@ steps:
                 : ''))
             .size() > 0
             ? inputs.docs.filter(d,
-                (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+                (!d.?kind.orValue('').startsWith('Telo.') || d.?kind.orValue('') == 'Telo.Function') &&
                 d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
-                .map(d, d.kind.split('.')[0])
+                .map(d, d.?kind.orValue('').split('.')[0])
                 .map(p, p == 'Self' || p == inputs.docs[0].metadata.name ? inputs.ref
                   : ('imports' in inputs.docs[0] && p in inputs.docs[0].imports
                     ? (type(inputs.docs[0].imports[p]) == type('')
@@ -486,11 +492,11 @@ steps:
                     : ''))[0]
             : '',
           'description': inputs.docs.filter(d,
-            (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+            (!d.?kind.orValue('').startsWith('Telo.') || d.?kind.orValue('') == 'Telo.Function') &&
             d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])
             .size() > 0
             ? inputs.docs.filter(d,
-                (!d.kind.startsWith('Telo.') || d.kind == 'Telo.Function') &&
+                (!d.?kind.orValue('').startsWith('Telo.') || d.?kind.orValue('') == 'Telo.Function') &&
                 d.metadata.?name.orValue('') == string(e).split('.')[size(string(e).split('.')) - 1])[0]
                 .metadata.?description.orValue('')
             : ''
@@ -670,7 +676,8 @@ steps:
       sql: >-
         INSERT INTO application_inputs
           (module_id, version, block, name, ordinal, description, required, env,
-           arg_form, arg_flag, arg_short, arg_position, protocol, default_value, schema)
+           arg_form, arg_flag, arg_short, arg_position, protocol, default_value, schema,
+           required_when)
         SELECT $1, $2, b.block, e.value->>'name', e.ord::int,
                COALESCE(e.value->>'description', ''), (e.value->>'required')::boolean,
                COALESCE(e.value->>'env', ''),
@@ -682,10 +689,24 @@ steps:
                     THEN jsonb_strip_nulls(jsonb_build_object(
                            'type', e.value->'schema'->'type',
                            'x-telo-type', e.value->'schema'->'x-telo-type'))
-                    ELSE e.value->'schema' END
+                    ELSE e.value->'schema' END,
+               e.value->'requiredWhen'
         FROM (VALUES ('variables'), ('secrets'), ('ports')) AS b(block)
         CROSS JOIN LATERAL jsonb_array_elements(COALESCE(NULLIF($3, '')::jsonb -> b.block, '[]'::jsonb))
           WITH ORDINALITY AS e(value, ord)
+      bindings:
+        - !cel "inputs.moduleId"
+        - !cel "inputs.version"
+        - !cel >-
+          inputs.docs[0].kind == 'Telo.Application' ? json(inputs.payload.application) : ''
+  # The dimensions an application's `requiredWhen` is keyed by; NULL for a library.
+  - name: recordDimensions
+    invoke: !ref exec
+    inputs:
+      sql: >-
+        UPDATE module_versions
+        SET application_dimensions = NULLIF($3, '')::jsonb -> 'dimensions'
+        WHERE module_id = $1 AND version = $2
       bindings:
         - !cel "inputs.moduleId"
         - !cel "inputs.version"

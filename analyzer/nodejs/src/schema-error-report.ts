@@ -61,6 +61,16 @@ export interface SchemaIssue {
   missingProperty?: string;
   /** For `x-telo-type`, the value type the value failed. */
   valueType?: string;
+  /** The message after the pointer it opens with, where it quotes its place —
+   *  what a diagnostic renders its message from once its path is where the
+   *  value was written. */
+  prose?: string;
+  /** How many trailing keys of `path` lie beneath the place the message
+   *  quotes: the member a `required` issue names. */
+  quoteTrail?: number;
+  /** The places of the declaration the message writes between backticks, as
+   *  written, for a message that quotes no pointer. */
+  places?: readonly string[];
 }
 
 const UNION_KEYWORDS = new Set(["anyOf", "oneOf"]);
@@ -105,34 +115,38 @@ export function formatSingleError(err: AjvErrorLike): string {
   // needs the key the manifest holds (`application/json`), not its RFC 6901
   // encoding. Reporting one form in `path` and the other in `message` made one
   // diagnostic disagree with itself.
-  const p = unescapePointer(err.instancePath || "") || "/";
+  return `${unescapePointer(err.instancePath || "") || "/"} ${errorProse(err)}`;
+}
+
+/** What a finding says of the place {@link formatSingleError} opens with. */
+function errorProse(err: AjvErrorLike): string {
   const params = err.params ?? {};
   switch (err.keyword) {
     case "additionalProperties":
-      return `${p} must NOT have additional properties ('${params.additionalProperty}' is not allowed)`;
+      return `must NOT have additional properties ('${params.additionalProperty}' is not allowed)`;
     case "required":
-      return `${p} is missing required property '${params.missingProperty}'`;
+      return `is missing required property '${params.missingProperty}'`;
     case "enum": {
       const allowed = (params.allowedValues as unknown[] | undefined) ?? [];
       if (allowed.length <= LISTED_ENUM_VALUES) {
-        return `${p} ${err.message ?? "is invalid"} (${allowed.join(" | ")})`;
+        return `${err.message ?? "is invalid"} (${allowed.join(" | ")})`;
       }
-      return `${p} must be one of ${allowed.length} allowed values${suggestedValues(err.data, allowed)}`;
+      return `must be one of ${allowed.length} allowed values${suggestedValues(err.data, allowed)}`;
     }
     case "type":
-      return `${p} must be ${params.type}${describeActual(err)}`;
+      return `must be ${params.type}${describeActual(err)}`;
     // A `false` schema at a property is how a branch forbids a key it otherwise
     // declares. AJV's own text ("boolean schema is false") describes the schema
     // rather than the value, and the path is the only part a reader can act on.
     case "false schema":
-      return `${p} is not allowed here`;
+      return "is not allowed here";
     // `not:` says a forbidden shape matched, and AJV reports nothing about the
     // inner schema — so the honest message says where, and no more. A branch
     // that wants to name the key writes `properties: { <key>: false }` instead.
     case "not":
-      return `${p} matches a shape that is not allowed here`;
+      return "matches a shape that is not allowed here";
     default:
-      return `${p} ${err.message ?? "is invalid"}`;
+      return err.message ?? "is invalid";
   }
 }
 
@@ -713,10 +727,13 @@ export function schemaIssues(
   const seen = new Set<string>();
   return reducedErrors(errors, data).flatMap((err) => {
     const { missingProperty: missing, valueType } = err.params ?? {};
+    const prose = errorProse(err);
     const issue: SchemaIssue = {
       message: formatSingleError(err),
       path: ajvErrorToPath(err),
       pointer: ajvErrorToPointer(err),
+      prose,
+      quoteTrail: err.keyword === "required" && err.params?.missingProperty ? 1 : 0,
       ...(err.keyword ? { keyword: err.keyword } : {}),
       ...(typeof missing === "string" ? { missingProperty: missing } : {}),
       ...(typeof valueType === "string" && valueType !== "" ? { valueType } : {}),

@@ -11,7 +11,9 @@ export type RenameSymbolKind =
   /** A `name:` on a step inside a step array. */
   | "step"
   /** A key of the module doc's `variables:` / `secrets:` / `ports:` block. */
-  | "declaration";
+  | "declaration"
+  /** The `as:` of a `!for-each`, with every index and CEL read naming it. */
+  | "binding";
 
 /** What the cursor resolved to, and the span the host pre-fills in its rename
  *  box. `block` is set only for a `declaration`. */
@@ -20,6 +22,9 @@ export interface RenameSymbol {
   name: string;
   range: Range;
   block?: "variables" | "secrets" | "ports";
+  /** A `binding`: the span of the loop's mapping in its document, which is
+   *  also the only region its name is read in. */
+  loop?: [number, number];
 }
 
 /** One replacement. `range` is a source span in `uri`; `newText` replaces it

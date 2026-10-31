@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: TemplateInitUndecidableApp
+imports:
+  Lib: ../undecidable-lib
+---
+kind: Lib.Reads
+metadata: { name: reads }

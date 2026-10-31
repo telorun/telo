@@ -1,0 +1,36 @@
+# An inner sequence's steps see that run's own members alone: an outer member
+# is reached with `!ref`, never through `resources`, so the read is refused by
+# `telo check` and at load.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberCelNestedApp
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+with:
+  - kind: Run.Value
+    metadata:
+      name: outer
+    value: 1
+  - kind: Run.Sequence
+    metadata:
+      name: inner
+    with:
+      - kind: Run.Value
+        metadata:
+          name: deep
+        value: 2
+    steps:
+      - name: read
+        invoke: !ref deep
+        inputs:
+          seen: !cel "resources.outer"
+steps:
+  - name: run
+    invoke: !ref inner

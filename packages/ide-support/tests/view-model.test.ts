@@ -46,6 +46,40 @@ async function viewModel() {
   return buildViewModel({ owner: uriOf(OWNER), revision: 3, ...(await analyse()), uriOfSource: uriOf, documents: {} });
 }
 
+describe("buildViewModel configurations", () => {
+  const DIALECT = fileURLToPath(new URL("../../../tests/__fixtures__/configurations/dialect.yaml", import.meta.url));
+
+  async function dialect(configuration?: Record<string, unknown>) {
+    const graph = await new Loader([new DiskSource()]).loadGraph(DIALECT, { desugarImports: true, migrate: true });
+    const manifests = flattenForAnalyzer(graph);
+    const registry = new AnalysisRegistry();
+    new StaticAnalyzer().analyze(manifests, { moduleDocuments: collectModuleDocuments(graph) }, registry);
+    return buildViewModel({
+      owner: uriOf(DIALECT),
+      revision: 1,
+      graph,
+      registry,
+      analysis: registry.analysisOf(manifests),
+      uriOfSource: uriOf,
+      documents: {},
+      ...(configuration ? { configuration } : {}),
+    });
+  }
+
+  it("offers the dimensions and draws the picked configuration, the choice's box keeping its id", async () => {
+    const byDefault = await dialect();
+    expect(byDefault.configurations).toEqual({
+      dimensions: [{ key: "variables.dialect", values: ["sqlite", "memory"], default: "sqlite" }],
+      selected: { "variables.dialect": "sqlite" },
+    });
+    const picked = await dialect({ "variables.dialect": "memory" });
+    const box = (m: typeof byDefault) => m.moduleGraph!.nodes.find((n) => n.name === "db")!;
+    expect(box(picked).id).toBe(box(byDefault).id);
+    expect([box(byDefault).kind, box(picked).kind]).toEqual(["SQLite.Connection", "Run.Value"]);
+    expect(box(picked).choice?.selected).toBe("memory");
+  });
+});
+
 describe("buildViewModel", () => {
   it("is plain JSON", async () => {
     const model = await viewModel();

@@ -1,14 +1,19 @@
-import type { ScalarTag } from "yaml";
+import type { CollectionTag, ScalarTag } from "yaml";
 import { stringifyString } from "yaml/util";
 import { defaultRegistry } from "./builtins.js";
+import { buildExpansionTags } from "./expansion-tags.js";
 import { isTaggedSentinel, makeTaggedSentinel, type TaggedSentinel } from "./sentinel.js";
 import type { TemplatingEngineRegistry } from "./registry.js";
 
+/** One YAML tag the manifest parsers recognise. */
+export type ManifestTag = ScalarTag | CollectionTag;
+
 /** Build the `customTags` array passed to `yaml`'s `parseAllDocuments` /
- *  `Document` from the registered engines. Each engine contributes one
- *  ScalarTag whose `resolve` produces a `TaggedSentinel`, and whose
- *  `identify` + `stringify` round-trip the sentinel back to its original
- *  `!<engine> "<source>"` form when the document is re-serialized.
+ *  `Document` from the registered engines plus the expansion tags. Each engine
+ *  contributes one ScalarTag whose `resolve` produces a `TaggedSentinel`, and
+ *  whose `identify` + `stringify` round-trip the sentinel back to its original
+ *  `!<engine> "<source>"` form when the document is re-serialized; each
+ *  expansion tag a mapping tag (`expansion-tags.ts`).
  *
  *  Without `stringify`, `Document.toString()` would emit the sentinel as a
  *  YAML mapping (`{__tagged: true, engine: cel, source: ...}`), corrupting
@@ -21,8 +26,11 @@ import type { TemplatingEngineRegistry } from "./registry.js";
  *  hosts. Each host passes its own registry (in practice always
  *  `createDefaultRegistry()`), keeping the door open for future
  *  test-only registries. */
-export function buildCustomTags(registry: TemplatingEngineRegistry): ScalarTag[] {
-  return registry.list().map((engine) => buildTagForEngine(engine.name));
+export function buildCustomTags(registry: TemplatingEngineRegistry): ManifestTag[] {
+  return [
+    ...registry.list().map((engine) => buildTagForEngine(engine.name)),
+    ...buildExpansionTags(),
+  ];
 }
 
 /** Returns `customTags` built from the default registry, freshly each call.
@@ -30,8 +38,8 @@ export function buildCustomTags(registry: TemplatingEngineRegistry): ScalarTag[]
  *  parse the same set of tags. Built from `defaultRegistry()` (the same
  *  singleton precompile + the analyzer use) so registering a new engine on
  *  the default registry propagates to YAML parsing on the next call. The
- *  rebuild cost is negligible (one array of N small ScalarTag objects). */
-export function defaultCustomTags(): ScalarTag[] {
+ *  rebuild cost is negligible (one array of N small tag objects). */
+export function defaultCustomTags(): ManifestTag[] {
   return buildCustomTags(defaultRegistry());
 }
 

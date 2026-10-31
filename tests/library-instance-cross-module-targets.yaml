@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: LibraryInstanceCrossModuleTargetsTest
+  version: 1.0.0
+  description: |
+    A library's `!ref <Alias>.<name>` names the instance its own import reaches,
+    also when the application reaches that module as several instances — here
+    `Shapes`, imported by `Lib` and by `Lib`'s `Middle`. The kernel used to find
+    neither copy and refused the function's `returns` as naming no shape.
+imports:
+  Assert: ../modules/assert
+  Run: ../modules/run
+  Lib: ./__fixtures__/library-instance-targets/lib
+targets: [!ref check]
+---
+kind: Run.Sequence
+metadata: { name: check }
+steps:
+  - { name: described, invoke: !ref Lib.describe }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.described.result"
+      expected: { roles: [{ role: user }] }

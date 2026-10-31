@@ -1,0 +1,103 @@
+[
+  {
+    "name": "!if at a field, keys in written order after the marker",
+    "yaml": "port: !if\n  then: 8080\n  if: true\n  else: 9090\n",
+    "json": { "port": { "__expand": "if", "then": 8080, "if": true, "else": 9090 } }
+  },
+  {
+    "name": "!switch at a declaration position, metadata where it was written",
+    "yaml": "--- !switch\nswitch: postgres\nmetadata: { name: db }\ncases:\n  postgres: { kind: Pg.Connection }\n  sqlite: { kind: Lite.Connection }\n",
+    "json": {
+      "__expand": "switch",
+      "switch": "postgres",
+      "metadata": { "name": "db" },
+      "cases": { "postgres": { "kind": "Pg.Connection" }, "sqlite": { "kind": "Lite.Connection" } }
+    }
+  },
+  {
+    "name": "!for-each in a list, nested !if in emit",
+    "yaml": "routes:\n  - path: /health\n  - !for-each\n    in: [a, b]\n    as: hook\n    emit:\n      - !if { if: true, then: { path: /x } }\n",
+    "json": {
+      "routes": [
+        { "path": "/health" },
+        {
+          "__expand": "for-each",
+          "in": ["a", "b"],
+          "as": "hook",
+          "emit": [{ "__expand": "if", "if": true, "then": { "path": "/x" } }]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a ... splice is a plain key, kept at its place",
+    "yaml": "columns:\n  id: integer\n  ...: !for-each { in: [a], key: k, emit: text }\n  name: text\n",
+    "json": {
+      "columns": {
+        "id": "integer",
+        "...": { "__expand": "for-each", "in": ["a"], "key": "k", "emit": "text" },
+        "name": "text"
+      }
+    }
+  },
+  {
+    "name": "a plain !ref carries its parsed form",
+    "yaml": "invoke: !ref Console.writeLine\n",
+    "json": {
+      "invoke": {
+        "__tagged": true,
+        "engine": "ref",
+        "source": "Console.writeLine",
+        "parsed": { "alias": "Console", "name": "writeLine", "indexes": [] }
+      }
+    }
+  },
+  {
+    "name": "an indexed !ref inside a tag",
+    "yaml": "store: !if\n  if: true\n  then: !ref stores[each.key]\n",
+    "json": {
+      "store": {
+        "__expand": "if",
+        "if": true,
+        "then": {
+          "__tagged": true,
+          "engine": "ref",
+          "source": "stores[each.key]",
+          "parsed": { "name": "stores", "indexes": [{ "binding": "each", "member": "key" }] }
+        }
+      }
+    }
+  },
+  {
+    "name": "a !ref outside the grammar carries its refusal",
+    "yaml": "invoke: !ref a.b.c\n",
+    "json": {
+      "invoke": {
+        "__tagged": true,
+        "engine": "ref",
+        "source": "a.b.c",
+        "refusal": { "code": "REF_MEMBER_INVALID", "offset": 3 }
+      }
+    }
+  },
+  {
+    "name": "!if on a scalar",
+    "yaml": "port: !if 8080\n",
+    "refusal": { "code": "BRANCH_SHAPE_INVALID" }
+  },
+  {
+    "name": "!switch on a sequence",
+    "yaml": "port: !switch [a, b]\n",
+    "refusal": { "code": "BRANCH_SHAPE_INVALID" }
+  },
+  {
+    "name": "!for-each on a scalar",
+    "yaml": "routes: !for-each x\n",
+    "refusal": { "code": "REPEAT_SHAPE_INVALID" }
+  },
+  {
+    "name": "a tagged mapping writing the marker key",
+    "yaml": "port: !if { __expand: switch, if: true, then: 1 }\n",
+    "refusal": { "code": "BRANCH_SHAPE_INVALID" }
+  }
+]

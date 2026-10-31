@@ -39,7 +39,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { emittedStepIdentity, stepLabel, type ResourceDefinition, type ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -75,6 +75,17 @@ import {
   SELF_ALIAS,
 } from "./module-call-names.js";
 import { isModuleKind } from "./module-kinds.js";
+import { scopeAddress, type ScopeAddress, type ScopeSite } from "./scope-address.js";
+import { declaredScopes, scopeMembers, type DeclaredScope } from "./scope-declarations.js";
+import { isScopeMemberDeclaration } from "./scope-members.js";
+import {
+  importPathOf,
+  importPathThrough,
+  scopeSiteAt,
+  scopeSiteAtPath,
+  ScopedNameResolver,
+  type DeclarationReading,
+} from "./scoped-name-resolver.js";
 
 export interface ResourceGraphNode {
   type: "resource";
@@ -90,6 +101,9 @@ export interface ResourceGraphNode {
   scopeOwner?: string;
   /** The scope field's JSON Pointer on the owner (set iff `scoped`). */
   scopeSite?: string;
+  /** The owner's regions the scope's names resolve in, as keys from the
+   *  owner's root (set iff `scoped`). */
+  scopeRegions?: readonly (readonly string[])[];
 }
 
 export interface StepGraphNode {
@@ -97,6 +111,9 @@ export interface StepGraphNode {
   id: string;
   /** The step's declared `name:`, when it has one. */
   name?: string;
+  /** A step a template repeat emitted carries `__emitted` in place of `name`:
+   *  its identity as text (`runs['a']`). */
+  emitted?: string;
   /** Node id of the resource whose body declares this step. */
   owner: string;
   /** Concrete path within the owner (`steps[0].do[1]`). */
@@ -165,6 +182,9 @@ export interface CallGraphEdge {
    *  order `ScopeContext` and `!ref` already agree on), never to a same-named
    *  module-level resource. */
   to?: string;
+  /** The import alias the reference is written through (`!ref Lib.sweep`),
+   *  `Self` excluded. An export exists only once its import has initialized. */
+  alias?: string;
   /** Field-map path of the slot — part of the edge's identity. */
   slot: string;
   /** The slot's pattern as segments, for an edge the reference reach found —
@@ -257,63 +277,24 @@ export function nodeIdFor(manifest: ResourceManifest): string {
   const kind = manifest.kind as string;
   const name = manifest.metadata?.name as string;
   const module = (manifest.metadata as { module?: string } | undefined)?.module;
-  return module ? `${module}\0${resourceId(kind, name)}` : resourceId(kind, name);
+  // One instance of a module imported several times is one copy among them.
+  const instance = importPathOf(manifest);
+  const scoped = instance ? `${module}/${instance.join("/")}` : module;
+  return scoped ? `${scoped}\0${resourceId(kind, name)}` : resourceId(kind, name);
 }
 
 /** The module a manifest was declared in, when the loader stamped one. */
 const declaringModule = (manifest: ResourceManifest): string | undefined =>
   (manifest.metadata as { module?: string } | undefined)?.module;
 
-/**
- * A bare `<name>` read from a resource declared in `fromModule`.
- *
- * **Same module first**, because that is what a bare name MEANS: it is resolved
- * in the scope it was written in, and a cross-module reference is written with
- * an alias. A name declared in exactly one module resolves to it whatever the
- * reader's scope — which is what keeps an unstamped manifest set (every
- * fixture, every single-module load) behaving as it did. A name declared in
- * SEVERAL other modules and none of the reader's resolves to NOTHING: guessing
- * between them attributes a reference to a resource the author never named, and
- * some other pass reports the dangling name honestly.
- *
- * Exported because more than one pass resolves a bare name — the call graph's
- * own sites, and the projection's inline declarations and CEL state reads. Two
- * spellings of this rule is how a fix in one leaves a first-wins lookup in the
- * other, which is exactly the collision it exists to prevent.
- */
-export function resolveScopedName<T>(
-  candidates: readonly T[] | undefined,
-  moduleOf: (item: T) => string | undefined,
-  fromModule: string | undefined,
-): T | undefined {
-  if (!candidates || candidates.length === 0) return undefined;
-  if (candidates.length === 1) return candidates[0];
-  return candidates.find((candidate) => moduleOf(candidate) === fromModule);
-}
+export { resolveScopedName } from "./scoped-name-resolver.js";
 
-/**
- * What a `{ name, alias? }` reference written in `fromModule` names among
- * `candidatesByName` — the declarations a dispatch resolves against.
- *
- * A bare name, or one through `Self`, follows {@link resolveScopedName}. A name
- * through an import alias is the one declared by the module that alias reaches
- * in `fromModule`'s own alias table, as the kernel resolves it — never another
- * module's resource that happens to share the name.
- */
-export function resolveReferenceTarget<T extends ResourceManifest>(
-  candidatesByName: ReadonlyMap<string, readonly T[]>,
-  ref: { readonly name: string; readonly alias?: string },
-  fromModule: string | undefined,
-  moduleForAlias: (alias: string) => string | undefined,
-): T | undefined {
-  const candidates = candidatesByName.get(ref.name);
-  if (ref.alias === undefined || ref.alias === "Self") {
-    return resolveScopedName(candidates, declaringModule, fromModule);
-  }
-  const target = moduleForAlias(ref.alias);
-  if (target === undefined) return undefined;
-  return candidates?.find((candidate) => declaringModule(candidate) === target);
-}
+/** How a graph node names itself and the module that declared it. */
+const NODE_READING: DeclarationReading<ResourceGraphNode> = {
+  nameOf: (node) => node.name,
+  moduleOf: (node) => declaringModule(node.manifest),
+  importPathOf: (node) => importPathOf(node.manifest),
+};
 
 /**
  * Does control reach this edge's target?
@@ -686,6 +667,7 @@ function walkSteps(
       step: value,
     };
     if (typeof value.name === "string") node.name = value.name;
+    else if (emittedStepIdentity(value)) node.emitted = stepLabel(value);
     const { variant, variantLabel, predicate, predicateField } = classifyStep(value, ctx.itemSchema, ctx.rootSchema);
     if (variant) node.variant = variant;
     if (variantLabel) node.variantLabel = variantLabel;
@@ -750,9 +732,6 @@ export function buildCallGraph(
 ): CallGraph {
   const nodes = new Map<string, CallGraphNode>();
   const edges: CallGraphEdge[] = [];
-  /** Every declaration of a bare name, in declaration order — a name may be
-   *  declared once per module, so this is a list rather than one node. */
-  const byName = new Map<string, ResourceGraphNode[]>();
   const stepsByOwner = new Map<string, StepGraphNode[]>();
   const stepEdgesByPath = new Map<string, CallGraphEdge>();
 
@@ -778,6 +757,8 @@ export function buildCallGraph(
   for (const manifest of resources) {
     const name = manifest.metadata?.name;
     if (!name || !manifest.kind || isKindDocumentOrImport(manifest)) continue;
+    // A scope member is a node of its holder's scope, declared there.
+    if (isScopeMemberDeclaration(manifest)) continue;
     const node: ResourceGraphNode = {
       type: "resource",
       id: nodeIdFor(manifest),
@@ -787,14 +768,24 @@ export function buildCallGraph(
     };
     if (nodes.has(node.id)) continue;
     nodes.set(node.id, node);
-    byName.set(node.name, [...(byName.get(node.name) ?? []), node]);
   }
-
-  const resolveByName = (
+  const topLevel = [...nodes.values()] as ResourceGraphNode[];
+  const names = new ScopedNameResolver(topLevel, NODE_READING);
+  /** The node a reference through an import alias reaches, where that import's
+   *  module is imported as several instances; undefined anywhere else. */
+  const instanceThrough = (
+    value: unknown,
+    source: ResourceManifest,
     name: string,
-    fromModule: string | undefined,
-  ): ResourceGraphNode | undefined =>
-    resolveScopedName(byName.get(name), (node) => declaringModule(node.manifest), fromModule);
+  ): ResourceGraphNode | undefined => {
+    const alias = (value as { alias?: unknown } | null)?.alias;
+    if (typeof alias !== "string" || alias === "Self") return undefined;
+    const module = moduleAliasScope(source.metadata, options.aliases, options.aliasesByModule)?.moduleForAlias(alias);
+    if (!module || names.declarationsOf(name).filter((n) => declaringModule(n.manifest) === module).length < 2) {
+      return undefined;
+    }
+    return names.inModule(name, module, importPathThrough(source, alias));
+  };
 
   // --- step nodes ---
   const collectStepsFor = (
@@ -824,108 +815,135 @@ export function buildCallGraph(
     if (collected.length > 0) stepsByOwner.set(node.id, collected);
   };
 
-  for (const node of [...nodes.values()] as ResourceGraphNode[]) {
-    collectStepsFor(node, (name) => resolveByName(name, declaringModule(node.manifest)));
+  for (const node of topLevel) {
+    collectStepsFor(node, (name) => names.resolve(name, declaringModule(node.manifest)));
   }
 
-  // --- edges ---
-  // Scope-local nodes of the CURRENT resource. The visitor fires `onScope`
-  // before that resource's ref sites, so both are set before any edge they
-  // qualify is added. Scope-local names win over module-level ones — the order
-  // `ScopeContext` and `!ref` already agree on.
-  let scopedNames = new Set<string>();
-  let scopeLocal = new Map<string, ResourceGraphNode>();
+  /** Re-resolve `ownerId`'s step edges against the scopes it declares. */
+  const rescopeStepEdges = (
+    ownerId: string,
+    holder: ScopeAddress,
+    scopes: readonly DeclaredScope[],
+    module: string | undefined,
+  ): void => {
+    for (const [key, edge] of stepEdgesByPath) {
+      if (!key.startsWith(`${ownerId}\0`)) continue;
+      const found = names.locate(edge.toName, module, scopeSiteAtPath(holder, scopes, edge.path));
+      if (!found?.address.scope) continue;
+      edge.to = found.declaration.id;
+      edge.scoped = true;
+    }
+  };
 
+  /**
+   * Every member of `scopes` as a node of its own — ONE per member, keyed by
+   * its scope site (`<owner>#with#<kind>/<name>`), the declaration-site identity
+   * the zones correlate on — with its own reference and step edges, resolved
+   * scope first, and the members of the scopes it declares in turn. A member is
+   * reached through its holder whether or not the set also holds it as a
+   * declaration: an editor's projection holds only top-level documents.
+   * Excluded from init ordering (created when the scope opens).
+   */
+  const declareScopedMembers = (
+    ownerId: string,
+    holder: ScopeAddress,
+    scopes: readonly DeclaredScope[],
+    module: string | undefined,
+  ): boolean => {
+    const declared: Array<{ node: ResourceGraphNode; site: ScopeSite }> = [];
+    for (const scope of scopes) {
+      const site: ScopeSite = { holder, field: scope.path };
+      const members: ResourceGraphNode[] = [];
+      for (const manifest of scopeMembers(scope)) {
+        if (!manifest.kind) continue;
+        const name = manifest.metadata.name;
+        const node: ResourceGraphNode = {
+          type: "resource",
+          id: `${ownerId}#${scope.path}#${resourceId(manifest.kind, name)}`,
+          kind: manifest.kind,
+          name,
+          manifest,
+          scoped: true,
+          scopeOwner: ownerId,
+          scopeSite: scope.path,
+          scopeRegions: scope.regions,
+        };
+        if (nodes.has(node.id)) continue;
+        nodes.set(node.id, node);
+        members.push(node);
+        declared.push({ node, site });
+      }
+      names.declareScope(site, members);
+    }
+    for (const { node, site } of declared) {
+      const address = scopeAddress(site, node.name);
+      // A member's kind is written in its holder's module, whose alias table the
+      // registry reads off `metadata.module`.
+      const view =
+        module !== undefined && declaringModule(node.manifest) === undefined
+          ? ({ ...node.manifest, metadata: { ...node.manifest.metadata, module } } as ResourceManifest)
+          : node.manifest;
+      const sites = registry.referenceSites(view, options.aliases, options.aliasesByModule, node.manifest);
+      const ownScopes = declaredScopes(sites);
+      // The scoped resource's own ref slots, at its concrete sites.
+      for (const site of sites) {
+        if (site.refs.length === 0) continue;
+        const targetName = refTargetName(site.data);
+        if (targetName === undefined) continue;
+        const { fieldPath, fieldKeys } = site.refs[0]!;
+        const entry = siteRefEntry(site);
+        const { use, unresolved, unresolvedReason } = resolveUseAtSite(
+          entry,
+          node.manifest,
+          site.path,
+          reachDefault(site.refs),
+        );
+        const edge: CallGraphEdge = {
+          from: node.id,
+          toName: targetName,
+          slot: fieldPath,
+          slotKeys: fieldKeys,
+          path: site.path,
+          use,
+        };
+        const target = names.locate(targetName, module, scopeSiteAt(address, ownScopes, site.keys));
+        if (target) edge.to = target.declaration.id;
+        if (target?.address.scope) edge.scoped = true;
+        if (unresolved) edge.unresolved = unresolved;
+        if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
+        if (entry.inputs !== undefined) edge.inputs = entry.inputs;
+        edges.push(edge);
+      }
+      // Its step arrays too, resolved scope-local first.
+      collectStepsFor(node, (name) => names.resolve(name, module, site));
+      if (declareScopedMembers(node.id, address, ownScopes, module)) {
+        rescopeStepEdges(node.id, address, ownScopes, module);
+      }
+    }
+    return declared.length > 0;
+  };
+
+  // --- edges ---
+  // The visitor fires `onScope` before a resource's ref sites, so a scope is
+  // declared to the resolver before any edge it qualifies is added.
   visitManifest(
     resources,
     registry,
     {
       onScope: (event) => {
-        scopedNames = event.enclosedNames;
-        scopeLocal = new Map();
         const ownerName = event.source.metadata?.name as string | undefined;
-        if (!ownerName || !event.source.kind) return;
+        if (!ownerName || !event.source.kind || !event.holder) return;
         const ownerId = nodeIdFor(event.source);
-
-        // Inline declarations inside `x-telo-scope` arrays become nodes of
-        // their own, keyed by their scope site — the declaration-site identity
-        // the zones plan correlates on. They are excluded from init ordering
-        // (created when the scope opens), but their own references are real
-        // edges of the one model.
-        for (const [pointer, manifests] of event.manifestsByPointer) {
-          for (const manifest of manifests) {
-            const name = manifest.metadata?.name;
-            if (typeof name !== "string" || !manifest.kind) continue;
-            const scopedNode: ResourceGraphNode = {
-              type: "resource",
-              id: `${ownerId}#${pointer}#${resourceId(manifest.kind, name)}`,
-              kind: manifest.kind,
-              name,
-              manifest,
-              scoped: true,
-              scopeOwner: ownerId,
-              scopeSite: pointer,
-            };
-            nodes.set(scopedNode.id, scopedNode);
-            scopeLocal.set(name, scopedNode);
-          }
-        }
-        if (scopeLocal.size === 0) return;
-
         const ownerModule = declaringModule(event.source);
-        const resolveScoped = (name: string): ResourceGraphNode | undefined =>
-          scopeLocal.get(name) ?? resolveByName(name, ownerModule);
+        const holder = event.holder;
+        if (!declareScopedMembers(ownerId, holder, event.scopes, ownerModule)) return;
 
         // The owner's own step edges were emitted before this scope was seen
         // (step collection precedes the visit), so their names resolved
-        // module-level. Re-resolve them now that the scope exists: scope-local
-        // names WIN — the order `ScopeContext` and `!ref` already agree on — so
-        // a step's `invoke: !ref X` with X declared in `with:` reaches the
-        // scoped node, never a same-named module-level shadow.
-        for (const [key, edge] of stepEdgesByPath) {
-          if (!key.startsWith(`${ownerId}\0`)) continue;
-          const local = scopeLocal.get(edge.toName);
-          if (!local) continue;
-          edge.to = local.id;
-          edge.scoped = true;
-        }
-
-        for (const scopedNode of scopeLocal.values()) {
-          // The scoped resource's own ref slots, at its concrete sites.
-          for (const site of registry.referenceSites(
-            scopedNode.manifest,
-            options.aliases,
-            options.aliasesByModule,
-          )) {
-            if (site.refs.length === 0) continue;
-            const targetName = refTargetName(site.data);
-            if (targetName === undefined) continue;
-            const { fieldPath, fieldKeys } = site.refs[0]!;
-            const entry = siteRefEntry(site);
-            const { use, unresolved, unresolvedReason } = resolveUseAtSite(
-              entry,
-              scopedNode.manifest,
-              site.path,
-              reachDefault(site.refs),
-            );
-            const edge: CallGraphEdge = {
-              from: scopedNode.id,
-              toName: targetName,
-              slot: fieldPath,
-              slotKeys: fieldKeys,
-              path: site.path,
-              use,
-            };
-            const target = resolveScoped(targetName);
-            if (target) edge.to = target.id;
-            if (unresolved) edge.unresolved = unresolved;
-            if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
-            if (entry.inputs !== undefined) edge.inputs = entry.inputs;
-            edges.push(edge);
-          }
-          // Its step arrays too, resolved scope-local first.
-          collectStepsFor(scopedNode, resolveScoped);
-        }
+        // module-level. Re-resolve them now that the scope exists, so a step's
+        // `invoke: !ref X` with X declared in `with:` reaches the scoped node,
+        // never a same-named module-level shadow.
+        rescopeStepEdges(ownerId, holder, event.scopes, ownerModule);
       },
       onRef: (event) => {
         const sourceName = event.source.metadata?.name as string | undefined;
@@ -969,24 +987,28 @@ export function buildCallGraph(
           path: event.concretePath,
           use,
         };
-        const sourceModule = declaringModule(event.source);
-        const target = scopedNames.has(targetName)
-          ? (scopeLocal.get(targetName) ?? resolveByName(targetName, sourceModule))
-          : resolveByName(targetName, sourceModule);
-        if (target) edge.to = target.id;
+        const found = names.locate(targetName, declaringModule(event.source), event.within);
+        // A reference through an import of a module imported several times
+        // reaches that import's instance.
+        const instance = instanceThrough(event.value, event.source, targetName);
+        if (instance) edge.to = instance.id;
+        else if (found) edge.to = found.declaration.id;
         if (unresolved) edge.unresolved = unresolved;
         if (unresolvedReason) edge.unresolvedReason = unresolvedReason;
         if (event.entry.inputs !== undefined) edge.inputs = event.entry.inputs;
+        const alias = referenceAlias(event.value);
+        if (alias !== undefined) edge.alias = alias;
         if (event.nested) edge.nested = true;
         else edge.injected = true;
-        if (scopedNames.has(targetName)) edge.scoped = true;
+        if (found?.address.scope) edge.scoped = true;
         edges.push(edge);
       },
     },
     {
       aliases: options.aliases,
       aliasesByModule: options.aliasesByModule,
-      skip: isKindDocumentOrImport,
+      // A scope member is reached through its holder, above.
+      skip: (m) => isKindDocumentOrImport(m) || isScopeMemberDeclaration(m),
       expand: true,
       discoverNestedRefs: true,
     },
@@ -1006,6 +1028,10 @@ export function buildCallGraph(
     const key = declaringModuleKey(manifest);
     return rootModules.has(key) ? ROOT_MODULE_KEY : key;
   };
+  const callees = new ScopedNameResolver(topLevel, {
+    nameOf: (node) => node.name,
+    moduleOf: (node) => moduleKeyOf(node.manifest),
+  });
   for (const node of [...nodes.values()]) {
     if (node.type !== "resource" || node.scoped) continue;
     const module = moduleKeyOf(node.manifest);
@@ -1026,9 +1052,7 @@ export function buildCallGraph(
         use: ["dependency"],
         moduleCall: true,
       };
-      const target = own
-        ? byName.get(toName)?.find((candidate) => moduleKeyOf(candidate.manifest) === module)
-        : undefined;
+      const target = own ? callees.inModule(toName, module) : undefined;
       if (target) edge.to = target.id;
       edges.push(edge);
     }
@@ -1057,24 +1081,30 @@ export function buildCallGraph(
     // node id, which carries the module.
     resource: (kind, name) =>
       (nodes.get(resourceId(kind, name)) as ResourceGraphNode | undefined) ??
-      byName.get(name)?.find((n) => n.kind === kind),
-    resourceByName: (name, fromModule) =>
-      resolveScopedName(byName.get(name), (node) => declaringModule(node.manifest), fromModule),
+      names.declarationsOf(name).find((n) => n.kind === kind),
+    resourceByName: (name, fromModule) => names.resolve(name, fromModule),
     steps: (ownerId) => stepsByOwner.get(ownerId) ?? [],
     controlEdges: () => edges.filter(reachesTarget),
   };
+}
+
+/** The import alias a ref site's value is written through, `Self` excluded. */
+function referenceAlias(value: unknown): string | undefined {
+  const alias = refSentinelTarget(value)?.alias ?? (isResolvedReference(value) ? value.alias : undefined);
+  return typeof alias === "string" && alias !== "Self" ? alias : undefined;
 }
 
 /** The target resource NAME a ref site's value carries. Both written forms reach
  *  here: an unresolved `!ref <name>` sentinel and the resolved reference
  *  `resolveRefSentinels` rewrites it into. */
 function refTargetName(value: unknown): string | undefined {
-  // An edge's target is taken VERBATIM — `resolveScopedName` and the node index
+  // An edge's target is taken VERBATIM — the scoped name resolver
   // are what resolve it, and a cross-module `Alias.name` is a target this graph
   // legitimately carries unresolved. That is this pass's reduction over the
   // shared parse, not a second reading of the tag.
   const sentinel = refSentinelTarget(value);
-  if (sentinel) return sentinel.source;
+  // A family member's edge reaches the family: one box, whichever member.
+  if (sentinel) return sentinel.indexes.length > 0 ? sentinel.name : sentinel.source;
   return isResolvedReference(value) ? value.name : undefined;
 }
 

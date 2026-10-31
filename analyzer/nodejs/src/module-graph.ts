@@ -49,9 +49,10 @@ import {
   buildCelEnvironment,
   celExpressionsOf,
   extractAccessChains,
+  isExpansionSentinel,
   isRefSentinel,
+  type ExpansionSentinel,
   isTaggedSentinel,
-  walkCelExpressions,
 } from "@telorun/templating";
 import {
   writtenLeafOf,
@@ -61,16 +62,20 @@ import {
 } from "./written-value.js";
 import {
   nodeIdFor,
-  resolveScopedName,
   resourceId,
   type CallGraph,
   type CallGraphEdge,
   type ResourceGraphNode,
   type StepGraphNode,
 } from "./call-graph.js";
+import { scopeAddress, type ScopeAddress, type ScopeSite } from "./scope-address.js";
+import { celScopeAt, keysUnder, type CelScopeHolder } from "./scope-declarations.js";
+import { walkOwnCelExpressions } from "./scope-members.js";
+import { ScopedNameResolver } from "./scoped-name-resolver.js";
 import { propertySchemas } from "./manifest-navigation.js";
 import { isStepSlot } from "./step-slot.js";
 import { isInlineDeclaration as isInlineDeclarationValue, isResolvedReference } from "./resolved-reference.js";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { findZoneProviders } from "./resolve-zone-containment.js";
 import { isTriggerUse, topFieldOf, type RefUse } from "./ref-slot.js";
 import { canonicalJson } from "./canonical-json.js";
@@ -79,6 +84,7 @@ import { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
 import { accessChains } from "./cel-access-chains.js";
 import { moduleCallNamesByModule, moduleCallNamesOf } from "./module-call-names.js";
 import { selfForwardPath } from "./template-forward.js";
+import { branchValue, branchesOf } from "./choice-reading.js";
 import { entryListsOf, rootMatchersOf, type EntryListDeclaration } from "./topology-role.js";
 
 /** How a node's declaration reached the module, which is what decides where a
@@ -126,7 +132,7 @@ export type EdgeClass = "flow" | "holds" | "shape" | "data";
  * export, so no entry is before any other, and offering a "move up" on one
  * would be an affordance over a distinction that does not exist.
  */
-export type RowKind = "step" | "entry" | "target" | "inline" | "reference" | "export";
+export type RowKind = "step" | "entry" | "target" | "repeat" | "inline" | "reference" | "export";
 
 /**
  * Rows that are ordered entries of their array.
@@ -137,7 +143,7 @@ export type RowKind = "step" | "entry" | "target" | "inline" | "reference" | "ex
  * and neither of which means what it means on a step.
  */
 export function isOrderedRow(row: GraphRow): boolean {
-  return row.kind === "step" || row.kind === "entry" || row.kind === "target";
+  return row.kind === "step" || row.kind === "entry" || row.kind === "target" || row.kind === "repeat";
 }
 
 /** One occupancy of a port: the concrete site, and the name it holds. */
@@ -274,12 +280,47 @@ export interface GraphRow {
      */
     alternatives?: { path: string; refs: string[] }[];
   };
+  /** `repeat` rows: the loop a list item is. Identified by its source path
+   *  and its ordinal among the list's repeats of that source. */
+  repeat?: GraphRepeat;
+  /** A step a template repeat emitted: its identity text, in place of a name. */
+  emitted?: string;
   /** `inline` rows: the kind the declaration written at this site names. A
    *  declaration is not a reference — there is nothing elsewhere to point at,
    *  which is the whole reason the row has to carry its own identity. */
   declares?: string;
   /** That kind resolved to no definition. */
   unknownKind?: boolean;
+}
+
+/** One alternative of a `!if` / `!switch`: the key it is written under
+ *  (`then`, `else`, `default`, a case key; `absent` for the outcome of an `!if`
+ *  with no `else:` whose condition is false) and, at a declaration position,
+ *  the kind the branch declares. */
+export interface GraphAlternative {
+  key: string;
+  kind?: string;
+}
+
+/** A choice drawn at a box: the alternatives it writes and the one the picked
+ *  configuration selects (`null` when it selects none). At a declaration
+ *  position the box is the choice — identified by its name, its kind the
+ *  selected alternative's; in a field it names the field's path. */
+export interface GraphChoice {
+  /** `""` for the declaration itself, else the written path of the field. */
+  path: string;
+  tag: "if" | "switch";
+  alternatives: GraphAlternative[];
+  selected: string | null;
+}
+
+/** A `!for-each` as the graph draws it: one box (a family) or one row (a
+ *  repeat in a list), never one per element. */
+export interface GraphRepeat {
+  /** The collection iterated, as written (`self.routes`). */
+  source: string;
+  /** The binding the loop declares, `each` when `as:` is omitted. */
+  as: string;
 }
 
 /** A resource, the module root, or a declaration owned by either. */
@@ -341,6 +382,12 @@ export interface GraphNode {
   throws?: { codes: string[]; unbounded: boolean };
   /** The module root, which owns `targets` and the module's own config. */
   root?: boolean;
+  /** This box is a declaration-position `!if` / `!switch`. */
+  choice?: GraphChoice;
+  /** Choices written in this box's fields. */
+  choices?: GraphChoice[];
+  /** This box is a family: one name, one member per element of the source. */
+  family?: GraphRepeat;
 }
 
 /** A reference site, classed. */
@@ -568,6 +615,9 @@ export interface ModuleGraphDeps {
   refPositions(resource: ResourceManifest): { path: string; fieldPath: string; value: unknown }[];
   /** The resource's definition, resolved in its declaring module's scope. */
   definition(kind: string, module?: string): ResourceDefinition | undefined;
+  /** Where the resource holds inline declarations and how its fields are
+   *  evaluated — what decides where its CEL sees a scope's members. */
+  celScopeHolder(resource: ResourceManifest): CelScopeHolder;
   /** What invoking this resource can raise. Optional: a host without the
    *  resolver gets nodes with no error contract rather than a wrong one. */
   throwsOf?(manifest: ResourceManifest): { codes: string[]; unbounded: boolean } | undefined;
@@ -590,6 +640,9 @@ export interface BuildModuleGraphOptions {
    *  what the instance supplies. Each forwarded top-level field becomes a
    *  `forwarded` node of this kind, named by the field. */
   forwardsOf?: string;
+  /** The configuration the choices are expanded in. A set with no choice
+   *  ignores it. */
+  configuration?: Readonly<Record<string, unknown>>;
 }
 
 /**
@@ -640,6 +693,34 @@ const ENCLOSING_STAMP = "xTeloEnclosing";
 
 const isEnclosing = (manifest: ResourceManifest): boolean =>
   (manifest.metadata as Record<string, unknown> | undefined)?.[ENCLOSING_STAMP] === true;
+
+/** Stamped by {@link templateModule} on the declaration standing for a
+ *  template body's `!if` / `!switch` entry. */
+export const CHOICE_STAMP = "xTeloGraphChoice";
+/** The kind a choice's id is spelled with in place of the kind it declares. */
+const CHOICE_KIND = "!choice";
+/** Stamped by {@link templateModule} on the declaration standing for a
+ *  template body's family. */
+export const FAMILY_STAMP = "xTeloGraphFamily";
+
+/** The loop a list item is, when it is a `!for-each`. */
+function repeatOf(item: unknown): GraphRepeat | undefined {
+  if (!isExpansionSentinel(item) || item.__expand !== "for-each") return undefined;
+  const body = item as Record<string, unknown>;
+  const source = body.in;
+  return {
+    source: isTaggedSentinel(source) ? source.source : typeof source === "string" ? source : canonicalJson(source),
+    as: typeof body.as === "string" ? body.as : "each",
+  };
+}
+
+/** The identity of a repeat row: its source path, then its ordinal among the
+ *  repeats of that source in the container. */
+function repeatKey(repeat: GraphRepeat, seen: Map<string, number>): string {
+  const ordinal = seen.get(repeat.source) ?? 0;
+  seen.set(repeat.source, ordinal + 1);
+  return `${repeat.source}#${ordinal}`;
+}
 
 /** A forwarded field's node id — led by a separator no kind or module name
  *  starts with, so it cannot collide with a resource's. */
@@ -736,7 +817,7 @@ function isInlineDeclaration(value: unknown): boolean {
  *  unresolved `!ref <name>` sentinel and the resolved reference
  *  `resolveRefSentinels` rewrites it into. */
 function refName(value: unknown): string | undefined {
-  if (isRefSentinel(value)) return value.source;
+  if (isRefSentinel(value)) return refSentinelTarget(value)?.name;
   return isResolvedReference(value) ? value.name : undefined;
 }
 
@@ -818,7 +899,14 @@ export function buildModuleGraph(
   // module is part of the identity wherever one is stamped. Stating it here a
   // second way is how the two halves would disagree about which box an edge
   // arrives at.
-  const idOf = (manifest: ResourceManifest): string => nodeIdFor(manifest);
+  // A declaration-position choice keeps one identity whatever kind a
+  // configuration gives it.
+  const idOf = (manifest: ResourceManifest): string => {
+    const stamped = manifest.metadata as Record<string, unknown> | undefined;
+    return stamped?.xTeloChoice || stamped?.[CHOICE_STAMP]
+      ? nodeIdFor({ ...manifest, kind: CHOICE_KIND } as ResourceManifest)
+      : nodeIdFor(manifest);
+  };
 
   const manifestById = new Map<string, ResourceManifest>();
   for (const manifest of resources) {
@@ -839,6 +927,8 @@ export function buildModuleGraph(
   const projectedId = new Map<string, string>();
   const scopedIdByKey = new Map<string, string>();
   const scopedByOwner = new Map<string, Map<string, string[]>>();
+  /** Each owner's scopes, by field, with the regions their names resolve in. */
+  const scopeRegionsByOwner = new Map<string, Map<string, readonly (readonly string[])[]>>();
   for (const graphNode of callGraph.nodes.values()) {
     if (graphNode.type !== "resource") continue;
     if (isDeclarationDocument(graphNode.manifest)) continue;
@@ -870,6 +960,9 @@ export function buildModuleGraph(
         const site = graphNode.scopeSite ?? "";
         sites.set(site, [...(sites.get(site) ?? []), node.id]);
         scopedByOwner.set(owner, sites);
+        const regions = scopeRegionsByOwner.get(owner) ?? new Map<string, readonly (readonly string[])[]>();
+        regions.set(site, graphNode.scopeRegions ?? []);
+        scopeRegionsByOwner.set(owner, regions);
       }
       continue;
     }
@@ -887,6 +980,8 @@ export function buildModuleGraph(
     if (translated && translated !== owner) {
       scopedByOwner.delete(owner);
       scopedByOwner.set(translated, sites);
+      scopeRegionsByOwner.set(translated, scopeRegionsByOwner.get(owner)!);
+      scopeRegionsByOwner.delete(owner);
     }
   }
 
@@ -1111,13 +1206,60 @@ export function buildModuleGraph(
   // have put every inline declaration's reference and every CEL state read back
   // on whichever module happened to come first in the flattened list, which is
   // the collision module-scoped identity exists to prevent.
-  const nodesByName = new Map<string, GraphNode[]>();
-  for (const node of nodes) {
-    if (node.root) continue;
-    nodesByName.set(node.name, [...(nodesByName.get(node.name) ?? []), node]);
-  }
-  const resolveName = (name: string, fromModule: string | undefined): string | undefined =>
-    resolveScopedName(nodesByName.get(name), (node) => node.module, fromModule)?.id;
+  //
+  // A scoped box is filed under its holder's scope, so a name resolves to it
+  // only where its scope is read, and a nested scope chains outward.
+  const addresses = new Map<string, ScopeAddress>();
+  const addressOfNode = (id: string): ScopeAddress => {
+    const known = addresses.get(id);
+    if (known) return known;
+    const node = byId.get(id);
+    const site = node ? declaringSite(node) : undefined;
+    const address = site ? scopeAddress(site, node!.name) : scopeAddress(node?.module, id);
+    addresses.set(id, address);
+    return address;
+  };
+  const declaringSite = (node: GraphNode): ScopeSite | undefined =>
+    node.ownership === "scoped" && node.owner !== undefined
+      ? { holder: addressOfNode(node.owner), field: node.ownerSite ?? "" }
+      : undefined;
+  const names = new ScopedNameResolver(
+    nodes.filter((node) => !node.root),
+    { nameOf: (node) => node.name, moduleOf: (node) => node.module, scopeOf: declaringSite },
+  );
+  const scopesOf = (id: string): { field: string; regions: readonly (readonly string[])[] }[] =>
+    [...(scopeRegionsByOwner.get(id) ?? [])].map(([field, regions]) => ({ field, regions }));
+  const keysOf = (path: string): string[] => path.split(/[.[\]]/).filter((key) => key !== "");
+  /** A bare name a reference at `path` of box `from` names: the scope a
+   *  region there declares, then the scope `from` is declared in, outward, then
+   *  the module. */
+  const resolveName = (name: string, from: GraphNode | undefined, path?: string): string | undefined => {
+    const keys = path === undefined ? [] : keysOf(path);
+    const region = from
+      ? scopesOf(from.id).find((scope) => scope.regions.some((r) => keysUnder(keys, r)))
+      : undefined;
+    const within = region
+      ? { holder: addressOfNode(from!.id), field: region.field }
+      : from && declaringSite(from);
+    return names.resolve(name, from?.module, within)?.id;
+  };
+  /** What `resources.<name>` names, read at `path` of box `from`: a member of
+   *  the one scope whose region holds the read — a scope run's `resources` is
+   *  the module's readings plus that run's members — else a module-level box. */
+  const holders = new Map<ResourceManifest, CelScopeHolder>();
+  const resolveRead = (name: string, from: GraphNode, manifest: ResourceManifest, path: string): string | undefined => {
+    const scopes = scopesOf(from.id);
+    let holder = scopes.length > 0 ? holders.get(manifest) : undefined;
+    if (scopes.length > 0 && !holder) holders.set(manifest, (holder = deps.celScopeHolder(manifest)));
+    const scope = holder ? celScopeAt(holder, scopes, path) : undefined;
+    const member = scope
+      ? scopedByOwner.get(from.id)?.get(scope.field)?.find((id) => byId.get(id)?.name === name)
+      : undefined;
+    return member ?? names.resolve(name, from.module)?.id;
+  };
+  const memberManifests = new Set<unknown>(
+    nodes.filter((node) => node.ownership === "scoped").map((node) => manifestById.get(node.id)),
+  );
 
   // What the instance supplies at a forwarded field, minted on first use and
   // AFTER the name index: it is no declaration, so no bare name or CEL read may
@@ -1145,11 +1287,11 @@ export function buildModuleGraph(
   // hold reached through an inline declaration counts exactly as one written at
   // a named resource's own slot.
   for (const [from, list] of inlineEdgeSeeds) {
-    const fromModule = byId.get(from)?.module;
+    const fromNode = byId.get(from);
     for (const seed of list) {
       const to = seed.forward
         ? forwardTarget(seed.forward)
-        : (resolveName(seed.toName, fromModule) ?? byQualifiedName.get(seed.toName));
+        : (resolveName(seed.toName, fromNode, seed.path) ?? byQualifiedName.get(seed.toName));
       const edge: GraphEdge = {
         id: `${from}\0${seed.path}`,
         from,
@@ -1202,8 +1344,8 @@ export function buildModuleGraph(
       ...dataEdges(
         node,
         manifest,
-        node.module,
-        resolveName,
+        (name, path) => resolveRead(name, node, manifest, path),
+        (value) => memberManifests.has(value),
         rowIdByPath,
         rowsByOwner,
         moduleCallNamesOf(moduleCallNames, manifest),
@@ -1219,7 +1361,15 @@ export function buildModuleGraph(
   // stops holding now — an export is not a boot target, and one reported as one
   // would claim the library starts something.
   if (root && !isApplicationRoot(options.root)) {
-    edges.push(...exportEdges(root, options.root!, resolveName, byQualifiedName, rowIdByPath));
+    edges.push(
+      ...exportEdges(
+        root,
+        options.root!,
+        (name, fromModule) => names.resolve(name, fromModule)?.id,
+        byQualifiedName,
+        rowIdByPath,
+      ),
+    );
   }
 
   // Where each row's call is WRITTEN, and what may fill it — see
@@ -1377,6 +1527,9 @@ function projectResource(
   if (canonical && canonical !== kind) node.canonicalKind = canonical;
   if (!definition) node.unknownKind = true;
   if (module) node.module = module;
+  const stamped = manifest.metadata as Record<string, unknown> | undefined;
+  if (stamped?.[CHOICE_STAMP]) node.choice = stamped[CHOICE_STAMP] as GraphChoice;
+  if (stamped?.[FAMILY_STAMP]) node.family = stamped[FAMILY_STAMP] as GraphRepeat;
 
   if (isEnclosing(manifest)) {
     node.ownership = "enclosing";
@@ -1423,7 +1576,7 @@ function stepRows(
   for (const step of steps) {
     const parentId = step.parent ? idByStepPath.get(step.parent) : undefined;
     const anchor = parentId ? `${parentId}/` : `${node.id}#step:`;
-    const key = step.name ?? `@${contentKey(step.step)}`;
+    const key = step.name ?? step.emitted ?? `@${contentKey(step.step)}`;
     const id = minter.mint(`${anchor}${key}`);
     idByStepPath.set(step.id, id);
     rowIdByPath.set(`${node.id}\0${step.path}`, id);
@@ -1436,6 +1589,7 @@ function stepRows(
       index: step.index,
       depth: depthOf(step, callGraph, callGraphId),
       ...(step.name !== undefined ? { name: step.name } : {}),
+      ...(step.emitted !== undefined ? { emitted: step.emitted } : {}),
       ...(step.variant !== undefined ? { variant: step.variant } : {}),
       ...(step.variantLabel !== undefined ? { variantLabel: step.variantLabel } : {}),
       ...(step.predicate !== undefined ? { predicate: step.predicate, predicateField: step.predicateField } : {}),
@@ -1768,8 +1922,17 @@ function entryRows(
     const value = (manifest as Record<string, unknown>)[spec.field];
     if (!Array.isArray(value)) continue;
     const minter = new IdMinter();
+    const repeats = new Map<string, number>();
     value.forEach((item, index) => {
       const entry = (item ?? {}) as Record<string, unknown>;
+      const repeat = repeatOf(item);
+      if (repeat) {
+        const at = `${spec.field}[${index}]`;
+        const id = minter.mint(`${node.id}#repeat:${spec.field}/${repeatKey(repeat, repeats)}`);
+        rowIdByPath.set(`${node.id}\0${at}`, id);
+        rows.push({ id, kind: "repeat", path: at, array: spec.field, index, depth: 0, repeat });
+        return;
+      }
       // What IDENTIFIES an entry to a reader is the scalars its matcher holds —
       // a path and a method — not the whole matcher, which for an HTTP route
       // also carries the request schema. Taking the schema would put a row's
@@ -1998,8 +2161,16 @@ function targetRows(
   const targets = (manifest as Record<string, unknown>).targets;
   if (!Array.isArray(targets)) return [];
   const minter = new IdMinter();
+  const repeats = new Map<string, number>();
   return targets.map((entry, index) => {
     const record = (entry ?? {}) as Record<string, unknown>;
+    const repeat = repeatOf(entry);
+    if (repeat) {
+      const path = `targets[${index}]`;
+      const id = minter.mint(`${node.id}#repeat:targets/${repeatKey(repeat, repeats)}`);
+      rowIdByPath.set(`${node.id}\0${path}`, id);
+      return { id, kind: "repeat" as const, path, array: "targets", index, depth: 0, repeat };
+    }
     const target =
       refName(entry) ?? refName(record.ref) ?? refName(record.invoke) ?? undefined;
     const name = typeof record.name === "string" ? record.name : undefined;
@@ -2393,6 +2564,11 @@ export function templateModule(
   const resources: ResourceManifest[] = [];
   for (const entry of Array.isArray(record.resources) ? record.resources : []) {
     if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    if (isExpansionSentinel(entry)) {
+      const standing = standInFor(entry, stamp);
+      if (standing) resources.push(standing);
+      continue;
+    }
     const written = entry as Record<string, unknown>;
     const entryMetadata = (written.metadata ?? {}) as Record<string, unknown>;
     if (typeof written.kind !== "string" || typeof entryMetadata.name !== "string") continue;
@@ -2445,6 +2621,71 @@ export function templateModule(
   };
 }
 
+/** The first declaration a tag's branches write, nested tags followed. */
+function leafDeclaration(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  if (!isExpansionSentinel(value)) {
+    return typeof (value as Record<string, unknown>).kind === "string" ? (value as Record<string, unknown>) : undefined;
+  }
+  const body = value as Record<string, unknown>;
+  const branches: unknown[] =
+    value.__expand === "for-each"
+      ? [body.emit]
+      : value.__expand === "if"
+        ? [body.then, body.else]
+        : [...Object.values((body.cases ?? {}) as Record<string, unknown>), body.default];
+  for (const branch of branches) {
+    const found = leafDeclaration(branch);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** The alternatives a declaration-position tag writes, each with the kind it
+ *  declares. An `!if` with no `else:` has the outcome `absent` as well. */
+function alternativesOf(sentinel: ExpansionSentinel): GraphAlternative[] {
+  const out: GraphAlternative[] = [];
+  for (const [id] of branchesOf({ sentinel, tag: sentinel.__expand as "if" | "switch" })) {
+    const key = id.startsWith("case:") ? id.slice("case:".length) : id;
+    const kind = leafDeclaration(branchValue(sentinel, id).value)?.kind;
+    out.push({ key, ...(typeof kind === "string" ? { kind } : {}) });
+  }
+  if (sentinel.__expand === "if" && !out.some((a) => a.key === "else")) out.push({ key: ABSENT_ALTERNATIVE });
+  return out;
+}
+
+/** The outcome of an `!if` with no `else:` whose condition is false. */
+export const ABSENT_ALTERNATIVE = "absent";
+
+/**
+ * The declaration a template body's tagged `resources:` entry stands for in its
+ * graph: one box under the tag's name, its kind the first alternative's (a
+ * definition has no configuration of its own to pick), marked as a choice or a
+ * family. An entry whose branches declare nothing has no box.
+ */
+function standInFor(
+  sentinel: ExpansionSentinel,
+  stamp: Record<string, unknown>,
+): ResourceManifest | undefined {
+  const metadata = (sentinel as Record<string, unknown>).metadata as Record<string, unknown> | undefined;
+  const leaf = leafDeclaration(sentinel);
+  if (typeof metadata?.name !== "string" || !leaf) return undefined;
+  const { kind, metadata: _own, ...fields } = leaf;
+  const marks: Record<string, unknown> = {};
+  if (sentinel.__expand === "for-each") {
+    marks[FAMILY_STAMP] = repeatOf(sentinel);
+  } else {
+    const alternatives = alternativesOf(sentinel);
+    marks[CHOICE_STAMP] = {
+      path: "",
+      tag: sentinel.__expand,
+      alternatives,
+      selected: alternatives[0]?.key ?? null,
+    } satisfies GraphChoice;
+  }
+  return { ...fields, kind, metadata: { ...metadata, ...stamp, ...marks } } as unknown as ResourceManifest;
+}
+
 /** Every bare name a `!ref` in `value` writes, in either form it arrives in —
  *  an alias-qualified one names another module's resource, never this one's. */
 function collectReferencedNames(value: unknown, out: Set<string>): void {
@@ -2454,7 +2695,8 @@ function collectReferencedNames(value: unknown, out: Set<string>): void {
   }
   if (!value || typeof value !== "object") return;
   if (isRefSentinel(value)) {
-    if (!value.source.includes(".")) out.add(value.source);
+    const target = refSentinelTarget(value);
+    if (target && target.alias === undefined) out.add(target.name);
     return;
   }
   if (isTaggedSentinel(value) || (value as { __compiled?: unknown }).__compiled) return;
@@ -2532,21 +2774,20 @@ function exportEdges(
 function dataEdges(
   node: GraphNode,
   manifest: ResourceManifest,
-  fromModule: string | undefined,
-  resolveName: (name: string, fromModule: string | undefined) => string | undefined,
+  resolveRead: (name: string, path: string) => string | undefined,
+  isMember: (value: unknown) => boolean,
   rowIdByPath: ReadonlyMap<string, string>,
   rowsByOwner: ReadonlyMap<string, readonly { path: string; id: string }[]>,
   moduleNames: ReadonlySet<string>,
 ): GraphEdge[] {
   const out: GraphEdge[] = [];
   const seen = new Set<string>();
-  walkCelExpressions(manifest, "", (source, path, engine) => {
+  // A scope member's reads are its own box's, never its holder's.
+  walkOwnCelExpressions(manifest, "", (source, path, engine) => {
     for (const chain of celExpressionsOf(engine, source).flatMap((x) => accessChains(x, moduleNames))) {
       if (chain[0] !== "resources" || chain.length < 2) continue;
       const targetName = chain[1]!;
-      // `resources.<name>` is a bare name written in THIS module's scope, so it
-      // resolves the way every other bare name does.
-      const to = resolveName(targetName, fromModule);
+      const to = resolveRead(targetName, path);
       if (!to || to === node.id) continue;
       const read = chain.join(".");
       const key = `${to}\0${read}`;
@@ -2567,6 +2808,6 @@ function dataEdges(
       if (row) edge.row = row;
       out.push(edge);
     }
-  });
+  }, isMember);
   return out;
 }

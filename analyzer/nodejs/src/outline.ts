@@ -21,7 +21,8 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { celExpressionsOf, walkCelExpressions } from "@telorun/templating";
 import { argumentSynopsisOf } from "./application-arguments.js";
-import { readApplicationContract } from "./application-contract.js";
+import { readApplicationContract, type ContractRequirements } from "./application-contract.js";
+import type { Assignment } from "./configuration-dimensions.js";
 import { accessChains } from "./cel-access-chains.js";
 import { nodeIdFor, type CallGraph } from "./call-graph.js";
 import type { CatchLadder, CatchListAnswer, ScopeRung, SiteLadder } from "./catch-scope.js";
@@ -74,7 +75,13 @@ export interface OutlineInput {
   /** The value type (`string`, `Telo.HostPath`, `Telo.TcpPort`), the need
    *  type, or the kind a resource input is constrained to. */
   type?: string;
+  /** For an Application, true when some configuration requires the input; for
+   *  a Library, when its importer must supply it. */
   required: boolean;
+  /** An Application input's configurations requiring it, as partial
+   *  assignments keyed by dimension; present only when it is required and not in
+   *  every configuration. */
+  requiredWhen?: Assignment[];
   /** The declared default — never a secret's. */
   default?: WrittenValue;
   /** The resource fields whose expressions read the input. */
@@ -236,6 +243,9 @@ export interface OutlineSources {
   ladder: CatchLadder;
   /** The analysis's need table: the inputs' needs are read from it alone. */
   needs: NeedTable | undefined;
+  /** An Application's requirements: which configurations require each input
+   *  and need. Undefined for a Library. */
+  requirements: ContractRequirements | undefined;
   contract(manifest: ResourceManifest, direction: ContractDirection): Record<string, unknown> | undefined;
   /** The static type of an expression at `path` of `manifest`, when known. */
   expressionType(manifest: ResourceManifest, path: string, engine: string, source: string): string | undefined;
@@ -618,7 +628,11 @@ function inputsOf(
   const out: OutlineInput[] = [];
 
   if (application) {
-    const contract = readApplicationContract(root);
+    const requirements = sources.requirements;
+    if (!requirements) throw new Error("An Application's outline was built without its requirements.");
+    const contract = readApplicationContract(root, requirements);
+    const requiredWhen = (input: { requiredWhen?: Assignment[] }) =>
+      input.requiredWhen ? { requiredWhen: input.requiredWhen } : {};
     for (const v of contract?.variables ?? []) {
       out.push({
         block: "variables",
@@ -626,7 +640,8 @@ function inputsOf(
         ...bindingOf(root, "variables", v.name, v.env),
         ...typeOf(v.schema),
         required: v.required,
-        ...(!v.required ? { default: writtenValueOf(v.default, "") } : {}),
+        ...requiredWhen(v),
+        ...("default" in v ? { default: writtenValueOf(v.default, "") } : {}),
         readBy: readBy(`variables\0${v.name}`),
       });
     }
@@ -637,6 +652,7 @@ function inputsOf(
         ...(s.env ? { binding: { env: s.env } } : {}),
         ...typeOf(s.schema),
         required: s.required,
+        ...requiredWhen(s),
         readBy: readBy(`secrets\0${s.name}`),
       });
     }
@@ -647,11 +663,20 @@ function inputsOf(
         ...bindingOf(root, "ports", p.name, p.env),
         type: p.protocol === "udp" ? "Telo.UdpPort" : "Telo.TcpPort",
         required: p.required,
-        ...(!p.required ? { default: writtenValueOf(p.default, "") } : {}),
+        ...requiredWhen(p),
+        ...("default" in p ? { default: writtenValueOf(p.default, "") } : {}),
         readBy: readBy(`ports\0${p.name}`),
       });
     }
-    for (const entry of sources.needs?.environment ?? []) out.push(needInput(entry, readBy));
+    for (const entry of sources.needs?.environment ?? []) {
+      const input = needInput(entry, readBy);
+      const requirement = requirements.inputs.find((i) => i.block === "needs" && i.name === input.name);
+      out.push({
+        ...input,
+        required: requirement?.required ?? input.required,
+        ...(requirement?.requiredWhen ? { requiredWhen: [...requirement.requiredWhen] } : {}),
+      });
+    }
     return out;
   }
 

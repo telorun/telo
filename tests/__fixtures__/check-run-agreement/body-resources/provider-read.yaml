@@ -1,0 +1,38 @@
+# A body entry's startup field reads a Provider sibling's observed state, the
+# reader written first: the read orders it after the provider.
+kind: Telo.Application
+metadata:
+  name: BodyResourcesProviderReadApp
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+  Assert: ../../../../modules/assert
+  Status: ../provider-status/kinds
+targets:
+  - !ref pipeline
+---
+kind: Telo.Definition
+metadata: { name: Pipeline }
+capability: Telo.Runnable
+schema:
+  type: object
+  properties: {}
+resources:
+  - kind: Status.Endpoint
+    metadata: { name: second }
+    port: !cel "resources.first.status.port"
+  - kind: Status.Endpoint
+    metadata: { name: first }
+    port: 5
+  - kind: Run.Sequence
+    metadata: { name: main }
+    steps:
+      - name: check
+        invoke: { kind: Assert.Equals }
+        inputs:
+          actual: !cel "resources.second.status.port"
+          expected: 2005
+run: !ref main
+---
+kind: Self.Pipeline
+metadata: { name: pipeline }

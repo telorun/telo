@@ -1,0 +1,31 @@
+# The same library imported twice, the second import binding its choice to a
+# value nothing decides before boot.
+kind: Telo.Application
+metadata:
+  name: InstancesOpen
+imports:
+  Run: ../../../modules/run
+  A:
+    source: ./instances-lib
+    variables:
+      dialect: first
+  B:
+    source: ./instances-lib
+    variables:
+      dialect: !cel "variables.name"
+variables:
+  name:
+    env: NAME
+    type: string
+    default: second
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: first
+    invoke: !ref A.db
+  - name: second
+    invoke: !ref B.db

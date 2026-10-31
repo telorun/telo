@@ -15,8 +15,12 @@ with:
   - kind: Run.Value
     metadata:
       name: GreetingHandler
-    inputs:
-      name: { type: string }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          name: { type: string }
     value:
       greeting: !cel "'Hello ' + inputs.name + '!'"
   - kind: Http.Api

@@ -29,6 +29,8 @@ import { CONTEXT_FROM_REFERRER, fromReferrerProblem } from "./context-from-refer
 import { ITEM_FILLS, itemFillsValueProblem } from "./context-fill-cycle.js";
 import { ELEMENT_FROM_ITEM, readRelativePointer, relativePointerRefusal, type SchemaLevel } from "./element-from-item.js";
 import { pointerSegments, renderValuePath, type ValuePath } from "./text-slot.js";
+import { dispatchReads } from "./invocation-contract.js";
+import { enclosingKeys, placeAt, type ReadReporter } from "./read-place.js";
 
 type Schema = Record<string, any>;
 
@@ -406,53 +408,71 @@ function disjoint(matches: Schema, type: Schema, document: Schema, shapes: Named
   return undefined;
 }
 
-/** One `x-telo-match-for` field of a resource whose schema can never hold. */
-export interface MatchUnsatisfied {
-  /** The field's concrete path, `walkCelExpressions` spelling. */
-  readonly path: string;
-  readonly accessorPath: string;
-  readonly reason: string;
+/** One `x-telo-match-for` field a value holds: its keys, and the keys of the
+ *  accessor field it names, both in the value. */
+export interface MatchPlace {
+  readonly keys: readonly (string | number)[];
+  readonly accessorKeys: readonly (string | number)[];
 }
 
 /**
- * Every `x-telo-match-for` field `value` holds, under `kindSchema`, whose
- * schema can never hold for its accessor. `typeAt` answers an accessor
- * expression's static type by its concrete path (undefined: open or unknown); a
- * literal accessor is judged as `{ const: <value> }`. `prefix` is where `value`
- * sits in the manifest the paths are reported against.
+ * Every `x-telo-match-for` field `value` holds, under `kindSchema`, with the
+ * accessor field it names — each place once, however many sites (one per union
+ * branch declaring the field, one per way a recursive shape is entered) name
+ * it. A place is found where the value holds one, whatever it holds.
  */
-export function unsatisfiedMatches(
+export function matchPlaces(
   value: Record<string, unknown>,
   kindSchema: Schema,
   shapes: NamedShapeLookup,
-  typeAt: (path: string) => Schema | undefined,
   isExpression: (node: unknown) => boolean,
-  prefix = "",
-): MatchUnsatisfied[] {
-  const out: MatchUnsatisfied[] = [];
-  // Several sites (one per union branch declaring the field, one per way a
-  // recursive shape is entered) can name one place; it is judged once.
+): MatchPlace[] {
+  const out: MatchPlace[] = [];
   const judged = new Set<string>();
   for (const site of matchForSitesOf(kindSchema, shapes)) {
     const pointer = site.pointer === "" ? [] : pointerSegments(site.pointer);
     if (!pointer || pointer.length === 0) continue;
     for (const parts of concreteEvalPaths(value, site.path, isExpression)) {
-      const matches = at(value, parts);
-      if (!isSchema(matches) || isExpression(matches)) continue;
+      if (at(value, parts) === undefined) continue;
       const place = parts.join("\u0000");
       if (judged.has(place)) continue;
       judged.add(place);
-      const accessorParts = [...parts.slice(0, -1), ...pointer];
-      const accessor = at(value, accessorParts);
-      if (accessor === undefined) continue;
-      const accessorPath = render(value, accessorParts, prefix);
-      const type = isExpression(accessor) ? typeAt(accessorPath) : { const: accessor };
-      if (!type) continue;
-      const reason = matchUnsatisfiable(matches, type, shapes);
-      if (reason) out.push({ path: render(value, parts, prefix), accessorPath, reason });
+      out.push({ keys: keysOf(value, parts), accessorKeys: keysOf(value, [...parts.slice(0, -1), ...pointer]) });
     }
   }
   return out;
+}
+
+/**
+ * Why the schema `matches` written at a `x-telo-match-for` field can never
+ * hold for the accessor it names — `accessor` its value, `typed` the static
+ * type its expression was typed as (undefined: open or unknown); a literal
+ * accessor is judged as `{ const: <value> }`. Undefined where it may hold, or
+ * where nothing decides.
+ */
+export function unsatisfiedMatch(
+  matches: unknown,
+  accessor: unknown,
+  typed: Schema | undefined,
+  shapes: NamedShapeLookup,
+  isExpression: (node: unknown) => boolean,
+): string | undefined {
+  if (!isSchema(matches) || isExpression(matches)) return undefined;
+  if (accessor === undefined) return undefined;
+  const type = isExpression(accessor) ? typed : { const: accessor };
+  if (!type) return undefined;
+  return matchUnsatisfiable(matches, type, shapes);
+}
+
+/** `parts` as keys of `value`: an index where the value holds a list. */
+function keysOf(value: unknown, parts: readonly string[]): (string | number)[] {
+  const keys: (string | number)[] = [];
+  let current = value;
+  for (const part of parts) {
+    keys.push(Array.isArray(current) ? Number(part) : part);
+    current = current && typeof current === "object" ? (current as Record<string, unknown>)[part] : undefined;
+  }
+  return keys;
 }
 
 function at(value: unknown, parts: readonly string[]): unknown {
@@ -464,15 +484,13 @@ function at(value: unknown, parts: readonly string[]): unknown {
   return current;
 }
 
-/** The `walkCelExpressions` spelling of a place in `value`. */
-function render(value: unknown, parts: readonly string[], prefix: string): string {
-  const path: (string | number)[] = [];
-  let current = value;
-  for (const part of parts) {
-    path.push(Array.isArray(current) ? Number(part) : part);
-    current = current && typeof current === "object" ? (current as Record<string, unknown>)[part] : undefined;
-  }
-  const own = renderValuePath(path);
-  if (!prefix) return own;
-  return own === "" ? prefix : own.startsWith("[") ? `${prefix}${own}` : `${prefix}.${own}`;
-}
+/** What `x-telo-match-for` reads: the accessor field it names, from the object
+ *  enclosing the annotated field — and what its chain is typed against, which
+ *  is the declaration it is written in. */
+export const matchForReads: ReadReporter = ({ value, at }) =>
+  typeof value === "string"
+    ? [
+        { kind: "value", keys: placeAt(enclosingKeys(at), value) },
+        { kind: "reference", keys: [], transitive: true, reads: dispatchReads },
+      ]
+    : [];

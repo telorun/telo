@@ -50,6 +50,11 @@ with:
           method: POST
           schema:
             body: { type: object, additionalProperties: true }
+            headers:
+              type: object
+              properties:
+                x-api-key: { type: string }
+                x-extra: { type: string }
         handler: !ref noop
         returns:
           - status: 200

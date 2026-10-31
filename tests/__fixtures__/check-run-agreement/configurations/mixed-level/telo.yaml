@@ -1,0 +1,17 @@
+# One name chosen as a named shape in one configuration and an instance in
+# the other.
+kind: Telo.Application
+metadata:
+  name: MixedLevel
+imports:
+  Run: ../../../../../modules/run
+variables:
+  wide:
+    env: WIDE
+    type: boolean
+    default: false
+--- !if
+metadata: { name: Amount }
+if: !cel "variables.wide"
+then: { kind: Telo.JsonSchema, schema: { type: integer } }
+else: { kind: Run.Value, value: 1 }

@@ -1,0 +1,16 @@
+# The library's need forwarded whole from an optional need of the application:
+# its presence is the application need's, keyed by that need's path.
+kind: Telo.Application
+metadata:
+  name: NeedPresenceForwarded
+imports:
+  Kinds: ./kinds
+  Orders:
+    source: ./orders
+    needs:
+      databaseAccess: !ref root
+needs:
+  root:
+    kind: Kinds.Access
+    optional: true
+    env: { url: ROOT_ACCESS_URL }

@@ -1,0 +1,41 @@
+# A named shape one variable decides: `at` is evaluated at load in one
+# configuration and an accessor field in the other. A kind reaches the shape
+# through `$ref: telo://Self/Result`, so what the controller receives follows
+# the configuration the process runs in.
+kind: Telo.Application
+metadata:
+  name: ShapeVaryingEval
+  version: 1.0.0
+variables:
+  mode: { env: MODE, type: string, enum: [evaluated, named], default: evaluated }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Result
+schema:
+  type: object
+  required: [at]
+  properties:
+    at: !if
+      if: !cel "variables.mode == 'named'"
+      then: { type: string, x-telo-eval: accessor }
+      else: { type: string, x-telo-eval: compile }
+---
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  additionalProperties: false
+  required: [result]
+  properties:
+    result: { $ref: "telo://Self/Result" }
+---
+kind: Self.Probe
+metadata:
+  name: probe
+result:
+  at: hello

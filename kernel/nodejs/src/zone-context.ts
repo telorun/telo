@@ -31,6 +31,7 @@ import {
   type OpenZoneAttributes,
   type ZoneAttributes,
   type ZoneEntry,
+  refSentinelTarget,
 } from "@telorun/sdk";
 import {
   effectiveAuthorSchema,
@@ -378,10 +379,8 @@ export class ZoneContext {
     const id = getRefIdentity(value as object) ?? handleOfInstance(value as object)?.ref;
     if (id) return id.name;
     if (isRefSentinel(value)) {
-      const source = value.source;
-      const dot = source.indexOf(".");
-      if (dot <= 0) return source;
-      return source.slice(0, dot) === "Self" ? source.slice(dot + 1) : undefined;
+      const target = refSentinelTarget(value)!;
+      return target.alias === undefined ? target.name : undefined;
     }
     if (!isResolvedReference(value)) return undefined;
     if (value.alias !== undefined && value.alias !== "Self") return undefined;

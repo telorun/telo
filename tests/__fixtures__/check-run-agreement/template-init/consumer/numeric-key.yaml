@@ -1,0 +1,15 @@
+# The consumer reaches a bad combination: an integer-like key of a map a repeat
+# iterates, which the entry's check refuses and the run does not start.
+kind: Telo.Application
+metadata:
+  name: TemplateInitNumericKey
+imports:
+  Lib: ../lib
+targets:
+  - !ref hooks
+---
+kind: Lib.Hooks
+metadata: { name: hooks }
+hooks:
+  "2024": {}
+  github: {}

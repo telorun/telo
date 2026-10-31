@@ -1,0 +1,16 @@
+kind: Telo.Application
+metadata: { name: MissingKey }
+imports:
+  Run: ../../../../modules/run
+variables:
+  mode: { env: MODE, type: string, enum: [fast, slow], default: fast }
+targets:
+  - !if { then: !ref main }
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: pick
+    value: !switch
+      on: !cel "variables.mode"
+      cases: { fast: 1, slow: 2 }

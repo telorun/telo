@@ -1,0 +1,36 @@
+# A definition whose `schema:` is refused, with a body reading `self`: the refusal is the one report.
+kind: Telo.Application
+metadata: { name: SchemaRefusedBody }
+imports:
+  Run: ../../../../modules/run
+targets:
+  - !ref t
+---
+kind: Telo.Definition
+metadata: { name: Pipe }
+capability: Telo.Runnable
+schema: !if
+  if: !cel "'yes'"
+  then:
+    type: object
+    properties:
+      jobs: { type: object, additionalProperties: { type: object } }
+resources:
+  - !for-each
+    metadata: { name: steps }
+    in: !cel "self.jobs"
+    emit:
+      kind: Run.Sequence
+      steps:
+        - name: a
+          value: !cel "self.nothing"
+  - kind: Run.Sequence
+    metadata: { name: main }
+    steps:
+      - name: x
+        value: 1
+run: !ref main
+---
+kind: Self.Pipe
+metadata: { name: t }
+jobs: {}

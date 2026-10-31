@@ -396,6 +396,59 @@ describe("operation vocabulary", () => {
 });
 
 describe("migrateFileText — the file repair", () => {
+  it("keeps every expansion tag and a splice byte for byte beside a rewrite", () => {
+    const tagged = [
+      "---",
+      "kind: Telo.Definition",
+      "metadata:",
+      "  name: Jobs",
+      "resources:",
+      "  - !for-each",
+      "    metadata:",
+      "      name: crons",
+      "    in: !cel \"self.jobs\"",
+      "    emit:",
+      "      kind: Scheduler.Cron",
+      "  - kind: Http.Api",
+      "    metadata:",
+      "      name: api",
+      "    routes:",
+      "      - !if { if: !cel \"self.admin\", then: { path: /admin } }",
+      "      - !switch",
+      "        switch: !cel \"self.mode\"",
+      "        cases:",
+      "          a:",
+      "            path: /a",
+      "    columns:",
+      "      id: integer",
+      "      ...: !for-each",
+      "        in: !cel \"self.fields\"",
+      "        key: !cel \"each.key\"",
+      "        emit: text",
+      "    store: !ref \"stores[each.key]\"",
+      "",
+    ].join("\n");
+    const text = [
+      "kind: Telo.Application",
+      "metadata:",
+      "  name: app",
+      "schema:",
+      "  out:",
+      "    x-old-flag: true",
+      tagged,
+    ].join("\n");
+    const documents = parseAllDocuments(text, { customTags: defaultCustomTags() });
+    const parsed = parseLoadedFile("/ws/telo.yaml", "/ws/telo.yaml", text);
+    const migrated = migrateFileText({
+      source: "/ws/telo.yaml",
+      text,
+      documents,
+      manifests: parsed.manifests,
+      entries: [renameEntry],
+    });
+    expect(migrated!.text).toBe(text.replace("x-old-flag: true", "x-new-type: Telo.Stream"));
+  });
+
   it("edits only the matched bytes, preserving comments and quote style", () => {
     const text = [
       "kind: Telo.Application",

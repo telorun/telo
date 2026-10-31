@@ -209,6 +209,50 @@ describe("ModulePayloadBuilder — canonicalization and tagged values", () => {
     expect(first.manifest).toContain("computed: !cel 'variables.port'");
   });
 
+  it("keeps every expansion tag and a splice byte for byte in the published manifest", async () => {
+    const manifestPath = path.join(workdir, "telo.yaml");
+    const tagged = [
+      "kind: Telo.Definition",
+      "metadata:",
+      "  name: Jobs",
+      "resources:",
+      "  - !for-each",
+      "    metadata:",
+      "      name: crons",
+      "    in: !cel \"self.jobs\"",
+      "    emit:",
+      "      kind: Scheduler.Cron",
+      "  - kind: Http.Api",
+      "    metadata:",
+      "      name: api",
+      "    routes:",
+      "      - !if { if: !cel \"self.admin\", then: { path: /admin } }",
+      "      - !switch",
+      "        switch: !cel \"self.mode\"",
+      "        cases:",
+      "          a:",
+      "            path: /a",
+      "    columns:",
+      "      id: integer",
+      "      ...: !for-each",
+      "        in: !cel \"self.fields\"",
+      "        key: !cel \"each.key\"",
+      "        emit: text",
+      "    store: !ref \"stores[each.key]\"",
+      "",
+    ].join("\n");
+    fs.writeFileSync(
+      manifestPath,
+      ["kind: Telo.Library", "metadata:", "  name: jobs", "  version: 1.0.0", "---", tagged].join("\n"),
+    );
+
+    const payload = await new ModulePayloadBuilder({ cacheRoot: path.join(workdir, ".telo") }).payload(
+      manifestPath,
+      "oci://registry.example/test/jobs",
+    );
+    expect(payload.manifest.endsWith(`---\n${tagged}`)).toBe(true);
+  });
+
   it("refuses a remote import the author left unpinned", async () => {
     const manifestPath = path.join(workdir, "telo.yaml");
     fs.writeFileSync(

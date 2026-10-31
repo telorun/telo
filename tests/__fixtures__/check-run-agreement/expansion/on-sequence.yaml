@@ -1,0 +1,4 @@
+kind: Telo.Application
+metadata:
+  name: OnSequence
+targets: !if [1]

@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: TemplateInitModedA
+imports:
+  Dep:
+    source: ../moded-dependent
+    variables:
+      mode: a

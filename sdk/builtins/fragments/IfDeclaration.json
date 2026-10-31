@@ -1,0 +1,34 @@
+{
+  "title": "`!if` at a declaration position",
+  "description": "A resource declaration chosen before boot: the tag carries its `metadata`, each branch is one unnamed declaration.",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "description": "The declaration's metadata; its `name` is the one name every configuration declares.",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "if": {
+      "description": "A boolean decided before boot: a `!cel` condition or a literal."
+    },
+    "then": {
+      "description": "What the tag stands for when `if` holds."
+    },
+    "else": {
+      "description": "What it stands for otherwise; without it the tag contributes nothing."
+    }
+  },
+  "required": [
+    "metadata",
+    "if",
+    "then"
+  ],
+  "additionalProperties": false
+}

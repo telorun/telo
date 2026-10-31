@@ -405,6 +405,7 @@ describe("buildCallGraph — step nodes", () => {
       steps: [
         { name: "first", invoke: ref("A"), inputs: {} },
         { name: "pure", value: "x" },
+        { __emitted: { repeat: "runs", key: "a" }, value: "y" },
         {
           name: "branchy",
           if: true,
@@ -419,7 +420,8 @@ describe("buildCallGraph — step nodes", () => {
 
   it("mints a node for every step, including a pure one with no edge", () => {
     const steps = graph.steps(seq);
-    expect(steps.map((s) => s.name)).toEqual(["first", "pure", "branchy", "inner"]);
+    expect(steps.map((s) => s.name)).toEqual(["first", "pure", undefined, "branchy", "inner"]);
+    expect(steps.map((s) => s.emitted)).toEqual([undefined, undefined, "runs['a']", undefined, undefined]);
     const pure = steps.find((s) => s.name === "pure")!;
     expect(graph.edgesFrom(pure.id)).toEqual([]);
   });
@@ -428,12 +430,12 @@ describe("buildCallGraph — step nodes", () => {
     const steps = graph.steps(seq);
     const byName = new Map(steps.map((s) => [s.name, s]));
     expect(byName.get("first")).toMatchObject({ index: 0, array: "steps", path: "steps[0]" });
-    expect(byName.get("branchy")!.index).toBe(2);
+    expect(byName.get("branchy")!.index).toBe(3);
     expect(byName.get("branchy")!.parent).toBeUndefined();
     expect(byName.get("inner")).toMatchObject({
       index: 0,
-      array: "steps[2].then",
-      path: "steps[2].then[0]",
+      array: "steps[3].then",
+      path: "steps[3].then[0]",
       parent: byName.get("branchy")!.id,
     });
   });

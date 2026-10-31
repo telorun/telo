@@ -1,3 +1,5 @@
+import { parseRefSource, type ParsedRef, type RefRefusal } from "./engines/ref.js";
+
 /** Sentinel object produced by the YAML loader for a tagged scalar (e.g. `!cel
  *  'variables.port'`). Travels through the manifest tree as the parsed value;
  *  precompile and the analyzer key off `__tagged === true` to dispatch to the
@@ -8,7 +10,15 @@ export interface TaggedSentinel {
   readonly __tagged: true;
   readonly engine: string;
   readonly source: string;
+  /** `!ref` only: what the text names, by the `!ref` engine's grammar. */
+  readonly parsed?: ParsedRef;
+  /** `!ref` only: the text is outside the grammar. */
+  readonly refusal?: RefRefusal;
 }
+
+/** A `!ref` sentinel, carrying the engine's verdict on its text — exactly one
+ *  of `parsed` / `refusal`, attached when the sentinel is made. */
+export type RefSentinel = TaggedSentinel & { readonly engine: "ref" };
 
 export function isTaggedSentinel(v: unknown): v is TaggedSentinel {
   return (
@@ -20,17 +30,23 @@ export function isTaggedSentinel(v: unknown): v is TaggedSentinel {
   );
 }
 
+/** The sentinel a tagged scalar becomes. A `!ref` one carries the `!ref`
+ *  engine's verdict on its text, so no reader keeps a grammar of its own. */
 export function makeTaggedSentinel(engine: string, source: string): TaggedSentinel {
+  if (engine === REF_ENGINE) return { __tagged: true, engine, source, ...parseRefSource(source) };
   return { __tagged: true, engine, source };
 }
+
+/** The `!ref` engine's name. */
+export const REF_ENGINE = "ref";
 
 /** True when `v` is a `!ref <name>` sentinel — i.e. a resource reference
  *  marked at parse time. Downstream walkers (analyzer ref validation,
  *  inline normalization, dependency graph, kernel resource resolution)
  *  use this to tell a reference from an inline definition without
  *  inferring intent from field presence. */
-export function isRefSentinel(v: unknown): v is TaggedSentinel & { engine: "ref" } {
-  return isTaggedSentinel(v) && v.engine === "ref";
+export function isRefSentinel(v: unknown): v is RefSentinel {
+  return isTaggedSentinel(v) && v.engine === REF_ENGINE;
 }
 
 /** The CEL engine's name. Beside the other sentinel predicates for the same

@@ -1,0 +1,7 @@
+# Imports the library whose own imports close a cycle.
+kind: Telo.Application
+metadata:
+  name: CollectorCycleConsumer
+  version: 1.0.0
+imports:
+  Cycle: ./library

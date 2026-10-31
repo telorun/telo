@@ -1,0 +1,58 @@
+# One name, two backends, chosen by an `enum` variable: the chosen backend
+# answers, and the unchosen backend's controller never loads. The choice is a
+# `with:` member, so the scope opens on whichever backend the environment picks.
+kind: Telo.Application
+metadata:
+  name: EnumBackends
+imports:
+  Backends: ./backends
+  Assert: ../../../modules/assert
+  Run: ../../../modules/run
+variables:
+  backend:
+    env: BACKEND
+    type: string
+    enum: [first, second]
+    default: first
+targets:
+  - !ref main
+  - !ref loaded
+--- !switch
+metadata: { name: loaded }
+switch: !cel "variables.backend"
+cases:
+  first:
+    kind: Assert.Events
+    filter:
+      - type: "*.ControllerLoading"
+    expect:
+      - { event: First.ControllerLoading, times: 1 }
+      - { event: Second.ControllerLoading, times: 0 }
+  second:
+    kind: Assert.Events
+    filter:
+      - type: "*.ControllerLoading"
+    expect:
+      - { event: First.ControllerLoading, times: 0 }
+      - { event: Second.ControllerLoading, times: 1 }
+---
+# The backend is a member of the sequence's scope, so it is created when the
+# scope opens — after the event assertion above is listening.
+kind: Run.Sequence
+metadata:
+  name: main
+with:
+  - !switch
+    metadata: { name: store }
+    switch: !cel "variables.backend"
+    cases:
+      first: { kind: Backends.First }
+      second: { kind: Backends.Second }
+steps:
+  - name: answer
+    invoke: !ref store
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.answer.result.backend"
+      expected: !cel "variables.backend"

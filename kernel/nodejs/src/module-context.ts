@@ -31,7 +31,7 @@ import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
 import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
 import type { NeedFulfilment } from "./need-fulfilment.js";
-import { isResolvedReference, resolvedReference } from "@telorun/analyzer";
+import { isResolvedReference, resolvedReference, type AnalysisRegistry } from "@telorun/analyzer";
 
 /** Where a call through an import alias stands. */
 export type ImportedFunctionTarget =
@@ -183,6 +183,26 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
    * loader treats it as `auto`.
    */
   private _controllerPolicy: ControllerPolicy | undefined;
+
+  /** The analysis registry as THIS module instance's running configuration holds
+   *  it (`AnalysisRegistry.forConfiguration`): every kernel read of a named shape
+   *  for a kind this module declares goes through it. */
+  private _analysisView: AnalysisRegistry | undefined;
+
+  setAnalysisView(view: AnalysisRegistry | undefined): void {
+    this._analysisView = view;
+  }
+
+  /** This module's view, else the nearest enclosing module's. */
+  get analysisView(): AnalysisRegistry | undefined {
+    if (this._analysisView) return this._analysisView;
+    let cur = this.parent;
+    while (cur) {
+      if (cur instanceof ModuleContext) return cur.analysisView;
+      cur = cur.parent;
+    }
+    return undefined;
+  }
 
   /**
    * The effective logging configuration for this module context — threshold,
@@ -796,15 +816,19 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
    *  isolated import, `[<LibraryName>]` for a shared library. */
   needPath: readonly string[] = [];
 
-  /** Needs bound to no fulfilment — an optional need nothing supplied. */
+  /** Needs bound to no fulfilment — an optional need nothing supplied, or one
+   *  the configuration the application started in does not require. */
   private readonly absentNeeds = new Set<string>();
+  /** Of those, the needs that are not optional. */
+  private readonly unrequiredNeeds = new Set<string>();
   /** Every need this module declares that is bound, absent ones included. */
   private readonly boundNeeds = new Set<string>();
 
   /**
    * Bind a need this module declares to the fulfilment that satisfies it, or —
-   * for an optional need nothing supplies — to nothing, so `resources.<need>`
-   * reads `null`.
+   * for an optional need nothing supplies, or one the running configuration
+   * does not require (`unrequired`) — to nothing, so `resources.<need>` reads
+   * `null`.
    *
    * Borrowed, never owned: a fulfilment belongs to whoever supplied it, so this
    * context never tears it down. Its reading is its fields, fixed once it
@@ -814,15 +838,18 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   bindNeed(
     name: string,
     binding: { manifest: ResourceManifest; fulfilment: NeedFulfilment } | null,
+    unrequired = false,
   ): () => void {
     this.boundNeeds.add(name);
     if (binding === null) {
       this.absentNeeds.add(name);
+      if (unrequired) this.unrequiredNeeds.add(name);
       this._resources = { ...this._resources, [name]: null };
       this._rebuildContext();
       return () => {
         this.boundNeeds.delete(name);
         this.absentNeeds.delete(name);
+        this.unrequiredNeeds.delete(name);
         this.clearPublishedReading(name);
       };
     }
@@ -855,6 +882,12 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
   /** Whether `name` is a need of this module bound to nothing. */
   isAbsentNeed(name: string): boolean {
     return this.absentNeeds.has(name);
+  }
+
+  /** Whether `name` is a need of this module that is not optional, bound to
+   *  nothing because the running configuration does not require it. */
+  isUnrequiredNeed(name: string): boolean {
+    return this.unrequiredNeeds.has(name);
   }
 
   override async invoke<TInputs>(

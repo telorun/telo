@@ -13,8 +13,12 @@ with:
   - kind: Run.Value
     metadata:
       name: SharedHelper
-    inputs:
-      value: { type: number }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        properties:
+          value: { type: number }
     value:
       doubled: !cel "inputs.value * 2"
 steps:

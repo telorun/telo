@@ -1,0 +1,19 @@
+# An indexed `!ref` in the application's own sequence, outside any template body.
+kind: Telo.Application
+metadata: { name: FamilyIndexedApp }
+imports:
+  Run: ../../../../../modules/run
+targets:
+  - !ref sequence
+---
+kind: Run.Sequence
+metadata: { name: noop }
+steps:
+  - name: noop
+    value: 1
+---
+kind: Run.Sequence
+metadata: { name: sequence }
+steps:
+  - name: call
+    invoke: !ref noop[each.key]

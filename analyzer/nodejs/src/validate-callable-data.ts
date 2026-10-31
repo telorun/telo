@@ -57,7 +57,7 @@ import type { ReachSite } from "./reference-reach.js";
 import { isInlineDeclaration } from "./resolved-reference.js";
 import { computedValue } from "./ref-slot-computed.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
-import { declaredScopes, isScopeMember } from "./scope-declarations.js";
+import { declaredScopes, isScopeMember, type DeclaredScope } from "./scope-declarations.js";
 import { templateBodyEntries } from "./template-body.js";
 import {
   expandedAtTemplateInit,
@@ -71,6 +71,9 @@ import {
   type ProjectionTrail,
 } from "./schema-projection.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { scopeAddress, type ScopeAddress, type ScopeSite } from "./scope-address.js";
+import { ScopedNameResolver } from "./scoped-name-resolver.js";
+import { declaringScopeOf, isScopeMemberDeclaration } from "./scope-members.js";
 
 const SOURCE = "telo-analyzer";
 const CODE = "CALLABLE_REFERENCE_NOT_DATA";
@@ -140,7 +143,7 @@ const moduleOf = (manifest: unknown): string | undefined => {
 const nameOf = (manifest: unknown): string =>
   String((manifest as { metadata?: { name?: unknown } } | undefined)?.metadata?.name ?? "<inline>");
 
-const key = (module: string | undefined, name: string): string => `${module ?? ""}\0${name}`;
+const key = (module: string | undefined, name: string): string => scopeAddress(module, name).key;
 
 function isPlainContainer(value: unknown): value is Record<string, unknown> | unknown[] {
   if (!value || typeof value !== "object") return false;
@@ -250,10 +253,29 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
 
   // One verdict per declaration for a walk entering it through no input.
   const judged = new Map<object, Found | null>();
-  // A `with:` scope member, and the names its scope run makes visible to it —
-  // its scope's members, then each enclosing scope's — which a reference it
-  // writes resolves to before the module's.
-  const scopeNames = new WeakMap<object, ReadonlyMap<string, ResourceManifest>>();
+  // A `with:` scope member, and the scope it is declared in: a reference it
+  // writes resolves through that scope's members, then each enclosing scope's,
+  // before the module's.
+  const scopeNames = new ScopedNameResolver<ResourceManifest>(
+    manifests.filter(isScopeMemberDeclaration),
+    { nameOf, moduleOf, scopeOf: declaringScopeOf },
+  );
+  const memberScope = new WeakMap<object, ScopeSite>();
+  const memberAddress = new WeakMap<object, ScopeAddress>();
+  /** Record what `declaration`'s scopes declare; each member with its own scope. */
+  const declareScopes = (
+    holder: ScopeAddress,
+    scope: DeclaredScope,
+    members: readonly (ResourceManifest | undefined)[],
+  ): void => {
+    const site: ScopeSite = { holder, field: scope.path };
+    const declared = members.filter((m): m is ResourceManifest => m !== undefined);
+    scopeNames.declareScope(site, declared);
+    for (const member of declared) {
+      memberScope.set(member, site);
+      memberAddress.set(member, scopeAddress(site, nameOf(member)));
+    }
+  };
 
   const judgeValue = (
     value: unknown,
@@ -284,8 +306,11 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
     const placement = placements.get(holder);
     // A scope run's lookup reaches its own members first, then the lookup of
     // the context the scope opened in — in a template body, the body's.
+    const site = memberScope.get(holder) ?? declaringScopeOf(holder);
     const scoped =
-      !ref.alias || (placement && local) ? scopeNames.get(holder)?.get(ref.name) : undefined;
+      site && (!ref.alias || (placement && local))
+        ? scopeNames.resolve(ref.name, module, site)
+        : undefined;
     if (scoped) return judgeDeclaration(scoped, ref.name, trail, stack, viaInput);
     if (placement) return judgeInBody(value, ref, placement.body, holder, trail, stack, viaInput);
     if (local && needs.has(key(module, ref.name))) {
@@ -487,10 +512,13 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
   const diagnostics: AnalysisDiagnostic[] = [];
   const label = (manifest: ResourceManifest) => `${manifest.kind}/${nameOf(manifest)}`;
 
-  // The entry's own callables, at the slot — declared at the top level, or as
-  // a member of a `with:` scope at any depth, anchored at the member inside the
-  // resource declaring the scope.
-  const judgeCallable = (root: ResourceManifest, manifest: ResourceManifest, prefix: string): void => {
+  // The entry's own callables, at the slot — a scope member's included, which
+  // the analysis reports at its place inside the resource declaring the scope.
+  for (const manifest of manifests) {
+    const module = moduleOf(manifest);
+    if (module !== undefined && !rootModules.has(module)) continue;
+    if (!isInstanceDocument(manifest) || isInjectedDeclaration(manifest)) continue;
+    if (isForwardedDeclaration(manifest)) continue;
     for (const site of dataSites(manifest)) {
       const found = judgeValue(site.data, manifest as Record<string, any>, undefined, [manifest], false);
       if (!found) continue;
@@ -500,46 +528,12 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
         source: SOURCE,
         message: callableReferenceNotDataMessage(label(manifest), site.path, found),
         data: {
-          resource: { kind: root.kind, name: nameOf(root) },
-          filePath: (root.metadata as { source?: string } | undefined)?.source,
-          path: `${prefix}${site.path}`,
+          resource: { kind: manifest.kind, name: nameOf(manifest) },
+          filePath: (manifest.metadata as { source?: string } | undefined)?.source,
+          path: site.path,
         },
       });
     }
-  };
-  const visitScopes = (
-    root: ResourceManifest,
-    declaration: ResourceManifest,
-    module: string | undefined,
-    prefix: string,
-    enclosing: ReadonlyMap<string, ResourceManifest>,
-  ): void => {
-    for (const scope of declaredScopes(sitesOf(declaration))) {
-      const members = scope.declarations.map((entry) =>
-        isScopeMember(entry)
-          ? ((module !== undefined && moduleOf(entry) === undefined
-              ? { ...entry, metadata: { ...entry.metadata, module } }
-              : entry) as ResourceManifest)
-          : undefined,
-      );
-      const names = new Map(enclosing);
-      for (const member of members) if (member) names.set(nameOf(member), member);
-      members.forEach((member, index) => {
-        if (!member || isKindDocument(member)) return;
-        scopeNames.set(member, names);
-        const at = `${prefix}${scope.path}[${index}].`;
-        judgeCallable(root, member, at);
-        visitScopes(root, member, module, at, names);
-      });
-    }
-  };
-  for (const manifest of manifests) {
-    const module = moduleOf(manifest);
-    if (module !== undefined && !rootModules.has(module)) continue;
-    if (!isInstanceDocument(manifest) || isInjectedDeclaration(manifest)) continue;
-    if (isForwardedDeclaration(manifest)) continue;
-    judgeCallable(manifest, manifest, "");
-    visitScopes(manifest, manifest, module, "", new Map());
   }
 
   // A native function written as an entry of a template body, at the definition
@@ -572,8 +566,8 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
     const visitBodyScopes = (
       entry: BodyEntry,
       declaration: ResourceManifest,
+      address: ScopeAddress,
       within: string,
-      enclosing: ReadonlyMap<string, ResourceManifest>,
     ): void => {
       for (const declared of declaredScopes(sitesOf(declaration))) {
         const members = declared.declarations.map((member) =>
@@ -584,13 +578,11 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
               } as ResourceManifest)
             : undefined,
         );
-        const names = new Map(enclosing);
-        for (const member of members) if (member) names.set(nameOf(member), member);
+        declareScopes(address, declared, members);
         const at = (index: number) => `${within === "" ? "" : `${within}.`}${declared.path}[${index}]`;
         members.forEach((member, index) => {
           if (!member) return;
           placements.set(member, { body, entry, within: at(index) });
-          scopeNames.set(member, names);
         });
         members.forEach((member, index) => {
           if (!member || isKindDocument(member)) return;
@@ -599,13 +591,20 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
             `the ${member.kind} '${nameOf(member)}' declared in ${entry.label}`,
             `${entry.prefix}.${at(index)}`,
           );
-          visitBodyScopes(entry, member, at(index), names);
+          visitBodyScopes(entry, member, memberAddress.get(member)!, at(index));
         });
       }
     };
     for (const entry of body.entries) {
       judgeInBodyAt(entry.view, entry.label, entry.prefix);
-      visitBodyScopes(entry, entry.view, "", new Map());
+      // An entry is addressed by its place in the body, which no resource
+      // name can spell.
+      visitBodyScopes(
+        entry,
+        entry.view,
+        scopeAddress(module, `${nameOf(definition)}.${entry.prefix}`),
+        "",
+      );
     }
   }
 

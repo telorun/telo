@@ -1,0 +1,20 @@
+# Borrows a sequence and exports one its importer's sequence calls.
+kind: Telo.Library
+metadata:
+  name: Sweeper
+  version: 0.0.0
+  description: Test fixture borrowing a sequence and exporting one it may call.
+imports:
+  Run: ../../../../../../modules/run
+resources:
+  caller:
+    kind: Run.Sequence
+exports:
+  resources: [sweep]
+---
+kind: Run.Sequence
+metadata:
+  name: sweep
+steps:
+  - name: swept
+    value: true

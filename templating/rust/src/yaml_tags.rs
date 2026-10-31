@@ -11,6 +11,7 @@ use serde_json::{Map, Value as Json};
 use serde_yaml::Value as Yaml;
 
 use crate::engines::include::{INCLUDE_BYTES_ENGINE, INCLUDE_TEXT_ENGINE};
+use crate::expansion_tags::{expansion_shape_code, expansion_tag_keys, is_expansion_tag, EXPANSION_MARKER};
 use crate::engines::module_path::MODULE_PATH_ENGINE;
 use crate::sentinel::{make_tagged_sentinel, REF_ENGINE};
 
@@ -37,6 +38,9 @@ const EXPRESSION_ENGINES: &[&str] = &["cel", "interpolate", "sql"];
 
 #[derive(Debug)]
 pub struct TagError {
+    /// The diagnostic code, when the refusal is one the loaders name (an
+    /// expansion tag on a scalar or a sequence); `None` for an unreadable value.
+    pub code: Option<&'static str>,
     pub message: String,
 }
 
@@ -51,6 +55,14 @@ impl std::error::Error for TagError {}
 impl TagError {
     fn new(message: impl Into<String>) -> Self {
         Self {
+            code: None,
+            message: message.into(),
+        }
+    }
+
+    fn coded(code: &'static str, message: impl Into<String>) -> Self {
+        Self {
+            code: Some(code),
             message: message.into(),
         }
     }
@@ -81,26 +93,15 @@ pub fn yaml_to_json(value: Yaml) -> Result<Json, TagError> {
             .collect::<Result<Vec<_>, _>>()
             .map(Json::Array),
         Yaml::Mapping(mapping) => {
-            let mut out = Map::with_capacity(mapping.len());
-            for (key, value) in mapping {
-                let key = match key {
-                    Yaml::String(key) => key,
-                    Yaml::Number(n) => n.to_string(),
-                    Yaml::Bool(b) => b.to_string(),
-                    other => {
-                        return Err(TagError::new(format!(
-                            "manifest mapping keys must be scalars, got {}",
-                            describe(&other)
-                        )))
-                    }
-                };
-                out.insert(key, yaml_to_json(value)?);
-            }
-            Ok(Json::Object(out))
+            let capacity = mapping.len();
+            mapping_to_json(mapping, Map::with_capacity(capacity))
         }
         Yaml::Tagged(tagged) => {
             let engine = tagged.tag.to_string();
             let engine = engine.trim_start_matches('!').to_string();
+            if is_expansion_tag(&engine) {
+                return expansion_to_json(&engine, tagged.value);
+            }
             if EXPRESSION_ENGINES.contains(&engine.as_str()) {
                 return Err(TagError::new(format!(
                     "`!{engine}` holds CEL, and this kernel has no expression engine: reading it as a literal would silently produce the wrong value"
@@ -128,6 +129,56 @@ pub fn yaml_to_json(value: Yaml) -> Result<Json, TagError> {
             Ok(make_tagged_sentinel(&engine, &source))
         }
     }
+}
+
+/// An expansion tag's mapping, loaded as that mapping with the marker first and
+/// the written keys after it — the value the Node loader produces. Anything but
+/// a mapping under the tag, or a mapping writing the marker itself, is the tag's
+/// shape refusal.
+fn expansion_to_json(tag: &str, value: Yaml) -> Result<Json, TagError> {
+    let mapping = match value {
+        Yaml::Mapping(mapping) => mapping,
+        other => {
+            let written = if matches!(other, Yaml::Sequence(_)) { "a sequence" } else { "a scalar" };
+            return Err(TagError::coded(
+                expansion_shape_code(tag),
+                format!(
+                    "'!{tag}' is written on {written}; it takes a mapping ({}).",
+                    expansion_tag_keys(tag)
+                ),
+            ));
+        }
+    };
+    if mapping.contains_key(Yaml::String(EXPANSION_MARKER.to_string())) {
+        return Err(TagError::coded(
+            expansion_shape_code(tag),
+            format!(
+                "'!{tag}' holds a key '{EXPANSION_MARKER}', which is reserved for the tag's own marker. Remove it."
+            ),
+        ));
+    }
+    let mut out = Map::with_capacity(mapping.len() + 1);
+    out.insert(EXPANSION_MARKER.to_string(), Json::String(tag.to_string()));
+    mapping_to_json(mapping, out)
+}
+
+/// Load a mapping's entries, in written order, into `out`.
+fn mapping_to_json(mapping: serde_yaml::Mapping, mut out: Map<String, Json>) -> Result<Json, TagError> {
+    for (key, value) in mapping {
+        let key = match key {
+            Yaml::String(key) => key,
+            Yaml::Number(n) => n.to_string(),
+            Yaml::Bool(b) => b.to_string(),
+            other => {
+                return Err(TagError::new(format!(
+                    "manifest mapping keys must be scalars, got {}",
+                    describe(&other)
+                )))
+            }
+        };
+        out.insert(key, yaml_to_json(value)?);
+    }
+    Ok(Json::Object(out))
 }
 
 /// Name a YAML node the way an author would recognise it. The `Debug` form
@@ -174,7 +225,12 @@ mod tests {
         let json = parse("invoke: !ref Console.writeLine").unwrap();
         assert_eq!(
             json["invoke"],
-            serde_json::json!({ "__tagged": true, "engine": "ref", "source": "Console.writeLine" })
+            serde_json::json!({
+                "__tagged": true,
+                "engine": "ref",
+                "source": "Console.writeLine",
+                "parsed": { "alias": "Console", "name": "writeLine", "indexes": [] }
+            })
         );
     }
 

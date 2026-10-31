@@ -1,0 +1,7 @@
+# Omits the store the library references unguarded: refused at the import.
+kind: Telo.Application
+metadata:
+  name: UnprovenOmitted
+  version: 1.0.0
+imports:
+  Lib: ./lib

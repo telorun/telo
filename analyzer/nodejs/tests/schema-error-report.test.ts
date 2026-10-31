@@ -199,6 +199,8 @@ describe("a deeply nested recursive union", () => {
           pointer: `/${"stack/0/".repeat(depth)}text`,
           message: `/${"stack/0/".repeat(depth)}text must be string`,
           keyword: "type",
+          prose: "must be string",
+          quoteTrail: 0,
         },
       ]);
     }
@@ -226,6 +228,8 @@ describe("a Telo format", () => {
         path: "selector",
         pointer: "/selector",
         keyword: "format",
+        prose: 'must be a css-selector: Expected attribute name at offset 3 of "div["',
+        quoteTrail: 0,
       },
     ]);
   });
@@ -241,7 +245,9 @@ describe("an enum refusal over a large vocabulary", () => {
     const data = { name: "ouse" };
     expect(validate(data)).toBe(false);
     const message = "/name must be one of 42 allowed values; did you mean 'house' or 'mouse'?";
-    expect(schemaIssues(validate.errors, data)).toEqual([{ message, path: "name", pointer: "/name", keyword: "enum" }]);
+    expect(schemaIssues(validate.errors, data)).toEqual([
+      { message, path: "name", pointer: "/name", keyword: "enum", prose: message.slice("/name ".length), quoteTrail: 0 },
+    ]);
     expect(formatAjvErrors(validate.errors, data)).toBe(message);
   });
 });

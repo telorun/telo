@@ -1,0 +1,11 @@
+# One library imported twice, each import leaving the need unsupplied: two
+# needs, two dimensions — one per need path. A shared library imported twice
+# is one need and one dimension.
+kind: Telo.Application
+metadata:
+  name: NeedPresenceTwice
+imports:
+  A: ./orders
+  B: ./orders
+  First: ./orders-shared
+  Second: ./orders-shared

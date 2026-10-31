@@ -1,0 +1,51 @@
+# A step forwards the result of a step whose target a choice decides; a later
+# step reads a member of the forwarded result. Where flag1 holds the target's
+# output declares `x`; elsewhere it is closed without it, so the read is refused
+# there alone.
+kind: Telo.Application
+metadata:
+  name: StepResultForwardChoice
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Run.Value
+metadata:
+  name: withX
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      x: { type: integer }
+value: { x: 1 }
+---
+kind: Run.Value
+metadata:
+  name: withoutX
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      y: { type: integer }
+value: { y: 1 }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: s0
+    invoke: !if
+      if: !cel "variables.flag1"
+      then: !ref withX
+      else: !ref withoutX
+  - name: fwd
+    value: !cel "steps.s0.result"
+  - name: reader
+    value: !cel "steps.fwd.result.x"

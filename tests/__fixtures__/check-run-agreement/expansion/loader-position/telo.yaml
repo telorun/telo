@@ -1,0 +1,8 @@
+# An import the loader reads before anything is expanded, written behind a tag.
+kind: Telo.Library
+metadata:
+  name: LoaderPositionLib
+imports:
+  Run: !if
+    if: true
+    then: ../../../../../modules/run

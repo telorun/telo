@@ -1,0 +1,27 @@
+# A templated kind whose `targets:` names an entry the `a` mode alone declares.
+kind: Telo.Library
+metadata:
+  name: TemplateInitModed
+exports:
+  kinds: [Moded]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Moded
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    mode: { type: string, enum: [a, b], x-telo-eval: compile }
+resources:
+  - !if
+    metadata: { name: other }
+    if: !cel "self.mode == 'a'"
+    then:
+      kind: Run.Sequence
+      steps:
+        - { name: noop, value: 1 }
+targets:
+  - !ref other

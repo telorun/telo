@@ -1,14 +1,14 @@
-# A provider's status read at startup from a sibling declared in the same
-# `with:` scope: scoped resources are created when the scope opens, where a
-# startup field cannot see them. This library's own check refuses the read; the
-# kernel refuses it when the sequence opens its scope.
+# A provider's status read in the own field of a sibling declared in the same
+# `with:` scope: a member's own fields never see a sibling in `resources`. This
+# library's own check refuses the read (`CEL_UNKNOWN_FIELD`); the kernel refuses
+# it when the sequence opens its scope and creates the member.
 kind: Telo.Library
 metadata:
   name: ScopedProviderStatusAtStartup
   version: 1.0.0
   description: >-
-    Fixture library reading a scoped provider's observed state in a field
-    resolved at startup, which the kernel refuses when the scope opens and this
+    Fixture library reading a scoped provider's observed state in a sibling
+    member's own field, which the kernel refuses when the scope opens and this
     library's own check reports.
 imports:
   Status: ../kinds

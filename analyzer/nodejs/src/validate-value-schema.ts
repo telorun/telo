@@ -1,9 +1,11 @@
+import { parseKeys, pathText } from "./template-expansion.js";
 import { valueTypeRefusalCode } from "./schema-error-report.js";
 import { valueSchemaSites } from "./derived-slots.js";
 import { substituteDecodedCelFields } from "./plain-literal-decoding.js";
 import { type ExternalSchemaResolver, type SchemaIssue } from "./schema-compat.js";
 import type { StandIns } from "./stand-in-findings.js";
 import type { ValueSchemaHost } from "./value-schema-slot.js";
+import type { DeclarationRequests } from "./declaration-requests.js";
 
 /**
  * `x-telo-value-schema-from: "<location>"` — the value written at the annotated
@@ -44,17 +46,15 @@ export interface ShapeAwareValidator {
 export function collectValueSchemaIssues(
   manifest: Record<string, any>,
   defSchema: Record<string, any> | undefined,
-  allManifests: Record<string, any>[],
+  /** The declarations a named type resolves against. */
+  types: DeclarationRequests,
   validator: ShapeAwareValidator,
   /** Follows a location across a reference. Omitted by a caller holding no
    *  module scope, where a location is read off the resource alone. */
   valueSchemaHost?: ValueSchemaHost,
 ): SchemaIssue[] {
   const issues: SchemaIssue[] = [];
-  for (const { path, value, schema, from } of valueSchemaSites(manifest, defSchema, {
-    typeManifests: allManifests,
-    valueSchemaHost,
-  })) {
+  for (const { path, value, schema, from } of valueSchemaSites(manifest, defSchema, { types, valueSchemaHost })) {
     const standIns: StandIns = new Map();
     const substituted = substituteDecodedCelFields(value, schema, undefined, {
       standIns,
@@ -66,6 +66,8 @@ export function collectValueSchemaIssues(
         // type's code wherever the slot is.
         ...(valueTypeRefusalCode(issue) ? { keyword: issue.keyword, valueType: issue.valueType } : {}),
         message: `\`${path}\` does not satisfy the type declared at \`${from}\`: ${issue.message}`,
+        // The places the message writes, so a placement can write them again.
+        places: [path, from].filter((place, i) => pathText(parseKeys(place)) === place && (i === 0 || place !== path)),
         path: issue.path ? `${path}.${issue.path}` : path,
       });
     }

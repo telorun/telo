@@ -21,7 +21,7 @@
     "url": "https://github.com/telorun/telo/issues"
   },
   "type": "module",
-  "teloEditorProtocol": 1,
+  "teloEditorProtocol": 2,
   "teloInlines": [
     "@telorun/analyzer",
     "@telorun/cel",

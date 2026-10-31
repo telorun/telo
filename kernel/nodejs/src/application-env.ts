@@ -1,5 +1,8 @@
 import {
+  admitsAbsence,
+  type ApplicationUsageRequirements,
   type ArgBinding,
+  type InputRequirement,
   type DefResolver,
   describeArgBinding,
   type NeedEnvironmentEntry,
@@ -117,12 +120,35 @@ export function suppliedNeedEntries<T extends NeedEnvironmentEntry>(
   );
 }
 
+/**
+ * Which inputs the configuration an application starts in demands. An input
+ * nothing supplies is refused only where `required` says the configuration
+ * requires it; one it does not require is left out, and a need of it is bound to
+ * nothing. A supplied value is read and validated either way. `usage` is what
+ * `--help` reports requiredness from.
+ */
+export interface InputDemand {
+  required(block: InputRequirement["block"], name: string): boolean;
+  usage(): ApplicationUsageRequirements;
+}
+
 /** Everything a root Application's inputs are read from besides the
  *  environment. */
 export interface ApplicationInputSources {
+  demand: InputDemand;
   inputs?: ApplicationInputs;
   argv?: readonly string[];
   needs?: NeedEnvironmentRequest;
+  /** Resolve only these `variables:` / `secrets:` entries and these needs (by
+   *  need path, `.`-joined) — the dimensions a load reads before it expands its
+   *  documents. Ports are read with the rest unless a need is asked for (an
+   *  address need is answered from a port); the command line is still read
+   *  against every binding. */
+  only?: {
+    readonly variables: ReadonlySet<string>;
+    readonly secrets: ReadonlySet<string>;
+    readonly needs?: ReadonlySet<string>;
+  };
 }
 
 /** Residual schema every resolved port value is validated against. Ports are
@@ -161,11 +187,12 @@ export function resolveApplicationEnv(
   manifest: Record<string, any>,
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
+  demand: InputDemand,
   inputs?: ApplicationInputs,
   argv: readonly string[] = [],
   needs?: NeedEnvironmentRequest,
 ): EnvResolutionResult {
-  const reading = readApplicationInputs(manifest, env, validator, { inputs, argv, needs }, new Map());
+  const reading = readApplicationInputs(manifest, env, validator, { demand, inputs, argv, needs }, new Map());
   const refusal = refusalOf(reading);
   if (refusal) throw refusal;
   return reading.result;
@@ -266,7 +293,7 @@ function readApplicationInputs(
   for (const issue of declaredArguments.issues) findings.fail(issue.message);
   const parsed = parseApplicationArguments(declaredArguments.bindings, sources.argv ?? []);
   if (parsed.help && reading.lines.length === 0) {
-    reading.result.help = renderApplicationUsage(manifest);
+    reading.result.help = renderApplicationUsage(manifest, sources.demand.usage());
     return reading;
   }
   for (const error of parsed.errors) findings.fail(error);
@@ -278,36 +305,76 @@ function readApplicationInputs(
   });
 
   reportUndeclaredInputs(manifest, sources.inputs, findings);
-  const { inputs, needs } = sources;
+  const { inputs, needs, only, demand } = sources;
   const variables = resolveBlock(
     "variables",
-    manifest.variables ?? {},
+    selected(manifest.variables, only?.variables),
     env,
     validator,
     findings,
+    (name) => demand.required("variables", name),
     inputs?.variables,
     channel("variables"),
   );
-  const secrets = resolveBlock("secrets", manifest.secrets ?? {}, env, validator, findings, inputs?.secrets);
-  const ports = resolvePorts(manifest.ports ?? {}, env, validator, findings, inputs?.ports, channel("ports"));
+  const secrets = resolveBlock(
+    "secrets",
+    selected(manifest.secrets, only?.secrets),
+    env,
+    validator,
+    findings,
+    (name) => demand.required("secrets", name),
+    inputs?.secrets,
+  );
+  const onlyNeeds = only?.needs;
+  const ports =
+    only && !onlyNeeds?.size
+      ? {}
+      : resolvePorts(
+          manifest.ports ?? {},
+          env,
+          validator,
+          findings,
+          (name) => demand.required("ports", name),
+          inputs?.ports,
+          channel("ports"),
+        );
   reading.result = { variables, secrets, ports };
-  if (needs) {
+  if (needs && (!only || onlyNeeds?.size)) {
     // A need supplied by name is answered by that supply alone. Of the rest, a
     // `Telo.PublicUrl` nothing else supplies is answered from the host's
     // templates, and a `Telo.DurableDirectory` from the host's state directory,
     // each read as if its env name held the derived value; an address whose
     // port has no value yet waits for it rather than being asked.
-    const supplied = suppliedNeedEntries(needs.entries, inputs);
-    const unsupplied = needs.entries.filter((entry) => !supplied.has(entry));
+    const request: NeedEnvironmentRequest = onlyNeeds
+      ? { ...needs, entries: needs.entries.filter((entry) => onlyNeeds.has(entry.path.join("."))) }
+      : needs;
+    const supplied = suppliedNeedEntries(request.entries, inputs);
+    const unsupplied = request.entries.filter((entry) => !supplied.has(entry));
     const derived = withStateDirectories(unsupplied, withDerivedPublicUrls(unsupplied, env, ports));
     const awaiting = publicUrlsAwaitingPorts(unsupplied, env, ports);
-    reading.result.needs = resolveNeedEnvironment(needs, derived, validator, findings, reading, awaiting, supplied);
+    reading.result.needs = resolveNeedEnvironment(
+      request,
+      derived,
+      validator,
+      findings,
+      reading,
+      awaiting,
+      supplied,
+      (path) => demand.required("needs", path),
+    );
     for (const entry of supplied) {
-      const value = resolveSuppliedNeed(entry, needs, inputs!, validator, findings, reading);
+      const value = resolveSuppliedNeed(entry, request, inputs!, validator, findings, reading);
       if (value) reading.result.needs.set(entry.path.join("."), value);
     }
   }
   return reading;
+}
+
+/** The entries of a `variables:` / `secrets:` block `names` selects, or the
+ *  whole block when nothing selects. */
+function selected(block: unknown, names: ReadonlySet<string> | undefined): unknown {
+  if (!names || !block || typeof block !== "object" || Array.isArray(block)) return block ?? {};
+  return Object.fromEntries(Object.entries(block as Record<string, unknown>).filter(([name]) => names.has(name)));
 }
 
 /**
@@ -352,6 +419,8 @@ function refusalOf(reading: InputReading): RuntimeError | undefined {
  * variable's is. A value that does not decode joins the application's
  * `ERR_MANIFEST_VALIDATION_FAILED`, naming the variable and, for a sensitive
  * field, never the value. A need in `awaiting` is left for a later reading.
+ * A need with nothing set is `null` when it is optional or `required` says the
+ * configuration does not require it.
  */
 function resolveNeedEnvironment(
   request: NeedEnvironmentRequest,
@@ -361,6 +430,7 @@ function resolveNeedEnvironment(
   reading: InputReading,
   awaiting: ReadonlySet<NeedEnvironmentEntry>,
   supplied: ReadonlySet<NeedEnvironmentEntry>,
+  demanded: (path: string) => boolean,
 ): Map<string, Record<string, unknown> | null> {
   const values = new Map<string, Record<string, unknown> | null>();
   for (const entry of request.entries) {
@@ -384,7 +454,7 @@ function resolveNeedEnvironment(
       `'${entry.moduleName}')`;
     const set = fields.filter(([, field]) => isSetIn(env, field.env));
     if (set.length === 0) {
-      if (entry.need.optional) {
+      if (entry.need.optional || !demanded(path)) {
         values.set(path, null);
         continue;
       }
@@ -782,6 +852,7 @@ function resolvePorts(
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
   findings: Findings,
+  required: (name: string) => boolean,
   supplied: Record<string, number> | undefined,
   args: ArgumentChannel,
 ): Record<string, number> {
@@ -802,6 +873,13 @@ function resolvePorts(
     const input = (refusal?: string) =>
       entryInput("ports", name, entry as Record<string, unknown>, PORT_RESIDUAL_SCHEMA, args, refusal);
     const host = hostText(name, entry, env, args);
+    if (host === undefined && (entry.default as unknown) === null) {
+      findings.fail(
+        `${name}: 'default: null' — a port never admits absence; every declared port is assigned ` +
+          `wherever the application runs. Give it a port number, or leave 'default:' out to require one`,
+      );
+      continue;
+    }
     if (host === undefined && entry.default !== undefined) {
       const validation = validateResidual(entry.default, PORT_RESIDUAL_SCHEMA, validator);
       if (validation) findings.fail(`${name}: ${validation}`);
@@ -810,7 +888,7 @@ function resolvePorts(
     }
     const read = host ?? answerText(findings, input().id);
     if (read === undefined) {
-      findings.miss(`${name}: ${describeMissing(name, entry, args)}`, input());
+      if (required(name)) findings.miss(`${name}: ${describeMissing(name, entry, args)}`, input());
       continue;
     }
     const report = (line: string) => (read.answered ? findings.miss(line, input(line)) : findings.fail(line));
@@ -840,6 +918,7 @@ function resolveBlock(
   env: Record<string, string | undefined>,
   validator: SchemaValidator,
   findings: Findings,
+  required: (name: string) => boolean,
   supplied?: Record<string, unknown>,
   args?: ArgumentChannel,
 ): Record<string, unknown> {
@@ -854,6 +933,11 @@ function resolveBlock(
     // See the note in `resolvePorts`: a supplied value is a value, not text, so
     // it is validated against the same residual schema but never coerced.
     if (supplied && Object.hasOwn(supplied, name)) {
+      // An input declaring `default: null` may be supplied as absent.
+      if (supplied[name] === null && admitsAbsence(entry)) {
+        out[name] = null;
+        continue;
+      }
       const validation =
         membersEnvRefusal(supplied[name], residual, validator) ??
         validateResidual(supplied[name], residual, validator);
@@ -863,6 +947,12 @@ function resolveBlock(
     }
     const input = (refusal?: string) => entryInput(blockName, name, entry, residual, args, refusal);
     const host = hostText(name, entry, env, args);
+    // `default: null` declares that the input may be absent: nothing supplied
+    // is its absence, whatever its type.
+    if (host === undefined && admitsAbsence(entry)) {
+      out[name] = null;
+      continue;
+    }
     if (host === undefined && entry.default !== undefined) {
       // Decoded on a copy: the default is the manifest's own literal.
       const fallback = decodeFromOutside(structuredClone(entry.default), residual, validator);
@@ -876,7 +966,8 @@ function resolveBlock(
     }
     const read = host ?? answerText(findings, input().id);
     if (read === undefined) {
-      findings.miss(`${name}: ${describeMissing(name, entry, args)}`, input());
+      // An input this configuration does not require is left out unrefused.
+      if (required(name)) findings.miss(`${name}: ${describeMissing(name, entry, args)}`, input());
       continue;
     }
     const report = (line: string) => (read.answered ? findings.miss(line, input(line)) : findings.fail(line));

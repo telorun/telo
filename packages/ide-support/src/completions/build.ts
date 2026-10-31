@@ -14,6 +14,7 @@ import { callInputsAt } from "./call-inputs.js";
 import { celCompletions } from "./cel-completions.js";
 import { docIdentity } from "../doc-identity.js";
 import { detectContext, lookupRefSlot, navigateSchema } from "./detect-context.js";
+import { familyIndexCompletions } from "./family-index.js";
 import { importSourceCompletions } from "./import-source.js";
 import { moduleFileCompletions, moduleFileEntry, narrowedNames } from "./module-file-completions.js";
 import { valueTagCompletions } from "./value-tag-completions.js";
@@ -216,6 +217,8 @@ export async function buildCompletions(
   // otherwise parse once here (Part 1 stands alone). Both `detectContext` and
   // ref-name in-file resource extraction share this single parse.
   const astDocs = docs ?? parseToAst(text);
+  const family = familyIndexCompletions(text, line, character, astDocs);
+  if (family) return family;
   const ctx = detectContext(text, line, character, astDocs);
   if (!ctx) return [];
   if (ctx.type === "kind") {

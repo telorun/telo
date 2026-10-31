@@ -124,6 +124,10 @@ export function assertSharedInputsAgree(
     if (!sameValue(entry.secrets[key], secrets[key])) conflict("secrets", key);
   }
   for (const key of union([...entry.resources.keys()], [...resources.keys()])) {
+    if (entry.resources.has(key) !== resources.has(key)) {
+      const [supplier, omitter] = entry.resources.has(key) ? [entry.owner, alias] : [alias, entry.owner];
+      conflict("resources", key, `import '${supplier}' supplies it and import '${omitter}' omits it`);
+    }
     if (entry.resources.get(key) !== resources.get(key)?.instance) {
       conflict("resources", key, "different instances");
     }

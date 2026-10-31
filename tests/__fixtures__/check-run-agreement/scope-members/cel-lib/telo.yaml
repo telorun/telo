@@ -1,0 +1,44 @@
+# A CEL typo inside an `x-telo-scope` member — inside `Run.Sequence`'s `with:`
+# and inside a third-party kind's `members:`. `telo check` reports each at the
+# member's path inside the resource declaring the scope.
+kind: Telo.Library
+metadata:
+  name: ScopeMemberCelDefects
+  version: 1.0.0
+  description: >-
+    Fixture library whose exported resources each declare a scope member with
+    a CEL expression reading a variable the library does not declare.
+imports:
+  Run: ../../../../../modules/run
+  Kinds: ../kinds
+variables:
+  limit:
+    type: integer
+    default: 3
+exports:
+  resources:
+    - sequenceCel
+    - hostCel
+---
+kind: Run.Sequence
+metadata:
+  name: sequenceCel
+with:
+  - kind: Run.Value
+    metadata:
+      name: answer
+    value: !cel "variables.limt"
+steps:
+  - name: read
+    invoke: !ref answer
+---
+kind: Kinds.Host
+metadata:
+  name: hostCel
+pick: answer
+members:
+  - kind: Kinds.Target
+    metadata:
+      name: answer
+    answer: !cel "variables.limt"
+

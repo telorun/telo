@@ -6,6 +6,7 @@ use serde_yaml::Value as Yaml;
 use telo_templating::yaml_to_json;
 
 use crate::loaded_types::{LoadedFile, ParseError};
+use crate::loader_expansion_refusals::loader_expansion_refusals;
 use crate::types::ResourceManifest;
 
 pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> LoadedFile {
@@ -16,11 +17,21 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
         match Yaml::deserialize(document) {
             Ok(Yaml::Null) => manifests.push(None),
             Ok(value) => match yaml_to_json(value) {
-                Ok(json) => manifests.push(Some(json)),
+                Ok(json) => {
+                    for refusal in loader_expansion_refusals(&json) {
+                        parse_errors.push(ParseError {
+                            document_index,
+                            code: Some(refusal.code.to_string()),
+                            message: refusal.message,
+                        });
+                    }
+                    manifests.push(Some(json));
+                }
                 Err(err) => {
                     manifests.push(None);
                     parse_errors.push(ParseError {
                         document_index,
+                        code: err.code.map(str::to_string),
                         message: err.message,
                     });
                 }
@@ -29,6 +40,7 @@ pub fn parse_loaded_file(source: &str, requested_url: &str, text: &str) -> Loade
                 manifests.push(None);
                 parse_errors.push(ParseError {
                     document_index,
+                    code: None,
                     message: err.to_string(),
                 });
             }

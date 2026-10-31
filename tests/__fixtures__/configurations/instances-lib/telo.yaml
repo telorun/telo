@@ -1,0 +1,37 @@
+# A library exporting a backend its own `dialect` chooses, and a wrapper
+# holding it.
+kind: Telo.Library
+metadata:
+  name: InstancesLib
+imports:
+  Backends: ../backends
+variables:
+  dialect:
+    type: string
+    enum: [first, second]
+exports:
+  kinds: [Wrapper]
+  resources: [db, wrapper]
+--- !switch
+metadata: { name: db }
+switch: !cel "variables.dialect"
+cases:
+  first: { kind: Backends.First }
+  second: { kind: Backends.Second }
+---
+kind: Telo.Definition
+metadata:
+  name: Wrapper
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./wrapper.mjs#Wrapper
+schema:
+  type: object
+  properties:
+    store:
+      x-telo-ref: { kind: [Backends.First, Backends.Second], use: dependency }
+---
+kind: Self.Wrapper
+metadata:
+  name: wrapper
+store: !ref db

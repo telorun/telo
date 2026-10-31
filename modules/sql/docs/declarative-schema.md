@@ -320,6 +320,18 @@ boot's declaration, so an object in the namespace that has never appeared in one
 both the diff and to reclamation. Adopting an existing database is therefore
 safe: nothing you have not declared is ever tombstoned.
 
+### A module's tables are listed by the application's schema
+
+Only the schema declares what it owns: a table joins it by being listed in its
+`tables:`, by reference, in the module declaring the schema — never by a table
+naming the schema it belongs to. A library contributing tables exports each as
+a ready-made instance, and the application's schema lists it
+(`tables: [!ref Accounts.users]`). Such a library must not also borrow that
+schema through a `resources:` input: it would initialize after the schema it is
+handed while the schema needs its tables first, which `telo check` reports as
+`DEPENDENCY_CYCLE` at the import. Put the tables in a leaf module that borrows
+nothing, and hand the schema to whatever else needs it.
+
 ## Addressing the tables
 
 A schema resource also **addresses the tables it lists for consumers**. It owns

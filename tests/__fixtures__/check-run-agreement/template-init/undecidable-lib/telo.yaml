@@ -1,0 +1,28 @@
+# A template choice reading another resource's published state: nothing before
+# boot decides it, so neither check nor run takes both branches.
+kind: Telo.Library
+metadata:
+  name: TemplateInitUndecidable
+exports:
+  kinds: [Reads]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Run.Value
+metadata: { name: other }
+value: 1
+---
+kind: Telo.Definition
+metadata:
+  name: Reads
+capability: Telo.Invocable
+schema:
+  type: object
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value: !if
+      if: !cel "resources.other.x == 1"
+      then: one
+      else: other
+invoke: !ref value

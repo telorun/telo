@@ -1,0 +1,125 @@
+kind: Telo.Application
+metadata:
+  name: TemplateFamiliesTest
+  version: 1.0.0
+  description: >-
+    A family declares one named member per element of the instance's map: every
+    member is started by a `!for-each` of `!ref crons[each.key]` in the
+    template's `targets:`, in the consumer's order, under its identity
+    `crons['<key>']`, and each fires its own job.
+imports:
+  Schedule: ../modules/scheduler
+  Timer: ../modules/timer
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+  - !ref membersStarted
+  - !ref reportFired
+  - !ref cleanupFired
+  - !ref rotateFired
+---
+kind: Telo.Definition
+metadata: { name: ScheduledJobs }
+capability: Telo.Service
+schema:
+  type: object
+  required: [jobs]
+  properties:
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+        required: [cron, invoke]
+        properties:
+          cron: { type: string }
+          invoke: { x-telo-ref: { kind: Telo.Executable, use: trigger.inbound } }
+resources:
+  - !for-each
+    metadata: { name: crons }
+    in: !cel "self.jobs"
+    emit:
+      kind: Schedule.Cron
+      cron: !cel "each.value.cron"
+      invoke: !cel "each.value.invoke"
+targets:
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref crons[each.key]
+---
+kind: Run.Sequence
+metadata: { name: buildReport }
+steps:
+  - name: report
+    value: 1
+---
+kind: Run.Sequence
+metadata: { name: purgeExpired }
+steps:
+  - name: purge
+    value: 1
+---
+kind: Run.Sequence
+metadata: { name: rotateLogs }
+steps:
+  - name: rotate
+    value: 1
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Self.ScheduledJobs
+    metadata: { name: jobs }
+    jobs:
+      nightlyReport:
+        cron: "* * * * * *"
+        invoke: !ref buildReport
+      hourlyCleanup:
+        cron: "* * * * * *"
+        invoke: !ref purgeExpired
+      rotate:
+        cron: "* * * * * *"
+        invoke: !ref rotateLogs
+targets:
+  - !ref jobs
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "1500ms"
+---
+kind: Assert.Events
+metadata: { name: membersStarted }
+filter:
+  - type: "*.Run"
+expect:
+  - event: "crons['nightlyReport'].Run"
+    times: 1
+  - event: "crons['hourlyCleanup'].Run"
+    times: 1
+  - event: "crons['rotate'].Run"
+    times: 1
+  - event: "crons['nightlyReport'].Run"
+  - event: "crons['hourlyCleanup'].Run"
+  - event: "crons['rotate'].Run"
+---
+kind: Assert.Events
+metadata: { name: reportFired }
+filter:
+  - type: "*.Invoked"
+expect:
+  - event: "buildReport.Invoked"
+---
+kind: Assert.Events
+metadata: { name: cleanupFired }
+filter:
+  - type: "*.Invoked"
+expect:
+  - event: "purgeExpired.Invoked"
+---
+kind: Assert.Events
+metadata: { name: rotateFired }
+filter:
+  - type: "*.Invoked"
+expect:
+  - event: "rotateLogs.Invoked"

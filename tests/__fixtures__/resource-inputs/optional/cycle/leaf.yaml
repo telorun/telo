@@ -1,0 +1,19 @@
+# The member moved into a leaf that borrows nothing: the collector lists it and
+# is handed to a library that borrows it, with no cycle.
+kind: Telo.Application
+metadata:
+  name: CollectorLeaf
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+  Leaf: ./leaf
+  Users:
+    source: ./users
+    resources:
+      collector: !ref collector
+---
+kind: Kinds.Collector
+metadata:
+  name: collector
+members:
+  - !ref Leaf.member

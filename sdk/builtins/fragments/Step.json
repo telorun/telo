@@ -7,6 +7,9 @@
       "title": "Name",
       "description": "Unique step name.",
       "type": "string"
+    },
+    "__emitted": {
+      "$ref": "telo://manifest#/$defs/EmittedStep"
     }
   },
   "oneOf": [
@@ -331,7 +334,21 @@
       ]
     }
   ],
-  "required": [
-    "name"
-  ]
+  "if": {
+    "required": [
+      "__emitted"
+    ]
+  },
+  "then": {
+    "not": {
+      "required": [
+        "name"
+      ]
+    }
+  },
+  "else": {
+    "required": [
+      "name"
+    ]
+  }
 }

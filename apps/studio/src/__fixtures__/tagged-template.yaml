@@ -1,0 +1,38 @@
+---
+kind: Telo.Library
+metadata:
+  name: Fleet
+
+---
+kind: Telo.Definition
+metadata:
+  name: Fleet
+capability: Telo.Service
+schema:
+  type: object
+resources:
+  - !for-each
+    metadata:
+      name: stores
+    in: !cel "self.names"
+    as: store
+    emit:
+      kind: Self.Store
+      ...:
+        - !for-each
+          in: !cel "self.extra"
+          as: x
+          key: !cel "x.key"
+          emit: !cel "x.value"
+      store: !ref "stores[store.key]"
+
+---
+!switch
+metadata:
+  name: db
+switch: !cel "variables.dialect"
+cases:
+  sqlite:
+    kind: SQLite.Connection
+  memory:
+    kind: Run.Value

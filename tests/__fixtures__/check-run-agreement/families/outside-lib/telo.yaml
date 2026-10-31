@@ -1,0 +1,19 @@
+# An indexed `!ref` outside a template body, where no family is declared.
+kind: Telo.Library
+metadata: { name: FamilyOutsideLib }
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [sequence]
+---
+kind: Run.Sequence
+metadata: { name: noop }
+steps:
+  - name: noop
+    value: 1
+---
+kind: Run.Sequence
+metadata: { name: sequence }
+steps:
+  - name: call
+    invoke: !ref noop[each.key]

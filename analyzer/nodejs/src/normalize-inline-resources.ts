@@ -99,6 +99,8 @@ interface Declaration extends Provenance {
    *  left inline there: a shape is resolved where it is written, never looked up
    *  as a sibling. */
   inBody?: true;
+  /** For a template body entry: the definition and the entry's index in it. */
+  bodyOf?: { definition: ResourceManifest; index: number };
 }
 
 /** What `metadata.xTeloOrigin` records: where an extracted declaration was
@@ -115,6 +117,10 @@ interface Origin {
   /** Set on a step's dispatch target, whose identity is its path-derived name
    *  alone — see `inlineStepTargetName`. */
   stepTarget?: true;
+  /** Set on a step's dispatch target whose name the author wrote; every other
+   *  extraction's name is generated, so no message lists it and no expression
+   *  reads it. */
+  named?: true;
   outsideScopes?: OutsideScope[];
 }
 
@@ -178,6 +184,10 @@ export function normalizeInlineResources(
   registry: DefinitionRegistry,
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
+  /** The name of an inline declaration an EMITTED item of a template body holds,
+   *  by the definition, the body entry's index and the declaration's place in the
+   *  entry; undefined leaves the name the position gives (`emittedIdentity`). */
+  emittedName?: (definition: ResourceManifest, entry: number, keys: readonly (string | number)[]) => string | undefined,
 ): ResourceManifest[] {
   // Deep-clone the input so this pass — and `resolveRefSentinels`, which runs on
   // this output — never mutate caller-owned manifests. The extractions rewrite
@@ -208,12 +218,19 @@ export function normalizeInlineResources(
     const body = (definition as { resources?: unknown }).resources;
     if (!Array.isArray(body)) continue;
     const provenance = provenanceOf(definition, undefined);
-    for (const entry of body) {
+    body.forEach((entry, index) => {
       const name = (entry as { metadata?: { name?: unknown } } | undefined)?.metadata?.name;
-      if (typeof name !== "string") continue;
-      if (typeof (entry as { kind?: unknown }).kind !== "string") continue;
-      queue.push({ manifest: entry as NamedManifest, home: body, outside: [], inBody: true, ...provenance });
-    }
+      if (typeof name !== "string") return;
+      if (typeof (entry as { kind?: unknown }).kind !== "string") return;
+      queue.push({
+        manifest: entry as NamedManifest,
+        home: body,
+        outside: [],
+        inBody: true,
+        bodyOf: { definition, index },
+        ...provenance,
+      });
+    });
   }
 
   const place = (
@@ -320,6 +337,7 @@ export function normalizeInlineResources(
         inherit,
         outsideAt(site.keys, scope),
         entry.context,
+        current.bodyOf ? emittedName?.(current.bodyOf.definition, current.bodyOf.index, site.keys) : undefined,
       );
       if (!manifest) continue;
       extractedAt.push(site.keys);
@@ -425,6 +443,7 @@ function extractStepTargets(
             parentName: resource.metadata.name,
             pathFromParent: `${stepPath}.${body.invokeField}`,
             stepTarget: true,
+            ...(typeof declared === "string" ? { named: true as const } : {}),
             ...(outsideScopes.length > 0 ? { outsideScopes } : {}),
           },
           inherit,
@@ -488,6 +507,7 @@ function extractInlineAt(
   inherit: Provenance,
   outsideScopes: OutsideScope[],
   invocationContext?: Record<string, any>,
+  givenName?: string,
 ): ResourceManifest | undefined {
   const inline = site.data;
   if (!inline || typeof inline !== "object" || Array.isArray(inline) || !site.holder) return undefined;
@@ -503,7 +523,7 @@ function extractInlineAt(
       nameParts.push(key);
     }
   }
-  const name = sanitizeName([parentName, ...nameParts].join("_"));
+  const name = givenName ?? sanitizeName([parentName, ...nameParts].join("_"));
   (site.holder as Record<string | number, unknown>)[site.key!] = resolvedReference(inline.kind, name);
   return buildManifest(
     inline as Record<string, unknown>,

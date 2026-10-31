@@ -1,3 +1,4 @@
+import { localRefName } from "./ref-sentinel-target.js";
 import { nearestName } from "./nearest-name.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
@@ -14,6 +15,9 @@ import type { DefinitionRegistry } from "./definition-registry.js";
 import { isRefSourceSpelling, refSentinelTarget } from "./ref-sentinel-target.js";
 import { isValueAtSlot } from "./reference-field-map.js";
 import { templateBodies } from "./template-body.js";
+import { quotingIssue } from "./quoted-place.js";
+import { parseKeys } from "./template-expansion.js";
+import { moduleAliasScope } from "./module-alias-scope.js";
 import { computedRefSlots, refSlotComputedReason } from "./ref-slot-computed.js";
 import {
   DiagnosticSeverity,
@@ -73,6 +77,10 @@ export function validateTemplateBody(
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver>,
   rootModules: ReadonlySet<string>,
+  /** The loop bindings in scope at a path of a definition's expanded body: a
+   *  bare `<binding>.value.<path>` there forwards what the consumer wrote, as a
+   *  bare `self.<path>` does. */
+  bindingsAt?: (definition: ResourceManifest, path: string) => readonly string[],
 ): AnalysisDiagnostic[] {
   const out: AnalysisDiagnostic[] = [];
   const scopes: ModuleScopes = { aliasesByModule, rootModules };
@@ -123,6 +131,7 @@ export function validateTemplateBody(
           ...(fix ? { fix } : {}),
         },
       });
+    const subject = label;
 
     /** A spelling the kernel still READS. Warning-grade because refusing it
      *  would break every app pinning a version that carries it, and tagged so an
@@ -205,8 +214,7 @@ export function validateTemplateBody(
         );
         continue;
       }
-      const source = value.source;
-      const target = source.startsWith("Self.") ? source.slice("Self.".length) : source;
+      const target = localRefName(value);
       if (siblings.includes(target)) continue;
       // A dynamic sibling has already been reported, and might be the one
       // meant — a second diagnostic about the same line would be noise.
@@ -215,7 +223,7 @@ export function validateTemplateBody(
       report(
         "TEMPLATE_DISPATCH_UNKNOWN",
         slot,
-        `'${slot}: !ref ${source}' names no entry in 'resources:'. ` +
+        `'${slot}: !ref ${value.source}' names no entry in 'resources:'. ` +
           `Available: ${written.join(", ") || "(none)"}.` +
           (suggestion ? ` Did you mean '${suggestion}'?` : ""),
         suggestion ? { replacement: suggestion } : undefined,
@@ -226,7 +234,12 @@ export function validateTemplateBody(
     const resolveDef: DefResolver = (k) =>
       registry.resolve(aliases.resolveKind(k) ?? k) ?? registry.resolve(k);
     const capability = inheritedCapability(m as ResourceDefinition, resolveDef);
-    for (const problem of templateTargetProblems(m as Record<string, unknown>, capability, nearestName)) {
+    const definingScope = moduleAliasScope(meta, aliases, aliasesByModule);
+    const capabilityOf = (kind: string): string | undefined => {
+      const target = registry.resolve(definingScope?.resolveKind(kind) ?? kind) ?? registry.resolve(kind);
+      return target ? inheritedCapability(target, resolveDef) : undefined;
+    };
+    for (const problem of templateTargetProblems(m as Record<string, unknown>, capability, nearestName, capabilityOf)) {
       report(
         problem.code,
         problem.path,
@@ -289,11 +302,21 @@ export function validateTemplateBody(
             standIns,
           );
           for (const issue of issues) {
-            report(
-              "SCHEMA_VIOLATION",
-              issue.path ? `${body.prefix}.${issue.path}` : body.prefix,
-              `${label}: ${issue.message}`,
-            );
+            // The pointer is the entry's own, quoted from where it was written.
+            const path = issue.path ? `${body.prefix}.${issue.path}` : body.prefix;
+            const quoted = quotingIssue(`${subject}: ${label}: `, issue, path, "", parseKeys(body.prefix).length);
+            out.push({
+              severity: DiagnosticSeverity.Error,
+              code: "SCHEMA_VIOLATION",
+              source: SOURCE,
+              message: quoted.message,
+              data: {
+                resource: resourceRef,
+                filePath,
+                path,
+                ...(quoted.quotedPlace ? { quotedPlace: quoted.quotedPlace } : {}),
+              },
+            });
           }
         }
       }
@@ -308,6 +331,12 @@ export function validateTemplateBody(
       for (const slot of computedRefSlots(
         registry.referencePositions(view, aliases, aliasesByModule, body.manifest),
       )) {
+        if (
+          slot.tag === "cel" &&
+          isBindingForward(slot.source, bindingsAt?.(m, `${body.prefix}.${slot.path}`) ?? [])
+        ) {
+          continue;
+        }
         report(
           "REF_SLOT_COMPUTED",
           `${body.prefix}.${slot.path}`,
@@ -408,4 +437,11 @@ function describeDispatchValue(value: unknown): string {
   if (typeof value === "string") return `the string '${value}'`;
   if (value && typeof value === "object" && "name" in value) return "the '{ kind, name }' object form";
   return `a ${typeof value}`;
+}
+
+/** Whether `source` is a bare `<binding>.value(.<path>)*` of a binding in
+ *  scope — forwarded verbatim, never evaluated. */
+export function isBindingForward(source: string, bindings: readonly string[]): boolean {
+  const match = /^([A-Za-z_][A-Za-z0-9_]*)\.value((?:\.[A-Za-z_$][\w$]*)*)$/.exec(source.trim());
+  return !!match && bindings.includes(match[1]!);
 }

@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata:
+  name: LoaderPositionEntry
+imports:
+  Run: !if
+    if: true
+    then: ../../../../../modules/run

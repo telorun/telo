@@ -17,6 +17,8 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import type { DeclarationRequests } from "./declaration-requests.js";
+import type { ResourceManifest } from "@telorun/sdk";
 import type { ResourceDefinition } from "@telorun/sdk";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -98,41 +100,52 @@ function targetLabel(target: Record<string, any>): string {
 export function collectReferenceOutputIssues(
   manifest: Record<string, any>,
   sites: readonly ReachSite[],
-  allManifests: Record<string, any>[],
+  types: DeclarationRequests,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: CallScopes,
 ): ReferenceOutputIssue[] {
-  const out: ReferenceOutputIssue[] = [];
-  const ctx = callSiteContext(manifest, allManifests, defs, aliases, scopes);
-  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
-  const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
+  const ctx = callSiteContext(manifest, types, defs, aliases, scopes);
+  return sites.flatMap((site) => referenceOutputIssuesAt(manifest, site, types, defs, aliases, scopes, ctx.resolveTarget));
+}
 
-  for (const site of sites) {
-    const ref = site.data;
-    if (!ref || typeof ref !== "object" || Array.isArray(ref)) continue;
-    const reference = ref as Record<string, any>;
-    if (typeof reference.kind !== "string") continue;
-    const reported = new Set<string>();
-    for (const { slot } of site.refs) {
-      if (!slot.outputType) continue;
-      const target = isResolvedReference(reference) ? ctx.resolveTarget(reference) : reference;
-      if (!target) continue;
-      const definition = contractScope.resolveIn(reference.kind, readingModule);
-      const issues = referenceOutputRefusal(
-        slot,
-        producedOutputContract(target, definition, contractScope, defs),
-        defs,
-      );
-      if (issues.length === 0) continue;
-      const message =
-        `${targetLabel(target)} does not return what this slot reads from it. The slot requires ` +
-        `an output of ${JSON.stringify(slot.outputType)}; its declared output contract disagrees: ` +
-        `${issues.join("; ")}.`;
-      if (reported.has(message)) continue;
-      reported.add(message);
-      out.push({ path: site.path, message });
-    }
+/** {@link collectReferenceOutputIssues} for one site of `manifest`, its target
+ *  resolved by `resolveTarget` as written at the site. */
+export function referenceOutputIssuesAt(
+  manifest: Record<string, any>,
+  site: ReachSite,
+  types: DeclarationRequests,
+  defs: DefinitionRegistry,
+  aliases: AliasResolver,
+  scopes: CallScopes,
+  resolveTarget: (reference: Record<string, any>, path?: string) => Record<string, any> | undefined,
+): ReferenceOutputIssue[] {
+  const out: ReferenceOutputIssue[] = [];
+  const contractScope = analyzerContractScope(defs, aliases, scopes, types);
+  const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
+  const ref = site.data;
+  if (!ref || typeof ref !== "object" || Array.isArray(ref)) return out;
+  const reference = ref as Record<string, any>;
+  if (typeof reference.kind !== "string") return out;
+  const reported = new Set<string>();
+  for (const { slot } of site.refs) {
+    if (!slot.outputType) continue;
+    const target = isResolvedReference(reference) ? resolveTarget(reference, site.path) : reference;
+    if (!target) continue;
+    const definition = contractScope.resolveIn(reference.kind, readingModule);
+    const issues = referenceOutputRefusal(
+      slot,
+      producedOutputContract(target, definition, contractScope, defs),
+      defs,
+    );
+    if (issues.length === 0) continue;
+    const message =
+      `${targetLabel(target)} does not return what this slot reads from it. The slot requires ` +
+      `an output of ${JSON.stringify(slot.outputType)}; its declared output contract disagrees: ` +
+      `${issues.join("; ")}.`;
+    if (reported.has(message)) continue;
+    reported.add(message);
+    out.push({ path: site.path, message });
   }
   return out;
 }

@@ -17,6 +17,7 @@ targets:
   - !ref sharedOverride
   - !ref sharedConflict
   - !ref sharedAgreesBuilt
+  - !ref sharedOptionalConflict
 ---
 kind: Assert.Manifest
 metadata:
@@ -79,3 +80,14 @@ source: ./__fixtures__/shared-library/agree-built.yaml
 expect:
   errors: []
   runs: true
+---
+# Whether an import supplies an optional input is literal in every module, so
+# two imports of one shared library disagreeing on it are refused statically.
+kind: Assert.Manifest
+metadata:
+  name: sharedOptionalConflict
+source: ./__fixtures__/resource-inputs/optional/shared-conflict.yaml
+expect:
+  errors:
+    - code: SHARED_LIBRARY_CONFLICT
+      message: "import 'Supplying' supplies the resource input resources.store and import 'Omitting' omits it"

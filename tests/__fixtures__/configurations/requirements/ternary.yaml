@@ -1,0 +1,23 @@
+# An import binding choosing between two secrets by a dimension: each secret is
+# required only where the binding's guard takes its arm.
+kind: Telo.Application
+metadata:
+  name: TernaryBinding
+imports:
+  Run: ../../../../modules/run
+  Lib:
+    source: ./keyed-lib
+    secrets:
+      key: !cel "variables.p == 'a' ? secrets.aKey : secrets.bKey"
+variables:
+  p: { env: P, type: string, enum: [a, b], default: a }
+secrets:
+  aKey: { env: A_KEY, type: string }
+  bKey: { env: B_KEY, type: string }
+---
+kind: Run.Value
+metadata: { name: chosen }
+value: !if
+  if: !cel "variables.p == 'a'"
+  then: first
+  else: second

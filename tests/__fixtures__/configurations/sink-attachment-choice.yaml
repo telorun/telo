@@ -1,0 +1,11 @@
+# A sink a choice declares only where its flag holds: nothing lists it, so it
+# receives nothing in the configurations that declare it.
+kind: Telo.Application
+metadata:
+  name: SinkAttachmentChoice
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+--- !if
+metadata: { name: traces }
+if: !cel "variables.flag1"
+then: { kind: Telo.LogTraceSink }
