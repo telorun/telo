@@ -89,6 +89,34 @@ describe("CelScopeQuery", () => {
     const query = registry().analysisOf(manifests).celScope;
     expect(query.resourceFor("Run.Sequence", "brand-new")).toBeUndefined();
   });
+
+  it("holds a body of dispatches alone as a closed `steps` record, refusing a misspelled step at its member", () => {
+    const query = registry().analysisOf(manifests).celScope;
+    const resource = query.resourceFor("Run.Sequence", "flow")!;
+    const checked = query.scopeAt(resource, "steps[1].inputs.q").env.check("steps.frist.result");
+    expect(checked.diagnostics.map((d) => [d.code, d.message, d.range])).toEqual([
+      ["CEL_UNKNOWN_FIELD", '"frist" is not declared here (declared: first, nested)', [6, 11]],
+    ]);
+  });
+
+  it("holds a named repeat as a map of results by element key", () => {
+    const step = (key: string) => ({ __emitted: { repeat: "runs", key }, invoke: { kind: "Telo.Invocable", name: "x" } });
+    const repeated = {
+      ...SEQUENCE,
+      metadata: { name: "repeated", module: "test-run" },
+      steps: [step("a"), step("b"), { name: "after", invoke: { kind: "Telo.Invocable", name: "y" } }],
+    } as unknown as ResourceManifest;
+    const query = registry().analysisOf([APP, repeated]).celScope;
+    const env = query.scopeAt(query.resourceFor("Run.Sequence", "repeated")!, "steps[2].inputs.q").env;
+    expect(env.check("steps.runs['a'].result").valid).toBe(true);
+    const unknown = (source: string) => env.check(source).diagnostics.map((d) => [d.code, d.message]);
+    expect(unknown("steps.runz['a'].result")).toEqual([
+      ["CEL_UNKNOWN_FIELD", '"runz" is not declared here (declared: runs, after)'],
+    ]);
+    expect(unknown("steps.runs['a'].reslt")).toEqual([
+      ["CEL_UNKNOWN_FIELD", '"reslt" is not declared here (declared: result)'],
+    ]);
+  });
 });
 
 /**
@@ -351,5 +379,41 @@ describe("CelScopeQuery at a binding typed from the item's own collection", () =
     expect(
       celScope.contextDeclarationSite(resource, "lists[0].columns[0].value", ["row", "path"]),
     ).toBeUndefined();
+  });
+});
+
+describe("CelScopeQuery inside a template body", () => {
+  const COUNTER_DEF = {
+    kind: "Telo.Definition",
+    metadata: { name: "Counter", module: "test-run" },
+    capability: "Telo.Runnable",
+    schema: { type: "object" },
+    status: { type: "object", properties: { runs: { type: "integer" } } },
+  } as unknown as ResourceDefinition;
+
+  const TEMPLATE = {
+    kind: "Telo.Definition",
+    metadata: { name: "Pipeline", module: "test-run" },
+    capability: "Telo.Invocable",
+    schema: { type: "object", properties: { jobs: { type: "object" } } },
+    resources: [
+      { kind: "Run.Counter", metadata: { name: "tally" } },
+      { "!for-each": true, metadata: { name: "counters" }, in: "self.jobs", emit: { kind: "Run.Counter" } },
+      { kind: "Run.Sequence", metadata: { name: "main" }, steps: [{ name: "first" }] },
+    ],
+    invoke: { __ref: true, kind: "Run.Sequence", name: "main" },
+  } as unknown as ResourceManifest;
+
+  it("offers the body's entries beside the module's resources", () => {
+    const r = new AnalysisRegistry();
+    r.registerModuleIdentity("std", "test-run");
+    r.registerImport("Run", "test-run", ["Sequence", "Counter"]);
+    r.registerDefinition(SEQUENCE_DEF);
+    r.registerDefinition(COUNTER_DEF);
+    const query = r.analysisOf([APP, TEMPLATE]).celScope;
+    const scope = query.scopeAt(TEMPLATE, "resources[2].steps[0].value");
+    const resources = scope.contextSchema?.properties?.resources?.properties ?? {};
+    expect(Object.keys(resources)).toContain("tally");
+    expect(resources.tally.properties.status.properties.runs).toEqual({ type: "integer" });
   });
 });

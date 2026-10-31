@@ -58,7 +58,7 @@ function collectParseDiagnostics(
       for (const err of file.parseErrors) {
         diagnostics.push({
           severity: DiagnosticSeverity.Error,
-          code: "MANIFEST_PARSE_FAILED",
+          code: err.code ?? "MANIFEST_PARSE_FAILED",
           source: "telo-analyzer",
           message: err.message,
           range: err.range,
@@ -536,7 +536,12 @@ export class Loader {
     this.assertNoSystemKindsInPartialContext(owner, /*isPartial*/ false);
 
     const moduleManifest = owner.manifests.find((m) => m && isModuleKind(m.kind));
-    const includePatterns = (moduleManifest as { include?: string[] } | undefined)?.include;
+    // An entry that is not a string — an expansion tag, which the parse refused
+    // (`loader-expansion-refusals.ts`) — names no file.
+    const included = (moduleManifest as { include?: unknown } | undefined)?.include;
+    const includePatterns = Array.isArray(included)
+      ? included.filter((p): p is string => typeof p === "string")
+      : undefined;
 
     if (!includePatterns?.length) return { owner, partials: [] };
 

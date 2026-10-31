@@ -1,6 +1,7 @@
 # An application as the hub indexes one: a declared contract with one of each
-# input, a secret carrying a default whose value must never be indexed, and a kind
-# of its own, which an application does not export.
+# input, a secret carrying a default whose value must never be indexed, a secret
+# required only where another is absent, and a kind of its own, which an
+# application does not export.
 kind: Telo.Application
 metadata:
   name: HelloFixtureApp
@@ -21,6 +22,15 @@ secrets:
     type: string
     description: Token presented to the upstream directory.
     default: fixture-secret-default-value
+  licenseKey:
+    env: LICENSE_KEY
+    type: string
+    description: Presented upstream when the operator holds one.
+    default: null
+  trialToken:
+    env: TRIAL_TOKEN
+    type: string
+    description: Presented upstream without a license.
 ports:
   http:
     env: PORT
@@ -33,3 +43,19 @@ metadata:
 capability: Telo.Invocable
 schema:
   type: object
+---
+kind: Telo.NeedType
+metadata:
+  name: Credential
+  description: What the greeter presents upstream.
+fields:
+  value: { type: string }
+--- !if
+metadata: { name: upstream }
+if: !cel "secrets.licenseKey != null"
+then:
+  kind: Self.Credential
+  fields: { value: !cel "secrets.licenseKey" }
+else:
+  kind: Self.Credential
+  fields: { value: !cel "secrets.trialToken" }

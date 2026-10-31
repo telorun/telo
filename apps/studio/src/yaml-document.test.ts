@@ -1,3 +1,4 @@
+import FIXTURE from "./__fixtures__/tagged-template.yaml?raw";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import {
@@ -936,5 +937,25 @@ describe("applyEdit relocate", () => {
         toIndex: 1,
       }),
     ).toThrow(/use move/);
+  });
+});
+
+describe("saving a module with expansion tags", () => {
+  it("writes a tagged module back byte for byte, `...` and `metadata` where they were written", () => {
+    const modDoc = parseModuleDocument("/ws/telo.yaml", FIXTURE);
+    expect(moduleParseError(modDoc)).toBeUndefined();
+    expect(serializeModuleDocument(modDoc.loaded.documents)).toBe(FIXTURE);
+  });
+
+  it("changes only the edited value, inside and outside a tag", () => {
+    const { loaded: { documents } } = parseModuleDocument("/ws/telo.yaml", FIXTURE);
+    let docs = applyEdit(documents, 1, { op: "set", pointer: "/capability", value: "Telo.Runnable" });
+    docs = applyEdit(docs, 1, { op: "set", pointer: "/resources/0/as", value: "shop" });
+    docs = applyEdit(docs, 2, { op: "set", pointer: "/cases/memory/kind", value: "Run.Sequence" });
+    expect(serializeModuleDocument(docs)).toBe(
+      FIXTURE.replace("capability: Telo.Service", "capability: Telo.Runnable")
+        .replace("as: store\n", "as: shop\n")
+        .replace("kind: Run.Value", "kind: Run.Sequence"),
+    );
   });
 });

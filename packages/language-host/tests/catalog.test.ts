@@ -8,7 +8,7 @@ const memory = (initial?: StoredCatalog) => {
 };
 
 const load = (options: Partial<Parameters<typeof loadCatalog>[0]> & Pick<Parameters<typeof loadCatalog>[0], "cache">) =>
-  loadCatalog({ speaks: [1], warn: () => undefined, ...options });
+  loadCatalog({ speaks: [2], warn: () => undefined, ...options });
 
 afterEach(() => {
   vi.useRealTimers();
@@ -19,9 +19,9 @@ describe("the version catalog", () => {
   it("offers spoken, released, current versions and always the bundled one", async () => {
     const registry = await fakeRegistry(["0.103.0", "0.104.0"], {
       "0.101.0": { dist: { tarball: "t", integrity: "sha512-x" } },
-      "0.105.0": { teloEditorProtocol: 2, dist: { tarball: "t", integrity: "sha512-x" } },
-      "0.106.0-rc.1": { teloEditorProtocol: 1, dist: { tarball: "t", integrity: "sha512-x" } },
-      "0.107.0": { teloEditorProtocol: 1, deprecated: "broken", dist: { tarball: "t", integrity: "sha512-x" } },
+      "0.105.0": { teloEditorProtocol: 3, dist: { tarball: "t", integrity: "sha512-x" } },
+      "0.106.0-rc.1": { teloEditorProtocol: 2, dist: { tarball: "t", integrity: "sha512-x" } },
+      "0.107.0": { teloEditorProtocol: 2, deprecated: "broken", dist: { tarball: "t", integrity: "sha512-x" } },
     });
     const catalog = await load({ cache: memory(), fetch: registry.fetch });
     expect(knownVersions({ ...catalog, bundled: "0.102.0" })).toEqual(["0.104.0", "0.103.0", "0.102.0"]);

@@ -34,6 +34,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { shownDeclaration } from "./generated-name.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import type { CallGraph, CallGraphEdge, CallGraphNode, ResourceGraphNode } from "./call-graph.js";
 import { propertySchemas, resolveLocalRef } from "./manifest-navigation.js";
@@ -196,7 +197,7 @@ function collect(
       if (!target) continue;
       queue.push({
         node: target,
-        via: [...current.via, `${edge.slot} → ${edge.toName}`],
+        via: [...current.via, `${edge.slot} → ${target.type === "resource" ? shownDeclaration(target.kind, edge.toName, target.manifest) : edge.toName}`],
       });
     }
   }
@@ -265,10 +266,13 @@ export function findZoneProviders(
             (edge) =>
               (edge.slotKeys ? samePattern(edge.slotKeys, slotKeys) : edge.slot === slot) && edge.to,
           )
-          .map((edge) => ({
-            node: graph.nodes.get(edge.to!)!,
-            via: [`${slot} → ${edge.toName}`],
-          }))
+          .map((edge) => {
+            const target = graph.nodes.get(edge.to!)!;
+            return {
+              node: target,
+              via: [`${slot} → ${target?.type === "resource" ? shownDeclaration(target.kind, edge.toName, target.manifest) : edge.toName}`],
+            };
+          })
           .filter((entry) => entry.node !== undefined);
         collect(graph, entries, contents, boundaries);
       }

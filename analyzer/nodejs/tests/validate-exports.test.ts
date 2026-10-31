@@ -98,4 +98,33 @@ describe("validateExports", () => {
     expect(unknown).toHaveLength(1);
     expect(unknown[0].message).toContain("Exported: shared");
   });
+
+  it("does not export a scope member: an exported name is read at module level", () => {
+    const diags = analyze(
+      library({ resources: ["scoped"] }, [
+        {
+          kind: "Telo.Definition",
+          metadata: { name: "Holder", module: "lib" },
+          capability: "Telo.Runnable",
+          controllers: ["pkg:npm/x@1.0.0#Holder"],
+          schema: {
+            type: "object",
+            properties: {
+              with: { type: "array", "x-telo-scope": "/steps", items: { type: "object" } },
+              steps: { type: "array" },
+            },
+          },
+        } as unknown as ResourceManifest,
+        {
+          kind: "Self.Holder",
+          metadata: { name: "holder", module: "lib" },
+          with: [{ kind: "Http.Client", metadata: { name: "scoped" }, baseUrl: "https://x" }],
+          steps: [],
+        } as unknown as ResourceManifest,
+      ]),
+    );
+    const unknown = codes(diags, "EXPORT_RESOURCE_UNKNOWN");
+    expect(unknown).toHaveLength(1);
+    expect(unknown[0].message).toContain("names no resource declared in this library");
+  });
 });

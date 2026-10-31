@@ -1,0 +1,23 @@
+# A decided choice declaration re-exported through a second library: the
+# consumer's reference reaches the instance the inner binding chose.
+kind: Telo.Application
+metadata:
+  name: ReExportDecided
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+  R: ./reexport-lib
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: db
+    invoke: !ref R.db
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.db.result.backend"
+      expected: first

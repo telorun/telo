@@ -1,4 +1,5 @@
 import { isInstanceSlot } from "@telorun/sdk";
+import { admitsAbsence } from "./configuration-dimensions.js";
 
 /**
  * Build the residual JSON Schema for a `variables` / `secrets` entry.
@@ -54,4 +55,27 @@ export function residualEntrySchemaMap(
     }
   }
   return out;
+}
+
+/** `schema` admitting `null` beside every value it already admits — the
+ *  reading of an input that may be absent (`default: null`). Written as a `type`
+ *  list holding `null`, the spelling the nullable-access rule reads, with `null`
+ *  joined to a closed `enum` / `const`. */
+export function nullable(schema: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...schema };
+  if (typeof schema.type === "string") out.type = schema.type === "null" ? "null" : [schema.type, "null"];
+  else if (Array.isArray(schema.type) && !schema.type.includes("null")) out.type = [...schema.type, "null"];
+  if (Array.isArray(schema.enum) && !schema.enum.includes(null)) out.enum = [...schema.enum, null];
+  if (Object.hasOwn(schema, "const")) {
+    out.enum = [schema.const, null];
+    delete out.const;
+  }
+  return out;
+}
+
+/** The schema an input's VALUE is held to: its residual schema, admitting `null`
+ *  where the entry declares `default: null`. */
+export function inputValueSchema(entry: Record<string, unknown>): Record<string, unknown> {
+  const residual = residualEntrySchema(entry);
+  return admitsAbsence(entry) ? nullable(residual) : residual;
 }

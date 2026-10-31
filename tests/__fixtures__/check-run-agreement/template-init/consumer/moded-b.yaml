@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: TemplateInitModedB
+imports:
+  Dep:
+    source: ../moded-dependent
+    variables:
+      mode: b

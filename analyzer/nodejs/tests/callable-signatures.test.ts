@@ -5,6 +5,7 @@ import { resolveSignature } from "../src/callable-signature.js";
 import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
 import { resolveRefSentinels } from "../src/resolve-ref-sentinels.js";
+import { listResolution } from "../src/reference-resolution.js";
 import { resolveSchemaTypeRefs } from "../src/resolve-schema-type-refs.js";
 import type { ManifestSource } from "../src/types.js";
 
@@ -270,7 +271,7 @@ describe("a signature's named shapes", () => {
       },
     ] as unknown as ResourceManifest[];
 
-    resolveRefSentinels(manifests);
+    resolveRefSentinels(manifests, undefined, undefined, listResolution(manifests));
     resolveSchemaTypeRefs(manifests);
 
     const money = { $ref: "telo:Billing/Money" };

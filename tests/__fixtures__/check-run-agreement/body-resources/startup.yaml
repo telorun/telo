@@ -1,0 +1,44 @@
+kind: Telo.Application
+metadata:
+  name: BodyResourcesStartupApp
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+  Config: ../../../../modules/config
+  Kinds: ../scope-members/kinds
+targets:
+  - !ref pipeline
+---
+kind: Telo.Definition
+metadata: { name: Pipeline }
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    jobs:
+      type: object
+      additionalProperties: { type: object }
+resources:
+  - !for-each
+    metadata: { name: counters }
+    in: !cel "self.jobs"
+    emit:
+      kind: Kinds.Counter
+  - kind: Kinds.Counter
+    metadata: { name: tally }
+  - kind: Config.Variables
+    metadata: { name: startup }
+    storeRef: { name: nothing }
+    keys:
+      runs: !cel "string(resources.tally.status.runs)"
+  - kind: Run.Sequence
+    metadata: { name: main }
+    steps:
+      - name: noop
+        value: 1
+run: !ref main
+---
+kind: Self.Pipeline
+metadata: { name: pipeline }
+jobs:
+  alpha: {}

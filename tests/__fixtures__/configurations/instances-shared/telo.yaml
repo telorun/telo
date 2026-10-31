@@ -1,0 +1,18 @@
+# A shared library importing the instances library under its own binding and
+# exporting a wrapper holding that instance's backend.
+kind: Telo.Library
+metadata:
+  name: InstancesShared
+lifecycle: shared
+imports:
+  Inner:
+    source: ../instances-lib
+    variables:
+      dialect: second
+exports:
+  resources: [wrapper]
+---
+kind: Inner.Wrapper
+metadata:
+  name: wrapper
+store: !ref Inner.db

@@ -1,0 +1,23 @@
+# The library's kind declared HERE, spelled through this application's alias:
+# its reference positions are read through this module's view, so both the
+# check and the kernel see the computed handler.
+kind: Telo.Application
+metadata:
+  name: RefSlotComputedRootKind
+  version: 1.0.0
+imports:
+  Lib: ../lib
+  Run: ../../../../../modules/run
+targets:
+  - !ref Lib.probe
+---
+kind: Lib.Bus
+metadata:
+  name: rootBus
+handler: !cel "'target'"
+routes: []
+---
+kind: Run.Value
+metadata:
+  name: target
+value: 1

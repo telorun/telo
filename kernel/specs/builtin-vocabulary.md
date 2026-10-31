@@ -26,7 +26,12 @@ A YAML stream. The first document is the **root**; every later document is one b
 2. The root carries five sections, each a map keyed by name:
    - `$defs` — every shared schema fragment, unexpanded. A fragment refers to another as
      `$ref: telo://manifest#/$defs/<Name>`. No key starts with `telo:` (that prefix is the
-     analyzer's for a fragment it hoists into a schema).
+     analyzer's for a fragment it hoists into a schema). Eight of them are the grammar of the
+     expansion tags' own mappings — `IfValue`, `IfDeclaration`, `SwitchValue`,
+     `SwitchDeclaration`, `ForEachValue`, `ForEachEntry`, `ForEachDeclaration`,
+     `ForEachStepRepeat` — each the closed key set of one tag at one kind of position, marker
+     excluded; no schema references them, and a reader holds a tag's keys to the one its
+     position selects.
    - `valueTypes` — every value type, keyed by its `name` (`Telo.Url`), each entry its data
      file verbatim (`sdk/value-types/`).
    - `zoneAttributes` — every zone attribute, keyed by its `name` (`noSuspend`), verbatim

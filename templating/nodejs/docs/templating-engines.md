@@ -41,6 +41,32 @@ deprecated untagged spelling: loading rewrites it (a lone hole to `!cel`, other
 text to `!interpolate`) and reports `DEPRECATED_UNTAGGED_INTERPOLATION`, and
 `telo migrate` writes the same rewrite to the file.
 
+### Expansion tags and `...`
+
+Three tags sit on a MAPPING rather than a scalar, and are a family of their own
+beside the expression engines: `!if` (`{ if, then, else? }`), `!switch`
+(`{ switch, cases, default? }`) and `!for-each` (`{ in, as?, emit }`, plus `key`
+under a `...` splice, `metadata` at a declaration position, `name` in a step list).
+Each loads as that same mapping, its written keys in written order after the
+marker `__expand: "<tag>"` — so a key inside a branch (`cases.postgres.<key>`) is a
+path in the loaded tree as in the YAML — and is written back behind its tag, a
+mapping built from a loaded one writing `metadata` first. A tag on a scalar or a
+sequence, or a tagged mapping writing `__expand` itself, is refused when the file
+is read (`BRANCH_SHAPE_INVALID` / `REPEAT_SHAPE_INVALID`). `...` is a plain mapping
+key to every loader and writer. Where each may stand, and what each means, is the
+analyzer's; the vectors every loader runs are `templating/tag-conformance/`.
+
+### `!ref`
+
+`!ref` names a resource: `<name>`, `<Alias>.<name>`, or a family member
+`<family>[<binding>.key]` / `[<binding>.index]` (one index per family depth).
+Names are identifiers, no whitespace is allowed and an alias takes no index; `[`
+and `]` are flow indicators, so inside a flow collection the scalar is quoted
+(`{ store: !ref "stores[each.key]" }`). The `!ref` engine owns the grammar
+(`parseRefSource`): the loader attaches its verdict to the sentinel as `parsed`
+(`{ alias?, name, indexes }`) or `refusal` (`{ code: REF_MEMBER_INVALID, offset }`),
+and every reader reads that verdict, never the text.
+
 ### Holes
 
 `!interpolate` and `!sql` read holes with one grammar. A hole opens at `${{`

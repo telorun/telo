@@ -1,0 +1,205 @@
+kind: Telo.Application
+metadata:
+  name: ConfigurationsTest
+  version: 1.0.0
+  description: |
+    One application, several configurations: each fixture runs in a kernel of
+    its own under the environment below, decides every `!if` / `!switch` from
+    the inputs it was started with, and asserts what it chose itself.
+imports:
+  Test: ../modules/test
+targets:
+  - !ref firstBackend
+  - !ref secondBackend
+  - !ref postgresScheme
+  - !ref sqliteScheme
+  - !ref libraryChoiceByBinding
+  - !ref callChoiceProduction
+  - !ref callChoiceDevelopment
+  - !ref libraryInstances
+  - !ref libraryReExport
+  - !ref needPresent
+  - !ref needAbsent
+  - !ref needPresentAlone
+  - !ref providerOpenAI
+  - !ref providerAnthropic
+  - !ref libraryNeedPresent
+  - !ref needSchemeMem
+  - !ref needSchemeFile
+  - !ref supervisorLicensed
+  - !ref supervisorUnlicensed
+---
+# The `enum` dimension picks the first backend; the second's controller never loads.
+kind: Test.Suite
+metadata: { name: firstBackend }
+include:
+  - "__fixtures__/configurations/enum-backends.yaml"
+exclude: []
+env:
+  BACKEND: first
+---
+kind: Test.Suite
+metadata: { name: secondBackend }
+include:
+  - "__fixtures__/configurations/enum-backends.yaml"
+exclude: []
+env:
+  BACKEND: second
+---
+# A `Telo.Url` secret's closed scheme decides a `!switch`.
+kind: Test.Suite
+metadata: { name: postgresScheme }
+include:
+  - "__fixtures__/configurations/url-scheme.yaml"
+exclude: []
+env:
+  DATABASE_URL: postgres://app:secret@db.internal/orders
+  EXPECTED_ENGINE: postgres-engine
+---
+kind: Test.Suite
+metadata: { name: sqliteScheme }
+include:
+  - "__fixtures__/configurations/url-scheme.yaml"
+exclude: []
+env:
+  DATABASE_URL: sqlite://local/orders
+  EXPECTED_ENGINE: sqlite-engine
+---
+# A library's exported choice decided by the importer's own dimension.
+kind: Test.Suite
+metadata: { name: libraryChoiceByBinding }
+include:
+  - "__fixtures__/configurations/binding-ternary.yaml"
+exclude: []
+env:
+  SPEED: fast
+---
+# A choice decided by a module function: the kernel boots into the branch it selects.
+kind: Test.Suite
+metadata: { name: callChoiceProduction }
+include:
+  - "__fixtures__/configurations/calls.yaml"
+exclude: []
+env:
+  APP_ENV: prod
+  EXPECTED_TIER: production
+---
+kind: Test.Suite
+metadata: { name: callChoiceDevelopment }
+include:
+  - "__fixtures__/configurations/calls.yaml"
+exclude: []
+env:
+  APP_ENV: dev
+  EXPECTED_TIER: development
+---
+# One library imported twice: each import's instance answers with its own backend.
+kind: Test.Suite
+metadata: { name: libraryInstances }
+include:
+  - "__fixtures__/configurations/instances-boot.yaml"
+exclude: []
+---
+# A decided choice a library re-exports: the consumer's reference reaches the
+# instance the inner binding chose.
+kind: Test.Suite
+metadata: { name: libraryReExport }
+include:
+  - "__fixtures__/configurations/reexport-decided.yaml"
+exclude: []
+---
+# An optional need's presence picks the consumer of `a` or of `b`.
+kind: Test.Suite
+metadata: { name: needPresent }
+include:
+  - "__fixtures__/configurations/needs/presence.yaml"
+exclude: []
+env:
+  NEED_A_URL: mem://a
+  NEED_B_URL: mem://b
+  EXPECTED_LABEL: a
+---
+kind: Test.Suite
+metadata: { name: needAbsent }
+include:
+  - "__fixtures__/configurations/needs/presence.yaml"
+exclude: []
+env:
+  NEED_B_URL: mem://b
+  EXPECTED_LABEL: b
+---
+# With `a` set the consumer of `b` is never chosen, so `b` is not demanded.
+kind: Test.Suite
+metadata: { name: needPresentAlone }
+include:
+  - "__fixtures__/configurations/needs/presence.yaml"
+exclude: []
+env:
+  NEED_A_URL: mem://a
+  EXPECTED_LABEL: a
+---
+# Either provider's key alone starts the application: the other is read only in
+# the branch it does not take.
+kind: Test.Suite
+metadata: { name: providerOpenAI }
+include:
+  - "__fixtures__/configurations/requirements/provider.yaml"
+exclude: []
+env:
+  OPENAI_API_KEY: sk-openai
+---
+kind: Test.Suite
+metadata: { name: providerAnthropic }
+include:
+  - "__fixtures__/configurations/requirements/provider.yaml"
+exclude: []
+env:
+  ANTHROPIC_API_KEY: sk-anthropic
+---
+# A library's need left unsupplied at its import is read from the application's
+# environment under its need path; set, the library's choice takes its consumer.
+kind: Test.Suite
+metadata: { name: libraryNeedPresent }
+include:
+  - "__fixtures__/configurations/needs/library.yaml"
+exclude: []
+env:
+  TELO_NEED_ORDERS__DATABASE_ACCESS__URL: mem://orders
+  EXPECTED_LABEL: need
+---
+# The scheme a need type's field closes decides a `!switch`.
+kind: Test.Suite
+metadata: { name: needSchemeMem }
+include:
+  - "__fixtures__/configurations/needs/scheme.yaml"
+exclude: []
+env:
+  STORE_URL: mem://store
+  EXPECTED_LABEL: in-memory
+---
+kind: Test.Suite
+metadata: { name: needSchemeFile }
+include:
+  - "__fixtures__/configurations/needs/scheme.yaml"
+exclude: []
+env:
+  STORE_URL: file://host/store
+  EXPECTED_LABEL: on-disk
+---
+# A field-value `!if` with no `else:` hands the child a secret only when the
+# supervisor holds one.
+kind: Test.Suite
+metadata: { name: supervisorLicensed }
+include:
+  - "__fixtures__/configurations/supervisor/telo.yaml"
+exclude: []
+env:
+  LICENSE_KEY: the-key
+  LICENSED: "true"
+---
+kind: Test.Suite
+metadata: { name: supervisorUnlicensed }
+include:
+  - "__fixtures__/configurations/supervisor/telo.yaml"
+exclude: []
+env: {}

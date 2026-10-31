@@ -170,7 +170,7 @@ for that owner, like the owner's documents.
 
 | Method | Params | Result |
 | --- | --- | --- |
-| `telo/viewModel` | `{ owner }` | the owner's [view model](#the-view-model), or `null` when the engine is not analysing `owner`. |
+| `telo/viewModel` | `{ owner, configuration? }` | the owner's [view model](#the-view-model), or `null` when the engine is not analysing `owner`. |
 | `telo/celCompletion` | `{ owner, resource: { kind, name }, path, tag, text, offset }` | LSP `CompletionItem[]` for a CEL value typed into a structured form field, which is not document text yet; `[]` when the engine is not analysing `owner`. |
 
 `telo/celCompletion` answers what completion inside that value would offer were
@@ -188,7 +188,18 @@ engine's diagnostics come from, at the module's own telo version, and is plain
 JSON. JSON Schemas in it are plain JSON objects.
 
 - `owner`, `revision` — as in `telo/viewModelChanged`.
-- `moduleGraph` — the owner module drawn as a graph (below), or `null`.
+- `moduleGraph` — the owner module drawn as a graph (below), or `null`. When
+  the module writes `!if` / `!switch` choices it is drawn in one configuration:
+  the request's `configuration` (an assignment `{ "<dimension path>": value }`;
+  a dimension it leaves out, or gives a value outside the dimension's domain,
+  takes its default), else every dimension's default.
+- `configurations?` — present when the module writes a choice:
+  `dimensions` (`{ key, values, default }` per dimension a choice reads — a
+  variable or secret declared `enum` / `const` / boolean, a member a value
+  type's argument binds, a `default: null` input's presence, a need's presence,
+  and for a library its `resources.<input>` presence; `default` is the declared
+  `default:`, a presence dimension's `absent`, else the first value) and
+  `selected`, the complete assignment `moduleGraph` is drawn in.
 - `moduleRootSchema` — the schema of the owner's module document kind
   (`Telo.Application` / `Telo.Library`), or `null`.
 - `kindSpellings` — every `kind:` spelling in the owner's import closure
@@ -243,17 +254,30 @@ A **module graph** is `{ root?, nodes, edges, regions, kinds }`:
   `imported`, `injected`, `enclosing`, `forwarded`), `owner?` / `ownerSite?`
   (the node and site declaring an owned declaration), `module?`, `external?`,
   `alias?`, `ports`, `rows`, `rowArrays` (`{ field, kind }` per array the kind
-  can hold rows in), `throws?` (`{ codes, unbounded }`) and `root?`;
+  can hold rows in), `throws?` (`{ codes, unbounded }`), `root?`, `choice?`,
+  `choices?` and `family?`. A declaration-position `!if` / `!switch` is ONE node
+  identified by its name: `choice` is `{ path: "", tag, alternatives, selected }`
+  (an alternative is `{ key, kind? }` — `then`, `else`, `default` or a case key,
+  `absent` for an `!if` with no `else:`; `selected` the key the drawn
+  configuration takes), and only the node's `kind` follows the configuration,
+  never its `id`. `choices` lists the choices written in the node's fields (the
+  same shape, `path` the written field path). `family` (`{ source, as }`) marks
+  a `!for-each` at a declaration position of a template body: one node under
+  the family's name, with no node per element;
 - a **port** is a reference slot the kind declares, filled or not: `slot` (its
   field-map path), `refs` (accepted constraints, canonical), `capabilities`,
   `array`, `class`, `slots` (`{ path, target?, targetNode?, inline? }` per
   occupancy), `addPath?` and `rowOwned?`;
 - a **row** is an ordered entry of a node: `id`, `kind` (`step`, `entry`,
-  `target`, `inline`, `reference`, `export`), `name?`, `path`, `array`,
+  `target`, `repeat`, `inline`, `reference`, `export`), `name?`, `path`, `array`,
   `index`, `depth`, `parent?`, `target?`, `targetNode?`, `inputs?`, `match?`,
   `variant?`, `variantLabel?`, `predicate?`, `catches?`, `dispatch?`
   (`{ path, refs, inline?, alternatives? }`, where the call is written and
-  what may fill it), `declares?` and `unknownKind?`;
+  what may fill it), `declares?`, `unknownKind?`, `repeat?` and `emitted?`. A
+  `repeat` row is a `!for-each` in a list (`{ source, as }`), identified by its
+  source and its ordinal among the list's repeats of that source; `emitted` is
+  the identity text of a step a repeat emitted, which carries it in place of a
+  `name`;
 - an **edge** is a reference site, classed: `id`, `from`, `to?`, `toName`,
   `class` (`flow`, `holds`, `shape`, `data`), `use` (the slot's declared uses:
   `schema`, `dependency`, `call`, `detached`, `trigger.inbound`,
@@ -273,7 +297,8 @@ Every diagnostic the engine publishes may carry:
 ```ts
 { fix?: { replacement: string; tag?: "ref" | "cel" | "module-path" },
   resource?: { kind: string; name: string },
-  path?: string }
+  path?: string,
+  configurations?: Array<Record<string, unknown>> }
 ```
 
 `fix` is a mechanically applicable repair — the whole corrected value at the
@@ -282,7 +307,18 @@ returns the diagnostic unchanged in a `textDocument/codeAction` request's
 context, and the engine answers with the quick fix that applies it. `resource`
 and `path` locate the offending value inside a manifest (a host may use them to
 place a diagnostic on a form field). `Diagnostic.tags` carries LSP's
-`Deprecated` / `Unnecessary`.
+`Deprecated` / `Unnecessary`. `configurations` is present only on a diagnostic
+that holds in some configurations of the application and not all (a diagnostic
+in every configuration carries none): a list of **partial assignments**, each
+`{ "<dimension path>": <JSON value> }` — an enum, const or boolean as itself,
+a presence dimension as `"present"` / `"absent"`, an absent dimension input as
+`null`. An entry names only the dimensions it narrows, each to one value; a
+dimension it leaves out holds every value, so the diagnostic holds in a
+configuration when **some entry agrees with it on every key the entry names**
+(an entry naming none holds everywhere). A block spanning several values of a
+dimension is one entry per value. The list is empty when the diagnostic holds
+in no configuration (a branch nothing takes). The configuration label lives in
+`message` only.
 
 ## Commands
 
@@ -296,7 +332,11 @@ The engine's code lenses over an `imports:` block name the first two.
 
 ## Generations
 
-`TELO_EDITOR_PROTOCOL` is the generation this package describes (`1`).
+`TELO_EDITOR_PROTOCOL` is the generation this package describes (`2`).
+Generation 2 made `Diagnostic.data.configurations` a list of partial
+assignments; generation 1 listed complete ones, so a host reading entries as
+complete would misread every diagnostic. A complete assignment reads correctly
+as a partial one, so a host of generation 2 also speaks generation 1.
 **Additions within a generation are negotiated by capability**: a new request, a
 new optional field or a new command is advertised by the side that has it and
 used only when advertised, so an older host and a newer engine (or the reverse)

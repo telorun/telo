@@ -18,7 +18,9 @@ import { chainAt } from "../cel-chain.js";
 import { resolveNodeAtPosition, scalarString } from "../completions/resolve-node.js";
 import { moduleDoc, moduleForFile, moduleFiles } from "../definition/manifest-navigation.js";
 import { moduleCallSites } from "../cel/module-calls.js";
+import { forEachLoops, loopBinding, readRefScalar } from "../repeats/for-each.js";
 import {
+  bindingSites,
   declarationSites,
   functionCallSites,
   resourceDeclarations,
@@ -210,25 +212,42 @@ function symbolAt(
   // A `!ref` target. `<Alias>.<name>` crosses an import boundary, where the
   // declaration is another module's and the edit set is not this workspace's.
   if (scalar.tag === "!ref") {
-    const raw = refText(scalar);
-    if (!raw) return undefined;
-    if (raw.startsWith(SELF_PREFIX)) {
-      const name = raw.slice(SELF_PREFIX.length);
-      const start = scalar.range[0] + SELF_PREFIX.length;
-      return { kind: "resource", name, range: toRange([start, scalar.range[1]]) };
+    const reading = readRefScalar(scalar, text);
+    if (!reading) return undefined;
+    // An index's binding is the `as:` of the loop around the reference.
+    const at = reading.bindings.findIndex((span) => resolved.offset >= span[0] && resolved.offset <= span[1]);
+    if (at >= 0) {
+      const binding = reading.indexes[at]!.binding;
+      const loop = loopBinding(forEachLoops(astDocs[resolved.docIndex]!), binding, scalar.range[0]);
+      if (!loop?.asRange) {
+        return { reason: `'${binding}' is the binding of a '!for-each' that writes no 'as:' — add one to rename it.` };
+      }
+      return { kind: "binding", name: binding, range: toRange(reading.bindings[at]!), loop: loop.map.range };
     }
-    if (raw.includes(".")) {
+    if (reading.alias !== undefined && reading.alias !== "Self") {
       return {
         reason:
-          `'${raw}' names an instance exported by an imported module. Rename it where it is ` +
+          `'${reading.alias}.${reading.name}' names an instance exported by an imported module. Rename it where it is ` +
           `declared — and only if it is not part of that module's exports.`,
       };
     }
-    return { kind: "resource", name: raw, range: toRange(scalar.range) };
+    return { kind: "resource", name: reading.name, range: toRange(reading.head) };
   }
+
+  // A `!for-each`'s `as:` — the declaration of its binding.
+  const loop = forEachLoops(astDocs[resolved.docIndex]!).find(
+    (l) => l.asRange?.[0] === scalar.range[0] && l.asRange[1] === scalar.range[1],
+  );
+  if (loop) return { kind: "binding", name: loop.binding, range: toRange(scalar.range), loop: loop.map.range };
 
   const name = scalarString(scalar);
   if (!name) return undefined;
+
+  // A family's name, written on its tag.
+  const family = forEachLoops(astDocs[resolved.docIndex]!).find(
+    (l) => l.family?.range[0] === scalar.range[0] && l.family.range[1] === scalar.range[1],
+  );
+  if (family) return { kind: "resource", name, range: toRange(scalar.range) };
 
   // `metadata.name` — a declaration site. Which surface it is depends on the
   // document's kind, and two of the three are type-level.
@@ -314,16 +333,10 @@ function celSymbol(
   return undefined;
 }
 
-function refText(scalar: AstScalar): string | undefined {
-  const value = scalar.value as { source?: unknown } | string | undefined;
-  if (typeof value === "string") return value;
-  if (value && typeof value === "object" && typeof value.source === "string") return value.source;
-  return undefined;
-}
-
 function surfaceLabel(symbol: RenameSymbol): string {
   if (symbol.kind === "resource") return "resource name";
   if (symbol.kind === "step") return "step name";
+  if (symbol.kind === "binding") return "binding name";
   return `${symbol.block === "ports" ? "port" : symbol.block === "secrets" ? "secret" : "variable"} name`;
 }
 
@@ -369,6 +382,8 @@ function refuse(
     }
     return undefined;
   }
+
+  if (symbol.kind === "binding") return undefined;
 
   if (symbol.kind === "step") {
     // Document-scoped, and the cursor is in this file, so the live docs are the
@@ -453,6 +468,8 @@ function filesForRename(
       : { uri: file.source, text: file.text, docs: file.astDocuments };
 
   const all = moduleFiles(mod).map(asRenameFile);
+  // A binding is read inside its loop, which sits in the file under the cursor.
+  if (symbol.kind === "binding") return all.filter((file) => file.uri === currentFilePath);
   if (symbol.kind !== "step") return all;
 
   // Narrow to the one document declaring the step.
@@ -473,9 +490,14 @@ function editsIn(
   const spans: Array<[number, number]> = [];
 
   for (const doc of file.docs) {
-    if (symbol.kind === "resource") {
+    if (symbol.kind === "binding") {
+      const loop = forEachLoops(doc).find(
+        (l) => l.map.range[0] === symbol.loop![0] && l.map.range[1] === symbol.loop![1],
+      );
+      if (loop) for (const span of bindingSites(loop, file.text)) spans.push(span);
+    } else if (symbol.kind === "resource") {
       for (const span of resourceDeclarations(doc, symbol.name)) spans.push(span);
-      for (const site of resourceSites(doc, symbol.name)) spans.push(site.range);
+      for (const site of resourceSites(doc, file.text, symbol.name)) spans.push(site.range);
       for (const site of functionCallSites(doc, file.text, receivers, symbol.name)) {
         spans.push(site.range);
       }

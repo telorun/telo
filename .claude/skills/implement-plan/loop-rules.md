@@ -305,29 +305,32 @@ by then it is built on, which is why it is caught here:
 
 ## Which builder
 
-Three agents build: `builder-lite` (Haiku — reads only what its brief names, decides nothing
-architectural), `builder` (Sonnet) and `builder-high` (Opus). A card's **Builder** line is `lite`,
+Three agents build: `builder-lite` (reads only what its brief names, decides nothing
+architectural), `builder` (settled work) and `builder-high` (design judgment). A card's **Builder** line is `lite`,
 `standard` or `high`, set when the card is cut.
 
-A card is `high` when **any** of these holds:
+`builder-high` is the exception, not the default: it is the most expensive tier, so a card is
+`high` only when the work itself *designs* something hard — how a static check is modelled, how a
+refusal and its twin stay in agreement, how effects, ordering or concurrency behave. Following a
+settled design across those areas is `standard`. A card is `high` when **any** of these holds *and*
+the decisions leave real design to the builder:
 
-- it adds or changes an analyzer check, a diagnostic code, or how an `x-telo-*` annotation is read,
-  or adds a kernel refusal and its analyzer twin;
-- it spans kernel/sdk and analyzer/templating, or the Node and Rust halves;
-- it touches CEL typing or evaluation, effects and teardown, init order, durable execution or
-  concurrency.
+- it designs an analyzer check, a diagnostic code, or how an `x-telo-*` annotation is read, or
+  adds a kernel refusal and its analyzer twin from scratch (extending an existing check along its
+  established pattern is `standard`);
+- it changes one mechanism across kernel/sdk and analyzer/templating, or the Node and Rust halves,
+  in a way the decisions do not fully spell out;
+- it changes CEL typing or evaluation, effects and teardown, init order, durable execution or
+  concurrency semantics.
 
-A card is `lite` only when **all** of these hold:
+A card is `lite` when its work is **mechanical**: the change is fully determined by the brief and
+an existing pattern recon named, so the builder applies it and decides nothing.
 
-- it adds or changes no public surface, no kind's schema, capability or annotations, no analyzer
-  check and no diagnostic code;
-- it follows a pattern recon named, inside one package or module;
-- it is small — about five files and two hundred lines at most;
-- its quick checks prove its acceptance.
-
-Otherwise it is `standard`: new surface whose shape the decisions fully settle, in one or two
-packages. When in doubt between two tiers, take the higher: an escalation costs more than it saved.
-`lite` earns its keep on doc, migration and call-site cards, and on fix work.
+Otherwise it is `standard`: any settled work, including new surface whose shape the decisions
+fully settle, in one or more packages. When in doubt between `standard` and `high`, take
+`standard`: the builder escalates by reporting a blocker, and a fix round can move up a tier. When
+in doubt between `lite` and `standard`, take `lite`: `builder-lite` escalates with an `Escalate:` report when the work turns out not to be mechanical. `lite` earns its keep on doc, migration
+and call-site cards, and on fix work.
 
 **Fix rounds** — a card's own fix round, an audit fix item, a gate failure — go to a **fresh**
 builder by default, not to the card's builder by `SendMessage`. A builder's context is cached for
@@ -338,9 +341,9 @@ its `builder.md` and the round's items, and nothing else.
 
 - A round whose every item states its one fix goes to a fresh `builder-lite`. The saving is its
   small context and the cheaper model.
-- A round with an item that needs judgment goes to a fresh builder of the card's tier (`builder`
-  for `lite` and `standard`, `builder-high` for `high`). An audit item that spans cards goes to the
-  highest tier among them.
+- A round with an item that needs judgment goes to a fresh `builder`. `builder-high` takes a round
+  only when an item re-opens the design of a `high` card's check, twin or semantics. An audit item
+  that spans cards goes to `builder` unless it meets that same test.
 - `SendMessage` to the card's own builder is reserved for two cases. One is answering its
   *Questions before building*, while its context is still small. The other is a round that needs
   the judgment it already holds, sent within four minutes of its report and while its context is
@@ -349,15 +352,17 @@ its `builder.md` and the round's items, and nothing else.
 **Escalation.** `builder-lite` stops with an `Escalate:` heading instead of asking questions. Save
 that report to the card's `builder.md` as usual, then hand the card to a fresh `builder` with its
 `brief.md` and `builder.md`; the hand-over is not a fix round. A card still red after its first fix
-round gets its second round from a fresh builder one tier up — `builder` for a `lite` card,
-`builder-high` for a `standard` one — inside the two-round limit.
+round gets its second round from a fresh `builder` for a `lite` card; a `standard` card's second
+round stays with `builder` unless the remaining failure is a design question, which is the only
+reason to reach for `builder-high` — inside the two-round limit.
 
 ## Cost rules
 
 - At most three cards. Each extra card is another brief and fix cycle.
-- `scout` is Haiku. Recon is reading, and reading does not need a frontier model.
+- `scout` is the cheapest agent. Recon is reading, and reading needs no design judgment.
 - `builder-lite` for every card and fix item that qualifies (see *Which builder*), `builder` for
-  settled work, `builder-high` only where the card meets the `high` criteria.
+  settled work, `builder-high` only where the card meets the `high` criteria — it is the costliest
+  tier, so a card that merely touches those areas is `standard`.
 - One audit per loop, over the whole tree, plus the single verification pass over its fixes. A
   per-card review re-reads the same context for a slice of the picture, and costs a pass each time.
 - One `decider` per set of related decisions; independent sets may run in parallel. Asking the

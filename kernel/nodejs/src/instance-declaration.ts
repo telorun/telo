@@ -34,3 +34,19 @@ export function declarationOfInstance(instance: unknown): ResourceManifest | und
     ? declarations.get(instance as object)
     : undefined;
 }
+
+const outermost = new WeakMap<object, ResourceManifest>();
+
+/** Record the declaration an instance was created for at the OUTERMOST level.
+ *  Last record wins: a `base:` child IS its parent's instance, and the parent's
+ *  declaration (the first record above) is a mapping the author never wrote —
+ *  what a reader of the child's own fields wants is the child's. */
+export function recordOutermostDeclaration(instance: object, manifest: ResourceManifest): void {
+  outermost.set(instance, manifest);
+}
+
+/** The declaration an instance was created for, as the resource that is the
+ *  instance's own kind declared it. */
+export function outermostDeclarationOf(instance: unknown): ResourceManifest | undefined {
+  return instance && typeof instance === "object" ? outermost.get(instance as object) : undefined;
+}

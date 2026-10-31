@@ -1,6 +1,6 @@
 import {
   decodePlainLiterals,
-  residualEntrySchema,
+  inputValueSchema,
   valueTypeRefusalCode,
   type ExternalSchemaResolver,
 } from "@telorun/analyzer";
@@ -36,7 +36,7 @@ export function settleImportInputs(
   const entries: Record<string, Record<string, any>> = {};
   for (const [name, entry] of Object.entries(declared)) {
     if (entry && typeof entry === "object" && !Array.isArray(entry) && supplied[name] !== undefined) {
-      entries[name] = residualEntrySchema(entry as Record<string, unknown>);
+      entries[name] = inputValueSchema(entry as Record<string, unknown>);
     }
   }
   if (Object.keys(entries).length === 0) return { values: supplied, redacted: [] };

@@ -5,7 +5,7 @@
 
 /** The protocol generation this package describes. Additions within a
  *  generation are negotiated by capability; an incompatible change bumps it. */
-export const TELO_EDITOR_PROTOCOL = 1;
+export const TELO_EDITOR_PROTOCOL = 2;
 
 /** What an engine advertises under `ServerCapabilities.experimental`. */
 export interface TeloExperimentalCapabilities {
@@ -167,6 +167,9 @@ export interface ViewModelChangedParams {
 /** `telo/viewModel`: the structured-view model of one owner module. */
 export interface ViewModelParams {
   owner: string;
+  /** The assignment to draw the module graph in, keyed by dimension; a
+   *  dimension left out takes its default. */
+  configuration?: Record<string, unknown>;
 }
 /** `null` when the engine is not analysing `owner`. */
 export type ViewModelResult = ViewModel | null;
@@ -233,6 +236,9 @@ export interface ViewModel {
   revision: number;
   /** The owner module drawn as a graph. */
   moduleGraph: ModuleGraphData | null;
+  /** The configurations `moduleGraph` can be drawn in. Absent when the module
+   *  writes no `!if` / `!switch` choice. */
+  configurations?: ViewModelConfigurations;
   /** The schema of the owner's module document kind. */
   moduleRootSchema: JsonSchema | null;
   /** Each `kind:` spelling in the closure, and each constraint in
@@ -258,6 +264,45 @@ export interface ViewModel {
    *  A host holding a newer version of one of them holds text this model was
    *  not computed from. */
   documents: Record<string, number>;
+}
+
+/** One axis of the configuration picker: the path it is read at, its domain
+ *  and the value a picker starts at (a presence dimension: `absent`). */
+export interface GraphDimension {
+  key: string;
+  values: unknown[];
+  default: unknown;
+}
+
+export interface ViewModelConfigurations {
+  dimensions: GraphDimension[];
+  /** The assignment `moduleGraph` is drawn in, every dimension present. */
+  selected: Record<string, unknown>;
+}
+
+/** One alternative of a choice: `then`, `else`, `default`, a case key, or
+ *  `absent` (an `!if` with no `else:` whose condition is false). At a
+ *  declaration position it carries the kind the branch declares. */
+export interface GraphAlternative {
+  key: string;
+  kind?: string;
+}
+
+/** A `!if` / `!switch` drawn at a box. At a declaration position (`path` is
+ *  `""`) the box is the choice, identified by its name — only its kind follows
+ *  the selected configuration. */
+export interface GraphChoice {
+  path: string;
+  tag: "if" | "switch";
+  alternatives: GraphAlternative[];
+  selected: string | null;
+}
+
+/** A `!for-each` drawn as one box (a family) or one row (a repeat in a list),
+ *  never one per element. */
+export interface GraphRepeat {
+  source: string;
+  as: string;
 }
 
 export interface RefConstraint {
@@ -320,7 +365,7 @@ export interface ModuleGraphData {
 export type NodeOwnership = string;
 /** `flow` | `holds` | `shape` | `data`. */
 export type EdgeClass = string;
-/** `step` | `entry` | `target` | `inline` | `reference` | `export`. */
+/** `step` | `entry` | `target` | `repeat` | `inline` | `reference` | `export`. */
 export type RowKind = string;
 
 export interface GraphNodeData {
@@ -341,6 +386,9 @@ export interface GraphNodeData {
   rowArrays: { field: string; kind: RowKind }[];
   throws?: { codes: string[]; unbounded: boolean };
   root?: boolean;
+  choice?: GraphChoice;
+  choices?: GraphChoice[];
+  family?: GraphRepeat;
 }
 
 export interface GraphPortData {
@@ -379,6 +427,10 @@ export interface GraphRowData {
   };
   declares?: string;
   unknownKind?: boolean;
+  /** `repeat` rows: the loop the list item is. */
+  repeat?: GraphRepeat;
+  /** A step a template repeat emitted: its identity text, in place of `name`. */
+  emitted?: string;
 }
 
 export interface GraphEdgeData {
@@ -446,6 +498,13 @@ export interface TeloDiagnosticData {
   resource?: { kind: string; name: string };
   /** Dotted path of the offending value within that resource. */
   path?: string;
+  /** Present only on a diagnostic that holds in some configurations of the
+   *  application but not all: partial assignments covering where it holds, each
+   *  `{ "<dimension path>": <JSON value> }` naming only the dimensions it
+   *  narrows (one it leaves out holds every value; the diagnostic holds where
+   *  some entry agrees on every key it names). Empty when it holds in none. The
+   *  label is in `message` only. */
+  configurations?: Array<Record<string, unknown>>;
 }
 
 // --- Commands --------------------------------------------------------------

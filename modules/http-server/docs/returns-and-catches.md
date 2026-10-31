@@ -349,3 +349,5 @@ Regardless of encoder, a mid-stream failure is logged server-side through the se
 ## `notFoundHandler`
 
 `Http.Server.notFoundHandler` accepts the same `returns:` and `catches:` split as a route handler — same `content:` map shape, same Accept-header negotiation, same stream-mode rules. The `invoke:` resource runs when Fastify can't match any mounted route; its return value flows through `returns:`, its `InvokeError` throws through `catches:`, and a throw its own entries decline falls through to the server's list like any other.
+
+Its `returns:` entries read `request` — `method`, `path`, `host`, `params`, `query`, `headers` and `body`, the last untyped since no route declares it — and `result`, typed from the `invoke:` target's `outputType` (open when it declares none). `telo check` types a `when:`, a `status:`, a header or a body expression there against those, so reading a member the target's `outputType` does not declare is refused before the server starts.

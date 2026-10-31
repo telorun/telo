@@ -1,0 +1,7 @@
+kind: Telo.Library
+metadata:
+  name: Keyed
+  version: 0.0.0
+  description: Test fixture taking one secret.
+secrets:
+  key: { type: string }

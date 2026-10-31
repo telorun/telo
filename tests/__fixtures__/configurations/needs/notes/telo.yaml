@@ -1,0 +1,27 @@
+# The database example as a library: imported with both needs unsupplied, its
+# `data` is required only where its `databaseAccess` is absent.
+kind: Telo.Library
+metadata:
+  name: Notes
+  version: 0.0.0
+  description: Test fixture choosing its store by an optional need's presence.
+imports:
+  Kinds: ../kinds
+needs:
+  databaseAccess:
+    kind: Kinds.Access
+    optional: true
+  data:
+    kind: Telo.DurableDirectory
+exports:
+  resources: [db]
+--- !if
+metadata: { name: db }
+if: !cel "resources.databaseAccess != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref databaseAccess
+  label: database
+else:
+  kind: Kinds.Labelled
+  label: !cel "string(resources.data.path.joinPath('notes.db'))"

@@ -1,0 +1,61 @@
+# A rule reading through an exported wrapper into the backend it holds: each
+# wrapper is read in its own module instance — one per import of the isolated
+# library, and the shared library's own import.
+kind: Telo.Application
+metadata:
+  name: InstancesRules
+imports:
+  Backends: ./backends
+  A:
+    source: ./instances-lib
+    variables:
+      dialect: first
+  B:
+    source: ./instances-lib
+    variables:
+      dialect: second
+  S: ./instances-shared
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    target:
+      x-telo-ref: { kind: A.Wrapper, use: dependency }
+    backend:
+      type: string
+  x-telo-resource-rules:
+    - resolve: ["/target"]
+      condition: !cel "self.target.store.kind == 'Backends.' + self.backend"
+      code: HOLDER_BACKEND
+      message: The wrapper's backend is not the one this holder names.
+---
+kind: Self.Holder
+metadata:
+  name: firstHolder
+target: !ref A.wrapper
+backend: First
+---
+kind: Self.Holder
+metadata:
+  name: secondHolder
+target: !ref B.wrapper
+backend: Second
+---
+kind: Self.Holder
+metadata:
+  name: sharedHolder
+target: !ref S.wrapper
+backend: Second
+---
+# The rule runs: a holder naming the other backend is refused.
+kind: Self.Holder
+metadata:
+  name: mismatchedHolder
+target: !ref A.wrapper
+backend: Second

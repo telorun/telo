@@ -1,0 +1,52 @@
+# A `Telo.Url` secret whose declaration closes its scheme: the scheme is a
+# dimension a `!switch` decides on.
+kind: Telo.Application
+metadata:
+  name: UrlScheme
+imports:
+  Assert: ../../../modules/assert
+  Run: ../../../modules/run
+secrets:
+  databaseUrl:
+    env: DATABASE_URL
+    type: string
+    x-telo-type:
+      name: Telo.Url
+      scheme: { enum: [postgres, sqlite] }
+variables:
+  expected:
+    env: EXPECTED_ENGINE
+    type: string
+    default: postgres-engine
+targets:
+  - !ref main
+  # A boot target only one configuration starts.
+  - !if
+    if: !cel "secrets.databaseUrl.scheme == 'sqlite'"
+    then: !ref sqliteOnly
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: engine
+    value: !switch
+      switch: !cel "secrets.databaseUrl.scheme"
+      cases:
+        postgres: postgres-engine
+        sqlite: sqlite-engine
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.engine.result"
+      expected: !cel "variables.expected"
+---
+kind: Run.Sequence
+metadata:
+  name: sqliteOnly
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "secrets.databaseUrl.scheme"
+      expected: sqlite

@@ -2,11 +2,14 @@ import {
   AnalysisRegistry,
   DiagnosticSeverity,
   flattenLoadedModule,
+  importPathOf,
+  type AnalysisDiagnostic,
   type LoadedModule,
 } from "@telorun/analyzer";
 import type { ResourceManifest } from "@telorun/sdk";
 import { RuntimeError } from "@telorun/sdk";
 import type { BuiltinControllerContext } from "../../internal-context.js";
+import { staticDiagnosticToRuntime } from "../../static-analysis-diagnostics.js";
 import { rootContextOf } from "./shared-libraries.js";
 
 /**
@@ -39,8 +42,9 @@ export interface LibraryScope {
   readonly rawManifests: ResourceManifest[];
   /** The kernel registry as seen from inside the library. */
   readonly registry: AnalysisRegistry;
-  /** Other modules' exported instances, for the library's `!ref Alias.name`. */
-  readonly crossModuleTargets: ResourceManifest[];
+  /** Other modules' exported instances, for the library's `!ref Alias.name`,
+   *  as the library instance at `instancePath` (its need path) reaches them. */
+  targetsAt(instancePath: readonly string[]): ResourceManifest[];
 }
 
 interface LibraryEntry {
@@ -119,21 +123,40 @@ async function computeLibraryScope(
       // The library's own exports are forwarded into the load-time set too; as
       // targets they would turn `!ref <module>.x` into a cross-module reference
       // to the library itself.
-      crossModuleTargets: host.loadTimeManifests.filter(
-        (m) => (m.metadata as { module?: unknown } | undefined)?.module !== module,
+      targetsAt: applicationTargets(
+        host.loadTimeManifests.filter((m) => (m.metadata as { module?: unknown } | undefined)?.module !== module),
       ),
     };
   }
 
   const { manifests: graphManifests, moduleDocuments, applicationSources } = await host.loadLibrary(resolvedUrl);
-  const errors = host.analyzer
-    .analyze(graphManifests, { moduleDocuments, applicationSources }, registry)
-    .filter((d) => d.severity === DiagnosticSeverity.Error)
-    .map((d) => d.message);
-  if (errors.length > 0) {
-    throw new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", errors.join("\n"));
-  }
-  return { rawManifests, registry, crossModuleTargets: graphManifests };
+  refuseLibraryAnalysis(
+    host.analyzer.analyze(graphManifests, { moduleDocuments, applicationSources }, registry),
+  );
+  return { rawManifests, registry, targetsAt: () => graphManifests };
+}
+
+/**
+ * The load-time set read from one library instance. A dependency imported as
+ * several instances is forwarded once per instance, stamped with its import
+ * path from the application root, while the library's own documents name an
+ * import by its alias alone — so each copy beneath `instancePath` is re-read
+ * relative to it, and a copy of another instance is left out.
+ */
+function applicationTargets(targets: ResourceManifest[]): (instancePath: readonly string[]) => ResourceManifest[] {
+  const stamped = targets.some((m) => importPathOf(m) !== undefined);
+  return (instancePath) => {
+    if (!stamped) return targets;
+    const out: ResourceManifest[] = [];
+    for (const m of targets) {
+      const path = importPathOf(m);
+      if (path === undefined) out.push(m);
+      else if (path.length > instancePath.length && instancePath.every((segment, i) => path[i] === segment)) {
+        out.push({ ...m, metadata: { ...m.metadata, importPath: path.slice(instancePath.length) } as ResourceManifest["metadata"] });
+      }
+    }
+    return out;
+  };
 }
 
 /**
@@ -151,16 +174,25 @@ async function ownRegistryScope(
   const host = ctx.libraryAnalysisHost();
   const { manifests: graphManifests, moduleDocuments, applicationSources } = await host.loadLibrary(resolvedUrl);
   const registry = new AnalysisRegistry();
-  const errors = host.analyzer
-    .analyze(
+  refuseLibraryAnalysis(
+    host.analyzer.analyze(
       graphManifests,
       { skipValidation: ctx.isImportValidatedAtLoad(resolvedUrl), moduleDocuments, applicationSources },
       registry,
-    )
-    .filter((d) => d.severity === DiagnosticSeverity.Error)
-    .map((d) => d.message);
-  if (errors.length > 0) {
-    throw new RuntimeError("ERR_MANIFEST_VALIDATION_FAILED", errors.join("\n"));
-  }
-  return { rawManifests, registry, crossModuleTargets: graphManifests };
+    ),
+  );
+  return { rawManifests, registry, targetsAt: () => graphManifests };
+}
+
+/** A library's own analysis refused, each error carried as a structured
+ *  diagnostic under its code — so a run renders `[<CODE>] …` for a library the
+ *  load did not reach as it does for the entry. */
+function refuseLibraryAnalysis(diagnostics: readonly AnalysisDiagnostic[]): void {
+  const errors = diagnostics.filter((d) => d.severity === DiagnosticSeverity.Error);
+  if (errors.length === 0) return;
+  throw new RuntimeError(
+    "ERR_MANIFEST_VALIDATION_FAILED",
+    errors.map((d) => d.message).join("\n"),
+    errors.map(staticDiagnosticToRuntime),
+  );
 }

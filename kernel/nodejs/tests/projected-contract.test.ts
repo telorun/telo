@@ -1,4 +1,4 @@
-import { manifestListScope } from "@telorun/analyzer";
+import { listRequests, projectionScopeOf } from "@telorun/analyzer";
 import { describe, expect, it } from "vitest";
 import type { ContractValidatorFactory } from "../src/invocation-contract-binding.js";
 import { resolveBoundContract } from "../src/invocation-contract-binding.js";
@@ -60,7 +60,7 @@ describe("a nested projection at dispatch", () => {
       definition as any,
       () => undefined,
       factory(),
-      manifestListScope([extraction], () => definition),
+      projectionScopeOf(listRequests([extraction as any]), () => definition),
     )!;
     expect(() => bound.validate({ fields: { cards: [{ name: "a" }] } })).not.toThrow();
     expect(() => bound.validate({ fields: { cards: [{ nmae: "a" }] } })).toThrow(

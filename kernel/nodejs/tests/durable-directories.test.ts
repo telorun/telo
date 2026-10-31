@@ -27,6 +27,19 @@ const UPLOADS = `  uploads:
     kind: Telo.DurableDirectory
 `;
 
+/** A document reading `uploads`, so every configuration requires it. */
+const READS_UPLOADS = `---
+kind: Telo.NeedType
+metadata: { name: Probe }
+fields:
+  value: { type: string }
+---
+kind: Self.Probe
+metadata: { name: reader }
+fields:
+  value: !cel "string(resources.uploads.path)"
+`;
+
 let scratch: string;
 beforeEach(() => {
   scratch = fs.mkdtempSync(path.join(os.tmpdir(), "telo-durable-"));
@@ -106,7 +119,7 @@ needs:
   });
 
   it("is unmet with neither set, naming the env name", async () => {
-    const error = await failure({ app: app(UPLOADS) }, {});
+    const error = await failure({ app: app(UPLOADS, READS_UPLOADS) }, {});
     expect(error.code).toBe("ERR_NEED_UNMET");
     expect(error.message).toContain("TELO_NEED_UPLOADS__PATH");
   });

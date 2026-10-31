@@ -1,0 +1,15 @@
+# A sink a reference names only where a choice keeps it: unattached in the
+# configurations that drop the reference.
+kind: Telo.Application
+metadata:
+  name: SinkAttachmentReferenceChoice
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !if
+    if: !cel "variables.flag1"
+    then: !ref traces
+---
+kind: Telo.LogTraceSink
+metadata:
+  name: traces

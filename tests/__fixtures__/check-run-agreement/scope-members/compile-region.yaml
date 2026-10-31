@@ -1,0 +1,12 @@
+# Invokes the library's holder. Its read of a scope member in a field evaluated
+# at load is invisible to this entry-scoped check, so the kernel is what refuses
+# it when it creates the holder.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberCompileRegionApp
+  version: 1.0.0
+imports:
+  Lib: ./compile-region-lib
+targets:
+  - name: run
+    invoke: !ref Lib.host

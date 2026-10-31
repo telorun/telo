@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { listRequests } from "./declaration-requests.js";
 import { isRefSentinel } from "@telorun/templating";
 import { visitManifest } from "./manifest-visitor.js";
 import { celEvalModeAt, kindCelEvalSites, NO_CEL_EVAL_SITES } from "./eval-paths.js";
@@ -20,16 +21,20 @@ import { isModuleKind } from "./module-kinds.js";
 import { isInlineDeclaration, isResolvedReference } from "./resolved-reference.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { acceptsInline } from "./normalize-inline-resources.js";
-import { resolveScopedName } from "./call-graph.js";
+import { importPathThrough, MANIFEST_READING, scopeReadAt, ScopedNameResolver } from "./scoped-name-resolver.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { injectedNeedOf } from "./need-type.js";
 import { NEED_TABLE_MARK } from "./validate-needs.js";
-import { outsideScopesOf } from "./scope-declarations.js";
+import { scopeSiteKey } from "./scope-address.js";
+import { scopeMembers } from "./scope-declarations.js";
+import { outOfReachNames, scopeMemberOf } from "./scope-members.js";
+import { isStandInDeclaration } from "./choice-expansion.js";
 import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
 import { CallableFlagsIndex } from "./callable-flags.js";
 import { callableSlotVerdict, type CallableSlotContext } from "./callable-slot.js";
 import { moduleCallNamesByModule } from "./module-call-names.js";
 import { ModuleFunctionIndex } from "./module-function-index.js";
+import { withQuotedPath } from "./quoted-place.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -73,6 +78,9 @@ function duplicateNameDiagnostics(
   resources: ResourceManifest[],
   isForeign: (r: ResourceManifest) => boolean,
   moduleOf: (r: ResourceManifest) => string | undefined,
+  /** Only the collisions inside a scope: the module level's were judged once
+   *  over every configuration. */
+  scopedOnly = false,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
 
@@ -99,14 +107,22 @@ function duplicateNameDiagnostics(
   const seen = new Set<string>();
   for (const r of resources) {
     if (!r.metadata?.name || isForeign(r)) continue;
+    // A declaration a choice makes holds the tag's name, which the choice
+    // reading judges once against its namespace.
+    if ((r.metadata as { xTeloChoice?: unknown }).xTeloChoice) continue;
     const name = r.metadata.name as string;
-    const scope = isModuleKind(r.kind)
+    // A scope member shares a namespace with its scope's other members alone:
+    // it may shadow a module-level name.
+    const member = scopeMemberOf(r);
+    if (scopedOnly && !member) continue;
+    const module = isModuleKind(r.kind)
       ? (stampedModules.has(name) ? name : "")
       : (moduleOf(r) ?? "");
     // A scope with no module doc in this set is an imported library's, whose
     // doc `selectModuleManifestsForAnalysis` drops — its internals are its own
     // author's to fix, and its own `telo check` reports them.
-    if (scope !== "" && moduleDocNames.size > 0 && !moduleDocNames.has(scope)) continue;
+    if (module !== "" && moduleDocNames.size > 0 && !moduleDocNames.has(module)) continue;
+    const scope = member ? scopeSiteKey(member.site) : module;
     // Dedup pipeline echoes — the same physical document emitted twice through
     // an analyzer host's pipeline (telo studio walks a file reachable as both an
     // entry module and an `include:` partial). Keyed on (kind, name, source,
@@ -128,59 +144,78 @@ function duplicateNameDiagnostics(
       if (list.length <= 1) continue;
       const [first, ...rest] = list;
       for (const dup of rest) {
-        // Two imports sharing an alias is ONE defect with its own diagnostic
-        // (`DUPLICATE_IMPORT_ALIAS`), which says what to do about it; reporting
-        // it again here would describe one mistake as two.
-        if (dup.kind === "Telo.Import" && first.kind === "Telo.Import") continue;
-        const dupMeta = dup.metadata as { source?: string; sourceLine?: number } | undefined;
-        // The precomputed range matters because editor hosts resolve positions
-        // via a `${file}::${kind}::${name}` lookup, which collides on duplicates.
-        const range =
-          typeof dupMeta?.sourceLine === "number"
-            ? {
-                start: { line: dupMeta.sourceLine, character: 0 },
-                end: { line: dupMeta.sourceLine, character: Number.MAX_SAFE_INTEGER },
-              }
-            : undefined;
-        // A need is written as a `needs:` key on the module doc, which is where
-        // the squiggle belongs.
-        const needOwner = injectedNeedOf(dup)
-          ? (dup.metadata as { module?: string } | undefined)?.module
-          : undefined;
-        const ownerDoc = needOwner
-          ? resources.find((r) => isModuleKind(r.kind) && r.metadata?.name === needOwner)
-          : undefined;
-        // A need's collision is the need table's refusal too, which the kernel
-        // raises as its twin: marked, so a load reports it once.
-        const needTable = injectedNeedOf(dup) || injectedNeedOf(first) ? { [NEED_TABLE_MARK]: true } : {};
-        diagnostics.push({
-          severity: DiagnosticSeverity.Error,
-          code: "DUPLICATE_RESOURCE_NAME",
-          source: SOURCE,
-          message:
-            `${dup.kind}/${name}: ${describeNamed(dup, name)} collides with ` +
-            `${describeNamed(first, name)} declared earlier — the kernel registers both ` +
-            `under '${name}' in one namespace, so boot fails with ERR_DUPLICATE_RESOURCE. ` +
-            `Rename one of them.`,
-          ...(range && !ownerDoc ? { range } : {}),
-          data: ownerDoc
-            ? {
-                resource: { kind: ownerDoc.kind, name: needOwner as string },
-                filePath: dupMeta?.source,
-                path: `needs.${name}`,
-                ...needTable,
-              }
-            : {
-                resource: { kind: dup.kind, name },
-                filePath: dupMeta?.source,
-                path: "metadata.name",
-                ...needTable,
-              },
-        });
+        const found = duplicateNameDiagnostic(dup, first, name, resources);
+        if (found) diagnostics.push(found);
       }
     }
   }
   return diagnostics;
+}
+
+/** `DUPLICATE_RESOURCE_NAME` for `dup` colliding with `first`, declared earlier
+ *  in one namespace. */
+export function duplicateNameDiagnostic(
+  dup: ResourceManifest,
+  first: ResourceManifest,
+  name: string,
+  resources: readonly ResourceManifest[],
+): AnalysisDiagnostic | undefined {
+  // Two imports sharing an alias is ONE defect with its own diagnostic
+  // (`DUPLICATE_IMPORT_ALIAS`), which says what to do about it; reporting
+  // it again here would describe one mistake as two.
+  if (dup.kind === "Telo.Import" && first.kind === "Telo.Import") return undefined;
+  const dupMeta = dup.metadata as { source?: string; sourceLine?: number } | undefined;
+  const dupScope = scopeMemberOf(dup);
+  // The precomputed range matters because editor hosts resolve positions
+  // via a `${file}::${kind}::${name}` lookup, which collides on duplicates.
+  // A scope member is anchored by its path inside its holder instead.
+  const range =
+    !dupScope && typeof dupMeta?.sourceLine === "number"
+      ? {
+          start: { line: dupMeta.sourceLine, character: 0 },
+          end: { line: dupMeta.sourceLine, character: Number.MAX_SAFE_INTEGER },
+        }
+      : undefined;
+  // A need is written as a `needs:` key on the module doc, which is where
+  // the squiggle belongs.
+  const needOwner = injectedNeedOf(dup)
+    ? (dup.metadata as { module?: string } | undefined)?.module
+    : undefined;
+  const ownerDoc = needOwner
+    ? resources.find((r) => isModuleKind(r.kind) && r.metadata?.name === needOwner)
+    : undefined;
+  // A need's collision is the need table's refusal too, which the kernel
+  // raises as its twin: marked, so a load reports it once.
+  const needTable = injectedNeedOf(dup) || injectedNeedOf(first) ? { [NEED_TABLE_MARK]: true } : {};
+  return {
+    severity: DiagnosticSeverity.Error,
+    code: "DUPLICATE_RESOURCE_NAME",
+    source: SOURCE,
+    message:
+      `${dup.kind}/${name}: ${describeNamed(dup, name)} collides with ` +
+      `${describeNamed(first, name)} declared earlier — ` +
+      (dupScope
+        ? `the kernel registers both under '${name}' in the '${dupScope.site.field}' scope ` +
+          `of ${dupScope.holder.kind}/${dupScope.holder.metadata?.name as string}, so opening ` +
+          `that scope fails. `
+        : `the kernel registers both under '${name}' in one namespace, so boot fails with ` +
+          `ERR_DUPLICATE_RESOURCE. `) +
+      `Rename one of them.`,
+    ...(range && !ownerDoc ? { range } : {}),
+    data: ownerDoc
+      ? {
+          resource: { kind: ownerDoc.kind, name: needOwner as string },
+          filePath: dupMeta?.source,
+          path: `needs.${name}`,
+          ...needTable,
+        }
+      : {
+          resource: { kind: dup.kind, name },
+          filePath: dupMeta?.source,
+          path: "metadata.name",
+          ...needTable,
+        },
+  };
 }
 
 /**
@@ -380,6 +415,8 @@ export function validateReferences(
   /** The analysis's own function index and flags, when the caller built them —
    *  one per analysis rather than one per pass. */
   shared?: { readonly functions: ModuleFunctionIndex; readonly flags: CallableFlagsIndex },
+  /** The collisions at module level are judged elsewhere, once. */
+  moduleDuplicatesJudged = false,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const aliases = context.aliases;
@@ -406,9 +443,9 @@ export function validateReferences(
   // excluded from duplicate detection and local name resolution, and never walked as a
   // ref source. Only an EXPORT is a cross-module resolution target.
   const isForeign = isForwardedDeclaration;
-  // Forwarded exported instances keyed `${module}\0${name}` — the lookup that resolves
+  // Forwarded exported instances, read by their module — the lookup that resolves
   // whether a cross-module `!ref Alias.name` names a real exported instance.
-  const byModuleName = new Map<string, ResourceManifest>();
+  const forwardedExports: ResourceManifest[] = [];
   /** Modules whose import subtree was actually loaded in this analysis. A resolved
    *  `Telo.Import` carries `resolvedModuleName` (stamped only once the edge — and thus the
    *  imported module — resolved); forwarded exports carry `metadata.module`. Either marks
@@ -425,13 +462,14 @@ export function validateReferences(
     if (!r.metadata?.name || isKindDocument(r) || !isForwardedExport(r)) continue;
     const m = moduleOf(r);
     if (!m) continue;
-    byModuleName.set(`${m}\0${r.metadata.name as string}`, r);
+    forwardedExports.push(r);
     loadedModules.add(m);
   }
   const moduleLoaded = (module: string): boolean => loadedModules.has(module);
+  const exportedBy = new ScopedNameResolver(forwardedExports, MANIFEST_READING);
   const localResources = resources.filter((r) => !isForeign(r));
 
-  const byNameAll = new Map<string, ResourceManifest[]>();
+  const targets: ResourceManifest[] = [];
   const seen = new Set<string>();
   for (const r of resources) {
     if (!r.metadata?.name || isKindDocument(r) || r.kind === "Telo.Import" || isForeign(r))
@@ -442,24 +480,18 @@ export function validateReferences(
     const fingerprint = `${r.kind} ${name} ${meta.source} ${meta.sourceLine}`;
     if (seen.has(fingerprint)) continue;
     seen.add(fingerprint);
-    const existing = byNameAll.get(name);
-    if (existing) existing.push(r);
-    else byNameAll.set(name, [r]);
+    targets.push(r);
   }
-  diagnostics.push(...duplicateNameDiagnostics(resources, isForeign, moduleOf));
+  diagnostics.push(...duplicateNameDiagnostics(resources, isForeign, moduleOf, moduleDuplicatesJudged));
   // The dot rule that used to live here is now the strictest special case of
   // the identifier grammar in `validate-identifier-names.ts` — a dot is one of
   // several characters that make a name unreferenceable, and checking one of
   // them here while the rest went unchecked is what let a hyphenated name
   // through to silently evaluate as arithmetic.
 
-  // Single-resource map for the resolution / scope lookups below — when a
-  // collision exists, falling back to the first occurrence keeps the rest
-  // of the pass behaving the same as before the duplicate diagnostic was
-  // added (resolution still finds *something*; the duplicate diagnostic
-  // is what surfaces the underlying problem to the user).
-  const byName = new Map<string, ResourceManifest>();
-  for (const [name, list] of byNameAll) byName.set(name, list[0]);
+  // What a bare name resolves to, scope first: a scope member is filed under
+  // its scope, never at module level.
+  const names = new ScopedNameResolver(targets, MANIFEST_READING);
 
   // A function in a slot constrained to a callable abstract satisfies it by
   // structure as well as by `extends` (`callable-slot.ts`). Built on first use:
@@ -477,7 +509,7 @@ export function validateReferences(
           }
         }
         functions = new ModuleFunctionIndex(
-          resources,
+          listRequests(resources),
           registry,
           aliases,
           aliasesByModule ?? new Map(),
@@ -541,7 +573,7 @@ export function validateReferences(
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
         const resourceData = { kind: r.kind, name: r.metadata!.name as string };
         const filePath = (r.metadata as { source?: string } | undefined)?.source;
-        const { value: val, concretePath, entry, visibleScopeManifests } = e;
+        const { value: val, concretePath, entry, within } = e;
 
         // `!ref <name>` sentinel — bare resource name marked at parse time as a
         // reference. Look it up against the slot's x-telo-ref constraint exactly
@@ -560,40 +592,49 @@ export function validateReferences(
           if (aliasPrefix && aliasPrefix !== "Self" && aliases.hasAlias(aliasPrefix)) {
             const module = aliases.moduleForAlias(aliasPrefix);
             if (module && !moduleLoaded(module)) return;
-            diagnostics.push({
+            // A choice nothing decides stands in for the export: it resolves
+            // and is judged by kind only once its choice is decided.
+            if (
+              module &&
+              isStandInDeclaration(
+                exportedBy.inModule(refName.slice(dot + 1), module, importPathThrough(r, aliasPrefix)),
+              )
+            ) {
+              return;
+            }
+            diagnostics.push(
+withQuotedPath({
               severity: DiagnosticSeverity.Error,
               code: "UNRESOLVED_REFERENCE",
               source: SOURCE,
               message: `${resourceLabel}: reference at '${concretePath}' → '${refName}' is not exported by module '${module ?? aliasPrefix}' (add it to exports.resources)`,
               data: { resource: resourceData, filePath, path: concretePath },
-            });
+            }, concretePath),
+);
             return;
           }
 
-          // Local reference (bare name or explicit `Self.`-qualified).
+          // Local reference (bare name or explicit `Self.`-qualified), read scope
+          // first: a shadowed name is validated against the resource the kernel
+          // binds, never the one it shadows.
           const localName = aliasPrefix === "Self" ? refName.slice(dot + 1) : refName;
-          // Scope-local FIRST, enclosing module as the fallback — the order the
-          // runtime uses at every name-resolution site (`ScopeContext.getInstance`,
-          // `ResourceContext.resolveRef`, and the CEL `resources` layering). Module-first
-          // here would validate a shadowed name against the resource the kernel will
-          // never bind: a false pass when the outer kind fits and the scoped one does
-          // not, a false REFERENCE_KIND_MISMATCH when it is the other way round.
-          const target =
-            visibleScopeManifests.find((m) => m.metadata?.name === localName) ??
-            byName.get(localName);
+          const target = names.resolve(localName, moduleOf(r), within);
           if (!target) {
             // A scoped name out of this declaration's reach has its own
             // diagnostic, which says why; this one would say only "not found".
-            if (outsideScopesOf(r).some((scope) => scope.names.includes(localName))) return;
-            diagnostics.push({
+            if (outOfReachNames(r).has(localName)) return;
+            diagnostics.push(
+withQuotedPath({
               severity: DiagnosticSeverity.Error,
               code: "UNRESOLVED_REFERENCE",
               source: SOURCE,
               message: `${resourceLabel}: reference at '${concretePath}' → resource '${localName}' not found`,
               data: { resource: resourceData, filePath, path: concretePath },
-            });
+            }, concretePath),
+);
             return;
           }
+          if (isStandInDeclaration(target)) return;
           const kindErrors = kindVerdict(
             checkKind(target.kind as string, entry, registry, aliases, isInjectedDeclaration(target)),
             target,
@@ -601,13 +642,15 @@ export function validateReferences(
             entry,
           );
           if (kindErrors.length > 0) {
-            diagnostics.push({
+            diagnostics.push(
+withQuotedPath({
               severity: DiagnosticSeverity.Error,
               code: "REFERENCE_KIND_MISMATCH",
               source: SOURCE,
               message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
               data: { resource: resourceData, filePath, path: concretePath },
-            });
+            }, concretePath),
+);
           }
           return;
         }
@@ -654,7 +697,8 @@ export function validateReferences(
         // 1. Neither a reference, an inline declaration nor a value: say what the
         //    slot takes, from its own schema.
         if (!isResolvedReference(refVal)) {
-          diagnostics.push({
+          diagnostics.push(
+withQuotedPath({
             severity: DiagnosticSeverity.Error,
             code: "INVALID_REFERENCE",
             source: SOURCE,
@@ -668,14 +712,13 @@ export function validateReferences(
               ) +
               ".",
             data: { resource: resourceData, filePath, path: concretePath },
-          });
+          }, concretePath),
+);
           return;
         }
 
         // 2. Kind check
-        const objectTarget =
-          visibleScopeManifests.find((m) => m.metadata?.name === refVal.name) ??
-          byName.get(refVal.name);
+        const objectTarget = names.resolve(refVal.name, moduleOf(r), within);
         const crossModule = typeof refVal.alias === "string" && refVal.alias !== "Self";
         const referentModule = crossModule
           ? aliases.moduleForAlias(refVal.alias as string)
@@ -684,20 +727,22 @@ export function validateReferences(
           checkKind(refVal.kind, entry, registry, aliases, isInjectedDeclaration(objectTarget)),
           crossModule
             ? referentModule
-              ? byModuleName.get(`${referentModule}\0${refVal.name}`)
+              ? exportedBy.inModule(refVal.name, referentModule, importPathThrough(r, refVal.alias as string))
               : undefined
             : objectTarget,
           crossModule ? `${refVal.alias}.${refVal.name}` : refVal.name,
           entry,
         );
         if (kindErrors.length > 0) {
-          diagnostics.push({
+          diagnostics.push(
+withQuotedPath({
             severity: DiagnosticSeverity.Error,
             code: "REFERENCE_KIND_MISMATCH",
             source: SOURCE,
             message: `${resourceLabel}: reference at '${concretePath}' → ${kindErrors.join("; ")}`,
             data: { resource: resourceData, filePath, path: concretePath },
-          });
+          }, concretePath),
+);
         }
 
         // 3. Resolution check — resource with this name must exist.
@@ -707,36 +752,48 @@ export function validateReferences(
           // exports when loaded; in partial context (module not loaded) assume resolvable.
           const module = aliases.moduleForAlias(refVal.alias);
           exists =
-            !module || !moduleLoaded(module) || byModuleName.has(`${module}\0${refVal.name}`);
+            !module ||
+            !moduleLoaded(module) ||
+            exportedBy.inModule(refVal.name, module, importPathThrough(r, refVal.alias)) !== undefined;
         } else {
-          exists =
-            byName.has(refVal.name) ||
-            visibleScopeManifests.some((m) => m.metadata?.name === refVal.name);
+          exists = objectTarget !== undefined;
         }
         if (!exists) {
-          diagnostics.push({
+          diagnostics.push(
+withQuotedPath({
             severity: DiagnosticSeverity.Error,
             code: "UNRESOLVED_REFERENCE",
             source: SOURCE,
             message: `${resourceLabel}: reference at '${concretePath}' → resource '${refVal.name}' not found`,
             data: { resource: resourceData, filePath, path: concretePath },
-          });
+          }, concretePath),
+);
         }
       },
       onScope: (e) => {
         const r = e.source;
+        // A set `telo check` did not prepare (the kernel's `prepare()`, an
+        // editor's projection) holds no scope member as a declaration: its
+        // scopes are declared here, as the walk reaches them.
+        if (e.holder) {
+          for (const scope of e.scopes) {
+            names.declareScope({ holder: e.holder, field: scope.path }, scopeMembers(scope));
+          }
+        }
         const resourceLabel = `${r.kind}/${r.metadata!.name as string}`;
         const resourceData = { kind: r.kind, name: r.metadata!.name as string };
         const filePath = (r.metadata as { source?: string } | undefined)?.source;
         for (const { path: concretePath, refName } of e.scopeRefEntries) {
           const scopeField = concretePath.split(/[.[]/)[0];
-          diagnostics.push({
+          diagnostics.push(
+withQuotedPath({
             severity: DiagnosticSeverity.Error,
             code: "SCOPE_ENTRY_NOT_INLINE",
             source: SOURCE,
             message: `${resourceLabel}: scope entry at '${concretePath}' is a reference (\`!ref ${refName}\`), but a scope declares inline resource definitions (a \`kind:\` with its config). Declare the resource inline under '${scopeField}:', or reference an outer resource from a sibling field such as 'targets:'.`,
             data: { resource: resourceData, filePath, path: concretePath },
-          });
+          }, concretePath),
+);
         }
       },
     },
@@ -760,10 +817,10 @@ export function validateReferences(
     aliases,
     aliasesByModule: aliasesByModule ?? new Map(),
     rootModules: new Set<string>(),
-    typeManifests: resources as Record<string, any>[],
+    types: listRequests(resources as ResourceManifest[]),
     // In the reading resource's scope, as the kernel resolves it: a bare
     // name same module first, an alias through that module's import.
-    resolveTarget: (ref: Record<string, any>) => {
+    resolveTarget: (ref: Record<string, any>, path?: string) => {
       if (typeof ref.name !== "string") return undefined;
       if (typeof ref.alias === "string" && ref.alias !== "Self") {
         const target = moduleAliasScope(r.metadata, aliases, aliasesByModule).moduleForAlias(
@@ -771,9 +828,11 @@ export function validateReferences(
         );
         return target === undefined
           ? undefined
-          : (byModuleName.get(`${target}\0${ref.name}`) as Record<string, any> | undefined);
+          : (exportedBy.inModule(ref.name, target, importPathThrough(r, ref.alias)) as
+              | Record<string, any>
+              | undefined);
       }
-      return resolveScopedName(byNameAll.get(ref.name), moduleOf, moduleOf(r)) as
+      return names.resolve(ref.name, moduleOf(r), scopeReadAt(r, path)) as
         | Record<string, any>
         | undefined;
     },
@@ -783,17 +842,22 @@ export function validateReferences(
     const key = `${resourceLabel}\0${failure.code}\0${failure.message}`;
     if (reportedSlotFailures.has(key)) return;
     reportedSlotFailures.add(key);
-    diagnostics.push({
-      severity: DiagnosticSeverity.Error,
-      code: failure.code,
-      source: SOURCE,
-      message: failure.message,
-      data: {
-        resource: { kind: r.kind, name: r.metadata!.name as string },
-        filePath: (r.metadata as { source?: string } | undefined)?.source,
-        path: failure.path,
-      },
-    });
+    diagnostics.push(
+      withQuotedPath(
+        {
+          severity: DiagnosticSeverity.Error,
+          code: failure.code,
+          source: SOURCE,
+          message: failure.message,
+          data: {
+            resource: { kind: r.kind, name: r.metadata!.name as string },
+            filePath: (r.metadata as { source?: string } | undefined)?.source,
+            path: failure.path,
+          },
+        },
+        failure.path,
+      ),
+    );
   };
   visitManifest(
     localResources,
@@ -839,13 +903,18 @@ export function validateReferences(
           if (site.form !== "anchored") {
             const against = site.form === "instance" ? site.source : `schema from '${site.source}'`;
             for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
-              diagnostics.push({
-                severity: DiagnosticSeverity.Error,
-                code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
-                source: SOURCE,
-                message: `${resourceLabel}: '${site.path}' does not match ${against}: ${issue.message}`,
-                data: { resource: resourceData, filePath, path: site.path },
-              });
+              diagnostics.push(
+                withQuotedPath(
+                  {
+                    severity: DiagnosticSeverity.Error,
+                    code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
+                    source: SOURCE,
+                    message: `${resourceLabel}: '${site.path}' does not match ${against}: ${issue.message}`,
+                    data: { resource: resourceData, filePath, path: site.path },
+                  },
+                  site.path,
+                ),
+              );
             }
             continue;
           }
@@ -853,7 +922,7 @@ export function validateReferences(
           // `returns:` list is an array of entries, and reporting every issue on
           // the `returns:` line puts them all on one line and none on the entry.
           for (const issue of registry.validateResourceConfig(substituted, site.schema, standIns)) {
-            diagnostics.push({
+            diagnostics.push(withQuotedPath({
               severity: DiagnosticSeverity.Error,
               code: valueTypeRefusalCode(issue) ?? "DEPENDENT_SCHEMA_MISMATCH",
               source: SOURCE,
@@ -868,7 +937,7 @@ export function validateReferences(
                     ? `${site.path}${issue.path}`
                     : `${site.path}.${issue.path}`,
               },
-            });
+            }, site.path));
           }
         }
       },

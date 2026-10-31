@@ -1,0 +1,21 @@
+# A step written with `__emitted`, the identity only a template's expansion
+# gives a step it emits.
+kind: Telo.Library
+metadata: { name: FamilyEmittedLib }
+imports:
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Steps]
+---
+kind: Telo.Definition
+metadata: { name: Steps }
+capability: Telo.Runnable
+schema:
+  type: object
+resources:
+  - kind: Run.Sequence
+    metadata: { name: sequence }
+    steps:
+      - __emitted: { repeat: runs, key: a }
+        value: 1
+run: !ref sequence

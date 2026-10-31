@@ -8,7 +8,7 @@ import { HarnessHost } from "./harness.js";
 it("answers initialize with its identity and protocol generation", async () => {
   const result = await new HarnessHost().start();
   expect(result.serverInfo).toEqual({ name: "telo", version: TELO_ENGINE_VERSION });
-  expect(result.capabilities.experimental).toEqual({ telo: { protocol: 1, viewModel: true } });
+  expect(result.capabilities.experimental).toEqual({ telo: { protocol: 2, viewModel: true } });
   expect(result.capabilities.semanticTokensProvider.legend.tokenTypes).toEqual([
     ...SEMANTIC_TOKEN_LEGEND,
   ]);

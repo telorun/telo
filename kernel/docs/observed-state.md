@@ -132,12 +132,11 @@ init() {
 - A failed or deferred `init()` discards its report with the attempt; the retry
   reports afresh.
 - The reading is readable in a field that resolves at startup — the provider is
-  initialized before anything reading it is created — except from a resource
-  declared in the same `with:` scope: scoped resources are created when the
-  scope opens, which a startup field cannot see. The read is an init-order
-  edge: `telo check` reports a loop of such reads as `DEPENDENCY_CYCLE`, and the
-  kernel defers a reader whose provider has not initialized yet
-  (`ERR_LOCAL_REF_PENDING`).
+  initialized before anything reading it is created. (A resource declared in a
+  `with:` scope never sees a sibling in `resources` in its own fields at all:
+  `CEL_UNKNOWN_FIELD`.) The read is an init-order edge: `telo check` reports a
+  loop of such reads as `DEPENDENCY_CYCLE`, and the kernel defers a reader whose
+  provider has not initialized yet (`ERR_LOCAL_REF_PENDING`).
 - A provider may keep reporting afterwards; the reading stays sticky.
 
 ```yaml
@@ -175,7 +174,7 @@ The analyzer rejects the rest before the application starts:
 
 | Diagnostic | When |
 | --- | --- |
-| `OBSERVED_STATE_IN_STARTUP_FIELD` | the read sits in a field annotated `x-telo-eval: compile` (or a `Telo.Provider` field, which is implicitly one), and the producer is not a `Telo.Provider` or is one declared in a `with:` scope (the message names the scope) |
+| `OBSERVED_STATE_IN_STARTUP_FIELD` | the read sits in a field annotated `x-telo-eval: compile` (or a `Telo.Provider` field, which is implicitly one), and the producer is not a `Telo.Provider` |
 | `OBSERVED_STATE_NEVER_RUN` | nothing can start the producing resource — it is in no `targets:` list and named by no step's `invoke:` — and it is not a `Telo.Provider` |
 | `CEL_UNKNOWN_FIELD` | the field is not one the kind declares it reports |
 | `OBSERVED_STATE_REQUIRED_FORBIDDEN` | the `status:` block declares `required:` |

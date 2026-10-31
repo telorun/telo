@@ -251,13 +251,21 @@ An application hit is the module itself: `entry: "application"`, `name` its
 `runtime: null`, the `module` object, and its contract as `application`:
 
 ```text
-{ "variables": [{ "name", "description", "required", "env", "default", "arg", "schema" }],
-  "secrets":   [{ "name", "description", "required", "env", "schema" }],
-  "ports":     [{ "name", "description", "required", "env", "default", "arg", "protocol" }] }
+{ "variables":  [{ "name", "description", "required", "requiredWhen"?, "env", "default"?, "arg", "schema" }],
+  "secrets":    [{ "name", "description", "required", "requiredWhen"?, "env", "schema" }],
+  "ports":      [{ "name", "description", "required", "requiredWhen"?, "env", "default"?, "arg", "protocol" }],
+  "dimensions": [{ "key", "values", "env" }] }
 ```
 
-`required` is true when the entry declares no `default:`; `env` is `''` when
-unbound; `arg` is `null`, `{ form: "flag", flag, short }` or
+`required` is true when some configuration of the application requires the
+entry — a manifest read reaches it there — and `requiredWhen` lists the
+configurations that do, as partial assignments keyed by dimension
+(`[{ "secrets.openaiApiKey": "absent" }]`), present only when not every one
+does; `dimensions` names each key's values and the environment variables its
+value is read from, so a reader says "required when OPENAI_API_KEY is unset".
+Both are `telo module manifest --json`'s, which analyses the application's whole
+graph. `default` is present exactly when the entry declares one (`null` for a
+declared `default: null`); `env` is `''` when unbound; `arg` is `null`, `{ form: "flag", flag, short }` or
 `{ form: "position", position }`. A secret carries no `default` and only its
 `type` / `x-telo-type` as `schema` — no value of a secret is stored, indexed or
 served. An application is embedded from its name and description, matched
@@ -620,7 +628,7 @@ modules than it did.
 | `TRACK_CRON` | When the reconcile pass runs, as a 5-field cron in UTC (default `0 * * * *`, hourly) |
 | `TRACK_ENABLED` | `false` disables the periodic reconcile (tests drive `Ingest.scheduleDueVersions` directly) |
 | `BUILTINS_REF` | Where the built-in vocabulary is published, one version per telo release (default `oci://ghcr.io/telorun/telo`). Registered on every boot before `SEED_REFS`, and the only ref a `Telo.Builtins` root is indexed or registered at |
-| `INGEST_REV` | Revision of the ingest pipeline (default `9`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
+| `INGEST_REV` | Revision of the ingest pipeline (default `11`). Raising it makes every tracked version due exactly once — the whole-registry re-ingest control, deployed alongside a change to what ingest extracts |
 | `TELO_COMMAND` | The command the origin reads run, as a JSON array: a program and its leading arguments (default `["telo"]`). It must be the same telo generation as the hub, since ingest reads that CLI's `module manifest --json` contract — including how it reports a `Telo.Builtins` root |
 | `REGISTER_RATE_LIMIT` | Max `POST /register` calls per client IP per window (default `5`) |
 | `REGISTER_RATE_WINDOW` | Sliding window for that limit (default `10m`) |
@@ -873,6 +881,14 @@ UPDATE version_ingest SET claimed_at = NULL WHERE module_id = $1 AND version = $
 Clearing `last_error` alone does **not** make a version due — the digest still
 matches and the revision is still current. Raising `INGEST_REV` re-ingests
 everything, once.
+
+Revision `10` stores an application's requiredness as `telo module manifest
+--json` reports it — each input's `requiredWhen` (`application_inputs.required_when`)
+and the `dimensions` they are keyed by (`module_versions.application_dimensions`),
+with `required` now true only where some configuration requires the entry and a
+`default` served only where one is declared; deploying it re-ingests every
+tracked version once. An application version whose payload carries no
+`dimensions` is refused like one carrying no contract (`INGEST_CONTRACT_MISSING`).
 
 Revision `9` stores a need type's runtime reach as `telo module manifest
 --json` reports it — the kernels that host the need-type controller — where `8`

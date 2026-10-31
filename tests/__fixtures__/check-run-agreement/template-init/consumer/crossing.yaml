@@ -1,0 +1,12 @@
+# A choice reading a declaration of another module through a reference: the
+# library's own configuration is not this consumer's to decide.
+kind: Telo.Application
+metadata:
+  name: TemplateInitCrossing
+imports:
+  Http: ../../../../../modules/http-server
+  Lib: ../crossing-lib
+---
+kind: Lib.Switched
+metadata: { name: byImport }
+target: !ref Lib.shared

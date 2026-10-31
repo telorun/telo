@@ -1,0 +1,19 @@
+# A library referencing its optional input where nothing proves it present.
+kind: Telo.Library
+metadata:
+  name: UnprovenStore
+  version: 0.0.0
+  description: Test fixture holding an optional store with no branch proving it present.
+imports:
+  Kinds: ../../kinds
+resources:
+  store:
+    kind: Kinds.Store
+    optional: true
+exports:
+  resources: [holder]
+---
+kind: Kinds.Holder
+metadata:
+  name: holder
+store: !ref store

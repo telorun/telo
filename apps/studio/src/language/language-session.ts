@@ -168,9 +168,13 @@ export class LanguageSession {
     return undefined;
   }
 
-  /** The module's view model, or `null` when its engine is not analysing it. */
-  viewModel(modulePath: string): Promise<ViewModel | null> {
-    return this.bridge.sendRequest<ViewModel | null>(TeloMethod.viewModel, { owner: this.ownerOf(modulePath) });
+  /** The module's view model, or `null` when its engine is not analysing it.
+   *  `configuration` is the assignment its choices are drawn in. */
+  viewModel(modulePath: string, configuration?: Record<string, unknown>): Promise<ViewModel | null> {
+    return this.bridge.sendRequest<ViewModel | null>(TeloMethod.viewModel, {
+      owner: this.ownerOf(modulePath),
+      ...(configuration ? { configuration } : {}),
+    });
   }
 
   /** Completion inside a CEL value typed into a form field; a `textEdit`

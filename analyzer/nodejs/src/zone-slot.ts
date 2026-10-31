@@ -26,6 +26,15 @@
  */
 
 import { ZONE_ATTRIBUTES, type ZoneAttributes } from "@telorun/sdk";
+import {
+  crossingPlace,
+  placeAt,
+  pointerReads,
+  READS_IDENTITY,
+  READS_SLOT_SCOPES,
+  type ReadPlace,
+  type ReadReporter,
+} from "./read-place.js";
 
 const PROVIDES = "x-telo-provides-zone";
 const REQUIRES = "x-telo-requires-zone";
@@ -223,3 +232,27 @@ export function rewriteRequiresZoneKind(
     if (next !== undefined) obj.zone = next;
   }
 }
+
+/** What `x-telo-provides-zone` reads: the correlation key it names on the
+ *  resource — a zone is told apart by which declaration the key names, so by
+ *  its identity. */
+export const providesZoneReads: ReadReporter = ({ value }) => {
+  const pointer = typeof value === "string" ? value : (value as { key?: unknown } | undefined)?.key;
+  return typeof pointer === "string"
+    ? [{ kind: "reference", keys: placeAt([], pointer), transitive: false, reads: READS_IDENTITY }]
+    : [];
+};
+
+/** What `x-telo-requires-zone` reads: whoever reaches the resource — in each,
+ *  the scope at the slot reaching it, where the zone it runs in is provided —
+ *  and each correlation pointer, which may cross a reference. */
+export const requiresZoneReads: ReadReporter = ({ value }) => {
+  const out: ReadPlace[] = [{ kind: "referrers", reads: READS_SLOT_SCOPES }];
+  const keys = (value as { key?: unknown } | undefined)?.key;
+  for (const pointer of Array.isArray(keys) ? keys : [keys]) {
+    if (typeof pointer === "string") {
+      out.push({ kind: "reference", keys: crossingPlace(pointer), transitive: true, reads: pointerReads([pointer]) });
+    }
+  }
+  return out;
+};

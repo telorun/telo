@@ -1,0 +1,25 @@
+# An input declaring `default: null` may be absent, so CEL reads it as
+# nullable: a read outside a branch proving it present is `CEL_NULLABLE_ACCESS`
+# where it is absent, and a read inside one needs no guard.
+kind: Telo.Application
+metadata:
+  name: NullableInput
+imports:
+  Run: ../../../modules/run
+variables:
+  config:
+    env: CONFIG
+    type: object
+    properties: { host: { type: string } }
+    default: null
+---
+kind: Run.Value
+metadata: { name: unguarded }
+value: !cel "variables.config.host"
+---
+kind: Run.Value
+metadata: { name: guarded }
+value: !if
+  if: !cel "variables.config != null"
+  then: !cel "variables.config.host"
+  else: none

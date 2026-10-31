@@ -1,0 +1,15 @@
+# A library re-exporting an instance whose choice its own open input decides.
+kind: Telo.Library
+metadata:
+  name: ReExportOpen
+imports:
+  Inner:
+    source: ../../../configurations/instances-lib
+    variables:
+      dialect: !cel "variables.name"
+variables:
+  name:
+    type: string
+    default: first
+exports:
+  resources: [Inner.db]

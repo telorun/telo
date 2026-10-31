@@ -102,3 +102,23 @@ it("completes a CEL value typed into a form field", async () => {
   expect(labels).toEqual(celCompletionAt(analysis, request).map((r) => r.label));
   expect(labels).toContain("withVat");
 });
+
+// The picker's choice rides the request: the engine draws that configuration.
+it("draws the module graph in the configuration the request names", async () => {
+  const entry = join(FIXTURES, "..", "..", "..", "..", "tests", "__fixtures__", "configurations", "dialect.yaml");
+  const host = new HarnessHost();
+  await host.start();
+  host.open(entry);
+  await host.until(
+    () => host.notifications.some((n) => n.method === "telo/viewModelChanged" && n.params.owner === canonical(entry)),
+    "telo/viewModelChanged",
+  );
+  const kindOfDb = (model: any) => model.moduleGraph.nodes.find((n: any) => n.name === "db").kind;
+  const byDefault = await host.request("telo/viewModel", { owner: canonical(entry) });
+  const picked = await host.request("telo/viewModel", {
+    owner: canonical(entry),
+    configuration: { "variables.dialect": "memory" },
+  });
+  expect([kindOfDb(byDefault), kindOfDb(picked)]).toEqual(["SQLite.Connection", "Run.Value"]);
+  expect(picked.configurations.selected).toEqual({ "variables.dialect": "memory" });
+});

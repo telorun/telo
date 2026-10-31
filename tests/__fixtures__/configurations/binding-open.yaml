@@ -1,0 +1,24 @@
+# The library's choice bound to a value nothing decides before boot.
+kind: Telo.Application
+metadata:
+  name: BindingOpen
+imports:
+  Run: ../../../modules/run
+  Lib:
+    source: ./binding-lib
+    variables:
+      dialect: !cel "variables.name"
+variables:
+  name:
+    env: NAME
+    type: string
+    default: pg
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: read
+    invoke: !ref Lib.store

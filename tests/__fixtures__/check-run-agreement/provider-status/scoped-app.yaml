@@ -1,5 +1,5 @@
-# Runs the library's sequence. Its scoped startup read is invisible to this
-# entry-scoped check, so the kernel is what refuses it when the scope opens.
+# Runs the library's sequence. Its member's read of a sibling is invisible to
+# this entry-scoped check, so the kernel is what refuses it when the scope opens.
 kind: Telo.Application
 metadata:
   name: ScopedProviderStatusAtStartupApp

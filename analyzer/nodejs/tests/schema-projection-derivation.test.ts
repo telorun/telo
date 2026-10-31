@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { listRequests } from "../src/declaration-requests.js";
 import { libraryDeclarations } from "../src/library-declarations.js";
 import {
-  manifestListScope,
+  projectionScopeOf,
   resolveSchemaProjections,
   type ProjectionFailure,
   type ProjectionModules,
@@ -69,7 +70,7 @@ const project = (
   projectionModules: ProjectionModules,
 ) => {
   const failures: ProjectionFailure[] = [];
-  const scope = manifestListScope(manifests, (kind) => definitions[kind], projectionModules);
+  const scope = projectionScopeOf(listRequests(manifests as any), (kind) => definitions[kind], projectionModules);
   return { resolved: resolveSchemaProjections(slot, consumer, scope, failures), failures };
 };
 

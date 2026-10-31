@@ -249,15 +249,29 @@ export interface ModuleHit {
 
 /** One input an application asks for. `arg` is how the command line supplies
  *  it, `env` the environment variable; a secret has neither `arg` nor
- *  `default`, and only a port has a `protocol`. */
+ *  `default`, a `default` is present only where one is declared, and only a
+ *  port has a `protocol`. `required` is true when some configuration of the
+ *  application requires the input, and `requiredWhen` lists the ones that do
+ *  when not every one does. */
 export interface ApplicationInput {
   name: string;
   description?: string;
   required?: boolean;
+  requiredWhen?: Record<string, unknown>[];
   env?: string;
   default?: unknown;
   arg?: { form: "flag"; flag: string; short?: string } | { form: "position"; position: number } | null;
   protocol?: string;
+}
+
+/** A dimension a `requiredWhen` is keyed by: its values, and the environment
+ *  variables its value is read from. */
+export interface ApplicationDimension {
+  key: string;
+  values: unknown[];
+  env: string[];
+  /** Present on a dimension projecting one member off its input. */
+  member?: string;
 }
 
 /** What an application declares it needs to run. */
@@ -265,6 +279,7 @@ export interface ApplicationContract {
   variables: ApplicationInput[];
   secrets: ApplicationInput[];
   ports: ApplicationInput[];
+  dimensions?: ApplicationDimension[];
 }
 
 export interface ModuleSibling {

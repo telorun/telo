@@ -1,0 +1,10 @@
+# Uses the library's kind; its own check is silent about the library's body.
+kind: Telo.Application
+metadata: { name: FamilyEmittedApp }
+imports:
+  Lib: ../emitted-lib
+targets:
+  - !ref instance
+---
+kind: Lib.Steps
+metadata: { name: instance }

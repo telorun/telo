@@ -1,0 +1,118 @@
+kind: Telo.Application
+metadata:
+  name: TemplateExpansionServersTest
+  version: 1.0.0
+  description: >-
+    One server or two, decided by the instance's ports: equal ports mount both
+    APIs on one server, different ports start a second server for the admin API.
+imports:
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+  - !ref serversStarted
+---
+kind: Run.Value
+metadata: { name: hello }
+value: { message: hello }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /hello, method: GET }
+    handler: !ref hello
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Http.Api
+metadata: { name: admin }
+routes:
+  - request: { path: /hello, method: GET }
+    handler: !ref hello
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+---
+kind: Telo.Definition
+metadata: { name: Service }
+capability: Telo.Service
+schema:
+  type: object
+  required: [port, adminPort, api, admin]
+  properties:
+    port: { type: integer, x-telo-eval: compile }
+    adminPort: { type: integer, x-telo-eval: compile }
+    api: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+    admin: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+targets:
+  - kind: Http.Server
+    listen:
+      port: !cel "self.port"
+    mounts:
+      - { path: /, mount: !cel "self.api" }
+      - !if
+        if: !cel "self.adminPort == self.port"
+        then: { path: /admin, mount: !cel "self.admin" }
+  - !if
+    if: !cel "self.adminPort != self.port"
+    then:
+      kind: Http.Server
+      listen:
+        port: !cel "self.adminPort"
+      mounts:
+        - { path: /, mount: !cel "self.admin" }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Self.Service
+    metadata: { name: same }
+    port: 9751
+    adminPort: 9751
+    api: !ref api
+    admin: !ref admin
+  - kind: Self.Service
+    metadata: { name: differ }
+    port: 9752
+    adminPort: 9753
+    api: !ref api
+    admin: !ref admin
+targets:
+  - !ref same
+  - !ref differ
+steps:
+  - name: sameApi
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:9751/hello", method: GET }
+  - name: sameAdmin
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:9751/admin/hello", method: GET }
+  - name: differApi
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:9752/hello", method: GET }
+  - name: differAdmin
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:9753/hello", method: GET }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.sameApi.result.body.message"
+        - !cel "steps.sameAdmin.result.body.message"
+        - !cel "steps.differApi.result.body.message"
+        - !cel "steps.differAdmin.result.body.message"
+      expected: [hello, hello, hello, hello]
+---
+# Two instances start three servers: `same` the first only, `differ` both.
+kind: Assert.Events
+metadata: { name: serversStarted }
+filter:
+  - type: "*.Run"
+expect:
+  - event: "targets_0.Run"
+    times: 2
+  - event: "targets_1_then.Run"
+    times: 1

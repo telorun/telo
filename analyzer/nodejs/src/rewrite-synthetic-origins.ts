@@ -1,5 +1,6 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AnalysisDiagnostic } from "./types.js";
+import { reportedAtHolder } from "./quoted-place.js";
 
 interface XTeloOrigin {
   parentKind: string;
@@ -67,7 +68,7 @@ export function rewriteSyntheticOrigins(
     const unfolded = current ? unfoldScopedOrigins(current, accumPath) : accumPath;
     if (!rerouted && unfolded === path) return d;
 
-    return {
+    const moved = {
       ...d,
       data: {
         ...data,
@@ -78,6 +79,7 @@ export function rewriteSyntheticOrigins(
         path: unfolded,
       },
     };
+    return rerouted ? reportedAtHolder(moved, unfolded, data.resource, root) : moved;
   });
 }
 

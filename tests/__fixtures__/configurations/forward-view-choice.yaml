@@ -1,0 +1,53 @@
+# A consumer of a templated kind forwards its steps into the body's sequence,
+# one step reading a string where flag1 takes its branch; and the body declares
+# a second sequence, forwarding `more`, only where the consumer's `extra` —
+# bound to flag2 — holds. Each forwarded value is checked as the entry's own
+# field, where that entry exists.
+kind: Telo.Application
+metadata:
+  name: ForwardViewChoice
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref wrapped
+---
+kind: Telo.Definition
+metadata:
+  name: Wrapped
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    extra: { type: boolean, x-telo-eval: compile }
+    steps: { type: array }
+    more: { type: array }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: sequence }
+    steps: !cel "self.steps"
+  - !if
+    metadata: { name: chosen }
+    if: !cel "self.extra"
+    then:
+      kind: Run.Sequence
+      steps: !cel "self.more"
+run: !ref sequence
+---
+kind: ForwardViewChoice.Wrapped
+metadata:
+  name: wrapped
+extra: !cel "variables.flag2"
+steps:
+  - name: first
+    value: 1
+  - name: second
+    value: !if
+      if: !cel "variables.flag1"
+      then: !cel "steps.first.result + 'x'"
+      else: 2
+more:
+  - name: extraStep
+    value: !cel "1 + 'x'"

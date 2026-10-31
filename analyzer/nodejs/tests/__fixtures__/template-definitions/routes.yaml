@@ -1,0 +1,78 @@
+# The routes example: two routes per hook, interleaved per hook, and a nested
+# loop over each table's operations — checked with no consumer.
+kind: Telo.Library
+metadata:
+  name: Hooks
+imports:
+  Http: ../../../../../modules/http-server
+exports:
+  kinds: [Receiver]
+---
+kind: Telo.Definition
+metadata:
+  name: Receiver
+capability: Telo.Mount
+schema:
+  type: object
+  required: [hooks, tables]
+  properties:
+    hooks:
+      type: object
+      additionalProperties:
+        type: object
+        required: [handler, status]
+        properties:
+          handler: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+          status: { x-telo-ref: { kind: [Telo.Invocable, Telo.Mount], use: call } }
+          secret: { type: string }
+    tables:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          operations:
+            type: array
+            items:
+              type: object
+              properties:
+                name: { type: string }
+                handler: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+resources:
+  - kind: Http.Api
+    metadata:
+      name: api
+    routes:
+      - !for-each
+        in: !cel "self.hooks"
+        as: hook
+        emit:
+          - request:
+              path: !interpolate "/hooks/${{ hook.key }}"
+              method: POST
+            inputs:
+              source: !cel "hook.key"
+              secret: !cel "hook.value.secret"
+            handler: !cel "hook.value.handler"
+            returns:
+              - status: 202
+          - request:
+              path: !interpolate "/hooks/${{ hook.key }}"
+              method: GET
+            handler: !cel "hook.value.status"
+            returns:
+              - status: 200
+      - !for-each
+        in: !cel "self.tables"
+        as: table
+        emit:
+          - !for-each
+            in: !cel "table.value.operations"
+            as: op
+            emit:
+              request:
+                path: !interpolate "/${{ table.key }}/${{ op.value.name }}"
+                method: POST
+              handler: !cel "op.value.handler"
+              returns:
+                - status: 200
+mount: !ref api

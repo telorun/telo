@@ -1,0 +1,106 @@
+kind: Telo.Application
+metadata:
+  name: TemplateExpansionRoutesTest
+  version: 1.0.0
+  description: >-
+    A mount whose routes are repeated per hook the instance lists: each route is
+    served and documented in the OpenAPI document, a handler forwarded from the
+    hook is the instance the consumer wrote, and an inline handler an emitted
+    route holds is created per hook and reads its hook.
+imports:
+  Http: ../modules/http-server
+  HttpClient: ../modules/http-client
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+---
+kind: Telo.Definition
+metadata: { name: Receiver }
+capability: Telo.Mount
+schema:
+  type: object
+  required: [hooks]
+  properties:
+    hooks:
+      type: object
+      additionalProperties:
+        type: object
+        required: [handler]
+        properties:
+          handler: { x-telo-ref: { kind: Telo.Invocable, use: call } }
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes:
+      - !for-each
+        in: !cel "self.hooks"
+        as: hook
+        emit:
+          - request:
+              path: !interpolate "/hooks/${{ hook.key }}"
+              method: POST
+            handler: !cel "hook.value.handler"
+            returns:
+              - status: 202
+          - request:
+              path: !interpolate "/hooks/${{ hook.key }}/who"
+              method: GET
+            handler:
+              kind: Run.Value
+              value: !cel "hook.key"
+            returns:
+              - status: 200
+                content:
+                  application/json:
+                    body: { hook: !cel "result" }
+mount: !ref api
+---
+kind: Run.Value
+metadata: { name: accept }
+value: { accepted: true }
+---
+kind: Self.Receiver
+metadata: { name: receiver }
+hooks:
+  github: { handler: !ref accept }
+  pager: { handler: !ref accept }
+---
+kind: Http.Reference
+metadata: { name: docs }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { port: 9754 }
+    openapi:
+      info: { title: Hooks, version: 1.0.0 }
+    mounts:
+      - { path: /, mount: !ref receiver }
+      - { path: /docs, mount: !ref docs }
+targets:
+  - !ref server
+steps:
+  - name: post
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:9754/hooks/github", method: POST }
+  - name: who
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:9754/hooks/pager/who", method: GET }
+  - name: openapi
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:9754/docs/openapi.json", method: GET }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.post.result.status"
+        who: !cel "steps.who.result.body.hook"
+        documented:
+          - !cel "'/hooks/github' in steps.openapi.result.body.paths"
+          - !cel "'/hooks/pager' in steps.openapi.result.body.paths"
+          - !cel "'/hooks/github/who' in steps.openapi.result.body.paths"
+          - !cel "'/hooks/pager/who' in steps.openapi.result.body.paths"
+      expected:
+        status: 202
+        who: pager
+        documented: [true, true, true, true]

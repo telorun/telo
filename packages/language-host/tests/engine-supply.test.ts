@@ -10,7 +10,7 @@ const text = (bytes: Uint8Array) => new TextDecoder().decode(bytes);
 async function setup() {
   const registry = await fakeRegistry(["0.103.0"]);
   const catalog = await loadCatalog({
-    speaks: [1],
+    speaks: [2],
     cache: { read: async () => undefined, write: async () => undefined },
     fetch: registry.fetch,
     warn: (message) => {
@@ -29,7 +29,7 @@ async function setup() {
       version: "0.103.0",
       catalog,
       cache,
-      speaks: [1],
+      speaks: [2],
       fetch: registry.fetch,
       warn: (m) => warnings.push(m),
     });

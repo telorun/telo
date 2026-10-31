@@ -32,6 +32,7 @@ import {
   textFragmentOf,
   type ValuePath,
 } from "./text-slot.js";
+import { enclosingKeys, placeAt, type ReadReporter } from "./read-place.js";
 
 type Schema = Record<string, any>;
 
@@ -235,3 +236,8 @@ export function judgeDeclaredValues(
     problem.code === "MESSAGE_PLACEHOLDER_UNBOUND" ? { ...problem, message: `${problem.message}, but ${advice}` } : problem,
   );
 }
+
+/** What `x-telo-text-values-for` reads: the text the values bind, from the
+ *  enclosing value. */
+export const textValuesForReads: ReadReporter = ({ value, at }) =>
+  typeof value === "string" ? [{ kind: "value", keys: placeAt(enclosingKeys(at), value) }] : [];

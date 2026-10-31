@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://telo.run/schemas/editor-protocol.json",
-  "title": "Telo editor protocol, generation 1",
+  "title": "Telo editor protocol, generation 2",
   "description": "The messages an editor host and a telo language-server engine exchange beyond LSP itself. Each request — host-served (engine to host) or engine-served (host to engine) — has a `<Name>Params` and a `<Name>Result` definition; `RequirementsParams` and `ViewModelChangedParams` are the engine-to-host `telo/requirements` and `telo/viewModelChanged` notifications; `TeloDiagnosticData` is what an engine puts in `Diagnostic.data`; `ExperimentalCapabilities` is what an engine advertises under `ServerCapabilities.experimental`. `x-telo-methods` maps each method name to its definitions. Objects are open and enumerations list the values known to this generation: a receiver ignores a member it does not know and reads an unknown enumeration value as its least-capable value (README.md, Generations). See README.md for the handshake and the generation rule.",
   "x-telo-methods": {
     "telo/read": {
@@ -340,6 +340,10 @@
       "properties": {
         "owner": {
           "type": "string"
+        },
+        "configuration": {
+          "description": "The assignment to draw the module graph in; a dimension left out takes its default.",
+          "type": "object"
         }
       }
     },
@@ -605,6 +609,9 @@
           "additionalProperties": {
             "type": "integer"
           }
+        },
+        "configurations": {
+          "$ref": "#/$defs/ViewModelConfigurations"
         }
       }
     },
@@ -916,6 +923,18 @@
         },
         "root": {
           "type": "boolean"
+        },
+        "choice": {
+          "$ref": "#/$defs/GraphChoice"
+        },
+        "choices": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphChoice"
+          }
+        },
+        "family": {
+          "$ref": "#/$defs/GraphRepeat"
         }
       }
     },
@@ -1016,6 +1035,7 @@
                 "step",
                 "entry",
                 "target",
+                "repeat",
                 "inline",
                 "reference",
                 "export"
@@ -1115,6 +1135,12 @@
         },
         "unknownKind": {
           "type": "boolean"
+        },
+        "repeat": {
+          "$ref": "#/$defs/GraphRepeat"
+        },
+        "emitted": {
+          "type": "string"
         }
       }
     },
@@ -1374,6 +1400,12 @@
         },
         "path": {
           "type": "string"
+        },
+        "configurations": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
         }
       }
     },
@@ -1392,6 +1424,111 @@
           "items": {
             "type": "string"
           }
+        }
+      }
+    },
+    "GraphAlternative": {
+      "type": "object",
+      "required": [
+        "key"
+      ],
+      "properties": {
+        "key": {
+          "description": "then, else, default, a case key, or absent (an if with no else whose condition is false).",
+          "type": "string"
+        },
+        "kind": {
+          "description": "At a declaration position, the kind the branch declares.",
+          "type": "string"
+        }
+      }
+    },
+    "GraphChoice": {
+      "type": "object",
+      "required": [
+        "path",
+        "tag",
+        "alternatives",
+        "selected"
+      ],
+      "properties": {
+        "path": {
+          "description": "\"\" for the declaration itself, else the written path of the field.",
+          "type": "string"
+        },
+        "tag": {
+          "enum": [
+            "if",
+            "switch"
+          ]
+        },
+        "alternatives": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphAlternative"
+          }
+        },
+        "selected": {
+          "description": "The alternative key the selected configuration takes; null when it takes none.",
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "GraphRepeat": {
+      "type": "object",
+      "required": [
+        "source",
+        "as"
+      ],
+      "properties": {
+        "source": {
+          "type": "string"
+        },
+        "as": {
+          "type": "string"
+        }
+      }
+    },
+    "GraphDimension": {
+      "type": "object",
+      "required": [
+        "key",
+        "values",
+        "default"
+      ],
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "values": {
+          "type": "array"
+        },
+        "default": {}
+      }
+    },
+    "ViewModelConfigurations": {
+      "description": "The configurations the owner's module graph can be drawn in: its dimensions and the assignment the graph is drawn in.",
+      "type": "object",
+      "required": [
+        "dimensions",
+        "selected"
+      ],
+      "properties": {
+        "dimensions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/GraphDimension"
+          }
+        },
+        "selected": {
+          "type": "object"
         }
       }
     }

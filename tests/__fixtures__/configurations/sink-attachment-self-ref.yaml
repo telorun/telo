@@ -1,0 +1,23 @@
+# `!ref Self.<name>` attaches as `!ref <name>` does: the sink is attached in
+# every configuration, whichever branch the boot target's choice takes.
+kind: Telo.Application
+metadata:
+  name: SinkAttachmentSelfRef
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+tracing:
+  sinks: [!ref Self.traces]
+targets:
+  - !if
+    if: !cel "variables.flag1"
+    then: !ref job
+---
+kind: Run.Sequence
+metadata: { name: job }
+steps:
+  - { name: a, value: 1 }
+---
+kind: Telo.LogTraceSink
+metadata: { name: traces }

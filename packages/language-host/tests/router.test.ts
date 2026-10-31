@@ -51,6 +51,18 @@ describe("the language router", () => {
     expect(harness.engine("0.103.0")!.opened()).toEqual([OWNER, PARTIAL]);
   });
 
+  // Generation 1 listed complete assignments, which read correctly as partial ones.
+  it("routes an owner to a published engine of editor protocol generation 1", async () => {
+    const registry = await fakeRegistry(["0.103.0"], {}, undefined, () => 1);
+    const harness = new RouterHarness({ fetch: registry.fetch, protocols: { "0.103.0": 1 } });
+    harness.requirements.set(OWNER, requirementsFor(OWNER, [OWNER], [{ module: OWNER, text: ">=0.103.0", min: "0.103.0" }]));
+    await harness.initialize();
+    await harness.router.markVersions();
+    harness.open(OWNER);
+    await onEngine(harness, "0.103.0", OWNER);
+    expect(harness.engine(BUNDLED)!.opened()).toEqual([]);
+  });
+
   // The editor and an engine may spell one location differently (Monaco
   // encodes parentheses, an engine need not); identity is the canonical form.
   it("routes and shows diagnostics across spellings of one location", async () => {
@@ -467,7 +479,7 @@ describe("the language router", () => {
         textDocumentSync: 1,
         completionProvider: { triggerCharacters: [":"] },
         hoverProvider: {},
-        experimental: { telo: { protocol: 1 } },
+        experimental: { telo: { protocol: 2 } },
       });
       await new Promise((r) => setTimeout(r, 20));
       expect(harness.registrations).toEqual([]);

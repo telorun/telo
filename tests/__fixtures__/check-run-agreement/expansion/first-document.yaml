@@ -1,0 +1,8 @@
+--- !if
+metadata: { name: first }
+if: true
+then: { kind: Run.Value, value: 1 }
+---
+kind: Telo.Application
+metadata:
+  name: FirstDocument

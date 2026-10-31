@@ -28,6 +28,10 @@ with:
           method: POST
           schema:
             body: { type: object, additionalProperties: true }
+            headers:
+              type: object
+              properties:
+                x-team: { type: string }
         handler:
           kind: Run.Value
           value: {}

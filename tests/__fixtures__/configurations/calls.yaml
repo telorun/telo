@@ -1,0 +1,51 @@
+# A choice decided by a module function written in CEL: evaluated per
+# configuration, by `telo check` and by the kernel alike.
+kind: Telo.Application
+metadata:
+  name: CallChoice
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+variables:
+  env:
+    env: APP_ENV
+    type: string
+    enum: [prod, dev]
+    default: dev
+  expected:
+    env: EXPECTED_TIER
+    type: string
+    default: development
+targets:
+  - !ref main
+---
+kind: Telo.Function
+metadata:
+  name: isProd
+params:
+  - name: env
+    schema: { type: string }
+returns:
+  schema: { type: boolean }
+body: !cel "env == 'prod'"
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: tier
+    value: !if
+      if: !cel "Self.isProd(variables.env)"
+      then: production
+      else: development
+  # The same function over a literal: one branch in every configuration.
+  - name: constant
+    value: !if
+      if: !cel "Self.isProd('prod')"
+      then: always
+      else: never
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.tier.result"
+      expected: !cel "variables.expected"

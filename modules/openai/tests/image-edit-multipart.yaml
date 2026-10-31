@@ -69,6 +69,11 @@ with:
               x-telo-type:
                 name: Telo.Stream
                 of: Telo.Bytes
+            headers:
+              type: object
+              properties:
+                content-type: { type: string }
+                authorization: { type: string }
         inputs:
           input: !cel "request.body"
           contentType: !cel "request.headers['content-type']"

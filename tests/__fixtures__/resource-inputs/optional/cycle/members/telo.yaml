@@ -1,0 +1,18 @@
+# Borrows the collector its importer declares, and exports a member of it.
+kind: Telo.Library
+metadata:
+  name: Members
+  version: 0.0.0
+  description: Test fixture borrowing a collector and exporting a member it lists.
+imports:
+  Kinds: ../../kinds
+resources:
+  collector:
+    kind: Kinds.Collector
+exports:
+  resources: [member]
+---
+kind: Kinds.Store
+metadata:
+  name: member
+label: member

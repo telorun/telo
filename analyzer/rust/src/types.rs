@@ -39,6 +39,9 @@ pub enum LoadError {
     // as the underlying error to chain to.
     #[error("failed to parse `{path}`: {message}")]
     Parse { path: String, message: String },
+    /// A document the loaders refuse under a diagnostic code of its own.
+    #[error("`{path}`: [{code}] {message}")]
+    Refused { path: String, code: String, message: String },
 }
 
 /// `kind` of a resource document.

@@ -1,9 +1,14 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { listRequests } from "./declaration-requests.js";
 import { AliasResolver } from "./alias-resolver.js";
 import { KERNEL_BUILTINS } from "./builtins.js";
 import { isCapabilityRole } from "./capability-roster.js";
 import type { BuildModuleGraphOptions, ModuleGraphDeps } from "./module-graph.js";
+import { choiceScopeOf } from "./choice-scope.js";
 import { ManifestAnalysis } from "./manifest-analysis.js";
+import { parseCanonicalTypeSchemaId } from "@telorun/sdk";
+import { isModuleKind } from "./module-kinds.js";
+import { configuredNamedShapes, declaresNamedShape, libraryNamedShapes } from "./configured-named-shapes.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import {
   derivedSlotsOf as readDerivedSlots,
@@ -33,6 +38,10 @@ import type { LibraryDeclarations } from "./library-declarations.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { possibleUses, type RefSlot } from "./ref-slot.js";
 import { producedOutputContract, referenceOutputRefusal } from "./validate-reference-output.js";
+import { celScopeHolderOf } from "./validate-observed-state.js";
+
+/** Where a kind's contract is read with no manifest set: no named shape resolves. */
+const NO_DECLARATIONS = listRequests([]);
 
 const TELO_BUILTIN_MODULE = "Telo";
 
@@ -81,7 +90,11 @@ export class AnalysisRegistry {
    *  definition — read on every editor question, so walked once per analysis. */
   private governedSites = new WeakMap<ResourceDefinition, CelEvalSites | null>();
 
-  constructor(scope?: AnalysisRegistryScope) {
+  /** Set on a {@link forConfiguration} view: the named shapes it reads. */
+  private readonly configuredShapes?: NamedShapeLookup;
+
+  constructor(scope?: AnalysisRegistryScope, configuredShapes?: NamedShapeLookup) {
+    this.configuredShapes = configuredShapes;
     this.defs = scope?.defs ?? new DefinitionRegistry();
     this.aliases = scope?.aliases ?? new AliasResolver();
     this.aliasesByModule = scope?.aliasesByModule ?? new Map();
@@ -132,6 +145,57 @@ export class AnalysisRegistry {
     return view;
   }
 
+  /**
+   * This registry as a RUNNING configuration holds it: `expanded` is the
+   * module's declarations expanded for the configuration it runs in. A named
+   * shape no configuration varies is answered by the shared registry; one the
+   * configurations vary, by the shapes `expanded` declares — canonical in their
+   * declaring module, `extends` folded, a library's beside — built by the
+   * function the analysis reads a witness's shapes with. Every read of a named
+   * shape (`shapeLookup`, the reference reach, the governed eval sites) goes
+   * through that lookup. Nothing is registered into the shared registry, and the
+   * view lives as long as whoever holds it.
+   *
+   * Take it from the module's own view (`forModule`) for a library, so its alias
+   * table is the scope the shapes are canonicalized in. A view taken from a
+   * configuration view does not carry the lookup.
+   */
+  forConfiguration(expanded: readonly ResourceManifest[]): AnalysisRegistry {
+    const rootModules = new Set<string>();
+    for (const m of expanded) {
+      if (isModuleKind(m.kind) && typeof m.metadata?.name === "string") rootModules.add(m.metadata.name);
+    }
+    const scope = { defs: this.defs, aliases: this.aliases, aliasesByModule: this.aliasesByModule, rootModules };
+    let folded: ReturnType<typeof configuredNamedShapes> | undefined;
+    const configured: NamedShapeLookup = (id) => {
+      const named = parseCanonicalTypeSchemaId(id);
+      if (!named) return undefined;
+      folded ??= configuredNamedShapes(
+        expanded.filter((m) => declaresNamedShape(m, scope)),
+        scope,
+        libraryNamedShapes(
+          { moduleDocuments: this.libraries.documents },
+          this.defs,
+          this.aliases,
+          this.aliasesByModule,
+          rootModules,
+        ),
+      );
+      return folded(named.moduleName, named.typeName);
+    };
+    const lookup: NamedShapeLookup = (id) => this.defs.schemaForId(id) ?? configured(id);
+    return new AnalysisRegistry(
+      {
+        defs: this.defs,
+        aliases: this.aliases,
+        aliasesByModule: this.aliasesByModule,
+        views: this.views,
+        libraries: this.libraries,
+      },
+      lookup,
+    );
+  }
+
   registerDefinition(def: ResourceDefinition): void {
     this.defs.register(def);
   }
@@ -180,7 +244,7 @@ export class AnalysisRegistry {
    */
   derivedSlotsOf(
     resource: ResourceManifest,
-    host: Pick<DerivedSlotContext, "rootModules" | "typeManifests" | "resolveTarget">,
+    host: Pick<DerivedSlotContext, "rootModules" | "types" | "resolveTarget">,
   ): DerivedSlot[] {
     return readDerivedSlots(resource, {
       defs: this.defs,
@@ -200,10 +264,10 @@ export class AnalysisRegistry {
   namedShapeOf(
     typeField: unknown,
     holder: Record<string, any>,
-    host: Pick<DerivedSlotContext, "rootModules" | "typeManifests">,
+    host: Pick<DerivedSlotContext, "rootModules" | "types">,
   ): NamedContractShape | undefined {
     return resolveNamedShape(typeField, holder, {
-      typeManifests: host.typeManifests,
+      declarations: host.types,
       modules: projectionModules(this.defs, this.aliases, {
         aliasesByModule: this.aliasesByModule,
         rootModules: host.rootModules,
@@ -221,7 +285,7 @@ export class AnalysisRegistry {
   /** The named-shape lookup every eval-site walk takes — {@link schemaForId} —
    *  so the kernel reaches the sites `telo check` reads. */
   get shapeLookup(): NamedShapeLookup {
-    return this.defs.shapeLookup;
+    return this.configuredShapes ?? this.defs.shapeLookup;
   }
 
   /**
@@ -232,7 +296,7 @@ export class AnalysisRegistry {
    * enumeration.
    */
   referenceSitesOf(resource: ResourceManifest, data: unknown = resource): ReachSite[] {
-    return this.defs.referenceSites(resource, this.aliases, this.aliasesByModule, data);
+    return this.defs.referenceSites(resource, this.aliases, this.aliasesByModule, data, this.configuredShapes);
   }
 
   /**
@@ -243,7 +307,7 @@ export class AnalysisRegistry {
    * refuse one before it evaluates (`ERR_REF_SLOT_COMPUTED`).
    */
   referencePositionsOf(resource: ResourceManifest, data: unknown = resource): ReachPosition[] {
-    return this.defs.referencePositions(resource, this.aliases, this.aliasesByModule, data);
+    return this.defs.referencePositions(resource, this.aliases, this.aliasesByModule, data, this.configuredShapes);
   }
 
   /**
@@ -256,7 +320,7 @@ export class AnalysisRegistry {
    * targets, inline picker for ambient targets).
    */
   refFieldsForResource(resource: ResourceManifest): RefFieldInfo[] {
-    const declared = this.defs.declaredReachOf(resource, this.aliases, this.aliasesByModule);
+    const declared = this.defs.declaredReachOf(resource, this.aliases, this.aliasesByModule, this.configuredShapes);
     if (!declared) return [];
     return declared.references.map(({ path, isArray, kinds }) => ({
       path,
@@ -339,7 +403,7 @@ export class AnalysisRegistry {
     // analysis pass is what resolves and reports them.
     return resolveContract(direction, undefined, def, {
       resolveDefinition: this.scopedDefResolver(),
-      typeManifestsFor: () => [],
+      declarationsFor: () => NO_DECLARATIONS,
     })?.schema;
   }
 
@@ -363,7 +427,7 @@ export class AnalysisRegistry {
       producedOutputContract(
         target,
         definition,
-        { resolveDefinition: this.scopedDefResolver(), typeManifestsFor: () => [] },
+        { resolveDefinition: this.scopedDefResolver(), declarationsFor: () => NO_DECLARATIONS },
         this.defs,
       ),
       this.defs,
@@ -468,6 +532,7 @@ export class AnalysisRegistry {
         libraries: this.libraries.current,
       },
       this.libraries.documents ?? [],
+      (set, needTable) => choiceScopeOf(set, this, undefined, needTable),
     );
   }
 
@@ -515,6 +580,8 @@ export class AnalysisRegistry {
             : [],
         ),
       definition: (kind, module) => this.resolveDefinitionIn(kind, module),
+      celScopeHolder: (resource) =>
+        celScopeHolderOf(resource, this.defs, this.aliases, this.aliasesByModule).holder,
       aliasesForModule: (module) => this.aliases.aliasesFor(module),
       throwsOf: (resource) => {
         const union = resolveThrowsUnion(resource, throwsCtx);
@@ -687,7 +754,7 @@ export class AnalysisRegistry {
     if (!this.governedSites.has(definition)) {
       this.governedSites.set(
         definition,
-        governedCelEvalSites(definition, this.scopedDefResolver(), this.defs.shapeLookup) ?? null,
+        governedCelEvalSites(definition, this.scopedDefResolver(), this.shapeLookup) ?? null,
       );
     }
     return this.governedSites.get(definition) ?? undefined;

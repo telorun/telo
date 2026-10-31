@@ -2508,6 +2508,10 @@ export function Editor() {
                         viewModels && state.activeModulePath
                           ? () => viewModels.retry(state.activeModulePath!)
                           : undefined,
+                      onPickConfiguration:
+                        viewModels && state.activeModulePath
+                          ? (configuration) => viewModels.configure(state.activeModulePath!, configuration)
+                          : undefined,
                       onOpenSourceView: () =>
                         setState((s) => ({ ...s, activeView: "source" as ViewId })),
                       structuredModel,

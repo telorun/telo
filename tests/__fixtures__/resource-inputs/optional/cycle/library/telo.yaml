@@ -1,0 +1,22 @@
+# Hands its collector to the library whose member the collector lists: the
+# import initializes after the collector, and the member exists only once it
+# has — a cycle through the import.
+kind: Telo.Library
+metadata:
+  name: CollectorCycle
+  version: 0.0.0
+  description: Test fixture listing a member of the library it hands its collector to.
+imports:
+  Kinds: ../../kinds
+  Lib:
+    source: ../members
+    resources:
+      collector: !ref collector
+exports:
+  resources: [collector]
+---
+kind: Kinds.Collector
+metadata:
+  name: collector
+members:
+  - !ref Lib.member

@@ -1,0 +1,39 @@
+# A kind's schema reaches a named shape with a member a choice decides through
+# `$ref: telo://…`: the declaration's value for that member is refused only
+# where the member is left out of the closed shape.
+kind: Telo.Application
+metadata:
+  name: ShapeSchemaValue
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref op
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Result
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    x: !if
+      if: !cel "variables.flag1"
+      then: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Runnable
+
+schema:
+  type: object
+  properties:
+    payload: { $ref: "telo://Self/Result" }
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+---
+kind: Self.Op
+metadata:
+  name: op
+payload: { x: 1 }

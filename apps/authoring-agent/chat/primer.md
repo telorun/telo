@@ -130,7 +130,11 @@ lists them as `targets: [!ref a, !ref b]`; writing `targets:` beside `run:` is
 `TEMPLATE_TARGETS_WITH_RUN`, and `targets:` on a kind whose capability is not
 `Telo.Service` or `Telo.Runnable` is `TEMPLATE_TARGETS_CAPABILITY`. Inside
 such a body `self` (the instance's configuration) may be mixed with a
-call-time name in one expression (`!cel "self.table + ':' + inputs.id"`). And an
+call-time name in one expression (`!cel "self.table + ':' + inputs.id"`). Inside the body
+CEL `resources` also holds the body's own entries over the module's (a sibling's
+`resources.tally.status.runs`, a `!for-each` family as a map by element key:
+`resources.crons[each.key].status.lastRun`), a body name shadowing a module resource of
+the same name; a module resource cannot read a body entry (`CEL_UNKNOWN_FIELD`). And an
 `extends` child WITHOUT `base:` that redeclares a field it inherits changes
 only that field's schema (it may narrow it): the parent still publishes its
 own reading of the field, so `resources.<child>.<field>` reads what the parent
@@ -183,7 +187,7 @@ Provider's config, such as a database-access fulfilment's URL members:
 `url: { scheme: postgres, host: !cel "resources.pg.status.host", port: !cel "resources.pg.status.port", user: app, path: /app }`.
 That read orders `pg` first; two Providers reading each other at startup are
 `DEPENDENCY_CYCLE`. A Service's or Runnable's status there is still
-`OBSERVED_STATE_IN_STARTUP_FIELD` — read it in a step's `inputs:` instead. So is a Provider declared in a `Run.Sequence`'s `with:`, read from a scoped sibling's startup field: scoped resources are created only when the scope opens.
+`OBSERVED_STATE_IN_STARTUP_FIELD` — read it in a step's `inputs:` instead. A `with:` member's own fields cannot read a sibling in `resources` at all; read it in the sequence's steps.
 A `Telo.Abstract` may declare `status:` to mandate what its
 implementations report; an implementation's own block MERGES with it, and the
 consumer does not need to import the abstract's library to read either half.
@@ -1068,10 +1072,100 @@ resource or one from the enclosing module; scope-local wins, exactly as CEL's
 a `with:` block may reference each other — a listener and the step that waits on
 it, for instance.
 
+`telo check` checks every `with:` member as a resource of its own — its fields
+against its kind, its references, its CEL — and reports each finding at the
+member's place inside the sequence (`with[0].port`). `resources.<member>` is
+readable only inside the sequence's own `steps:` / `targets:`, outside fields
+evaluated at load — not in another member's fields and not inside a nested
+sequence's steps, where a sibling is
+reached with `!ref`; read anywhere else it is an unknown field. Two members of one
+`with:` block cannot share a name, but a member may reuse a module-level name,
+which it shadows inside the scope; members holding each other at reference slots
+are `DEPENDENCY_CYCLE`. The same holds for any kind's `x-telo-scope` field.
+
 An inline step target (`invoke: { kind: … }`) is created where its sequence is,
-NOT in the `with:` scope, so nothing inside it may name a `with:` resource — not
-by `!ref`, not as `resources.<name>` (`SCOPED_NAME_OUT_OF_REACH`). Declare that
-target under `with:` with a name and invoke it with `!ref`.
+NOT in the `with:` scope, so nothing inside it may name a `with:` resource — a
+`!ref` is `SCOPED_NAME_OUT_OF_REACH`, a `resources.<name>` read
+`CEL_UNKNOWN_FIELD`. Declare that target under `with:` with a name and invoke
+it with `!ref`.
+
+## Choosing and repeating — `!if`, `!switch`, `!for-each`
+
+Three tags let a manifest decide what it contains BEFORE anything runs. They are
+tags, written like `!cel`; a condition or source is always a `!cel` inside the tag.
+
+- `!if` takes `if:` (a boolean), `then:` and an optional `else:`. `!switch` takes
+  `switch:` (a string, integer or boolean), `cases:` (each key a value of that type:
+  `1`, never `01`) and an optional `default:`; with no `default:` the cases must
+  cover the selector's domain (`BRANCH_NOT_EXHAUSTIVE`).
+- `!for-each` takes `in:` (a list or map), `as:` (optional binding name, default
+  `each`), `key:` (under a `...` key), `emit:`. The binding is a record: `each.value`
+  (the element), `each.index`, and `each.key` for a map. `emit:` holds the items a
+  repeat in a LIST contributes (a sequence for several), or the one value of the
+  entry a repeat under a `...` key contributes, keyed by `key:`:
+  `columns: { id: {…}, ...: !for-each { in: !cel "self.fields", key: !cel "each.key", emit: {…} } }`.
+  Colliding keys are `REPEAT_KEY_DUPLICATE`; an integer-like map key `REPEAT_NUMERIC_KEY`.
+- **Where no branch is chosen a tag contributes NOTHING to its container** — no list
+  item, no field, no map entry, no declaration. An `!if` with no `else:` is how an
+  optional field or list item is written.
+- **Everything the analyzer decides must be decidable before boot.** A condition,
+  selector, `in:` or `key:` may read: a literal the consumer wrote (reached through a
+  bare `self.<path>` or `<binding>.value.<path>`, and across a `!ref` into a declaration
+  of YOUR OWN module as written with its defaults filled), `module.<field>`, a loop's
+  binding, or a DIMENSION of the application: the whole value of a `variables:` entry
+  declared `enum` / `const` / `type: boolean`; a member a value type closes
+  (`secrets.databaseUrl.scheme` for a `Telo.Url` declaring `scheme: { enum: […] }`); or
+  presence (`secrets.key != null`, `resources.optionalNeed != null`). Anything else —
+  a computed `jobs: !cel "variables.jobs"`, `request`, `steps`, a published
+  `resources.x.status`, a `ports` read, another module's declaration — is
+  `BRANCH_UNDECIDABLE` (`REPEAT_COMPUTED` for `in:` / `key:`). A list from the
+  environment and "N copies by count" are therefore inexpressible: write the elements
+  as a map the consumer lists.
+- An input that may be absent declares `default: null` on its `variables:` / `secrets:`
+  entry (an Application or a Library; never a `ports:` entry). It reads as nullable
+  (`CEL_NULLABLE_ACCESS` unguarded) and needs no guard inside a branch proving it present.
+
+**One app on several backends, chosen by its environment.** Declare the choice at a
+declaration position — the tag carries the `metadata`, each branch is one unnamed
+declaration, so the name is the same in every configuration:
+
+```yaml
+--- !if
+metadata: { name: db }
+if: !cel "resources.databaseAccess != null"      # an optional need: the backend is
+then: { kind: Postgres.Connection, access: !ref databaseAccess }   # chosen by the
+else: { kind: SQLite.Connection, file: !cel "variables.dataFile" } # presence of ITS input
+```
+
+`telo check` checks EVERY combination of dimensions ("configuration") and labels a
+finding that holds in some (`(when variables.dialect is postgres)`). The kernel starts
+the one the environment selects and loads only its controllers, so IMPORT every
+backend (imports are never chosen). An input is demanded only in the configurations
+that read it: an app choosing OpenAI by `secrets.openaiApiKey != null` and reading
+`secrets.anthropicApiKey` only in `else:` boots on either key alone. Inline when used
+once (`connection: !if {…}` at the slot); a declaration-position choice only when
+something must NAME it. A `ports:` entry cannot be optional — choose an optional
+server with a `type: boolean` variable. A library with an optional `resources:` entry
+(`optional: true`) offers its own fallback with a declaration-position
+`!if` on `resources.<input> == null`; `!ref <input>` is legal only in a branch proving it
+present (`RESOURCE_INPUT_OPTIONAL_REFERENCED`), and a member that must be registered with
+a collector (a schema's tables, a server's mounts) is never a fallback — only the
+collector lists its members.
+
+**In a template body** the same tags turn the consumer's list or map into resources,
+routes, map entries and steps. A `!for-each` at a `resources:` entry is a FAMILY: its
+tag carries `metadata: { name: crons }` and `emit:` is one unnamed declaration. Reach a
+member with an indexed ref inside a loop over the same source:
+`targets: [!for-each { in: !cel "self.jobs", emit: !ref crons[each.key] }]` (`[each.index]`
+over a list; one index per depth; quote it inside a flow collection). Every element must
+have a member (`REPEAT_EMIT_INVALID` for a sequence or an `!if` without `else:` in a
+family's `emit:`). A member is named by its element (`crons['nightlyReport']`), so adding
+one renames no other. In a list of STEPS a `!for-each` emits steps; named
+(`name: runs`) its results are `steps.runs[each.key].result`; an emitted step carries no
+`name:` of its own. An indexed `!ref` outside a body is `REF_MEMBER_INVALID`. A body
+`targets:` item may be a `!ref`, an inline Service/Runnable declaration or a tag emitting
+them. The module declaring your template must declare `requires: telo:` at the release
+that carries this syntax.
 
 ## Execution zones — "this must run inside that"
 

@@ -147,6 +147,9 @@ export interface NeedGraph {
   /** Key of the module whose `Telo.NeedType` document declares a canonical
    *  need type, when this graph holds it. */
   needTypeModule?(type: string): string | undefined;
+  /** The optional needs of a module (by name) one configuration proves present —
+   *  where a reference to one is legal. */
+  presentNeeds?(module: string): ReadonlySet<string> | undefined;
 }
 
 export interface NeedProblem {
@@ -520,7 +523,10 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
 
   // An optional need may be absent, so a kind's reference slot — which holds a
   // fulfilment for the resource's whole life — cannot take one.
-  const optionalNeeds = new Set(module.needs.filter((n) => n.optional).map((n) => n.name));
+  const present = graph.presentNeeds?.(module.name);
+  const optionalNeeds = new Set(
+    module.needs.filter((n) => n.optional && !present?.has(n.name)).map((n) => n.name),
+  );
   for (const reference of module.references ?? []) {
     const local = reference.target.alias === undefined || reference.target.alias === "Self";
     if (!local || !optionalNeeds.has(reference.target.name)) continue;
@@ -530,8 +536,9 @@ function checkModule(graph: NeedGraph, module: NeedGraphModule, report: Report):
       "NEED_OPTIONAL_REFERENCED",
       `${declaration.kind}/${declaration.name}: '${reference.path}' references need ` +
         `'${reference.target.name}', which is optional and may be absent. A reference slot holds ` +
-        `a fulfilment for the resource's whole life — read an optional need's fields through a ` +
-        `guarded CEL expression, forward it to a need that is itself optional, or make it required.`,
+        `a fulfilment for the resource's whole life — reference it only where an '!if' proves it ` +
+        `present ('resources.${reference.target.name} != null'), read its fields through a guarded CEL ` +
+        `expression, forward it to a need that is itself optional, or make it required.`,
       {
         manifest: declaration.manifest,
         resource: { kind: declaration.kind, name: declaration.name },

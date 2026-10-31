@@ -20,26 +20,42 @@
  * what moved is the answer both halves need first.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { emittedStepIdentity } from "@telorun/sdk";
 import type { CelEnvironment } from "@telorun/cel";
 import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
-import {
-  bindingContextProperties,
-  bindingPathChain,
-  BINDINGS_ANNOTATION,
-  schemaAtChain,
-} from "./cel-bindings.js";
+import { bindingContextProperties, BINDINGS_ANNOTATION } from "./cel-bindings.js";
 import {
   buildImportInputCelEnvironment,
   buildParameterCelEnvironment,
   buildTypedCelEnvironment,
+  celNamespaceNames,
+  parseCelSource,
   registerModuleNamespaces,
 } from "./cel-environment.js";
+import { reportKeyCost } from "./cel-site-judgements.js";
+import { TypedEnvironments } from "./typed-environments.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
-import { celEvalModeAt, celEvalSites, type CelEvalMode, type CelEvalSites, kindCelEvalSites } from "./eval-paths.js";
+import {
+  celEvalModeAt,
+  celEvalSites,
+  type CelEvalMode,
+  type CelEvalSites,
+  kindCelEvalSites,
+  type NamedShapeLookup,
+} from "./eval-paths.js";
 import { ELEMENT_FROM_ITEM, itemTargetPath, readRelativePointer } from "./element-from-item.js";
-import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
+import {
+  CEL_ENGINE,
+  celExpressionsOf,
+  defaultRegistry,
+  extractAccessChains,
+  INDEX_SEGMENT,
+  isTaggedSentinel,
+  makeTaggedSentinel,
+  plainChainOf,
+} from "@telorun/templating";
 import { bindingExistsAt, bindingsAbsentAt } from "./context-eval.js";
 import { readFromReferrer } from "./context-from-referrer.js";
 import { capabilityExtendsExecutable } from "./executable-capability.js";
@@ -59,24 +75,32 @@ import {
   type KernelGlobalsIndex,
 } from "./kernel-globals.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
-import { inlineNamedShapes } from "./schema-compat.js";
+import { inlineNamedShapes, navigateSchemaToExprPath, type ExternalSchemaResolver } from "./schema-compat.js";
 import type { ModuleFunctionIndex, ResolvedFunction } from "./module-function-index.js";
 import type { CallableFlags, CallableFlagsIndex } from "./callable-flags.js";
 import { declaredDocument, navigateDeclaredChain } from "./referenced-shape.js";
 import { gatherPropertySchemas, resolveLocalRef, walkStepArray } from "./schema-walk.js";
-import { readStepSlot } from "./step-slot.js";
+import { readStepSlot, type StepSlot } from "./step-slot.js";
 import { withCanonicalRefSentinels } from "./resolve-schema-type-refs.js";
 import { valueDerivedContract } from "./value-derived-contract.js";
 import {
+  computedProducers,
   inferredResultSchema,
-  isForwardableResult,
+  OPEN_FACT,
+  producerFact,
   sameNamedResult,
   stepContextAt,
   stepContextOf,
+  stepContextOver,
+  stepContextWithFacts,
+  type ComputedProducer,
+  type StepFact,
   type StepResultAlternative,
 } from "./step-result-inference.js";
 import { bodyForPath, templateBodies } from "./template-body.js";
 import { withCaughtData } from "./caught-member.js";
+import { scopeReadAt } from "./scoped-name-resolver.js";
+import type { DeclarationRequests } from "./declaration-requests.js";
 import {
   contextChainAt,
   elementOfCollection,
@@ -86,7 +110,6 @@ import {
   navigateConcretePath,
   isParameterScope,
   resolveContextAnnotations,
-  resolveTypeFieldToSchema,
   type MatchedContext,
 } from "./validate-cel-context.js";
 
@@ -96,7 +119,7 @@ import {
  *  property the user declared in `schema:` plus synthetic `name` / `kind` and
  *  the metadata sub-object (kept open since metadata legitimately carries
  *  arbitrary user-added fields). */
-function buildSelfSchema(
+export function buildSelfSchema(
   definition: Record<string, any>,
   defs?: DefinitionRegistry,
   aliases?: AliasResolver,
@@ -140,14 +163,14 @@ function lookupTemplateInputsSchema(
   definition: Record<string, any>,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
-  allManifests: Record<string, any>[],
+  declarations: DeclarationRequests,
   scopes: ModuleScopes,
 ): Record<string, any> | undefined {
   return resolveContract(
     "inputType",
     undefined,
     definition as unknown as ResourceDefinition,
-    analyzerContractScope(defs, aliases, scopes, allManifests),
+    analyzerContractScope(defs, aliases, scopes, declarations),
   )?.schema;
 }
 
@@ -167,11 +190,11 @@ export function manifestRootForResolver(
   m: Record<string, any>,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
-  allManifests: Record<string, any>[],
+  declarations: DeclarationRequests,
   scopes: ModuleScopes,
 ): Record<string, any> {
   if (m.kind !== "Telo.Definition") return m;
-  const inputs = lookupTemplateInputsSchema(m, defs, aliases, allManifests, scopes);
+  const inputs = lookupTemplateInputsSchema(m, defs, aliases, declarations, scopes);
   return {
     ...m,
     schema: buildSelfSchema(m, defs, aliases),
@@ -210,168 +233,230 @@ export function manifestRootForResolver(
 export function buildStepContextSchema(
   manifest: Record<string, any>,
   defSchema: Record<string, any>,
-  allManifests: Record<string, any>[],
+  declarations: DeclarationRequests,
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: ModuleScopes,
+  /** The steps the judged expression reads; absent, every step. A step outside
+   *  them and the pure steps they read is typed open, its target unread. */
+  stepsRead?: ReadonlySet<string>,
 ): Record<string, any> | undefined {
-  const props = defSchema.properties as Record<string, any> | undefined;
-  if (!props) return undefined;
+  const bodies = stepRecordBodies(manifest, defSchema);
+  if (bodies.length === 0) return undefined;
+  const body = bodies.find((each) => each.entries.some(producesResult));
+  if (!body) return stepContextOf({});
 
-  const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests);
+  const contractScope = analyzerContractScope(defs, aliases, scopes, declarations);
   const readingModule = (manifest.metadata as { module?: string } | undefined)?.module;
-  let hasStepBody = false;
+  const { invoke: invokeField, outputType: outputTypeField, value: valueField } = body.slot;
 
-  for (const [fieldName, fieldSchema] of Object.entries(props)) {
-    const stepCtx = readStepSlot(fieldSchema);
-    if (!stepCtx) continue;
+  // Every step producing a result, by name: a name may be carried by several
+  // (a branch pair, a loop's seed and the step advancing it), and it is typed
+  // only by what all of them produce.
+  const producers = new Map<string, StepProducer[]>();
+  /** The names a named template repeat publishes, with its key's type. */
+  const repeats = new Map<string, string>();
+  const produce = (name: string, producer: StepProducer): void => {
+    const named = producers.get(name);
+    if (named) named.push(producer);
+    else producers.set(name, [producer]);
+  };
 
-    const invokeField = stepCtx.invoke;
-    const outputTypeField = stepCtx.outputType;
-    // Optional: the field a step uses to produce a result without dispatching.
-    // Only a kind that declares one has pure steps at all.
-    const valueField = stepCtx.value;
+  const alternativeOf = (producer: StepProducer): StepResultAlternative => ({
+    result: resultOf(producer),
+    ...(producer.at === undefined ? {} : { at: producer.at }),
+  });
 
-    const steps = manifest[fieldName];
-    if (!Array.isArray(steps)) continue;
-    hasStepBody = true;
+  // A pure step dispatches nothing, so there is no contract to resolve: a
+  // tagged value is its producer's fact, settled where it is read (a forward
+  // included — its producer navigates what it names), and a literal is typed by
+  // its own shape (`step-result-inference.ts`).
+  const resultOf = (producer: StepProducer): Record<string, any> =>
+    (producer.result ??= inferredResultSchema(producer.value, producer.at!) ?? PERMISSIVE_CONTRACT);
 
-    const stepItemSchema = resolveLocalRef(
-      fieldSchema.items as Record<string, any> | undefined,
-      defSchema,
-    );
+  for (const entry of body.entries) {
+    const { name, step: s, stepPath } = entry;
+    if (entry.repeatKey !== undefined) repeats.set(name, entry.repeatKey);
+    if (entry.form === "none") continue;
+    if (entry.form === "dispatch") {
+      const invoke = s[invokeField] as Record<string, any>;
+      produce(name, { dispatch: () => dispatchResult(invoke, stepPath) });
+      continue;
+    }
+    produce(name, { value: s[valueField!], at: `${stepPath}.${valueField}` });
+  }
 
-    // The instance's own input contract, for typing a pure step that just
-    // forwards one of its values.
-    const ownInputs = resolveTypeFieldToSchema(
-      (manifest as Record<string, any>).inputType,
-      allManifests,
-    );
+  /** What a dispatching step's result is: its target's contract. */
+  function dispatchResult(invoke: Record<string, any>, stepPath: string): Record<string, any> {
+    const invokedKind = invoke.kind as string | undefined;
+    const invokedName = invoke.name as string | undefined;
+    // A named `!ref` carries the target's own manifest (which may narrow the
+    // contract for this one instance); an inline `{ kind, ... }` step IS the
+    // manifest. Either way the kind layer resolves through `extends`. A step
+    // in a scope's region names the scope's members first.
+    const invokedManifest = invokedName
+      ? (declarations.names.resolve(
+          invokedName,
+          readingModule,
+          scopeReadAt(manifest, `${stepPath}.${invokeField}`),
+          (m) => !invokedKind || m.kind === invokedKind,
+        ) as Record<string, any> | undefined)
+      : (invoke as Record<string, any>);
+    const invokedDef = invokedKind
+      ? contractScope.resolveIn(invokedKind, readingModule)
+      : undefined;
+    // Without an output-type field the composer allows no per-instance
+    // narrowing, so only the invoked kind's contract types the result.
+    const outputSchema = resolveContract(
+      (outputTypeField ?? "outputType") as ContractDirection,
+      outputTypeField ? invokedManifest : undefined,
+      invokedDef,
+      contractScope,
+    )?.schema;
+    const derived =
+      outputSchema || !outputTypeField
+        ? undefined
+        : valueDerivedContract(
+            invokedManifest,
+            defs.effectiveSchemaOf(invokedDef) as Record<string, any> | undefined,
+            outputTypeField,
+          );
+    // The target's contract is embedded whole: a document of its own.
+    const contract = outputSchema && declaredDocument(outputSchema);
+    return contract ?? derived ?? PERMISSIVE_CONTRACT;
+  }
 
-    // Every step producing a result, by name: a name may be carried by several
-    // (a branch pair, a loop's seed and the step advancing it), and it is typed
-    // only by what all of them produce.
-    const producers = new Map<string, StepProducer[]>();
-    const produce = (name: string, producer: StepProducer): void => {
-      const named = producers.get(name);
-      if (named) named.push(producer);
-      else producers.set(name, [producer]);
-    };
-
-    /** The step node of `name` as `reader` sees it — its own name is what the
-     *  other steps carrying it produce. Undefined where nothing else does. */
-    const stepNode = (name: string, reader: StepProducer): Record<string, any> | undefined => {
-      const alternatives = (producers.get(name) ?? [])
-        .filter((producer) => producer !== reader)
-        .map(alternativeOf);
-      return alternatives.length > 0
-        ? { type: "object", properties: { result: sameNamedResult(alternatives) } }
-        : undefined;
-    };
-
-    const alternativeOf = (producer: StepProducer): StepResultAlternative => ({
-      result: resultOf(producer),
-      ...(producer.at === undefined ? {} : { at: producer.at }),
-    });
-
-    // A pure step dispatches nothing, so there is no contract to resolve. Where
-    // its expression is a plain chain into something already typed — another
-    // step's result, or the kind's own inputs — that type carries through;
-    // anything else (arithmetic, a call, a comprehension) is typed by the CEL
-    // type its expression checks to, recorded when `steps` is registered with
-    // the environment, and a literal by its own shape
-    // (`step-result-inference.ts`).
-    const resultOf = (producer: StepProducer): Record<string, any> => {
-      if (producer.result) return producer.result;
-      const inferred = inferredResultSchema(producer.value) ?? PERMISSIVE_CONTRACT;
-      // Two steps forwarding each other: the one read while it is still being
-      // resolved is its own expression.
-      if (producer.resolving) return inferred;
-      producer.resolving = true;
-      const chain = bindingPathChain(producer.value);
-      const read = chain?.[0] === "steps" && chain[1] !== undefined ? stepNode(chain[1], producer) : undefined;
-      const chained = schemaAtChain(chain, {
-        properties: {
-          steps: { type: "object", properties: read ? { [chain![1]!]: read } : {} },
-          ...(ownInputs ? { inputs: ownInputs } : {}),
-        },
-      });
-      producer.resolving = false;
-      return (producer.result = chained && isForwardableResult(chained) ? chained : inferred);
-    };
-
-    walkStepArray(steps, stepItemSchema, defSchema, fieldName, (s, stepPath) => {
-      const name = s.name;
-      const invoke = s[invokeField] as Record<string, any> | undefined;
-      // Only invoke steps register a `steps.<name>.result` entry — control-flow
-      // wrappers (try/if/while/switch/throw) don't produce a result and must
-      // not shadow real entries with a permissive `additionalProperties: true`,
-      // or unknown step references slip through chain validation.
-      if (typeof name !== "string") return;
-      if (!invoke || typeof invoke !== "object") {
-        if (valueField && valueField in s) {
-          produce(name, { value: s[valueField], at: `${stepPath}.${valueField}` });
+  // The steps whose results the judged expression can reach: those it reads,
+  // and those the pure steps among them read, transitively.
+  const reached = stepsRead && new Set(stepsRead);
+  if (reached) {
+    const queue = [...reached];
+    while (queue.length > 0) {
+      for (const producer of producers.get(queue.shift()!) ?? []) {
+        for (const read of stepNamesReadBy(producer.value)) {
+          if (read === undefined) return buildStepContextSchema(manifest, defSchema, declarations, defs, aliases, scopes);
+          if (!reached.has(read)) {
+            reached.add(read);
+            queue.push(read);
+          }
         }
-        return;
       }
-      const invokedKind = invoke.kind as string | undefined;
-      const invokedName = invoke.name as string | undefined;
-      // A named `!ref` carries the target's own manifest (which may narrow the
-      // contract for this one instance); an inline `{ kind, ... }` step IS the
-      // manifest. Either way the kind layer resolves through `extends`.
-      const invokedManifest = invokedName
-        ? (allManifests.find(
-            (m) =>
-              (m.metadata as any)?.name === invokedName && (!invokedKind || m.kind === invokedKind),
-          ) as Record<string, any> | undefined)
-        : (invoke as Record<string, any>);
-      const invokedDef = invokedKind
-        ? contractScope.resolveIn(invokedKind, readingModule)
-        : undefined;
-      // Without an output-type field the composer allows no per-instance
-      // narrowing, so only the invoked kind's contract types the result.
-      const outputSchema = resolveContract(
-        (outputTypeField ?? "outputType") as ContractDirection,
-        outputTypeField ? invokedManifest : undefined,
-        invokedDef,
-        contractScope,
-      )?.schema;
-      const derived =
-        outputSchema || !outputTypeField
-          ? undefined
-          : valueDerivedContract(
-              invokedManifest,
-              defs.effectiveSchemaOf(invokedDef) as Record<string, any> | undefined,
-              outputTypeField,
-            );
-      // The target's contract is embedded whole: a document of its own.
-      const contract = outputSchema && declaredDocument(outputSchema);
-      produce(name, { result: contract ?? derived ?? PERMISSIVE_CONTRACT });
-    });
-
-    if (producers.size > 0) {
-      const stepProperties: Record<string, any> = {};
-      for (const [name, named] of producers) {
-        stepProperties[name] = {
-          type: "object",
-          properties: { result: sameNamedResult(named.map(alternativeOf)) },
-        };
-      }
-      return stepContextOf(stepProperties);
+    }
+  }
+  for (const [name, named] of producers) {
+    for (const producer of named) {
+      if (!producer.dispatch) continue;
+      producer.result = reached && !reached.has(name) ? PERMISSIVE_CONTRACT : producer.dispatch();
     }
   }
 
-  return hasStepBody ? { type: "object", properties: {} } : undefined;
+  const stepProperties: Record<string, any> = {};
+  for (const [name, named] of producers) {
+    const entry = {
+      type: "object",
+      properties: { result: sameNamedResult(named.map(alternativeOf)) },
+    };
+    const keyed = repeats.get(name);
+    // A named repeat's results are a map by element key: a map source's
+    // string keys type it; a list source's int keys have no JSON Schema
+    // spelling, so its entries stay open.
+    stepProperties[name] =
+      keyed === undefined
+        ? entry
+        : keyed === "string"
+          ? { type: "object", additionalProperties: entry }
+          : {};
+  }
+  return stepContextOf(stepProperties);
+}
+
+/** One step a step body registers in `steps`. */
+export interface StepRecordEntry {
+  readonly name: string;
+  readonly step: Record<string, any>;
+  /** Where the step is written in the manifest (`steps[0].try[1]`). */
+  readonly stepPath: string;
+  /** For a step a named template repeat emitted: the type of the repeat's
+   *  element key. */
+  readonly repeatKey?: string;
+  /** Whether it dispatches, produces its result without dispatching, or —
+   *  a control-flow wrapper a named repeat emitted — produces none. */
+  readonly form: "dispatch" | "pure" | "none";
+}
+
+/** Whether a step registers a `steps.<name>.result` entry. */
+function producesResult(entry: StepRecordEntry): boolean {
+  return entry.form !== "none";
+}
+
+/** A field of a manifest holding a step body, and the steps it registers. */
+export interface StepRecordBody {
+  readonly field: string;
+  readonly slot: StepSlot;
+  readonly entries: readonly StepRecordEntry[];
+}
+
+/**
+ * Every step body `manifest` writes where its kind's schema `defSchema`
+ * declares one, in property order, each with the steps it registers in
+ * `steps`, in walk order: a step a named template repeat emitted under the
+ * repeat's name, an unnamed repeat's steps and a step producing no result (a
+ * control-flow wrapper) not at all. The one reader of step names — the
+ * `steps` record, the step-names class and a whole read of `steps` all list
+ * names through it.
+ */
+export function stepRecordBodies(manifest: Record<string, any>, defSchema: Record<string, any>): StepRecordBody[] {
+  const props = defSchema.properties as Record<string, any> | undefined;
+  if (!props) return [];
+  const out: StepRecordBody[] = [];
+  for (const [field, fieldSchema] of Object.entries(props)) {
+    const slot = readStepSlot(fieldSchema);
+    if (!slot) continue;
+    const steps = manifest[field];
+    if (!Array.isArray(steps)) continue;
+    const itemSchema = resolveLocalRef(fieldSchema.items as Record<string, any> | undefined, defSchema);
+    const entries: StepRecordEntry[] = [];
+    walkStepArray(steps, itemSchema, defSchema, field, (s, stepPath) => {
+      const emitted = emittedStepIdentity(s);
+      if (emitted && !("repeat" in emitted)) return;
+      const name = emitted && "repeat" in emitted ? emitted.repeat : s.name;
+      if (typeof name !== "string") return;
+      const repeatKey = emitted && "repeat" in emitted ? typeof emitted.key : undefined;
+      const invoke = s[slot.invoke];
+      // Only invoke and value steps register a `steps.<name>.result` entry —
+      // control-flow wrappers (try/if/while/switch/throw) don't produce a
+      // result and must not shadow real entries with a permissive
+      // `additionalProperties: true`, or unknown step references slip through
+      // chain validation.
+      const form =
+        invoke && typeof invoke === "object" ? "dispatch" : slot.value && slot.value in s ? "pure" : "none";
+      if (form === "none" && repeatKey === undefined) return;
+      entries.push({ name, step: s, stepPath, ...(repeatKey !== undefined ? { repeatKey } : {}), form });
+    });
+    out.push({ field, slot, entries });
+  }
+  return out;
+}
+
+/** The names the `steps` record of `manifest` lists, in order: the first step
+ *  body registering any; empty where its bodies register none, undefined where
+ *  it writes no step body. */
+export function stepRecordNames(manifest: Record<string, any>, defSchema: Record<string, any>): string[] | undefined {
+  const bodies = stepRecordBodies(manifest, defSchema);
+  if (bodies.length === 0) return undefined;
+  const body = bodies.find((each) => each.entries.some(producesResult));
+  return [...new Set((body?.entries ?? []).filter(producesResult).map((entry) => entry.name))];
 }
 
 /** One step producing `steps.<name>.result`: a dispatch's contract, or a pure
  *  step's value, resolved when first read. */
 interface StepProducer {
   result?: Record<string, any>;
+  /** A dispatching step's result, read from its target. */
+  dispatch?: () => Record<string, any>;
   value?: unknown;
   /** Where a pure step's value is written. */
   at?: string;
-  resolving?: boolean;
 }
 
 /** Where a resource of this kind receives call arguments: undefined unless its
@@ -381,11 +466,12 @@ function callArgumentSites(
   definition: ResourceDefinition | undefined,
   defs: DefinitionRegistry,
   resolveDef: DefResolver,
+  shapes: NamedShapeLookup,
 ): CelEvalSites | undefined {
   if (!definition) return undefined;
   const capability = inheritedCapability(definition, resolveDef);
   if (capability === undefined || !capabilityExtendsExecutable(capability, defs)) return undefined;
-  return kindCelEvalSites(definition, resolveDef, defs.shapeLookup);
+  return kindCelEvalSites(definition, resolveDef, shapes);
 }
 
 export function collectErrorContextScopes(
@@ -529,7 +615,13 @@ export interface CelScopeInputs {
   defs: DefinitionRegistry;
   aliases: AliasResolver;
   scopes: ModuleScopes;
-  allManifests: ResourceManifest[];
+  /** A named shape by its id — what every `$ref: telo:<Module>/<Type>` a
+   *  context, a contract or an eval site reaches resolves to. */
+  shapes: NamedShapeLookup;
+  /** Every other declaration a scope reads, by request — the slots
+   *  referencing a resource among them: with none, a binding typed from its
+   *  referrer is what it declares itself. */
+  declarations: DeclarationRequests;
   kernelGlobals: KernelGlobalsIndex;
   /** The module doc carrying the Application-only `ports` namespace. */
   moduleManifest?: ResourceManifest;
@@ -547,10 +639,6 @@ export interface CelScopeInputs {
   callableFlags?: CallableFlagsIndex;
   /** The observed-state-only context, used where no `x-telo-context` matched. */
   observedStateContext: Record<string, any> | null;
-  /** Every slot referencing a resource: the referrer and the concrete path of
-   *  the slot. Absent, a binding typed from its referrer is what it declares
-   *  itself. */
-  referrersOf?: (m: ResourceManifest) => ReadonlyArray<{ manifest: ResourceManifest; path: string }>;
   /** A referrer's kind, resolved in the scope of the module declaring it. */
   definitionOf?: (m: ResourceManifest) => ResourceDefinition | undefined;
   /** The data of the codes the catch entry holding `path` matches — the catch
@@ -558,6 +646,18 @@ export interface CelScopeInputs {
    *  site's context takes. Absent, or undefined for a path, a marked member keeps
    *  the schema it declares. */
   caughtDataAt?: (m: ResourceManifest, path: string) => Record<string, any> | undefined;
+  /** The loop bindings a template body's `!for-each` puts in scope at `path`
+   *  of an expanded definition, as context properties. */
+  loopBindingsAt?: (m: ResourceManifest, path: string) => Record<string, Record<string, any>> | undefined;
+  /** The steps the expressions judged read; absent, every step. */
+  stepsRead?: ReadonlySet<string>;
+  /** Every name the `steps` record of a resource lists, in order, where the
+   *  resource holds only the steps read ({@link stepContextOver}); absent, the
+   *  names its steps carry. */
+  stepNamesAt?: (m: ResourceManifest) => readonly string[] | undefined;
+  /** The typed environments built so far, shared by every resolver of one
+   *  analysis; absent, the resolver keeps its own. */
+  typedEnvironments?: TypedEnvironments;
 }
 
 /**
@@ -620,13 +720,15 @@ export interface CelSiteRef {
  */
 const NO_MODULE_CALL_NAMES: ReadonlyMap<string, ReadonlySet<string>> = new Map();
 
+/** The names `buildTypedCelEnvironment` registers before a context's, so a
+ *  context property of one of them never reaches the environment. */
+const GLOBALS_TYPED_FROM_BLOCKS: ReadonlySet<string> = new Set(["variables", "ports", "secrets", "resources", "module"]);
+
 export class CelScopeResolver {
-  private readonly typedEnvByManifest = new Map<ResourceManifest, CelEnvironment>();
   /** The context standing in where no `x-telo-context` matched, one per
-   *  module's globals. It binds nothing the environment lacks, so a site read
-   *  against it shares the manifest's cached environment. */
+   *  module's globals. */
   private readonly fallbackContexts = new WeakMap<Record<string, any>, Record<string, any>>();
-  private readonly fallbackContextSet = new WeakSet<Record<string, any>>();
+  private readonly typedEnvironments: TypedEnvironments;
 
   /** Per-resource state, replaced at each `enterResource`. */
   private stepContext: Record<string, any> | undefined;
@@ -652,6 +754,10 @@ export class CelScopeResolver {
   private kindSites: CelEvalSites = celEvalSites(undefined);
   /** Element-from-item targets being typed, so a pointer leading back is untyped. */
   private readonly itemsInProgress = new Set<string>();
+  /** The resource entered last. */
+  private current: ResourceManifest | undefined;
+  /** Per step context: its computed producers' facts and read groups. */
+  private readonly stepFacts = new WeakMap<object, StepFacts>();
   /** The input contract a step body's `inputs` is typed from, when the
    *  resource or its kind declares one. */
   private inputsSchema: Record<string, any> | undefined;
@@ -669,6 +775,7 @@ export class CelScopeResolver {
     shared?: ReferrerTypeIndex,
   ) {
     this.referrerTypes = shared ?? { types: new WeakMap(), inProgress: new Set(), ids: new WeakMap(), next: 0 };
+    this.typedEnvironments = inputs.typedEnvironments ?? new TypedEnvironments();
   }
 
   /**
@@ -723,11 +830,11 @@ export class CelScopeResolver {
     try {
       const distinct = new Map<string, { schema: Record<string, any>; referrers: ReferrerVariant["referrers"][number][] }>();
       const { defs } = this.inputs;
-      for (const { manifest: referrer, path } of this.inputs.referrersOf?.(m) ?? []) {
+      for (const { manifest: referrer, path } of this.inputs.declarations.referrersOf(m)) {
         const definition = this.inputs.definitionOf?.(referrer);
         const authorSchema = defs.effectiveSchemaOf(definition) as Record<string, any> | undefined;
         if (!authorSchema) continue;
-        const regions = contextChainAt(extractContextsFromSchema(authorSchema, defs.shapeLookup), path);
+        const regions = contextChainAt(extractContextsFromSchema(authorSchema, this.inputs.shapes), path);
         const innermost = regions[regions.length - 1];
         const sub = new CelScopeResolver(this.inputs, index);
         sub.enterResource(referrer, definition);
@@ -784,7 +891,8 @@ export class CelScopeResolver {
 
   /** Establish the per-resource half of the scope. */
   enterResource(m: ResourceManifest, definition: ResourceDefinition | undefined): void {
-    const { allManifests, defs, aliases, scopes } = this.inputs;
+    const { declarations, defs, aliases, scopes, shapes } = this.inputs;
+    this.current = m;
     this.invocationContext = (m.metadata as any)?.xTeloInvocationContext as
       | Record<string, any>
       | undefined;
@@ -798,19 +906,22 @@ export class CelScopeResolver {
       ? buildStepContextSchema(
           m as Record<string, any>,
           authorSchema,
-          allManifests as Record<string, any>[],
+          declarations,
           defs,
           aliases,
           scopes,
+          this.inputs.stepsRead,
         )
       : undefined;
+    const stepNames = this.inputs.stepNamesAt?.(m);
+    if (stepNames) this.stepContext = stepContextOver(this.stepContext ?? stepContextOf({}), stepNames);
     this.errorScopes = collectErrorContextScopes(authorSchema);
-    this.kindContexts = authorSchema ? extractContextsFromSchema(authorSchema, defs.shapeLookup) : [];
-    this.kindSites = celEvalSites(authorSchema, defs.shapeLookup);
-    const contractScope = analyzerContractScope(defs, aliases, scopes, allManifests as Record<string, any>[]);
+    this.kindContexts = authorSchema ? extractContextsFromSchema(authorSchema, shapes) : [];
+    this.kindSites = celEvalSites(authorSchema, shapes);
+    const contractScope = analyzerContractScope(defs, aliases, scopes, declarations);
     const resolveDef = contractScope.resolveDefinition;
     this.argumentSites = this.stepContext
-      ? callArgumentSites(definition, defs, resolveDef)
+      ? callArgumentSites(definition, defs, resolveDef, shapes)
       : undefined;
     this.inputsSchema = this.argumentSites
       ? resolveContract("inputType", m as Record<string, any>, definition, contractScope)?.schema
@@ -839,14 +950,15 @@ export class CelScopeResolver {
         ? buildStepContextSchema(
             body.manifest as Record<string, any>,
             bodySchema,
-            allManifests as Record<string, any>[],
+            declarations,
             defs,
             aliases,
             scopes,
+            this.inputs.stepsRead,
           )
         : undefined;
       const argumentSites = stepContext
-        ? callArgumentSites(body.definition, defs, resolveDef)
+        ? callArgumentSites(body.definition, defs, resolveDef, shapes)
         : undefined;
       return {
         prefix: body.prefix,
@@ -863,8 +975,8 @@ export class CelScopeResolver {
             )?.schema
           : undefined,
         errorScopes: collectErrorContextScopes(bodySchema),
-        contexts: bodySchema ? extractContextsFromSchema(bodySchema, defs.shapeLookup) : [],
-        sites: celEvalSites(bodySchema, defs.shapeLookup),
+        contexts: bodySchema ? extractContextsFromSchema(bodySchema, shapes) : [],
+        sites: celEvalSites(bodySchema, shapes),
       };
     });
   }
@@ -872,20 +984,20 @@ export class CelScopeResolver {
   /**
    * What the expression at `site` is typed against.
    *
-   * The environment is cached per manifest when no context applied, which is
-   * most expressions: it then depends only on the manifest, so rebuilding it per
-   * expression is pure waste — a clone plus a re-registration of every variable,
-   * on every keystroke in the IDE. A matched context makes it path-specific (its
-   * schema is resolved against the enclosing array item), so those build fresh
-   * rather than risk one item's types leaking into another's.
+   * The environment is taken from the analysis's typed environments, keyed by
+   * the content it is built from — the typing (a parameter scope, an import's
+   * inputs, or the kernel globals), the declaring module's blocks, the context
+   * schema and the module namespaces with their callables — so a site whose
+   * inputs equal another's, in any key, reads the environment already built.
    */
   scopeFor(site: CelSiteRef): CelScope {
+    reportKeyCost({ kind: "scope" });
     const m = site.source;
     const parameterScope = isParameterScope(site.contextSchema ?? this.invocationContext);
     const contextSchema = this.resolveContextFor(site, parameterScope);
     const {
       celEnv,
-      allManifests,
+      declarations,
       moduleManifest,
     } = this.inputs;
 
@@ -895,47 +1007,72 @@ export class CelScopeResolver {
       return resolution?.status === "resolved" ? resolution : undefined;
     };
     const moduleNames = moduleCallNamesOf(this.inputs.moduleCallNames ?? NO_MODULE_CALL_NAMES, m);
+    // The module's own names are NAMESPACES on the environment the site is
+    // read against, which is what turns `Billing.total(x)` into a qualified
+    // call as it is READ — the engine resolves it there, never afterwards.
+    const namespaces = [...celNamespaceNames(moduleNames)].map((receiver) => ({
+      receiver,
+      callables: (functions?.callablesThrough(m, receiver) ?? []).map((entry) => ({
+        name: entry.name,
+        celType: entry.function.celType,
+      })),
+    }));
 
     // An import's `needs:` supply is evaluated in the importer's scope like any
     // startup field — `resources` included — unlike its config-only
     // `variables:` / `secrets:`, so the two never share an environment.
     const importNeeds = m.kind === "Telo.Import" && site.path.startsWith("needs.");
-    const envFromManifest =
-      (contextSchema === null || this.fallbackContextSet.has(contextSchema)) && !importNeeds;
-    const cached = envFromManifest ? this.typedEnvByManifest.get(m) : undefined;
-    let env: CelEnvironment;
-    if (cached) {
-      env = cached;
-    } else if (parameterScope) {
-      env = buildParameterCelEnvironment(celEnv, contextSchema);
+    const metadata = m.metadata as { module?: string; moduleGlobals?: unknown } | undefined;
+    let typing: Record<string, unknown>;
+    let build: () => CelEnvironment;
+    if (parameterScope) {
+      typing = { typing: "parameter", context: contextSchema };
+      build = () => buildParameterCelEnvironment(celEnv, contextSchema);
     } else if (m.kind === "Telo.Import" && !importNeeds) {
       // A `Telo.Import`'s variables/secrets are a config-only contract evaluated
       // in the IMPORTING module's scope, so they type from the owning module doc
       // and drop `resources`/`env`, making a reference to either an error.
-      env = buildImportInputCelEnvironment(
-        celEnv,
-        allManifests.find(
-          (mm) =>
-            (mm.kind === "Telo.Application" || mm.kind === "Telo.Library") &&
-            (mm.metadata as { name?: string } | undefined)?.name ===
-              (m.metadata as { module?: string } | undefined)?.module,
-        ),
-      );
+      const owner = declarations
+        .moduleDocuments()
+        .find((mm) => (mm.metadata as { name?: string } | undefined)?.name === metadata?.module) as
+        | Record<string, any>
+        | undefined;
+      typing = { typing: "import", variables: owner?.variables, secrets: owner?.secrets, metadata: owner?.metadata };
+      build = () => buildImportInputCelEnvironment(celEnv, owner as ResourceManifest | undefined);
     } else {
-      env = buildTypedCelEnvironment(celEnv, m, contextSchema ?? undefined, moduleManifest);
+      const kindDocument = isKindDocument(m);
+      const own = m as Record<string, any>;
+      const root = moduleManifest as Record<string, any> | undefined;
+      typing = {
+        typing: "globals",
+        kindDocument,
+        declaring: isModuleKind(m.kind) ? { variables: own.variables, secrets: own.secrets } : undefined,
+        moduleGlobals: metadata?.moduleGlobals,
+        // A module's shared globals base is one identity for the analysis.
+        root:
+          root && this.typedEnvironments.identifies(root)
+            ? root
+            : root && { variables: root.variables, secrets: root.secrets, ports: root.ports, metadata: root.metadata },
+        ports: root ? undefined : own.ports,
+        // The kernel globals are typed from the module's blocks above, never
+        // from the context: only what the context binds beside them counts.
+        context: contextSchema?.properties
+          ? Object.fromEntries(
+              Object.entries(contextSchema.properties as Record<string, unknown>).filter(
+                ([name]) => !GLOBALS_TYPED_FROM_BLOCKS.has(name),
+              ),
+            )
+          : undefined,
+      };
+      build = () => buildTypedCelEnvironment(celEnv, m, contextSchema ?? undefined, moduleManifest);
     }
-    if (!cached) {
-      // The module's own names are NAMESPACES on the environment the site is
-      // read against, which is what turns `Billing.total(x)` into a qualified
-      // call as it is READ — the engine resolves it there, never afterwards.
-      registerModuleNamespaces(env, moduleNames, (receiver) =>
-        (functions?.callablesThrough(m, receiver) ?? []).map((entry) => ({
-          name: entry.name,
-          celType: entry.function.celType,
-        })),
+    const env = this.typedEnvironments.environmentFor({ ...typing, namespaces }, () => {
+      const built = build();
+      registerModuleNamespaces(built, moduleNames, (receiver) =>
+        namespaces.find((namespace) => namespace.receiver === receiver)?.callables ?? [],
       );
-      if (envFromManifest) this.typedEnvByManifest.set(m, env);
-    }
+      return built;
+    });
 
     return {
       env,
@@ -953,7 +1090,7 @@ export class CelScopeResolver {
           ? contextSchema
           : mergeKernelGlobalsIntoContext(
               contextSchema ?? { type: "object", properties: {}, additionalProperties: true },
-              this.inputs.kernelGlobals.forResource(m),
+              this.inputs.kernelGlobals.forResource(m, site.path),
             ),
     };
   }
@@ -1002,7 +1139,7 @@ export class CelScopeResolver {
           ...(argumentsBound ? { inputs: { type: "object", additionalProperties: true } } : {}),
           ...(base.properties ?? {}),
           ...(argumentsBound && declaredInputs ? { inputs: declaredInputs } : {}),
-          steps: stepContextAt(stepContext, localPath),
+          steps: this.stepsAt(stepContext, localPath, inBody),
         },
       };
     }
@@ -1032,7 +1169,7 @@ export class CelScopeResolver {
       if (isModuleKind(m.kind) && path.startsWith("imports.")) {
         return this.inputs.observedStateContext;
       }
-      const globals = this.inputs.kernelGlobals.forResource(m);
+      const globals = this.inputs.kernelGlobals.forResource(m, path);
       let fallback = this.fallbackContexts.get(globals);
       if (!fallback) {
         fallback = mergeKernelGlobalsIntoContext(
@@ -1040,12 +1177,11 @@ export class CelScopeResolver {
           globals,
         );
         this.fallbackContexts.set(globals, fallback);
-        this.fallbackContextSet.add(fallback);
       }
       return fallback;
     }
 
-    const { defs, aliases, scopes, allManifests, kernelGlobals } = this.inputs;
+    const { defs, aliases, scopes, declarations, kernelGlobals } = this.inputs;
 
     // A template body's context annotations are the NESTED kind's, and every one
     // that anchors at a root — `x-telo-context-element-from`,
@@ -1069,7 +1205,7 @@ export class CelScopeResolver {
           m as Record<string, any>,
           defs,
           aliases,
-          allManifests as Record<string, any>[],
+          declarations,
           scopes,
         );
 
@@ -1097,7 +1233,9 @@ export class CelScopeResolver {
           defs,
           aliases,
           aliasesByModule: scopes?.aliasesByModule,
-          allManifests: allManifests as Record<string, any>[],
+          declarations,
+          shapes: this.inputs.shapes,
+          sitePath: localPath,
         }),
         rootManifest,
       );
@@ -1146,6 +1284,9 @@ export class CelScopeResolver {
     // data of the codes that entry matches.
     const caught = this.inputs.caughtDataAt?.(m, path);
     if (caught) resolved = withCaughtData(resolved, caught);
+    // A loop's binding is in scope throughout what the loop emits.
+    const loops = this.inputs.loopBindingsAt?.(m, path);
+    if (loops) resolved = { ...resolved, properties: { ...(resolved.properties ?? {}), ...loops } };
     // A named shape nested anywhere in the context — a contract's
     // `outputType: { properties: { x: !ref Money } }`, an input declared as
     // `!ref Shape` — is a `$ref` the member walk cannot see through, so it is
@@ -1153,7 +1294,7 @@ export class CelScopeResolver {
     // resolution keeps the reference: the kernel shares it and keys its
     // validators on the schema's identity.
     const expand = (schema: Record<string, any>) =>
-      inlineNamedShapes(schema, (id) => defs.schemaForId(id));
+      inlineNamedShapes(schema, this.inputs.shapes);
     if (parameterScope) return expand(resolved);
     return expand(
       mergeKernelGlobalsIntoContext(
@@ -1161,9 +1302,130 @@ export class CelScopeResolver {
         // Typed in the module that DECLARED this resource — for a manifest
         // forwarded from an imported library, that is its `moduleGlobals` stamp,
         // not the consuming application's block.
-        kernelGlobals.forResource(m),
+        kernelGlobals.forResource(m, path),
       ),
     );
+  }
+
+  /**
+   * The `steps` context the expression at `localPath` reads, each computed
+   * result its producer's fact. A producer's own value reads only the steps it
+   * names, and the members of its read group as `dyn`; any other site reads the
+   * steps the judged expressions read (every step when that is not known).
+   */
+  private stepsAt(
+    stepContext: Record<string, any>,
+    localPath: string,
+    body: CelScopeResolver["bodyScopes"][number] | undefined,
+  ): Record<string, any> {
+    const state = this.stepFactsOf(stepContext);
+    const view = stepContextAt(stepContext, localPath);
+    const producer = state.producers.find((each) => each.at === localPath);
+    const key = producer ? producer.at : "";
+    let byKey = state.views.get(view);
+    if (!byKey) state.views.set(view, (byKey = new Map()));
+    const known = byKey.get(key);
+    if (known) return known;
+    const fact = (other: ComputedProducer) => this.stepFact(stepContext, other, body);
+    const group = producer ? state.groupOf.get(producer.at)! : undefined;
+    const settled = producer
+      ? stepContextWithFacts(view, state.readsOf.get(producer.at), (other) => (group!.has(other.at) ? OPEN_FACT : fact(other)))
+      : stepContextWithFacts(view, this.inputs.stepsRead, fact);
+    byKey.set(key, settled);
+    return settled;
+  }
+
+  /** The `steps` record the expression at `path` reads, each computed result
+   *  its producer's fact; undefined outside a step body. */
+  stepsReadAt(path: string): Record<string, any> | undefined {
+    const inBody = this.bodyScopes.length > 0 ? bodyForPath(this.bodyScopes, path) : undefined;
+    const stepContext = inBody ? inBody.stepContext : this.stepContext;
+    if (!stepContext) return undefined;
+    return this.stepsAt(stepContext, inBody ? path.slice(inBody.prefix.length + 1) : path, inBody);
+  }
+
+  /** A computed producer's fact, judged once in the environment of its own
+   *  site: what its tag's engine types it as, and what its plain chain
+   *  forwards as that site navigates it ({@link producerFact}). */
+  private stepFact(
+    stepContext: Record<string, any>,
+    producer: ComputedProducer,
+    body: CelScopeResolver["bodyScopes"][number] | undefined,
+  ): StepFact {
+    const state = this.stepFactsOf(stepContext);
+    const known = state.facts.get(producer.at);
+    if (known !== undefined) return known;
+    if (state.inProgress.has(producer.at)) {
+      throw new Error(`internal: the result of step '${producer.name}' at '${producer.at}' was asked for while it was being typed.`);
+    }
+    state.inProgress.add(producer.at);
+    try {
+      reportKeyCost({ kind: "step-result-probe", body: stepContext, producer: producer.at });
+      const regions = contextChainAt(body ? body.contexts : this.kindContexts, producer.at).map((ctx) =>
+        body ? { ...ctx, scope: `${body.scopePrefix}${ctx.scope.slice(1)}` } : ctx,
+      );
+      const innermost = regions[regions.length - 1];
+      const path = body ? `${body.prefix}.${producer.at}` : producer.at;
+      const scope = this.scopeFor({
+        source: this.current!,
+        path,
+        ...(innermost ? { contextSchema: innermost.schema, matchedScope: innermost.scope } : {}),
+        contexts: regions,
+        mode: celEvalModeAt(body ? body.sites : this.kindSites, producer.at) ?? undefined,
+      });
+      const analyzed = defaultRegistry().get(producer.engine)?.analyze(producer.source, {
+        celEnv: scope.env,
+        contextSchema: scope.contextSchema,
+        moduleNames: scope.moduleNames,
+        moduleCallType: scope.moduleCallType,
+        moduleCallResult: scope.moduleCallResult,
+        moduleCallFlags: scope.moduleCallFlags,
+      });
+      const chain = plainChainOf(makeTaggedSentinel(producer.engine, producer.source));
+      const produced = chain
+        ? declaredChainSchemaAt(
+            chain,
+            scope.contextSchema ?? this.inputs.kernelGlobals.forResource(this.current!, path),
+            this.stepsAt(stepContext, producer.at, body),
+            this.inputs.shapes,
+          )
+        : undefined;
+      const fact = producerFact(producer.engine, analyzed?.type, produced);
+      state.facts.set(producer.at, fact);
+      return fact;
+    } finally {
+      state.inProgress.delete(producer.at);
+    }
+  }
+
+  /** The computed producers of a step context, the steps each reads and the
+   *  strongly connected group of step reads each belongs to. */
+  private stepFactsOf(stepContext: Record<string, any>): StepFacts {
+    const known = this.stepFacts.get(stepContext);
+    if (known) return known;
+    const producers = computedProducers(stepContext);
+    const readsOf = new Map<string, ReadonlySet<string> | undefined>();
+    for (const producer of producers) {
+      const reads = stepNamesReadIn(producer.engine, producer.source);
+      readsOf.set(producer.at, reads.includes(undefined) ? undefined : new Set(reads as string[]));
+    }
+    // A producer reads every OTHER producer of a name it reads.
+    const edges = (from: ComputedProducer) =>
+      producers.filter((to) => {
+        if (to === from) return false;
+        const reads = readsOf.get(from.at);
+        return reads === undefined || reads.has(to.name);
+      });
+    const state: StepFacts = {
+      producers,
+      readsOf,
+      groupOf: stronglyConnectedGroups(producers, edges),
+      facts: new Map(),
+      inProgress: new Set(),
+      views: new WeakMap(),
+    };
+    this.stepFacts.set(stepContext, state);
+    return state;
   }
 
   /** `resolved` with every binding an `x-telo-context-element-from-item`
@@ -1238,7 +1500,7 @@ export class CelScopeResolver {
       );
       if (!context) return undefined;
       return elementOfCollection(
-        navigateDeclaredChain(context, chain, (id) => this.inputs.defs.schemaForId(id)),
+        navigateDeclaredChain(context, chain, this.inputs.shapes),
       );
     } finally {
       this.itemsInProgress.delete(full);
@@ -1251,4 +1513,107 @@ export class CelScopeResolver {
 function plainChainSource(value: unknown): string | undefined {
   const source = isTaggedSentinel(value) && value.engine === CEL_ENGINE ? value.source.trim() : undefined;
   return source !== undefined && /^[A-Za-z_]\w*(\.[A-Za-z_]\w*)*$/.test(source) ? source : undefined;
+}
+
+/** What one step context's computed producers are, read and typed as. */
+interface StepFacts {
+  readonly producers: readonly ComputedProducer[];
+  /** The step names each producer's expression reads; undefined for `steps` whole. */
+  readonly readsOf: ReadonlyMap<string, ReadonlySet<string> | undefined>;
+  /** Each producer's strongly connected group of step reads, itself included. */
+  readonly groupOf: ReadonlyMap<string, ReadonlySet<string>>;
+  readonly facts: Map<string, StepFact>;
+  readonly inProgress: Set<string>;
+  /** The settled `steps` context per view and reading producer. */
+  readonly views: WeakMap<object, Map<string, Record<string, any>>>;
+}
+
+/**
+ * The schema the plain chain `chain` resolves to where `context` is in force,
+ * references followed — a step chain read off `steps`, the record the site
+ * reads, where each result is its target's own document or its producer's
+ * fact; undefined where nothing is declared. The one navigation a producer's
+ * forwarded schema and an expression's produced schema are both read by.
+ */
+export function declaredChainSchemaAt(
+  chain: string,
+  context: Record<string, any>,
+  steps: Record<string, any> | undefined,
+  shapes: ExternalSchemaResolver | undefined,
+): Record<string, any> | undefined {
+  if (steps === undefined || !chain.startsWith(STEPS_ROOT)) return navigateDeclaredChain(context, chain, shapes);
+  const within = chain.slice(STEPS_ROOT.length);
+  // An undeclared result is the absence of a claim, not a producer saying `object`.
+  if (navigateSchemaToExprPath(steps, within) === PERMISSIVE_CONTRACT) return undefined;
+  return navigateDeclaredChain(steps, within, shapes);
+}
+
+const STEPS_ROOT = "steps.";
+
+/** Each producer's strongly connected group under `edges`, by its site. */
+function stronglyConnectedGroups(
+  producers: readonly ComputedProducer[],
+  edges: (from: ComputedProducer) => readonly ComputedProducer[],
+): Map<string, ReadonlySet<string>> {
+  const groupOf = new Map<string, ReadonlySet<string>>();
+  const index = new Map<ComputedProducer, number>();
+  const low = new Map<ComputedProducer, number>();
+  const stack: ComputedProducer[] = [];
+  const onStack = new Set<ComputedProducer>();
+  let counter = 0;
+  const strong = (v: ComputedProducer): void => {
+    index.set(v, counter);
+    low.set(v, counter);
+    counter++;
+    stack.push(v);
+    onStack.add(v);
+    for (const w of edges(v)) {
+      if (!index.has(w)) {
+        strong(w);
+        low.set(v, Math.min(low.get(v)!, low.get(w)!));
+      } else if (onStack.has(w)) low.set(v, Math.min(low.get(v)!, index.get(w)!));
+    }
+    if (low.get(v) !== index.get(v)) return;
+    const members = new Set<string>();
+    let member: ComputedProducer;
+    do {
+      member = stack.pop()!;
+      onStack.delete(member);
+      members.add(member.at);
+    } while (member !== v);
+    for (const at of members) groupOf.set(at, members);
+  };
+  for (const producer of producers) if (!index.has(producer)) strong(producer);
+  return groupOf;
+}
+
+/** The step names an expression of `engine` written as `source` reads —
+ *  `undefined` among them for a read of `steps` whole or by a computed name. */
+export function stepNamesReadIn(engine: string, source: string): Array<string | undefined> {
+  const out: Array<string | undefined> = [];
+  for (const expression of celExpressionsOf(engine, source)) {
+    const parsed = parseCelSource(expression);
+    if (!parsed) continue;
+    for (const chain of extractAccessChains(parsed.root)) {
+      if (chain[0] !== "steps") continue;
+      out.push(chain.length < 2 || chain[1] === INDEX_SEGMENT ? undefined : chain[1]);
+    }
+  }
+  return out;
+}
+
+/** The step names the expressions inside `value` read — `undefined` among
+ *  them for a read of `steps` whole or by a computed name. */
+export function stepNamesReadBy(value: unknown): Array<string | undefined> {
+  const out: Array<string | undefined> = [];
+  const visit = (node: unknown): void => {
+    if (isTaggedSentinel(node)) {
+      out.push(...stepNamesReadIn(node.engine, node.source));
+      return;
+    }
+    if (node === null || typeof node !== "object") return;
+    for (const field of Array.isArray(node) ? node : Object.values(node)) visit(field);
+  };
+  visit(value);
+  return out;
 }

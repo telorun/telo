@@ -29,6 +29,16 @@ import {
   isRefSentinel,
   isTaggedSentinel,
 } from "@telorun/templating";
+import {
+  crossingPlace,
+  placeAt,
+  pointerPlaces,
+  READS_WHOLE,
+  type ReadKeys,
+  type ReferentPlace,
+  type ReferentReads,
+} from "./read-place.js";
+import { compileRuleCondition } from "./rule-condition.js";
 
 export const RESOURCE_RULES_ANNOTATION = "x-telo-resource-rules";
 
@@ -564,4 +574,139 @@ export function findDynamicRead(
     return { path, what: leaf.what };
   }
   return undefined;
+}
+
+/** A rule as {@link ruleReferentReads} reads it: its condition, and where
+ *  `this` stands — the resource itself where it iterates nothing. */
+export interface RuleReading {
+  readonly condition: string;
+  readonly in?: string;
+}
+
+/**
+ * What rules read in each declaration a `resolve:` pointer of `root` crosses
+ * into — and, `atRoot`, in the declaration `root` names itself: which of its
+ * members hold an expression, the rest of each pointer past a member, and the
+ * member each read chain of a condition reaches past a place a pointer may
+ * cross — the declaration whole where a chain reads it whole (a bare use, an
+ * iteration, a presence test of its members), where a `this` is reached
+ * through a repeated group, and where a condition does not parse. Read
+ * wherever along a pointer the reference stands, so the same places serve
+ * every hop.
+ */
+export function ruleReferentReads(
+  rules: readonly RuleReading[],
+  pointers: readonly string[],
+  root: string,
+  moduleNames?: ReadonlySet<string>,
+  atRoot = false,
+): ReferentReads {
+  const crossings: string[][] = atRoot ? [[]] : [];
+  for (const pointer of pointers) {
+    const segments = pointerSegments(pointer) ?? [];
+    for (let j = 1; j <= segments.length; j++) crossings.push(segments.slice(0, j));
+  }
+  const places = new Map<string, readonly (string | number)[]>();
+  const read = (keys: readonly (string | number)[]) => places.set(JSON.stringify(keys), keys);
+  const meets = (a: string, b: string) => a === "*" || b === "*" || a === b;
+  const wildcard = (segment: string) => (segment === INDEX_SEGMENT || segment === EACH_SEGMENT ? "*" : segment);
+  for (const rule of rules) {
+    const compiled = compileRuleCondition(rule.condition, moduleNames);
+    // An unparseable condition is refused at the kind: it reads nothing.
+    if ("reason" in compiled) continue;
+    let item: string[] = [];
+    if (rule.in !== undefined) {
+      const steps = parseRulePointer(rule.in);
+      item = steps ? steps.map((step) => (step.kind === "key" ? step.key : "*")) : [];
+    }
+    for (const chain of compiled.chains) {
+      const base = chain[0] === root ? [] : chain[0] === "this" ? item : null;
+      if (base === null) continue;
+      let path = [...base, ...chain.slice(1).map(wildcard)];
+      const presence = path[path.length - 1] === PRESENCE_SEGMENT;
+      if (presence) path = path.slice(0, -1);
+      for (const crossing of crossings) {
+        const shared = Math.min(path.length, crossing.length);
+        if (!path.slice(0, shared).every((segment, i) => meets(segment, crossing[i]!))) continue;
+        const rest = path.slice(crossing.length);
+        if (path.length <= crossing.length) return READS_WHOLE;
+        if (rest[0] === "*") continue;
+        read(placeAt([], `/${rest.map((s) => s.replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`));
+      }
+    }
+  }
+  for (const keys of pointerPlaces(pointers)) read(keys);
+  const out: ReferentPlace[] = [{ kind: "tagged", keys: [] }];
+  for (const keys of places.values()) out.push({ kind: "value", keys });
+  return () => out;
+}
+
+/** What a resource-rule instance reads beside its anchor: the places of its
+ *  own declaration its rules read, and — by name — in the declarations each
+ *  `resolve:` pointer reaches, the places the rules read there. */
+export interface ResourceRuleReads {
+  readonly places: readonly ReadKeys[];
+  /** The module functions its conditions call, as written. */
+  readonly calls: readonly string[];
+  readonly targets: readonly { readonly at: ReadKeys; readonly reads: ReferentReads }[];
+}
+
+/** The concrete places along a read path: up to its first wildcard, the
+ *  collection the wildcard ranges over. */
+function concretePrefix(path: readonly string[]): (string | number)[] {
+  const out: (string | number)[] = [];
+  for (const segment of path) {
+    if (segment === "*") break;
+    out.push(/^\d+$/.test(segment) ? Number(segment) : segment);
+  }
+  return out;
+}
+
+/**
+ * What a kind's resource rules read in the declaration they judge: the places
+ * `in:` ranges over and each chain of a condition reaches — a chain through a
+ * comprehension's or `cel.bind`'s variable followed to the member it reads, a
+ * wildcard reading the collection it ranges over, `this` the place `in:` names
+ * (a repeated group's list) — a declaration whole only for a root read
+ * (`self` itself, or an `in:` ranging over the root), and the reference place
+ * of each `resolve:` pointer with the places read past it.
+ */
+export function resourceRuleReads(rules: readonly ResourceRule[], moduleNames?: ReadonlySet<string>): ResourceRuleReads {
+  const places = new Map<string, ReadKeys>();
+  const read = (keys: ReadKeys) => places.set(JSON.stringify(keys), keys);
+  const targets: { at: ReadKeys; reads: ReferentReads }[] = [];
+  const calls = new Set<string>();
+  for (const rule of rules) {
+    let item: string[] = [];
+    if (rule.in !== undefined) {
+      const steps = parseRulePointer(rule.in);
+      item = steps ? steps.map((step) => (step.kind === "key" ? step.key : "*")) : [];
+      read(concretePrefix(item));
+    }
+    const compiled = compileRuleCondition(rule.condition, moduleNames);
+    if (!("reason" in compiled)) {
+      for (const call of compiled.calls) calls.add(call);
+      for (const member of compiled.rootPresence) read([member]);
+      for (const chain of compiled.chains) {
+        const base = chain[0] === "self" ? [] : chain[0] === "this" ? item : undefined;
+        if (base === undefined) continue;
+        let path = [...base, ...chain.slice(1).map((segment) => (segment === INDEX_SEGMENT || segment === EACH_SEGMENT ? "*" : segment))];
+        if (path[path.length - 1] === PRESENCE_SEGMENT) path = path.slice(0, -1);
+        // A test on the root's keys is read member by member above.
+        if (chain[0] === "self" && chain.length === 2 && chain[1] === PRESENCE_SEGMENT) continue;
+        read(concretePrefix(path));
+      }
+    }
+    for (const pointer of rule.resolve ?? []) {
+      const at = crossingPlace(pointer);
+      read(at);
+      targets.push({ at, reads: ruleReferentReads([rule], [pointer], "self") });
+    }
+  }
+  const all = [...places.values()];
+  return {
+    places: all.filter((keys) => !all.some((other) => other !== keys && other.length < keys.length && other.every((key, i) => String(key) === String(keys[i])))),
+    calls: [...calls],
+    targets,
+  };
 }

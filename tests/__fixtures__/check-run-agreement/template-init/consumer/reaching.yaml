@@ -1,0 +1,13 @@
+# Uses the library's kinds; its own check is silent about the library's internals.
+kind: Telo.Application
+metadata:
+  name: TemplateInitReaching
+imports:
+  Lib: ../lib
+targets:
+  - !ref unrelated
+---
+kind: Lib.Unrelated
+metadata: { name: unrelated }
+a: 2
+b: 1

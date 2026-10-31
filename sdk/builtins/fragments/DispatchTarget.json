@@ -17,6 +17,14 @@
         "source": {
           "type": "string",
           "minLength": 1
+        },
+        "parsed": {
+          "type": "object",
+          "description": "The `!ref` engine's reading of `source`, attached by the loader."
+        },
+        "refusal": {
+          "type": "object",
+          "description": "Set instead of `parsed` when `source` is outside the `!ref` grammar."
         }
       },
       "additionalProperties": false

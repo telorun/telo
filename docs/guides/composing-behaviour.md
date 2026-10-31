@@ -227,10 +227,10 @@ A scoped name resolves only inside the sequence, and each run gets its own
 instances — two concurrent runs never observe each other.
 
 An inline step target (`invoke: { kind: … }`) is created where the sequence is,
-not in its scope, so nothing inside it can name a `with:` resource — neither a
-`!ref` nor `resources.<name>` in its CEL (`telo check` reports
-`SCOPED_NAME_OUT_OF_REACH`). Give that target a name under `with:` and invoke it
-with `!ref`. An inline entry in `targets:` is the other way round: it is created
+not in its scope, so nothing inside it can name a `with:` resource: `telo check`
+reports a `!ref` as `SCOPED_NAME_OUT_OF_REACH` and a `resources.<name>` read in
+its CEL as `CEL_UNKNOWN_FIELD`, each saying why. Give that target a name under
+`with:` and invoke it with `!ref`. An inline entry in `targets:` is the other way round: it is created
 in the scope, since that is where a target runs.
 
 ## The other `run` kinds

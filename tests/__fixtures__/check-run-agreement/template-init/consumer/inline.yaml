@@ -1,0 +1,11 @@
+# Uses the library's kind; its own check is silent about the library's internals.
+kind: Telo.Application
+metadata:
+  name: TemplateInitInlineApp
+imports:
+  Lib: ../inline-lib
+targets:
+  - !ref inline
+---
+kind: Lib.Inline
+metadata: { name: inline }

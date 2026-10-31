@@ -9,3 +9,9 @@ imports:
 needs:
   signingKey:
     kind: Fx.SigningKey
+---
+# Reads the key, so every application reaching this library needs it.
+kind: Fx.SigningKey
+metadata: { name: signer }
+fields:
+  value: !cel "resources.signingKey.value"

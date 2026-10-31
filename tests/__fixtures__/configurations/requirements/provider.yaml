@@ -1,0 +1,20 @@
+# The model-provider example over two fixture models: the presence of
+# `openaiApiKey` picks the first; `anthropicApiKey` is read only in the
+# `else:` branch, so it is required only where `OPENAI_API_KEY` is unset.
+kind: Telo.Application
+metadata:
+  name: Assistant
+imports:
+  Kinds: ../needs/kinds
+secrets:
+  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: null }
+  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string }
+--- !if
+metadata: { name: model }
+if: !cel "secrets.openaiApiKey != null"
+then:
+  kind: Kinds.Labelled
+  label: !cel "'openai:' + secrets.openaiApiKey"
+else:
+  kind: Kinds.Labelled
+  label: !cel "'anthropic:' + secrets.anthropicApiKey"

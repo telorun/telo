@@ -1,0 +1,19 @@
+# A chosen named shape is a type, and its name is judged as one.
+kind: Telo.Application
+metadata:
+  name: TypeNames
+variables:
+  wide:
+    env: WIDE
+    type: boolean
+    default: false
+--- !if
+metadata: { name: Money }
+if: !cel "variables.wide"
+then: { kind: Telo.JsonSchema, schema: { type: integer } }
+else: { kind: Telo.JsonSchema, schema: { type: string } }
+--- !if
+metadata: { name: money }
+if: !cel "variables.wide"
+then: { kind: Telo.JsonSchema, schema: { type: number } }
+else: { kind: Telo.JsonSchema, schema: { type: string } }

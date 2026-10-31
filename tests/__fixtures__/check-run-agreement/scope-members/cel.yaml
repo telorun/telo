@@ -1,0 +1,12 @@
+# Invokes the library's `sequenceCel`. An exported resource's expressions are
+# typed in the consumer's analysis too, its scope members' with them, so the run
+# is refused at load with the same two findings.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberCelApp
+  version: 1.0.0
+imports:
+  Lib: ./cel-lib
+targets:
+  - name: probe
+    invoke: !ref Lib.sequenceCel

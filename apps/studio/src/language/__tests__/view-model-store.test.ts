@@ -205,3 +205,17 @@ it("holds a model current only while every document it was analysed from is at t
   expect(store.isCurrent(model)).toBe(false);
   expect(store.isCurrent({ ...model, documents: {} })).toBe(false);
 });
+
+it("asks for the picked configuration and takes its answer at the revision it holds", async () => {
+  let read = 0;
+  const { store, requests } = await storeServing(() => ({ ...viewModel(1), kindSpellings: { read: String(++read) } }));
+  const spelling = () => {
+    const status = store.get(MODULE);
+    return status.state === "ready" ? status.model.kindSpellings.read : undefined;
+  };
+  await until(() => spelling() === "1", "the first model");
+
+  store.configure(MODULE, { "variables.dialect": "memory" });
+  await until(() => spelling() === "2", "the model for the picked configuration");
+  expect(requests()[1]!.params).toEqual({ owner: OWNER, configuration: { "variables.dialect": "memory" } });
+});

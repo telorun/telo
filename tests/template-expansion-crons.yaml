@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: TemplateExpansionCronsTest
+  version: 1.0.0
+  description: >-
+    A `!for-each` in a template's `targets:` emitting inline `Schedule.Cron`
+    declarations starts one per element of the instance's collection, in
+    declaration order — services held open by the instance, started through the
+    same path as a named entry.
+imports:
+  Schedule: ../modules/scheduler
+  Timer: ../modules/timer
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+  - !ref cronsStarted
+---
+kind: Telo.Definition
+metadata: { name: Jobs }
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    expressions:
+      type: array
+      items: { type: string }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: tick }
+    steps:
+      - name: noop
+        value: 1
+targets:
+  - !for-each
+    in: !cel "self.expressions"
+    as: expression
+    emit:
+      kind: Schedule.Cron
+      cron: !cel "expression.value"
+      invoke: !ref tick
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Self.Jobs
+    metadata: { name: jobs }
+    expressions: ["0 * * * *", "15 * * * *", "30 * * * *"]
+targets:
+  - !ref jobs
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "200ms"
+---
+kind: Assert.Events
+metadata: { name: cronsStarted }
+filter:
+  - type: "*.Run"
+expect:
+  - event: "targets_0_emit[0].Run"
+    times: 1
+  - event: "targets_0_emit[1].Run"
+    times: 1
+  - event: "targets_0_emit[2].Run"
+    times: 1
+  - event: "targets_0_emit[0].Run"
+  - event: "targets_0_emit[1].Run"
+  - event: "targets_0_emit[2].Run"

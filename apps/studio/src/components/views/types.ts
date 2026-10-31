@@ -33,6 +33,9 @@ export interface ViewProps {
   /** Reads the view model again after a failed read; absent where retrying
    *  cannot help (no language session runs). */
   onRetryViewModel?: () => void;
+  /** Draws the active module's choices in a configuration (an assignment of a
+   *  value to each dimension); absent where no language session runs. */
+  onPickConfiguration?: (configuration: Record<string, unknown>) => void;
   /** Switches the module to its source view. */
   onOpenSourceView: () => void;
   /** The active module's kinds, reference constraints and contracts, read from

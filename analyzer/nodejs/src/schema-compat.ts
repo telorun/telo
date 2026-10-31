@@ -1161,7 +1161,7 @@ export function resolveRefIn(
 export type ExternalSchemaResolver = (ref: string) => Record<string, any> | undefined;
 
 /** The keys a reference node is made of — what an expansion replaces. */
-export const REFERENCE_KEYS: ReadonlySet<string> = new Set(["$ref", "kind", "name", "alias"]);
+export const REFERENCE_KEYS: ReadonlySet<string> = new Set(["$ref", "kind", "name", "alias", "indexes"]);
 
 /**
  * A copy of `schema` with every named shape it references — at the root and at

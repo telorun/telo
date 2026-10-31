@@ -32,7 +32,7 @@ async function sessionOffering(
   const registryDocument = {
     versions: {
       [OTHER]: {
-        teloEditorProtocol: 1,
+        teloEditorProtocol: 2,
         dist: { tarball: `https://registry.invalid/${OTHER}.tgz`, integrity: "sha512-unused" },
       },
     },

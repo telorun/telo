@@ -31,8 +31,9 @@ async function runTemplate(argv: { manifest: string; write: boolean }): Promise<
   if (!loaded) return;
   const entries = envTemplateEntries(
     loaded.root,
-    buildNeedsReport(loaded.graph, loaded.table, loaded.needType),
+    buildNeedsReport(loaded.graph, loaded.table, loaded.needType, loaded.requirements, loaded.dimensions),
     loaded.table.environment,
+    { inputs: loaded.requirements.inputs, dimensions: loaded.dimensions },
   );
   const appName = String(loaded.root.metadata?.name ?? "the application");
 

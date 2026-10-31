@@ -10,7 +10,7 @@ import type { FeatureContext } from "./context.js";
 
 /** Characters that open completion. `-` opens a new list entry in
  *  `telo-workspace.yaml` and means nothing in a manifest. */
-export const COMPLETION_TRIGGERS = [" ", ":", "/", "@", "!", "-"];
+export const COMPLETION_TRIGGERS = [" ", ":", "/", "@", "!", "-", "["];
 const MARKER_ONLY_TRIGGERS = new Set(["-"]);
 
 const KIND: Record<CompletionResult["kind"], CompletionItemKind> = {

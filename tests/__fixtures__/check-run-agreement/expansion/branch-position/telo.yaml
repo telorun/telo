@@ -1,0 +1,19 @@
+# `!if` / `!switch` where nothing is chosen: a library's `variables:` entry and
+# a kind's `schema:`. Refused at the library, silent at a consumer's check,
+# refused when the consumer's import loads the library.
+kind: Telo.Library
+metadata:
+  name: BranchPositionLib
+variables:
+  mode: !if
+    if: true
+    then: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: Chosen
+capability: Telo.Runnable
+schema: !switch
+  switch: a
+  cases:
+    a: { type: object }

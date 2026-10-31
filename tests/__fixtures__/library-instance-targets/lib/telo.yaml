@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata: { name: Lib }
+imports:
+  Shapes: ../shapes
+  Middle: ../middle
+  Run: ../../../../modules/run
+exports: { resources: [describe] }
+---
+kind: Telo.Function
+metadata: { name: roles }
+params:
+  - { name: names, schema: { type: array, items: { type: string } } }
+returns:
+  schema:
+    type: array
+    items: !ref Shapes.Message
+body: !cel "names.map(n, {'role': n})"
+---
+kind: Run.Sequence
+metadata: { name: describe }
+steps:
+  - { name: listed, value: !cel "Self.roles(['user'])" }
+outputs:
+  roles: !cel "steps.listed.result"

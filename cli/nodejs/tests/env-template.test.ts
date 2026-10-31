@@ -132,7 +132,8 @@ describe("telo env template", () => {
     expect(second.stdout).toContain("added REGION to");
     const after = fs.readFileSync(env, "utf8");
     expect(after.startsWith(edited)).toBe(true);
-    expect(after.slice(edited.length)).toBe("\n# REGION=  # required\n");
+    // Nothing reads the region, so no configuration requires it.
+    expect(after.slice(edited.length)).toBe("\n# REGION=\n");
     expect(readEnvValues(after)).toEqual({ BUCKET: "orders" });
   });
 

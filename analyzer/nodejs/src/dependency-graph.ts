@@ -5,7 +5,6 @@ import {
   buildCallGraph,
   nodeIdFor,
   projectToPairs,
-  resolveScopedName,
   type CallGraph,
   type ResourceGraphNode,
 } from "./call-graph.js";
@@ -20,6 +19,13 @@ import { needSupplyOf, readSuppliedNeeds } from "./need-type.js";
 import { celResourceReads } from "./cel-access-chains.js";
 import { startupObservedStateReads } from "./validate-observed-state.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { ScopedNameResolver, type DeclarationReading } from "./scoped-name-resolver.js";
+
+/** How a keyed node names itself and the module that declared it. */
+const KEYED_NODE_READING: DeclarationReading<[string, ResourceNode]> = {
+  nameOf: ([, node]) => node.name,
+  moduleOf: ([, node]) => declaringModuleOf(node.manifest),
+};
 
 export interface ResourceNode {
   kind: string;
@@ -39,8 +45,6 @@ export interface DependencyGraph {
    *  them — so disjoint loops are each reported. Present iff `cycle` is. */
   cycles?: ReadonlyArray<ReadonlyArray<ResourceNode>>;
 }
-
-const nodeKey = (kind: string, name: string) => `${kind}\0${name}`;
 
 /**
  * Builds a directed acyclic graph (DAG) of boot-time resource dependencies and
@@ -99,14 +103,10 @@ export function buildDependencyGraph(
   }
   for (const key of nodes.keys()) if (!deps.has(key)) deps.set(key, new Set());
 
-  addResourceInputEdges(resources, nodes, deps);
-  const statusReadAliases = addStartupStatusReadEdges(
-    nodes,
-    deps,
-    registry,
-    aliases,
-    aliasesByModule,
-  );
+  const importNodes = addImportNodes(resources, nodes, deps, aliases, aliasesByModule);
+  addResourceInputEdges(importNodes, nodes, deps);
+  addImportReferenceEdges(graph, nodes, deps, importNodes, aliases, aliasesByModule);
+  addStartupStatusReadEdges(nodes, deps, registry, aliases, aliasesByModule, importNodes);
 
   // --- Kahn's topological sort ---
   // in-degree[X] = number of X's dependencies (size of deps[X])
@@ -141,7 +141,7 @@ export function buildDependencyGraph(
 
   if (sorted.length === nodes.size) {
     return {
-      order: creationOrder(resources, nodes, deps, aliases, aliasesByModule, statusReadAliases),
+      order: creationOrder(resources, nodes, deps, aliases, aliasesByModule),
     };
   }
 
@@ -153,6 +153,45 @@ export function buildDependencyGraph(
       : findCycle(component, deps, component),
   );
   return { cycle: toNodes(cycleKeys), cycles: cycles.map(toNodes) };
+}
+
+/**
+ * The loops among one scope's members, each scope on its own: the kernel
+ * creates a scope's members when the scope opens, in an init loop of their own,
+ * so a member holding a sibling that holds it back can never be created. Read
+ * off the same reference edges as the boot order — a member's reference slots,
+ * never its steps, every use but `schema` — kept to edges between members of
+ * one scope, since anything else exists before the scope opens.
+ */
+export function scopedCycles(graph: CallGraph): ReadonlyArray<ReadonlyArray<ResourceNode>> {
+  const groups = new Map<string, Map<string, ResourceNode>>();
+  const groupOf = new Map<string, string>();
+  for (const node of graph.nodes.values()) {
+    if (node.type !== "resource" || !node.scoped) continue;
+    const key = `${node.scopeOwner ?? ""}\0${node.scopeSite ?? ""}`;
+    let group = groups.get(key);
+    if (!group) groups.set(key, (group = new Map()));
+    group.set(node.id, { kind: node.kind, name: node.name, manifest: node.manifest });
+    groupOf.set(node.id, key);
+  }
+  if (groups.size === 0) return [];
+  const deps = new Map<string, Set<string>>();
+  for (const edge of graph.edges) {
+    if (!edge.to || edge.nested || edge.moduleCall) continue;
+    if (edge.use.length > 0 && edge.use.every((use) => use === "schema")) continue;
+    const group = groupOf.get(edge.from);
+    if (group === undefined || groupOf.get(edge.to) !== group) continue;
+    let set = deps.get(edge.from);
+    if (!set) deps.set(edge.from, (set = new Set()));
+    set.add(edge.to);
+  }
+  const out: ResourceNode[][] = [];
+  for (const nodes of groups.values()) {
+    for (const component of stronglyConnectedLoops(nodes, deps)) {
+      out.push(findCycle(component, deps, component).map((key) => nodes.get(key)!));
+    }
+  }
+  return out;
 }
 
 /**
@@ -168,6 +207,14 @@ export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
   lines.push(`  ${cycle[0].kind} "${cycle[0].name}"`);
   for (const node of cycle.slice(1)) {
     lines.push(`    → ${node.kind} "${node.name}"`);
+  }
+  const through = cycle.find((node) => node.kind === "Telo.Import");
+  if (through) {
+    lines.push(
+      `Import '${through.name}' initializes after the resources it is handed, and an instance it ` +
+        `exports exists only once it has initialized — so a resource handed to it cannot hold one ` +
+        `of its exports. Move what is exported into a module that borrows nothing from the importer.`,
+    );
   }
   return lines.join("\n");
 }
@@ -187,21 +234,22 @@ export function formatCycle(cycle: ReadonlyArray<ResourceNode>): string {
  * this they sorted after everything and every such resource failed its first
  * creation attempt.
  *
- * A reference written through an import alias (`!ref Lib.sweep`, at a step's
- * `invoke:` as much as at a slot) orders the same way: the target's declaration
- * exists only once its import is created, and the kernel reads a call site's
- * plain-encoded literals against that declaration when it creates the resource
- * holding the call. An import that takes a resource input is created after that
- * resource, so without the edge a caller with nothing before it was created
- * first and its literals were never read.
+ * A reference written through an import alias at a step's `invoke:` orders the
+ * same way: the target's declaration exists only once its import is created,
+ * and the kernel reads a call site's plain-encoded literals against that
+ * declaration when it creates the resource holding the call. (One at a
+ * resource's own reference slot is a hard edge already — see
+ * {@link addImportReferenceEdges}.)
  *
  * These are SOFT edges: they order, and never fail. An import may be handed an
  * instance of a kind it itself exports (`resources: { conn: !ref db }` where
  * `db` is `kind: Lib.Connection`), which the runtime satisfies because the
  * alias exists once the import is created; as a hard edge that would be a
- * cycle. So cycle detection stays on the dependency edges alone, and when only
- * soft edges hold the sort back, the first node whose dependencies are all met
- * goes next.
+ * cycle. A step is dispatched only once everything has initialized, so a step
+ * calling an export of an import its holder is supplied to is no cycle either.
+ * So cycle detection stays on the dependency edges alone, and when only soft
+ * edges hold the sort back, the first node whose dependencies are all met goes
+ * next.
  *
  * Both ends are read through {@link moduleAliasScope}: an import is keyed by the
  * alias table it registers into, and a kind by the table its declaring module
@@ -214,7 +262,6 @@ function creationOrder(
   deps: Map<string, Set<string>>,
   aliases: AliasResolver | undefined,
   aliasesByModule: Map<string, AliasResolver> | undefined,
-  statusReadAliases: ReadonlyMap<string, ReadonlySet<string>>,
 ): ResourceNode[] {
   const keyOf = new Map<ResourceManifest, string>();
   for (const [key, node] of nodes) keyOf.set(node.manifest, key);
@@ -271,10 +318,7 @@ function creationOrder(
     if (node.manifest.kind !== "Telo.Import") {
       const imports = importsByScope.get(scope);
       if (imports) {
-        for (const alias of [
-          ...referencedAliases(node.manifest),
-          ...(statusReadAliases.get(key) ?? []),
-        ]) {
+        for (const alias of referencedAliases(node.manifest)) {
           const target = imports.get(alias);
           if (target && target !== key) set.add(target);
         }
@@ -457,60 +501,109 @@ function stronglyConnectedLoops(
   return found.sort((a, b) => a.first - b.first).map((c) => c.members);
 }
 
+/** Every `Telo.Import` as a node, each keyed by the alias table it registers
+ *  into and its alias — the two a reference through the alias is read with. */
+type ImportNodes = ReadonlyMap<AliasResolver | undefined, ReadonlyMap<string, string>>;
+
 /**
- * Boot-order edges for what a `Telo.Import` does hold: the instances it hands
- * DOWN to its target library's declared `resources:` inputs, and the needs and
- * fulfilments its `needs:` supplies read.
- *
- * An import is otherwise module wiring rather than a runtime node — the call
- * graph skips it with the kind documents and gives it no node at all — but
- * a borrowed instance must exist before the import initializes, and a cycle
- * through one is a cycle like any other. The edges are added here rather than
- * read off the reference field map because the accepted KIND at this slot is
- * declared by the TARGET library, not by the `Telo.Import` schema, so there is
- * no `x-telo-ref` for the map to read; the constraint itself is checked by
- * `validate-resource-inputs`.
+ * Every `Telo.Import` is a node of the boot order. An import is module wiring
+ * rather than an instance the call graph knows, but it holds what it hands its
+ * library and is what an export of that library exists after, so it orders
+ * both ways: after the instances it is handed (below), and before every
+ * resource referencing one of its exports ({@link addImportReferenceEdges}).
  */
-function addResourceInputEdges(
+function addImportNodes(
   resources: ResourceManifest[],
   nodes: Map<string, ResourceNode>,
   deps: Map<string, Set<string>>,
-): void {
-  // Every import that supplies inputs becomes a node FIRST, so a cross-module
-  // reference below can resolve to the import that exports its target.
-  const imports: Array<{ key: string; targets: string[] }> = [];
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+): ImportNodes {
+  const out = new Map<AliasResolver | undefined, Map<string, string>>();
   for (const m of resources) {
     if (m.kind !== "Telo.Import") continue;
     const alias = m.metadata?.name as string | undefined;
-    const targets = [
-      ...Object.values(readSuppliedResources(m)).map(suppliedResourceTarget),
-      ...needSupplyTargets(readSuppliedNeeds(m)),
-    ].filter((name): name is string => name !== undefined);
-    if (!alias || targets.length === 0) continue;
-    const key = nodeKey(m.kind, alias);
+    if (!alias) continue;
+    const key = nodeIdFor(m);
     nodes.set(key, { kind: m.kind, name: alias, manifest: m });
     if (!deps.has(key)) deps.set(key, new Set<string>());
-    imports.push({ key, targets });
+    const scope = moduleAliasScope(m.metadata, aliases, aliasesByModule);
+    let byAlias = out.get(scope);
+    if (!byAlias) out.set(scope, (byAlias = new Map()));
+    byAlias.set(alias, key);
   }
-  if (imports.length === 0) return;
+  return out;
+}
 
-  const byName = new Map<string, string>();
-  for (const [key, node] of nodes) byName.set(node.name, key);
-  // An import is keyed by its alias, and that is also how a cross-module
-  // reference names it — index those so one resolves.
-  for (const m of resources) {
-    if (m.kind !== "Telo.Import") continue;
-    const alias = m.metadata?.name as string | undefined;
-    const key = alias ? nodeKey(m.kind, alias) : undefined;
-    if (alias && key && nodes.has(key)) byName.set(alias, key);
-  }
+/** The import node `alias` names where `manifest` is declared. */
+function importNodeOf(
+  imports: ImportNodes,
+  manifest: ResourceManifest,
+  alias: string,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+): string | undefined {
+  return imports.get(moduleAliasScope(manifest.metadata, aliases, aliasesByModule))?.get(alias);
+}
 
-  for (const { key, targets } of imports) {
-    const set = deps.get(key)!;
-    for (const targetName of targets) {
-      const target = byName.get(targetName);
-      if (target && target !== key) set.add(target);
+/**
+ * Boot-order edges for what a `Telo.Import` holds: the instances it hands
+ * DOWN to its target library's declared `resources:` inputs, and the needs and
+ * fulfilments its `needs:` supplies read. A borrowed instance must exist before
+ * the import initializes, and a cycle through one is a cycle like any other.
+ * The edges are added here rather than read off the reference field map because
+ * the accepted KIND at this slot is declared by the TARGET library, not by the
+ * `Telo.Import` schema, so there is no `x-telo-ref` for the map to read; the
+ * constraint itself is checked by `validate-resource-inputs`.
+ */
+function addResourceInputEdges(
+  imports: ImportNodes,
+  nodes: Map<string, ResourceNode>,
+  deps: Map<string, Set<string>>,
+): void {
+  // An import node is named by its alias, which is also how a cross-module
+  // reference names it, so one resolves like any other name.
+  const names = new ScopedNameResolver(nodes, KEYED_NODE_READING);
+  for (const byAlias of imports.values()) {
+    for (const key of byAlias.values()) {
+      const manifest = nodes.get(key)!.manifest;
+      const targets = [
+        ...Object.values(readSuppliedResources(manifest)).map(suppliedResourceTarget),
+        ...needSupplyTargets(readSuppliedNeeds(manifest)),
+      ].filter((name): name is string => name !== undefined);
+      const set = deps.get(key)!;
+      const fromModule = declaringModuleOf(manifest);
+      for (const targetName of targets) {
+        const target = names.resolve(targetName, fromModule)?.[0];
+        if (target && target !== key) set.add(target);
+      }
     }
+  }
+}
+
+/**
+ * A HARD edge from a resource to the import a reference at one of its own
+ * reference slots is written through (`!ref Lib.table`): the referenced export
+ * exists only once its import has initialized, and the slot is injected when
+ * the resource is created. So a resource handed to an import that reaches an
+ * export of that same import is a cycle, refused before anything initializes.
+ * A step's reference is dispatched after boot and a kind spelled through an
+ * alias names no instance, so neither is one.
+ */
+function addImportReferenceEdges(
+  graph: CallGraph,
+  nodes: Map<string, ResourceNode>,
+  deps: Map<string, Set<string>>,
+  imports: ImportNodes,
+  aliases?: AliasResolver,
+  aliasesByModule?: Map<string, AliasResolver>,
+): void {
+  for (const edge of graph.edges) {
+    if (edge.alias === undefined || !edge.injected || edge.nested || edge.scoped) continue;
+    const from = nodes.get(edge.from);
+    if (!from) continue;
+    const target = importNodeOf(imports, from.manifest, edge.alias, aliases, aliasesByModule);
+    if (target && target !== edge.from) deps.get(edge.from)!.add(target);
   }
 }
 
@@ -546,8 +639,7 @@ function needSupplyTargets(supplied: Record<string, unknown>): string[] {
  * Init-order edges for every observed-state read a resource makes in a field
  * that resolves at startup. A bare name resolves among the module's own
  * resources, same module first; a read through an import alias depends on that
- * import, which is a hard edge where the import is a node of this graph and a
- * creation-order edge — returned per reader — otherwise.
+ * import.
  */
 function addStartupStatusReadEdges(
   nodes: Map<string, ResourceNode>,
@@ -555,16 +647,15 @@ function addStartupStatusReadEdges(
   registry: DefinitionRegistry,
   aliases: AliasResolver | undefined,
   aliasesByModule: Map<string, AliasResolver> | undefined,
-): Map<string, Set<string>> {
-  const byName = new Map<string, Array<[string, ResourceNode]>>();
-  for (const entry of nodes) {
-    if (entry[1].kind === "Telo.Import") continue;
-    byName.set(entry[1].name, [...(byName.get(entry[1].name) ?? []), entry]);
-  }
+  imports: ImportNodes,
+): void {
+  const names = new ScopedNameResolver(
+    [...nodes].filter(([, node]) => node.kind !== "Telo.Import"),
+    KEYED_NODE_READING,
+  );
   const resolveDef: DefResolver = (kind, from) =>
     definitionInScope(registry, kind, from?.metadata, aliases, aliasesByModule);
 
-  const aliasReads = new Map<string, Set<string>>();
   for (const [key, node] of nodes) {
     if (node.kind === "Telo.Import") continue;
     const sites = governedCelEvalSites(
@@ -576,23 +667,14 @@ function addStartupStatusReadEdges(
     const fromModule = declaringModuleOf(node.manifest);
     for (const read of startupObservedStateReads(node.manifest, sites)) {
       if (read.alias !== undefined) {
-        const importKey = nodeKey("Telo.Import", read.alias);
-        if (nodes.has(importKey)) {
-          if (importKey !== key) deps.get(key)!.add(importKey);
-        } else {
-          let set = aliasReads.get(key);
-          if (!set) aliasReads.set(key, (set = new Set()));
-          set.add(read.alias);
-        }
+        const importKey = importNodeOf(imports, node.manifest, read.alias, aliases, aliasesByModule);
+        if (importKey !== undefined && importKey !== key) deps.get(key)!.add(importKey);
         continue;
       }
-      const target = resolveScopedName(
-        byName.get(read.name),
-        ([, candidate]) => declaringModuleOf(candidate.manifest),
-        fromModule,
-      );
+      // A startup read sits in a compile-eval field, where the `resources`
+      // record holds no scope member: the name is a module-level one.
+      const target = names.resolve(read.name, fromModule);
       if (target) deps.get(key)!.add(target[0]);
     }
   }
-  return aliasReads;
 }

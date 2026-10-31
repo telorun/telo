@@ -1,0 +1,121 @@
+kind: Telo.Application
+metadata:
+  name: TemplateDeclaredIntegersTest
+  version: 1.0.0
+  description: >-
+    An integer a consumer writes reaches CEL as an integer wherever a template
+    body reads it: through `self`, through a loop's binding over a map or a list
+    the consumer wrote, and in a choice decided over a declaration the consumer
+    references. A bare `self.<path>` forward still hands the controller the
+    value as written.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+---
+kind: Telo.Definition
+metadata: { name: Scaler }
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [factor, jobs, list]
+  properties:
+    factor: { type: integer }
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+        required: [factor]
+        properties:
+          factor: { type: integer }
+    list:
+      type: array
+      items:
+        type: object
+        required: [factor]
+        properties:
+          factor: { type: integer }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: seq }
+    steps:
+      - name: own
+        value: !cel "self.factor * 10"
+      - !for-each
+        name: jobs
+        in: !cel "self.jobs"
+        emit:
+          value: !cel "each.value.factor * 10"
+      - !for-each
+        name: list
+        in: !cel "self.list"
+        emit:
+          value: !cel "each.value.factor * 10"
+    outputs:
+      own: !cel "steps.own.result"
+      jobs: !cel "steps.jobs"
+      list: !cel "steps.list[0].result"
+invoke: !ref seq
+---
+kind: Self.Scaler
+metadata: { name: scaler }
+factor: 4
+jobs:
+  alpha: { factor: 3 }
+list:
+  - { factor: 5 }
+---
+kind: Telo.Definition
+metadata: { name: Endpoint }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    port: { type: integer }
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value: ok
+invoke: !ref value
+---
+kind: Self.Endpoint
+metadata: { name: upstream }
+port: 80
+---
+kind: Telo.Definition
+metadata: { name: Crossing }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    target: { x-telo-ref: { kind: Self.Endpoint, use: dependency } }
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value: !if
+      if: !cel "self.target.port * 2 == 160"
+      then: doubled
+      else: other
+invoke: !ref value
+---
+kind: Self.Crossing
+metadata: { name: crossing }
+target: !ref upstream
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: run
+    invoke: !ref scaler
+  - name: crossed
+    invoke: !ref crossing
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.run.result, steps.crossed.result]"
+      expected:
+        - own: 40
+          jobs: { alpha: { result: 30 } }
+          list: 50
+        - doubled

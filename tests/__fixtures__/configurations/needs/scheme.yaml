@@ -1,0 +1,40 @@
+# A member a need type's field binds to a closed argument is a dimension: the
+# scheme of `store`'s address decides which label `chosen` publishes. A
+# condition reading the address's host is undecidable.
+kind: Telo.Application
+metadata:
+  name: NeedScheme
+imports:
+  Assert: ../../../../modules/assert
+  Run: ../../../../modules/run
+  Kinds: ./kinds
+needs:
+  store:
+    kind: Kinds.Access
+    env: { url: STORE_URL }
+variables:
+  expected:
+    env: EXPECTED_LABEL
+    type: string
+    default: in-memory
+targets:
+  - !ref main
+---
+kind: Kinds.Consumer
+metadata: { name: chosen }
+access: !ref store
+label: !switch
+  switch: !cel "resources.store.url.scheme"
+  cases:
+    mem: in-memory
+    file: on-disk
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "resources.chosen.label"
+      expected: !cel "variables.expected"

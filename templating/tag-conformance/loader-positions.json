@@ -1,0 +1,42 @@
+[
+  {
+    "name": "a tag at an import entry",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run: !if { if: true, then: ../run }\n",
+    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+  },
+  {
+    "name": "a tag as the whole imports block",
+    "yaml": "kind: Telo.Library\nmetadata:\n  name: Lib\nimports: !switch { switch: a, cases: { a: { Run: ../run } } }\n",
+    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+  },
+  {
+    "name": "a tag at an import's source",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run:\n    source: !if { if: true, then: ../run }\n",
+    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+  },
+  {
+    "name": "a repeat at an import entry",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  Run: !for-each { in: [a], emit: ../run }\n",
+    "refusals": [{ "documentIndex": 0, "code": "REPEAT_OUTSIDE_TEMPLATE" }]
+  },
+  {
+    "name": "a splice among the imports",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\nimports:\n  ...: !for-each { in: [a], key: k, emit: ../run }\n",
+    "refusals": [{ "documentIndex": 0, "code": "REPEAT_OUTSIDE_TEMPLATE" }]
+  },
+  {
+    "name": "a tag at an include entry",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\ninclude:\n  - !if { if: true, then: ./part.yaml }\n",
+    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+  },
+  {
+    "name": "a tag at the module's name",
+    "yaml": "kind: Telo.Library\nmetadata:\n  name: !if { if: true, then: Lib }\n",
+    "refusals": [{ "documentIndex": 0, "code": "BRANCH_POSITION_INVALID" }]
+  },
+  {
+    "name": "tags the loader does not read are not its to refuse",
+    "yaml": "kind: Telo.Application\nmetadata:\n  name: App\ntargets:\n  - !if { if: true, then: !ref job }\n--- !if\nmetadata: { name: job }\nif: true\nthen: { kind: Run.Value, value: 1 }\n",
+    "refusals": []
+  }
+]

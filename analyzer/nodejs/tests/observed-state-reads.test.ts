@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { expandManifestFragments } from "../src/manifest-schemas.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 import { observedStateRead } from "../src/validate-observed-state.js";
 
@@ -309,8 +310,9 @@ describe("a Provider's observed state, reported from init()", () => {
   });
 
   describe("declared in a scope", () => {
-    // Scoped resources are created when the scope opens, where a startup field
-    // of a scoped sibling cannot see them.
+    // A scope's members are in `resources` only inside the regions of the
+    // resource declaring the scope, outside its compile-eval fields — never in a
+    // member's own fields. A read the record lacks is `CEL_UNKNOWN_FIELD` alone.
     const scopeDef = {
       kind: "Telo.Definition",
       metadata: { name: "Scoped", module: "Run" },
@@ -318,36 +320,105 @@ describe("a Provider's observed state, reported from init()", () => {
       schema: {
         type: "object",
         properties: {
-          with: { "x-telo-scope": ["/targets"], type: "array", items: { type: "object" } },
+          with: {
+            "x-telo-scope": ["/targets", "/steps", "/label"],
+            type: "array",
+            items: { type: "object" },
+          },
           targets: { type: "array", items: { "x-telo-ref": { kind: "Telo.Runnable", use: "call" } } },
+          steps: { type: "array", items: { $ref: "telo://manifest#/$defs/Step" } },
+          label: { type: "string", "x-telo-eval": "compile" },
         },
       },
     } as unknown as ResourceManifest;
+    expandManifestFragments(scopeDef);
+
+    const SCOPE_CLAUSE =
+      "'db' is declared in the 'with' scope of Run.Scoped/flow; a scope member is in `resources` " +
+      "only where that scope's run evaluates the field (its regions, outside compile-eval fields).";
+
+    function sequence(fields: Record<string, unknown>): ResourceManifest {
+      return {
+        kind: "Run.Scoped",
+        metadata: { name: "flow" },
+        with: [{ kind: "Backend.Container", metadata: { name: "db" } }],
+        ...fields,
+      } as unknown as ResourceManifest;
+    }
 
     function scoped(field: "baseUrl" | "url"): ResourceManifest[] {
-      const sequence = {
+      const flow = sequence({});
+      (flow as unknown as { with: unknown[] }).with.push({
+        kind: "Consumer.Client",
+        metadata: { name: "browser" },
+        [field]: makeTaggedSentinel("cel", "resources.db.status.host"),
+      });
+      return [...manifests.filter((x) => x !== provider), scopeDef, flow];
+    }
+
+    /** Every diagnostic `telo check` reports at `path` of the sequence. */
+    function at(manifests: ResourceManifest[], path: string) {
+      return new StaticAnalyzer()
+        .analyze(withSyntheticPositions(manifests))
+        .filter((d) => (d.data as { path?: string } | undefined)?.path === path);
+    }
+
+    it("is unknown in a scoped sibling's startup field, naming the scope", () => {
+      const diagnostics = at(scoped("baseUrl"), "with[1].baseUrl");
+      expect(diagnostics.map((d) => d.code)).toEqual(["CEL_UNKNOWN_FIELD"]);
+      expect(diagnostics[0].message).toContain("'resources.db' is not defined");
+      expect(diagnostics[0].message).toContain(SCOPE_CLAUSE);
+    });
+
+    it("is unknown in a scoped sibling's field that resolves while it runs", () => {
+      expect(at(scoped("url"), "with[1].url").map((d) => d.code)).toEqual(["CEL_UNKNOWN_FIELD"]);
+    });
+
+    it("is readable in the holder's steps", () => {
+      const flow = sequence({
+        steps: [{ name: "read", value: makeTaggedSentinel("cel", "resources.db.status.host") }],
+      });
+      expect(at([...manifests.filter((x) => x !== provider), scopeDef, flow], "steps[0].value")).toEqual([]);
+    });
+
+    it("is readable inside data shaped like a declaration in the holder's steps", () => {
+      // An object holding a string `kind` is data unless a reference slot holds it.
+      const flow = sequence({
+        steps: [
+          {
+            name: "read",
+            value: { kind: "event", host: makeTaggedSentinel("cel", "resources.db.status.host") },
+          },
+        ],
+      });
+      expect(
+        at([...manifests.filter((x) => x !== provider), scopeDef, flow], "steps[0].value.host"),
+      ).toEqual([]);
+    });
+
+    it("is unknown in the holder's compile-eval field inside a region", () => {
+      const flow = sequence({ label: makeTaggedSentinel("cel", "resources.db.status.host") });
+      const diagnostics = at([...manifests.filter((x) => x !== provider), scopeDef, flow], "label");
+      expect(diagnostics.map((d) => d.code)).toEqual(["CEL_UNKNOWN_FIELD"]);
+      expect(diagnostics[0].message).toContain(SCOPE_CLAUSE);
+    });
+
+    it("leaves a member's read of a shadowed name to the module-level resource", () => {
+      // The module-level `db` is a Provider; the sibling `db` is a service with
+      // no status. A member's own field reads the module's `db`.
+      const flow = {
         kind: "Run.Scoped",
         metadata: { name: "flow" },
         with: [
-          { kind: "Backend.Container", metadata: { name: "db" } },
+          { kind: "Consumer.Client", metadata: { name: "db" } },
           {
             kind: "Consumer.Client",
             metadata: { name: "browser" },
-            [field]: makeTaggedSentinel("cel", "resources.db.status.host"),
+            baseUrl: makeTaggedSentinel("cel", "resources.db.status.host"),
           },
         ],
       } as unknown as ResourceManifest;
-      return [...manifests.filter((x) => x !== provider), scopeDef, sequence];
-    }
-
-    it("is refused in a scoped sibling's startup field, naming the scope", () => {
-      const diagnostics = analyze(scoped("baseUrl"), "OBSERVED_STATE_IN_STARTUP_FIELD");
-      expect(diagnostics).toHaveLength(1);
-      expect(diagnostics[0].message).toContain("'db' is declared in the 'with' scope of Run.Scoped/flow");
-    });
-
-    it("is readable in a scoped sibling's field that resolves while it runs", () => {
-      expect(analyze(scoped("url"), "OBSERVED_STATE_IN_STARTUP_FIELD")).toEqual([]);
+      expect(at([...manifests, scopeDef, flow], "with[1].baseUrl")).toEqual([]);
     });
 
     it("leaves a reader outside the scope to the scope's reach check", () => {

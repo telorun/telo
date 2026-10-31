@@ -1,0 +1,183 @@
+kind: Telo.Application
+metadata:
+  name: DurableLocalStepRepeatResumeTest
+  version: 1.0.0
+  description: |
+    A durable run parked after a named step repeat resumes without re-running it.
+
+    The template body's workflow runs one emitted step per element of the instance's
+    `jobs` (journaled under `steps/runs['a']`), then waits for an approval. Once the
+    approval is delivered the same run id is submitted again, as the resumer would:
+    the emitted steps recorded before the park are replayed, and the step after the
+    wait runs once. The evidence is the kernel's own dispatch record: each element's
+    member is dispatched once across the two executions, and exactly three steps
+    (two emitted, one wait) are handed to the resume as recorded.
+imports:
+  Durable: ../../durable
+  Local: ../
+  Journal: ../../durable-journal-file
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  journalDir:
+    env: DURABLE_STEP_REPEAT_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/durable-step-repeat-test
+targets:
+  - !ref test
+  - !ref dispatches
+---
+kind: Journal.Journal
+metadata: { name: journal }
+directory: !cel "variables.journalDir"
+---
+kind: Run.Value
+metadata: { name: closing }
+value: { stage: closed }
+---
+kind: Durable.Await
+metadata: { name: approval }
+token: !cel "'approve:' + inputs.ticket"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [approvedBy]
+    additionalProperties: false
+    properties:
+      approvedBy: { type: string }
+---
+kind: Telo.Definition
+metadata: { name: Pipeline }
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [jobs]
+  properties:
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+        required: [label]
+        properties:
+          label: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [ticket]
+    properties:
+      ticket: { type: string }
+resources:
+  - !for-each
+    metadata: { name: tasks }
+    in: !cel "self.jobs"
+    emit:
+      kind: Run.Value
+      value: !cel "each.value.label"
+  - kind: Local.Workflow
+    metadata: { name: flow }
+    journal: !ref journal
+    runId: !cel "'repeat:' + inputs.ticket"
+    inputs:
+      ticket: !cel "inputs.ticket"
+    steps:
+      - !for-each
+        name: runs
+        in: !cel "self.jobs"
+        emit:
+          invoke: !ref tasks[each.key]
+      - name: waitForApproval
+        invoke: !ref approval
+        inputs:
+          ticket: !cel "inputs.ticket"
+      - name: closed
+        invoke: !ref closing
+invoke: !ref flow
+inputs:
+  ticket: !cel "inputs.ticket"
+---
+kind: Self.Pipeline
+metadata: { name: pipeline }
+jobs:
+  a: { label: first }
+  b: { label: second }
+---
+kind: Local.Status
+metadata: { name: status }
+journal: !ref journal
+---
+kind: Local.Deliver
+metadata: { name: approve }
+journal: !ref journal
+await: !ref approval
+token: !cel "'approve:' + inputs.ticket"
+payload:
+  approvedBy: ada
+---
+kind: Local.Result
+metadata: { name: outcome }
+journal: !ref journal
+wait: 15s
+---
+kind: Assert.Events
+metadata: { name: dispatches }
+filter:
+  - type: "tasks['a'].Invoked"
+  - type: "tasks['b'].Invoked"
+  - type: "closing.Invoked"
+expect:
+  - event: "tasks['a'].Invoked"
+    times: 1
+  - event: "tasks['b'].Invoked"
+    times: 1
+  - event: closing.Invoked
+    times: 1
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: ticket
+    value: !cel "'t' + string(nowMillis())"
+  - name: start
+    invoke: !ref pipeline
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: parked
+    invoke: !ref status
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: untilParked
+    while: !cel "steps.parked.result.status != 'parked'"
+    maxIterations: 200
+    do:
+      - name: parked
+        invoke: !ref status
+        inputs:
+          run: !cel "steps.start.result.runId"
+  - name: deliver
+    invoke: !ref approve
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: resume
+    invoke: !ref pipeline
+    inputs:
+      ticket: !cel "steps.ticket.result"
+  - name: finished
+    invoke: !ref outcome
+    inputs:
+      run: !cel "steps.start.result.runId"
+  - name: assertCompleted
+    inputs:
+      actual:
+        status: !cel "steps.finished.result.status"
+        closed: !cel "steps.finished.result.result.steps.closed.result.stage"
+        replayed: !cel "steps.finished.result.replayed"
+        replayedSteps: !cel "steps.finished.result.replayedSteps"
+      expected:
+        status: completed
+        closed: closed
+        replayed: true
+        replayedSteps: 3
+    invoke: { kind: Assert.Equals }

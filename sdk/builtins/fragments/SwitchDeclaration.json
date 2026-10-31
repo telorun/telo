@@ -1,0 +1,35 @@
+{
+  "title": "`!switch` at a declaration position",
+  "description": "A resource declaration chosen by value before boot: the tag carries its `metadata`, each case is one unnamed declaration.",
+  "type": "object",
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "description": "The declaration's metadata; its `name` is the one name every configuration declares.",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      }
+    },
+    "switch": {
+      "description": "A string, integer or boolean decided before boot: a `!cel` selector or a literal."
+    },
+    "cases": {
+      "type": "object",
+      "description": "Each case key read as a value of the selector's type, mapped to what the tag stands for."
+    },
+    "default": {
+      "description": "What the tag stands for when no case matches."
+    }
+  },
+  "required": [
+    "metadata",
+    "switch",
+    "cases"
+  ],
+  "additionalProperties": false
+}

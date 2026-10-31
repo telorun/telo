@@ -34,6 +34,15 @@ with:
           schema:
             query: { type: object, additionalProperties: true }
             body: { type: object, additionalProperties: true }
+            params:
+              type: object
+              properties:
+                tenant: { type: string }
+              required: [tenant]
+            headers:
+              type: object
+              properties:
+                x-probe: { type: string }
         returns:
           - status: 200
             content:

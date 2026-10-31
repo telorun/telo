@@ -1,0 +1,54 @@
+# A step reads an input its kind's contract projects from the declaration's
+# own entries, one of which a choice decides: the read is refused only where
+# the entry is left out.
+kind: Telo.Application
+metadata:
+  name: KindContractChoice
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref op
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Runnable
+x-telo-schema-projection:
+  entries: /fields
+  key: type
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      args: { x-telo-schema-projection-from: "" }
+schema:
+  type: object
+  properties:
+    fields:
+      type: object
+      additionalProperties:
+        type: object
+        required: [type]
+        properties:
+          type:
+            type: string
+            enum: [text, number]
+            x-telo-schema-map:
+              text: { type: string }
+              number: { type: number }
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+---
+kind: Self.Op
+metadata:
+  name: op
+fields:
+  x: !if
+    if: !cel "variables.flag1"
+    then: { type: number }
+steps:
+  - name: read
+    value: !cel "inputs.args.x"

@@ -136,7 +136,8 @@ export interface RouterOptions {
   fetch?: typeof globalThis.fetch;
 }
 
-const SPEAKS = [TELO_EDITOR_PROTOCOL];
+/** Generation 1's complete assignments read correctly as generation 2's partial ones. */
+const SPEAKS = [1, TELO_EDITOR_PROTOCOL];
 /** Where a resolvable item carries the engine that produced it. */
 const PRODUCER = "telo.engine";
 

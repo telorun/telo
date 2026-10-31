@@ -195,6 +195,15 @@ result:
   at a dispatch slot `INVALID_REFERENCE_FORM`, and a `!ref` naming no entry
   `TEMPLATE_DISPATCH_UNKNOWN`. A reference inside an entry names a sibling
   entry or a resource of the declaring module.
+- **A consumer's list or map becomes many entries with `!for-each`** (`in:` a
+  bare `self.<path>` the consumer writes literally; `each.value` / `each.key` /
+  `each.index` in `emit:`), and `!if` / `!switch` choose a value, an item or an
+  entry's kind from what the consumer wrote. A `!for-each` at a `resources:`
+  entry is a family — the tag carries `metadata: { name: crons }`, `emit:` is one
+  unnamed declaration — and `targets: [!for-each { in: !cel "self.jobs", emit:
+  !ref crons[each.key] }]` starts its members. A computed source is
+  `REPEAT_COMPUTED`. A module whose own manifest writes these tags declares
+  `requires: telo:` at the release that carries them.
 - **A reference the instance holds reaches an entry only through a bare
   `!cel "self.<path>"`** — one slot (`connection: !cel "self.connection"`) or
   a whole value holding several (`routes: !cel "self.routes"`). Never build
@@ -398,6 +407,12 @@ importer.
   one instance: two libraries that each import a third get two of everything
   in it — two connections where one was meant, and a writer and a reader that
   never see each other's work.
+  Mark an entry `optional: true` when the library can offer a default of its
+  own: `resources.<input>` is then nullable, the default is a declaration-position
+  `!if` on `resources.<input> == null`, and `!ref <input>` is legal only in a branch
+  proving it present. A member that must be registered with a collector (a
+  schema's tables, a server's mounts) is never such a default: only the
+  collector's own module lists its members.
 - **`needs`** — what the library depends on but cannot create (a database's
   address and credentials, a signing key), each entry naming a **need type**:
   `needs: { databaseAccess: { kind: Fx.DatabaseAccess, version?, features?, optional?, parameters? } }` — a stated `version` / `features` must reach a reference slot that `observes` it (`NEED_CONSTRAINT_UNVERIFIED`).

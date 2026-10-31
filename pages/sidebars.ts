@@ -17,6 +17,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/durable-execution", label: "Durable execution" },
         { type: "doc", id: "docs/guides/talking-to-a-database", label: "Talking to a database" },
         { type: "doc", id: "docs/guides/configuration", label: "Configuring an application" },
+        { type: "doc", id: "docs/guides/choosing-by-configuration", label: "Choosing by configuration" },
         { type: "doc", id: "docs/guides/logging-basics", label: "Logging basics" },
         { type: "doc", id: "docs/guides/libraries", label: "Libraries" },
         { type: "doc", id: "docs/guides/declaring-a-need", label: "Declaring a need" },

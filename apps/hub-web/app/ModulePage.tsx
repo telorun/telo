@@ -43,6 +43,7 @@ import {
 import { ModuleAvatar } from "@/ModuleAvatar";
 import { ModuleLink } from "@/ModuleLink";
 import { moduleDisplayName, moduleLabel } from "@/module-ref";
+import { requirementSentence } from "@/requirement-sentence";
 
 /** A module's own page, reachable by URL.
  *
@@ -824,7 +825,13 @@ function ApplicationInputs({ application }: { application: ApplicationContract }
               <li key={input.name} className="flex flex-col gap-1 px-4 py-3">
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                   <code className="font-mono text-sm font-medium">{input.name}</code>
-                  {input.required && <Badge tone="partial">required</Badge>}
+                  {input.required && (
+                    <Badge tone="partial">
+                      {input.requiredWhen
+                        ? `required when ${requirementSentence(input.requiredWhen, application.dimensions ?? [])}`
+                        : "required"}
+                    </Badge>
+                  )}
                   {input.protocol && <Badge>{input.protocol}</Badge>}
                   {input.env && (
                     <Badge title="Environment variable">

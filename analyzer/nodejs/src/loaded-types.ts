@@ -46,6 +46,9 @@ export interface LoadedFile {
 
 export interface ParseError {
   documentIndex: number;
+  /** The diagnostic code, when the refusal is one the loader names
+   *  (`loader-expansion-refusals.ts`); otherwise `MANIFEST_PARSE_FAILED`. */
+  code?: string;
   message: string;
   /** Line/character of the failure, when the yaml parser provided one. */
   range?: Range;

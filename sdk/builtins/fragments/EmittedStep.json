@@ -1,0 +1,47 @@
+{
+  "title": "Emitted step identity",
+  "description": "The identity a template's `!for-each` gives a step it emits, in place of `name`: `{ repeat, key }` for a named repeat (its result is filed under `steps.<repeat>`, keyed by `key`), `{ site, keys }` for an unnamed one. Written only by the template expansion; an author never writes it.",
+  "anyOf": [
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repeat",
+        "key"
+      ],
+      "properties": {
+        "repeat": {
+          "type": "string"
+        },
+        "key": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        }
+      }
+    },
+    {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "site",
+        "keys"
+      ],
+      "properties": {
+        "site": {
+          "type": "string"
+        },
+        "keys": {
+          "type": "array",
+          "items": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

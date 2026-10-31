@@ -1,4 +1,5 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { listRequests } from "./declaration-requests.js";
 import { SCHEMA_REGION_KEYS } from "./schema-region.js";
 import { resolveTypeFieldToSchema } from "./validate-cel-context.js";
 
@@ -32,7 +33,7 @@ const CONTRACT_KEYS = new Set(["inputType", "outputType"]);
  *  schema — on a resource, a definition, or a declaration inside one (a
  *  template body's entry, a `with:` member). */
 export function contractSites(manifests: readonly ResourceManifest[]): ContractSite[] {
-  const all = manifests as unknown as Record<string, any>[];
+  const all = listRequests(manifests);
   const sites: ContractSite[] = [];
   for (const manifest of manifests) {
     const walk = (node: unknown, path: (string | number)[], seen: Set<object>): void => {
@@ -44,7 +45,7 @@ export function contractSites(manifests: readonly ResourceManifest[]): ContractS
       }
       for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
         if (CONTRACT_KEYS.has(key)) {
-          const schema = resolveTypeFieldToSchema(child, all);
+          const schema = resolveTypeFieldToSchema(child, all, manifest as unknown as Record<string, any>);
           if (schema) sites.push({ manifest, path: [...path, key], schema });
           continue;
         }
@@ -62,7 +63,7 @@ export function contractSites(manifests: readonly ResourceManifest[]): ContractS
 export function namedShapeResolver(
   manifests: readonly ResourceManifest[],
 ): (ref: string) => Record<string, any> | undefined {
-  const all = manifests as unknown as Record<string, any>[];
+  const all = listRequests(manifests);
   return (ref) => resolveTypeFieldToSchema({ $ref: ref }, all);
 }
 

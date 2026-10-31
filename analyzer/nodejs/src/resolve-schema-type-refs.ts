@@ -144,6 +144,7 @@ function canonicalizeInPlace(
         delete obj.kind;
         delete obj.name;
         delete obj.alias;
+        delete obj.indexes;
         obj.$ref = canonical;
       }
     }
@@ -202,6 +203,8 @@ function resolvedRefInSchema(
   obj: Record<string, unknown>,
 ): { name: string; alias?: string } | null {
   if (!isResolvedReference(obj)) return null;
+  // A family member names no shape.
+  if (Array.isArray(obj.indexes) && obj.indexes.length > 0) return null;
   for (const key of Object.keys(obj)) {
     // `$ref` is allowed so the pass is idempotent at a slot root, where the id
     // is stamped BESIDE the reference rather than replacing it.
@@ -210,6 +213,7 @@ function resolvedRefInSchema(
       key !== "kind" &&
       key !== "name" &&
       key !== "alias" &&
+      key !== "indexes" &&
       key !== "$ref"
     ) {
       return null;

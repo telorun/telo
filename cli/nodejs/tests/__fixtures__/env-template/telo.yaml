@@ -34,3 +34,9 @@ ports:
   http:
     env: PORT
     default: 8080
+---
+# Reads the bucket and the need, so every configuration requires them.
+kind: Types.SigningKey
+metadata: { name: signing }
+fields:
+  value: !cel "variables.bucket + resources.databaseAccess.url"

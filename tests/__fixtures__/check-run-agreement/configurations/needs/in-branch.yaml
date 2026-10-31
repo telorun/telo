@@ -1,0 +1,22 @@
+# A reference to an optional need inside the branch that proves it present is
+# legal: the application checks clean and boots with the need absent.
+kind: Telo.Application
+metadata:
+  name: NeedReferencedInBranch
+imports:
+  Kinds: ../../../configurations/needs/kinds
+needs:
+  a:
+    kind: Kinds.Access
+    optional: true
+    env: { url: AGREEMENT_NEED_A_URL }
+--- !if
+metadata: { name: chosen }
+if: !cel "resources.a != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref a
+  label: a
+else:
+  kind: Kinds.Labelled
+  label: none

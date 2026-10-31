@@ -244,9 +244,9 @@ steps:
         state:
           - lastError: >-
               INGEST_CONTRACT_MISSING: telo module manifest oci://example.test/stale-app@1.0.0
-              --json reported no `application` field for a Telo.Application — the telo
-              running the origin reads predates it; point TELO_COMMAND at the telo that
-              runs this hub
+              --json reported no `application` contract with its `dimensions` for a
+              Telo.Application — the telo running the origin reads predates it; point
+              TELO_COMMAND at the telo that runs this hub
             versions: 0
             inputs: 0
             entries: 0

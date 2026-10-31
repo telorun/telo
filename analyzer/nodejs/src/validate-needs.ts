@@ -5,8 +5,13 @@ import {
   resolveNeedTable,
   type NeedGraph,
   type NeedGraphImport,
+  type NeedTable,
 } from "./need-table.js";
 import type { ModuleDocuments } from "./module-documents.js";
+import type { AliasResolver } from "./alias-resolver.js";
+import type { AnalysisRegistry } from "./analysis-registry.js";
+import { declaringModuleScope } from "./module-alias-scope.js";
+import { isModuleKind } from "./module-kinds.js";
 import type { ReachSite } from "./reference-reach.js";
 import { type AnalysisDiagnostic, DiagnosticSeverity } from "./types.js";
 
@@ -38,8 +43,9 @@ export function needTableDiagnostics(
   libraries: readonly ModuleDocuments[] = [],
   referenceSites?: (manifest: ResourceManifest) => readonly ReachSite[],
   applicationNeedsFeed?: (kind: string) => readonly string[] | undefined,
+  presentNeeds?: (module: string) => ReadonlySet<string> | undefined,
 ): AnalysisDiagnostic[] {
-  const graph = needGraphFromManifests(
+  const built = needGraphFromManifests(
     manifests,
     rootModules,
     {
@@ -51,7 +57,8 @@ export function needTableDiagnostics(
     },
     libraries,
   );
-  if (!graph) return [];
+  if (!built) return [];
+  const graph: NeedGraph = presentNeeds ? { ...built, presentNeeds } : built;
   const reaching = reachingImports(graph, rootModules);
   const out: AnalysisDiagnostic[] = [];
   const reported = new Set<string>();
@@ -93,6 +100,29 @@ export function needTableDiagnostics(
     });
   }
   return out;
+}
+
+/** The need table of an analysed set — every module built whole, as
+ *  {@link needTableDiagnostics} builds it — for what reads its paths and supply
+ *  forms rather than its refusals. */
+function needTableOf(
+  manifests: readonly ResourceManifest[],
+  rootModules: ReadonlySet<string>,
+  resolveKind: (module: string, kind: string) => string | undefined,
+  resolveDefinition: (kind: string) => ResourceDefinition | undefined,
+  libraries: readonly ModuleDocuments[] = [],
+): NeedTable | undefined {
+  const graph = needGraphFromManifests(
+    manifests,
+    rootModules,
+    {
+      resolveKind,
+      needType: (kind) => needTypeOf(resolveDefinition(kind)),
+      isKind: (kind) => resolveDefinition(kind) !== undefined,
+    },
+    libraries,
+  );
+  return graph ? resolveNeedTable(graph) : undefined;
 }
 
 /** For every module of the graph that is not one of the entry's own: the
@@ -150,4 +180,26 @@ export function importNeedsSlotSchema(
   }
   if (Object.keys(needs).length === 0) return undefined;
   return { type: "object", properties: { needs: { type: "object", properties: needs } } };
+}
+
+/** {@link needTableOf} with kinds resolved in `registry`, once the set's
+ *  definitions and alias tables are registered into it — what a choice reads a
+ *  dependency's need through. */
+export function registeredNeedTable(
+  manifests: readonly ResourceManifest[],
+  registry: AnalysisRegistry,
+  libraries: readonly ModuleDocuments[] = [],
+): NeedTable | undefined {
+  const ctx = registry._context();
+  const aliases = ctx.aliases!;
+  const aliasesByModule = ctx.aliasesByModule ?? new Map<string, AliasResolver>();
+  const rootModules = new Set<string>();
+  for (const m of manifests) if (isModuleKind(m.kind) && m.metadata?.name) rootModules.add(m.metadata.name as string);
+  return needTableOf(
+    manifests,
+    rootModules,
+    (module, kind) => declaringModuleScope(module, aliases, { aliasesByModule, rootModules }).resolveKind(kind),
+    (kind) => ctx.definitions!.resolve(kind),
+    libraries,
+  );
 }

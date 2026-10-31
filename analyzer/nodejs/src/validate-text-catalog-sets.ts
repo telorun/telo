@@ -53,6 +53,9 @@ import {
   type TextCatalogSetHost,
 } from "./text-catalog-set.js";
 import { declaredScopes, isScopeMember } from "./scope-declarations.js";
+import { scopeAddress, type ScopeAddress, type ScopeSite } from "./scope-address.js";
+import { ScopedNameResolver } from "./scoped-name-resolver.js";
+import { declaringScopeOf, isScopeMemberDeclaration } from "./scope-members.js";
 import { templateBodyEntries } from "./template-body.js";
 import { templateBodyReference, type TemplateBodyScope } from "./template-body-lookup.js";
 import { templateForwardsOf, type TemplateForwardViews } from "./template-forward.js";
@@ -203,15 +206,19 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
 
   const inputs = new Set<string>();
   for (const manifest of manifests) {
-    if (isInjectedDeclaration(manifest)) inputs.add(`${moduleOf(manifest) ?? ""}\0${nameOf(manifest)}`);
+    if (isInjectedDeclaration(manifest)) inputs.add(scopeAddress(moduleOf(manifest), nameOf(manifest)).key);
   }
   const isInput = (module: string | undefined, name: string): boolean =>
-    inputs.has(`${module ?? ""}\0${name}`) || (module !== undefined && !!libraries?.isInput(module, name));
+    inputs.has(scopeAddress(module, name).key) || (module !== undefined && !!libraries?.isInput(module, name));
 
   const identities = new WeakMap<object, unknown>();
-  // A `with:` scope member, and the names its scope run makes visible to it —
-  // its scope's members, then each enclosing scope's.
-  const scopeNames = new WeakMap<object, ReadonlyMap<string, ResourceManifest>>();
+  // A `with:` scope member, and the scope it is declared in: a reference it
+  // writes resolves through that scope's members, then each enclosing scope's.
+  const scopeNames = new ScopedNameResolver<ResourceManifest>(
+    manifests.filter(isScopeMemberDeclaration),
+    { nameOf, moduleOf, scopeOf: declaringScopeOf },
+  );
+  const memberScope = new WeakMap<object, ScopeSite>();
   // A declaration written in a template body, and the body it is created in.
   const placements = new WeakMap<object, Body>();
   // A value a consumer forwarded into a body entry, and the view it resolves in.
@@ -245,8 +252,8 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
         identities.set(inline, value);
         const body = placements.get(held.manifest);
         if (body) placements.set(inline, body);
-        const names = scopeNames.get(held.manifest);
-        if (names) scopeNames.set(inline, names);
+        const site = memberScope.get(held.manifest) ?? declaringScopeOf(held.manifest);
+        if (site) memberScope.set(inline, site);
         return { manifest: inline, trail: held.trail, throughInput: held.throughInput };
       }
       const ref = readProjectionRef(value);
@@ -255,7 +262,11 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
       const body = placements.get(held.manifest);
       // A scope run's lookup reaches its own members first, then the lookup of
       // the context the scope opened in — in a template body, the body's.
-      const scoped = !ref.alias || (body && local) ? scopeNames.get(held.manifest)?.get(ref.name) : undefined;
+      const site = memberScope.get(held.manifest) ?? declaringScopeOf(held.manifest);
+      const scoped =
+        site && (!ref.alias || (body && local))
+          ? scopeNames.resolve(ref.name, moduleOf(held.manifest), site)
+          : undefined;
       if (scoped) return { manifest: scoped, trail: held.trail, throughInput: held.throughInput };
       if (body) {
         const target = templateBodyReference(ref, body.scope);
@@ -275,11 +286,17 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
       return { manifest, trail: lookup.trail, throughInput };
     },
     identityOf: (held) => {
-      if (placements.has(held.manifest) || scopeNames.has(held.manifest)) return held.manifest;
+      if (
+        placements.has(held.manifest) ||
+        memberScope.has(held.manifest) ||
+        isScopeMemberDeclaration(held.manifest)
+      ) {
+        return held.manifest;
+      }
       const module = moduleOf(held.manifest);
       const name = held.manifest.metadata?.name;
       return typeof name === "string" && module !== undefined
-        ? `${module}\0${name}`
+        ? scopeAddress(module, name).key
         : (identities.get(held.manifest) ?? held.manifest);
     },
     labelOf: (held) => `${held.manifest.kind}/${nameOf(held.manifest)}`,
@@ -313,35 +330,36 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
   const visitScopes = (
     root: ResourceManifest,
     declaration: ResourceManifest,
+    address: ScopeAddress,
     module: string | undefined,
     prefix: string,
-    enclosing: ReadonlyMap<string, ResourceManifest>,
     body: Body | undefined,
     label: (member: ResourceManifest) => string,
   ): void => {
     for (const scope of declaredScopes(input.sitesOf(declaration))) {
+      const site: ScopeSite = { holder: address, field: scope.path };
       const members = scope.declarations.map((entry) =>
         isScopeMember(entry)
           ? ((module !== undefined ? { ...entry, metadata: { ...entry.metadata, module } } : entry) as ResourceManifest)
           : undefined,
       );
-      const names = new Map(enclosing);
-      for (const member of members) if (member) names.set(nameOf(member), member);
+      scopeNames.declareScope(
+        site,
+        members.filter((m): m is ResourceManifest => m !== undefined),
+      );
       members.forEach((member) => {
         if (!member || isKindDocument(member)) return;
-        scopeNames.set(member, names);
+        memberScope.set(member, site);
         if (body) placements.set(member, body);
       });
       members.forEach((member, index) => {
         if (!member || isKindDocument(member)) return;
         const at = `${prefix}${scope.path}[${index}]`;
         judgeHolder(root, member, `${at}.`, label(member));
-        visitScopes(root, member, module, `${at}.`, names, body, label);
+        visitScopes(root, member, scopeAddress(site, nameOf(member)), module, `${at}.`, body, label);
       });
     }
   };
-
-  const memberLabel = (member: ResourceManifest): string => `${member.kind}/${nameOf(member)}`;
 
   // A forward view's set is judged over its body entry with the forwards filled
   // in, below — never over the forwarded members alone.
@@ -448,13 +466,13 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
     }
   }
 
-  // The entry's own resources, and the members of every scope they declare.
+  // The entry's own resources, scope members included — reported at
+  // themselves, which the analysis moves inside the resource declaring the scope.
   for (const manifest of manifests) {
     const module = moduleOf(manifest);
     if (module !== undefined && !rootModules.has(module)) continue;
     if (!isInstanceDocument(manifest) || isInjectedDeclaration(manifest) || isForwardedDeclaration(manifest)) continue;
     if (!views.has(manifest) || !mergedViews.has(manifest)) judgeHolder(manifest, manifest, "");
-    visitScopes(manifest, manifest, module, "", new Map(), undefined, memberLabel);
   }
 
   // The entries of each template body the entry's own modules define, and the
@@ -470,12 +488,14 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
     for (const entry of entries) {
       const entryLabel = entryLabelOf(entry.kind, entry.view);
       judgeHolder(definition, entry.view, `${entry.prefix}.`, `${prefix}: ${entryLabel}`);
+      // An entry is addressed by its place in the body, which no resource
+      // name can spell.
       visitScopes(
         definition,
         entry.view,
+        scopeAddress(module, `${nameOf(definition)}.${entry.prefix}`),
         module,
         `${entry.prefix}.`,
-        new Map(),
         body,
         (member) => `${prefix}: the ${member.kind} '${nameOf(member)}' declared in ${entryLabel}`,
       );

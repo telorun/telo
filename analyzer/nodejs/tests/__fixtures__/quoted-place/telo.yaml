@@ -1,0 +1,45 @@
+kind: Telo.Library
+metadata: { name: Tree, version: 0.1.0 }
+---
+kind: Telo.Definition
+metadata: { name: View }
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object
+  properties:
+    content:
+      type: object
+      additionalProperties: false
+      properties:
+        children:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            properties:
+              shown:
+                type: object
+                additionalProperties: false
+                x-telo-context:
+                  type: object
+                  additionalProperties: false
+                  properties:
+                    row:
+                      x-telo-context-eval: accessor
+                      type: object
+                      additionalProperties: false
+                      properties:
+                        amount: { type: integer }
+                properties:
+                  at: { x-telo-eval: accessor }
+                  matches: { type: object, x-telo-match-for: /at }
+---
+kind: Telo.Definition
+metadata: { name: Holder }
+capability: Telo.Mount
+controllers:
+  - pkg:telo/local/js?path=./nowhere.mjs#Never
+schema:
+  type: object

@@ -1,0 +1,21 @@
+# A reference inside a step's plain value is no attachment either.
+kind: Telo.Application
+metadata:
+  name: SinkAttachmentStepValue
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !if
+    if: !cel "variables.flag1"
+    then: !ref seq
+---
+kind: Run.Sequence
+metadata: { name: seq }
+steps:
+  - name: a
+    value: { s: !ref traces }
+---
+kind: Telo.LogTraceSink
+metadata: { name: traces }

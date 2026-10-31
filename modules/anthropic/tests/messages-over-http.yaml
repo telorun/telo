@@ -137,6 +137,12 @@ with:
           method: POST
           schema:
             body: { type: object, additionalProperties: true }
+            headers:
+              type: object
+              properties:
+                x-api-key: { type: string }
+                anthropic-version: { type: string }
+                anthropic-beta: { type: string }
         handler: !ref noop
         returns:
           # The account and the dialect are checked where an endpoint checks them.

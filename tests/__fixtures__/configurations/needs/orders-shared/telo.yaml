@@ -1,0 +1,26 @@
+# The same library as a singleton: however many imports reach it, its need is
+# one need, under the library's own name.
+kind: Telo.Library
+metadata:
+  name: OrdersShared
+  version: 0.0.0
+  description: Test fixture exporting a resource chosen by an optional need's presence.
+lifecycle: shared
+imports:
+  Kinds: ../kinds
+needs:
+  databaseAccess:
+    kind: Kinds.Access
+    optional: true
+exports:
+  resources: [db]
+--- !if
+metadata: { name: db }
+if: !cel "resources.databaseAccess != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref databaseAccess
+  label: need
+else:
+  kind: Kinds.Labelled
+  label: fallback

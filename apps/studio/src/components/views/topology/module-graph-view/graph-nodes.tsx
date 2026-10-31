@@ -1,4 +1,10 @@
-import { isOrderedRow, type GraphNode, type GraphPort, type GraphRow } from "@telorun/analyzer";
+import {
+  isOrderedRow,
+  type GraphChoice,
+  type GraphNode,
+  type GraphPort,
+  type GraphRow,
+} from "@telorun/analyzer";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import {
   ChevronDown,
@@ -25,6 +31,8 @@ import {
   CopyMinus,
   Import,
   Sparkles,
+  Repeat,
+  GitFork,
 } from "lucide-react";
 import { summarizeResource } from "../../../../diagnostics-aggregate";
 import { CREATE_REF_OPTION_PREFIX } from "../../../resource-schema-form/ref-candidates";
@@ -230,6 +238,25 @@ function ownershipNote(node: GraphNode): string | null {
   }
 }
 
+/** A `!if` / `!switch` the picked configuration resolves: the alternative it
+ *  takes, with the others in the tooltip. A declaration-position choice has no
+ *  path; one in a field names it. */
+function ChoiceChip({ choice }: { choice: GraphChoice }) {
+  const selected = choice.selected ?? "none";
+  return (
+    <span
+      className="flex shrink-0 items-center gap-0.5 rounded bg-amber-50 px-1 text-[9px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300"
+      title={`${choice.path ? `${choice.path}: ` : ""}${choice.alternatives
+        .map((a) => `${a.key === choice.selected ? "● " : "○ "}${a.key}${a.kind ? ` → ${a.kind}` : ""}`)
+        .join("\n")}`}
+    >
+      <GitFork className="size-2.5" />
+      {choice.path ? `${choice.path} = ` : ""}
+      {selected}
+    </span>
+  );
+}
+
 function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
   const { node } = data;
   const diagState = useDiagnosticsState();
@@ -367,6 +394,19 @@ function GraphBox({ data }: NodeProps<Node<GraphBoxData>>) {
             {note}
           </span>
         )}
+        {node.family && (
+          <span
+            className="flex shrink-0 items-center gap-0.5 rounded bg-sky-50 px-1 text-[9px] text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+            title={`one member for each ${node.family.as} of ${node.family.source}`}
+          >
+            <Repeat className="size-2.5" />
+            {node.family.source}
+          </span>
+        )}
+        {node.choice && <ChoiceChip choice={node.choice} />}
+        {(node.choices ?? []).map((choice) => (
+          <ChoiceChip key={choice.path} choice={choice} />
+        ))}
         {data.heldBy ? (
           <span
             className="ml-auto shrink-0 rounded bg-zinc-100 px-1 text-[9px] text-zinc-500 dark:bg-zinc-800 dark:text-zinc-400"
@@ -946,7 +986,13 @@ function RowLine({
   // — never a segment sliced out of the title, which was a vocabulary hidden
   // inside prose the author is free to reword.
   const keyword = row.variantLabel ?? row.variant;
-  const named = row.declares ?? row.name ?? matched ?? row.target;
+  const named =
+    row.declares ??
+    row.name ??
+    row.emitted ??
+    (row.repeat ? `each ${row.repeat.as} of ${row.repeat.source}` : undefined) ??
+    matched ??
+    row.target;
   const label = named ?? keyword ?? row.path;
   const chip = named && keyword ? keyword : undefined;
   // Suppress the arrow when the label already IS the target.
@@ -955,7 +1001,8 @@ function RowLine({
   // sibling to be moved past, and removing it is an edit to its host's config
   // rather than a splice.
   const ordered = isOrderedRow(row);
-  const RowIcon = row.kind === "inline" ? Braces : row.kind === "reference" ? CornerDownRight : null;
+  const RowIcon =
+    row.kind === "inline" ? Braces : row.kind === "reference" ? CornerDownRight : row.kind === "repeat" ? Repeat : null;
   return (
     <div
       className="group relative flex h-5 cursor-pointer items-center gap-1 px-2 text-[10px] hover:bg-zinc-50 dark:hover:bg-zinc-800"

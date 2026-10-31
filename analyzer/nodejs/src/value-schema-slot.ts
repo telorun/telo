@@ -13,6 +13,17 @@
 import { isRefSlot } from "./ref-slot.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { declarationValuesAt, type ProjectionScope } from "./schema-projection.js";
+import {
+  enclosingKeys,
+  fieldPlace,
+  placeAt,
+  pointerReads,
+  READS_IDENTITY,
+  type ReadPlace,
+  type ReadReporter,
+  type ReferentPlace,
+  type ReferentReads,
+} from "./read-place.js";
 
 const VALUE_SCHEMA_ANNOTATION = "x-telo-value-schema-from";
 
@@ -681,3 +692,48 @@ function memberNamesOf(type: Record<string, any>): string[] {
   const properties = typeRootOf(type).node?.properties;
   return properties && typeof properties === "object" ? Object.keys(properties) : [];
 }
+
+const schemaFromTargetReads = new Map<string, ReferentReads>();
+
+/** What `x-telo-schema-from` reads in the declaration its anchor names: the
+ *  field at `pointer`, which the instance declares in place of its kind — a
+ *  type there by its identity, a named shape whole. */
+function schemaFromTarget(pointer: string): ReferentReads {
+  const known = schemaFromTargetReads.get(pointer);
+  if (known) return known;
+  const places: ReferentPlace[] = [{ kind: "reference", keys: placeAt([], pointer), transitive: false, reads: READS_IDENTITY }];
+  const reads: ReferentReads = () => places;
+  schemaFromTargetReads.set(pointer, reads);
+  return reads;
+}
+
+/** What `x-telo-schema-from` reads: the reference its anchor names — a
+ *  sibling of the slot, or with a leading `/` a top-level field — and in the
+ *  declaration it names the field its pointer names. An alias-qualified kind
+ *  anchor reads nothing of the declaration. */
+export const schemaFromReads: ReadReporter = ({ value, at }) => {
+  if (typeof value !== "string") return [];
+  const absolute = value.startsWith("/");
+  const expr = absolute ? value.slice(1) : value;
+  const slash = expr.indexOf("/");
+  if (slash <= 0) return [];
+  const anchor = expr.slice(0, slash);
+  if (!absolute && anchor.includes(".")) return [];
+  const keys = [...(absolute ? [] : enclosingKeys(at)), anchor];
+  return [{ kind: "reference", keys, transitive: false, reads: schemaFromTarget(`/${expr.slice(slash + 1)}`) }];
+};
+
+/** What `x-telo-value-schema-from` reads: every location it names — a field of
+ *  the resource or a pointer crossing its references. */
+export const valueSchemaFromReads: ReadReporter = ({ value }) => {
+  const locations = Array.isArray(value) ? value : [value];
+  const out: ReadPlace[] = [];
+  for (const location of locations) {
+    const from = typeof location === "string" ? location : (location as { from?: unknown } | undefined)?.from;
+    const keys = fieldPlace([], from);
+    if (!keys) continue;
+    const pointer = (from as string).startsWith("/") ? (from as string) : `/${from as string}`;
+    out.push({ kind: "reference", keys: keys.slice(0, 1), transitive: true, reads: pointerReads([pointer]) });
+  }
+  return out;
+};

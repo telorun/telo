@@ -31,6 +31,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { withQuotedPath } from "./quoted-place.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { CallSite } from "@telorun/templating";
 import { moduleCallsInSource } from "./cel-access-chains.js";
@@ -258,19 +259,23 @@ export function unboundSourceDiagnostics(
   filePath: string | undefined,
   sources: readonly UnboundCallSource[],
   moduleNames: ReadonlySet<string>,
-  index: ModuleFunctionIndex,
+  index: Pick<ModuleFunctionIndex, "isOwned">,
 ): AnalysisDiagnostic[] {
   if (!index.isOwned(manifest)) return [];
   const resource = { kind: manifest.kind as string, name: manifest.metadata?.name as string };
   return sources.flatMap(({ path, source, reason }) =>
     [...new Set(moduleCallsInSource(source, moduleNames))].map(
-      (call): AnalysisDiagnostic => ({
-        severity: DiagnosticSeverity.Error,
-        code: "FUNCTION_CALL_UNBOUND",
-        source: SOURCE,
-        message: unboundCallMessage(`${resource.kind}/${resource.name}: CEL at '${path}' calls`, call, reason),
-        data: { resource, filePath, path },
-      }),
+      (call): AnalysisDiagnostic =>
+        withQuotedPath(
+          {
+            severity: DiagnosticSeverity.Error,
+            code: "FUNCTION_CALL_UNBOUND",
+            source: SOURCE,
+            message: unboundCallMessage(`${resource.kind}/${resource.name}: CEL at '${path}' calls`, call, reason),
+            data: { resource, filePath, path },
+          },
+          path,
+        ),
     ),
   );
 }

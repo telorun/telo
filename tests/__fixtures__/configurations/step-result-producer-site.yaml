@@ -1,0 +1,29 @@
+# A computed step inside a `catch:` reads `error`, which only the catch binds.
+# Where flag1 holds, `caught` is `int(error)`, which the error's map refuses; elsewhere
+# it is the message's length, an int. A step outside the `try:` reads the result.
+# The result is typed where the step is written, never where it is read.
+kind: Telo.Application
+metadata:
+  name: StepResultProducerSite
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: attempt
+    try:
+      - name: fail
+        throw: { code: BOOM }
+    catch:
+      - !if
+        if: !cel "variables.flag1"
+        then: { name: caught, value: !cel "int(error)" }
+        else: { name: caught, value: !cel "size(error.message)" }
+  - name: reader
+    value: !cel "steps.caught.result + 'x'"

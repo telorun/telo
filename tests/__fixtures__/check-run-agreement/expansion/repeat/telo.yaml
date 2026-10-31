@@ -1,0 +1,41 @@
+# `!for-each` and `...` where no repeat may stand: outside a template body, at a
+# field's value inside one, a splice holding no repeat, and `key:` on a repeat
+# that splices nothing.
+kind: Telo.Library
+metadata:
+  name: RepeatLib
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Run.Sequence
+metadata:
+  name: outside
+steps:
+  - !for-each
+    in: [1, 2]
+    emit: { name: step, value: 1 }
+---
+kind: Telo.Definition
+metadata:
+  name: Repeated
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    items: { type: array, items: { type: integer } }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: body }
+    steps:
+      - name: one
+        value: !for-each
+          in: !cel "self.items"
+          emit: 1
+      - name: two
+        value:
+          ...: { a: 1 }
+      - !for-each
+        in: !cel "self.items"
+        key: entry
+        emit: { value: 1 }
+run: !ref body

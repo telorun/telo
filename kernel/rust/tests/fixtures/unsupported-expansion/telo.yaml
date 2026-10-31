@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedExpansion
+  version: 1.0.0
+  description: |
+    Chooses a target with `!if`. This kernel evaluates no CEL and expands nothing,
+    so the load must fail naming the tag.
+targets:
+  - !if
+    if: true
+    then: !ref nothing

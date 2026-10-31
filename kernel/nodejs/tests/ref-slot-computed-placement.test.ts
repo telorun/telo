@@ -4,6 +4,7 @@ import * as path from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { afterAll, describe, expect, it } from "vitest";
 import { Kernel } from "../src/kernel.js";
+import { computeAnalysisSignature, writeAnalysisStamp } from "../src/manifest-sources/analysis-stamp.js";
 import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 import { KernelRuntimeSeam } from "../src/runtime-seam.js";
 
@@ -345,5 +346,84 @@ describe("an expression at or above a reference slot", () => {
       expect(analyzer.map(({ code, path }) => [code, path])).toEqual(placement.expected);
       expect(reasons(analyzer.map((d) => d.message))).toEqual(reasons(kernel));
     });
+  });
+});
+
+/** A library's kind declared at the ROOT: its kind is spelled through the
+ *  root's alias, so the kernel reads its reference positions through the
+ *  root's view. Taken past the load's analysis (a stamp saying it passed), so
+ *  the refusal is the kernel's own. */
+describe("an expression at a reference slot of an imported kind declared at the root", () => {
+  it("is refused at creation", async () => {
+    const root = path.join(dir, "imported-kind");
+    mkdirSync(path.join(root, "lib"), { recursive: true });
+    writeFileSync(
+      path.join(root, "lib", "telo.yaml"),
+      `kind: Telo.Library
+metadata:
+  name: ImportedKind
+imports:
+  Run: ${RUN}
+exports:
+  kinds: [Bus]
+---
+kind: Telo.Definition
+metadata:
+  name: Bus
+capability: Telo.Provider
+schema:
+  type: object
+  properties:
+    handler: { ${HANDLER} }
+resources:
+  - kind: Run.Value
+    metadata: { name: reading }
+    value: !cel "1"
+provide: !ref reading
+`,
+    );
+    const app = path.join(root, "telo.yaml");
+    writeFileSync(
+      app,
+      `kind: Telo.Application
+metadata:
+  name: ImportedKindApp
+imports:
+  Lib: ./lib
+  Run: ${RUN}
+---
+kind: Lib.Bus
+metadata:
+  name: bus
+handler: !cel "'target'"
+---
+kind: Run.Value
+metadata:
+  name: target
+value: 1
+`,
+    );
+    const cache = path.join(root, "cache");
+    const first = new Kernel({ sources: [new LocalFileSource()], env: {} });
+    const analysed = await first.load(app, { cacheDir: cache }).then(
+      () => undefined,
+      (error) => error,
+    );
+    expect(JSON.stringify(analysed?.diagnostics)).toContain("REF_SLOT_COMPUTED");
+    const graph = first.getLoadedGraph()!;
+    await writeAnalysisStamp(
+      graph.rootSource,
+      computeAnalysisSignature(graph, { entryUrl: graph.rootSource }),
+      path.join(cache, "analysis"),
+    );
+    const second = new Kernel({ sources: [new LocalFileSource()], env: {} });
+    try {
+      await second.load(app, { cacheDir: cache });
+      await expect(second.boot()).rejects.toThrow(
+        /'handler: !cel[^\n]*reference slot 'handler'[^\n]*\[ERR_REF_SLOT_COMPUTED\]/,
+      );
+    } finally {
+      await second.teardown();
+    }
   });
 });

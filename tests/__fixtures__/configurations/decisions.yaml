@@ -1,0 +1,92 @@
+# What a choice may read, and the shapes its cases must take.
+kind: Telo.Application
+metadata:
+  name: Decisions
+  version: 1.2.0
+imports:
+  Run: ../../../modules/run
+variables:
+  label:
+    env: LABEL
+    type: string
+    default: x
+  flag:
+    env: FLAG
+    type: boolean
+    default: false
+  level:
+    env: LEVEL
+    type: integer
+    enum: [1, 2]
+    default: 1
+secrets:
+  databaseUrl:
+    env: DATABASE_URL
+    type: string
+    x-telo-type:
+      name: Telo.Url
+      scheme: { enum: [postgres, sqlite] }
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: versioned
+    value: !if
+      if: !cel "module.version == '1.2.0'"
+      then: current
+      else: older
+  - name: open
+    value: !if
+      if: !cel "variables.label == 'x'"
+      then: 1
+  - name: host
+    value: !if
+      if: !cel "secrets.databaseUrl.host == 'db'"
+      then: 1
+  - name: scheme
+    value: !switch
+      switch: !cel "secrets.databaseUrl.scheme"
+      cases:
+        postgres: pg
+  - name: notBoolean
+    value: !if
+      if: !cel "variables.label"
+      then: 1
+  - name: badBoolKey
+    value: !switch
+      switch: !cel "variables.flag"
+      cases:
+        "yes": 1
+        "true": 2
+        "false": 3
+  - name: badIntKey
+    value: !switch
+      switch: !cel "variables.level"
+      cases:
+        "01": 1
+        "1": 1
+        "2": 2
+  - name: unreachable
+    value: !switch
+      switch: !cel "variables.level"
+      cases:
+        "1": a
+        "2": b
+        "3": c
+  - name: volatile
+    value: !if
+      if: !cel "uuidv4() == ''"
+      then: 1
+--- !if
+metadata: { name: bad }
+if: !cel "variables.flag"
+then:
+  kind: Run.Value
+  metadata: { name: inner }
+  value: 1
+else:
+  - kind: Run.Value
+    value: 2

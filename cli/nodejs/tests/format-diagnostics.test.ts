@@ -172,6 +172,16 @@ describe("formatAnalysisDiagnostics — structured payload", () => {
     expect(d!.path).toBe("steps[0].inputs.flag");
   });
 
+  it("carries the configurations a diagnostic holds in, and none when it holds in every one", () => {
+    const configurations = [{ "variables.dialect": "postgres" }, { "resources.db": "present" }];
+    const [some, every] = collect([
+      { severity: 1, code: "X", message: "m (when variables.dialect is postgres)", data: { configurations } },
+      { severity: 1, code: "X", message: "m" },
+    ] as never);
+    expect(some!.configurations).toEqual(configurations);
+    expect(every).not.toHaveProperty("configurations");
+  });
+
   it("omits the fields entirely when a diagnostic has no repair to offer", () => {
     const [d] = collect([{ severity: 1, code: "X", message: "no stamp" }] as never);
     expect(d).not.toHaveProperty("fix");

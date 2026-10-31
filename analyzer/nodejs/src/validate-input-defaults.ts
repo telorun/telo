@@ -43,7 +43,8 @@ export function validateInputDefaults(
         const entry = raw as Record<string, unknown>;
         // A default holding a tag at any depth is never read as a value;
         // `MODULE_PATH_OUTSIDE_RESOURCE` and its siblings report the tag.
-        if (entry.default === undefined || holdsTag(entry.default)) continue;
+        // `default: null` declares that the input may be absent, whatever its type.
+        if (entry.default === undefined || entry.default === null || holdsTag(entry.default)) continue;
         const binding = "env" in entry || "arg" in entry;
         const { default: fallback, ...rest } = entry;
         const schema = binding ? residualEntrySchema(entry) : rest;
@@ -72,8 +73,38 @@ export function validateInputDefaults(
         }
       }
     }
+    // Every declared port is assigned under a runner, so none may be absent.
+    const ports = (manifest as Record<string, unknown>).ports;
+    if (manifest.kind === "Telo.Application" && ports && typeof ports === "object" && !Array.isArray(ports)) {
+      for (const [key, entry] of Object.entries(ports as Record<string, unknown>)) {
+        if (!entry || typeof entry !== "object" || (entry as Record<string, unknown>).default !== null) continue;
+        out.push({
+          severity: DiagnosticSeverity.Error,
+          code: "DEFAULT_INVALID",
+          source: SOURCE,
+          message:
+            `${manifest.kind}/${name}: the default of ports.${key} is null, but a port never admits ` +
+            `absence — every declared port is assigned wherever the application runs. Give it a port ` +
+            `number, or leave 'default:' out to require one.`,
+          data: {
+            resource: { kind: manifest.kind, name },
+            filePath: typeof metadata.source === "string" ? metadata.source : undefined,
+            path: `ports.${key}.default`,
+          },
+        });
+      }
+    }
   }
   return out;
+}
+
+/** True for the built-in schema's own finding about a port's `default: null`,
+ *  which {@link validateInputDefaults} reports as `DEFAULT_INVALID`. */
+export function isNullPortDefaultFinding(manifest: ResourceManifest, path: string): boolean {
+  if (manifest.kind !== "Telo.Application") return false;
+  const match = /^ports\.([^.]+)\.default$/.exec(path);
+  const ports = (manifest as Record<string, unknown>).ports as Record<string, Record<string, unknown>> | undefined;
+  return !!match && ports?.[match[1]!]?.default === null;
 }
 
 function holdsTag(value: unknown): boolean {

@@ -1,0 +1,30 @@
+# A library offering a default for an instance its importer may hand over: the
+# input is optional, the default is declared only where it is absent, and the
+# one use site chooses between them.
+kind: Telo.Library
+metadata:
+  name: OptionalStore
+  version: 0.0.0
+  description: Test fixture holding the store its importer supplies, or its own.
+imports:
+  Kinds: ../kinds
+resources:
+  store:
+    kind: Kinds.Store
+    optional: true
+exports:
+  resources: [holder]
+--- !if
+metadata: { name: fallback }
+if: !cel "resources.store == null"
+then:
+  kind: Kinds.Store
+  label: fallback
+---
+kind: Kinds.Holder
+metadata:
+  name: holder
+store: !if
+  if: !cel "resources.store != null"
+  then: !ref store
+  else: !ref fallback

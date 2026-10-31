@@ -13,6 +13,7 @@
  *
  * Browser-safe: no Node built-ins.
  */
+import { isGeneratedDeclaration, shownDeclaration } from "./generated-name.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -35,6 +36,8 @@ import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import type { ScopeSite } from "./scope-address.js";
+import { addressOf, ScopedNameResolver } from "./scoped-name-resolver.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -153,7 +156,10 @@ function correlationIdOf(node: ResourceGraphNode): string {
   return `${source}\0${node.name}`;
 }
 
-const labelOf = (node: ResourceGraphNode): string => `${node.kind} '${node.name}'`;
+const shownName = (node: ResourceGraphNode): string => shownDeclaration(node.kind, node.name, node.manifest);
+
+const labelOf = (node: ResourceGraphNode): string =>
+  isGeneratedDeclaration(node.manifest) ? shownName(node) : `${node.kind} '${node.name}'`;
 
 /** The schema node at a slot pattern (`steps`, `routes[].handler`), following
  *  `[]` into `items`, `{}` into `additionalProperties` and local `$defs` refs —
@@ -295,31 +301,32 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
   const openExports: ZoneExportRequirements = new Map();
   const reported = new Set<string>();
 
-  // Scope-local name index, so a scoped resource's pointers resolve against its
-  // scope siblings first — the order `ScopeContext` and `!ref` agree on.
-  const scopeLocal = new Map<string, Map<string, ResourceGraphNode>>();
-  for (const node of graph.nodes.values()) {
-    if (node.type !== "resource" || !node.scoped) continue;
-    const key = `${node.scopeOwner}\0${node.scopeSite}`;
-    let bucket = scopeLocal.get(key);
-    if (!bucket) scopeLocal.set(key, (bucket = new Map()));
-    bucket.set(node.name, node);
-  }
-  const resolveName = (
-    name: string,
-    from: ResourceGraphNode,
-  ): ResourceGraphNode | undefined => {
-    if (from.scoped) {
-      const local = scopeLocal.get(`${from.scopeOwner}\0${from.scopeSite}`)?.get(name);
-      if (local) return local;
-    }
-    // In the scope that WROTE the name: a bare reference means the reader's own
-    // module, and two libraries may each declare one.
-    return graph.resourceByName(
-      name,
-      (from.manifest.metadata as { module?: string } | undefined)?.module,
-    );
+  // A scoped resource's pointers resolve against its scope siblings first, then
+  // the module. Scoped nodes are grouped by the scope the graph files them under.
+  const resources = [...graph.nodes.values()].filter(
+    (node): node is ResourceGraphNode => node.type === "resource",
+  );
+  const moduleOfNode = (node: ResourceGraphNode): string | undefined =>
+    (node.manifest.metadata as { module?: string } | undefined)?.module;
+  const names = new ScopedNameResolver(
+    resources.filter((node) => !node.scoped),
+    { nameOf: (node) => node.name, moduleOf: moduleOfNode },
+  );
+  const siteOf = (node: ResourceGraphNode): ScopeSite | undefined => {
+    if (!node.scoped || !node.scopeOwner || !node.scopeSite) return undefined;
+    const owner = graph.nodes.get(node.scopeOwner);
+    if (owner?.type !== "resource") return undefined;
+    const holder = addressOf(owner.manifest);
+    return holder ? { holder, field: node.scopeSite } : undefined;
   };
+  for (const node of resources) {
+    const site = siteOf(node);
+    if (site) names.declareScope(site, [node]);
+  }
+  // In the scope that WROTE the name: a bare reference means the reader's own
+  // module, and two libraries may each declare one.
+  const resolveName = (name: string, from: ResourceGraphNode): ResourceGraphNode | undefined =>
+    names.resolve(name, moduleOfNode(from), siteOf(from));
 
   const acceptedFor = (zone: string): ReadonlySet<string> => {
     const out = new Set<string>([zone]);
@@ -354,7 +361,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
     const wanted = req.correlationLabel
       ? `a ${req.zone} zone on ${req.correlationLabel}`
       : `a ${req.zone} zone`;
-    const path = [...via, `${caller.name}.${edge.path}`].join(" → ");
+    const path = [...via, `${shownName(caller)}.${edge.path}`].join(" → ");
     const reason = req.reason ? ` ${req.reason}.` : "";
     diagnostics.push({
       severity,
@@ -610,7 +617,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
       );
       return;
     }
-    propagate(caller, req, [...via, caller.name]);
+    propagate(caller, req, [...via, shownName(caller)]);
   };
 
   // ── Origins: instances of the entry graph whose annotated field is present.
@@ -660,7 +667,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
         key: "",
       };
       req.key = `${req.zone}\0${req.correlation ?? ""}`;
-      propagate(node, req, [node.name]);
+      propagate(node, req, [shownName(node)]);
     }
   }
 
@@ -688,7 +695,7 @@ export function projectZoneRequirements(args: ProjectionArgs): ProjectionResult 
           origin: spec.origin,
           key: `${spec.zone}\0${spec.correlation ?? ""}`,
         };
-        propagate(node, req, [...spec.via, node.name]);
+        propagate(node, req, [...spec.via, shownName(node)]);
       }
     }
   }

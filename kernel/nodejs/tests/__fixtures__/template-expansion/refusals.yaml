@@ -1,0 +1,42 @@
+# A consumer reaching two refusals at once: a choice decided by an open value
+# and a repeat over a computed collection.
+kind: Telo.Application
+metadata:
+  name: Refusals
+imports:
+  Run: ../../../../../modules/run
+variables:
+  name:
+    env: NAME
+    type: string
+    default: x
+  hooks:
+    env: HOOKS
+    type: object
+    default: {}
+---
+kind: Telo.Definition
+metadata: { name: Both }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    flag: { type: boolean, x-telo-eval: compile }
+    hooks: { type: object, x-telo-eval: compile, additionalProperties: { type: object } }
+resources:
+  - kind: Run.Value
+    metadata: { name: names }
+    value:
+      - !for-each
+        in: !cel "self.hooks"
+        as: hook
+        emit: !cel "hook.key"
+      - !if
+        if: !cel "self.flag"
+        then: flagged
+invoke: !ref names
+---
+kind: Self.Both
+metadata: { name: both }
+flag: !cel "variables.name == 'x'"
+hooks: !cel "variables.hooks"

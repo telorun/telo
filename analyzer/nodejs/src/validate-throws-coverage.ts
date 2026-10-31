@@ -1,4 +1,5 @@
 import type { CelEnvironment } from "@telorun/cel";
+import { listRequests } from "./declaration-requests.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { isRefSentinel } from "@telorun/templating";
 import {
@@ -98,7 +99,7 @@ function checkUndeclaredCodes(
  *  missing one: a route that declares no `catches:` under a router that renders
  *  everything is completely covered, and reporting it fires on precisely the
  *  manifests scope lists exist to enable. */
-function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder): AnalysisDiagnostic[] {
+function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder, generated: ReadonlyMap<string, string>): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   const { routing, filePath, arrayPath } = site;
 
@@ -126,7 +127,7 @@ function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder)
       code: "UNCOVERED_THROW_CODE",
       source: SOURCE,
       message:
-        `handler ${handlerLabel(site.handler)} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
+        `handler ${handlerLabel(site.handler, generated)} can throw ${uncovered.length} code${uncovered.length === 1 ? "" : "s"} that no catches: entry handles — at this list or any enclosing scope: ${uncovered.map((c) => `'${c}'`).join(", ")}. ` +
         `Give each a matching \`when:\`${site.codeChains[0] ? ` (e.g. \`when: !cel "${site.codeChains[0].join(".")} == '${uncovered[0]}'"\`)` : ""}, or add a catch-all entry — one with no \`when:\`, placed last.`,
       data: { resource: routing, filePath, path: arrayPath, uncovered },
     });
@@ -136,12 +137,14 @@ function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder)
 }
 
 /** A handler as a message names it: `!ref <name>` for a reference, its kind
- *  for a kind string. */
-function handlerLabel(handler: unknown): string {
-  if (isRefSentinel(handler)) return `\`!ref ${handler.source}\``;
+ *  for a kind string, and "the inline <Kind>" for a declaration an extraction
+ *  generated, whose name the author never wrote. */
+function handlerLabel(handler: unknown, generated: ReadonlyMap<string, string>): string {
+  const inline = (name: string) => (generated.has(name) ? `the inline ${generated.get(name)}` : undefined);
+  if (isRefSentinel(handler)) return inline(handler.source) ?? `\`!ref ${handler.source}\``;
   if (handler && typeof handler === "object") {
     const { kind, name } = handler as { kind?: unknown; name?: unknown };
-    if (typeof name === "string") return `\`!ref ${name}\``;
+    if (typeof name === "string") return inline(name) ?? `\`!ref ${name}\``;
     if (typeof kind === "string") return `\`${kind}\``;
   }
   return typeof handler === "string" ? `\`${handler}\`` : "`?`";
@@ -314,7 +317,15 @@ export function validateThrowsCoverage(
   // covers is judged, so the ladder is built whole first.
   const ladder =
     built ??
-    new CatchLadder(manifests, defs, aliases, env, aliasesByModule, rootModules, moduleManifests);
+    new CatchLadder(listRequests(manifests), defs, aliases, env, aliasesByModule, rootModules, moduleManifests);
+
+  const generatedKinds = new Map<string, string>();
+  for (const manifest of ladder.allManifests) {
+    const origin = (manifest.metadata as { xTeloOrigin?: { named?: true } } | undefined)?.xTeloOrigin;
+    if (origin !== undefined && origin.named !== true && manifest.kind && manifest.metadata?.name) {
+      generatedKinds.set(manifest.metadata.name as string, manifest.kind);
+    }
+  }
 
   for (const manifest of ladder.allManifests) {
     if (!manifest.kind || !manifest.metadata?.name) continue;
@@ -368,7 +379,7 @@ export function validateThrowsCoverage(
       ),
     );
     if (site.isScope) continue;
-    diagnostics.push(...checkCoverage(site, union, ladder));
+    diagnostics.push(...checkCoverage(site, union, ladder, generatedKinds));
   }
 
   return diagnostics;

@@ -1,0 +1,27 @@
+# The same need referenced outside every branch proving it present: refused in
+# the configuration where it is absent.
+kind: Telo.Application
+metadata:
+  name: NeedReferencedOutsideBranch
+imports:
+  Kinds: ../../../configurations/needs/kinds
+needs:
+  a:
+    kind: Kinds.Access
+    optional: true
+    env: { url: AGREEMENT_NEED_A_URL }
+--- !if
+metadata: { name: chosen }
+if: !cel "resources.a != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref a
+  label: a
+else:
+  kind: Kinds.Labelled
+  label: none
+---
+kind: Kinds.Consumer
+metadata: { name: outside }
+access: !ref a
+label: outside

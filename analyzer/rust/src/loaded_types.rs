@@ -10,6 +10,9 @@ use crate::types::ResourceManifest;
 
 pub struct ParseError {
     pub document_index: usize,
+    /// The diagnostic code of a refusal the loaders name (an expansion
+    /// construct the loader cannot read); `None` for an unreadable document.
+    pub code: Option<String>,
     pub message: String,
 }
 

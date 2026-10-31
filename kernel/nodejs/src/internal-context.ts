@@ -17,6 +17,9 @@ export interface LibraryAnalysisHost {
   /** The load-time flattened set: every library's forwarded exports, the
    *  cross-module targets a library's `!ref Alias.name` resolves against. */
   loadTimeManifests: ResourceManifest[];
+  /** The load-time flattened set as written, before this configuration's
+   *  expansion: every library document's choices still in it. */
+  loadTimeDocuments: ResourceManifest[];
   /** The root Application's `metadata.name`. */
   entryModule: string | undefined;
   /** An import target as the loader read it — what the import's identity is

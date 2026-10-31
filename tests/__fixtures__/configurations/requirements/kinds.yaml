@@ -1,0 +1,42 @@
+# Two templated kinds of the application's own, chosen by `!if`: each body
+# reads its own secret, so each secret is required only where its kind is
+# instantiated.
+kind: Telo.Application
+metadata:
+  name: KindChoice
+imports:
+  Run: ../../../../modules/run
+variables:
+  provider: { env: PROVIDER, type: string, enum: [x, y], default: x }
+secrets:
+  xKey: { env: X_KEY, type: string }
+  yKey: { env: Y_KEY, type: string }
+---
+kind: Telo.Definition
+metadata: { name: XClient }
+capability: Telo.Runnable
+schema: { type: object, additionalProperties: false, properties: {} }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: inner }
+    steps:
+      - name: key
+        value: !cel "secrets.xKey"
+run: !ref inner
+---
+kind: Telo.Definition
+metadata: { name: YClient }
+capability: Telo.Runnable
+schema: { type: object, additionalProperties: false, properties: {} }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: inner }
+    steps:
+      - name: key
+        value: !cel "secrets.yKey"
+run: !ref inner
+--- !if
+metadata: { name: client }
+if: !cel "variables.provider == 'x'"
+then: { kind: Self.XClient }
+else: { kind: Self.YClient }
