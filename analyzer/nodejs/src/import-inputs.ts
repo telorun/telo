@@ -1,7 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
 import { holdsHostPath } from "./host-path-slot.js";
 import type { ModuleDocuments } from "./module-documents.js";
-import { residualEntrySchema } from "./residual-schema.js";
+import { inputValueSchema } from "./residual-schema.js";
 
 /**
  * What a library declares for its importer to supply under `variables:` / `secrets:`,
@@ -59,7 +59,7 @@ function blocksSchema(
     if (declared && typeof declared === "object" && !Array.isArray(declared)) {
       for (const [name, entry] of Object.entries(declared as Record<string, unknown>)) {
         if (entry && typeof entry === "object" && !Array.isArray(entry) && keep(entry as Record<string, any>)) {
-          entries[name] = residualEntrySchema(entry as Record<string, unknown>);
+          entries[name] = inputValueSchema(entry as Record<string, unknown>);
         }
       }
     }

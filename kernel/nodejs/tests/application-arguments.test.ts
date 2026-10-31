@@ -1,3 +1,5 @@
+import type { ApplicationUsageRequirements } from "@telorun/analyzer";
+import { demandingEvery } from "./input-demand.js";
 import { readApplicationArguments } from "@telorun/analyzer";
 import { RuntimeError } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
@@ -29,7 +31,7 @@ const APP = {
 };
 
 function resolve(argv: string[], env: Record<string, string> = {}) {
-  return resolveApplicationEnv(APP, env, new SchemaValidator(), undefined, argv);
+  return resolveApplicationEnv(APP, env, new SchemaValidator(), demandingEvery(), undefined, argv);
 }
 
 function failure(run: () => unknown): string {
@@ -85,7 +87,7 @@ describe("application arguments — values", () => {
     const { variables } = resolveApplicationEnv(
       APP,
       {},
-      new SchemaValidator(),
+      new SchemaValidator(), demandingEvery(),
       { variables: { filter: "from-parent" } },
       ["from-argv"],
     );
@@ -131,7 +133,7 @@ describe("application arguments — refusals", () => {
 
   it("refuses every token when the application declares no arguments", () => {
     const message = failure(() =>
-      resolveApplicationEnv({ metadata: { name: "Bare" } }, {}, new SchemaValidator(), undefined, ["--x"]),
+      resolveApplicationEnv({ metadata: { name: "Bare" } }, {}, new SchemaValidator(), demandingEvery(), undefined, ["--x"]),
     );
     expect(message).toContain("unknown option --x (it declares no arguments)");
   });
@@ -141,7 +143,7 @@ describe("application arguments — refusals", () => {
       resolveApplicationEnv(
         { variables: { token: { type: "string", arg: "token", env: "TOKEN" } } },
         {},
-        new SchemaValidator(),
+        new SchemaValidator(), demandingEvery(),
         undefined,
         [],
       ),
@@ -189,7 +191,33 @@ describe("application arguments — --help", () => {
       ports: { http: { env: "PORT", default: 8080 } },
       needs: { databaseAccess: { kind: "Postgres.DatabaseAccess" } },
     };
-    expect(resolveApplicationEnv(app, {}, new SchemaValidator(), undefined, ["--help"]).help).toBe(
+    const usage = {
+      inputs: [
+        { block: "variables" as const, name: "bucket", required: true },
+        {
+          block: "secrets" as const,
+          name: "token",
+          required: true,
+          requiredWhen: [{ "variables.mode": "remote" }],
+        },
+        { block: "secrets" as const, name: "key", required: false },
+        { block: "needs" as const, name: "databaseAccess", required: true },
+      ],
+      dimensions: [{ key: "variables.mode", values: ["local", "remote"], env: ["MODE"] }],
+      needs: [
+        {
+          supply: "environment",
+          path: ["databaseAccess"],
+          declaredBy: "app",
+          moduleName: "Service",
+          need: { name: "databaseAccess", kind: "Postgres.DatabaseAccess", type: "Postgres.DatabaseAccess", optional: false },
+          fields: {
+            url: { env: "TELO_NEED_DATABASE_ACCESS__URL", envSource: "derived", required: true, sensitive: true },
+          },
+        },
+      ],
+    } as unknown as ApplicationUsageRequirements;
+    expect(resolveApplicationEnv(app, {}, new SchemaValidator(), demandingEvery(usage), undefined, ["--help"]).help).toBe(
       [
         "Usage: Service [--name <string>]",
         "",
@@ -199,11 +227,12 @@ describe("application arguments — --help", () => {
         "Environment:",
         "  BUCKET  Where manifests are stored. [string; required; variables.bucket]",
         '  ROOT    [Telo.HostPath; default: "."; variables.root]',
-        "  TOKEN   [string; secret; required; secrets.token]",
+        "  TOKEN   [string; secret; required when MODE is remote; secrets.token]",
         "  KEY     [string; secret; secrets.key]",
         "  PORT    [tcp port; default: 8080; ports.http]",
         "",
-        "Needs: databaseAccess — `telo needs report` lists the environment variables they read.",
+        "Needs:",
+        "  databaseAccess  TELO_NEED_DATABASE_ACCESS__URL [Postgres.DatabaseAccess; required]",
         "",
       ].join("\n"),
     );

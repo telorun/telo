@@ -9,7 +9,6 @@
  * so a need the table does not read from the environment contributes nothing.
  */
 
-import { readApplicationContract } from "./application-contract.js";
 import type { NeedEnvironmentEntry } from "./need-table.js";
 
 export interface SensitiveEnvironmentInput {
@@ -27,11 +26,14 @@ export function sensitiveEnvironmentInputs(
   root: unknown,
   needEnvironment: readonly NeedEnvironmentEntry[],
 ): SensitiveEnvironmentInput[] {
-  const contract = readApplicationContract(root);
-  if (!contract) return [];
-  const inputs: SensitiveEnvironmentInput[] = contract.secrets
-    .filter((secret) => secret.env !== "")
-    .map((secret) => ({ env: secret.env, source: "secret", name: secret.name }));
+  const doc = root as { kind?: unknown; secrets?: unknown } | null | undefined;
+  if (!doc || typeof doc !== "object" || doc.kind !== "Telo.Application") return [];
+  const secrets = doc.secrets && typeof doc.secrets === "object" && !Array.isArray(doc.secrets) ? doc.secrets : {};
+  const inputs: SensitiveEnvironmentInput[] = [];
+  for (const [name, entry] of Object.entries(secrets as Record<string, unknown>)) {
+    const env = (entry as { env?: unknown } | null)?.env;
+    if (typeof env === "string" && env !== "") inputs.push({ env, source: "secret", name });
+  }
   for (const entry of needEnvironment) {
     for (const [field, info] of Object.entries(entry.fields ?? {})) {
       if (info.sensitive) inputs.push({ env: info.env, source: "sensitive need field", name: `${entry.path.join(".")}.${field}` });

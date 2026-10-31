@@ -1,0 +1,5 @@
+modules:
+  modules/sql: Added
+body: "The declarative-schema guide now states that a module's tables join a schema only
+  by the schema's own tables: list, and that a library contributing tables exports them
+  for the application's schema to list rather than borrowing that schema."

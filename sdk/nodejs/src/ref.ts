@@ -1,3 +1,4 @@
+import { RuntimeError } from "./types.js";
 import type { ResourceInstance } from "./resource-instance.js";
 
 /** Marker type for x-telo-ref fields. Carries the live instance type at the TypeScript level;
@@ -15,7 +16,18 @@ export interface KindRef<T = ResourceInstance> {
   readonly kind: string;
   readonly name: string;
   readonly alias?: string;
+  /** The `[<binding>.key|index]` indexes of a family member's reference, in
+   *  written order; empty for a plain reference. Every producer of a resolved
+   *  reference writes it. */
+  readonly indexes?: readonly KindRefIndex[];
   readonly __type?: T;
+}
+
+/** One index of a family member's reference: the loop binding it reads and
+ *  which of the binding's members. */
+export interface KindRefIndex {
+  readonly binding: string;
+  readonly member: "key" | "index";
 }
 
 /** A reference to the resource `name` of `kind`, reached through the import `alias` when it
@@ -23,7 +35,9 @@ export interface KindRef<T = ResourceInstance> {
  *  hands `ensureKindRef`, `resolveRef` or a step's `invoke`. A plain `{ kind, name }` object is
  *  an inline declaration of `kind`. */
 export function kindRef<T = ResourceInstance>(kind: string, name: string, alias?: string): KindRef<T> {
-  return alias === undefined ? { __ref: true, kind, name } : { __ref: true, kind, name, alias };
+  return alias === undefined
+    ? { __ref: true, kind, name, indexes: [] }
+    : { __ref: true, kind, name, alias, indexes: [] };
 }
 
 /** True when `value` is a resolved reference — a plain object carrying the `__ref` marker, a
@@ -36,20 +50,47 @@ export function isKindRef(value: unknown): value is KindRef {
   return ref.__ref === true && typeof ref.kind === "string" && typeof ref.name === "string";
 }
 
-/** The name and import alias a `!ref <name>` / `!ref <Alias>.<name>` sentinel names, as the
- *  parser leaves it (`{ __tagged: true, engine: "ref", source }`); undefined for anything else.
- *  `Self.<name>` is a local name. */
+/** The name and import alias a `!ref <name>` / `!ref <Alias>.<name>` sentinel names, read from
+ *  the `!ref` engine's verdict the loader attaches (`parsed` / `refusal`); undefined for anything
+ *  that is not a `!ref` sentinel. `Self.<name>` is a local name. A sentinel whose text is outside
+ *  the grammar, names a family member (`stores[each.key]`), or carries no verdict is
+ *  `ERR_REF_UNRESOLVED`, since no name it could be read as is the one the author wrote. */
 export function refSentinelTarget(value: unknown): { name: string; alias?: string } | undefined {
   if (value === null || typeof value !== "object") return undefined;
-  const sentinel = value as { __tagged?: unknown; engine?: unknown; source?: unknown };
+  const sentinel = value as {
+    __tagged?: unknown;
+    engine?: unknown;
+    source?: unknown;
+    parsed?: { alias?: unknown; name?: unknown; indexes?: unknown };
+    refusal?: { offset?: unknown };
+  };
   if (sentinel.__tagged !== true || sentinel.engine !== "ref" || typeof sentinel.source !== "string") {
     return undefined;
   }
-  const dot = sentinel.source.indexOf(".");
-  if (dot <= 0) return { name: sentinel.source };
-  const alias = sentinel.source.slice(0, dot);
-  const name = sentinel.source.slice(dot + 1);
-  return alias === "Self" ? { name } : { name, alias };
+  const parsed = sentinel.parsed;
+  if (
+    !parsed ||
+    typeof parsed.name !== "string" ||
+    !Array.isArray(parsed.indexes) ||
+    (parsed.alias !== undefined && typeof parsed.alias !== "string")
+  ) {
+    const offset = sentinel.refusal?.offset;
+    throw new RuntimeError(
+      "ERR_REF_UNRESOLVED",
+      `'!ref ${sentinel.source}' is not a reference` +
+        (typeof offset === "number" ? ` (inadmissible text at offset ${offset})` : "") +
+        `: a reference is '<name>' or '<Alias>.<name>'.`,
+    );
+  }
+  if (parsed.indexes.length > 0) {
+    throw new RuntimeError(
+      "ERR_REF_UNRESOLVED",
+      `'!ref ${sentinel.source}' names a family member, which only a template's expansion resolves; ` +
+        `it reached a reader unexpanded.`,
+    );
+  }
+  const alias = parsed.alias as string | undefined;
+  return alias === undefined || alias === "Self" ? { name: parsed.name } : { name: parsed.name, alias };
 }
 
 /** Marker type for x-telo-scope fields. Has no runtime value — used only as a discriminant

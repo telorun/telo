@@ -1,0 +1,62 @@
+# A scope member whose content its holder's scope field relates: the field's
+# `items` hold each member's `spec` to a `oneOf` reading `spec.mode`, which a
+# choice inside the member decides. The member's own kind says only that
+# `spec` is an object; where flag1 is false `mode` matches both branches, and
+# the holder refuses `spec`.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberHolderItems
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref holder
+---
+kind: Telo.Definition
+metadata:
+  name: Plain
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    spec: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    members:
+      type: array
+      x-telo-scope: /uses
+      items:
+        properties:
+          spec:
+            oneOf:
+              - { properties: { mode: { enum: [a, c] } } }
+              - { properties: { mode: { enum: [b, c] } } }
+    uses:
+      type: array
+      items:
+        x-telo-ref: { kind: Telo.Runnable, use: call }
+---
+kind: ScopeMemberHolderItems.Holder
+metadata:
+  name: holder
+members:
+  - kind: ScopeMemberHolderItems.Plain
+    metadata: { name: member }
+    spec:
+      mode: !if
+        if: !cel "variables.flag1"
+        then: a
+        else: c
+uses:
+  - !ref member

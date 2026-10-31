@@ -1,0 +1,13 @@
+# A library binding a dependency's choice to its own open input.
+kind: Telo.Library
+metadata:
+  name: BindingMid
+imports:
+  Lib:
+    source: ../../../configurations/binding-lib
+    variables:
+      dialect: !cel "variables.name"
+variables:
+  name:
+    type: string
+    default: pg

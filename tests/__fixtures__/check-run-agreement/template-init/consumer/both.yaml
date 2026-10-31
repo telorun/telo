@@ -1,0 +1,21 @@
+# The consumer reaches two refusals at once: a choice decided by an open value
+# and a repeat over a computed collection.
+kind: Telo.Application
+metadata:
+  name: TemplateInitBothApp
+imports:
+  Lib: ../both-lib
+variables:
+  name:
+    env: NAME
+    type: string
+    default: x
+  hooks:
+    env: HOOKS
+    type: object
+    default: {}
+---
+kind: Lib.Both
+metadata: { name: both }
+flag: !cel "variables.name == 'x'"
+hooks: !cel "variables.hooks"

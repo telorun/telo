@@ -1,0 +1,27 @@
+{
+  "title": "`!for-each` in a step list, named",
+  "description": "Inside a template body, one step per element whose results are read as `steps.<name>[<binding>.key].result`.",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The step name the repeat's results are read under."
+    },
+    "in": {
+      "description": "The collection repeated over: a bare `!cel \"self.<path>\"` or `<binding>.value.<path>`."
+    },
+    "as": {
+      "type": "string",
+      "description": "The binding's name; `each` when omitted."
+    },
+    "emit": {
+      "description": "What each element contributes."
+    }
+  },
+  "required": [
+    "name",
+    "in",
+    "emit"
+  ],
+  "additionalProperties": false
+}

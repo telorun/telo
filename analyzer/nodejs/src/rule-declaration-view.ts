@@ -53,11 +53,14 @@ export type DeclarationEvalSites = (
   module: unknown,
 ) => DeclarationReading | undefined;
 
-/** What a reference written in `module` names, in the form a resolved local
- *  reference takes — or nothing, when that module's scope holds no such name. */
+/** What a reference written in `module` — in `writer`, the dependency's
+ *  declaration holding it, whose module instance it is read in — names, in the
+ *  form a resolved local reference takes; or nothing, when that scope holds no
+ *  such name. */
 export type ForwardedReference = (
   target: RefSentinelTarget,
   module: string,
+  writer: Record<string, unknown>,
 ) => ResolvedReference | undefined;
 
 function isPlainContainer(value: unknown): value is Record<string, unknown> | unknown[] {
@@ -79,19 +82,16 @@ export class RuleDeclarationViews {
 
   of<T extends ResourceManifest>(declaration: T): T {
     const module = (declaration.metadata as { module?: unknown } | undefined)?.module;
-    return this.view(
-      declaration as unknown as Record<string, unknown>,
-      module,
-      isForwardedDeclaration(declaration),
-    ) as unknown as T;
+    const record = declaration as unknown as Record<string, unknown>;
+    return this.view(record, module, isForwardedDeclaration(declaration) ? record : undefined) as unknown as T;
   }
 
-  /** `forwarded`: the declaration is a dependency's, or an inline declaration
-   *  beneath one. */
+  /** `writer`: the dependency's top-level declaration this one is, or is an
+   *  inline declaration beneath; undefined for the analysed modules' own. */
   private view(
     declaration: Record<string, unknown>,
     module: unknown,
-    forwarded: boolean,
+    writer: Record<string, unknown> | undefined,
   ): Record<string, unknown> {
     const cached = this.views.get(declaration);
     if (cached) return cached as Record<string, unknown>;
@@ -108,19 +108,19 @@ export class RuleDeclarationViews {
     const written = new Set(fields.map((field) => field.path));
     // Inline declarations beneath it, each through its own kind.
     const resolve =
-      forwarded && typeof module === "string" ? this.forwardedReference : undefined;
+      writer && typeof module === "string" ? this.forwardedReference : undefined;
     const walk = (node: unknown, path: string): unknown => {
       if (written.has(path)) return node;
       if (resolve) {
         const target = refSentinelTarget(node);
-        if (target) return resolve(target, module as string) ?? node;
+        if (target) return resolve(target, module as string, writer!) ?? node;
       }
       if (!isPlainContainer(node)) return node;
       if (Array.isArray(node)) {
         const items = node.map((item, index) => walk(item, `${path}[${index}]`));
         return items.some((item, index) => item !== node[index]) ? items : node;
       }
-      if (path !== "" && isInlineDeclaration(node)) return this.view(node, module, forwarded);
+      if (path !== "" && isInlineDeclaration(node)) return this.view(node, module, writer);
       let copy: Record<string, unknown> | undefined;
       for (const [key, child] of Object.entries(node)) {
         const read = walk(child, path === "" ? key : `${path}.${key}`);

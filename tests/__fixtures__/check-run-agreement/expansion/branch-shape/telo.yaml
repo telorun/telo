@@ -1,0 +1,22 @@
+# A tag's mapping that does not fit its position: a `with:` member chosen
+# without the declaration's `metadata`, and `metadata` on a value-position tag.
+kind: Telo.Library
+metadata:
+  name: BranchShapeLib
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Run.Sequence
+metadata:
+  name: sequence
+with:
+  - !if
+    if: true
+    then: { kind: Run.Value, value: 1 }
+steps:
+  - name: pick
+    value: !switch
+      metadata: { name: oops }
+      switch: a
+      cases:
+        a: 1

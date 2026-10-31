@@ -186,7 +186,7 @@ describe("x-telo-value-schema-from", () => {
     const found = violations([choiceDef, sequenceDef, seq]);
     expect(found.length).toBeGreaterThan(0);
     for (const d of found) {
-      expect(d.message).toContain("`choices[0].value`");
+      expect(d.message).toContain("`steps[0].invoke.choices[0].value`");
       expect(d.data?.path).toContain("steps[0].invoke.choices[0].value");
     }
     expect(found.some((d) => d.message.includes("required property 'cost'"))).toBe(true);

@@ -1,7 +1,9 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isTaggedSentinel } from "@telorun/templating";
 import { scopeResolverForModule, type AliasResolver } from "./alias-resolver.js";
-import { resolveScopedName, resolveSlotUseAt } from "./call-graph.js";
+import { resolveSlotUseAt } from "./call-graph.js";
+import type { ScopeSite } from "./scope-address.js";
+import { addressOf, importPathThrough, manifestNames, scopeReadAt } from "./scoped-name-resolver.js";
 import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { DefResolver } from "./extends-resolution.js";
@@ -105,15 +107,14 @@ export function createResolveCtx(
 function findTarget(
   ctx: ResolveCtx,
   name: string,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
   kindMatches: (m: ResourceManifest) => boolean,
 ): ResourceManifest | undefined {
-  const flat = ctx.allManifests.find((m) => m.metadata?.name === name && kindMatches(m));
+  const flat = manifestNames(ctx.allManifests).resolve(name, origin.module, origin.within, kindMatches);
   if (flat) return flat;
-  if (!ownerModule) return undefined;
-  return ctx.moduleManifests
-    .get(ownerModule)
-    ?.find((m) => m.metadata?.name === name && kindMatches(m));
+  if (!origin.module) return undefined;
+  const own = ctx.moduleManifests.get(origin.module);
+  return own ? manifestNames(own).resolve(name, origin.module, undefined, kindMatches) : undefined;
 }
 
 /**
@@ -121,11 +122,13 @@ function findTarget(
  * reference inside a manifest forwarded into a consumer's flat set, where Phase
  * 2.5 had nothing to resolve it against.
  *
- * **The declaring library is asked FIRST**, and that ordering is the whole rule:
- * a bare name in a library manifest is unambiguously library-internal, so
- * searching the consumer's flat set first let any consumer resource that
- * happened to share the name supply another library's throw union — the same
- * false `{∅}` this branch exists to remove, arrived at from the other side.
+ * A member of a scope the reference is read in comes first: it shadows every
+ * module-level name. Among those, **the declaring library is asked FIRST**, and
+ * that ordering is the whole rule: a bare name in a library manifest is
+ * unambiguously library-internal, so searching the consumer's flat set first
+ * let any consumer resource that happened to share the name supply another
+ * library's throw union — the same false `{∅}` this branch exists to remove,
+ * arrived at from the other side.
  *
  * An ALIAS-qualified source is the cross-module case and is resolved through the
  * declaring module's own alias table, never by dropping the alias and matching
@@ -138,38 +141,59 @@ function findTarget(
 function findSentinelTarget(
   ctx: ResolveCtx,
   target: RefSentinelTarget,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
 ): ResourceManifest | undefined {
-  const named = (pool: readonly ResourceManifest[] | undefined): ResourceManifest[] =>
-    (pool ?? []).filter((m) => m.metadata?.name === target.name);
-
   if (target.alias !== undefined && target.alias !== "Self") {
     // A forwarded export: its module is whatever the DECLARING module aliases
     // that prefix to, and it keeps its export name in the flat set.
     // A root-owned manifest resolves aliases against the global table, which is
     // what `scopeResolverForModule` returns undefined for — so fall back to it
     // rather than reading a root's own alias as unresolvable.
-    const resolver = scopeResolverFor(ctx, ownerModule) ?? ctx.aliases;
+    const resolver = scopeResolverFor(ctx, origin.module) ?? ctx.aliases;
     const module = resolver.moduleForAlias(target.alias);
     if (!module) return undefined;
-    return named(ctx.allManifests).find((m) => declaringModuleOf(m) === module);
+    return manifestNames(ctx.allManifests).inModule(
+      target.name,
+      module,
+      importPathThrough(origin.writer, target.alias),
+    );
   }
 
-  const own = named(ctx.moduleManifests.get(ownerModule ?? ""));
-  if (own.length === 1) return own[0];
-  if (own.length > 1) return undefined;
-  return resolveScopedName(named(ctx.allManifests), declaringModuleOf, ownerModule);
+  // A scope member the reference's scope chain declares shadows every
+  // module-level name, the library's own included.
+  const flat = manifestNames(ctx.allManifests);
+  const member = flat.scopeMember(target.name, origin.within);
+  if (member) return member;
+  const own = ctx.moduleManifests.get(origin.module ?? "");
+  return (
+    (own ? manifestNames(own).resolve(target.name, origin.module) : undefined) ??
+    flat.resolve(target.name, origin.module, origin.within)
+  );
 }
 
-const declaringModuleOf = (m: ResourceManifest): string | undefined =>
-  (m.metadata as { module?: string } | undefined)?.module;
 
-/** Memo key. Module-scoped, because resource names are. */
+/** Memo key: the declaration's address, since a name is unique only inside
+ *  one module and one scope. */
 function memoKey(manifest: ResourceManifest): string | undefined {
-  const name = manifest.metadata?.name as string | undefined;
-  if (!name) return undefined;
-  const mod = (manifest.metadata as { module?: string } | undefined)?.module ?? "";
-  return `${mod}\0${name}`;
+  return addressOf(manifest)?.key;
+}
+
+/** Where a reference is read: the module that wrote it, and the scope a bare
+ *  name written there reads in. */
+export interface RefOrigin {
+  readonly module: string | undefined;
+  readonly within?: ScopeSite;
+  /** The declaration the reference is written in. */
+  readonly writer?: ResourceManifest;
+}
+
+/** The origin of a reference written at `path` of `manifest`. */
+export function refOrigin(manifest: ResourceManifest, path?: string): RefOrigin {
+  return {
+    module: (manifest.metadata as { module?: string } | undefined)?.module,
+    within: scopeReadAt(manifest, path),
+    writer: manifest,
+  };
 }
 
 function emptyUnion(): ThrowsUnion {
@@ -296,7 +320,7 @@ export function resolveThrowsUnion(
     }
 
     if (throws.inherit) {
-      const inherited = resolveInherited(manifest, definition, ctx, ownModule);
+      const inherited = resolveInherited(manifest, definition, ctx);
       unionInto(result, inherited);
     }
 
@@ -349,14 +373,14 @@ function resolveInherited(
   manifest: ResourceManifest,
   definition: ResourceDefinition,
   ctx: ResolveCtx,
-  ownerModule: string | undefined,
 ): ThrowsUnion {
   const result: ThrowsUnion = { codes: new Map(), unbounded: false };
   const schema = definition.schema as Record<string, any> | undefined;
 
   forEachDrivenSlot(schema, manifest, (driven) => {
+    const origin = refOrigin(manifest, driven.path);
     if (driven.kind === "step") {
-      unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, ownerModule));
+      unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, origin));
       return;
     }
     // Several slots at one site are the branches declaring it; any one that
@@ -366,7 +390,7 @@ function resolveInherited(
         handsFailureBack,
       ),
     );
-    if (handsBack) unionInto(result, resolveRefTargetThrows(driven.data, ctx, ownerModule));
+    if (handsBack) unionInto(result, resolveRefTargetThrows(driven.data, ctx, origin));
   });
 
   return result;
@@ -399,20 +423,20 @@ export function resolveScopeUnion(
   const result: ThrowsUnion = { codes: new Map(), unbounded: false };
   if (seen.has(manifest)) return result;
   seen.add(manifest);
-  const ownerModule = (manifest.metadata as { module?: string } | undefined)?.module;
 
   forEachDrivenSlot(definition.schema, manifest, (driven) => {
+    const origin = refOrigin(manifest, driven.path);
     if (driven.kind === "step") {
-      unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, ownerModule));
+      unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, origin));
       return;
     }
     if (
       driven.slots.some(({ slot }) => !slot.throwsThrough && throwsUses(slot).some(transfersControl))
     ) {
-      unionInto(result, resolveRefTargetThrows(driven.data, ctx, ownerModule));
+      unionInto(result, resolveRefTargetThrows(driven.data, ctx, origin));
     }
     if (driven.slots.some(({ slot }) => slot.throwsThrough)) {
-      const target = resolveRefManifest(driven.data, ctx, ownerModule);
+      const target = resolveRefManifest(driven.data, ctx, origin);
       const targetDef = target
         ? definitionFor(
             target.kind,
@@ -437,11 +461,11 @@ function stepSiteThrows(
   steps: unknown[],
   slots: StepSlot[],
   ctx: ResolveCtx,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
 ): ThrowsUnion {
   const result = emptyUnion();
   for (const invoke of new Set(slots.map((slot) => slot.invoke))) {
-    unionInto(result, collectStepArrayThrows(steps, invoke, undefined, ctx, ownerModule));
+    unionInto(result, collectStepArrayThrows(steps, invoke, undefined, ctx, origin));
   }
   return result;
 }
@@ -451,14 +475,14 @@ function collectStepArrayThrows(
   invokeField: string,
   enclosingTryCodes: Set<string> | undefined,
   ctx: ResolveCtx,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
 ): ThrowsUnion {
   const result = emptyUnion();
   for (const step of steps) {
     if (!step || typeof step !== "object") continue;
     unionInto(
       result,
-      collectStepThrows(step as Record<string, any>, invokeField, enclosingTryCodes, ctx, ownerModule),
+      collectStepThrows(step as Record<string, any>, invokeField, enclosingTryCodes, ctx, origin),
     );
   }
   return result;
@@ -474,13 +498,13 @@ function collectStepThrows(
   invokeField: string,
   enclosingTryCodes: Set<string> | undefined,
   ctx: ResolveCtx,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
 ): ThrowsUnion {
   if (step[invokeField]) {
     // Any invoked resource can throw a non-InvokeError at runtime, which an
     // enclosing catch surfaces as PLAIN_ERROR_CODE — record that possibility.
     const u = cloneUnion(
-      resolveStepInvokeThrows(step, invokeField, enclosingTryCodes, ctx, ownerModule),
+      resolveStepInvokeThrows(step, invokeField, enclosingTryCodes, ctx, origin),
     );
     u.canThrowPlain = true;
     return u;
@@ -497,7 +521,7 @@ function collectStepThrows(
   }
 
   if (Array.isArray(step.try)) {
-    const tryUnion = collectStepArrayThrows(step.try, invokeField, enclosingTryCodes, ctx, ownerModule);
+    const tryUnion = collectStepArrayThrows(step.try, invokeField, enclosingTryCodes, ctx, origin);
     let propagated: ThrowsUnion;
     if (Array.isArray(step.catch)) {
       // Catch absorbs the try block's codes; the catch's own throws propagate
@@ -508,7 +532,7 @@ function collectStepThrows(
       // `error.code === PLAIN_ERROR_CODE`, so a `throw: { code: error.code }`
       // rethrow can propagate it — seed the set the catch resolves against.
       if (tryUnion.canThrowPlain) tryCodes.add(PLAIN_ERROR_CODE);
-      propagated = collectStepArrayThrows(step.catch, invokeField, tryCodes, ctx, ownerModule);
+      propagated = collectStepArrayThrows(step.catch, invokeField, tryCodes, ctx, origin);
       // Unbounded in the try block still signals the caller to expect
       // arbitrary codes to flow through the catch (e.g. via passthrough).
       if (tryUnion.unbounded) propagated.unbounded = true;
@@ -518,7 +542,7 @@ function collectStepThrows(
     if (Array.isArray(step.finally)) {
       unionInto(
         propagated,
-        collectStepArrayThrows(step.finally, invokeField, enclosingTryCodes, ctx, ownerModule),
+        collectStepArrayThrows(step.finally, invokeField, enclosingTryCodes, ctx, origin),
       );
     }
     return propagated;
@@ -526,16 +550,16 @@ function collectStepThrows(
 
   if (Array.isArray(step.then)) {
     const result = emptyUnion();
-    unionInto(result, collectStepArrayThrows(step.then, invokeField, enclosingTryCodes, ctx, ownerModule));
+    unionInto(result, collectStepArrayThrows(step.then, invokeField, enclosingTryCodes, ctx, origin));
     if (Array.isArray(step.else)) {
-      unionInto(result, collectStepArrayThrows(step.else, invokeField, enclosingTryCodes, ctx, ownerModule));
+      unionInto(result, collectStepArrayThrows(step.else, invokeField, enclosingTryCodes, ctx, origin));
     }
     if (Array.isArray(step.elseif)) {
       for (const branch of step.elseif) {
         if (Array.isArray(branch?.then)) {
           unionInto(
             result,
-            collectStepArrayThrows(branch.then, invokeField, enclosingTryCodes, ctx, ownerModule),
+            collectStepArrayThrows(branch.then, invokeField, enclosingTryCodes, ctx, origin),
           );
         }
       }
@@ -544,18 +568,18 @@ function collectStepThrows(
   }
 
   if (Array.isArray(step.do)) {
-    return collectStepArrayThrows(step.do, invokeField, enclosingTryCodes, ctx, ownerModule);
+    return collectStepArrayThrows(step.do, invokeField, enclosingTryCodes, ctx, origin);
   }
 
   if (step.cases && typeof step.cases === "object") {
     const result = emptyUnion();
     for (const arr of Object.values(step.cases as Record<string, unknown>)) {
       if (Array.isArray(arr)) {
-        unionInto(result, collectStepArrayThrows(arr, invokeField, enclosingTryCodes, ctx, ownerModule));
+        unionInto(result, collectStepArrayThrows(arr, invokeField, enclosingTryCodes, ctx, origin));
       }
     }
     if (Array.isArray(step.default)) {
-      unionInto(result, collectStepArrayThrows(step.default, invokeField, enclosingTryCodes, ctx, ownerModule));
+      unionInto(result, collectStepArrayThrows(step.default, invokeField, enclosingTryCodes, ctx, origin));
     }
     return result;
   }
@@ -576,9 +600,9 @@ function resolveStepInvokeThrows(
   invokeField: string,
   enclosingTryCodes: Set<string> | undefined,
   ctx: ResolveCtx,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
 ): ThrowsUnion {
-  return resolveRefTargetThrows(step[invokeField], ctx, ownerModule, () =>
+  return resolveRefTargetThrows(step[invokeField], ctx, origin, () =>
     resolvePassthroughAtCallSite(step, enclosingTryCodes),
   );
 }
@@ -598,7 +622,7 @@ function resolveStepInvokeThrows(
 function resolveRefTargetThrows(
   refValue: unknown,
   ctx: ResolveCtx,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
   onPassthrough?: () => ThrowsUnion,
 ): ThrowsUnion {
   if (!refValue || typeof refValue !== "object" || Array.isArray(refValue)) return emptyUnion();
@@ -615,7 +639,7 @@ function resolveRefTargetThrows(
   if (!invokedKind) {
     const sentinel = refSentinelTarget(ref);
     if (!sentinel) return emptyUnion();
-    const target = findSentinelTarget(ctx, sentinel, ownerModule);
+    const target = findSentinelTarget(ctx, sentinel, origin);
     if (target) return resolveThrowsUnion(target, ctx);
     return { codes: new Map(), unbounded: true };
   }
@@ -623,7 +647,7 @@ function resolveRefTargetThrows(
   // The invoked kind's alias resolves in the OWNER manifest's lexical scope (the
   // resource that declares the slot), so a library's step referencing its own
   // import resolves against that library, not the consumer.
-  const scopeResolver = scopeResolverFor(ctx, ownerModule);
+  const scopeResolver = scopeResolverFor(ctx, origin.module);
   const definition = definitionFor(invokedKind, ctx.defs, ctx.aliases, scopeResolver);
   if (!definition) return { codes: new Map(), unbounded: true };
 
@@ -632,7 +656,7 @@ function resolveRefTargetThrows(
   }
 
   // Named manifest: resolve the full chain (covers transitive inherit).
-  const target = resolveRefManifest(ref, ctx, ownerModule);
+  const target = resolveRefManifest(ref, ctx, origin);
   if (target) return resolveThrowsUnion(target, ctx);
 
   // Fall back to the definition's own explicit codes. Mark unbounded when the
@@ -655,23 +679,23 @@ function resolveRefTargetThrows(
 export function resolveRefManifest(
   refValue: unknown,
   ctx: ResolveCtx,
-  ownerModule: string | undefined,
+  origin: RefOrigin,
 ): ResourceManifest | undefined {
   if (!refValue || typeof refValue !== "object" || Array.isArray(refValue)) return undefined;
   const ref = refValue as Record<string, any>;
   const kind = ref.kind as string | undefined;
   if (!kind) {
     const sentinel = refSentinelTarget(ref);
-    return sentinel ? findSentinelTarget(ctx, sentinel, ownerModule) : undefined;
+    return sentinel ? findSentinelTarget(ctx, sentinel, origin) : undefined;
   }
   const name = ref.name as string | undefined;
   if (!name) return undefined;
-  const scopeResolver = scopeResolverFor(ctx, ownerModule);
+  const scopeResolver = scopeResolverFor(ctx, origin.module);
   const scopedKind = scopeResolver?.resolveKind(kind);
   return findTarget(
     ctx,
     name,
-    ownerModule,
+    origin,
     (m) =>
       m.kind === kind ||
       ctx.aliases.resolveKind(m.kind) === kind ||

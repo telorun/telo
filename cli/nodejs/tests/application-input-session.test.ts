@@ -14,6 +14,20 @@ import { createLogger } from "../src/logger.js";
 
 const silent = { write: () => true } as unknown as NodeJS.WritableStream;
 
+/** An input is asked for only where a manifest reads it: this reads them all. */
+const reader = (read: string) => `---
+kind: Telo.NeedType
+metadata: { name: Probe }
+fields:
+  all: { type: object }
+---
+kind: Self.Probe
+metadata: { name: reader }
+fields:
+  all: !cel "${read}"
+`;
+const READS_VARIABLES = reader("variables");
+
 /** A person who answers from `answers` (each id's queue in turn, then the end
  *  of input) and says yes or no to each confirmation in order. */
 function person(answers: Record<string, string[]>, confirms: boolean[] = []) {
@@ -38,7 +52,7 @@ const app = (variables: string) => `kind: Telo.Application
 metadata:
   name: Watched
 variables:
-${variables}`;
+${variables}${READS_VARIABLES}`;
 
 async function load(manifest: string, session: ApplicationInputSession, env: Record<string, string> = {}) {
   const memory = new MemorySource();
@@ -77,7 +91,7 @@ variables:
   quote: { env: SAVED_QUOTE, type: string }
 secrets:
   token: { env: SAVED_TOKEN, type: string }
-`;
+${reader("{'variables': variables, 'secrets': secrets}")}`;
   const answers = () => ({
     "variables.host": ["db.local"],
     "variables.quote": [`it's "all" \`three\``],
@@ -121,7 +135,7 @@ secrets:
   it("saves no secret when no file is marked sensitive, and says so", async () => {
     const { prompter, said } = person({ "secrets.token": ["s3cr3t"] }, [true]);
     const session = new ApplicationInputSession(prompter);
-    await load(`kind: Telo.Application\nmetadata:\n  name: NoSensitive\nsecrets:\n  token: { env: SAVED_TOKEN, type: string }\n`, session);
+    await load(`kind: Telo.Application\nmetadata:\n  name: NoSensitive\nsecrets:\n  token: { env: SAVED_TOKEN, type: string }\n${reader("secrets")}`, session);
     await offerToSaveAnswers(session.takeFresh(), {
       directory: dir,
       envFiles: [{ name: ".env", sensitive: false }],
@@ -146,7 +160,7 @@ describe("telo run with no terminal", () => {
       const manifest = path.join(dir, "app", "telo.yaml");
       fs.writeFileSync(
         manifest,
-        "kind: Telo.Application\nmetadata:\n  name: NoTerminal\nsecrets:\n  token:\n    env: TELO_TEST_NO_INPUT_TOKEN\n    type: string\n",
+        `kind: Telo.Application\nmetadata:\n  name: NoTerminal\nsecrets:\n  token:\n    env: TELO_TEST_NO_INPUT_TOKEN\n    type: string\n${reader("secrets")}`,
       );
       const result = spawnSync("bun", [CLI, "run", manifest].map(quote), {
         cwd: dir,

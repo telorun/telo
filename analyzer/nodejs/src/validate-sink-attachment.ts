@@ -3,6 +3,7 @@ import type { AliasResolver } from "./alias-resolver.js";
 import { nodeIdFor, type CallGraph } from "./call-graph.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { isScopeMemberDeclaration } from "./scope-members.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
 const SOURCE = "telo-analyzer";
@@ -27,6 +28,9 @@ export function validateSinkAttachment(
   aliases: AliasResolver,
   aliasesByModule: Map<string, AliasResolver> | undefined,
   rootModules: ReadonlySet<string>,
+  /** Only the sinks declared in a scope: the module level's were judged once
+   *  over every configuration. */
+  scopedOnly = false,
 ): AnalysisDiagnostic[] {
   const exported = new Map<string, Set<string>>();
   for (const m of manifests) {
@@ -48,21 +52,34 @@ export function validateSinkAttachment(
     if (definition?.kind === "Telo.Abstract" || definition?.capability !== "Telo.Sink") continue;
     const name = m.metadata?.name as string | undefined;
     if (!name) continue;
-    if (graph.edgesTo(nodeIdFor(m)).length > 0) continue;
-    if (module !== undefined && exported.get(module)?.has(name)) continue;
-    diagnostics.push({
-      severity: DiagnosticSeverity.Warning,
-      code: "SINK_UNATTACHED",
-      source: SOURCE,
-      message:
-        `${m.kind}/${name} is a sink nothing attaches: the runtime attaches only the sinks the ` +
-        `root Application lists in \`logging.sinks\` / \`tracing.sinks\`, so this one receives ` +
-        `nothing. List it there (\`- !ref ${name}\`), or remove it.`,
-      data: {
-        resource: { kind: m.kind, name },
-        filePath: (m.metadata as { source?: string } | undefined)?.source,
-      },
-    });
+    // A scope member is out of every list's reach: the lists name what the
+    // module declares at its top level.
+    const scoped = isScopeMemberDeclaration(m);
+    if (scopedOnly && !scoped) continue;
+    if (!scoped && graph.edgesTo(nodeIdFor(m)).length > 0) continue;
+    if (!scoped && module !== undefined && exported.get(module)?.has(name)) continue;
+    diagnostics.push(sinkUnattachedDiagnostic(m, scoped));
   }
   return diagnostics;
+}
+
+/** `SINK_UNATTACHED` for the sink `m`, declared in a scope or at module level. */
+export function sinkUnattachedDiagnostic(m: ResourceManifest, scoped: boolean): AnalysisDiagnostic {
+  const name = m.metadata?.name as string;
+  return {
+    severity: DiagnosticSeverity.Warning,
+    code: "SINK_UNATTACHED",
+    source: SOURCE,
+    message:
+      `${m.kind}/${name} is a sink nothing attaches: the runtime attaches only the sinks the ` +
+      `root Application lists in \`logging.sinks\` / \`tracing.sinks\`, so this one receives ` +
+      (scoped
+        ? `nothing, and a list cannot name a resource declared in a scope. Declare it at the ` +
+          `module's top level and list it there, or remove it.`
+        : `nothing. List it there (\`- !ref ${name}\`), or remove it.`),
+    data: {
+      resource: { kind: m.kind, name },
+      filePath: (m.metadata as { source?: string } | undefined)?.source,
+    },
+  };
 }

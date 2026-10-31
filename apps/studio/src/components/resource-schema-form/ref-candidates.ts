@@ -1,4 +1,10 @@
-import { isInlineDeclaration, isResolvedReference, readRefSlot, type RefSlot } from "@telorun/analyzer";
+import {
+  isInlineDeclaration,
+  isResolvedReference,
+  readRefSlot,
+  refSentinelTarget,
+  type RefSlot,
+} from "@telorun/analyzer";
 import { isRefSentinel, makeTaggedSentinel, type TaggedSentinel } from "@telorun/templating";
 import { isRecord } from "../../lib/utils";
 import type { ResolvedResourceOption } from "./types";
@@ -209,10 +215,7 @@ export function resolveRefCandidates(
  *  declaration, never a reference, whatever fields it holds. The caller
  *  resolves the kind from its candidate list. Returns null for anything else. */
 export function parseRefValue(value: unknown): string | null {
-  if (isRefSentinel(value)) {
-    const dot = value.source.lastIndexOf(".");
-    return dot >= 0 ? value.source.slice(dot + 1) : value.source;
-  }
+  if (isRefSentinel(value)) return refSentinelTarget(value)?.name ?? null;
   if (typeof value === "string") {
     const dot = value.lastIndexOf(".");
     return dot >= 0 ? value.slice(dot + 1) : value || null;

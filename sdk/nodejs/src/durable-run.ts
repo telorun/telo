@@ -31,6 +31,7 @@
  */
 
 import type { InvokeContext, ZoneEntry } from "./cancellation.js";
+import { indexLiteral } from "./index-path.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { encodeTypedFrame } from "./typed-frame.js";
 import { VALUE_TYPES, VALUE_TYPE_BINDINGS } from "./value-type.js";
@@ -262,13 +263,16 @@ export const GUARD_DECISION_SEGMENT = "@when";
  * them differently on every run while their paths stay fixed. It is also what
  * makes each branch of a fan-out an independently resumable subtree.
  *
- * Segments are joined with `/`; a repetition (a loop turn, an iteration element)
- * qualifies its segment with `[index]`. Both are properties of the WRITTEN
- * structure plus the run's own decisions, never of wall-clock order.
+ * Segments are joined with `/`; a repetition (a loop turn, an iteration element,
+ * a step a template repeat emitted for a list element) qualifies its segment
+ * with `[index]`, and a step emitted for a map element with its key as a CEL
+ * single-quoted literal (`{ key }` → `['nightlyReport']`, the one index-path
+ * renderer's text). Both are properties of the WRITTEN structure plus the run's
+ * own decisions, never of wall-clock order.
  */
-export function stepPath(...segments: (string | number)[]): string {
+export function stepPath(...segments: (string | number | { readonly key: string })[]): string {
   return segments
-    .map((s) => (typeof s === "number" ? `[${s}]` : s))
+    .map((s) => (typeof s === "number" ? `[${s}]` : typeof s === "string" ? s : indexLiteral(s.key)))
     .join("/")
     .replace(/\/\[/g, "[");
 }

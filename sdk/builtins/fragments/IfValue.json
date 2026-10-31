@@ -1,0 +1,21 @@
+{
+  "title": "`!if` at a value position",
+  "description": "An item of a list or the value of a field, chosen before boot.",
+  "type": "object",
+  "properties": {
+    "if": {
+      "description": "A boolean decided before boot: a `!cel` condition or a literal."
+    },
+    "then": {
+      "description": "What the tag stands for when `if` holds."
+    },
+    "else": {
+      "description": "What it stands for otherwise; without it the tag contributes nothing."
+    }
+  },
+  "required": [
+    "if",
+    "then"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,30 @@
+# A library's optional resource input is a dimension of the library's own
+# check: its default exists only where the input is absent, so a typo in it is
+# reported labelled with that configuration.
+kind: Telo.Library
+metadata:
+  name: OptionalInputLibrary
+  version: 0.0.0
+  description: Test fixture whose default for an optional input holds a typo.
+imports:
+  Kinds: ../../resource-inputs/optional/kinds
+resources:
+  store:
+    kind: Kinds.Store
+    optional: true
+exports:
+  resources: [holder]
+--- !if
+metadata: { name: fallback }
+if: !cel "resources.store == null"
+then:
+  kind: Kinds.Store
+  labl: fallback
+---
+kind: Kinds.Holder
+metadata:
+  name: holder
+store: !if
+  if: !cel "resources.store != null"
+  then: !ref store
+  else: !ref fallback

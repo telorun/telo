@@ -1,3 +1,4 @@
+import { expansionTagLabel } from "@telorun/templating";
 import type { LoadedGraph } from "./loaded-types.js";
 import type { AnalysisDiagnostic, PositionIndex, Range } from "./types.js";
 
@@ -55,7 +56,8 @@ function findByResource(
       for (let i = 0; i < file.manifests.length; i++) {
         const m = file.manifests[i];
         if (!m) continue;
-        if (m.kind !== kind) continue;
+        // A whole document behind an expansion tag is reported under its tag (`!if`).
+        if ((m.kind ?? expansionTagLabel(m)) !== kind) continue;
         if (m.metadata?.name !== name) continue;
         const pos = file.positions[i];
         return {

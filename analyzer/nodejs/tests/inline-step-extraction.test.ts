@@ -60,6 +60,7 @@ const taskDef = definition(
     additionalProperties: false,
     properties: {
       value: {},
+      computed: { "x-telo-eval": "runtime" },
       helper: { "x-telo-ref": { kind: "demo.Task", use: "call" } },
     },
   },
@@ -143,12 +144,13 @@ describe("inline step targets are extracted at load", () => {
       __ref: true,
       kind: "demo.Task",
       name: "SequenceSeqSteps1Then0Taken",
+      indexes: [],
     });
 
     // What the target itself declares inline is extracted in turn, as an
     // ordinary reference slot of the extracted declaration.
     const first = named(out, "SequenceSeqSteps0First")!;
-    expect(first.helper).toEqual({ __ref: true, kind: "demo.Task", name: "SequenceSeqSteps0First_helper" });
+    expect(first.helper).toEqual({ __ref: true, kind: "demo.Task", name: "SequenceSeqSteps0First_helper", indexes: [] });
     expect(named(out, "SequenceSeqSteps0First_helper")!.metadata.xTeloOrigin).toEqual({
       parentKind: "demo.Task",
       parentName: "SequenceSeqSteps0First",
@@ -228,7 +230,7 @@ describe("inline step targets are extracted at load", () => {
 
     const out = normalizeInlineResources([outer], registry());
     const clone = named(out, "outer")!;
-    expect(clone.targets[0]).toEqual({ __ref: true, kind: "demo.Task", name: "outer_targets_0" });
+    expect(clone.targets[0]).toEqual({ __ref: true, kind: "demo.Task", name: "outer_targets_0", indexes: [] });
     expect(clone.with.map((m: Record<string, any>) => m.metadata.name)).toEqual(["v", "outer_targets_0"]);
     expect(named(out, "outer_targets_0")).toBeUndefined();
     // Created in the scope, so its names are in reach.
@@ -243,7 +245,7 @@ describe("inline step targets are extracted at load", () => {
     } as unknown as ResourceManifest;
 
     const out = normalizeInlineResources([seq], registry());
-    expect(named(out, "seq")!.steps[0].invoke).toEqual({ __ref: true, kind: "demo.Task", name: "chosen" });
+    expect(named(out, "seq")!.steps[0].invoke).toEqual({ __ref: true, kind: "demo.Task", name: "chosen", indexes: [] });
     expect(named(out, "chosen")).toBeDefined();
   });
 
@@ -302,6 +304,11 @@ describe("inline step targets are extracted at load", () => {
   });
 });
 
+const OUT_OF_REACH =
+  "'observer' is declared in 'with:' of demo.Sequence/outer, but this inline declaration is " +
+  "created where 'outer' is declared, outside that scope. Declare it under 'with:' with a name " +
+  "of its own and point at it with '!ref'.";
+
 describe("diagnostics about an extracted step target", () => {
   it("anchor at the inline position in the author's document", () => {
     const seq = {
@@ -331,7 +338,7 @@ describe("diagnostics about an extracted step target", () => {
     const diags = new StaticAnalyzer().analyze(withSyntheticPositions([...DEFINITIONS, outer]));
     const reach = diags.filter((d) => d.code === "SCOPED_NAME_OUT_OF_REACH");
     expect(reach).toHaveLength(1);
-    expect(reach[0].message).toContain("'observer' is declared in 'with:'");
+    expect(reach[0].message).toBe(`demo.Sequence/outer: ${OUT_OF_REACH}`);
     expect(reach[0].data).toMatchObject({
       resource: { kind: "demo.Sequence", name: "outer" },
       path: "steps[0].invoke.helper",
@@ -339,24 +346,89 @@ describe("diagnostics about an extracted step target", () => {
     expect(diags.filter((d) => d.code === "UNRESOLVED_REFERENCE")).toEqual([]);
   });
 
-  it("reports the CEL spelling of the same reference", () => {
-    const outer = {
-      kind: "demo.Sequence",
-      metadata: { name: "outer" },
-      with: [{ kind: "demo.Task", metadata: { name: "observer" } }],
-      steps: [
-        { name: "call", invoke: task({ value: makeTaggedSentinel("cel", "resources.observer.x") }) },
-      ],
-    } as unknown as ResourceManifest;
+  // A `resources.<name>` read is no reference: the record lacks the name in an
+  // inline declaration, so it is `CEL_UNKNOWN_FIELD` alone, saying why.
+  const celReads = (outer: unknown) =>
+    new StaticAnalyzer()
+      .analyze(withSyntheticPositions([...DEFINITIONS, outer as ResourceManifest]))
+      .filter((d) => d.code === "CEL_UNKNOWN_FIELD" || d.code === "SCOPED_NAME_OUT_OF_REACH");
+  const outerWith = (steps: unknown[]) => ({
+    kind: "demo.Sequence",
+    metadata: { name: "outer" },
+    with: [{ kind: "demo.Task", metadata: { name: "observer" } }],
+    steps,
+  });
 
-    const reach = new StaticAnalyzer()
-      .analyze(withSyntheticPositions([...DEFINITIONS, outer]))
-      .filter((d) => d.code === "SCOPED_NAME_OUT_OF_REACH");
-    expect(reach).toHaveLength(1);
-    expect(reach[0].data).toMatchObject({
+  it("reports a CEL read of the same name once, as an unknown field naming the scope", () => {
+    const diags = celReads(
+      outerWith([
+        { name: "call", invoke: task({ computed: makeTaggedSentinel("cel", "resources.observer.x") }) },
+      ]),
+    );
+    expect(diags).toHaveLength(1);
+    expect(diags[0].code).toBe("CEL_UNKNOWN_FIELD");
+    expect(diags[0].message).toContain(` — ${OUT_OF_REACH}`);
+    expect(diags[0].data).toMatchObject({
       resource: { kind: "demo.Sequence", name: "outer" },
-      path: "steps[0].invoke.value",
+      path: "steps[0].invoke.computed",
     });
+  });
+
+  it("reports the read in an interpolation hole the same way", () => {
+    const diags = celReads(
+      outerWith([
+        {
+          name: "call",
+          invoke: task({ computed: makeTaggedSentinel("interpolate", "at ${{ resources.observer }}") }),
+        },
+      ]),
+    );
+    expect(diags).toHaveLength(1);
+    expect(diags[0].code).toBe("CEL_UNKNOWN_FIELD");
+    expect(diags[0].message).toContain(` — ${OUT_OF_REACH}`);
+    expect(diags[0].data).toMatchObject({ path: "steps[0].invoke.computed" });
+  });
+
+  it("reports the read in an inline declaration nested in another", () => {
+    const diags = celReads(
+      outerWith([
+        {
+          name: "call",
+          invoke: {
+            kind: "demo.Sequence",
+            steps: [
+              {
+                name: "inner",
+                invoke: task({ computed: makeTaggedSentinel("cel", "resources.observer") }),
+              },
+            ],
+          },
+        },
+      ]),
+    );
+    expect(diags).toHaveLength(1);
+    expect(diags[0].code).toBe("CEL_UNKNOWN_FIELD");
+    expect(diags[0].message).toContain(` — ${OUT_OF_REACH}`);
+    expect(diags[0].data).toMatchObject({
+      resource: { kind: "demo.Sequence", name: "outer" },
+      path: "steps[0].invoke.steps[0].invoke.computed",
+    });
+  });
+
+  it("is silent on a read in an inline declaration whose own scope declares the name", () => {
+    const diags = celReads(
+      outerWith([
+        {
+          name: "call",
+          invoke: {
+            kind: "demo.Sequence",
+            with: [{ kind: "demo.Task", metadata: { name: "observer" } }],
+            steps: [{ name: "read", value: makeTaggedSentinel("cel", "resources.observer") }],
+          },
+        },
+      ]),
+    );
+    expect(diags).toEqual([]);
   });
 
   it("reads an object that only LOOKS like a reference as the data it is", () => {

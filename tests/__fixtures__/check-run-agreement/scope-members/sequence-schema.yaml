@@ -1,0 +1,11 @@
+# Invokes the library's `sequenceSchema`. Its entry-scoped check is silent about the
+# library's scope members, so the kernel refuses the member when the scope opens.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberSequenceSchemaApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+targets:
+  - name: probe
+    invoke: !ref Lib.sequenceSchema

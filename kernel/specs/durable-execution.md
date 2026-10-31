@@ -197,7 +197,14 @@ order-based matching sound.
 
 ### 5.1 A step path
 
-A path is `/`-joined segments; a repetition qualifies its segment with `[index]`.
+A path is `/`-joined segments; a repetition qualifies its segment with an index:
+an integer `[3]`, or — for a step a template's `!for-each` emitted for an element
+of a map — the element's key as a CEL single-quoted string literal with CEL's
+escapes (`['nightlyReport']`, `['it\'s']`). A step emitted by a named repeat is
+the segment `<repeat>` qualified by its element's key or index; one emitted by an
+unnamed repeat is the place its `emit:` is written qualified by every enclosing
+loop's key or index, outermost first. The qualifier is written by the same
+renderer as a family member's identity, and no reader parses it back.
 
 ```
 steps/createAccount
@@ -206,7 +213,13 @@ steps/checkStock/then/reserve
 steps/poll/while[3]
 steps/poll/do[3]/fetch
 steps/importAll/cases/bulk/write
+steps/runs['nightlyReport']
+steps/runs[0]
 ```
+
+An emitted step is keyed by its element, never by its position in the list: a
+consumer adding an element leaves every other element's key unchanged, so a
+resumed run replays each one it already completed.
 
 Both the segments and the indices are properties of the **written structure plus
 the run's own journaled decisions**, never of wall-clock order. This is what

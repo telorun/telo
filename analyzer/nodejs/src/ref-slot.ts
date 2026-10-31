@@ -45,6 +45,7 @@ export type RefUse =
   /** I register the target; control reaches it when someone drains a value I
    *  returned, so no guarantee holds either way. */
   | "trigger.consumer";
+import { enclosingKeys, placeAt, READS_IDENTITY, type ReadPlace, type ReadReporter } from "./read-place.js";
 
 export const REF_USES: readonly RefUse[] = [
   "schema",
@@ -376,3 +377,17 @@ export function rewriteRefSlotKinds(
     obj.kind = obj.kind.map((k) => (typeof k === "string" ? (map(k) ?? k) : k));
   }
 }
+
+/** What `x-telo-ref` reads: the reference at the slot, its target held as its
+ *  identity, the call's argument map its `inputs` pointer names, and the
+ *  sibling a case map's `by` selects on, both from the enclosing object. */
+export const refSlotReads: ReadReporter = ({ value, at }) => {
+  const out: ReadPlace[] = [{ kind: "reference", keys: at, transitive: false, reads: READS_IDENTITY }];
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const { inputs, use } = value as { inputs?: unknown; use?: unknown };
+    if (typeof inputs === "string") out.push({ kind: "value", keys: placeAt(enclosingKeys(at), inputs) });
+    const by = (use as { by?: unknown } | undefined)?.by;
+    if (typeof by === "string") out.push({ kind: "value", keys: placeAt(enclosingKeys(at), by) });
+  }
+  return out;
+};

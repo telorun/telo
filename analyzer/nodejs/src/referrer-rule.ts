@@ -25,7 +25,15 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import { celSourceOf, pointerSegments, type ResourceRuleSeverity } from "./resource-rule.js";
+import { celSourceOf, pointerSegments, ruleReferentReads, type ResourceRuleSeverity } from "./resource-rule.js";
+import {
+  crossingPlace,
+  placeAt,
+  type ReadPlace,
+  type ReadReporter,
+  type ReferentPlace,
+  type ReferrerReads,
+} from "./read-place.js";
 
 export const REFERRER_RULES_ANNOTATION = "x-telo-referrer-rules";
 
@@ -148,3 +156,38 @@ export function rewriteReferrerRuleKinds(
     if (rewritten !== undefined) entry.referrer = rewritten;
   }
 }
+
+const referrerReadsOf = new WeakMap<object, ReferrerReads>();
+
+/** What the rules on `node` read in each referrer: the members their conditions
+ *  read off `referrer`, and the slots their `resolve:` pointers and the
+ *  collection their `peers:` pointer name. */
+function referrerReads(node: Record<string, any>, rules: readonly ReferrerRule[]): ReferrerReads {
+  const known = referrerReadsOf.get(node);
+  if (known) return known;
+  const pointers = rules.flatMap((rule) => rule.resolve ?? []);
+  const chains = ruleReferentReads(rules, pointers, "referrer", undefined, true);
+  const own: ReferentPlace[] = [
+    ...pointers.map((pointer): ReferentPlace => ({ kind: "value", keys: crossingPlace(pointer) })),
+    ...rules.flatMap((rule): ReferentPlace[] =>
+      rule.peers !== undefined ? [{ kind: "value", keys: placeAt([], rule.peers) }] : [],
+    ),
+  ];
+  const reads: ReferrerReads = (referrer) => [...chains(referrer), ...own];
+  referrerReadsOf.set(node, reads);
+  return reads;
+}
+
+/** What `x-telo-referrer-rules` reads: in every referrer what the rules read
+ *  there, the resource itself, and in each declaration its `resolveSelf:`
+ *  pointers reach through its reference slots, what the rules read there. */
+export const referrerRulesReads: ReadReporter = ({ node }) => {
+  const rules = readReferrerRules(node);
+  const out: ReadPlace[] = [{ kind: "referrers", reads: referrerReads(node, rules) }, { kind: "value", keys: [] }];
+  for (const rule of rules) {
+    if (!rule.resolveSelf?.length) continue;
+    const reads = ruleReferentReads([rule], rule.resolveSelf, "self");
+    for (const pointer of rule.resolveSelf) out.push({ kind: "reference", keys: crossingPlace(pointer), transitive: true, reads });
+  }
+  return out;
+};

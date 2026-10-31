@@ -399,3 +399,45 @@ describe("buildDependencyGraph — creation order", () => {
     expect(order).toEqual(["caller", "Lib"]);
   });
 });
+
+describe("buildDependencyGraph — a reference through an import alias", () => {
+  const aliases = () => {
+    const table = new AliasResolver();
+    table.registerUngatedAlias("Self", "App");
+    table.registerImport("Lib", "Library");
+    return table;
+  };
+  /** An import handed `H`, and `H` reaching the import's export through `at`. */
+  const handedTo = (at: "slot" | "step") =>
+    buildDependencyGraph(
+      [
+        {
+          kind: "test.Holder",
+          metadata: { name: "H" },
+          ...(at === "slot"
+            ? { dep: ref("Lib.member") }
+            : { steps: [{ name: "sweep", invoke: ref("Lib.sweep") }] }),
+        },
+        {
+          kind: "Telo.Import",
+          metadata: { name: "Lib" },
+          source: "./lib",
+          resources: { holder: { __ref: true, kind: "test.Holder", name: "H" } },
+        },
+      ] as unknown as ResourceManifest[],
+      registryOf(holderDef, echoDef),
+      aliases(),
+    );
+
+  it("is a cycle at a reference slot of a resource handed to that import", () => {
+    const { cycle } = handedTo("slot");
+    expect(cycle!.map((n) => `${n.kind}/${n.name}`)).toEqual(["test.Holder/H", "Telo.Import/Lib", "test.Holder/H"]);
+    expect(formatCycle(cycle!)).toContain("Import 'Lib' initializes after the resources it is handed");
+  });
+
+  it("is no cycle at a step, which is dispatched after boot", () => {
+    const { cycle, order } = handedTo("step");
+    expect(cycle).toBeUndefined();
+    expect(order!.map((n) => n.name)).toEqual(["H", "Lib"]);
+  });
+});

@@ -24,6 +24,7 @@ import { flattenForAnalyzer } from "../src/flatten-for-analyzer.js";
 import { Loader } from "../src/manifest-loader.js";
 import type { ManifestSource } from "../src/types.js";
 import { resolvedReference } from "../src/resolved-reference.js";
+import { celScopeHolderOf } from "../src/validate-observed-state.js";
 
 /** Every use the slots at one declared pattern can take — the registry's rule. */
 const usesOf = (entries: DeclaredReference["entries"]) => [
@@ -232,6 +233,7 @@ function fixtureWith(
       })),
     refSites: (resource) => refSitesOf(registry, resource),
     refPositions: (resource) => registry.referencePositions(resource),
+    celScopeHolder: (resource) => celScopeHolderOf(resource, registry, undefined, undefined).holder,
   };
 
   // The module doc is IN the manifest list, as `flattenForAnalyzer` leaves it:
@@ -798,6 +800,7 @@ describe("where a row's call is written", () => {
           })),
         refSites: (resource) => refSitesOf(registry, resource),
         refPositions: (resource) => registry.referencePositions(resource),
+        celScopeHolder: (resource) => celScopeHolderOf(resource, registry, undefined, undefined).holder,
       },
       { root, entryModule: "Report" },
     );
@@ -2028,5 +2031,60 @@ describe("a bare name inside a declaration", () => {
     );
     const edge = graph.edges.find((e) => e.class === "data")!;
     expect(graph.nodeById(edge.to!)!.module).toBe("B");
+  });
+});
+
+describe("a scope's members", () => {
+  const scopedDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Scoped", module: "run" },
+    capability: "Telo.Runnable",
+    schema: {
+      type: "object",
+      properties: {
+        with: { "x-telo-scope": ["/steps"], type: "array", items: { type: "object" } },
+        steps: { "x-telo-topology-role": "steps", type: "array", items: stepItems },
+      },
+    },
+  };
+  const valueDef = {
+    kind: "Telo.Definition",
+    metadata: { name: "Value", module: "run" },
+    capability: "Telo.Invocable",
+    schema: { type: "object", properties: { value: { "x-telo-eval": "runtime" } } },
+  };
+  const cel = (source: string) => ({ __tagged: true, engine: "cel", source });
+
+  /** A module-level `answer` beside a scope declaring its own `answer`, read
+   *  from the holder's steps — inside data holding a `kind` key, which no
+   *  reference slot makes a declaration — and from a sibling member's own field. */
+  const graph = () =>
+    fixtureWith([scopedDef, valueDef], [
+      { kind: "run.Value", metadata: { name: "answer" }, value: 1 } as never,
+      {
+        kind: "run.Scoped",
+        metadata: { name: "main" },
+        with: [
+          { kind: "run.Value", metadata: { name: "answer" }, value: 2 },
+          { kind: "run.Value", metadata: { name: "reader" }, value: cel("resources.answer") },
+        ],
+        steps: [{ name: "read", inputs: { kind: "event", seen: cel("resources.answer") } }],
+      } as never,
+    ]);
+
+  it("draws a read in the holder's region to the member it shadows with", () => {
+    const g = graph();
+    const holder = named(g, "main");
+    const [edge] = g.edgesFrom(holder.id).filter((e) => e.class === "data");
+    expect(edge.path).toBe("steps[0].inputs.seen");
+    expect(g.nodeById(edge.to!)!.ownership).toBe("scoped");
+  });
+
+  it("draws a member's own read from its box, to the module-level resource", () => {
+    const g = graph();
+    const reader = g.nodes.find((n) => n.name === "reader")!;
+    const [edge] = g.edgesFrom(reader.id).filter((e) => e.class === "data");
+    expect(g.nodeById(edge.to!)!.ownership).not.toBe("scoped");
+    expect(g.edgesFrom(named(g, "main").id).filter((e) => e.class === "data")).toHaveLength(1);
   });
 });

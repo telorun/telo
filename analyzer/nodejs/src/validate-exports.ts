@@ -1,4 +1,5 @@
 import { nearestName } from "./nearest-name.js";
+import { MANIFEST_READING, ScopedNameResolver } from "./scoped-name-resolver.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -53,6 +54,7 @@ export function validateExports(
     };
     const declaredKinds = new Set<string>();
     const instances = new Set<string>();
+    const declarations: ResourceManifest[] = [];
     const importAliases = new Map<string, string | undefined>();
     const forwardedByModule = new Map<string, Set<string>>();
     for (const m of manifests) {
@@ -74,8 +76,14 @@ export function validateExports(
         declaredKinds.add(name);
       }
       else if (m.kind === "Telo.Import") importAliases.set(name, meta.resolvedModuleName);
-      else if (m.kind !== "Telo.Library" && m.kind !== "Telo.Application") instances.add(name);
+      else if (m.kind !== "Telo.Library" && m.kind !== "Telo.Application") {
+        instances.add(name);
+        declarations.push(m);
+      }
     }
+    // An export names a module-level declaration: it is read with no scope, so
+    // a scope member of the same name is never what it exports.
+    const names = new ScopedNameResolver(declarations, MANIFEST_READING);
 
     const report = (code: string, path: string, message: string, fix?: string) =>
       out.push({
@@ -171,7 +179,7 @@ export function validateExports(
           }
           return;
         }
-        if (instances.has(name)) return;
+        if (names.resolve(name, moduleName)) return;
         const suggestion = nearestName(name, [...instances]);
         report(
           "EXPORT_RESOURCE_UNKNOWN",

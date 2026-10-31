@@ -30,6 +30,7 @@ import {
   inheritedCapability,
 } from "./extends-resolution.js";
 import { liftFragmentDefs } from "./manifest-schemas.js";
+import { fieldPlace, READS_IDENTITY, type ReadReporter } from "./read-place.js";
 
 /** The capability whose entry point is a synchronous `call(args)`. */
 export const CALLABLE_CAPABILITY = "Telo.Callable";
@@ -226,6 +227,20 @@ export function callableBodyField(
 }
 
 /**
+ * The fields of an instance a call to it is read from, by its kind's author
+ * schema: `params` and `returns` where an instance may declare them
+ * ({@link resolveSignature}), and its body ({@link callableBodyField}).
+ */
+export function callableInstanceFields(authorSchema: Record<string, any> | undefined): string[] {
+  const properties = authorSchema?.properties as Record<string, Record<string, unknown> | undefined> | undefined;
+  if (!properties || typeof properties !== "object") return [];
+  const fields: string[] = ["params", "returns"].filter((half) => half in properties);
+  const body = Object.entries(properties).find(([, schema]) => typeof schema?.[RETURNS_FROM_ANNOTATION] === "string")?.[0];
+  if (body !== undefined && !fields.includes(body)) fields.push(body);
+  return fields;
+}
+
+/**
  * The schema the value of a field annotated {@link RETURNS_FROM_ANNOTATION} must
  * satisfy — the result declared at the named field of `manifestRoot`, nullable
  * folded in — or undefined when the field carries no annotation or nothing
@@ -298,3 +313,10 @@ export function argumentRecordSchema(
   }
   return liftFragmentDefs({ type: "object", properties, required });
 }
+
+/** What `x-telo-returns-from` reads: the field declaring the result — a type
+ *  it names by its identity, a named shape whole. */
+export const returnsFromReads: ReadReporter = ({ value }) => {
+  const keys = fieldPlace([], value);
+  return keys ? [{ kind: "reference", keys, transitive: false, reads: READS_IDENTITY }] : [];
+};

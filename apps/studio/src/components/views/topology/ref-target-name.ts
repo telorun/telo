@@ -1,4 +1,4 @@
-import { isResolvedReference } from "@telorun/analyzer";
+import { isResolvedReference, refSentinelTarget } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 
 /** Extracts the referenced resource name from a ref value, across the three
@@ -8,7 +8,12 @@ import { isRefSentinel } from "@telorun/templating";
  *  included — and other non-reference values. Also used to normalize
  *  Application `targets` entries, which carry the same `!ref` / string shapes. */
 export function refTargetName(value: unknown): string | undefined {
-  if (isRefSentinel(value)) return value.source;
+  if (isRefSentinel(value)) {
+    // The engine's verdict: a family member names its family, whichever index.
+    const target = refSentinelTarget(value);
+    if (!target) return value.source;
+    return target.alias !== undefined ? `${target.alias}.${target.name}` : target.name;
+  }
   if (typeof value === "string") {
     const lastDot = value.lastIndexOf(".");
     return lastDot > 0 ? value.slice(lastDot + 1) : value;

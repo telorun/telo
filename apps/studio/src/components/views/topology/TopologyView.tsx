@@ -12,6 +12,7 @@ import { RegionErrorBoundary } from "../../RegionErrorBoundary";
 import { Button } from "../../ui/button";
 import { ModuleGraphView } from "./module-graph-view/ModuleGraphView";
 import { TemplateCanvas } from "./module-graph-view/TemplateCanvas";
+import { ConfigurationPicker } from "./ConfigurationPicker";
 import { ModuleBar } from "./ModuleBar";
 import { PreviewNotice } from "./PreviewNotice";
 import { StructuredModelNotice } from "./StructuredModelNotice";
@@ -36,6 +37,7 @@ export function TopologyView({
   viewData,
   viewModelStatus,
   onRetryViewModel,
+  onPickConfiguration,
   onOpenSourceView,
   structuredModel,
   moduleGraph,
@@ -217,6 +219,12 @@ export function TopologyView({
           is the detail panel's `flex-1` cap, not a width here. */}
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <PreviewNotice />
+        {viewModelStatus.state === "ready" && viewModelStatus.model.configurations && onPickConfiguration ? (
+          <ConfigurationPicker
+            configurations={viewModelStatus.model.configurations}
+            onPick={onPickConfiguration}
+          />
+        ) : null}
         <div className="relative flex min-h-0 flex-1">
           <RegionErrorBoundary region="graph" resetKey={openKind}>
           {canvasProps && viewModelStatus.state !== "ready" ? (

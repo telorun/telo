@@ -5,14 +5,20 @@ import type { KindResolver } from "./module-alias-scope.js";
 import type { ReachSite } from "./reference-reach.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { isKindDocumentOrImport } from "./system-kinds.js";
-import {
-  isForwardedDeclaration,
-  isForwardedExport,
-  isForwardedShape,
-} from "./forwarded-declaration.js";
+import { isForwardedDeclaration, isForwardedShape } from "./forwarded-declaration.js";
 import { forwardedShapeFieldsOf, KIND_SHAPE_FIELDS } from "./contract-shapes.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target.js";
 import { resolvedReference, type ResolvedReference } from "./resolved-reference.js";
+import { scopeAddress, type ScopeAddress, type ScopeSite } from "./scope-address.js";
+import {
+  declaredScopes,
+  keysUnder,
+  scopeMembers,
+  type DeclaredScope,
+} from "./scope-declarations.js";
+import { declarationOf, type RefResolution } from "./reference-resolution.js";
+import { addressOf, importPathThrough, scopeSiteAt } from "./scoped-name-resolver.js";
 
 /** The slice of the definition registry this pass needs: a resource's concrete
  *  sites, from which its `x-telo-scope` slots are read. */
@@ -48,14 +54,15 @@ type ResolvedRef = ResolvedReference;
  * `executeInvokeStep` (preserving `<name>.Invoked` events) rather than
  * being replaced with a live instance.
  *
- * Reference grammar — the tag's source string is split on the FIRST dot:
+ * What a sentinel names is the `!ref` engine's verdict the loader attached
+ * (`ref-sentinel-target.ts`), never a reading of its text here:
  *   - `!ref writeLine`          → local resource `writeLine`
  *   - `!ref Self.writeLine`     → local resource `writeLine` (explicit self-qualifier)
  *   - `!ref Console.writeLine`  → instance `writeLine` exported by the import aliased
  *                                 `Console`, resolved against the forwarded foreign set
+ *   - `!ref stores[each.key]`   → `stores`, its indexes carried on the resolved reference
  *
- * Aliases are PascalCase identifiers without dots and resource names carry no dots
- * (enforced as a hard diagnostic), so the first-dot split is unambiguous. When the
+ * A text the grammar refuses is left as written. When the
  * name doesn't resolve (e.g. a scope-local target, or a cross-module reference in
  * partial single-file analysis), the sentinel is left in place — the runtime
  * resolves scope-local names on demand, and `validateReferences` emits the
@@ -69,19 +76,20 @@ type ResolvedRef = ResolvedReference;
  */
 export function resolveRefSentinels(
   resources: ResourceManifest[],
-  aliases?: AliasResolver,
-  aliasesByModule?: Map<string, AliasResolver>,
-  // Extra foreign resources used only as cross-module resolution TARGETS (not mutated, not
-  // walked as sources). The kernel passes the analyzer-flattened set here so the runtime
-  // pass — which loads the entry module only — can still resolve `!ref Alias.name` against
-  // imported libraries' exported instances.
-  crossModuleTargets: ResourceManifest[] = [],
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  /** What a name resolves to. The kernel and a configuration's analysis pass
+   *  {@link listResolution} over `resources` — the kernel with the
+   *  analyzer-flattened set as cross-module targets, so the runtime pass, which
+   *  loads the entry module only, still resolves `!ref Alias.name` against an
+   *  imported library's exported instances. */
+  resolution: RefResolution,
   /** Supplies each kind's `x-telo-scope` slots. Without it a scoped name cannot be
    *  told from a module-level one, and a shadowed `!ref` resolves to the resource
    *  it shadows — so both call sites pass it. */
   defs?: ScopeSiteSource,
 ): void {
-  resolveReferences(resources, aliases, aliasesByModule, crossModuleTargets, defs, "all");
+  resolveReferences(resources, aliases, aliasesByModule, resolution, defs, "all");
 }
 
 /**
@@ -93,17 +101,18 @@ export function resolveRefSentinels(
  */
 export function resolveShapeRefs(
   resources: ResourceManifest[],
-  aliases?: AliasResolver,
-  aliasesByModule?: Map<string, AliasResolver>,
+  aliases: AliasResolver | undefined,
+  aliasesByModule: Map<string, AliasResolver> | undefined,
+  resolution: RefResolution,
 ): void {
-  resolveReferences(resources, aliases, aliasesByModule, [], undefined, "shapes");
+  resolveReferences(resources, aliases, aliasesByModule, resolution, undefined, "shapes");
 }
 
 function resolveReferences(
   resources: ResourceManifest[],
   aliases: AliasResolver | undefined,
   aliasesByModule: Map<string, AliasResolver> | undefined,
-  crossModuleTargets: ResourceManifest[],
+  resolution: RefResolution,
   defs: ScopeSiteSource | undefined,
   extent: "all" | "shapes",
 ): void {
@@ -113,38 +122,17 @@ function resolveReferences(
   // never walked as a local ref source here and never a local name; only an EXPORT is a
   // cross-module resolution target.
   const isForeign = isForwardedDeclaration;
+  const { local: names, exported: exportedBy, declared: declaredBy } = resolution;
 
-  // Local resources resolve a bare / `Self.`-qualified name; forwarded foreign exports
-  // resolve an `Alias.`-qualified name keyed by (module, name).
-  const byName = new Map<string, ResourceManifest>();
-  const byModuleName = new Map<string, ResourceManifest>();
-  for (const r of resources) {
-    if (!r.metadata?.name || isKindDocumentOrImport(r)) continue;
-    const name = r.metadata.name as string;
-    if (isForeign(r)) {
-      if (isForwardedExport(r)) byModuleName.set(`${moduleOf(r)}\0${name}`, r);
-    } else {
-      byName.set(name, r);
+  const resolveTarget: Resolve = (target, at) => {
+    const { alias, name, indexes } = target;
+    if (alias === undefined || alias === "Self") {
+      const t = names.locate(name, at.module, at.within);
+      // A choice nothing decides stands in with no kind: its `!ref` stays as
+      // written, resolved by name and judged by kind by no pass.
+      return t.status === "resolved" ? resolvedReference(t.declaration.kind as string, name, undefined, indexes) : undefined;
     }
-  }
-  for (const r of crossModuleTargets) {
-    if (!r.metadata?.name || isKindDocumentOrImport(r) || !isForwardedExport(r)) continue;
-    byModuleName.set(`${moduleOf(r)}\0${r.metadata.name as string}`, r);
-  }
-
-  const resolveTarget = (source: string): ResolvedRef | undefined => {
-    const dot = source.indexOf(".");
-    if (dot === -1) {
-      const t = byName.get(source);
-      return t ? resolvedReference(t.kind as string, source) : undefined;
-    }
-    const alias = source.slice(0, dot);
-    const name = source.slice(dot + 1);
-    if (alias === "Self") {
-      const t = byName.get(name);
-      return t ? resolvedReference(t.kind as string, name) : undefined;
-    }
-    return resolveExported(alias, name, aliases);
+    return resolveExported(alias, name, aliases, at.writer);
   };
 
   /** `Alias.name` → the instance the import aliased `Alias` exports, read through
@@ -153,17 +141,19 @@ function resolveReferences(
     alias: string,
     name: string,
     scope: Pick<AliasResolver, "moduleForAlias"> | undefined,
+    writer: ResourceManifest | undefined,
   ): ResolvedRef | undefined => {
     const module = scope?.moduleForAlias(alias);
     if (module) {
-      const t = byModuleName.get(`${module}\0${name}`);
-      if (t) {
+      // The export of the module instance this writer's import reaches.
+      const found = exportedBy.inModule(name, module, importPathThrough(writer, alias));
+      if (found.status === "resolved") {
         // The foreign instance's `kind` is authored in ITS module's scope (e.g.
         // `Self.WriteLine`); canonicalize to a scope-independent `<module>.<Kind>` for the
         // consumer's kind check. `Self.` maps to the owning module directly — the forwarded
         // library's Library doc (hence its `Self` alias) isn't in the consumer's manifest
         // set — while other alias prefixes resolve via that module's forwarded import scope.
-        const rawKind = t.kind as string;
+        const rawKind = found.declaration.kind as string;
         const foreignKind = rawKind.startsWith("Self.")
           ? `${module}.${rawKind.slice("Self.".length)}`
           : aliasesByModule?.get(module)?.resolveKind(rawKind) ?? rawKind;
@@ -173,108 +163,113 @@ function resolveReferences(
     return undefined;
   };
 
-  // Every resource by the module that declared it, for a shape reference written
-  // in a DEPENDENCY's contract: flatten carries the shape across the boundary, and
-  // it resolves in the module whose names the reference was written in.
-  const byDeclaringModule = new Map<string, ResourceManifest>();
-  for (const r of resources) {
-    if (!r.metadata?.name || isKindDocumentOrImport(r)) continue;
-    byDeclaringModule.set(`${moduleOf(r) ?? ""}\0${r.metadata.name as string}`, r);
-  }
-
   /** How a shape reference in `doc` resolves: in the scope of the module that
    *  declared `doc`. A forwarded kind document carries no forwarding stamp — only
    *  its module says it is a dependency's — so the declaring module is what
    *  decides, and the ordinary rule applies only to a document of the entry's own
    *  module (a root module's `aliasesByModule` key, if any, is the top-level table). */
-  const shapeResolverFor = (doc: ResourceManifest): ((source: string) => ResolvedRef | undefined) => {
+  const shapeResolverFor = (doc: ResourceManifest): Resolve => {
     const module = moduleOf(doc);
     const ownedByEntry =
       !isForeign(doc) && (module === undefined || !aliasesByModule?.has(module));
     if (ownedByEntry) return resolveTarget;
     const scope = moduleAliasScope(doc.metadata, aliases, aliasesByModule);
-    return (source) => {
-      const dot = source.indexOf(".");
-      const alias = dot === -1 ? undefined : source.slice(0, dot);
-      const name = dot === -1 ? source : source.slice(dot + 1);
+    return ({ alias, name, indexes }) => {
       if (alias === undefined || alias === "Self") {
-        const t = byDeclaringModule.get(`${module ?? ""}\0${name}`);
-        return t ? resolvedReference(t.kind as string, name) : undefined;
+        const t = declarationOf(declaredBy.inModule(name, module));
+        return t ? resolvedReference(t.kind as string, name, undefined, indexes) : undefined;
       }
-      return resolveExported(alias, name, scope);
+      return resolveExported(alias, name, scope, doc);
     };
   };
 
-  /** Names a resource declares in its own execution scopes, read from the kind's
+  /** The execution scopes a declaration holds, read from its kind's
    *  `x-telo-scope` slots — the analyzer's single definition of "scope", shared
    *  with `manifest-visitor`. Inferring it structurally instead (any array of
    *  named inline manifests) would give scope-local shadowing to the first kind
    *  that happens to carry such an array without asking for it, and this pass is
    *  shared with the kernel, so the guess would be baked into the runtime tree
    *  rather than merely reported. */
-  const declaredInScopes = (
-    resource: ResourceManifest,
-  ): Map<string, ResourceManifest> | undefined => {
-    if (!defs) return undefined;
-    let declared: Map<string, ResourceManifest> | undefined;
-    for (const site of defs.referenceSites(resource, aliases, aliasesByModule)) {
-      if (site.scopes.length === 0) continue;
-      for (const element of Array.isArray(site.data) ? site.data : [site.data]) {
-        if (!element || typeof element !== "object" || Array.isArray(element)) continue;
-        const manifest = element as ResourceManifest;
-        const name = (manifest.metadata as { name?: string } | undefined)?.name;
-        if (typeof manifest.kind === "string" && typeof name === "string") {
-          (declared ??= new Map()).set(name, manifest);
-        }
-      }
+  const holderAt = (address: ScopeAddress, resource: ResourceManifest): WalkHolder => {
+    const scopes = defs ? declaredScopes(defs.referenceSites(resource, aliases, aliasesByModule)) : [];
+    for (const scope of scopes) {
+      names.declareScope({ holder: address, field: scope.path }, scopeMembers(scope));
     }
-    return declared;
+    return { address, scopes };
   };
 
   // Resolve every `!ref` sentinel in the tree; leave opaque tagged / precompiled
   // nodes (e.g. `!cel`) untouched and don't descend into them.
   //
-  // `scoped` carries the names the enclosing resource declares in its `x-telo-scope`
-  // slots, and they SHADOW the module-level ones — the order the runtime resolves
-  // in. Baking the module-level kind into a shadowed reference would label traces
-  // and `getRefIdentity` with a resource that never runs.
+  // Each name is read where it is written — through the scopes of the
+  // declarations enclosing it, at any depth, then the module — so a name a
+  // scope declares SHADOWS the module-level one in that scope, the order the
+  // runtime resolves in. Baking the module-level kind into a shadowed reference
+  // would label traces and `getRefIdentity` with a resource that never runs.
+  // `keys` is the place below the nearest enclosing declaration.
   const walk = (
     value: unknown,
-    scoped?: Map<string, ResourceManifest>,
-    resolve: (source: string) => ResolvedRef | undefined = resolveTarget,
+    at: WalkSite,
+    resolve: Resolve,
+    keys: (string | number)[],
   ): unknown => {
     if (isRefSentinel(value)) {
-      const source = value.source;
-      const bare = source.indexOf(".") === -1;
-      const shadow = bare ? scoped?.get(source) : undefined;
-      if (shadow) return resolvedReference(shadow.kind as string, source);
-      return resolve(source) ?? value;
+      // A text outside the `!ref` grammar is left as written; the expansion
+      // reader reports it (`REF_MEMBER_INVALID`).
+      const target = refSentinelTarget(value);
+      if (!target) return value;
+      const within = at.holder ? scopeSiteAt(at.holder.address, at.holder.scopes, keys) : undefined;
+      return resolve(target, { module: at.module, within, writer: at.writer }) ?? value;
     }
     if (value === null || typeof value !== "object") return value;
     if (isTaggedSentinel(value)) return value;
     if ((value as { __compiled?: unknown }).__compiled) return value;
     if (Array.isArray(value)) {
-      for (let i = 0; i < value.length; i++) value[i] = walk(value[i], scoped, resolve);
+      for (let i = 0; i < value.length; i++) {
+        keys.push(i);
+        value[i] = walk(value[i], at, resolve, keys);
+        keys.pop();
+      }
       return value;
     }
     const obj = value as Record<string, unknown>;
-    // A nested inline resource may declare scopes of its own (a `Run.Sequence`
-    // inside another sequence's `with:`). Collected before descending, so the
-    // declarations are visible to every region of the resource that declares
-    // them — a sequence's `with:` names resolve in its `targets:` and `steps:`
-    // alike, not only inside `with:` itself.
-    const declared =
-      typeof obj.kind === "string" ? declaredInScopes(obj as ResourceManifest) : undefined;
-    const inner = declared ? new Map([...(scoped ?? new Map()), ...declared]) : scoped;
-    for (const key of Object.keys(obj)) obj[key] = walk(obj[key], inner, resolve);
+    // A nested inline declaration may declare scopes of its own (a
+    // `Run.Sequence` inside another sequence's `with:`): its own fields read
+    // names through them, then through every scope it is written in.
+    if (typeof obj.kind === "string" && at.holder) {
+      const inner: WalkSite = {
+        module: at.module,
+        writer: at.writer,
+        holder: holderAt(nestedAddress(at.holder, keys, obj), obj as ResourceManifest),
+      };
+      for (const key of Object.keys(obj)) obj[key] = walk(obj[key], inner, resolve, [key]);
+      return value;
+    }
+    for (const key of Object.keys(obj)) {
+      keys.push(key);
+      obj[key] = walk(obj[key], at, resolve, keys);
+      keys.pop();
+    }
     return value;
+  };
+
+  /** A top-level declaration as the walk's first holder. */
+  const rootSite = (r: ResourceManifest): WalkSite => {
+    const address = addressOf(r);
+    return {
+      module: moduleOf(r),
+      writer: r,
+      holder: address ? holderAt(address, r) : undefined,
+    };
   };
 
   const walkShapeFields = (r: ResourceManifest, fields: readonly string[]): void => {
     const resolve = shapeResolverFor(r);
     const record = r as Record<string, unknown>;
     for (const field of fields) {
-      if (record[field] !== undefined) record[field] = walk(record[field], undefined, resolve);
+      if (record[field] !== undefined) {
+        record[field] = walk(record[field], { module: moduleOf(r), writer: r }, resolve, [field]);
+      }
     }
   };
 
@@ -300,7 +295,14 @@ function resolveReferences(
     // the document is a reference slot, so only that subtree is walked.
     if (r.kind === "Telo.Import") {
       const supplied = (r as Record<string, unknown>).resources;
-      if (supplied) (r as Record<string, unknown>).resources = walk(supplied);
+      if (supplied) {
+        (r as Record<string, unknown>).resources = walk(
+          supplied,
+          { module: moduleOf(r), writer: r },
+          resolveTarget,
+          ["resources"],
+        );
+      }
       continue;
     }
     // A kind document's own ref slots belong to definition-schema validation
@@ -317,6 +319,52 @@ function resolveReferences(
       }
       continue;
     }
-    walk(r as Record<string, unknown>);
+    const site = rootSite(r);
+    const record = r as Record<string, unknown>;
+    for (const key of Object.keys(record)) {
+      record[key] = walk(record[key], site, resolveTarget, [key]);
+    }
   }
+}
+
+/** Where a walked value is read: the module that wrote it, and the nearest
+ *  declaration enclosing it with the scopes that declaration holds. */
+interface WalkSite {
+  module: string | undefined;
+  holder?: WalkHolder;
+  /** The top-level declaration being walked. */
+  writer?: ResourceManifest;
+}
+
+interface WalkHolder {
+  address: ScopeAddress;
+  scopes: readonly DeclaredScope[];
+}
+
+type Resolve = (
+  target: RefSentinelTarget,
+  at: { module: string | undefined; within: ScopeSite | undefined; writer?: ResourceManifest },
+) => ResolvedRef | undefined;
+
+/**
+ * The address of a declaration written at `keys` below `holder`: a member of
+ * one of the holder's scopes is addressed by its name in that scope; any other
+ * declaration — an inline one at a slot — by the place it is written, in the
+ * scope it is read in.
+ */
+function nestedAddress(
+  holder: WalkHolder,
+  keys: readonly (string | number)[],
+  declaration: Record<string, unknown>,
+): ScopeAddress {
+  const name = (declaration.metadata as { name?: unknown } | undefined)?.name;
+  const scope = holder.scopes.find((s) => keys.length === s.keys.length + 1 && keysUnder(keys, s.keys));
+  if (scope && typeof name === "string") {
+    return scopeAddress({ holder: holder.address, field: scope.path }, name);
+  }
+  const place = keys.map((key) => (typeof key === "number" ? `[${key}]` : `.${key}`)).join("");
+  return scopeAddress(
+    scopeSiteAt(holder.address, holder.scopes, keys) ?? holder.address.module,
+    `${holder.address.member}${place}`,
+  );
 }

@@ -1,0 +1,36 @@
+# A kind's schema reaches a named shape whose member's type a choice decides
+# through `$ref: telo://…`: an expression at that member is held to the type
+# each configuration declares there.
+kind: Telo.Application
+metadata:
+  name: ShapeSlotFit
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref op
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Holder
+schema:
+  type: object
+  properties:
+    at: !if
+      if: !cel "variables.flag1"
+      then: { type: integer, x-telo-eval: compile }
+      else: { type: string, x-telo-eval: compile }
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    payload: { $ref: "telo://Self/Holder" }
+---
+kind: Self.Op
+metadata:
+  name: op
+payload:
+  at: !cel "'text'"

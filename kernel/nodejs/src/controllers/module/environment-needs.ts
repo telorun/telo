@@ -19,7 +19,8 @@ export function setEnvironmentNeeds(
 }
 
 /** What the environment holds for the need at `path`: its fields, `null` for an
- *  optional need with nothing set, `undefined` when the load read nothing for it. */
+ *  optional need with nothing set or one the running configuration does not
+ *  require, `undefined` when the load read nothing for it. */
 export function environmentNeed(
   ctx: IEvaluationContext,
   path: readonly string[],

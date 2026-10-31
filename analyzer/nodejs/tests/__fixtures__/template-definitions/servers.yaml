@@ -1,0 +1,111 @@
+# One server or two, decided by the consumer's ports; mirrored conditions
+# pair `admin` with the `targets:` item that names it.
+kind: Telo.Library
+metadata:
+  name: Servers
+imports:
+  Http: ../../../../../modules/http-server
+exports:
+  kinds: [Service, Mirrored, Unrelated, Negated]
+---
+kind: Telo.Definition
+metadata:
+  name: Service
+capability: Telo.Service
+schema:
+  type: object
+  required: [port, adminPort, api, admin]
+  properties:
+    port: { type: integer, x-telo-eval: compile }
+    adminPort: { type: integer, x-telo-eval: compile }
+    api: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+    admin: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+targets:
+  - kind: Http.Server
+    listen:
+      port: !cel "self.port"
+    mounts:
+      - { path: /, mount: !cel "self.api" }
+      - !if
+        if: !cel "self.adminPort == self.port"
+        then: { path: /admin, mount: !cel "self.admin" }
+  - !if
+    if: !cel "self.adminPort != self.port"
+    then:
+      kind: Http.Server
+      listen:
+        port: !cel "self.adminPort"
+      mounts:
+        - { path: /, mount: !cel "self.admin" }
+---
+kind: Telo.Definition
+metadata:
+  name: Mirrored
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    port: { type: integer }
+    adminPort: { type: integer }
+    admin: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+resources:
+  - !if
+    metadata: { name: adminServer }
+    if: !cel "self.adminPort != self.port"
+    then:
+      kind: Http.Server
+      listen: { port: 8080 }
+      mounts:
+        - { path: /, mount: !cel "self.admin" }
+targets:
+  - !if
+    if: !cel "self.port != self.adminPort"
+    then: !ref adminServer
+---
+kind: Telo.Definition
+metadata:
+  name: Unrelated
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    a: { type: integer }
+    b: { type: integer }
+    admin: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+resources:
+  - !if
+    metadata: { name: adminServer }
+    if: !cel "self.a < self.b"
+    then:
+      kind: Http.Server
+      listen: { port: 8080 }
+      mounts:
+        - { path: /, mount: !cel "self.admin" }
+targets:
+  - !if
+    if: !cel "self.a >= self.b"
+    then: !ref adminServer
+---
+kind: Telo.Definition
+metadata:
+  name: Negated
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    a: { type: integer }
+    b: { type: integer }
+    admin: { x-telo-ref: { kind: Telo.Mount, use: dependency } }
+resources:
+  - !if
+    metadata: { name: adminServer }
+    if: !cel "self.a < self.b"
+    then:
+      kind: Http.Server
+      listen: { port: 8080 }
+      mounts:
+        - { path: /, mount: !cel "self.admin" }
+targets:
+  - !if
+    if: !cel "!!(self.a < self.b)"
+    then: !ref adminServer

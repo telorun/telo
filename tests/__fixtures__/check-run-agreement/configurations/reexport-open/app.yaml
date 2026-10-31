@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata:
+  name: ReExportOpenApp
+imports:
+  Run: ../../../../../modules/run
+  R: ./
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: db
+    invoke: !ref R.db

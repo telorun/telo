@@ -1,8 +1,11 @@
 import {
   appendEnvFileLines,
   readApplicationContract,
+  requirementSentence,
   sensitiveEnvironmentInputs,
   spellEnvFileValue,
+  type Assignment,
+  type ContractRequirements,
   type NeedEnvironmentEntry,
 } from "@telorun/analyzer";
 import type { NeedsReport } from "./needs-report.js";
@@ -26,8 +29,10 @@ import type { NeedsReport } from "./needs-report.js";
  * secret's default is never written.
  *
  * A line carries only what it does not already show, as a trailing comment the
- * `.env` reader drops once the line is uncommented: `required`, the entry's
- * description, and a need field's path, the one name a variable does not spell.
+ * `.env` reader drops once the line is uncommented: `required` or `required
+ * when <sentence>` — the configurations of the application that require it, the
+ * sentence `--help` prints — the entry's description, and a need field's path,
+ * the one name a variable does not spell.
  */
 
 const GROUPS = ["variables", "ports", "secrets", "needs"] as const;
@@ -48,9 +53,16 @@ export function envTemplateEntries(
   root: unknown,
   report: NeedsReport,
   needEnvironment: readonly NeedEnvironmentEntry[],
+  requirements: ContractRequirements,
 ): EnvTemplateEntry[] {
-  const contract = readApplicationContract(root);
+  const contract = readApplicationContract(root, requirements);
   if (!contract) return [];
+  const requirement = (input: { required: boolean; requiredWhen?: Assignment[] }) =>
+    !input.required
+      ? ""
+      : input.requiredWhen
+        ? `required when ${requirementSentence(input.requiredWhen, requirements.dimensions)}`
+        : "required";
   const sensitive = new Set(sensitiveEnvironmentInputs(root, needEnvironment).map((input) => input.env));
   const entries: EnvTemplateEntry[] = [];
   const note = (...parts: string[]) =>
@@ -65,14 +77,14 @@ export function envTemplateEntries(
   ] as const) {
     for (const input of inputs) {
       if (!input.env) continue;
-      const spelled = input.required ? { spelling: "" } : spellEnvFileValue(defaultText(input.default));
+      const spelled = "default" in input ? spellEnvFileValue(defaultText(input.default)) : { spelling: "" };
       entries.push({
         name: input.env,
         sensitive: sensitive.has(input.env),
         group,
         value: "spelling" in spelled ? spelled.spelling : "",
         note: note(
-          input.required ? "required" : "",
+          requirement(input),
           "refused" in spelled ? "default not representable in a .env file" : "",
           input.description,
         ),
@@ -86,7 +98,7 @@ export function envTemplateEntries(
       sensitive: sensitive.has(secret.env),
       group: "secrets",
       value: "",
-      note: note(secret.required ? "required" : "", secret.description),
+      note: note(requirement(secret), secret.description),
     });
   }
   for (const need of report.needs) {
@@ -96,7 +108,7 @@ export function envTemplateEntries(
         sensitive: sensitive.has(info.env),
         group: "needs",
         value: "",
-        note: note(!need.optional && info.required ? "required" : "", `${need.path}.${field}`),
+        note: note(!need.optional && info.required ? requirement(need) : "", `${need.path}.${field}`),
       });
     }
   }

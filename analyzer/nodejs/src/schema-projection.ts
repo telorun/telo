@@ -37,10 +37,23 @@
 
 import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
+import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
 import { createAjv } from "./schema-compat.js";
 import { isInjectedDeclaration, readSuppliedResources } from "./resource-input.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import type { ScopeSite } from "./scope-address.js";
+import { importPathThrough, ofInstance, scopeReadAt } from "./scoped-name-resolver.js";
+import type { DeclarationRequests } from "./declaration-requests.js";
+import {
+  crossingPlace,
+  placeAt,
+  pointerPlaces,
+  READS_IDENTITY,
+  type ReadPlace,
+  type ReadReporter,
+  type ReferentReads,
+} from "./read-place.js";
 
 /** How a kind's entry collection projects to an object schema. */
 export interface SchemaProjection {
@@ -731,10 +744,9 @@ export interface ProjectionRef {
 export function readProjectionRef(value: unknown): ProjectionRef | undefined {
   if (!isObject(value)) return undefined;
   if (isRefSentinel(value)) {
-    const dot = value.source.indexOf(".");
-    return dot > 0
-      ? { name: value.source.slice(dot + 1), alias: value.source.slice(0, dot) }
-      : { name: value.source };
+    const target = refSentinelTarget(value);
+    if (!target) return undefined;
+    return target.alias !== undefined ? { name: target.name, alias: target.alias } : { name: target.name };
   }
   const name = value.name;
   if (typeof name !== "string") return undefined;
@@ -848,7 +860,8 @@ const scopeModuleOf = (manifest: Record<string, any> | undefined): string | unde
 };
 
 /**
- * The resolver for a FLATTENED manifest list — the analyzer's own shape.
+ * The resolver over the declarations a flattened set holds, asked by name — the
+ * analyzer's own shape.
  *
  * A reference resolves in the HOLDER's module, read off the `metadata.module`
  * stamp: a bare name among that module's declarations in the flat set, then
@@ -862,19 +875,20 @@ const scopeModuleOf = (manifest: Record<string, any> | undefined): string | unde
  * A library's resource INPUT continues to what the import the walk entered the
  * library through supplies for it, resolved in the importing module's scope.
  */
-export function manifestListScope(
-  manifests: readonly Record<string, any>[],
+export function projectionScopeOf(
+  declarations: DeclarationRequests,
   resolveDefinition: (kind: string, declaration?: Record<string, any>) => Record<string, any> | undefined,
   modules?: ProjectionModules,
 ): ProjectionScope {
   const libraries = modules?.libraries;
+  const { names } = declarations;
   const named = (name: string, module: string | undefined, kind?: string): Record<string, any>[] =>
-    manifests.filter(
-      (candidate) =>
-        (candidate?.metadata as { name?: unknown } | undefined)?.name === name &&
-        moduleOf(candidate) === module &&
-        (kind === undefined || candidate.kind === kind),
-    );
+    names
+      .declarationsOf(name)
+      .filter(
+        (candidate) =>
+          moduleOf(candidate) === module && (kind === undefined || candidate.kind === kind),
+      );
 
   const scope: ProjectionScope = {
     resolveDefinition,
@@ -890,20 +904,26 @@ export function manifestListScope(
         const entry = named(ref.alias, module, "Telo.Import")[0] ??
           (module !== undefined ? libraries?.importOf(module, ref.alias) : undefined);
         const entered = entry ? new Map(trail).set(target, entry) : trail;
-        return declaredIn(ref.name, target, entered);
+        return declaredIn(ref.name, target, entered, undefined, importPathThrough(holder, ref.alias));
       }
-      return declaredIn(ref.name, module, trail);
+      return declaredIn(ref.name, module, trail, scopeReadAt(holder));
     },
   };
 
-  /** `name` among `module`'s declarations: the flat set, then the library's own
-   *  documents, then its resource inputs. Undefined when none declares it. */
+  /** `name` among `module`'s declarations: the members of the scopes `within`
+   *  chains through, the flat set, then the library's own documents, then its
+   *  resource inputs. Undefined when none declares it. */
   function declaredIn(
     name: string,
     module: string | undefined,
     trail: ProjectionTrail | undefined,
+    within?: ScopeSite,
+    /** The module instance a reference through an import reaches. */
+    importPath?: readonly string[],
   ): ProjectionLookup {
-    const own = named(name, module);
+    const member = names.scopeMember(name, within);
+    if (member) return { manifest: member, trail };
+    const own = ofInstance(named(name, module), importPath);
     if (own.length > 1) return { ambiguous: true };
     if (own.length === 1) {
       return isInjectedDeclaration(own[0] as ResourceManifest)
@@ -1548,3 +1568,95 @@ export function resolveSchemaProjections(
   });
   return moved ? Object.fromEntries(entries) : schema;
 }
+
+/** A place read of a declaration, in it or in one it references. */
+type ProjectionPlace = Exclude<ReadPlace, { readonly kind: "referrers" }>;
+
+const referenceFieldReads = new Map<string, ReferentReads>();
+
+/** What a projection reads in a declaration an entry's keyed field names: the
+ *  fields its reference path takes the values and base from. */
+function referenceTargetReads(reference: ProjectionReference | undefined): ReferentReads {
+  if (!reference) return READS_IDENTITY;
+  const fields = [reference.from, ...(reference.baseFrom !== undefined ? [reference.baseFrom] : [])];
+  const memo = JSON.stringify(fields);
+  const known = referenceFieldReads.get(memo);
+  if (known) return known;
+  const places: ProjectionPlace[] = fields.map((field) => ({ kind: "value", keys: [field] }));
+  const reads: ReferentReads = () => places;
+  referenceFieldReads.set(memo, reads);
+  return reads;
+}
+
+const derivedTargetReads = new Map<string, ReferentReads>();
+
+/** What a derivation reads in each declaration its `from` pointer crosses into:
+ *  the rest of the pointer, and what projecting the declaration it names reads. */
+function crossedProjectionReads(pointer: string): ReferentReads {
+  const known = derivedTargetReads.get(pointer);
+  if (known) return known;
+  const rest: ProjectionPlace[] = pointerPlaces([pointer]).map((keys) => ({ kind: "value", keys }));
+  const reads: ReferentReads = (referent) => [...rest, ...projectionPlaces(referent.definition)];
+  derivedTargetReads.set(pointer, reads);
+  return reads;
+}
+
+/** Where a pointer from a declaration that may cross references is read: at
+ *  its first member, and the rest of it in each declaration crossed. */
+function pointerRead(pointer: string, reads: ReferentReads = crossedProjectionReads(pointer)): ProjectionPlace {
+  return { kind: "reference", keys: crossingPlace(pointer), transitive: true, reads };
+}
+
+const selectorReads = new Map<string, ReferentReads>();
+
+/** Where a `pick` / `omit` selector is read: the field it names, reached
+ *  across the references on the way. */
+function selectorRead(selector: string): ProjectionPlace {
+  const known = selectorReads.get(selector);
+  if (known) return pointerRead(selector, known);
+  const rest: ProjectionPlace[] = pointerPlaces([selector]).map((keys) => ({ kind: "value", keys }));
+  const reads: ReferentReads = () => rest;
+  selectorReads.set(selector, reads);
+  return pointerRead(selector, reads);
+}
+
+/** What projecting a declaration of a kind with `definition` reads in it: the
+ *  entries its kind's projection names, and in each declaration an entry
+ *  names the fields its reference path reads — or, for a kind deriving its
+ *  projection, the declaration its derivation names and the entries its
+ *  `omit` selectors name. */
+function projectionPlaces(definition: Record<string, any> | undefined): ProjectionPlace[] {
+  const derived = readKindDerivation(definition);
+  if (derived && "derivation" in derived) {
+    const { from, omit } = derived.derivation;
+    return [
+      ...(from === "" ? [] : [pointerRead(from)]),
+      ...(omit ?? []).map(selectorRead),
+    ];
+  }
+  if (derived) return [];
+  const projection = readSchemaProjection(definition);
+  if (!projection) return [];
+  return [
+    {
+      kind: "reference",
+      keys: placeAt([], projection.entries),
+      transitive: false,
+      reads: referenceTargetReads(projection.reference),
+    },
+  ];
+}
+
+/** What `x-telo-schema-projection-from` reads: the declaration — this one,
+ *  through its own kind's projection, or one its `from` pointer names across
+ *  references — whose entries are projected, and the entries its `pick` /
+ *  `omit` selectors name. */
+export const projectionFromReads: ReadReporter = ({ value, definition }) => {
+  const read = readProjectionDerivation(value);
+  if (!read || "invalid" in read) return [];
+  const { from, pick, omit } = read.derivation;
+  return [
+    ...(from === "" ? projectionPlaces(definition) : [pointerRead(from)]),
+    ...[...(pick !== undefined ? [pick] : []), ...(omit ?? [])].map(selectorRead),
+  ];
+};

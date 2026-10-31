@@ -12,6 +12,7 @@
  * marker (`analyzer/rust/src/resolved_reference.rs`).
  */
 import type { ResourceDefinition } from "@telorun/sdk";
+import type { RefIndex } from "@telorun/templating";
 import { effectiveAuthorSchema, type DefResolver } from "./extends-resolution.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 
@@ -19,18 +20,28 @@ import { resolveSchemaPointer } from "./manifest-navigation.js";
 export const RESOLVED_REFERENCE_MARKER = "__ref";
 
 /** A reference resolved to the declaration it names. `alias` is set only for a
- *  cross-module reference into an imported library's exported instance. */
+ *  cross-module reference into an imported library's exported instance;
+ *  `indexes` are a family member's `[<binding>.key|index]`, empty for a plain
+ *  reference — every producer writes them. */
 export interface ResolvedReference {
   __ref: true;
   kind: string;
   name: string;
   alias?: string;
+  indexes: RefIndex[];
 }
 
 /** The resolved reference to `name` (of `kind`), reached through `alias` when
  *  it crosses an import. */
-export function resolvedReference(kind: string, name: string, alias?: string): ResolvedReference {
-  return alias === undefined ? { __ref: true, kind, name } : { __ref: true, kind, name, alias };
+export function resolvedReference(
+  kind: string,
+  name: string,
+  alias?: string,
+  indexes: readonly RefIndex[] = [],
+): ResolvedReference {
+  return alias === undefined
+    ? { __ref: true, kind, name, indexes: [...indexes] }
+    : { __ref: true, kind, name, alias, indexes: [...indexes] };
 }
 
 /** Plain data — what a manifest holds. A live instance a slot holds after
@@ -84,7 +95,7 @@ export function isLegacyReferenceForm(
 export function asResolvedReference(
   value: Record<string, unknown> & { kind: string; name: string },
 ): ResolvedReference {
-  return { [RESOLVED_REFERENCE_MARKER]: true, ...value } as unknown as ResolvedReference;
+  return { [RESOLVED_REFERENCE_MARKER]: true, ...value, indexes: [] } as unknown as ResolvedReference;
 }
 
 /** True when an author wrote the marker key themselves — refused, since only

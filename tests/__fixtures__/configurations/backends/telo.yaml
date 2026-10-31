@@ -1,0 +1,41 @@
+# Two in-memory fixture backends of one contract, each a bundle of its own, so a
+# run shows which controller it loaded.
+kind: Telo.Library
+metadata:
+  name: Backends
+exports:
+  kinds: [First, Second]
+---
+kind: Telo.Definition
+metadata:
+  name: First
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./first.mjs#first
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      backend: { type: string }
+    required: [backend]
+schema:
+  type: object
+  additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Second
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./second.mjs#second
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      backend: { type: string }
+    required: [backend]
+schema:
+  type: object
+  additionalProperties: false

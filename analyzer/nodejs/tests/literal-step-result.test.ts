@@ -2,6 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import { makeTaggedSentinel } from "@telorun/templating";
 import { describe, expect, it } from "vitest";
 import { StaticAnalyzer } from "../src/analyzer.js";
+import { observeKeyCosts } from "../src/cel-site-judgements.js";
 import { expandManifestFragments, MANIFEST_SCHEMA_URI } from "../src/manifest-schemas.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
@@ -199,5 +200,100 @@ describe("a misspelled step name", () => {
         'CEL_UNKNOWN_FIELD: srv.Sequence/main: !cel: "writen" is not declared here (declared: written, read)',
       ]);
     }
+  });
+});
+
+describe("a computed step's result", () => {
+  it("is the type its expression checks to where the step is written, never where it is read", () => {
+    // `error` is bound inside the `catch:` alone, as a map: `int(error)` checks
+    // to nothing there, so the result claims nothing. Typed where it is read,
+    // with `error` unbound, it would be an `int` and the reader refused.
+    const diagnostics = check([
+      {
+        name: "attempt",
+        try: [{ name: "fail", throw: { code: "BOOM" } }],
+        catch: [{ name: "caught", value: cel("int(error)") }],
+      },
+      { name: "read", value: cel("steps.caught.result + 'x'") },
+    ]);
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatch(/^CEL_TYPE_ERROR: .*int\(/);
+  });
+
+  it("is the same whichever order its steps are written in", () => {
+    const chain = [
+      { name: "a", value: 1 },
+      { name: "b", value: cel("steps.a.result + 1") },
+      { name: "c", value: cel("steps.b.result * 2.0") },
+    ];
+    expect(check(chain)).toEqual(['CEL_TYPE_ERROR: srv.Sequence/main: !cel: no "*" is declared over int, double']);
+    expect(check([...chain].reverse())).toEqual(check(chain));
+  });
+
+  it("reads a step of its own read cycle as untyped, in either order", () => {
+    const cycle = (a: string, b: string) => [
+      { name: "a", value: cel(a) },
+      { name: "b", value: cel(b) },
+      { name: "read", value: cel("steps.a.result * 2.0") },
+    ];
+    // Each reads the other as `dyn`: the result is what the expression makes of that.
+    const passing = cycle("steps.b.result", "steps.a.result");
+    expect(check(passing)).toEqual([]);
+    expect(check([...passing].reverse())).toEqual([]);
+    const counted = cycle("steps.b.result + 1", "steps.a.result + 1");
+    expect(check(counted)).toEqual(['CEL_TYPE_ERROR: srv.Sequence/main: !cel: no "*" is declared over int, double']);
+    expect(check([...counted].reverse())).toEqual(check(counted));
+  });
+
+  it("is checked once per producer, however many sites read it", () => {
+    const probes = new Map<object, string[]>();
+    const stop = observeKeyCosts((cost) => {
+      if (cost.kind !== "step-result-probe") return;
+      probes.set(cost.body, [...(probes.get(cost.body) ?? []), cost.producer]);
+    });
+    try {
+      check([
+        { name: "a", value: cel("1 + 1") },
+        { name: "b", value: cel("steps.a.result + 1") },
+        { name: "c", value: cel("steps.a.result + steps.b.result") },
+        { name: "f", value: cel("steps.c.result") },
+        { name: "g", value: cel("steps.f.result") },
+        { name: "d", value: cel("steps.g.result * 2") },
+        { name: "e", value: cel("steps.f.result * 3") },
+      ]);
+    } finally {
+      stop();
+    }
+    expect(probes.size).toBeGreaterThan(0);
+    for (const producers of probes.values()) {
+      expect(producers.length).toBeLessThanOrEqual(7);
+      expect(new Set(producers).size).toBe(producers.length);
+    }
+  });
+
+  it("is a forward's producer fact: a forward of a literal keeps its closed record", () => {
+    const forwarded = (reader: string) =>
+      check([
+        { name: "lit", value: { a: 1 } },
+        { name: "fwd", value: cel("steps.lit.result") },
+        { name: "again", value: cel("steps.fwd.result") },
+        { name: "read", value: cel(reader) },
+      ]);
+    expect(forwarded("steps.again.result.a * 2")).toEqual([]);
+    const [refused, ...rest] = forwarded("steps.again.result.b");
+    expect(refused).toMatch(/^CEL_UNKNOWN_FIELD: .*"b"/);
+    expect(rest).toEqual([]);
+  });
+
+  it("is the type an interpolation produces", () => {
+    const interpolated = (reader: string) =>
+      check([
+        { name: "text", value: makeTaggedSentinel("interpolate", "n=${{ 1 }}") },
+        { name: "read", value: cel(reader) },
+      ]);
+    expect(interpolated("steps.text.result + 'x'")).toEqual([]);
+    expect(interpolated("steps.text.result * 2")).toEqual([
+      'CEL_TYPE_ERROR: srv.Sequence/main: !cel: no "*" is declared over string, int',
+    ]);
   });
 });

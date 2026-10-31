@@ -9,8 +9,9 @@ import { celNamespaceNames } from "@telorun/templating";
 import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import { authoredModuleMetadata, moduleMetadataSchema } from "./module-metadata-scope.js";
+import { admitsAbsence } from "./configuration-dimensions.js";
 import { jsonSchemaToCelType, VALUE_BRAND_BASE } from "./schema-compat.js";
-import { inferredStepsCelSchema, registerTypedSteps } from "./step-result-inference.js";
+import { isStepRecord, stepRecordType } from "./step-result-inference.js";
 
 /** Transport protocol on a `ports` entry → the nominal CEL brand its resolved
  *  value carries. Mirrors the `protocol` enum in the Application schema, and
@@ -246,25 +247,11 @@ export function buildTypedCelEnvironment(
 
     if (extraContextSchema?.properties) {
       const properties = extraContextSchema.properties as Record<string, any>;
-      const bound: string[] = [];
       for (const [name, propSchema] of Object.entries(properties)) {
-        if (name === "steps" || env.hasVariable(name)) continue;
-        const celType = jsonSchemaToCelType(propSchema as Record<string, any>);
-        env.registerVariable(name, celType);
-        bound.push(`${name}:${celType}`);
-      }
-      // Last, so a pure step's expression is typed against every other name.
-      // Inference probes clones of `env`, so the typed `steps` goes onto a
-      // clone of its own and the probes stay typed without it.
-      const steps = properties.steps as Record<string, any> | undefined;
-      if (steps && !env.hasVariable("steps")) {
-        const inferred = inferredStepsCelSchema(steps, env, bound.sort().join(","));
-        if (inferred) {
-          const typed = env.clone();
-          registerTypedSteps(typed, inferred);
-          return typed;
-        }
-        env.registerVariable("steps", jsonSchemaToCelType(steps));
+        if (env.hasVariable(name)) continue;
+        const schema = propSchema as Record<string, any>;
+        // A step body's `steps` is the closed record of its step names.
+        env.registerVariable(name, name === "steps" && isStepRecord(schema) ? stepRecordType(schema) : jsonSchemaToCelType(schema));
       }
     }
 
@@ -323,7 +310,12 @@ function registerConfigNamespace(
     );
     if (entries.length > 0) {
       const schema: Record<string, string> = {};
-      for (const [k, v] of entries) schema[k] = jsonSchemaToCelType(v as Record<string, any>);
+      // An entry that may be absent (`default: null`) is a value or null: its
+      // null-safety is the context schema's rule, which reads it as nullable.
+      for (const [k, v] of entries) {
+        const entry = v as Record<string, any>;
+        schema[k] = admitsAbsence(entry) ? "dyn" : jsonSchemaToCelType(entry);
+      }
       env.registerVariable(name, { fields: schema });
       return;
     }

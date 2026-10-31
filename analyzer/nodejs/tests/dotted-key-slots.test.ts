@@ -61,7 +61,7 @@ describe("a reference slot under a property name holding a dot", () => {
   it("extracts an inline declaration written there, at that key", () => {
     const out = normalizeInlineResources([tokens({ kind: "demo.Font", family: "Inter" })], registry());
     const holder = out.find((m) => m.metadata?.name === "tokens") as Record<string, any>;
-    expect(holder["font.body"]).toEqual({ __ref: true, kind: "demo.Font", name: "tokens_font_body" });
+    expect(holder["font.body"]).toEqual({ __ref: true, kind: "demo.Font", name: "tokens_font_body", indexes: [] });
     expect(holder.font).toEqual({ body: "not a reference" });
     const font = out.find((m) => m.metadata?.name === "tokens_font_body")!;
     expect(font).toMatchObject({ kind: "demo.Font", family: "Inter" });

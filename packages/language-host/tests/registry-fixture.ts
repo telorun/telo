@@ -60,7 +60,7 @@ export function readEngineCode(code: string): { version: string; behaviour?: str
   return match ? { version: match[1]!, ...(match[2] ? { behaviour: match[2] } : {}) } : undefined;
 }
 
-export async function engineTarball(version: string, protocol: unknown = 1, code = engineCode(version)) {
+export async function engineTarball(version: string, protocol: unknown = 2, code = engineCode(version)) {
   const bytes = await gzip(
     tar({
       "package/package.json": JSON.stringify({ name: "@telorun/language-server", version, teloEditorProtocol: protocol }),
@@ -78,6 +78,7 @@ export async function fakeRegistry(
   versions: string[],
   extra: Record<string, unknown> = {},
   code: (version: string) => string = (version) => engineCode(version),
+  protocol: (version: string) => unknown = () => 2,
 ): Promise<{
   fetch: typeof globalThis.fetch;
   offline: boolean;
@@ -89,10 +90,10 @@ export async function fakeRegistry(
   const tarballs = new Map<string, Uint8Array>();
   const document: { versions: Record<string, unknown> } = { versions: { ...extra } };
   for (const version of versions) {
-    const { bytes, integrity } = await engineTarball(version, 1, code(version));
+    const { bytes, integrity } = await engineTarball(version, protocol(version), code(version));
     const url = `https://registry.test/language-server-${version}.tgz`;
     tarballs.set(url, bytes);
-    document.versions[version] = { teloEditorProtocol: 1, dist: { tarball: url, integrity } };
+    document.versions[version] = { teloEditorProtocol: protocol(version), dist: { tarball: url, integrity } };
   }
   const catalog: StoredCatalog = {
     offered: versions.map((version) => ({ version, ...(document.versions[version] as any).dist })),

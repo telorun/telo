@@ -1,0 +1,41 @@
+# A `with:` member of a kind whose root `oneOf` reads its `mode`, which a
+# choice decides. The holder's `with:` says nothing of its members; the
+# member's own kind judges it: where flag1 is false `mode` matches both
+# branches, and the member is refused.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberOwnKind
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref holder
+---
+kind: Telo.Definition
+metadata:
+  name: Moded
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  oneOf:
+    - { properties: { mode: { enum: [a, c] } } }
+    - { properties: { mode: { enum: [b, c] } } }
+---
+kind: Run.Sequence
+metadata:
+  name: holder
+with:
+  - kind: ScopeMemberOwnKind.Moded
+    metadata: { name: member }
+    mode: !if
+      if: !cel "variables.flag1"
+      then: a
+      else: c
+targets:
+  - !ref member
+steps:
+  - name: done
+    value: 1

@@ -18,12 +18,18 @@ import type { FeatureContext } from "./context.js";
  * for a CEL value typed into a form field.
  */
 export function registerViewModel({ connection, session }: FeatureContext): void {
-  const built = new WeakMap<OwnerAnalysis, ViewModel>();
+  // One model per analysis and picked configuration.
+  const built = new WeakMap<OwnerAnalysis, Map<string, ViewModel>>();
 
   connection.onRequest(TeloMethod.viewModel, (params: ViewModelParams): ViewModelResult => {
     const owned = session.ownerAnalysis(params.owner);
     if (!owned) return null;
-    let model = built.get(owned.state);
+    const key = JSON.stringify(
+      Object.entries(params.configuration ?? {}).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    );
+    const models = built.get(owned.state) ?? new Map<string, ViewModel>();
+    built.set(owned.state, models);
+    let model = models.get(key);
     if (!model) {
       model = buildViewModel({
         owner: canonicalDocumentUri(params.owner),
@@ -33,8 +39,9 @@ export function registerViewModel({ connection, session }: FeatureContext): void
         analysis: owned.state.analysis,
         uriOfSource,
         documents: owned.state.documents,
+        ...(params.configuration ? { configuration: params.configuration } : {}),
       });
-      built.set(owned.state, model);
+      models.set(key, model);
     }
     return model;
   });

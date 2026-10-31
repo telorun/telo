@@ -1,0 +1,5 @@
+modules:
+  apps/hub: Added
+body: An application's reported dimensions carry a member dimension's member, which a
+  reader no longer splits out of the key; INGEST_REV defaults to 11, so the deploy
+  re-ingests every tracked version once.

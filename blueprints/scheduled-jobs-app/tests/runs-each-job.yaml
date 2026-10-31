@@ -1,0 +1,81 @@
+kind: Telo.Application
+metadata:
+  name: ScheduledJobsBlueprintTest
+  version: 1.0.0
+  description: >-
+    Declares a ScheduledJobs.App with two jobs on a once-per-second expression
+    (the six-field form with a leading seconds column) and asserts each job's
+    work ran on its own schedule.
+imports:
+  ScheduledJobs: ..
+  Cache: ../../../modules/cache
+  CacheMemory: ../../../modules/cache-memory
+  Timer: ../../../modules/timer
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref test
+---
+kind: CacheMemory.Store
+metadata: { name: counters }
+---
+kind: Cache.Entry
+metadata: { name: put }
+store: !ref counters
+ttl: "60s"
+---
+kind: Cache.Lookup
+metadata: { name: get }
+store: !ref counters
+---
+kind: Run.Sequence
+metadata: { name: markReport }
+steps:
+  - name: write
+    invoke: !ref put
+    inputs: { key: report, value: ran }
+---
+kind: Run.Sequence
+metadata: { name: markCleanup }
+steps:
+  - name: write
+    invoke: !ref put
+    inputs: { key: cleanup, value: ran }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: ScheduledJobs.App
+    metadata: { name: jobs }
+    jobs:
+      nightlyReport:
+        cron: "* * * * * *"
+        invoke: !ref markReport
+      hourlyCleanup:
+        cron: "* * * * * *"
+        timezone: Europe/Warsaw
+        invoke: !ref markCleanup
+targets:
+  - !ref jobs
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs:
+      duration: "2500ms"
+      value: {}
+  - name: readReport
+    invoke: !ref get
+    inputs: { key: report }
+  - name: readCleanup
+    invoke: !ref get
+    inputs: { key: cleanup }
+  - name: verifyReport
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.readReport.result.value"
+      expected: ran
+  - name: verifyCleanup
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.readCleanup.result.value"
+      expected: ran

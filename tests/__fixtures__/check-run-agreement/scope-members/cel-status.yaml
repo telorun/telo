@@ -1,0 +1,29 @@
+# The holder's own steps read a started member's observed state: clean at
+# `telo check`, and the run sees the reading.
+kind: Telo.Application
+metadata:
+  name: ScopeMemberCelStatusApp
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+  Kinds: ./kinds
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+with:
+  - kind: Kinds.Counter
+    metadata:
+      name: counter
+targets:
+  - !ref counter
+steps:
+  - name: check
+    if: !cel "resources.counter.status.runs != 1"
+    then:
+      - name: fail
+        throw:
+          code: COUNTER_NOT_RUN
+          message: the scope's target did not run before its steps

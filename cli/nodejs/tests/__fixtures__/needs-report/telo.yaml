@@ -19,3 +19,9 @@ needs:
   audit:
     kind: Types.DatabaseAccess
     optional: true
+---
+# Reads the session key, so every configuration requires it.
+kind: Types.SigningKey
+metadata: { name: session }
+fields:
+  value: !cel "resources.sessionKey.value"

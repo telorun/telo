@@ -26,6 +26,7 @@ import { isCancellationError, type InvokeContext } from "./cancellation.js";
 import type { CompiledValue } from "./compiled-value.js";
 import { decideValue, stepPath, type DurableDecisionKind } from "./durable-run.js";
 import { isSuspension } from "./durable-suspension.js";
+import { fileStepResult, stepJournalPath, stepLabel } from "./emitted-step.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
 import { formatDisplayMessage } from "./display-message.js";
@@ -217,7 +218,7 @@ export class StepEngine {
         if (!raw || typeof (raw as Invocable).invoke !== "function") {
           (step as InvokeStep).invoke = this.ctx.ensureKindRef(
             raw as any,
-            this.inlineInvokeResourceName(step.name, stepPath),
+            this.inlineInvokeResourceName(stepLabel(step), stepPath),
           ) as KindRef<Invocable>;
         }
       }
@@ -281,21 +282,23 @@ export class StepEngine {
    * these paths stay fixed.
    */
   private pathOf(path: string, step: Step): string {
-    // A missing name is refused rather than defaulted. The shared `Step` schema
-    // declares `name` required, so a manifest cannot reach this — but a caller
-    // assembling steps in code can, and an empty segment would give two such
-    // steps ONE journal key, where first-writer-wins hands the second the
-    // first's result. Silent, and indistinguishable from a correct replay.
-    if (!step.name) {
+    // A step with no identity is refused rather than defaulted. The shared
+    // `Step` schema requires a `name` or a template repeat's `__emitted`, so a
+    // manifest cannot reach this — but a caller assembling steps in code can,
+    // and an empty segment would give two such steps ONE journal key, where
+    // first-writer-wins hands the second the first's result. Silent, and
+    // indistinguishable from a correct replay.
+    const here = stepJournalPath(path, step);
+    if (here === undefined) {
       throw new InvokeError(
         "ERR_STEP_NAME_REQUIRED",
-        `A step at '${path}' has no name. A name is what identifies the step in the run's ` +
-          `record, so two unnamed steps would share one key and the second would be handed ` +
-          `the first's result.`,
+        `A step at '${path}' has neither a name nor the identity a template repeat gives the ` +
+          `steps it emits. The identity is what keys the step in the run's record, so two ` +
+          `steps without one would share one key and the second would be handed the first's result.`,
         { path },
       );
     }
-    return stepPath(path, step.name);
+    return here;
   }
 
   /**
@@ -453,7 +456,7 @@ export class StepEngine {
         stepPath(path, "default"),
       );
     } else {
-      throw new Error(`Switch step "${step.name}": no matching case for "${key}" and no default`);
+      throw new Error(`Switch step "${stepLabel(step)}": no matching case for "${key}" and no default`);
     }
   }
 
@@ -479,7 +482,7 @@ export class StepEngine {
       const result = await this.decide(invokeCtx, path, "value", () =>
         this.ctx.expandValue(literalStepValue(step.value), { steps, ...extraCtx }),
       );
-      steps[step.name] = { result };
+      fileStepResult(steps, step, result);
     } catch (err) {
       // A suspension is not this step's failure — it is the run leaving —
       // so it passes through unattributed rather than being rewritten into an
@@ -488,9 +491,9 @@ export class StepEngine {
       // Attribute the failure the way every other step branch does — a bare
       // expression error names no step, no resource and no line, which is the
       // one thing a `catch:` and a stack trace both need.
-      const failure = toSequenceError(err, step.name);
-      throw new InvokeError(failure.code, `Step "${step.name}": ${failure.message}`, {
-        step: step.name,
+      const failure = toSequenceError(err, stepLabel(step));
+      throw new InvokeError(failure.code, `Step "${stepLabel(step)}": ${failure.message}`, {
+        step: stepLabel(step),
         data: failure.data,
       });
     }
@@ -515,8 +518,8 @@ export class StepEngine {
       // a plain Error — would skip catches: entirely and fall through to a 500.
       throw new InvokeError(
         "INVALID_THROW_STEP",
-        `throw.code is required and must resolve to a non-empty string (step "${step.name}")`,
-        { step: step.name, code },
+        `throw.code is required and must resolve to a non-empty string (step "${stepLabel(step)}")`,
+        { step: stepLabel(step), code },
       );
     }
     const displayMessage = expanded.displayMessage ?? undefined;
@@ -525,7 +528,7 @@ export class StepEngine {
       // refuses any other computed value; one reaching here bypassed both.
       throw new RuntimeError(
         "ERR_TEXT_ARGUMENT_COMPUTED",
-        `throw.displayMessage of step "${step.name}" must be a literal text or the display message of a caught ` +
+        `throw.displayMessage of step "${stepLabel(step)}" must be a literal text or the display message of a caught ` +
           `error (\`!cel "error.displayMessage"\`); it holds a value of another kind, so it can be neither ` +
           `checked nor translated.`,
       );
@@ -548,7 +551,7 @@ export class StepEngine {
     if (!caught) {
       throw new RuntimeError(
         "ERR_RETHROW_WITHOUT_CAUGHT_ERROR",
-        `Step "${step.name}" is a rethrow with no caught failure to re-raise: rethrow is legal only inside a ` +
+        `Step "${stepLabel(step)}" is a rethrow with no caught failure to re-raise: rethrow is legal only inside a ` +
           `catch: branch, never in finally: or outside a try.`,
       );
     }
@@ -594,7 +597,7 @@ export class StepEngine {
 
     if (tryFailed) {
       if (step.catch) {
-        const seqErr = toSequenceError(tryError, step.name);
+        const seqErr = toSequenceError(tryError, stepLabel(step));
         caughtFailures.set(seqErr, tryError);
         try {
           await this.executeSteps(
@@ -611,7 +614,7 @@ export class StepEngine {
               step.finally,
               steps,
               scope,
-              { ...extraCtx, error: toSequenceError(catchErr, step.name) },
+              { ...extraCtx, error: toSequenceError(catchErr, stepLabel(step)) },
               invokeCtx,
               stepPath(path, "finally"),
             );
@@ -634,7 +637,7 @@ export class StepEngine {
             step.finally,
             steps,
             scope,
-            { ...extraCtx, error: toSequenceError(tryError, step.name) },
+            { ...extraCtx, error: toSequenceError(tryError, stepLabel(step)) },
             invokeCtx,
             stepPath(path, "finally"),
           );

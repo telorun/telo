@@ -20,6 +20,9 @@ export interface ImportReach {
    *  reaches, however deep. Undefined for the entry's own modules and for a
    *  module no import reaches. */
   of(module: string): ReachingImport | undefined;
+  /** The aliases leading from the entry to `module` along the import edges
+   *  that first reach it (the instance path of an isolated library). */
+  pathOf(module: string): readonly string[] | undefined;
   /** Whether these are the documents the application loads under their module
    *  name: an import reaches them by source, never a version reconciliation
    *  replaced. An import carrying no resolved source accepts any. */
@@ -68,6 +71,7 @@ export function importReach(
   }
 
   const first = new Map<string, ReachingImport>();
+  const paths = new Map<string, string[]>();
   for (const entry of edges) {
     if (!isEntry(ownerOf(entry))) continue;
     const anchor: ReachingImport = {
@@ -76,13 +80,16 @@ export function importReach(
       path: `imports.${entry.alias}`,
     };
     const seen = new Set<string>();
-    const queue = [entry.target];
+    const queue: { module: string; path: string[] }[] = [{ module: entry.target, path: [entry.alias] }];
     while (queue.length > 0) {
-      const module = queue.shift()!;
+      const { module, path } = queue.shift()!;
       if (seen.has(module) || rootModules.has(module)) continue;
       seen.add(module);
-      if (!first.has(module)) first.set(module, anchor);
-      for (const next of byOwner.get(module) ?? []) queue.push(next.target);
+      if (!first.has(module)) {
+        first.set(module, anchor);
+        paths.set(module, path);
+      }
+      for (const next of byOwner.get(module) ?? []) queue.push({ module: next.target, path: [...path, next.alias] });
     }
   }
 
@@ -95,6 +102,7 @@ export function importReach(
 
   return {
     of: (module) => first.get(module),
+    pathOf: (module) => paths.get(module),
     loads: ({ module, sourceId }) => {
       const reaching = sources.get(module);
       return !!reaching && (reaching.has(sourceId) || reaching.has(undefined));

@@ -46,6 +46,12 @@ needs:
   cache:
     kind: Db.Access
     optional: true
+---
+# Reads every input, so every configuration requires each.
+kind: Db.Access
+metadata: { name: reader }
+fields:
+  url: !cel "'postgres://' + variables.clientId + string(variables.retries) + secrets.token + string(ports.http) + resources.database.url"
 `;
 
 const ASKED = ["variables.clientId", "variables.retries", "secrets.token", "ports.http", "needs database.url"];
@@ -233,6 +239,17 @@ variables:
   wait: { env: V_WAIT, type: string, x-telo-type: Telo.Duration }
   dir: { env: V_DIR, type: string, x-telo-type: Telo.HostPath }
   empty: { env: V_EMPTY, type: string }
+---
+kind: Telo.NeedType
+metadata: { name: Probe }
+fields:
+  all: { type: object }
+---
+# Reads the whole record, so every configuration requires every variable.
+kind: Self.Probe
+metadata: { name: reader }
+fields:
+  all: !cel "variables"
 `;
   const text: Record<string, string> = {
     text: "hello world",

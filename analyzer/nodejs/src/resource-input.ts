@@ -28,12 +28,20 @@ export interface ResourceInput {
    *  one nothing could check. */
   kind: string;
   description?: string;
+  /** `optional: true` — the importer may omit it. Inside the library
+   *  `resources.<name>` is then nullable, and its presence is the presence
+   *  dimension keyed `resources.<name>`. */
+  optional: boolean;
 }
 
 /** Marker stamped on a synthesized kind-only declaration (see
  *  {@link injectedDeclarations}). Read through {@link isInjectedDeclaration} —
  *  never by testing the field. */
 export const INJECTED = "xTeloInjected";
+
+/** Marker stamped beside {@link INJECTED} on the stand-in of an `optional: true`
+ *  entry. Read through {@link isOptionalResourceInput}. */
+export const OPTIONAL_INPUT = "xTeloOptionalInput";
 
 /** Read a module document's `resources:` block. Returns `[]` for an
  *  `Telo.Application` (which has no such block), for a library that declares
@@ -52,6 +60,7 @@ export function readResourceInputs(moduleDoc: unknown): ResourceInput[] {
       name,
       kind,
       ...(typeof description === "string" ? { description } : {}),
+      optional: (value as { optional?: unknown }).optional === true,
     });
   }
   return out;
@@ -71,6 +80,15 @@ export function readSuppliedResources(importDoc: unknown): Record<string, unknow
  *  library's `resources:` entry rather than a resource the author declared. */
 export function isInjectedDeclaration(manifest: ResourceManifest | undefined): boolean {
   return (manifest?.metadata as Record<string, unknown> | undefined)?.[INJECTED] === true;
+}
+
+/** True when `manifest` is the stand-in of a resource input the importer may
+ *  omit (`optional: true`). */
+export function isOptionalResourceInput(manifest: ResourceManifest | undefined): boolean {
+  return (
+    isInjectedDeclaration(manifest) &&
+    (manifest?.metadata as Record<string, unknown> | undefined)?.[OPTIONAL_INPUT] === true
+  );
 }
 
 /**
@@ -112,6 +130,7 @@ export function injectedDeclarations(
       source: meta?.source ?? "",
       sourceLine: meta?.sourceLine ?? 0,
       [INJECTED]: true,
+      ...(input.optional ? { [OPTIONAL_INPUT]: true } : {}),
     },
   })) as unknown as ResourceManifest[];
 }

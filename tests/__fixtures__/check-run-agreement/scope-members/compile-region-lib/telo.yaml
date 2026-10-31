@@ -1,0 +1,26 @@
+# A field evaluated at load inside a scope's region: the kernel evaluates it
+# when it creates the holder, before any scope run opens, so the scope's members
+# are not in `resources` there. This library's own check refuses the read; the
+# kernel refuses it when it creates the holder.
+kind: Telo.Library
+metadata:
+  name: ScopeMemberCompileRegion
+  version: 1.0.0
+  description: >-
+    Fixture library reading a scope member in a field evaluated at load inside
+    that scope's region, which its own check and the kernel both refuse.
+imports:
+  Kinds: ../kinds
+exports:
+  resources: [host]
+---
+kind: Kinds.LabelledHost
+metadata:
+  name: host
+members:
+  - kind: Kinds.Target
+    metadata:
+      name: answer
+    answer: 42
+pick: answer
+label: !cel "string(resources.answer)"

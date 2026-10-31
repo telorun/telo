@@ -1,0 +1,18 @@
+# An inline `targets:` item of a kind nothing starts.
+kind: Telo.Library
+metadata:
+  name: TemplateInitInline
+exports:
+  kinds: [Inline]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Inline
+capability: Telo.Runnable
+schema:
+  type: object
+targets:
+  - kind: Run.Value
+    value: 1

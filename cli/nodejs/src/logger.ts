@@ -94,6 +94,13 @@ export interface JsonDiagnostic {
    *  decidable, so a consumer can apply it without re-deriving it from the
    *  message. */
   fix?: DiagnosticFix;
+  /** Present only on a diagnostic that holds in some configurations of the
+   *  application but not all: partial assignments covering where it holds, each
+   *  `{ "<dimension path>": <JSON value> }` naming only the dimensions it
+   *  narrows (one it leaves out holds every value; the finding holds where
+   *  some entry agrees on every key it names). Empty when it holds in none.
+   *  The configuration label lives in `message` only. */
+  configurations?: Array<Record<string, unknown>>;
 }
 
 /** The logger's colouring delegates to `Output`'s per-stream palettes.
@@ -264,7 +271,11 @@ export function formatAnalysisDiagnostics(
     // already computed is the most actionable thing on it — dropping it forced
     // every consumer to re-derive the fix by parsing prose.
     const stamp = d.data as
-      | { resource?: { kind: string; name: string }; path?: string }
+      | {
+          resource?: { kind: string; name: string };
+          path?: string;
+          configurations?: Array<Record<string, unknown>>;
+        }
       | undefined;
     collected.push({
       ...parts,
@@ -274,6 +285,7 @@ export function formatAnalysisDiagnostics(
       ...(stamp?.resource ? { resource: `${stamp.resource.kind}/${stamp.resource.name}` } : {}),
       ...(stamp?.path ? { path: stamp.path } : {}),
       ...(diagnosticFix(d) ? { fix: diagnosticFix(d) } : {}),
+      ...(Array.isArray(stamp?.configurations) ? { configurations: stamp.configurations } : {}),
     });
 
     if (isError) errorCount++;

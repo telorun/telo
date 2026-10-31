@@ -1,3 +1,4 @@
+import { localRefName } from "./ref-sentinel-target.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
@@ -95,8 +96,7 @@ export function dispatchTargetOf(
 ): { entry: Record<string, any> | undefined; kind: string; name: string } | undefined {
   const value = definition[slot];
   if (!isRefSentinel(value)) return undefined;
-  const source = value.source;
-  const name = source.startsWith("Self.") ? source.slice("Self.".length) : source;
+  const name = localRefName(value);
   const bodies = definition.resources;
   if (!Array.isArray(bodies)) return undefined;
   for (const body of bodies) {

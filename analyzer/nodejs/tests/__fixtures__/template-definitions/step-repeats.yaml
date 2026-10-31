@@ -1,0 +1,62 @@
+# Step repeats: a named repeat publishes `steps.<name>` as a map by element
+# key, typed from the step it emits — and what a repeat's `emit:` refuses.
+kind: Telo.Library
+metadata:
+  name: StepRepeats
+imports:
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Pipeline]
+---
+kind: Telo.Definition
+metadata: { name: Pipeline }
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          label: { type: string }
+    list:
+      type: array
+      items: { type: string }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: pipeline }
+    steps:
+      - !for-each
+        name: labels
+        in: !cel "self.jobs"
+        emit:
+          value: !cel "each.value.label"
+      - !for-each
+        name: totals
+        in: !cel "self.jobs"
+        emit:
+          value: !cel "steps.labels[each.key].result + steps.labels[each.key].reslt"
+      - !for-each
+        in: !cel "self.jobs"
+        emit:
+          name: named
+          value: 1
+      - !for-each
+        name: twice
+        in: !cel "self.jobs"
+        emit:
+          - value: 1
+          - value: 2
+      - !for-each
+        name: nested
+        in: !cel "self.jobs"
+        emit: !for-each
+          in: !cel "self.list"
+          as: item
+          emit:
+            value: 1
+      - name: written
+        __emitted: { repeat: labels, key: x }
+        value: 1
+invoke: !ref pipeline

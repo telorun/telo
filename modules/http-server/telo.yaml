@@ -733,7 +733,29 @@ schema:
                   method: { type: string }
                   ip: { type: string }
         returns:
+          title: Returns
+          description: Rendering rules for the value the not-found handler resolved with.
           x-telo-outcome-list: returns
+          x-telo-context:
+            type: object
+            additionalProperties: false
+            properties:
+              request:
+                type: object
+                additionalProperties: false
+                properties:
+                  method: { type: string }
+                  path: { type: string }
+                  host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  params: { type: object, additionalProperties: true }
+                  query: { type: object, additionalProperties: true }
+                  headers: { type: object, additionalProperties: true }
+                  # Untyped: no route matched, so nothing declares this body.
+                  body: {}
+              result:
+                x-telo-context-ref-from: "invoke/outputType"
+                type: object
+                additionalProperties: true
           x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Returns"
         catches:
           x-telo-outcome-list: catches

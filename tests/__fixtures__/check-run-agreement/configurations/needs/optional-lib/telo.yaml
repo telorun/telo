@@ -1,0 +1,28 @@
+# A library referencing its optional need both inside a branch proving it
+# present (legal) and outside one (refused where the need is absent).
+kind: Telo.Library
+metadata:
+  name: NeedReferencedByBranch
+  version: 0.0.0
+  description: References an optional need inside and outside a branch proving it present.
+imports:
+  Kinds: ../../../../configurations/needs/kinds
+needs:
+  access:
+    kind: Kinds.Access
+    optional: true
+--- !if
+metadata: { name: chosen }
+if: !cel "resources.access != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref access
+  label: inside
+else:
+  kind: Kinds.Labelled
+  label: none
+---
+kind: Kinds.Consumer
+metadata: { name: outside }
+access: !ref access
+label: outside

@@ -1,0 +1,75 @@
+# A BLUEPRINT: recurring work. An app built on it declares one
+# `ScheduledJobs.App` — a map of jobs, each a cron expression and the work to
+# run — and gets one schedule per job, all started together. The template body
+# turns the consumer's map into one `Scheduler.Cron` member per job.
+kind: Telo.Library
+metadata:
+  name: ScheduledJobs
+  version: 0.1.0
+  license: MIT
+  description: >-
+    A recurring-jobs application from one declaration: list the jobs by name,
+    each with a cron expression, an optional timezone and the work to run, and
+    every one runs on its schedule while the application is up.
+  categories: [Scheduling]
+requires:
+  # The `!for-each` family and the indexed `!ref` in the body need 0.126.0.
+  telo: ">=0.126.0"
+imports:
+  # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
+  # relative path would name a module nobody pushes.
+  Scheduler: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
+exports:
+  kinds: [App]
+---
+kind: Telo.Definition
+metadata:
+  name: App
+  description: >-
+    Runs each listed job on its cron schedule for as long as the application
+    runs. A job is named by its key, carries a cron expression, an optional
+    timezone and the work to run, and its schedule starts in the order the jobs
+    are written.
+capability: Telo.Service
+schema:
+  type: object
+  required: [jobs]
+  properties:
+    jobs:
+      title: Jobs
+      description: The jobs to run, keyed by name.
+      type: object
+      minProperties: 1
+      additionalProperties:
+        type: object
+        required: [cron, invoke]
+        additionalProperties: false
+        properties:
+          cron:
+            title: Cron
+            description: >-
+              Cron expression, five fields (`m h dom mon dow`) or six with a
+              leading seconds field. `0 2 * * *` is daily at 02:00.
+            type: string
+          timezone:
+            title: Timezone
+            description: IANA timezone the expression is read in.
+            type: string
+            default: UTC
+          invoke:
+            title: Invoke
+            description: The work to run on each tick.
+            x-telo-ref: { kind: Telo.Executable, use: trigger.inbound }
+resources:
+  - !for-each
+    metadata: { name: crons }
+    in: !cel "self.jobs"
+    emit:
+      kind: Scheduler.Cron
+      cron: !cel "each.value.cron"
+      timezone: !cel "each.value.timezone"
+      invoke: !cel "each.value.invoke"
+targets:
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref crons[each.key]

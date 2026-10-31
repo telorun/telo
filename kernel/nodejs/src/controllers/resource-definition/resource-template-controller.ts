@@ -8,17 +8,21 @@ import type {
 } from "@telorun/sdk";
 import {
   celEvalSites,
+  declaredCelViewAt,
+  declaredViewPaths,
   effectiveAuthorSchema,
   evalPathCovers,
   implicitEvalSites,
   mergeCelEvalSites,
   NO_CEL_EVAL_SITES,
-  NO_NAMED_SHAPES,
   pathMatchesScope,
   resolvedReference,
   SELF_PATH,
+  holdsTemplateConstructs,
   templateTargetsOf,
   type CelEvalSites,
+  type ExpansionSite,
+  type ReachSite,
   type NamedShapeLookup,
 } from "@telorun/analyzer";
 import {
@@ -27,6 +31,7 @@ import {
   type ResourceDefinition,
   type ResourceManifest,
 } from "@telorun/sdk";
+import { refSentinelTarget } from "@telorun/sdk";
 import { isRefSentinel } from "@telorun/templating";
 import { celSelfView } from "../../evaluation-context.js";
 import {
@@ -40,8 +45,15 @@ import {
   type RefPositionHost,
 } from "../../refuse-computed-ref-slots.js";
 import { declarationOfInstance } from "../../instance-declaration.js";
+import type { ModuleContext } from "../../module-context.js";
 import { declaringContextOf } from "./declaring-context.js";
+import {
+  closedBindingsOf,
+  expandTemplateInstance,
+  type InstanceExpansionInputs,
+} from "./template-instance-expansion.js";
 import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
+import { TemplateBodyResources, type FamilyPlace } from "../../template-body-resources.js";
 
 /**
  * WHICH NODES OF A TEMPLATE BODY SURVIVE init() UNEXPANDED.
@@ -100,6 +112,11 @@ function referencesBeyondSelf(value: CompiledValue): boolean {
     (value.calls?.length ?? 0) > 0 ||
     (value.refs ?? []).some((r) => r !== "self")
   );
+}
+
+/** True when an expression reads `resources`. */
+function readsResources(value: CompiledValue): boolean {
+  return (value.refs ?? []).includes("resources");
 }
 
 /** What a nested kind's schema says about one body entry: where its own
@@ -164,6 +181,16 @@ function withSchemaDefaults(value: unknown, schema: unknown): unknown {
   return out;
 }
 
+/** What the kernel's resource context offers a template controller. */
+export interface TemplateHost {
+  readonly shapeLookup: NamedShapeLookup;
+  /** The constructs of a definition's body the position reader accepted. */
+  expansionSitesOf(definition: Record<string, unknown>): ReadonlyMap<unknown, ExpansionSite>;
+  referenceSitesOf(resource: ResourceManifest): ReachSite[];
+  /** The definitions and alias tables the expansion reads kinds through. */
+  analysisContext(): InstanceExpansionInputs["analysis"];
+}
+
 /** Reports the resources: entries available to dispatch against, by EXPANDED
  *  name and kind — an entry may still be named by a CEL template, so the raw
  *  node is not what a dispatch target is compared against. Used in error
@@ -209,6 +236,7 @@ function describeAvailableTargets(
 export function createTemplateController(definition: {
   metadata?: { name?: string; module?: string };
   schema: Record<string, any>;
+  capability?: string;
   resources?: any[];
   invoke?: unknown;
   inputs?: Record<string, any>;
@@ -223,12 +251,15 @@ export function createTemplateController(definition: {
  *  reason every other kernel-supplied hook is: a third-party host keeps
  *  compiling, and absent reads as "no positions", which is what a context that
  *  cannot enumerate them already meant. */
-refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): ControllerInstance {
-  // A body entry's kind is read through the lookup `telo check` reads it with.
-  const shapes = refPositions?.shapeLookup ?? NO_NAMED_SHAPES;
-  // Checked at registration (`templateTargetProblems`), so every item is a
-  // `!ref` naming an entry by the time an instance exists.
-  const startTargets = templateTargetsOf(definition as Record<string, unknown>).map((t) => t.name);
+refPositions: RefPositionHost & TemplateHost): ControllerInstance {
+  // The definition's own host lookup; an instance reads through the view of the
+  // module declaring its kind (below).
+  const hostShapes = refPositions.shapeLookup;
+  // Whether an instance starts anything is known from the definition; WHAT it
+  // starts is decided per instance, after its body is expanded.
+  const hasTargets = Array.isArray(definition.targets) && definition.targets.length > 0;
+  const hasConstructs = holdsTemplateConstructs(definition as never);
+  let sitesOfDefinition: ReadonlyMap<unknown, ExpansionSite> | undefined;
   // A resource is validated as a copy, so the schema's `default:` values never
   // reach the instance; a controller written in code fills its own, and a
   // template has none, so `self` fills them here. `definition.schema` is the
@@ -237,6 +268,11 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
       const definingContext = declaringContextOf(resource, ctx);
+      // A body entry's kind is read through the lookup `telo check` reads it
+      // with, for the configuration of the module that declares the template.
+      const view = definingContext.analysisView;
+      const shapes = view?.shapeLookup ?? hostShapes;
+      const selfScalars = declaredViewPaths(definition.schema, shapes);
       // `self` is read lazily: Phase 5 injection mutates `resource`'s ref slots
       // (e.g. `connection: !ref Db` → the live instance) AFTER create() but before
       // init(), so capturing self here would freeze the pre-injection refs. Every
@@ -247,6 +283,11 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
           ? (withSchemaDefaults(self, definition.schema) as Record<string, unknown>)
           : self;
       };
+      // What CEL reads of `self`: each declared scalar in its declared
+      // representation. A bare `self.<path>` forward reads `getSelf()` instead,
+      // since a controller receives what the author wrote.
+      const declaredSelf = (): Record<string, unknown> =>
+        declaredCelViewAt(getSelf(), [], selfScalars) as Record<string, unknown>;
 
       // A dispatch field names which `resources:` entry receives the call. The
       // spelling to write is `!ref <entry>`, the same one every other reference
@@ -263,23 +304,31 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
         field: unknown,
       ): string | null => {
         if (field == null) return null;
-        if (isRefSentinel(field)) {
-          const source = field.source;
-          return source.startsWith("Self.") ? source.slice("Self.".length) : source;
-        }
+        if (isRefSentinel(field)) return refSentinelTarget(field)!.name;
         const nameTemplate =
           typeof field === "object" && !isCompiledValue(field)
             ? (field as { name?: unknown }).name
             : field;
         return nameTemplate
-          ? (definingContext.expandWith(nameTemplate, { self: getSelf() }) as string)
+          ? (definingContext.expandWith(nameTemplate, { self: declaredSelf() }) as string)
           : null;
       };
 
-      const invokeTarget = targetName(definition.invoke);
-      const runTarget = targetName(definition.run);
-      const mountTarget = targetName(definition.mount);
-      const provideTarget = targetName(definition.provide);
+      // The body this instance runs: the definition's, expanded by the instance
+      // at its first `init()` — until then the written one.
+      let body: Record<string, any> = definition as Record<string, any>;
+      let startTargets: string[] = [];
+      const invokeTargetName = () => targetName(body.invoke);
+      const runTargetName = () => targetName(body.run);
+      const mountTargetName = () => targetName(body.mount);
+      const provideTargetName = () => targetName(body.provide);
+      const requireTarget = (target: string | null, role: string): string => {
+        if (target) return target;
+        throw new Error(
+          `Template '${resource.metadata.name}': '${role}:' names no entry for this instance. ` +
+            `Available: ${describeAvailableTargets(definingContext, body.resources, getSelf())}.`,
+        );
+      };
 
       // The child scope is rooted on definingContext (so the template's internal
       // kinds/refs resolve against the defining library). Its *ownership*, though,
@@ -295,6 +344,11 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
         id: `${ctx.ownerPrefix}${resource.kind}.${resource.metadata.name}`,
       };
 
+      // The instance's CEL `resources`: the defining module's readings with the
+      // body's own entries over them. Instance-own, so two instances share nothing.
+      const bodyResources = new TemplateBodyResources();
+      childContext.layerResources?.(bodyResources, () => definingContext.context.resources);
+
       // Resolves the live instance of a dispatch target from the child context.
       // Every `resources:` entry is a persistent child created once at init(),
       // so the target is looked up — never re-created — per call.
@@ -303,7 +357,7 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
         if (!entry) {
           throw new Error(
             `Template '${resource.metadata.name}': '${role}:' targets '${target}' ` +
-              `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(definingContext, definition.resources, getSelf())}.`,
+              `but no entry in 'resources:' has that metadata.name. Available: ${describeAvailableTargets(definingContext, body.resources, getSelf())}.`,
           );
         }
         return entry;
@@ -323,19 +377,45 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
       const expand = (value: any, extra: Record<string, unknown>) =>
         definingContext.expandWith(definingContext.expandWith(value, extra), extra);
 
+      /** `definition` with its body expanded for this instance. */
+      const expandBody = (): Record<string, any> => {
+        const needsExpansion = hasConstructs || (Array.isArray(definition.targets) && definition.targets.length > 0);
+        if (!needsExpansion) return definition as Record<string, any>;
+        sitesOfDefinition ??= refPositions.expansionSitesOf(definition as Record<string, unknown>);
+        const expansion = expandTemplateInstance({
+          resource: resource as ResourceManifest,
+          definition: definition as unknown as ResourceDefinition,
+          sites: sitesOfDefinition,
+          analysis: refPositions.analysisContext(),
+          definingContext,
+          consumerContext: ctx.moduleContext as unknown as ModuleContext,
+          referenceSitesOf: (entry) => refPositions.referenceSitesOf(entry),
+          stampDeclaringModule,
+        });
+        const places = new Map<string, FamilyPlace>();
+        for (const family of expansion.families.values()) {
+          for (const member of family.members) places.set(member.name, { family: family.name, keys: member.keys });
+        }
+        bodyResources.declareFamilies(places);
+        return expansion.definition as unknown as Record<string, any>;
+      };
+
       // A local `!ref` inside a template body names a sibling `resources:` entry.
       // The entry carries the kind, so map each sibling's name to its kind —
       // used to stamp the ref's `{kind, name}` injection shape (an empty kind is
       // rejected downstream as a malformed inline resource).
       const siblingKinds = new Map<string, string>();
-      for (const template of definition.resources ?? []) {
-        const expandedName = definingContext.expandWith(template?.metadata?.name ?? "", {
-          self: getSelf(),
-        }) as string;
-        if (expandedName && typeof template?.kind === "string") {
-          siblingKinds.set(expandedName, template.kind);
+      const readSiblingKinds = () => {
+        siblingKinds.clear();
+        for (const template of body.resources ?? []) {
+          const expandedName = definingContext.expandWith(template?.metadata?.name ?? "", {
+            self: declaredSelf(),
+          }) as string;
+          if (expandedName && typeof template?.kind === "string") {
+            siblingKinds.set(expandedName, template.kind);
+          }
         }
-      }
+      };
 
       // A child is DECLARED by the defining library, so its kind and every
       // alias-qualified name in its body are written in that library's alias
@@ -400,6 +480,10 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
           // so a result resolved here would be converted as a literal.
           if (isWithinSlot(valueSlots, path)) return value;
           if (isDeferredPath(deferred, path) && referencesBeyondSelf(value)) return value;
+          // A read of `resources` may name a sibling entry, which exists only once
+          // the entries are created: the child's own creation evaluates it, in
+          // the context holding the body's record.
+          if (readsResources(value)) return value;
           // A pure `self.<path>` access (e.g. a `connection: !ref` passed down) is
           // resolved by navigating the resource directly. Going through CEL would
           // re-emit the value through CEL's output type-checker, which rejects live
@@ -424,18 +508,16 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
           // `resources.<name>.<field>` does. The pure-`self.<path>` form above
           // is navigated directly and still yields the instance itself, which is
           // what a ref slot passed straight through (`connection:`) needs.
-          return definingContext.expandWith(value, { self: celSelfView(getSelf()) });
+          return definingContext.expandWith(value, {
+            self: celSelfView(declaredSelf()),
+            ...closedBindingsOf(value),
+          });
         }
         if (isRefSentinel(value)) {
-          const source = value.source;
-          const dot = source.indexOf(".");
-          const alias = dot > 0 ? source.slice(0, dot) : undefined;
-          if (alias && alias !== "Self") {
-            const name = source.slice(dot + 1);
-            return resolvedReference(refKind(name, alias), name, alias);
-          }
-          const name = alias === "Self" ? source.slice(dot + 1) : source;
-          return resolvedReference(refKind(name), name);
+          const { name, alias } = refSentinelTarget(value)!;
+          return alias !== undefined
+            ? resolvedReference(refKind(name, alias), name, alias)
+            : resolvedReference(refKind(name), name);
         }
         if (Array.isArray(value)) {
           return value.map((item, i) =>
@@ -443,6 +525,8 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
           );
         }
         if (value !== null && typeof value === "object") {
+          // A live instance a forward handed in is a value, not a body to walk.
+          if (declarationOfInstance(value) !== undefined) return value;
           const out: Record<string, unknown> = {};
           for (const [k, v] of Object.entries(value)) {
             out[k] = expandSelf(
@@ -527,8 +611,11 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
               // call-time names its own controller binds. Bound as the
               // published-reading view, so `self.<ref>.<field>` answers exactly
               // as `resources.<name>.<field>` does.
-              childContext.bindContextValue?.("self", celSelfView(getSelf()));
-              for (const template of definition.resources ?? []) {
+              childContext.bindContextValue?.("self", celSelfView(declaredSelf()));
+              body = expandBody();
+              startTargets = templateTargetsOf(body).map((t) => t.name);
+              readSiblingKinds();
+              for (const template of body.resources ?? []) {
                 const entry = stampDeclaringModule(template);
                 // An expression at or above one of the ENTRY's reference slots
                 // is refused before `expandSelf` evaluates it: CEL values are
@@ -540,7 +627,7 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
                 refuseComputedRefSlots(
                   `Template '${resource.kind}/${resource.metadata.name}': the ` +
                     `${entry?.kind} entry '${entry?.metadata?.name}'`,
-                  refPositions?.referencePositionsOf(entry as ResourceManifest) ?? [],
+                  (view ?? refPositions).referencePositionsOf(entry as ResourceManifest),
                   { forwardable: true },
                 );
                 const nested = nestedKindReading(template?.kind);
@@ -565,22 +652,24 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
             return { result: undefined, inverse: () => childContext.teardownResources() };
           }),
 
-        ...(invokeTarget && {
+        ...(definition.invoke != null && {
           invoke: async (inputs: any) => {
+            const invokeTarget = requireTarget(invokeTargetName(), "invoke");
             const entry = dispatchEntry(invokeTarget, "invoke");
             if (!entry.instance?.invoke) {
               throw capabilityError(entry, invokeTarget, "invoke", "Telo.Invocable");
             }
             const invokeInputs =
-              definition.inputs != null ? expand(definition.inputs, { self: celSelfView(getSelf()), inputs }) : inputs;
+              body.inputs != null ? expand(body.inputs, { self: celSelfView(declaredSelf()), inputs }) : inputs;
             const raw = await entry.instance.invoke(invokeInputs);
-            if (definition.result == null) return raw;
-            return expand(definition.result, { self: celSelfView(getSelf()), result: raw });
+            if (body.result == null) return raw;
+            return expand(body.result, { self: celSelfView(declaredSelf()), result: raw });
           },
         }),
 
-        ...(runTarget && {
+        ...(definition.run != null && {
           run: async () => {
+            const runTarget = requireTarget(runTargetName(), "run");
             const entry = dispatchEntry(runTarget, "run");
             if (!entry.instance?.run) {
               throw capabilityError(entry, runTarget, "run", "Telo.Runnable");
@@ -595,7 +684,7 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
         // the ENTRY's own effect frame, which the child context's teardown
         // unwinds. So every target stays up for as long as the instance does,
         // exactly as an Application's `targets:` do.
-        ...(startTargets.length > 0 && {
+        ...(hasTargets && {
           run: async (invokeCtx?: InvokeContext) => {
             for (const name of startTargets) {
               dispatchEntry(name, "targets");
@@ -604,8 +693,9 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
           },
         }),
 
-        ...(provideTarget && {
+        ...(definition.provide != null && {
           provide: async () => {
+            const provideTarget = requireTarget(provideTargetName(), "provide");
             const entry = dispatchEntry(provideTarget, "provide");
             const target = entry.instance as
               | { invoke?: (inputs: unknown) => unknown; provide?: () => unknown }
@@ -613,11 +703,11 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
             let raw: unknown;
             if (target?.invoke) {
               const provideInputs: any =
-                definition.inputs != null ? expand(definition.inputs, { self: celSelfView(getSelf()) }) : {};
+                body.inputs != null ? expand(body.inputs, { self: celSelfView(declaredSelf()) }) : {};
               raw = await target.invoke(provideInputs);
             } else if (target?.provide) {
               // `provide()` is parameterless, so there is nowhere for `inputs:` to go.
-              if (definition.inputs != null) {
+              if (body.inputs != null) {
                 throw new Error(
                   `Template '${resource.metadata.name}': 'provide:' target ` +
                     `'${entry?.resource?.kind ?? "<unknown-kind>"}/${provideTarget}' is a ` +
@@ -630,17 +720,18 @@ refPositions?: RefPositionHost & { readonly shapeLookup?: NamedShapeLookup }): C
             } else {
               throw capabilityError(entry, provideTarget, "provide", "Telo.Invocable or Telo.Provider");
             }
-            if (definition.result == null) return raw;
-            return expand(definition.result, { self: celSelfView(getSelf()), result: raw });
+            if (body.result == null) return raw;
+            return expand(body.result, { self: celSelfView(declaredSelf()), result: raw });
           },
         }),
 
-        ...(mountTarget && {
+        ...(definition.mount != null && {
           // `register(...)` is the Telo.Mount contract a consuming transport
           // calls (`Http.Server`: `app, prefix, requestScope`). It is not on the
           // base ResourceInstance type, so the persistent mount child is accessed
           // structurally, and every argument is forwarded as the transport gave it.
           register: (...args: unknown[]) => {
+            const mountTarget = requireTarget(mountTargetName(), "mount");
             const entry = dispatchEntry(mountTarget, "mount");
             const mountable = entry.instance as { register?: (...args: unknown[]) => unknown };
             if (typeof mountable.register !== "function") {

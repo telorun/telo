@@ -1,0 +1,46 @@
+kind: Telo.Library
+metadata:
+  name: CrossingLib
+imports:
+  Http: ../../../../../modules/http-server
+exports:
+  kinds: [Holder, Switched]
+  resources: [shared]
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    mode: { type: string, enum: [x, y], x-telo-eval: compile }
+resources:
+  - kind: Http.Api
+    metadata: { name: api }
+    routes: []
+run: !ref api
+---
+kind: Self.Holder
+metadata:
+  name: shared
+mode: y
+---
+kind: Telo.Definition
+metadata:
+  name: Switched
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    target: { x-telo-ref: { kind: Self.Holder, use: dependency } }
+resources:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen:
+      port: !if
+        if: !cel "self.target.mode == 'x'"
+        then: 8080
+        else: 8081
+    mounts: []
+targets: [!ref server]

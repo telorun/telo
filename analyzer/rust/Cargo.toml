@@ -8,7 +8,8 @@ description = "Telo manifest loading, reference resolution and the schema slot r
 
 [dependencies]
 serde = "1"
-serde_json = "1"
+# Manifest key order is part of what a manifest says, and what the Node half keeps.
+serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
 sha2 = "0.10"
 telo-templating = { path = "../../templating/rust" }

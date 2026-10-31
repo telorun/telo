@@ -14,6 +14,7 @@
  * Browser-safe: no Node built-ins.
  */
 import { CONTEXT_EVAL, contextEvalModes } from "./context-eval.js";
+import { READS_SLOT_SCOPES, type ReadReporter } from "./read-place.js";
 
 export const CONTEXT_FROM_REFERRER = "x-telo-context-from-referrer";
 
@@ -83,3 +84,7 @@ export function fromReferrerProblem(
   }
   return undefined;
 }
+
+/** What `x-telo-context-from-referrer` reads: every declaration referencing the
+ *  resource, whose scope at each referencing slot types the binding. */
+export const fromReferrerReads: ReadReporter = () => [{ kind: "referrers", reads: READS_SLOT_SCOPES }];

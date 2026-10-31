@@ -1,0 +1,53 @@
+# A templated kind whose `targets:` names an entry that exists only in some
+# combinations of two unrelated conditions, and one repeating over a map.
+kind: Telo.Library
+metadata:
+  name: TemplateInitLib
+exports:
+  kinds: [Unrelated, Hooks]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Unrelated
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    a: { type: integer }
+    b: { type: integer }
+resources:
+  - !if
+    metadata: { name: other }
+    if: !cel "self.a < self.b"
+    then:
+      kind: Run.Sequence
+      steps:
+        - { name: noop, value: 1 }
+targets:
+  - !if
+    if: !cel "self.a >= self.b"
+    then: !ref other
+---
+kind: Telo.Definition
+metadata:
+  name: Hooks
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    hooks:
+      type: object
+      additionalProperties: { type: object }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: body }
+    steps:
+      - name: names
+        value:
+          - !for-each
+            in: !cel "self.hooks"
+            as: hook
+            emit: !cel "hook.key"
+targets: [!ref body]

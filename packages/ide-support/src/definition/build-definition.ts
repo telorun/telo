@@ -1,5 +1,7 @@
 import {
   CelParseError,
+  buildLineOffsets,
+  offsetToPosition,
   parseToAst,
   type AstDocument,
   type AstScalar,
@@ -19,6 +21,7 @@ import { locateImport, moduleForFile } from "./manifest-navigation.js";
 import { resolveCelTarget } from "./resolve-cel-target.js";
 import { isKindSlot, resolveKindTarget } from "./resolve-kind-target.js";
 import { resolveRefTarget } from "./resolve-ref-target.js";
+import { forEachLoops, loopBinding, readRefScalar } from "../repeats/for-each.js";
 
 /** Resolve the symbol under the cursor to where it is declared.
  *
@@ -79,12 +82,56 @@ export function buildDefinition(
   const node = resolved.node;
   if (resolved.slot !== "value" || node?.kind !== "scalar") return undefined;
 
+  if (node.tag === "!ref") {
+    return refTarget(text, node as AstScalar, resolved.offset, astDocs[resolved.docIndex]!, graph, currentModule, currentFilePath);
+  }
+
   const split = splitAliasQualified(text, node as AstScalar, resolved.offset);
   if (!split) return undefined;
 
-  if (node.tag === "!ref") return resolveRefTarget(graph, currentModule, split);
   if (isKindSlot(resolved)) return resolveKindTarget(graph, currentModule, split);
   return undefined;
+}
+
+/** A `!ref` under the cursor, read as the engine's verdict: an index's binding
+ *  goes to the loop declaring it (its `as:`, else its tag), a family's head to
+ *  the family's tag, anything else as the name or alias it holds. */
+function refTarget(
+  text: string,
+  scalar: AstScalar,
+  offset: number,
+  doc: AstDocument,
+  graph: LoadedGraph,
+  currentModule: LoadedModule,
+  currentFilePath: string,
+): DefinitionResult | undefined {
+  const reading = readRefScalar(scalar, text);
+  if (!reading) return undefined;
+  const lineOffsets = buildLineOffsets(text);
+  const locate = (span: [number, number]): DefinitionResult => ({
+    uri: currentFilePath,
+    range: { start: offsetToPosition(span[0], lineOffsets), end: offsetToPosition(span[1], lineOffsets) },
+  });
+  const loops = forEachLoops(doc);
+
+  // `[binding.member]` of each index, brackets included.
+  const index = reading.bindings.findIndex(
+    (span, i) => offset >= span[0] - 1 && offset <= span[1] + reading.indexes[i]!.member.length + 2,
+  );
+  if (index >= 0) {
+    const loop = loopBinding(loops, reading.indexes[index]!.binding, scalar.range[0]);
+    if (!loop) return undefined;
+    return locate(loop.asRange ?? [loop.map.range[0], loop.map.range[0]]);
+  }
+
+  const inDocument = reading.indexes.length > 0 ? loops.find((l) => l.family?.name === reading.name) : undefined;
+  if (inDocument?.family) return locate(inDocument.family.range);
+  const alias = reading.alias;
+  return resolveRefTarget(graph, currentModule, {
+    ...(alias !== undefined ? { alias } : {}),
+    name: reading.name,
+    onAlias: alias !== undefined && offset < reading.head[0],
+  });
 }
 
 const NOT_A_MODULE_CALL = Symbol("not a module call");

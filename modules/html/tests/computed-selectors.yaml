@@ -42,11 +42,11 @@ source: ./__fixtures__/computed-not-text.yaml
 expect:
   errors:
     - code: CEL_TYPE_ERROR
-      message: "'fields.top.selector' returns 'int'"
+      message: "'steps[1].invoke.fields.top.selector' returns 'int'"
     - code: CEL_TYPE_ERROR
-      message: "'fields.link.attr' returns 'int'"
+      message: "'steps[1].invoke.fields.link.attr' returns 'int'"
     - code: CEL_TYPE_ERROR
-      message: "'fields.a.fields.c.selector' returns 'int'"
+      message: "'steps[1].invoke.fields.a.fields.c.selector' returns 'int'"
 ---
 kind: Assert.Manifest
 metadata: { name: dynComputedSelectorNotText }

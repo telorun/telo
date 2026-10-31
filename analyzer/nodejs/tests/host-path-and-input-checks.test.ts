@@ -112,6 +112,11 @@ describe("a module input declaration", () => {
     expect(analyze({ k: bytes }, {}).map((d) => d.code)).toEqual(["DEFAULT_INVALID"]);
   });
 
+  it("admits `default: null` whatever the type, declaring the input may be absent", () => {
+    expect(analyze({ n: { env: "N", type: "string", default: null } }, {})).toEqual([]);
+    expect(analyze({ db: { ...PATH_VARIABLE, default: null } }, {})).toEqual([]);
+  });
+
   it("leaves a default holding a tag at any depth to the tag's own finding", () => {
     const nested = {
       env: "O",

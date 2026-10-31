@@ -1,0 +1,40 @@
+# Choices nothing decides: one undecidable declaration referenced from outside
+# it, and a selector one configuration matches no case of. Each is reported by
+# its own refusal alone.
+kind: Telo.Application
+metadata:
+  name: StandIn
+imports:
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  Run: ../../../modules/run
+variables:
+  name:
+    env: NAME
+    type: string
+    default: sqlite
+  mode:
+    env: MODE
+    type: string
+    enum: [a, b]
+    default: a
+--- !switch
+metadata: { name: db }
+switch: !cel "variables.name"
+cases:
+  memory: { kind: Run.Value, value: 1 }
+  sqlite: { kind: SQLite.Connection, file: ":memory:" }
+---
+kind: Sql.Query
+metadata:
+  name: listNotes
+connection: !ref db
+sql: SELECT 1
+---
+kind: Run.Value
+metadata:
+  name: partial
+value: !switch
+  switch: !cel "variables.mode"
+  cases:
+    a: 1

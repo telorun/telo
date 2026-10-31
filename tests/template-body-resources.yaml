@@ -1,0 +1,127 @@
+kind: Telo.Application
+metadata:
+  name: TemplateBodyResourcesTest
+  version: 1.0.0
+  description: >-
+    Inside a template instance the CEL `resources` record holds the body's own
+    entries over the defining module's readings: a family is a map by element
+    key, a plain sibling shadows a module resource of the same name exactly as
+    its `!ref` does, and a reading republished after a member runs is seen on the
+    next read.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+  Kinds: ./__fixtures__/check-run-agreement/scope-members/kinds
+targets:
+  - !ref tally
+  - !ref test
+---
+kind: Kinds.Counter
+metadata: { name: tally }
+---
+kind: Telo.Definition
+metadata: { name: Pipeline }
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [jobs]
+  properties:
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+resources:
+  - !for-each
+    metadata: { name: counters }
+    in: !cel "self.jobs"
+    emit:
+      kind: Kinds.Counter
+  - kind: Kinds.Counter
+    metadata: { name: tally }
+  - kind: Run.Sequence
+    metadata: { name: pipeline }
+    steps:
+      - !for-each
+        name: ran
+        in: !cel "self.jobs"
+        emit:
+          invoke: !ref counters[each.key]
+      - name: runTally
+        invoke: !ref tally
+      - name: afterOne
+        value: !cel "resources.tally.status.runs"
+      - name: runTallyAgain
+        invoke: !ref tally
+      - !for-each
+        name: seen
+        in: !cel "self.jobs"
+        emit:
+          value: !cel "resources.counters[each.key].status.runs"
+    outputs:
+      afterOne: !cel "steps.afterOne.result"
+      afterTwo: !cel "resources.tally.status.runs"
+      seen: !cel "steps.seen"
+invoke: !ref pipeline
+---
+kind: Telo.Definition
+metadata: { name: Listing }
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [names]
+  properties:
+    names:
+      type: array
+      items: { type: string }
+resources:
+  - !for-each
+    metadata: { name: slots }
+    in: !cel "self.names"
+    emit:
+      kind: Kinds.Counter
+  - kind: Run.Sequence
+    metadata: { name: listing }
+    steps:
+      - !for-each
+        name: ran
+        in: !cel "self.names"
+        emit:
+          invoke: !ref slots[each.index]
+      - name: both
+        value: !cel "resources.slots[0].status.runs + resources.slots[1].status.runs"
+    outputs:
+      both: !cel "steps.both.result"
+invoke: !ref listing
+---
+kind: Self.Pipeline
+metadata: { name: pipeline }
+jobs:
+  alpha: {}
+  beta: {}
+---
+kind: Self.Listing
+metadata: { name: listing }
+names: [x, y]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: run
+    invoke: !ref pipeline
+  - name: runListing
+    invoke: !ref listing
+  - name: checkListing
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.runListing.result"
+      expected: { both: 2 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.run.result"
+      expected:
+        afterOne: 1
+        afterTwo: 2
+        seen:
+          alpha: { result: 1 }
+          beta: { result: 1 }

@@ -57,7 +57,56 @@ read by field, or taken whole at a reference slot of a kind that consumes it,
 whose controller opens it with `ctx.resolveNeed` — see
 [A kind that consumes and verifies a need](/extend/consuming-needs). An optional
 need may be absent, so a `!ref` to one at any kind's reference slot is
-`NEED_OPTIONAL_REFERENCED`.
+`NEED_OPTIONAL_REFERENCED` — except inside the branch of an `!if` that proves it
+present.
+
+## Choosing by whether a need is supplied
+
+An optional need's presence can decide a choice: `!cel "resources.<need> != null"`
+(or `== null`) in an `!if` condition is a dimension of the configurations the
+application is checked in, `present` or `absent`. Inside the branch that proves it
+present the need is non-null — its fields read with no guard, and a `!ref` to it is
+legal:
+
+```yaml
+--- !if
+metadata: { name: store }
+if: !cel "resources.databaseAccess != null"
+then:
+  kind: Postgres.Connection
+  access: !ref databaseAccess
+else:
+  kind: SQLite.Connection
+  file: !cel "resources.data.path.joinPath('app.db')"
+```
+
+A member a need type's field binds to a closed argument is a dimension too:
+`!cel "resources.databaseAccess.url.scheme"` where the field's `Telo.Url` declares
+`scheme: { enum: [...] }`. Any other member (`…url.host`) is decided only at boot,
+so a condition reading it is `BRANCH_UNDECIDABLE`.
+
+The dimension is keyed by the need's path whoever reads it: `resources.databaseAccess`
+for a module's own need, `resources.Orders.databaseAccess` in an application
+importing the library as `Orders` and leaving the need to its environment — the
+key `telo check`'s labels (`(when resources.Orders.databaseAccess is absent)`),
+`Kernel.Starting` and the needs report use. An import supplying the need — a
+fulfilment, or field by field — makes it present in every configuration; one
+forwarding an optional need of the application whole makes it that need's
+dimension. The kernel reads the need from the environment before it expands the
+documents, so a partial supply is `ERR_NEED_PARTIALLY_SUPPLIED` before anything
+exists.
+
+What the choice leaves out is not needed. In the example, `data` is read only in
+the `else:` branch, so it is **required only where `databaseAccess` is absent**:
+with `DATABASE_URL` set the application starts without it, and with neither set
+it is `ERR_NEED_UNMET` naming only `data`'s variable. A need that is not optional
+is required in exactly the configurations its fields' reads, its `!ref`s or an
+import forwarding it reach — a library's need where the library's own documents
+reach it, through every import between it and the application — and one no
+configuration reaches is never required. `telo needs report` gives each need's
+`requiredWhen` (`[{ "resources.databaseAccess": "absent" }]`) with the
+`dimensions` it is keyed by, and `telo run <app> --help` says `required when
+DATABASE_URL is unset`.
 
 ## Constraints are verified, never just stated
 
@@ -151,7 +200,9 @@ loads, before any resource initializes — one environment variable per field,
 named after its path: `TELO_NEED_ORDERS__DATABASE_ACCESS__URL` for the `url`
 field of `Orders.databaseAccess`. A required need with none of its variables set
 is refused with `ERR_NEED_UNMET`, naming the path, the need type, the declaring
-module and every variable to set. An optional one reads `null`.
+module and every variable to set — when the configuration the application starts
+in needs it (above). An optional one, and one that configuration does not need,
+reads `null`.
 
 The name rule, precedence and the rest of the environment door are in
 [Providing needs](/learn/providing-needs).

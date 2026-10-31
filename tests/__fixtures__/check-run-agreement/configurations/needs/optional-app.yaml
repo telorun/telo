@@ -1,0 +1,10 @@
+# Imports the library above with its need supplied: the library's refusal is
+# reported at the import, and the run fails with its twin.
+kind: Telo.Application
+metadata:
+  name: NeedReferencedByBranchConsumer
+imports:
+  Lib:
+    source: ./optional-lib
+    needs:
+      access: { url: "mem://lib" }

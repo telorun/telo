@@ -1,0 +1,292 @@
+kind: Telo.Application
+metadata:
+  name: TemplateExpansionTest
+  version: 1.0.0
+  description: >-
+    A templated kind's body is expanded per instance at `init()`: a splice adds
+    one entry per element in order, a choice reads `self` through the
+    declaration it crosses, a repeat in `targets:` starts one entry per element
+    in declaration order, and an inline declaration an emitted item holds is
+    created with its siblings.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref test
+  - !ref pipeline
+  - !ref pipelineRuns
+---
+# A splice beside a literal key, the key read off each element.
+kind: Telo.Definition
+metadata:
+  name: Columns
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    fields:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          type: { type: string, enum: [integer, text] }
+resources:
+  - kind: Run.Value
+    metadata: { name: columns }
+    value:
+      id: integer
+      ...: !for-each
+        in: !cel "self.fields"
+        key: !cel "each.key"
+        emit: !cel "each.value.type"
+invoke: !ref columns
+---
+kind: Self.Columns
+metadata: { name: columns }
+fields:
+  name: { type: text }
+  age: { type: integer }
+---
+# A choice reads a value through the reference the instance holds: the
+# referenced declaration's `mode` is `y`, whatever it publishes.
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    mode: { type: string, enum: [x, y], default: x }
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value: ok
+invoke: !ref value
+---
+kind: Self.Holder
+metadata: { name: holderY }
+mode: y
+---
+kind: Self.Holder
+metadata: { name: holderDefault }
+---
+kind: Telo.Definition
+metadata:
+  name: Switched
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    target: { x-telo-ref: { kind: Self.Holder, use: dependency } }
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value: !if
+      if: !cel "self.target.mode == 'x'"
+      then: chose-x
+      else: chose-other
+invoke: !ref value
+---
+kind: Self.Switched
+metadata: { name: switchedY }
+target: !ref holderY
+---
+kind: Self.Switched
+metadata: { name: switchedDefault }
+target: !ref holderDefault
+---
+# A repeat over a list of references crosses each into its declaration: the
+# columns each table declares, in table order.
+kind: Telo.Definition
+metadata:
+  name: Table
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    columns:
+      type: array
+      items: { type: string }
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value: ok
+invoke: !ref value
+---
+kind: Telo.Definition
+metadata:
+  name: Catalog
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    tables:
+      type: array
+      items: { x-telo-ref: { kind: Self.Table, use: dependency } }
+resources:
+  - kind: Run.Value
+    metadata: { name: names }
+    value:
+      - !for-each
+        in: !cel "self.tables"
+        as: table
+        emit:
+          - !for-each
+            in: !cel "table.value.columns"
+            as: column
+            emit: !cel "column.value"
+invoke: !ref names
+---
+kind: Self.Table
+metadata: { name: users }
+columns: [id, email]
+---
+kind: Self.Table
+metadata: { name: posts }
+columns: [id, title]
+---
+kind: Self.Catalog
+metadata: { name: catalog }
+tables: [!ref users, !ref posts]
+---
+# A choice reads the declaration a reference names as it was written: `Wrapped`
+# is a child of `Run.Detach`, so what it PUBLISHES is its parent's reading, which
+# holds no `mode` — the declaration does.
+kind: Telo.Definition
+metadata:
+  name: Wrapped
+extends: Run.Detach
+schema:
+  type: object
+  required: [target]
+  properties:
+    target: { x-telo-ref: { kind: Telo.Invocable, use: detached } }
+    mode: { type: string, enum: [x, y] }
+base:
+  invoke: !cel "self.target"
+---
+kind: Self.Wrapped
+metadata: { name: wrapped }
+target: !ref columns
+mode: y
+---
+kind: Telo.Definition
+metadata:
+  name: Reads
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    wrapped: { x-telo-ref: { kind: Self.Wrapped, use: dependency } }
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value: !if
+      if: !cel "self.wrapped.mode == 'y'"
+      then: declared
+      else: other
+invoke: !ref value
+---
+kind: Self.Reads
+metadata: { name: reads }
+wrapped: !ref wrapped
+---
+# A splice key reads a member of the declaration each element names: `mode` is
+# declared by `wrapped`, whose published reading holds none.
+kind: Telo.Definition
+metadata:
+  name: Keyed
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    items:
+      type: array
+      items: { x-telo-ref: { kind: Self.Wrapped, use: dependency } }
+resources:
+  - kind: Run.Value
+    metadata: { name: value }
+    value:
+      fixed: 0
+      ...: !for-each
+        in: !cel "self.items"
+        key: !cel "each.value.mode"
+        emit: 1
+invoke: !ref value
+---
+kind: Self.Keyed
+metadata: { name: keyed }
+items: [!ref wrapped]
+---
+# Emitted entries are started in declaration order, one per element.
+kind: Telo.Definition
+metadata:
+  name: Pipeline
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    stages:
+      type: array
+      items: { type: string }
+targets:
+  - !for-each
+    in: !cel "self.stages"
+    as: stage
+    emit:
+      kind: Run.Sequence
+      steps:
+        - name: stage
+          value: !cel "stage.value"
+---
+kind: Self.Pipeline
+metadata: { name: pipeline }
+stages: [prepare, build, publish]
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: columns
+    invoke: !ref columns
+  - name: switchedY
+    invoke: !ref switchedY
+  - name: switchedDefault
+    invoke: !ref switchedDefault
+  - name: catalog
+    invoke: !ref catalog
+  - name: reads
+    invoke: !ref reads
+  - name: keyed
+    invoke: !ref keyed
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        catalog: !cel "steps.catalog.result"
+        reads: !cel "steps.reads.result"
+        keyed: !cel "steps.keyed.result"
+        columns: !cel "steps.columns.result"
+        y: !cel "steps.switchedY.result"
+        byDefault: !cel "steps.switchedDefault.result"
+      expected:
+        catalog: [id, email, id, title]
+        reads: declared
+        keyed: { fixed: 0, y: 1 }
+        columns: { id: integer, name: text, age: integer }
+        y: chose-other
+        byDefault: chose-x
+---
+kind: Assert.Events
+metadata: { name: pipelineRuns }
+filter:
+  - type: "*.Run"
+expect:
+  - event: "targets_0_emit[0].Run"
+    times: 1
+  - event: "targets_0_emit[1].Run"
+    times: 1
+  - event: "targets_0_emit[2].Run"
+    times: 1
+  - event: "targets_0_emit[0].Run"
+  - event: "targets_0_emit[1].Run"
+  - event: "targets_0_emit[2].Run"

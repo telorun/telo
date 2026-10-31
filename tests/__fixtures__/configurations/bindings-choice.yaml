@@ -1,0 +1,18 @@
+# An expression reads a binding a choice declares: the read is refused only
+# where the binding is left out.
+kind: Telo.Application
+metadata:
+  name: BindingsChoice
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+---
+kind: Run.Value
+metadata:
+  name: shaped
+bindings:
+  x: !if
+    if: !cel "variables.flag1"
+    then: !cel "1"
+value: !cel "x + 1"

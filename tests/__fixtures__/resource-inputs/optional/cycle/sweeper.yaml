@@ -1,0 +1,21 @@
+# A step of a sequence handed to the library calls the library's export: a step
+# runs after boot, so this is no cycle.
+kind: Telo.Application
+metadata:
+  name: SweeperCaller
+  version: 1.0.0
+imports:
+  Run: ../../../../../modules/run
+  Lib:
+    source: ./sweeper
+    resources:
+      caller: !ref caller
+targets:
+  - !ref caller
+---
+kind: Run.Sequence
+metadata:
+  name: caller
+steps:
+  - name: sweep
+    invoke: !ref Lib.sweep

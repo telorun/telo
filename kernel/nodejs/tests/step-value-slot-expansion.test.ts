@@ -33,6 +33,16 @@ const sequenceKind = {
 
 const definitionOf = (kind: string) => (kind === "Lib.Sequence" ? sequenceKind : undefined);
 
+const templateHost = {
+  referencePositionsOf: () => [],
+  shapeLookup: () => undefined,
+  expansionSitesOf: () => new Map(),
+  referenceSitesOf: () => [],
+  analysisContext: () => {
+    throw new Error("a body with no construct is not expanded");
+  },
+} as any;
+
 describe("template body expansion of a step's `value:`", () => {
   it("leaves an expression in a `value:` slot compiled, in the entry and in a `with:` member", async () => {
     const whole = selfRatio();
@@ -73,7 +83,7 @@ describe("template body expansion of a step's `value:`", () => {
           ],
         },
       ],
-    });
+    }, templateHost);
 
     const instance = await controller.create!(
       { kind: "Lib.Scale", metadata: { name: "scale" }, ratio: 3 } as any,

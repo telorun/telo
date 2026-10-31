@@ -1,0 +1,35 @@
+# A step read names a step every configuration holds, and another read
+# misspells it. `first` is an int where flag1 holds and a string elsewhere;
+# `second` and `third` are there only where flag2 and flag3 hold. The misspelled
+# read is refused everywhere, listing the step names each configuration
+# declares; the read of `first` depends on flag1 alone.
+kind: Telo.Application
+metadata:
+  name: StepNameMiss
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+  flag3: { env: FLAG_3, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - !if
+    if: !cel "variables.flag1"
+    then: { name: first, value: 1 }
+    else: { name: first, value: "one" }
+  - !if
+    if: !cel "variables.flag2"
+    then: { name: second, value: 2 }
+  - !if
+    if: !cel "variables.flag3"
+    then: { name: third, value: 3 }
+  - name: reader
+    value: !cel "steps.first.result"
+  - name: misser
+    value: !cel "steps.frist.result"

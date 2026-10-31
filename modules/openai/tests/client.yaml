@@ -48,6 +48,11 @@ with:
           method: POST
           schema:
             body: { type: object, additionalProperties: true }
+            headers:
+              type: object
+              properties:
+                authorization: { type: string }
+                openai-organization: { type: string }
         handler: !ref noop
         returns:
           - status: 200

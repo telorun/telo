@@ -1,0 +1,13 @@
+# A constant condition: its dead branch is still checked, and what is found
+# there holds in no configuration.
+kind: Telo.Application
+metadata:
+  name: DeadBranch
+  version: 1.0.0
+imports:
+  Backends: ./backends
+--- !if
+metadata: { name: store }
+if: !cel "module.version == '1.0.0'"
+then: { kind: Backends.First }
+else: { kind: Backends.Second, colour: blue }

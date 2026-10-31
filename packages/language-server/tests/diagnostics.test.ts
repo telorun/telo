@@ -60,6 +60,22 @@ describe("published diagnostics", () => {
     expect(engine.sort()).toEqual(teloCheck(entry).map((d) => row(d as never)).sort());
   });
 
+  it("publishes data.configurations exactly as telo check -o json reports them", async () => {
+    const entry = "tests/__fixtures__/configurations/dialect.yaml";
+    const host = new HarnessHost();
+    await host.start();
+    const path = join(REPO, entry);
+    host.open(path);
+    await host.published(path);
+
+    const published = (host.diagnostics().get(path) ?? []).map(
+      (d) => (d.data as { configurations?: unknown } | undefined)?.configurations,
+    );
+    const checked = teloCheck(entry).map((d) => d.configurations);
+    expect(published).toEqual([[{ "variables.dialect": "memory" }], [{ "variables.dialect": "memory" }]]);
+    expect(published.sort()).toEqual(checked.sort());
+  });
+
   // A module is analysed as a whole, so an edit to its owner can change what a
   // partial reports — and the partial's diagnostics are republished even though
   // nothing was typed into it.

@@ -1,0 +1,37 @@
+# A constant condition whose dead branch declares the target a step there
+# invokes: the step's result is typed from that target, as the configuration
+# reaching the choice holds it with the branch taken.
+kind: Telo.Application
+metadata:
+  name: DeadBranchTarget
+  version: 1.0.0
+imports:
+  Run: ../../../modules/run
+targets:
+  - !ref main
+--- !if
+metadata: { name: main }
+if: !cel "module.version == '1.0.0'"
+then:
+  kind: Run.Sequence
+  steps:
+    - name: idle
+      value: 1
+else:
+  kind: Run.Sequence
+  with:
+    - kind: Run.Value
+      metadata: { name: target }
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          additionalProperties: false
+          properties:
+            x: { type: integer }
+      value: { x: 1 }
+  steps:
+    - name: call
+      invoke: !ref target
+    - name: read
+      value: !cel "steps.call.result.y"

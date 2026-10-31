@@ -47,8 +47,7 @@ targets:
   - !ref unroutedPageAtRuntime
 ---
 kind: Assert.Manifest
-metadata:
-  name: computedChildren
+metadata: { name: computedChildren }
 source: ./__fixtures__/invalid/computed-children/lib/telo.yaml
 expect:
   errors:
@@ -56,16 +55,14 @@ expect:
       message: "'children: !cel \"[]\"' computes a value that holds the reference slot"
 ---
 kind: Assert.Manifest
-metadata:
-  name: computedChildrenAtRuntime
+metadata: { name: computedChildrenAtRuntime }
 source: ./__fixtures__/invalid/computed-children/telo.yaml
 expect:
   errors: []
   runFails: "ERR_REF_SLOT_COMPUTED"
 ---
 kind: Assert.Manifest
-metadata:
-  name: duplicatePath
+metadata: { name: duplicatePath }
 source: ./__fixtures__/invalid/duplicate-path/lib/telo.yaml
 expect:
   errors:
@@ -75,27 +72,24 @@ expect:
       message: "UiReact.App/twice at 'pages[1]': declares a path another page already has"
 ---
 kind: Assert.Manifest
-metadata:
-  name: duplicatePathAtRuntime
+metadata: { name: duplicatePathAtRuntime }
 source: ./__fixtures__/invalid/duplicate-path/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.App 'twice': 'pages[1]' declares a path another page already has ('/reports')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: offsiteReferences
+metadata: { name: offsiteReferences }
 source: ./__fixtures__/invalid/app-relative/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Ui.Page/offsitePath_pages_0: /path must match pattern"
+      message: "UiReact.App/offsitePath: /pages/0/path must match pattern"
     - code: SCHEMA_VIOLATION
-      message: "Ui.Page/offsiteLink_pages_0: /children/0/href must match pattern"
+      message: "UiReact.App/offsiteLink: /pages/0/children/0/href must match pattern"
 ---
 kind: Run.Sequence
-metadata:
-  name: ruleRuns
+metadata: { name: ruleRuns }
 steps:
   - name: check
     invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/app/telo.yaml }
@@ -106,19 +100,17 @@ steps:
       expected: { loadError: null, codes: [] }
 ---
 kind: Assert.Manifest
-metadata:
-  name: pageRoots
+metadata: { name: pageRoots }
 source: ./__fixtures__/invalid/page-roots/telo.yaml
 expect:
   errors:
     - code: CEL_UNKNOWN_IDENTIFIER
-      message: "Ui.Page/mixed_pages_0: !cel: unknown identifier 'request'"
+      message: "UiReact.App/mixed: !cel: unknown identifier 'request'"
     - code: CEL_UNKNOWN_IDENTIFIER
-      message: "Ui.Page/mixed_pages_0: !cel: unknown identifier 'query'"
+      message: "UiReact.App/mixed: !cel: unknown identifier 'query'"
 ---
 kind: Assert.Manifest
-metadata:
-  name: headerRoots
+metadata: { name: headerRoots }
 source: ./__fixtures__/invalid/header-roots/telo.yaml
 expect:
   errors:
@@ -128,8 +120,7 @@ expect:
       message: "UiReact.App/headed: !cel: 'query' is not defined"
 ---
 kind: Assert.Manifest
-metadata:
-  name: themeControlDuplicate
+metadata: { name: themeControlDuplicate }
 source: ./__fixtures__/invalid/theme-control-duplicate/lib/telo.yaml
 expect:
   errors:
@@ -139,16 +130,14 @@ expect:
       message: "UiReact.Theme/doubled at 'controls[1]': implements a control another entry of controls implements too"
 ---
 kind: Assert.Manifest
-metadata:
-  name: themeControlDuplicateAtRuntime
+metadata: { name: themeControlDuplicateAtRuntime }
 source: ./__fixtures__/invalid/theme-control-duplicate/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.Theme 'doubled': 'controls[1]' (UiReact.Controls 'checkboxes') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'controls') already implements"
 ---
 kind: Assert.Manifest
-metadata:
-  name: themeControlEqual
+metadata: { name: themeControlEqual }
 source: ./__fixtures__/invalid/theme-control-equal/lib/telo.yaml
 expect:
   errors:
@@ -158,16 +147,14 @@ expect:
       message: "UiReact.Theme/equal at 'controls[1]': implements a control another entry of controls implements too"
 ---
 kind: Assert.Manifest
-metadata:
-  name: themeControlEqualAtRuntime
+metadata: { name: themeControlEqualAtRuntime }
 source: ./__fixtures__/invalid/theme-control-equal/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.Theme 'equal': 'controls[1]' (UiReact.Controls 'controls') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'controls') already implements"
 ---
 kind: Assert.Manifest
-metadata:
-  name: themeControlShared
+metadata: { name: themeControlShared }
 source: ./__fixtures__/invalid/theme-control-shared/lib/telo.yaml
 expect:
   errors:
@@ -177,16 +164,14 @@ expect:
       message: "UiReact.Theme/aliased at 'controls[1]': implements a control another entry of controls implements too"
 ---
 kind: Assert.Manifest
-metadata:
-  name: themeControlSharedAtRuntime
+metadata: { name: themeControlSharedAtRuntime }
 source: ./__fixtures__/invalid/theme-control-shared/telo.yaml
 expect:
   errors: []
   runFails: "UiReact.Theme 'aliased': 'controls[1]' (UiReact.Controls 'boxes') implements 'Checkbox', which 'controls[0]' (UiReact.Controls 'boxes') already implements"
 ---
 kind: Assert.Manifest
-metadata:
-  name: controlsLayersPartial
+metadata: { name: controlsLayersPartial }
 source: ./__fixtures__/invalid/controls-layers-partial/lib/telo.yaml
 expect:
   errors:
@@ -194,8 +179,7 @@ expect:
       message: "UiReact.Controls/eightLayers: implements some of the layer controls but not all of them"
 ---
 kind: Assert.Manifest
-metadata:
-  name: controlsLayersPartialAtRuntime
+metadata: { name: controlsLayersPartialAtRuntime }
 source: ./__fixtures__/invalid/controls-layers-partial/telo.yaml
 expect:
   errors: []
@@ -203,23 +187,20 @@ expect:
 ---
 # Two entries implementing different controls are one theme: nothing refuses it.
 kind: Assert.Manifest
-metadata:
-  name: themeControlDisjoint
+metadata: { name: themeControlDisjoint }
 source: ./__fixtures__/theme-control-disjoint/lib/telo.yaml
 expect:
   errors: []
 ---
 kind: Assert.Manifest
-metadata:
-  name: themeControlDisjointAtRuntime
+metadata: { name: themeControlDisjointAtRuntime }
 source: ./__fixtures__/theme-control-disjoint/telo.yaml
 expect:
   errors: []
   runs: true
 ---
 kind: Assert.Manifest
-metadata:
-  name: unroutedPage
+metadata: { name: unroutedPage }
 source: ./__fixtures__/invalid/unrouted-page/lib/telo.yaml
 expect:
   errors:
@@ -227,8 +208,7 @@ expect:
       message: "UiReact.App/deep at 'navigation.items[1].items[0].items[0].items[0]': names a page the application does not list in its pages"
 ---
 kind: Assert.Manifest
-metadata:
-  name: unroutedPageAtRuntime
+metadata: { name: unroutedPageAtRuntime }
 source: ./__fixtures__/invalid/unrouted-page/telo.yaml
 expect:
   errors: []

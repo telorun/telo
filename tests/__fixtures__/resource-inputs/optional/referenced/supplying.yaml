@@ -1,0 +1,16 @@
+# Supplies the store the library references unguarded: nothing is absent.
+kind: Telo.Application
+metadata:
+  name: UnprovenSupplied
+  version: 1.0.0
+imports:
+  Kinds: ../kinds
+  Lib:
+    source: ./lib
+    resources:
+      store: !ref mine
+---
+kind: Kinds.Store
+metadata:
+  name: mine
+label: mine

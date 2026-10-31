@@ -1,4 +1,11 @@
 export { AnalysisRegistry } from "./analysis-registry.js";
+export {
+  listRequests,
+  type DeclarationRequests,
+  type ListRequestOptions,
+  type NameRequests,
+  type ReferringSlot,
+} from "./declaration-requests.js";
 export type { RefFieldInfo } from "./analysis-registry.js";
 export { StaticAnalyzer } from "./analyzer.js";
 export {
@@ -122,7 +129,19 @@ export {
   outermostNeedEntry,
   resolveNeedTable,
 } from "./need-table.js";
-export { isNeedTableDiagnostic } from "./validate-needs.js";
+export { isNeedTableDiagnostic, registeredNeedTable } from "./validate-needs.js";
+export {
+  inputRequirements,
+  needEnvNames,
+  reportedDimensions,
+  requirementDimensions,
+  requirementDimensionsOf,
+  requirementSentence,
+  type InputRequirement,
+  type InputRequirements,
+  type ReportedDimension,
+  type RequirementDimension,
+} from "./input-requirements.js";
 export {
   OBSERVATION_DEADLINES,
   observationDeadline,
@@ -182,6 +201,7 @@ export {
 } from "./identifier-name.js";
 export type { NameLevel, NameViolation } from "./identifier-name.js";
 export {
+  analyzedKind,
   applyObservedStateNode,
   applyReadingNode,
   buildObservedStateIndex,
@@ -192,6 +212,9 @@ export {
   startupObservedStateReads,
   validateObservedStateDeclarations,
 } from "./validate-observed-state.js";
+export { bodyResourcesFor, templateBodyResourcesOf } from "./template-body-resources.js";
+export { importPathOf } from "./scoped-name-resolver.js";
+export type { TemplateBodyResources } from "./template-body-resources.js";
 export type { AnalyzedResource, ObservedStateRead } from "./validate-observed-state.js";
 export { moduleScopedDefResolver, scopeResolverForModule } from "./alias-resolver.js";
 export type { ModuleScopes } from "./alias-resolver.js";
@@ -326,6 +349,7 @@ export type {
   SpanAttributeProblem,
   SpanAttributeReading,
 } from "./span-attribute.js";
+export { declaredCelViewAt, declaredViewPaths } from "./declared-cel-view.js";
 export {
   defaultBearingPaths,
   declaredScalarPaths,
@@ -388,16 +412,20 @@ export {
   isOrderedRow,
   isUnwired,
   templateModule,
+  ABSENT_ALTERNATIVE,
 } from "./module-graph.js";
 export type {
   BuildModuleGraphOptions,
   TemplateModule,
   EdgeClass,
+  GraphAlternative,
+  GraphChoice,
   GraphEdge,
   GraphKind,
   GraphNode,
   GraphPort,
   GraphRegion,
+  GraphRepeat,
   GraphRow,
   ModuleGraph,
   ModuleGraphDeps,
@@ -405,6 +433,7 @@ export type {
   PortSlot,
   RowKind,
 } from "./module-graph.js";
+export { canonicalLoopSource, iteratesFamilySource, type LoopView } from "./family-source.js";
 export { satisfiesValueBranch } from "./reference-field-map.js";
 export {
   carriesReferenceMarker,
@@ -415,6 +444,135 @@ export {
   resolvedReference,
 } from "./resolved-reference.js";
 export type { ResolvedReference } from "./resolved-reference.js";
+export {
+  readExpansionSites,
+  withoutRefusedExpansionConsequences,
+  type ExpansionPosition,
+  type ExpansionReading,
+  type ExpansionSite,
+} from "./expansion-sites.js";
+export {
+  branchForValue,
+  readChoices,
+  STAND_IN,
+  type ChoiceReading,
+  type ChoiceSite,
+  type ConfigurationDiagnostic,
+  type Decisions,
+  type StandInConstruct,
+} from "./choice-reading.js";
+export { expandChoices, isStandInDeclaration, type ChoiceExpansion } from "./choice-expansion.js";
+export {
+  describeEmitted,
+  emittedIdentity,
+  emittedInlineName,
+  elementIndexText,
+  expandTemplateBody,
+  frameKey,
+  isConsumerForward,
+  parseKeys,
+  pathText,
+  TEMPLATE_BODY_FIELDS,
+  type ConsumerForward,
+  type FamilyExpansion,
+  type FamilyMember,
+  type LoopBinding,
+  type LoopElement,
+  type LoopFrame,
+  type LoopInstance,
+  type TemplateBodyExpansion,
+  type TemplateExpander,
+} from "./template-expansion.js";
+export { holdsTemplateConstructs } from "./template-definition-check.js";
+export { normalizeInlineResources } from "./normalize-inline-resources.js";
+export { readTemplateConsumers } from "./template-consumers.js";
+export {
+  createConsumerExpander,
+  forwardMarker,
+  moduleOf as manifestModuleOf,
+  type ConsumerExpansion,
+  type ConsumerExpansionEnvironment,
+  type ConsumerLift,
+  type Location as ExpansionLocation,
+} from "./template-consumer-expansion.js";
+export { readDecisionExpression, type DecisionExpression, type DecisionRead } from "./decision-reads.js";
+export { choiceScopeOf, type ChoiceScope, type NeedReach } from "./choice-scope.js";
+export {
+  ABSENT,
+  admitsAbsence,
+  agreesWith,
+  assignmentOf,
+  describeBlocks,
+  describeConfigurations,
+  entriesOfBlocks,
+  needDimensionKey,
+  PRESENT,
+  requiredWhenOf,
+  restrictConfigurations,
+  type Assignment,
+  type Dimension,
+  type ReachedNeed,
+} from "./configuration-dimensions.js";
+export {
+  ConditionSpace,
+  FALSE as CONDITION_FALSE,
+  TRUE as CONDITION_TRUE,
+  type Condition,
+  type ConditionBlock,
+  type ConditionDimension,
+} from "./presence-condition.js";
+export {
+  Alternatives,
+  expandUnion,
+  isAlternatives,
+  type AlternativeOption,
+  type BranchConditions,
+  type ConditionedDeclaration,
+  type ConditionedElement,
+  type ConditionedExpansion,
+  type ConditionedView,
+  type ChoiceStep,
+  type Forcing,
+  type Holding,
+  type PlaceMap,
+  type PlaceMapping,
+  type Projected,
+  type UnreachableOption,
+  type ViewCrossing,
+  type Witness,
+} from "./conditioned-expansion.js";
+export {
+  ConditionedNameIndex,
+  type ConditionedOutcome,
+  type NamePopulation,
+} from "./conditioned-name-index.js";
+export {
+  listResolution,
+  namesResolution,
+  outcomeOf,
+  resolveReferenceOutcome,
+  resolutionOver,
+  type NameResolution,
+  type RefResolution,
+  type ResolutionOutcome,
+} from "./reference-resolution.js";
+export {
+  completeAssignment,
+  graphConfigurationsOf,
+  type GraphConfigurations,
+  type GraphDimension,
+} from "./graph-configurations.js";
+export {
+  mergeConditionedDiagnostics,
+  mergeConfigurationDiagnostics,
+  type ConditionedFinding,
+  type ConfigurationRun,
+} from "./configuration-merge.js";
+export {
+  refSentinelRefusal,
+  refSentinelTarget,
+  type RefSentinelTarget,
+} from "./ref-sentinel-target.js";
 export type { RefFieldEntry, ValueBranchValidator } from "./reference-field-map.js";
 export { reachPositions, reachSites, type ReachPosition } from "./reference-reach.js";
 export {
@@ -708,7 +866,7 @@ export {
   schemaMapBranch,
   readProjectionFrom,
   readProjectionRef,
-  manifestListScope,
+  projectionScopeOf,
   projectionKeyMap,
   projectEntries,
   resolveSchemaProjections,
@@ -819,7 +977,7 @@ export {
 export type { ParsedModuleVersion } from "./module-version-order.js";
 export { reconcileModuleVersions } from "./reconcile-module-versions.js";
 export type { VersionReconciliation } from "./reconcile-module-versions.js";
-export { residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
+export { inputValueSchema, residualEntrySchema, residualEntrySchemaMap } from "./residual-schema.js";
 export {
   ARG_NEGATION_PREFIX,
   describeArgBinding,
@@ -832,6 +990,7 @@ export {
 } from "./application-arguments.js";
 export type {
   ApplicationArguments,
+  ApplicationUsageRequirements,
   ArgBinding,
   ArgBindingIssue,
   ArgValueType,
@@ -845,6 +1004,7 @@ export type {
   ApplicationContractPort,
   ApplicationContractSecret,
   ApplicationContractVariable,
+  ContractRequirements,
 } from "./application-contract.js";
 export { sensitiveEnvironmentInputs } from "./sensitive-environment-inputs.js";
 export type { SensitiveEnvironmentInput } from "./sensitive-environment-inputs.js";

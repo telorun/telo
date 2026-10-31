@@ -67,8 +67,40 @@ function shapeId(
   return owner === undefined ? undefined : canonicalTypeSchemaId(owner, authored.typeName);
 }
 
+/** The schema a failed compile could not resolve a reference to — AJV's
+ *  missing-reference error names it. */
+function missingSchemaOf(err: unknown): string | undefined {
+  const missing = (err as { missingSchema?: unknown } | null)?.missingSchema;
+  return typeof missing === "string" && missing.length > 0 ? missing : undefined;
+}
+
 /** The owner-scope key when no alias table is in play. */
 const CANONICAL_SCOPE = {};
+
+/** An AJV instance with what was compiled on it. */
+interface SchemaStore {
+  readonly ajv: ReturnType<typeof createAjv>;
+  readonly compiled: WeakMap<Record<string, any>, CompiledValidator>;
+  nodes?: { ajv: ReturnType<typeof createAjv>; validator: SchemaNodeValidator };
+}
+
+/**
+ * The named shapes one analysis run reads and nothing else reads — every shape
+ * the shared registry may not hold, which is one some configuration varies.
+ * Dropped when the run ends, with everything compiled while it was open.
+ */
+interface ShapeLayer {
+  /** Whether a shape belongs to the shared registry. */
+  readonly shared: (id: string) => boolean;
+  /** Every shape the run announced or registered, by id. */
+  readonly shapes: Map<string, Record<string, any>>;
+  /** Every shape the run registered, by id. */
+  readonly registered: Map<string, Record<string, any>>;
+  /** Its own instance, the shared registrations and its own — made with the
+   *  first shape it registers, or when it opens for an analysis that withholds
+   *  shapes. */
+  store?: SchemaStore;
+}
 
 export class DefinitionRegistry {
   constructor() {
@@ -81,13 +113,25 @@ export class DefinitionRegistry {
   /** Per-instance AJV for cross-module $ref resolution. Isolated so each registry
    *  (and thus each AnalysisContext) has its own schema store — no stale schemas
    *  across analyze() calls and no unbounded growth across the process lifetime. */
-  private readonly ajv = createAjv();
+  private readonly sharedStore: SchemaStore = { ajv: createAjv(), compiled: new WeakMap() };
+  /** The run's named-shape layer, while one is open. */
+  private layer: ShapeLayer | undefined;
+  /** The named shapes some configuration varies: never shared, so read outside
+   *  a run they are refused rather than answered from some configuration. */
+  private readonly withheld = new Set<string>();
   private readonly registeredSchemaIds = new Set<string>();
   /** Every schema `ajv` holds by id, as registered — what {@link nodeValidator}'s
    *  instance is given, so a reference resolves there as it does here. */
   private readonly registeredSchemas: Array<{ schema: object; id: string }> = [];
-  private nodes: { ajv: ReturnType<typeof createAjv>; validator: SchemaNodeValidator } | undefined;
-  private readonly compiledValidators = new WeakMap<Record<string, any>, CompiledValidator>();
+
+  /** The store answering now: an open layer's once it has one. */
+  private get store(): SchemaStore {
+    return this.layer?.store ?? this.sharedStore;
+  }
+
+  private get ajv(): ReturnType<typeof createAjv> {
+    return this.store.ajv;
+  }
   /** The subset of `registeredSchemaIds` claimed by a kind's schema. Kinds and
    *  named `Telo.Type`s share one `telo://<module>/<Name>` id space, so this is
    *  what lets a colliding type name be reported instead of silently dropped. */
@@ -104,13 +148,24 @@ export class DefinitionRegistry {
   private readonly effectiveSchemas = new Map<string, Record<string, unknown> | null>();
   /** Per kind key, per owner alias scope — cleared with `effectiveSchemas`. */
   private readonly kindReaches = new Map<string, WeakMap<object, KindReach>>();
-  private readonly resourceSites = new WeakMap<object, CachedSites>();
+  /** The reaches read through a configuration's own named shapes, by lookup. */
+  private configuredReaches = new WeakMap<NamedShapeLookup, Map<string, WeakMap<object, KindReach>>>();
+  /** Per resource, per reach: a configuration view and the registry read one
+   *  resource through different reaches, and neither evicts the other's. */
+  private readonly resourceSites = new WeakMap<object, Map<KindReach, CachedSites>>();
   /** DEPRECATED module identity table: identity string → canonical module name
    *  ("std/pipeline" → "pipeline"). Serves only the legacy
    *  `<namespace>/<module>#<Kind>` form of `x-telo-ref`, kept resolvable for
    *  module versions published before constraints named their target by import
    *  alias. Fed by `metadata.namespace`, which nothing else reads. */
   private readonly identityMap = new Map<string, string>();
+
+  /** Drops every cached reach, a configuration view's included: what a reach
+   *  is built from has changed. */
+  private clearReaches(): void {
+    this.kindReaches.clear();
+    this.configuredReaches = new WeakMap();
+  }
 
   register(definition: ResourceDefinition): void {
     this.add(definition, false);
@@ -126,7 +181,7 @@ export class DefinitionRegistry {
     // possibly registered after this child — so it recomputes lazily against the
     // now-larger def set.
     this.effectiveSchemas.clear();
-    this.kindReaches.clear();
+    this.clearReaches();
     // ROLE MEMBERSHIP, not inheritance: a kind playing `Telo.Invocable` is accepted
     // wherever the role's abstract is, and transitively wherever its parent is
     // (`Telo.Executable`). Only a roster role is indexed — `capability:` names
@@ -204,13 +259,30 @@ export class DefinitionRegistry {
    *  kind's schema instead. The caller reports it; nothing is overwritten. */
   registerNamedTypeSchema(id: string, schema: Record<string, any>): boolean {
     if (this.definitionSchemaIds.has(id)) return false;
-    if (this.registeredSchemaIds.has(id) || this.ajv.getSchema(id)) return true;
+    const layer = this.layer;
+    if (layer && !layer.shared(id)) {
+      if (layer.registered.has(id)) return true;
+      const store = this.layerStore(layer);
+      const registered = schemaWithTagsAsText(schema) as object;
+      try {
+        store.ajv.addSchema(registered, id, undefined, true);
+      } catch {
+        // Unregistered, as `tryAddSchema` leaves a schema AJV refuses.
+        return true;
+      }
+      store.nodes?.ajv.addSchema(registered, id, undefined, false);
+      layer.registered.set(id, schema);
+      layer.shapes.set(id, schema);
+      this.clearReaches();
+      return true;
+    }
+    if (this.registeredSchemaIds.has(id) || this.sharedStore.ajv.getSchema(id)) return true;
     if (!this.tryAddSchema(schema, id)) return true;
     this.registeredSchemaIds.add(id);
     // The registered document supersedes the one announced before the passes
     // that resolve what it holds.
     this.namedShapes.set(id, schema);
-    this.kindReaches.clear();
+    this.clearReaches();
     return true;
   }
 
@@ -224,7 +296,7 @@ export class DefinitionRegistry {
   ): { schema: Record<string, any>; module: string } | undefined {
     const id = shapeId(ref, module, scope);
     if (id === undefined) return undefined;
-    const schema = this.namedShapes.get(id) ?? this.schemaForId(id);
+    const schema = this.namedShapeFor(id) ?? this.schemaForId(id);
     return schema ? { schema, module: parseCanonicalTypeSchemaId(id)!.moduleName } : undefined;
   }
 
@@ -238,8 +310,78 @@ export class DefinitionRegistry {
    */
   announceNamedShape(id: string, schema: Record<string, any>): void {
     if (this.definitionSchemaIds.has(id) || this.registeredSchemaIds.has(id)) return;
-    this.namedShapes.set(id, schema);
-    this.kindReaches.clear();
+    const layer = this.layer;
+    if (layer && !layer.shared(id)) {
+      if (layer.registered.has(id)) return;
+      layer.shapes.set(id, schema);
+    } else {
+      this.namedShapes.set(id, schema);
+    }
+    this.clearReaches();
+  }
+
+  /** The announced or registered shape at `id`: the open layer's first. */
+  private namedShapeFor(id: string): Record<string, any> | undefined {
+    return this.layer?.shapes.get(id) ?? this.namedShapes.get(id);
+  }
+
+  /**
+   * Opens the named-shape layer of one analysis run: every shape `shared`
+   * refuses is announced and registered into it rather than the shared
+   * registry, read by this run alone, and dropped by {@link closeShapeLayer}
+   * with everything compiled while it was open. A shape a configuration varies
+   * thus never answers another run, nor a reader outside every run.
+   */
+  openShapeLayer(shared: (id: string) => boolean): void {
+    if (this.layer) throw new Error("internal: a named-shape layer is already open.");
+    this.layer = { shared, shapes: new Map(), registered: new Map() };
+    // Compiled only on the layer's own instance from the start, so nothing the
+    // run compiles stays in the shared one.
+    if (this.withheld.size > 0) this.layerStore(this.layer);
+    this.clearReaches();
+  }
+
+  /** Closes the open layer, dropping it, and returns what it registered. */
+  closeShapeLayer(): ReadonlyMap<string, Record<string, any>> {
+    const layer = this.layer;
+    if (!layer) throw new Error("internal: no named-shape layer is open.");
+    this.layer = undefined;
+    this.clearReaches();
+    return layer.registered;
+  }
+
+  /** Marks `ids` as shapes some configuration varies, until
+   *  {@link releaseWithheldShapes}: outside a run, reading one is an internal
+   *  error rather than an answer. */
+  withholdShapes(ids: Iterable<string>): void {
+    for (const id of ids) this.withheld.add(id);
+  }
+
+  releaseWithheldShapes(): void {
+    this.withheld.clear();
+  }
+
+  /** The ids of the named shapes the shared registry holds. */
+  sharedNamedShapeIds(): ReadonlySet<string> {
+    return new Set([...this.registeredSchemaIds].filter((id) => !this.definitionSchemaIds.has(id)));
+  }
+
+  /** The open layer's instance: every shared registration, then its own. */
+  private layerStore(layer: ShapeLayer): SchemaStore {
+    if (!layer.store) {
+      const ajv = createAjv();
+      for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
+      layer.store = { ajv, compiled: new WeakMap() };
+    }
+    return layer.store;
+  }
+
+  /** A read outside every run of a shape some configuration varies. */
+  private refuseWithheld(id: string | undefined): void {
+    if (id === undefined || this.layer || !this.withheld.has(id)) return;
+    throw new Error(
+      `internal: the named shape '${id}' varies between configurations and was read outside every configuration's run — only a key's environment answers it.`,
+    );
   }
 
   /**
@@ -263,12 +405,15 @@ export class DefinitionRegistry {
     try {
       // `trusted` skips meta-validation; only for the built-ins, whose validity
       // their own test asserts.
-      this.ajv.addSchema(registered, id, undefined, !trusted);
+      this.sharedStore.ajv.addSchema(registered, id, undefined, !trusted);
     } catch {
       return false;
     }
     this.registeredSchemas.push({ schema: registered, id });
-    this.nodes?.ajv.addSchema(registered, id, undefined, false);
+    this.sharedStore.nodes?.ajv.addSchema(registered, id, undefined, false);
+    const layered = this.layer?.store;
+    layered?.ajv.addSchema(registered, id, undefined, false);
+    layered?.nodes?.ajv.addSchema(registered, id, undefined, false);
     return true;
   }
 
@@ -279,9 +424,15 @@ export class DefinitionRegistry {
    * Created by the first failure that has a union to decide.
    */
   private nodeValidator(): SchemaNodeValidator {
-    if (!this.nodes) {
+    const store = this.store;
+    if (!store.nodes) {
       const ajv = createAjv({ verbose: true });
       for (const { schema, id } of this.registeredSchemas) ajv.addSchema(schema, id, undefined, false);
+      if (store !== this.sharedStore) {
+        for (const [id, schema] of this.layer!.registered) {
+          ajv.addSchema(schemaWithTagsAsText(schema) as object, id, undefined, false);
+        }
+      }
       const validator = new SchemaNodeValidator(ajv, {
         canonical: (schema) => schemaWithTagsAsText(schema) as object,
         // `tryAddSchema` mirrors only what registered; a schema `this.ajv`
@@ -289,9 +440,9 @@ export class DefinitionRegistry {
         // `$id` a compiled schema carried) is read off it.
         resolveReference: (id) => this.schemaForId(id),
       });
-      this.nodes = { ajv, validator };
+      store.nodes = { ajv, validator };
     }
-    return this.nodes.validator;
+    return store.nodes.validator;
   }
 
   /** `errors` without what the stand-ins in `data` excuse. */
@@ -313,7 +464,10 @@ export class DefinitionRegistry {
   /** True when a schema is registered under `id` (a canonical `telo://` type id
    *  or a definition `$id`). Used to flag schema `$ref`s that resolve to nothing. */
   hasSchemaId(id: string): boolean {
-    return this.registeredSchemaIds.has(id) || this.ajv.getSchema(id) !== undefined;
+    this.refuseWithheld(id);
+    return (
+      this.registeredSchemaIds.has(id) || !!this.layer?.registered.has(id) || this.ajv.getSchema(id) !== undefined
+    );
   }
 
   /** The schema registered under `id`, for a structural comparison that must see
@@ -329,6 +483,7 @@ export class DefinitionRegistry {
   readonly shapeLookup: NamedShapeLookup = (id) => this.schemaForId(id);
 
   schemaForId(id: string): Record<string, any> | undefined {
+    this.refuseWithheld(id);
     let entry = this.ajv.schemas[id] ?? this.ajv.refs[id];
     while (typeof entry === "string") entry = this.ajv.schemas[entry] ?? this.ajv.refs[entry];
     const schema = entry ? entry.schema : this.ajv.getSchema(id)?.schema;
@@ -372,13 +527,15 @@ export class DefinitionRegistry {
    *  A schema AJV refuses compiles to `undefined`; that is reported once,
    *  anchored on the owning definition, by `schemaCompileError`. */
   private compiledFor(schema: Record<string, any>): CompiledValidator | undefined {
-    const cached = this.compiledValidators.get(schema);
+    const store = this.store;
+    const cached = store.compiled.get(schema);
     if (cached) return cached;
     try {
-      const validate = this.ajv.compile(schemaWithTagsAsText(schema) as object);
-      this.compiledValidators.set(schema, validate);
+      const validate = store.ajv.compile(schemaWithTagsAsText(schema) as object);
+      store.compiled.set(schema, validate);
       return validate;
-    } catch {
+    } catch (err) {
+      this.refuseWithheld(missingSchemaOf(err));
       return undefined;
     }
   }
@@ -395,6 +552,7 @@ export class DefinitionRegistry {
       this.ajv.compile(schemaWithTagsAsText(schema) as object);
       return undefined;
     } catch (err) {
+      this.refuseWithheld(missingSchemaOf(err));
       return err instanceof Error ? err.message : String(err);
     }
   }
@@ -415,7 +573,7 @@ export class DefinitionRegistry {
       this.definitionSchemaIds.add(id);
       return;
     }
-    if (this.ajv.getSchema(id)) {
+    if (this.sharedStore.ajv.getSchema(id)) {
       throw new Error(`Duplicate definition schema $id: "${id}" is already registered`);
     }
     // A schema AJV refuses is left unregistered rather than aborting the pass —
@@ -514,6 +672,7 @@ export class DefinitionRegistry {
     resource: { kind: string; metadata?: { module?: unknown } },
     aliases?: KindResolver,
     aliasesByModule?: ReadonlyMap<string, KindResolver>,
+    configured?: NamedShapeLookup,
   ): KindReach | undefined {
     const moduleScope = aliases
       ? moduleAliasScope(resource.metadata, aliases, aliasesByModule)
@@ -522,8 +681,13 @@ export class DefinitionRegistry {
     if (!key) return undefined;
     const def = this.defs.get(key)!;
     const ownerScope = aliases ? moduleAliasScope(def.metadata, aliases, aliasesByModule) : undefined;
-    let byScope = this.kindReaches.get(key);
-    if (!byScope) this.kindReaches.set(key, (byScope = new WeakMap()));
+    let reaches = this.kindReaches;
+    if (configured) {
+      reaches = this.configuredReaches.get(configured) ?? new Map();
+      this.configuredReaches.set(configured, reaches);
+    }
+    let byScope = reaches.get(key);
+    if (!byScope) reaches.set(key, (byScope = new WeakMap()));
     const cached = byScope.get(ownerScope ?? CANONICAL_SCOPE);
     if (cached) return cached;
 
@@ -536,7 +700,7 @@ export class DefinitionRegistry {
     ]);
     const shapes: ShapeResolver = (ref, document) => {
       const id = shapeId(ref, modules.get(document), scopes.get(document));
-      const shape = id === undefined ? undefined : this.namedShapes.get(id);
+      const shape = id === undefined ? undefined : (configured?.(id) ?? this.namedShapeFor(id));
       if (shape && !modules.has(shape)) {
         const module = parseCanonicalTypeSchemaId(id)!.moduleName;
         modules.set(shape, module);
@@ -576,7 +740,7 @@ export class DefinitionRegistry {
    * enumeration Phase-5 injection, scope creation and every analyzer pass read.
    * Empty when the kind resolves to no definition.
    *
-   * Memoized per resource object. A cached list stands while every site still
+   * Memoized per resource object and reach. A cached list stands while every site still
    * holds the value it was enumerated over: the passes that rewrite a manifest
    * (inline extraction, `!ref` resolution, Phase-5 substitution, scope handles)
    * each replace the value at a site, which is what invalidates it.
@@ -586,13 +750,14 @@ export class DefinitionRegistry {
     aliases?: KindResolver,
     aliasesByModule?: ReadonlyMap<string, KindResolver>,
     data: unknown = resource,
+    configured?: NamedShapeLookup,
   ): ReachSite[] {
-    const reach = this.reachOf(resource, aliases, aliasesByModule);
+    const reach = this.reachOf(resource, aliases, aliasesByModule, configured);
     if (!reach) return [];
-    const cached = this.resourceSites.get(resource);
+    let byReach = this.resourceSites.get(resource);
+    const cached = byReach?.get(reach);
     if (
       cached &&
-      cached.reach === reach &&
       cached.data === data &&
       cached.sites.every(
         (site) =>
@@ -603,7 +768,8 @@ export class DefinitionRegistry {
       return cached.sites;
     }
     const sites = reachSites(reach.schema, data, reach.schemaFrom, true, reach.shapes);
-    this.resourceSites.set(resource, { reach, data, sites });
+    if (!byReach) this.resourceSites.set(resource, (byReach = new Map()));
+    byReach.set(reach, { reach, data, sites });
     return sites;
   }
 
@@ -615,8 +781,9 @@ export class DefinitionRegistry {
     aliases?: KindResolver,
     aliasesByModule?: ReadonlyMap<string, KindResolver>,
     data: unknown = resource,
+    configured?: NamedShapeLookup,
   ): ReachPosition[] {
-    const reach = this.reachOf(resource, aliases, aliasesByModule);
+    const reach = this.reachOf(resource, aliases, aliasesByModule, configured);
     return reach ? reachPositions(reach.schema, data, reach.schemaFrom, reach.shapes) : [];
   }
 
@@ -626,8 +793,9 @@ export class DefinitionRegistry {
     resource: { kind: string; metadata?: { module?: unknown } },
     aliases?: KindResolver,
     aliasesByModule?: ReadonlyMap<string, KindResolver>,
+    configured?: NamedShapeLookup,
   ): DeclaredReach | undefined {
-    const reach = this.reachOf(resource, aliases, aliasesByModule);
+    const reach = this.reachOf(resource, aliases, aliasesByModule, configured);
     if (!reach) return undefined;
     return (reach.declared ??= declaredReach(reach.schema, reach.schemaFrom, reach.shapes));
   }

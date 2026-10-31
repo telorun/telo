@@ -1,0 +1,32 @@
+# One library imported twice: each import's instance is its own backend, and
+# both answer.
+kind: Telo.Application
+metadata:
+  name: InstancesBoot
+imports:
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+  A:
+    source: ./instances-lib
+    variables:
+      dialect: first
+  B:
+    source: ./instances-lib
+    variables:
+      dialect: second
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: first
+    invoke: !ref A.db
+  - name: second
+    invoke: !ref B.db
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.first.result.backend, steps.second.result.backend]"
+      expected: [first, second]

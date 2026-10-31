@@ -29,6 +29,58 @@ export interface NamedShapeDeclaration {
 export function foldedNamedShapes(
   declarations: Iterable<NamedShapeDeclaration>,
 ): (module: string, name: string) => Record<string, any> | undefined {
+  const { byId, parentId } = shapeIndex(declarations);
+  const folded = new Map<string, Record<string, any>>();
+  const fold = (id: string, ancestry: ReadonlySet<string>): Record<string, any> | undefined => {
+    const known = folded.get(id);
+    if (known) return known;
+    const declaration = byId.get(id);
+    if (!declaration || ancestry.has(id)) return undefined;
+    const path = new Set(ancestry).add(id);
+    const schema = foldTypeExtends(declaration.schema, declaration.extends, (parent) => {
+      const target = parentId(parent, declaration.module);
+      return target === undefined ? undefined : fold(target, path);
+    });
+    folded.set(id, schema);
+    return schema;
+  };
+
+  return (module, name) => fold(canonicalTypeSchemaId(module, name), new Set());
+}
+
+/**
+ * The ids of the shapes the fold of each shape in `declarations` reads — its
+ * own and every parent it folds, transitively — resolved as
+ * {@link foldedNamedShapes} resolves them.
+ */
+export function foldedNamedShapeReads(
+  declarations: Iterable<NamedShapeDeclaration>,
+): (module: string, name: string) => ReadonlySet<string> {
+  const { byId, parentId } = shapeIndex(declarations);
+  return (module, name) => {
+    const out = new Set<string>();
+    const queue = [canonicalTypeSchemaId(module, name)];
+    while (queue.length > 0) {
+      const id = queue.pop()!;
+      if (out.has(id)) continue;
+      out.add(id);
+      const declaration = byId.get(id);
+      if (!declaration?.extends) continue;
+      for (const parent of Array.isArray(declaration.extends) ? declaration.extends : [declaration.extends]) {
+        const target = parentId(parent, declaration.module);
+        if (target !== undefined) queue.push(target);
+      }
+    }
+    return out;
+  };
+}
+
+/** Each shape of `declarations` by canonical id, the first of an id winning,
+ *  and how a parent written in a module resolves. */
+function shapeIndex(declarations: Iterable<NamedShapeDeclaration>): {
+  byId: Map<string, NamedShapeDeclaration>;
+  parentId: (parent: unknown, ownModule: string) => string | undefined;
+} {
   const byId = new Map<string, NamedShapeDeclaration>();
   const modulesByName = new Map<string, Set<string>>();
   for (const declaration of declarations) {
@@ -49,21 +101,5 @@ export function foldedNamedShapes(
     const modules = modulesByName.get(parent);
     return modules?.size === 1 ? canonicalTypeSchemaId([...modules][0]!, parent) : undefined;
   };
-
-  const folded = new Map<string, Record<string, any>>();
-  const fold = (id: string, ancestry: ReadonlySet<string>): Record<string, any> | undefined => {
-    const known = folded.get(id);
-    if (known) return known;
-    const declaration = byId.get(id);
-    if (!declaration || ancestry.has(id)) return undefined;
-    const path = new Set(ancestry).add(id);
-    const schema = foldTypeExtends(declaration.schema, declaration.extends, (parent) => {
-      const target = parentId(parent, declaration.module);
-      return target === undefined ? undefined : fold(target, path);
-    });
-    folded.set(id, schema);
-    return schema;
-  };
-
-  return (module, name) => fold(canonicalTypeSchemaId(module, name), new Set());
+  return { byId, parentId };
 }

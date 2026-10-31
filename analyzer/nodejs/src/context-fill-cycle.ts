@@ -24,6 +24,7 @@ import { readFromReferrer } from "./context-from-referrer.js";
 import type { NamedShapeLookup } from "./eval-paths.js";
 import { contextChainAt, extractContextsFromSchema } from "./validate-cel-context.js";
 import { resolveScopeValues } from "./value-schema-slot.js";
+import { READS_IDENTITY, type ReadReporter } from "./read-place.js";
 
 export const ITEM_FILLS = "x-telo-context-item-fills";
 
@@ -272,3 +273,8 @@ function stronglyConnected(adjacency: readonly number[][]): number[] {
   for (let v = 0; v < adjacency.length; v++) if (index[v] === -1) visit(v);
   return component;
 }
+
+/** What `x-telo-context-item-fills` reads: every item of the list the region is
+ *  declared on — what its members fill is decided by the items, a declaration
+ *  they name by its identity. */
+export const itemFillsReads: ReadReporter = ({ at }) => [{ kind: "reference", keys: at, transitive: false, reads: READS_IDENTITY }];

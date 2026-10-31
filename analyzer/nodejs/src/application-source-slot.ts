@@ -34,6 +34,7 @@
 import { kindDeclarationOf } from "./kind-declaration.js";
 import { kindDocumentIn, type LoadedKindScope } from "./loaded-kind-scope.js";
 import type { LoadedModule } from "./loaded-types.js";
+import { placeAt, READS_IDENTITY, type ReadPlace, type ReadReporter } from "./read-place.js";
 
 export const APPLICATION_SOURCE_ANNOTATION = "x-telo-application-source";
 
@@ -332,3 +333,17 @@ export function applicationSourceAnnotationProblems(
   visit(schema, at);
   return problems;
 }
+
+/** What `x-telo-application-source` reads for one annotated node: the source
+ *  itself and each map feeding a block of the child, by the pointers it names
+ *  from the resource's root — a declaration a supply names by its identity,
+ *  the kind a need is supplied by. */
+export const applicationSourceReads: ReadReporter = ({ value, at }) => {
+  const out: ReadPlace[] = [{ kind: "value", keys: at }];
+  if (value && typeof value === "object") {
+    for (const pointer of Object.values(value as Record<string, unknown>)) {
+      if (typeof pointer === "string") out.push({ kind: "reference", keys: placeAt([], pointer), transitive: false, reads: READS_IDENTITY });
+    }
+  }
+  return out;
+};

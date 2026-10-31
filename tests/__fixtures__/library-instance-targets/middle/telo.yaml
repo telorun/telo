@@ -1,0 +1,5 @@
+# Imports `Shapes` too, so the application reaches it as two instances.
+kind: Telo.Library
+metadata: { name: Middle }
+imports:
+  Shapes: ../shapes

@@ -101,6 +101,14 @@ telo check -o json ./apps/my-app/telo.yaml
 ```
 
 Branch on `code`, not on the message — the codes are stable, the wording is not.
+A diagnostic that holds in some configurations of the application but not all
+(an application with `!if` / `!switch` choices) also carries `configurations`:
+partial assignments covering where it holds, each naming only the dimensions it
+narrows (`{ "variables.dialect": "memory" }`; a dimension an entry leaves out
+holds every value, so the finding holds wherever some entry agrees on every key
+it names), with the same condition spelled at the end of `message`. A
+diagnostic that holds in every configuration carries none; one in a branch no
+configuration takes carries an empty list.
 The exit code is unchanged, so the same command still works as a gate. Nothing is
 coloured on stdout in this mode, whatever `FORCE_COLOR` is set to.
 

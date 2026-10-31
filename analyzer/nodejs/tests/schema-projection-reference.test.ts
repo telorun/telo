@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { listRequests } from "../src/declaration-requests.js";
 import {
-  manifestListScope,
+  projectionScopeOf,
   projectEntries,
   projectionKeyMap,
   readSchemaProjection,
@@ -98,7 +99,7 @@ function project(definition: Record<string, any>, ...manifests: Record<string, a
   const projection = readSchemaProjection(definition)!;
   const map = projectionKeyMap(definition.schema, projection)!;
   const failures: ProjectionFailure[] = [];
-  const scope = manifestListScope(manifests, () => definition);
+  const scope = projectionScopeOf(listRequests(manifests as any), () => definition);
   const projected = projectEntries(table, projection, map, {
     scope,
     pointer: "/table",
@@ -151,7 +152,7 @@ describe("the projection's reference path", () => {
       columns: { role: { type: { kind: "postgres.Enum", name: "messageRole" }, array: true } },
     };
     const projected = projectEntries(arrayed, projection, map, {
-      scope: manifestListScope([pgEnum], () => pgTableDefinition),
+      scope: projectionScopeOf(listRequests([pgEnum] as any), () => pgTableDefinition),
     });
     expect((projected as any).properties.role).toEqual({
       anyOf: [

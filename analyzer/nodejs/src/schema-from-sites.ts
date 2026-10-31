@@ -4,6 +4,8 @@
  * enumerates, kept apart because resolving an anchor is where its diagnostics
  * are worded. Browser-safe.
  */
+import { listRequests } from "./declaration-requests.js";
+import type { ResourceManifest } from "@telorun/sdk";
 import type { DerivedSlotContext } from "./derived-slots.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
 import { navigateJsonPointer } from "./schema-compat.js";
@@ -144,13 +146,13 @@ export function schemaFromSites(
   // The instance first, then the kind: a kind whose shape is per instance
   // declares it as a field, and reading only the definition types every
   // instance against nothing.
-  const target = isResolvedReference(ref) ? ctx.resolveTarget(ref as Record<string, any>) : undefined;
+  const target = isResolvedReference(ref) ? ctx.resolveTarget(ref as Record<string, any>, path) : undefined;
   const perInstance =
     target === undefined
       ? undefined
       : navigateJsonPointer(target as Record<string, unknown>, jsonPointer);
   if (perInstance !== undefined) {
-    const instanceSchema = resolveTypeFieldToSchema(perInstance, ctx.typeManifests);
+    const instanceSchema = resolveTypeFieldToSchema(perInstance, ctx.types, target);
     if (instanceSchema) {
       out.push({
         path,

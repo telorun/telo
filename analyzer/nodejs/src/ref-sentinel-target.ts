@@ -1,24 +1,17 @@
-import { isRefSentinel } from "@telorun/templating";
+import { isRefSentinel, parseRefSource, type RefIndex, type RefRefusal, type RefVerdict } from "@telorun/templating";
 
 /**
- * What a `!ref` names, parsed once.
+ * What a `!ref` names, as the `!ref` engine's verdict says.
  *
- * THE single reader of the tag's grammar, on the `ref-slot.ts` / `zone-slot.ts`
- * precedent. Three passes had grown their own parse of the same scalar and they
- * disagreed: one took the source verbatim, one split on the first dot and
- * dropped every alias but `Self`, one split on the LAST dot and dropped the
- * alias entirely — so the same `!ref Alias.name` named three different things
- * depending on which pass was asking, and the loosest of the three resolved a
- * bare name against whatever manifest happened to share it.
- *
- * The grammar itself is one line and is not in dispute: `!ref <name>` or
- * `!ref <Alias>.<name>`, split on the FIRST dot, because that is what
- * `resolveRefSentinels` does and a name may not contain one
- * (`INVALID_NAME` rejects it at every declaration site).
+ * The grammar is the engine's (`parseRefSource`, templating): the loader parses
+ * the text once and attaches `parsed` or `refusal` to the sentinel, and this
+ * adapter is how the analyzer reads that verdict — it keeps no grammar of its
+ * own. Three passes once parsed the scalar each their own way and disagreed
+ * about `!ref Alias.name`, which is why there is one reading.
  *
  * What this deliberately does NOT do is decide what to look up. A reduction is
- * the caller's, and the three genuinely differ: an edge in the call graph points
- * at a cross-module target and tolerates not resolving it; a zone correlation
+ * the caller's, and they genuinely differ: an edge in the call graph points at
+ * a cross-module target and tolerates not resolving it; a zone correlation
  * refuses to bind anything it cannot resolve exactly; a throws walk resolves in
  * the DECLARING library first. Each states its own, over one parse.
  *
@@ -27,28 +20,60 @@ import { isRefSentinel } from "@telorun/templating";
 export interface RefSentinelTarget {
   /** The scalar as written, for a caller that wants the author's spelling. */
   source: string;
-  /** The prefix before the first dot, `Self` included and not normalized away —
-   *  a caller that treats `Self` as "no alias" says so itself. */
+  /** The import alias as written, `Self` included and not normalized away — a
+   *  caller that treats `Self` as "no alias" says so itself. */
   alias?: string;
-  /** The segment after the first dot, or the whole scalar when there is none. */
+  /** The name the reference resolves, or a family's name when indexed. */
   name: string;
+  /** A family member's `[<binding>.key|index]`, in written order; empty for a
+   *  plain reference. */
+  indexes: readonly RefIndex[];
 }
 
-const REF_SOURCE_RE = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)?$/;
-
-/** True when `text` is what a `!ref` may carry — `<name>` or `<Alias>.<name>` —
- *  so a repair can write it behind the tag verbatim. */
+/** True when `text` is a plain `!ref` text — `<name>` or `<Alias>.<name>` — so
+ *  a repair can write it behind the tag verbatim. Asked of the engine. */
 export function isRefSourceSpelling(text: string): boolean {
-  return REF_SOURCE_RE.test(text);
+  const verdict = parseRefSource(text);
+  return "parsed" in verdict && verdict.parsed.indexes.length === 0;
 }
 
-/** Parse a `!ref` sentinel. Returns `undefined` for anything that is not one —
- *  including the `{kind, name}` object `resolveRefSentinels` rewrites it into,
- *  which is a different shape with a different reader. */
+/** Read a `!ref` sentinel. Returns `undefined` for anything that is not one,
+ *  for one whose text the grammar refuses ({@link refSentinelRefusal}), and for
+ *  the `{kind, name}` object `resolveRefSentinels` rewrites it into, which is a
+ *  different shape with a different reader. */
 export function refSentinelTarget(value: unknown): RefSentinelTarget | undefined {
   if (!isRefSentinel(value)) return undefined;
-  const source = value.source;
-  const dot = source.indexOf(".");
-  if (dot <= 0) return { source, name: source };
-  return { source, alias: source.slice(0, dot), name: source.slice(dot + 1) };
+  const verdict = verdictOf(value);
+  if (!verdict || !("parsed" in verdict)) return undefined;
+  const { parsed } = verdict;
+  return {
+    source: value.source,
+    ...(parsed.alias !== undefined ? { alias: parsed.alias } : {}),
+    name: parsed.name,
+    indexes: parsed.indexes,
+  };
+}
+
+/** The refusal of a `!ref` sentinel whose text is outside the grammar. */
+export function refSentinelRefusal(value: unknown): RefRefusal | undefined {
+  const verdict = verdictOf(value);
+  return verdict && "refusal" in verdict ? verdict.refusal : undefined;
+}
+
+/** The verdict a sentinel carries — or, for one built by hand rather than by
+ *  the loader, the engine's verdict on its text. */
+function verdictOf(value: unknown): RefVerdict | undefined {
+  if (!isRefSentinel(value)) return undefined;
+  if (value.parsed) return { parsed: value.parsed };
+  if (value.refusal) return { refusal: value.refusal };
+  return parseRefSource(value.source);
+}
+
+/** The local name a `!ref` sentinel names — its name for `<name>` and
+ *  `Self.<name>` — or its text as written for anything else (an alias-qualified
+ *  name, a text the grammar refuses), which names no local declaration. */
+export function localRefName(value: unknown): string {
+  const target = refSentinelTarget(value);
+  if (target && (target.alias === undefined || target.alias === "Self")) return target.name;
+  return isRefSentinel(value) ? value.source : "";
 }

@@ -1,4 +1,6 @@
-import { isRefSentinel } from "@telorun/templating";
+import { localRefName } from "./ref-sentinel-target.js";
+import { isExpansionSentinel, isRefSentinel } from "@telorun/templating";
+import { isResolvedReference } from "./resolved-reference.js";
 
 /**
  * A templated `Telo.Definition`'s `targets:` — the entries its instance STARTS,
@@ -8,6 +10,14 @@ import { isRefSentinel } from "@telorun/templating";
  * kernel's run path, so every one keeps its own trace span and its own effect
  * frame, and all of them stay up for as long as the instance does.
  *
+ * An item is a `!ref <entry>`, an inline declaration of a startable kind, or —
+ * inside the template body — an `!if` / `!switch` / `!for-each` choosing or
+ * emitting either. The expanded body is what is read: an inline target is
+ * hoisted into `resources:` under its generated identity
+ * (`hoistInlineTargets`, `template-expansion.ts`) and its item becomes the
+ * reference to it, judged here by its kind's capability. Read on the written
+ * definition, a construct is left to the expansion that decides it.
+ *
  * One reader, shared by `telo check` and the kernel, so the two refuse the same
  * manifests with the same words. Browser-safe.
  */
@@ -15,7 +25,8 @@ import { isRefSentinel } from "@telorun/templating";
 /** A `targets:` item that names an entry. */
 export interface TemplateTarget {
   index: number;
-  /** The `!ref` source as written (`Self.` kept). */
+  /** The `!ref` source as written (`Self.` kept), or the generated identity of
+   *  a hoisted inline target. */
   source: string;
   /** The entry name it resolves to (`Self.` stripped). */
   name: string;
@@ -41,17 +52,16 @@ export function capabilityStartsTargets(capability: string | undefined): boolean
   return capability !== undefined && STARTABLE.has(capability);
 }
 
-/** The `!ref` items of a definition's `targets:`, in order. Items that are not a
- *  `!ref` are skipped here; {@link templateTargetProblems} reports them. */
+/** The entries a definition's expanded `targets:` starts, in order: each
+ *  `!ref`, and each hoisted inline target. Anything else is skipped here;
+ *  {@link templateTargetProblems} reports it. */
 export function templateTargetsOf(definition: Record<string, unknown>): TemplateTarget[] {
   const raw = definition.targets;
   if (!Array.isArray(raw)) return [];
   const out: TemplateTarget[] = [];
   raw.forEach((item, index) => {
-    if (!isRefSentinel(item)) return;
-    const source = item.source;
-    const name = source.startsWith("Self.") ? source.slice("Self.".length) : source;
-    out.push({ index, source, name });
+    if (isRefSentinel(item)) out.push({ index, source: item.source, name: localRefName(item) });
+    else if (isResolvedReference(item)) out.push({ index, source: item.name, name: item.name });
   });
   return out;
 }
@@ -68,6 +78,9 @@ export function templateTargetProblems(
   definition: Record<string, unknown>,
   capability: string | undefined,
   nearest?: (name: string, candidates: string[]) => string | undefined,
+  /** The capability of an inline target's kind, read in the defining module's
+   *  scope; absent, an inline target's kind is not judged. */
+  capabilityOf?: (kind: string) => string | undefined,
 ): TemplateTargetProblem[] {
   const raw = definition.targets;
   if (raw === undefined || raw === null) return [];
@@ -76,7 +89,9 @@ export function templateTargetProblems(
     problems.push({
       code: "TEMPLATE_TARGETS_INVALID",
       path: "targets",
-      message: "'targets:' must be a list of '!ref <entry>', each naming a 'resources:' entry to start.",
+      message:
+        "'targets:' must be a list of what to start: '!ref <entry>' naming a 'resources:' entry, or an " +
+        "inline declaration of a Telo.Service or Telo.Runnable kind.",
     });
     return problems;
   }
@@ -110,6 +125,8 @@ export function templateTargetProblems(
     // An entry extraction produced from an inline declaration is not one the
     // author can name.
     if (metadata?.xTeloOrigin) continue;
+    // A choice or a family names its declaration on its tag: read on the
+    // written definition, that name is an entry the expansion declares.
     const name = metadata?.name;
     if (typeof name === "string") names.push(name);
     else if (name !== undefined) anyDynamic = true;
@@ -117,27 +134,55 @@ export function templateTargetProblems(
 
   raw.forEach((item, index) => {
     const path = `targets[${index}]`;
+    // A choice or a repeat is judged in the expansion that decides it.
+    if (isExpansionSentinel(item)) return;
+    if (isResolvedReference(item) || isInlineTarget(item)) {
+      const kind = (item as { kind: string }).kind;
+      const found = capabilityOf?.(kind);
+      if (found !== undefined && !STARTABLE.has(found)) {
+        problems.push({
+          code: "TEMPLATE_TARGETS_CAPABILITY",
+          path,
+          message:
+            `'${path}' declares a ${kind}, whose capability is '${found}'; a target is started when the ` +
+            `instance runs, so it is a Telo.Service or Telo.Runnable.`,
+        });
+      }
+      return;
+    }
     if (!isRefSentinel(item)) {
       problems.push({
         code: "TEMPLATE_TARGETS_INVALID",
         path,
-        message: `'${path}' must be '!ref <entry>', naming a 'resources:' entry to start.`,
+        message:
+          `'${path}' must be '!ref <entry>', naming a 'resources:' entry to start, or an inline ` +
+          `declaration of a Telo.Service or Telo.Runnable kind.`,
       });
       return;
     }
-    const source = item.source;
-    const name = source.startsWith("Self.") ? source.slice("Self.".length) : source;
+    const name = localRefName(item);
     if (names.includes(name) || anyDynamic) return;
     const suggestion = nearest?.(name, names);
     problems.push({
       code: "TEMPLATE_TARGET_UNKNOWN",
       path,
       message:
-        `'${path}: !ref ${source}' names no entry in 'resources:'. ` +
+        `'${path}: !ref ${item.source}' names no entry in 'resources:'. ` +
         `Available: ${names.join(", ") || "(none)"}.` +
         (suggestion ? ` Did you mean '${suggestion}'?` : ""),
       ...(suggestion ? { suggestion } : {}),
     });
   });
   return problems;
+}
+
+/** An inline declaration written as a target: a mapping with a `kind`. */
+function isInlineTarget(item: unknown): boolean {
+  return (
+    !!item &&
+    typeof item === "object" &&
+    !Array.isArray(item) &&
+    typeof (item as { kind?: unknown }).kind === "string" &&
+    !isRefSentinel(item)
+  );
 }

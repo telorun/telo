@@ -1,3 +1,4 @@
+import { demandingEvery } from "./input-demand.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -367,7 +368,7 @@ needs:
             },
           },
           {},
-          new SchemaValidator(),
+          new SchemaValidator(), demandingEvery(),
         );
       } catch (error) {
         return error as { code: string; message: string };

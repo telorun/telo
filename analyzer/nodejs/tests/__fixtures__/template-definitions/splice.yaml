@@ -1,0 +1,80 @@
+# Literal and generated map entries: a splice beside a literal key.
+kind: Telo.Library
+metadata:
+  name: Records
+imports:
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Columns]
+---
+kind: Telo.Definition
+metadata:
+  name: Columns
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    fields:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          type: { type: string, enum: [integer, text] }
+    mode: { type: string, enum: [a, b] }
+resources:
+  - kind: Run.Value
+    metadata:
+      name: columns
+    value:
+      id: integer
+      ...: !for-each
+        in: !cel "self.fields"
+        key: !cel "each.key"
+        emit: !cel "each.value.type"
+invoke: !ref columns
+---
+kind: Telo.Definition
+metadata:
+  name: Table
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    columns:
+      type: object
+      properties:
+        id: { type: string, enum: [integer] }
+      patternProperties:
+        "^x_": { type: string }
+      additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: Typed
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    fields:
+      type: object
+      additionalProperties: { type: string }
+resources:
+  - kind: Self.Table
+    metadata:
+      name: fits
+    columns:
+      id: integer
+      ...: !for-each
+        in: !cel "self.fields"
+        key: !cel "'x_' + each.key"
+        emit: !cel "each.value"
+  - kind: Self.Table
+    metadata:
+      name: fitsNone
+    columns:
+      id: integer
+      ...: !for-each
+        in: !cel "self.fields"
+        key: !cel "'x_' + each.key"
+        emit: 5
+invoke: !ref fits

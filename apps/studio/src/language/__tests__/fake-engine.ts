@@ -41,7 +41,7 @@ export function fakeEngineSpawner(
           return {
             capabilities: {
               ...advertised,
-              experimental: { telo: { ...advertised.experimental?.telo, protocol: 1 } },
+              experimental: { telo: { ...advertised.experimental?.telo, protocol: 2 } },
             },
             serverInfo: { name: "telo", version },
           };

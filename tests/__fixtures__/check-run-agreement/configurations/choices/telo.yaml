@@ -1,0 +1,53 @@
+# A library's own choices, each refused: a condition reading an open input, a
+# condition that is no boolean, a case key the selector's type cannot hold, a
+# selector a value of its domain matches no case of, and a declaration branch
+# that is a list.
+kind: Telo.Library
+metadata:
+  name: ChoicesLib
+imports:
+  Run: ../../../../../modules/run
+variables:
+  name:
+    type: string
+    default: x
+  mode:
+    type: string
+    enum: [a, b]
+    default: a
+  flag:
+    type: boolean
+    default: false
+---
+kind: Run.Sequence
+metadata:
+  name: sequence
+steps:
+  - name: open
+    value: !if
+      if: !cel "variables.name == 'x'"
+      then: 1
+      else: 2
+  - name: notBoolean
+    value: !if
+      if: !cel "variables.mode + 'x'"
+      then: 1
+      else: 2
+  - name: badKey
+    value: !switch
+      switch: !cel "variables.flag"
+      cases:
+        "yes": 1
+        "true": 2
+        "false": 3
+  - name: partial
+    value: !switch
+      switch: !cel "variables.mode"
+      cases:
+        a: 1
+--- !if
+metadata: { name: listed }
+if: !cel "variables.flag"
+then: { kind: Run.Value, value: 1 }
+else:
+  - { kind: Run.Value, value: 2 }

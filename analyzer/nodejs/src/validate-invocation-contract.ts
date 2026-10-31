@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { listRequests } from "./declaration-requests.js";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { claimsDeterministic, isCallableKind, signatureDeclarer } from "./callable-signature.js";
@@ -21,6 +22,8 @@ import { signatureMismatches, type SignatureMismatch } from "./signature-substit
 import { codesOutsideCeiling, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import type { ScopeSite } from "./scope-address.js";
+import { manifestNames, scopeReadAt } from "./scoped-name-resolver.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -192,7 +195,7 @@ function checkRefSlotWiring(
       // Scoped to the declaring module: a resource of the same name in another
       // module is a different resource, and checking against its contract would
       // report on something the author never wired.
-      const target = findInModule(manifests, name, ownModule);
+      const target = findInModule(manifests, name, ownModule, scopeReadAt(m, path));
       if (!target) continue;
       const targetDef = resolveDef(target.kind, target as unknown as ResourceDefinition);
       const targetRequired = requiredInputsOf(
@@ -292,7 +295,7 @@ function contractSchemaFor(
         ? declared.name
         : undefined;
   if (!named) return undefined;
-  const typeManifest = findInModule(manifests, named, declaringModule);
+  const typeManifest = findInModule(manifests, named, declaringModule, scopeReadAt(manifest));
   return typeManifest ? inlineSchemaOf(typeManifest) : undefined;
 }
 
@@ -358,7 +361,7 @@ function checkContractResolves(
     }
     const named = namedTypeReference(md[direction]);
     if (!named) continue;
-    if (findInModule(manifests, named, declaringModule)) continue;
+    if (findInModule(manifests, named, declaringModule, scopeReadAt(m))) continue;
     diagnostics.push({
       severity: DiagnosticSeverity.Error,
       code: "CONTRACT_TYPE_NOT_FOUND",
@@ -455,7 +458,7 @@ function checkAncestorSubstitutability(
     const inherited = (ancestor as unknown as Record<string, unknown>)[direction];
 
     // The WHOLE manifest set, which is what `analyzerContractScope`'s
-    // `typeManifestsFor` hands `resolveContract` — so this resolves a named type
+    // `declarationsFor` hands `resolveContract` — so this resolves a named type
     // exactly as the resolver the kernel binds with does. Filtering to the
     // declaring module looked more careful and was strictly worse: a contract
     // naming a shape from a shared module resolved to nothing, and an
@@ -463,8 +466,8 @@ function checkAncestorSubstitutability(
     // precisely the libraries that factor their shapes out. Nothing else caught
     // it either — `CONTRACT_TYPE_NOT_FOUND` finds the type through its own global
     // fallback, so such a kind passed `telo check` with no diagnostic at all.
-    const ownSchema = resolveTypeFieldToSchema(own, manifests);
-    const ancestorSchema = resolveTypeFieldToSchema(inherited, manifests);
+    const ownSchema = resolveTypeFieldToSchema(own, listRequests(manifests));
+    const ancestorSchema = resolveTypeFieldToSchema(inherited, listRequests(manifests));
     // An unresolvable side says nothing about compatibility; CONTRACT_TYPE_NOT_FOUND
     // is what reports a contract that names a type nothing declares.
     if (!ownSchema || !ancestorSchema) continue;
@@ -735,20 +738,14 @@ function inlineSchemaOf(value: unknown): Record<string, any> | undefined {
   return undefined;
 }
 
-/** Find a manifest by name within a module, falling back to a unique global
- *  match. Names are unique per module, not per flattened graph, so an unscoped
- *  `find` can silently return another module's resource; an ambiguous global
- *  match resolves to nothing rather than to a guess. */
+/** Find a manifest by name as read from a module, inside `within` when given —
+ *  the scoped name rule over the set, so an ambiguous global match resolves to
+ *  nothing rather than to a guess. */
 function findInModule(
   manifests: ResourceManifest[],
   name: string,
   module: string | undefined,
+  within: ScopeSite | undefined,
 ): ResourceManifest | undefined {
-  const byName = manifests.filter((t) => (t.metadata as any)?.name === name);
-  if (byName.length === 0) return undefined;
-  const scoped = byName.filter(
-    (t) => (t.metadata as { module?: string } | undefined)?.module === module,
-  );
-  if (scoped.length === 1) return scoped[0];
-  return byName.length === 1 ? byName[0] : undefined;
+  return manifestNames(manifests).resolve(name, module, within);
 }

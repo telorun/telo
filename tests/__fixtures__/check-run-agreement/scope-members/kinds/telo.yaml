@@ -1,0 +1,91 @@
+# A third-party kind declaring an execution scope on a field named `members` —
+# never `with` — and a closed kind to declare inside it. `telo check` finds the
+# scope through `x-telo-scope` alone.
+kind: Telo.Library
+metadata:
+  name: ScopeMemberKinds
+  version: 1.0.0
+  description: >-
+    Fixture library whose kind runs one member of the execution scope it declares
+    at `members`, the same with a label evaluated at load inside that scope's
+    regions, a closed kind returning an answer or invoking a target, and a task
+    reporting how many times it ran as observed state.
+exports:
+  kinds:
+    - Host
+    - LabelledHost
+    - Target
+    - Counter
+---
+kind: Telo.Definition
+metadata:
+  name: Host
+  description: Invokes the member of its `members` scope that `pick` names, inside one run of that scope.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Host
+schema:
+  type: object
+  additionalProperties: false
+  required: [members, pick]
+  properties:
+    members:
+      type: array
+      x-telo-scope: /pick
+      items: { type: object }
+    pick: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: LabelledHost
+  description: >-
+    Invokes the member of its `members` scope that `pick` names, inside one run
+    of that scope; its `label`, a region of that scope, is evaluated at load.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Host
+schema:
+  type: object
+  additionalProperties: false
+  required: [members, pick]
+  properties:
+    members:
+      type: array
+      x-telo-scope: [/pick, /label]
+      items: { type: object }
+    pick: { type: string }
+    label:
+      type: string
+      x-telo-eval: compile
+---
+kind: Telo.Definition
+metadata:
+  name: Target
+  description: Returns its evaluated `answer`, after invoking the target it holds when one is given.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Target
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    answer:
+      x-telo-eval: runtime
+    target:
+      x-telo-ref: { kind: Telo.Invocable, use: call }
+---
+kind: Telo.Definition
+metadata:
+  name: Counter
+  description: Reports how many times it has run as observed state, each run adding one.
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Counter
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+status:
+  type: object
+  properties:
+    runs: { type: integer }

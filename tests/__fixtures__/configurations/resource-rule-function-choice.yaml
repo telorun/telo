@@ -1,0 +1,41 @@
+# A rule condition calls a module function over a member a choice decides: the
+# rule holds only where the member is written.
+kind: Telo.Application
+metadata:
+  name: ResourceRuleFunctionChoice
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref store
+---
+kind: Telo.Function
+metadata:
+  name: isSized
+params:
+  - name: size
+    schema: { type: integer }
+returns:
+  schema: { type: boolean }
+body: !cel "size > 0"
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    size: { type: integer }
+  x-telo-resource-rules:
+    - condition: !cel "Self.isSized(self.?size.orValue(0))"
+      code: STORE_SIZED
+      message: The store has no size.
+---
+kind: Self.Store
+metadata:
+  name: store
+size: !if
+  if: !cel "variables.flag1"
+  then: 5

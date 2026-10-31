@@ -373,9 +373,14 @@ steps:
       arg: !cel "inputs.word"
 `,
     ],
-    [
-      "a step forwarding part of another's result",
-      `
+  ])("claims nothing when read through %s", async (where, produced, rest) => {
+    expect(await declared(produced, textSlot, rest)).toEqual([]);
+  });
+
+  // A step forwarding part of another's result carries what its own site
+  // navigates, inside the producer's document, so the pointer is followed.
+  it("is followed when read through a step forwarding part of another's result", async () => {
+    const produced = `
 type: object
 properties:
   out:
@@ -384,8 +389,8 @@ properties:
       text: { $ref: "#/$defs/Maybe" }
 $defs:
   Maybe: { type: [string, "null"] }
-`,
-      `---
+`;
+    const rest = `---
 kind: Self.Sequence
 metadata: { name: main }
 steps:
@@ -397,9 +402,9 @@ steps:
     invoke: !ref take
     inputs:
       arg: !cel "steps.part.result.text"
-`,
-    ],
-  ])("claims nothing when read through %s", async (where, produced, rest) => {
-    expect(await declared(produced, textSlot, rest)).toEqual([]);
+`;
+    const found = await declared(produced, textSlot, rest);
+    expect(found).toHaveLength(1);
+    expect(found[0]).toContain("reads 'steps.part.result.text', which may be null");
   });
 });

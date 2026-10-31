@@ -1,15 +1,14 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import {
-  isRefSentinel,
-  isTaggedSentinel,
-  walkCelExpressions,
-} from "@telorun/templating";
+import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
+import type { NamedShapeLookup } from "./eval-paths.js";
 import type { RefFieldEntry, SchemaFromFieldEntry } from "./reference-field-map.js";
 import { siteRefEntry, type Pattern, type ReachRef } from "./reference-reach.js";
-import { pointerSegments } from "./resource-rule.js";
-import { keysUnder } from "./scope-declarations.js";
+import { declaredScopes, type DeclaredScope } from "./scope-declarations.js";
+import type { ScopeAddress, ScopeSite } from "./scope-address.js";
+import { addressOf, scopeSiteAt, scopeSiteAtPath } from "./scoped-name-resolver.js";
+import { walkOwnCelExpressions } from "./scope-members.js";
 import { carriesReferenceMarker, isResolvedReference } from "./resolved-reference.js";
 import type { ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
@@ -42,12 +41,11 @@ import {
  * the visitor subscribes to, and skips the work behind absent handlers.
  *
  * **Scope is per-resource.** `ScopeBoundary` is emitted once per resource at
- * enter time, before that resource's `RefSite`s, carrying both the source
- * enclosure prefixes (for refs written *inside* a scope) and the enclosed
- * resource-name set (for consumers that drop edges to scoped targets). No
- * cross-resource ordering or global enclosed-name union is implied — every
- * consumer's scope decision is local to the resource being visited, matching
- * the semantics each pass had before this walker existed.
+ * enter time, before that resource's `RefSite`s, carrying the scopes it
+ * declares and their inline declarations; each `RefSite` carries the scope its
+ * name is read in. A scope member's own sites and expressions are its own:
+ * `telo check`'s set holds it as a declaration, visited in turn, and the CEL
+ * walk stops at it.
  */
 
 export interface ResourceEnterEvent {
@@ -62,15 +60,10 @@ export interface ResourceExitEvent {
 
 export interface ScopeBoundaryEvent {
   source: ResourceManifest;
-  /** Dot-form prefixes of every `x-telo-scope` field on this resource. */
-  scopePrefixes: string[];
-  /** VISIBILITY pointer (an `x-telo-scope` entry, e.g. `/steps`) → the manifests
-   *  visible there. Keyed by where scoped names may be REFERENCED, which is not
-   *  where they are DECLARED: `Run.Sequence` declares `x-telo-scope:
-   *  ["/steps", "/targets"]` on its `with:` field, so one declaration appears
-   *  under two keys and neither names `with`. Use {@link declarations} for the
-   *  declaration site. */
-  manifestsByPointer: Map<string, ResourceManifest[]>;
+  /** The resource's own address — the holder of every scope it declares. */
+  holder: ScopeAddress | undefined;
+  /** Every scope the resource declares, in reach order. */
+  scopes: readonly DeclaredScope[];
   /** Every inline declaration inside this resource's scopes, ONCE each, with the
    *  concrete path it is written at in the owner's document (`with[0]`).
    *
@@ -79,9 +72,6 @@ export interface ScopeBoundaryEvent {
    *  this path into it. Deriving one from a visibility pointer instead names a
    *  region the declaration is not in (`steps[0]`). */
   declarations: { manifest: ResourceManifest; path: string }[];
-  /** Names of every resource declared inside this resource's scopes. Used by
-   *  the dependency graph to drop boot edges to scoped (on-demand) targets. */
-  enclosedNames: Set<string>;
   /** Scope entries that are references (`!ref`) rather than inline resource
    *  definitions — a category error, since a scope declares its own resources.
    *  Each carries the concrete path (e.g. `with[0]`) for diagnostics. */
@@ -103,11 +93,9 @@ export interface RefSiteEvent {
   entry: RefFieldEntry;
   /** Every reach slot at the site; empty for a value-tree-discovered one. */
   refs: readonly ReachRef[];
-  /** True when the site falls within one of this resource's scope prefixes —
-   *  source enclosure, used to scope a ref's candidate set. */
-  inScope: boolean;
-  /** Scope manifests visible to this ref path (non-empty only when `inScope`). */
-  visibleScopeManifests: ResourceManifest[];
+  /** The scope a name written at this site is read in — one of the resource's
+   *  own scopes whose regions enclose it, else none (module level). */
+  within: ScopeSite | undefined;
   /** True when the site was found by value-tree scanning rather than the reach
    *  (only when `discoverNestedRefs` is set) — a ref inside a step body, where
    *  the reach stops (e.g. `Run.Sequence` `steps[].invoke`).
@@ -159,6 +147,9 @@ export interface ManifestVisitor {
 
 export interface VisitOptions {
   aliases?: AliasResolver;
+  /** The lookup a schema's named shapes are read through; the registry's when
+   *  omitted. */
+  shapes?: NamedShapeLookup;
   aliasesByModule?: Map<string, AliasResolver>;
   /** Documents to skip entirely — those that are no instance (a kind
    *  document, import metadata, …), as the calling pass decides. */
@@ -238,13 +229,6 @@ function walkRefValues(
   }
 }
 
-const scopePrefixOf = (pointer: string): string =>
-  pointer.replace(/^\//, "").replace(/\//g, ".");
-
-/** A scope pointer's keys, read as `declaredScopes` reads them. */
-const scopeKeysOf = (pointer: string): readonly string[] =>
-  pointerSegments(pointer.startsWith("/") ? pointer : `/${pointer}`) ?? [];
-
 /** The per-declaring-module alias tables, when the caller threaded them. A
  *  nested kind inside an imported library's definition is written through THAT
  *  library's aliases. */
@@ -289,17 +273,17 @@ export function visitManifest(
     // Concrete paths emitted from the reach — so the value-tree scan below
     // doesn't re-emit a ref the reach already covered.
     const emittedRefPaths = wantsNested ? new Set<string>() : null;
+    const holder = addressOf(r);
+    let scopes: readonly DeclaredScope[] = [];
 
     if (wantsRefs || wantsScope || wantsSchemaFrom) {
       const sites = registry.referenceSites(r, aliases, aliasesByModule);
 
       if (wantsRefs || wantsScope) {
-        const manifestsByPointer = new Map<string, ResourceManifest[]>();
         const scopeRefEntries: { path: string; refName: string }[] = [];
         const declarations: { manifest: ResourceManifest; path: string }[] = [];
         for (const site of sites) {
           if (site.scopes.length === 0) continue;
-          const raw: ResourceManifest[] = [];
           const items = Array.isArray(site.data) ? site.data : [site.data];
           items.forEach((v, i) => {
             if (!v || typeof v !== "object") return;
@@ -315,32 +299,13 @@ export function visitManifest(
               });
               return;
             }
-            raw.push(v as ResourceManifest);
             declarations.push({ manifest: v as ResourceManifest, path: declarationPath });
           });
-          for (const { scope } of site.scopes) {
-            const pointers = Array.isArray(scope) ? scope : [scope];
-            for (const pointer of pointers) manifestsByPointer.set(pointer, raw);
-          }
         }
-        const scopePrefixes = Array.from(manifestsByPointer.keys()).map(scopePrefixOf);
+        scopes = declaredScopes(sites);
 
         if (wantsScope) {
-          const enclosedNames = new Set<string>();
-          for (const manifests of manifestsByPointer.values()) {
-            for (const m of manifests) {
-              const name = m.metadata?.name;
-              if (typeof name === "string") enclosedNames.add(name);
-            }
-          }
-          visitor.onScope!({
-            source: r,
-            scopePrefixes,
-            manifestsByPointer,
-            declarations,
-            enclosedNames,
-            scopeRefEntries,
-          });
+          visitor.onScope!({ source: r, holder, scopes, declarations, scopeRefEntries });
         }
 
         if (wantsRefs) {
@@ -349,17 +314,6 @@ export function visitManifest(
             if (refs.length === 0 || !reached.data) continue;
             const site = refs === reached.refs ? reached : { ...reached, refs };
             const concretePath = site.path;
-            const inScope = [...manifestsByPointer.keys()].some((pointer) =>
-              keysUnder(site.keys, scopeKeysOf(pointer)),
-            );
-            const visibleScopeManifests: ResourceManifest[] = [];
-            if (inScope) {
-              for (const [pointer, manifests] of manifestsByPointer) {
-                if (keysUnder(site.keys, scopeKeysOf(pointer))) {
-                  visibleScopeManifests.push(...manifests);
-                }
-              }
-            }
             emittedRefPaths?.add(concretePath);
             visitor.onRef!({
               source: r,
@@ -369,8 +323,7 @@ export function visitManifest(
               value: site.data,
               entry: siteRefEntry(site),
               refs: site.refs,
-              inScope,
-              visibleScopeManifests,
+              within: holder ? scopeSiteAt(holder, scopes, site.keys) : undefined,
             });
           }
         }
@@ -410,8 +363,7 @@ export function visitManifest(
           value,
           entry: NESTED_REF_ENTRY,
           refs: [],
-          inScope: false,
-          visibleScopeManifests: [],
+          within: holder ? scopeSiteAtPath(holder, scopes, path) : undefined,
           nested: true,
         });
       };
@@ -428,7 +380,7 @@ export function visitManifest(
       // expressions unchecked — silently, which for a typing rule means the
       // check simply stops existing.
       const authorSchema = registry.effectiveSchemaOf(definition);
-      const contexts = authorSchema ? extractContextsFromSchema(authorSchema, registry.shapeLookup) : [];
+      const contexts = authorSchema ? extractContextsFromSchema(authorSchema, (options.shapes ?? registry.shapeLookup)) : [];
       // A `Telo.Definition`'s `resources:` entries are DECLARATIONS of another
       // kind, so the CEL inside one belongs to THAT kind — its own
       // `x-telo-context` regions, rebased under the entry's path. `self` is
@@ -439,7 +391,7 @@ export function visitManifest(
       for (const body of templateBodies(r, registry, aliases, moduleScopes(options))) {
         const bodySchema = registry.effectiveSchemaOf(body.definition);
         if (!bodySchema) continue;
-        for (const ctx of extractContextsFromSchema(bodySchema, registry.shapeLookup, body.scopePrefix)) {
+        for (const ctx of extractContextsFromSchema(bodySchema, (options.shapes ?? registry.shapeLookup), body.scopePrefix)) {
           contexts.push({ scope: ctx.scope, schema: withTemplateSelf(ctx.schema) });
         }
       }
@@ -447,7 +399,8 @@ export function visitManifest(
       // kind's region lies deeper than the enclosing definition's blanket
       // `$.resources[*]`, so its names shadow that one's.
       contexts.sort((a, b) => b.scope.length - a.scope.length);
-      walkCelExpressions(r, "", (expr, path, engineName) => {
+      // A scope member's expressions are its own, emitted when it is visited.
+      walkOwnCelExpressions(r, "", (expr, path, engineName) => {
         const chain = contextChainAt(contexts, path);
         const innermost = chain[chain.length - 1];
         visitor.onCel!({

@@ -19,7 +19,9 @@ import {
   interpolationShape,
   MODULE_CALL_DISPATCH_KEY,
   moduleCallNames,
+  moduleCallOf,
 } from "@telorun/templating";
+import { childNodes, type CelNode } from "@telorun/cel";
 import type { ModuleCallDispatch } from "@telorun/templating";
 import { renderChain, type CallableFlags } from "./callable-flags.js";
 import { moduleNamesEnvironment, namespaceDispatchOf } from "./cel-environment.js";
@@ -108,7 +110,15 @@ export function ruleEnv(): ReturnType<typeof buildCelEnvironment> {
 }
 
 export type CompiledRule =
-  | { parsed: (ctx: Record<string, unknown>) => unknown; chains: readonly (readonly string[])[] }
+  | {
+      parsed: (ctx: Record<string, unknown>) => unknown;
+      chains: readonly (readonly string[])[];
+      /** The module functions it calls, as written (`Self.fits`). */
+      calls: readonly string[];
+      /** The members of `self` a presence test asks about (`has(self.port)`),
+       *  which the read chains record only as a test on `self`'s keys. */
+      rootPresence: readonly string[];
+    }
   | { reason: string };
 
 /**
@@ -132,6 +142,30 @@ const RULE_CACHE_LIMIT = 512;
 const compiledRules = new Map<string, CompiledRule>();
 
 const EMPTY_NAMES: ReadonlySet<string> = new Set();
+
+function calledFunctions(root: CelNode): string[] {
+  const out = new Set<string>();
+  const walk = (node: CelNode): void => {
+    const call = moduleCallOf(node);
+    if (call) out.add(call.qualified);
+    for (const child of childNodes(node)) walk(child);
+  };
+  walk(root);
+  return [...out];
+}
+
+function rootPresenceMembers(root: CelNode): string[] {
+  const out = new Set<string>();
+  const walk = (node: CelNode): void => {
+    if (node.kind === "call" && node.name === "has" && node.args.length === 1) {
+      const arg = node.args[0]!;
+      if (arg.kind === "select" && !arg.optional && arg.operand.kind === "ident" && arg.operand.name === "self") out.add(arg.field);
+    }
+    for (const child of childNodes(node)) walk(child);
+  };
+  walk(root);
+  return [...out];
+}
 
 export function compileRuleCondition(
   condition: string,
@@ -173,6 +207,8 @@ export function compileRuleCondition(
       // to the member it reads on each element — so an expression in a field of
       // an element the condition never reads does not stop the rule running.
       chains: extractReadChains(parsed.root),
+      calls: calledFunctions(parsed.root),
+      rootPresence: rootPresenceMembers(parsed.root),
     };
   }
   if (compiledRules.size >= RULE_CACHE_LIMIT) {
@@ -218,14 +254,14 @@ export function conditionRefusals(
   });
   for (const diagnostic of result.diagnostics) out.push(`Rule condition: ${diagnostic.message}`);
   for (const call of result.calls) {
-    if (call.moduleCall) continue;
-    if (HOST_BACKED.has(call.name)) {
+    const forbidden = forbiddenCatalogCall(call);
+    if (forbidden === "host-backed") {
       out.push(
         `Rule condition calls '${call.name}()', which the kernel supplies at boot ` +
           "(it needs Node crypto / Buffer). The analyzer registers a throwing stub, so " +
           "the rule cannot run at telo check.",
       );
-    } else if (NON_DETERMINISTIC.has(call.name) || call.deterministic === false) {
+    } else if (forbidden === "non-deterministic") {
       out.push(
         `Rule condition calls '${call.name}()', which re-evaluates per call. A check ` +
           "whose verdict depends on when it ran is not a check.",
@@ -233,6 +269,20 @@ export function conditionRefusals(
     }
   }
   return out;
+}
+
+/** Why a catalog call cannot appear in an expression the analyzer evaluates
+ *  before boot — one the kernel supplies, or one that re-evaluates per call —
+ *  or undefined. A module call is judged by its callee's flags instead. */
+export function forbiddenCatalogCall(call: {
+  readonly name: string;
+  readonly moduleCall?: true;
+  readonly deterministic?: boolean;
+}): "host-backed" | "non-deterministic" | undefined {
+  if (call.moduleCall) return undefined;
+  if (HOST_BACKED.has(call.name)) return "host-backed";
+  if (NON_DETERMINISTIC.has(call.name) || call.deterministic === false) return "non-deterministic";
+  return undefined;
 }
 
 /**

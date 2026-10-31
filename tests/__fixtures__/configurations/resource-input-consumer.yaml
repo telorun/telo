@@ -1,0 +1,18 @@
+# A consumer of the library above: whether its import supplies the input is a
+# literal fact, so its own check enumerates nothing and labels nothing.
+kind: Telo.Application
+metadata:
+  name: OptionalInputConsumer
+  version: 1.0.0
+imports:
+  Kinds: ../resource-inputs/optional/kinds
+  Supplying:
+    source: ./resource-input
+    resources:
+      store: !ref mine
+  Omitting: ./resource-input
+---
+kind: Kinds.Store
+metadata:
+  name: mine
+label: mine

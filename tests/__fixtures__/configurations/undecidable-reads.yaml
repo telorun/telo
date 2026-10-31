@@ -1,0 +1,23 @@
+# A condition reading two values nothing knows before boot, named in one report.
+kind: Telo.Application
+metadata:
+  name: UndecidableReads
+imports:
+  Run: ../../../modules/run
+ports:
+  http:
+    env: PORT
+    default: 8080
+secrets:
+  url:
+    env: DATABASE_URL
+    type: string
+    x-telo-type: { name: Telo.Url, scheme: { enum: [postgres] } }
+---
+kind: Run.Value
+metadata:
+  name: picked
+value: !if
+  if: !cel "ports.http == 80 && secrets.url.host == 'db'"
+  then: 1
+  else: 2

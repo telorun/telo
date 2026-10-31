@@ -30,9 +30,9 @@ export function valueDerivedContract(
   field: string,
 ): Record<string, any> | undefined {
   if (!manifest || !defSchema) return undefined;
-  const slots = valueSchemaSlots(defSchema).filter((slot) => namesField(slot.from, field));
-  if (slots.length !== 1 || !isSingleValueScope(slots[0]!.scope)) return undefined;
-  const [site] = resolveScopeValues(manifest, slots[0]!.scope);
+  const scope = derivingScope(defSchema, field);
+  if (scope === undefined) return undefined;
+  const [site] = resolveScopeValues(manifest, scope);
   const value = site?.value as Record<string, unknown> | undefined;
   if (!value || typeof value !== "object" || Array.isArray(value) || isTaggedSentinel(value)) {
     return undefined;
@@ -44,6 +44,20 @@ export function valueDerivedContract(
     required: keys,
     additionalProperties: false,
   };
+}
+
+/** The scope of the one slot a kind's schema derives `field` from (`$.outputs`),
+ *  when it has exactly one holding one value per resource. */
+function derivingScope(defSchema: Record<string, any>, field: string): string | undefined {
+  const slots = valueSchemaSlots(defSchema).filter((slot) => namesField(slot.from, field));
+  return slots.length === 1 && isSingleValueScope(slots[0]!.scope) ? slots[0]!.scope : undefined;
+}
+
+/** Where a resource's value slot implying `field` is — the place
+ *  {@link valueDerivedContract} reads, as keys — when its kind has one. */
+export function valueDerivedSlot(defSchema: Record<string, any> | undefined, field: string): string[] | undefined {
+  const scope = defSchema && derivingScope(defSchema, field);
+  return scope?.startsWith("$.") ? scope.slice(2).split(".") : undefined;
 }
 
 function namesField(from: unknown, field: string): boolean {

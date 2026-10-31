@@ -292,6 +292,7 @@ Save GOOGLE_CLIENT_ID to .env and GOOGLE_CLIENT_SECRET to .env.local? [y/N]
 
 ## See also
 
+- [Choosing by configuration](/learn/choosing-by-configuration) — one application on several backends, and asking only for the inputs the chosen setup uses.
 - [Application environment variables](/reference/kernel/application-env-variables) — the normative rules.
 - [Application ports](/reference/kernel/application-ports) — protocol brands and wiring checks.
 - [Running in production](/deploy/production) — the `TELO_*` variables the runtime itself reads.

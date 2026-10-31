@@ -1,0 +1,104 @@
+# One defect each inside an `x-telo-scope` member — a misspelled field and an
+# unresolved `!ref` — inside `Run.Sequence`'s `with:` and inside a third-party
+# kind's `members:`. `telo check` reports each at the member's path inside the
+# resource declaring the scope.
+kind: Telo.Library
+metadata:
+  name: ScopeMemberDefects
+  version: 1.0.0
+  description: >-
+    Fixture library whose exported resources each declare a scope member with
+    one defect: a misspelled field or an unresolved reference.
+imports:
+  Run: ../../../../../modules/run
+  Kinds: ../kinds
+exports:
+  resources:
+    - sequenceSchema
+    - sequenceRef
+    - hostSchema
+    - hostRef
+    - sequenceDuplicate
+    - sequenceCycle
+---
+kind: Run.Sequence
+metadata:
+  name: sequenceSchema
+with:
+  - kind: Run.Value
+    metadata:
+      name: answer
+    valeu: 1
+steps:
+  - name: read
+    invoke: !ref answer
+---
+kind: Run.Sequence
+metadata:
+  name: sequenceRef
+with:
+  - kind: Run.Sequence
+    metadata:
+      name: inner
+    steps:
+      - name: call
+        invoke: !ref nowhere
+steps:
+  - name: read
+    invoke: !ref inner
+---
+kind: Kinds.Host
+metadata:
+  name: hostSchema
+pick: answer
+members:
+  - kind: Kinds.Target
+    metadata:
+      name: answer
+    answr: 1
+---
+kind: Kinds.Host
+metadata:
+  name: hostRef
+pick: answer
+members:
+  - kind: Kinds.Target
+    metadata:
+      name: answer
+    target: !ref nowhere
+---
+kind: Run.Sequence
+metadata:
+  name: sequenceDuplicate
+with:
+  - kind: Run.Value
+    metadata:
+      name: answer
+    value: 1
+  - kind: Run.Value
+    metadata:
+      name: answer
+    value: 2
+steps:
+  - name: read
+    invoke: !ref answer
+---
+kind: Run.Sequence
+metadata:
+  name: sequenceCycle
+with:
+  - kind: Run.Sequence
+    metadata:
+      name: first
+    targets:
+      - !ref second
+    steps: []
+  - kind: Run.Sequence
+    metadata:
+      name: second
+    targets:
+      - !ref first
+    steps: []
+steps:
+  - name: read
+    invoke: !ref first

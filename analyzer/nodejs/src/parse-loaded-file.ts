@@ -6,6 +6,7 @@ import { buildCelEnvironment } from "./cel-environment.js";
 import type { LoadedFile, ParseError } from "./loaded-types.js";
 import { migrateManifests, NO_MIGRATIONS } from "./migrations/driver.js";
 import type { MigrationEntry } from "./migrations/types.js";
+import { loaderExpansionRefusals } from "./loader-expansion-refusals.js";
 import { buildDocumentPositions } from "./position-metadata.js";
 import { expandManifestFragments } from "./manifest-schemas.js";
 import { moduleCallNamesOfFile } from "./module-call-names.js";
@@ -95,6 +96,7 @@ export function parseYamlText(text: string): ParsedYaml {
     const raw = doc.toJSON();
     return raw === null || raw === undefined ? null : (raw as ResourceManifest);
   });
+  parseErrors.push(...loaderExpansionRefusals(text, documents, manifests, positions));
   return { documents, astDocuments, positions, parseErrors, manifests };
 }
 

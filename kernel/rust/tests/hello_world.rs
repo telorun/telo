@@ -119,3 +119,20 @@ fn reports_a_kind_whose_controller_this_kernel_cannot_host() {
     assert_eq!(err.code, "ERR_CONTROLLER_NOT_FOUND", "{err}");
     assert!(err.message.contains("Console.WriteStream"), "{err}");
 }
+
+/// No expansion construct is expanded here: a tag, a `...` splice and a family
+/// member's reference are each refused at load, naming the construct and where.
+#[test]
+fn refuses_expansion_constructs() {
+    for (fixture_name, construct, at) in [
+        ("unsupported-expansion", "`!if`", "`targets[0]`"),
+        ("unsupported-splice", "a `...` splice", "`columns....`"),
+        ("unsupported-family-ref", "`!ref stores[each.key]`", "`targets[0]`"),
+    ] {
+        let err = Kernel::new().load(&fixture(fixture_name)).expect_err("load must fail");
+        assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+        assert!(err.message.contains(construct), "{err}");
+        assert!(err.message.contains(at), "{err}");
+        assert!(err.message.contains("line "), "{err}");
+    }
+}

@@ -1,0 +1,44 @@
+[
+  { "name": "plain", "source": "db", "parsed": { "name": "db", "indexes": [] } },
+  { "name": "underscore and digits", "source": "_db2", "parsed": { "name": "_db2", "indexes": [] } },
+  { "name": "aliased", "source": "Console.writeLine", "parsed": { "alias": "Console", "name": "writeLine", "indexes": [] } },
+  { "name": "self", "source": "Self.db", "parsed": { "alias": "Self", "name": "db", "indexes": [] } },
+  {
+    "name": "family by key",
+    "source": "stores[each.key]",
+    "parsed": { "name": "stores", "indexes": [{ "binding": "each", "member": "key" }] }
+  },
+  {
+    "name": "family by index",
+    "source": "stores[table.index]",
+    "parsed": { "name": "stores", "indexes": [{ "binding": "table", "member": "index" }] }
+  },
+  {
+    "name": "two depths",
+    "source": "ops[hook.key][op.index]",
+    "parsed": {
+      "name": "ops",
+      "indexes": [
+        { "binding": "hook", "member": "key" },
+        { "binding": "op", "member": "index" }
+      ]
+    }
+  },
+  { "name": "empty", "source": "", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 0 } },
+  { "name": "leading digit", "source": "1db", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 0 } },
+  { "name": "leading space", "source": " db", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 0 } },
+  { "name": "trailing space", "source": "db ", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 2 } },
+  { "name": "hyphen", "source": "my-db", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 2 } },
+  { "name": "two dots", "source": "A.b.c", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 3 } },
+  { "name": "alias without name", "source": "A.", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 2 } },
+  { "name": "leading dot", "source": ".db", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 0 } },
+  { "name": "alias with an index", "source": "A.stores[each.key]", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 8 } },
+  { "name": "index without member", "source": "stores[each]", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 11 } },
+  { "name": "unknown member", "source": "stores[each.value]", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 12 } },
+  { "name": "literal index", "source": "stores['a']", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 7 } },
+  { "name": "numeric index", "source": "stores[0]", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 7 } },
+  { "name": "unclosed index", "source": "stores[each.key", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 15 } },
+  { "name": "space inside an index", "source": "stores[ each.key]", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 7 } },
+  { "name": "text after an index", "source": "stores[each.key].x", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 16 } },
+  { "name": "empty index", "source": "stores[]", "refusal": { "code": "REF_MEMBER_INVALID", "offset": 7 } }
+]

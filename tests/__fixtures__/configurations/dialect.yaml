@@ -1,0 +1,32 @@
+# A declaration-position choice under one name, a reference to it from outside
+# every branch refused for one of the two kinds, and a typo in the case no
+# default selects.
+kind: Telo.Application
+metadata:
+  name: Dialect
+imports:
+  Sql: ../../../modules/sql
+  SQLite: ../../../modules/sqlite
+  Run: ../../../modules/run
+variables:
+  dialect:
+    env: DIALECT
+    type: string
+    enum: [sqlite, memory]
+    default: sqlite
+--- !switch
+metadata: { name: db }
+switch: !cel "variables.dialect"
+cases:
+  sqlite:
+    kind: SQLite.Connection
+    file: ":memory:"
+  memory:
+    kind: Run.Value
+    valeu: 1
+---
+kind: Sql.Query
+metadata:
+  name: listNotes
+connection: !ref db
+sql: SELECT 1

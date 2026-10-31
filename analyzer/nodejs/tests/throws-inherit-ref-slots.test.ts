@@ -10,6 +10,7 @@ import {
 } from "../src/resolve-throws-union.js";
 import { forEachDrivenSlot } from "../src/schema-walk.js";
 import { buildDrivenSlotMap } from "../src/reference-field-map.js";
+import { collectScopeMembers } from "../src/scope-members.js";
 import { withSyntheticPositions } from "../src/with-synthetic-positions.js";
 
 /** `throws: { inherit: true }` counts dispatch through a reference slot whose
@@ -456,5 +457,37 @@ describe("INHERIT_WITHOUT_STEP_CONTEXT", () => {
     expect(
       inheritDiagnostics({ steps: { type: "array", "x-telo-step-context": { invoke: "invoke" } } }),
     ).toHaveLength(0);
+  });
+});
+
+describe("a library-internal `!ref` read in a scope", () => {
+  it("names the scope's member before the library's module-level resource of that name", () => {
+    const holderDef = kindDef({
+      properties: {
+        with: { "x-telo-scope": ["/target"], type: "array", items: { type: "object" } },
+        target: { "x-telo-ref": { kind: ["std.Raise", "std.Other"], use: "call" } },
+      },
+    });
+    const registry = new DefinitionRegistry();
+    for (const def of [raiseDef, otherDef, holderDef]) registry.register(def as never);
+    const libRaise = { kind: "std.Raise", metadata: { name: "raise", module: "lib" } } as never;
+    const member = { kind: "std.Other", metadata: { name: "raise", module: "lib" } };
+    const holder = {
+      kind: "std.Relay",
+      metadata: { name: "relay", module: "lib" },
+      with: [member],
+      target: refSentinel("raise"),
+    } as unknown as ResourceManifest;
+    collectScopeMembers([holder], (m) => registry.referenceSites(m));
+    const all = [libRaise, holder, member as unknown as ResourceManifest];
+    const ctx = createResolveCtx(
+      all,
+      registry,
+      new AliasResolver(),
+      new Map(),
+      new Set(),
+      new Map([["lib", [libRaise, holder]]]),
+    );
+    expect([...resolveThrowsUnion(holder, ctx).codes.keys()]).toEqual(["OTHER"]);
   });
 });

@@ -10,6 +10,8 @@ metadata:
     contract is stored, and the application is an `entry=application` search hit
     that no default search returns. A secret declaring `default:` leaves its
     value in none of the contract rows, `/module`'s `application` or a search hit.
+    A secret read only where another is absent is stored and served with its
+    `requiredWhen`, beside the `dimensions` it is keyed by.
 
     The module is seeded as a `./` local ref, so the ingest reads the fixture off
     `__fixtures__/` through the workspace CLI. The embedder and the
@@ -335,7 +337,7 @@ steps:
     invoke: !ref query
     inputs:
       sql: >-
-        SELECT mv.root_kind AS "rootKind", rk.exported, vi.ingest_rev AS "ingestRev",
+        SELECT DISTINCT mv.root_kind AS "rootKind", rk.exported, vi.ingest_rev AS "ingestRev",
                vi.last_error AS "lastError"
         FROM module_versions mv
         JOIN resource_kinds rk ON rk.module_id = mv.module_id AND rk.version = mv.version
@@ -406,6 +408,20 @@ steps:
                 required: false
                 env: API_TOKEN
                 schema: { type: string }
+              - name: licenseKey
+                description: Presented upstream when the operator holds one.
+                required: false
+                env: LICENSE_KEY
+                schema: { type: string }
+              # Read only where no license is set: required there, and stored
+              # with the configurations requiring it.
+              - name: trialToken
+                description: Presented upstream without a license.
+                required: true
+                requiredWhen:
+                  - secrets.licenseKey: absent
+                env: TRIAL_TOKEN
+                schema: { type: string }
             ports:
               - name: http
                 description: ""
@@ -414,6 +430,10 @@ steps:
                 default: 8080
                 arg: null
                 protocol: tcp
+            dimensions:
+              - key: secrets.licenseKey
+                values: [present, absent]
+                env: [LICENSE_KEY]
     invoke:
       kind: Assert.Equals
   # A secret's `default:` is a value, and no value of a secret is indexed.

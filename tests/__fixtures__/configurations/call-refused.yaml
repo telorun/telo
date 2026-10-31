@@ -1,0 +1,56 @@
+# Conditions calling functions nothing can run before boot: a native one, and
+# one whose body reads the clock.
+kind: Telo.Application
+metadata:
+  name: CallRefused
+imports:
+  Run: ../../../modules/run
+variables:
+  env:
+    env: APP_ENV
+    type: string
+    enum: [prod, dev]
+    default: dev
+---
+kind: Telo.Definition
+metadata:
+  name: Native
+capability: Telo.Callable
+params:
+  - name: env
+    schema: { type: string }
+returns:
+  schema: { type: boolean }
+schema:
+  type: object
+  additionalProperties: false
+controllers:
+  - pkg:telo/local/js?path=./native.mjs#Native
+---
+kind: Self.Native
+metadata:
+  name: native
+---
+kind: Telo.Function
+metadata:
+  name: afterEpoch
+params: []
+returns:
+  schema: { type: boolean }
+body: !cel "now() > timestamp('2000-01-01T00:00:00Z')"
+---
+kind: Run.Value
+metadata:
+  name: byNative
+value: !if
+  if: !cel "Self.native(variables.env)"
+  then: 1
+  else: 2
+---
+kind: Run.Value
+metadata:
+  name: byClock
+value: !if
+  if: !cel "Self.afterEpoch()"
+  then: 1
+  else: 2

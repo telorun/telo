@@ -1,0 +1,15 @@
+# Exports a member and borrows nothing.
+kind: Telo.Library
+metadata:
+  name: Leaf
+  version: 0.0.0
+  description: Test fixture exporting a member and borrowing nothing.
+imports:
+  Kinds: ../../kinds
+exports:
+  resources: [member]
+---
+kind: Kinds.Store
+metadata:
+  name: member
+label: member

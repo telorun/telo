@@ -1,0 +1,53 @@
+# A consumer of a templated kind whose body declares, ahead of the entry it
+# runs, a second entry of the same kind only where the consumer's `extra` —
+# bound to flag1 — holds. The entry it runs receives the consumer's `limit`,
+# which holds a value the entry's own field refuses where flag2 is false: a
+# finding about that entry's view, whichever views stand before it.
+kind: Telo.Application
+metadata:
+  name: ForwardViewOrigin
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref wrapped
+---
+kind: Telo.Definition
+metadata:
+  name: Wrapped
+capability: Telo.Runnable
+schema:
+  type: object
+  properties:
+    extra: { type: boolean, x-telo-eval: compile }
+    first: {}
+    limit: {}
+resources:
+  - !if
+    metadata: { name: chosen }
+    if: !cel "self.extra"
+    then:
+      kind: Run.Loop
+      maxIterations: !cel "self.first"
+      steps:
+        - name: once
+          value: 1
+  - kind: Run.Loop
+    metadata: { name: looped }
+    maxIterations: !cel "self.limit"
+    steps:
+      - name: once
+        value: 1
+run: !ref looped
+---
+kind: ForwardViewOrigin.Wrapped
+metadata:
+  name: wrapped
+extra: !cel "variables.flag1"
+first: 2
+limit: !if
+  if: !cel "variables.flag2"
+  then: 3
+  else: many

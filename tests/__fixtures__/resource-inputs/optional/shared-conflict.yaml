@@ -1,0 +1,18 @@
+# Two imports of one shared library, one supplying the optional store and one
+# omitting it: the one instantiation cannot do both.
+kind: Telo.Application
+metadata:
+  name: SharedOptionalConflict
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  Supplying:
+    source: ./shared
+    resources:
+      store: !ref mine
+  Omitting: ./shared
+---
+kind: Kinds.Store
+metadata:
+  name: mine
+label: mine

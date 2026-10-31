@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedSplice
+  version: 1.0.0
+---
+kind: Some.Kind
+metadata:
+  name: spliced
+columns:
+  id: integer
+  ...: [ ]

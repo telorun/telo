@@ -7,7 +7,7 @@ import type { Diagnostic, DiagnosticSeverity, DiagnosticTag } from "vscode-langu
  *  stamp ride in `data`, which a client hands back unchanged in a
  *  `codeAction` request — that is how a quick fix round-trips. */
 export function toLspDiagnostic(n: NormalizedDiagnostic): Diagnostic {
-  const stamp = n.data as { resource?: { kind?: unknown; name?: unknown }; path?: unknown } | undefined;
+  const stamp = n.data as { resource?: { kind?: unknown; name?: unknown }; path?: unknown; configurations?: unknown } | undefined;
   const replace = n.suggestions?.find((s) => s.kind === "replace");
   const data: TeloDiagnosticData = {
     ...(replace
@@ -17,6 +17,9 @@ export function toLspDiagnostic(n: NormalizedDiagnostic): Diagnostic {
       ? { resource: { kind: stamp.resource.kind, name: stamp.resource.name } }
       : {}),
     ...(typeof stamp?.path === "string" ? { path: stamp.path } : {}),
+    ...(Array.isArray(stamp?.configurations)
+      ? { configurations: stamp.configurations as Array<Record<string, unknown>> }
+      : {}),
   };
   return {
     range: n.range,

@@ -1,0 +1,25 @@
+# The database example over fixture kinds: `databaseAccess` present picks its
+# consumer; `data` is reached only in the `else:` branch, so it is required only
+# where the need is absent.
+kind: Telo.Application
+metadata:
+  name: Notes
+imports:
+  Kinds: ./kinds
+needs:
+  databaseAccess:
+    kind: Kinds.Access
+    optional: true
+    env: { url: DATABASE_URL }
+  data:
+    kind: Telo.DurableDirectory
+--- !if
+metadata: { name: db }
+if: !cel "resources.databaseAccess != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref databaseAccess
+  label: database
+else:
+  kind: Kinds.Labelled
+  label: !cel "string(resources.data.path.joinPath('notes.db'))"

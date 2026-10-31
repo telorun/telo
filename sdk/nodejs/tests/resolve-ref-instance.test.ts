@@ -19,9 +19,16 @@ describe("resolveRefInstance", () => {
 
   it("resolves a marked reference, and a `!ref` sentinel by the name it holds", () => {
     expect(resolve(kindRef("Cache.Memory", "store"))).toBe(store);
-    expect(resolve({ __tagged: true, engine: "ref", source: "store" })).toBe(store);
-    expect(resolve({ __tagged: true, engine: "ref", source: "Self.store" })).toBe(store);
-    expect(resolve({ __tagged: true, engine: "ref", source: "Lib.store" })).toBe(imported);
+    // As the loader makes them: the `!ref` engine's verdict beside the text.
+    const sentinel = (source: string, alias?: string) => ({
+      __tagged: true,
+      engine: "ref",
+      source,
+      parsed: { ...(alias ? { alias } : {}), name: "store", indexes: [] },
+    });
+    expect(resolve(sentinel("store"))).toBe(store);
+    expect(resolve(sentinel("Self.store", "Self"))).toBe(store);
+    expect(resolve(sentinel("Lib.store", "Lib"))).toBe(imported);
   });
 
   it("reads a plain `{ kind, name }` as no reference", () => {

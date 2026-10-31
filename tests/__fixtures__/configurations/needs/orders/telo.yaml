@@ -1,0 +1,26 @@
+# A library whose exported `db` is chosen by whether its optional need is
+# supplied: unsupplied at its import, the need is read from the application's
+# environment, so its presence is a dimension of the application.
+kind: Telo.Library
+metadata:
+  name: Orders
+  version: 0.0.0
+  description: Test fixture exporting a resource chosen by an optional need's presence.
+imports:
+  Kinds: ../kinds
+needs:
+  databaseAccess:
+    kind: Kinds.Access
+    optional: true
+exports:
+  resources: [db]
+--- !if
+metadata: { name: db }
+if: !cel "resources.databaseAccess != null"
+then:
+  kind: Kinds.Consumer
+  access: !ref databaseAccess
+  label: need
+else:
+  kind: Kinds.Labelled
+  label: fallback

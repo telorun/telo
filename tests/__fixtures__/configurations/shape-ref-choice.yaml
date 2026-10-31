@@ -1,0 +1,47 @@
+# A kind reaches a named shape with a member a choice decides through
+# `$ref: telo://…` — in its input contract, and in a context its schema
+# declares: a read of the member through either is refused only where the
+# member is left out.
+kind: Telo.Application
+metadata:
+  name: ShapeRefChoice
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref op
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Result
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    x: !if
+      if: !cel "variables.flag1"
+      then: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Op
+capability: Telo.Runnable
+inputType: { $ref: "telo://Self/Result" }
+schema:
+  type: object
+  properties:
+    check:
+      x-telo-context:
+        type: object
+        properties:
+          sample: { $ref: "telo://Self/Result" }
+    steps:
+      type: array
+      items: { $ref: "telo://manifest#/$defs/Step" }
+---
+kind: Self.Op
+metadata:
+  name: op
+check: !cel "sample.x"
+steps:
+  - name: read
+    value: !cel "inputs.x"

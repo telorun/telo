@@ -1,0 +1,18 @@
+# A library exporting an instance its own `dialect` chooses.
+kind: Telo.Library
+metadata:
+  name: BindingLib
+imports:
+  Run: ../../../../modules/run
+variables:
+  dialect:
+    type: string
+    enum: [pg, lite]
+exports:
+  resources: [store]
+--- !switch
+metadata: { name: store }
+switch: !cel "variables.dialect"
+cases:
+  pg: { kind: Run.Value, value: postgres-store }
+  lite: { kind: Run.Value, value: sqlite-store }

@@ -1,3 +1,4 @@
+import { demandingEvery } from "./input-demand.js";
 import { effectiveAuthorSchema } from "@telorun/analyzer";
 import {
   formatDuration,
@@ -348,7 +349,7 @@ describe("resolveApplicationEnv", () => {
         },
       },
       { PORT: "1234", LOG_LEVEL: "info", DATABASE_URL: "postgres://x" },
-      buildValidator(),
+      buildValidator(), demandingEvery(),
     );
     expect(result.variables).toEqual({ port: 1234, logLevel: "info" });
     expect(result.secrets).toEqual({ databaseUrl: "postgres://x" });
@@ -362,7 +363,7 @@ describe("resolveApplicationEnv", () => {
         },
       },
       {},
-      buildValidator(),
+      buildValidator(), demandingEvery(),
     );
     expect(result.variables).toEqual({ port: 3000 });
   });
@@ -381,7 +382,7 @@ describe("resolveApplicationEnv", () => {
         },
       },
       { OPENS: "2026-01-15T09:30:00+02:00", PRICE: '{"pricedAt":"2026-01-15T07:30:00Z"}' },
-      buildValidator(),
+      buildValidator(), demandingEvery(),
     );
     // An instant is a branded VALUE too, not a host `Date`, and it renders through the
     // engine — RFC 3339 in UTC with the fraction trimmed off a whole second.
@@ -401,7 +402,7 @@ describe("resolveApplicationEnv", () => {
       resolveApplicationEnv(
         { variables: { opens: { env: "OPENS", type: "string", "x-telo-type": "Telo.Timestamp" } } },
         { OPENS: "tomorrow" },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       ),
     ).toThrow(/opens: .*must be a Telo\.Timestamp — text written in the manifest or an environment variable is read only as RFC 3339 text/);
   });
@@ -417,7 +418,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         {},
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       );
     } catch (e) {
       thrown = e;
@@ -441,7 +442,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         { PORT: "abc" },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       ),
     ).toThrow(/value "abc" is not a valid integer/);
   });
@@ -455,7 +456,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         { ON: "yes" },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       ),
     ).toThrow(/is not a valid boolean/);
   });
@@ -469,7 +470,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         { PORT: "80" },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       ),
     ).toThrow(/port:/);
   });
@@ -487,7 +488,7 @@ describe("resolveApplicationEnv", () => {
         },
       },
       { TLS: '{"cert":"a","key":"b"}' },
-      buildValidator(),
+      buildValidator(), demandingEvery(),
     );
     expect(result.variables).toEqual({ tls: { cert: "a", key: "b" } });
   });
@@ -504,7 +505,7 @@ describe("resolveApplicationEnv", () => {
         },
       },
       { ORIGINS: '["x","y"]' },
-      buildValidator(),
+      buildValidator(), demandingEvery(),
     );
     expect(result.variables).toEqual({ origins: ["x", "y"] });
   });
@@ -518,7 +519,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         { TLS: "[]" },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       ),
     ).toThrow(/expected JSON object, got array/);
   });
@@ -532,7 +533,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         { ORIGINS: '{"a":1}' },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       ),
     ).toThrow(/expected JSON array, got object/);
   });
@@ -546,7 +547,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         { TLS: "not-json" },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       ),
     ).toThrow(/value is not valid JSON/);
   });
@@ -561,7 +562,7 @@ describe("resolveApplicationEnv", () => {
             },
           },
           { SECRET_PORT: "sk-live-abc123" },
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         );
         throw new Error("expected to throw");
       } catch (e) {
@@ -581,7 +582,7 @@ describe("resolveApplicationEnv", () => {
             },
           },
           { SECRET_FLAG: "super-secret" },
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         );
         throw new Error("expected to throw");
       } catch (e) {
@@ -601,7 +602,7 @@ describe("resolveApplicationEnv", () => {
             },
           },
           { SECRET_TLS: "not-json-cert-xyz" },
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         );
         throw new Error("expected to throw");
       } catch (e) {
@@ -625,7 +626,7 @@ describe("resolveApplicationEnv", () => {
             },
           },
           { SECRET_TOKEN: "stg-leaky-token-value" },
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         );
         throw new Error("expected to throw");
       } catch (e) {
@@ -644,7 +645,7 @@ describe("resolveApplicationEnv", () => {
             },
           },
           { PORT: "abc" },
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         );
         throw new Error("expected to throw");
       } catch (e) {
@@ -665,7 +666,7 @@ describe("resolveApplicationEnv", () => {
           },
         },
         { PORT: "8080", DNS_PORT: "5353" },
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       );
       expect(result.ports).toEqual({ http: 8080, dns: 5353 });
     });
@@ -674,7 +675,7 @@ describe("resolveApplicationEnv", () => {
       const result = resolveApplicationEnv(
         { ports: { http: { env: "PORT", default: 3000 } } },
         {},
-        buildValidator(),
+        buildValidator(), demandingEvery(),
       );
       expect(result.ports).toEqual({ http: 3000 });
     });
@@ -685,7 +686,7 @@ describe("resolveApplicationEnv", () => {
         resolveApplicationEnv(
           { ports: { http: { env: "PORT" } } },
           {},
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         );
       } catch (e) {
         thrown = e;
@@ -703,7 +704,7 @@ describe("resolveApplicationEnv", () => {
         resolveApplicationEnv(
           { ports: { http: { env: "PORT" } } },
           { PORT: "70000" },
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         );
       } catch (e) {
         thrown = e;
@@ -717,9 +718,33 @@ describe("resolveApplicationEnv", () => {
         resolveApplicationEnv(
           { ports: { http: { env: "PORT" } } },
           { PORT: "abc" },
-          buildValidator(),
+          buildValidator(), demandingEvery(),
         ),
       ).toThrow(RuntimeError);
     });
+  });
+});
+
+describe("an input that may be absent", () => {
+  const manifest = {
+    kind: "Telo.Application",
+    metadata: { name: "Presence" },
+    secrets: { key: { env: "PRESENCE_KEY", type: "string", default: null } },
+  };
+
+  it("is null when nothing supplies it, and its value when the environment does", () => {
+    expect(resolveApplicationEnv(manifest, {}, buildValidator(), demandingEvery()).secrets).toEqual({ key: null });
+    expect(resolveApplicationEnv(manifest, { PRESENCE_KEY: "k" }, buildValidator(), demandingEvery()).secrets).toEqual({ key: "k" });
+  });
+
+  it("may be supplied as absent by name", () => {
+    expect(resolveApplicationEnv(manifest, {}, buildValidator(), demandingEvery(), { secrets: { key: null } }).secrets).toEqual({
+      key: null,
+    });
+  });
+
+  it("is never a port", () => {
+    const ports = { kind: "Telo.Application", metadata: { name: "Ports" }, ports: { http: { env: "P", default: null } } };
+    expect(() => resolveApplicationEnv(ports, {}, buildValidator(), demandingEvery())).toThrow(/a port never admits absence/);
   });
 });

@@ -210,6 +210,45 @@ describe("module page", () => {
     assert.ok(!html.includes('href="/module/local'));
     assert.ok(html.includes('href="/module/oci/example.com/acme/base/#kind-Base"'));
   });
+
+  test("an application's input says which configurations require it, in its environment's names", async () => {
+    hub.handle = (req, res) =>
+      sendJson(res, 200, {
+        ...modulePage("1.0.0"),
+        kinds: [],
+        application: {
+          variables: [],
+          secrets: [
+            { name: "openaiApiKey", description: "", required: false, env: "OPENAI_API_KEY", schema: { type: "string" } },
+            {
+              name: "anthropicApiKey",
+              description: "",
+              required: true,
+              requiredWhen: [{ "secrets.openaiApiKey": "absent" }],
+              env: "ANTHROPIC_API_KEY",
+              schema: { type: "string" },
+            },
+            {
+              name: "pgPassword",
+              description: "",
+              required: true,
+              requiredWhen: [{ "secrets.databaseUrl.scheme": "postgres" }],
+              env: "PG_PASSWORD",
+              schema: { type: "string" },
+            },
+          ],
+          ports: [],
+          dimensions: [
+            { key: "secrets.openaiApiKey", values: ["present", "absent"], env: ["OPENAI_API_KEY"] },
+            { key: "secrets.databaseUrl.scheme", values: ["postgres", "mysql"], env: ["DATABASE_URL"], member: "scheme" },
+          ],
+        },
+      });
+    const html = await (await get(web.origin, PAGE)).text();
+    assert.ok(html.includes("required when OPENAI_API_KEY is unset"));
+    assert.ok(html.includes("required when the scheme of DATABASE_URL is postgres"));
+    assert.equal(html.match(/>required</g), null);
+  });
 });
 
 /** The two reads a catalogue page is seeded from, over one category `tools`. */

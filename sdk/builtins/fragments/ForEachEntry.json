@@ -1,0 +1,26 @@
+{
+  "title": "`!for-each` at a splice",
+  "description": "Inside a template body, the value of a `...` key: one mapping entry per element, keyed by `key`.",
+  "type": "object",
+  "properties": {
+    "key": {
+      "description": "The entry's key, a `!cel` string over the bindings."
+    },
+    "in": {
+      "description": "The collection repeated over: a bare `!cel \"self.<path>\"` or `<binding>.value.<path>`."
+    },
+    "as": {
+      "type": "string",
+      "description": "The binding's name; `each` when omitted."
+    },
+    "emit": {
+      "description": "What each element contributes."
+    }
+  },
+  "required": [
+    "in",
+    "key",
+    "emit"
+  ],
+  "additionalProperties": false
+}

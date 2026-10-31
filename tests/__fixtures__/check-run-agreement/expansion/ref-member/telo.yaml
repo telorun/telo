@@ -1,0 +1,13 @@
+# A `!ref` outside the grammar: one dot too many.
+kind: Telo.Library
+metadata:
+  name: RefMemberLib
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Run.Sequence
+metadata:
+  name: sequence
+steps:
+  - name: call
+    invoke: !ref Run.value.extra

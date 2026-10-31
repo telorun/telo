@@ -9,6 +9,7 @@ import {
   readApplicationContract,
   readNativeEntries,
   type ApplicationContract,
+  type ContractRequirements,
   sha256Base64Url,
   splitIntegrity,
   urlManifestCacheCoords,
@@ -27,6 +28,7 @@ import {
   moduleRuntimeReport,
   nativeReach,
 } from "../controller-runtime.js";
+import { loadAnalyzedGraph, printRefusals } from "../analyzed-graph.js";
 import { createLogger, type Logger } from "../logger.js";
 import { outErrLine, outLine, output } from "../output.js";
 import { fetchManifestHash } from "../manifest-hash.js";
@@ -397,12 +399,35 @@ export interface ManifestJsonPayload {
    *  for the built-in vocabulary (`Telo.Builtins`), whose kinds the runtime
    *  itself implements — an absent PURL would otherwise read as portable. */
   runtime: ModuleRuntimeReport | null;
-  /** The declared `variables` / `secrets` / `ports` of a `Telo.Application`;
-   *  `null` for a library. No secret's value is ever carried. */
+  /** The declared `variables` / `secrets` / `ports` of a `Telo.Application`,
+   *  each with the configurations requiring it, and the dimensions those are
+   *  keyed by; `null` for a library. No secret's value is ever carried. */
   application: ApplicationContract | null;
 }
 
-/** Build the `--json` payload for an already-resolved manifest.
+/**
+ * An Application's requirements, from its whole graph loaded and analysed as
+ * `telo describe` does — so the two report one requiredness. Undefined when the
+ * graph does not load or the analysis refuses it: its refusals are printed on
+ * stderr and `process.exitCode` is set, so the command prints no payload.
+ */
+export async function analysedRequirements(ref: string, log: Logger): Promise<ContractRequirements | undefined> {
+  const analyzed = await loadAnalyzedGraph(ref, log);
+  if (!analyzed) return undefined;
+  if (analyzed.errors.length > 0) {
+    printRefusals(analyzed, analyzed.errors, log, "application", "manifest payload");
+    return undefined;
+  }
+  const requirements = analyzed.registry.analysisOf(analyzed.manifests).applicationRequirements;
+  if (!requirements) throw new Error(`'${ref}' was analysed as an application and has no requirements.`);
+  return requirements;
+}
+
+/** Build the `--json` payload for an already-resolved manifest — undefined
+ *  when the manifest is an Application whose analysis refused it, which
+ *  `requirementsOf` has reported (an Application's contract is a verdict over
+ *  its whole graph; a library's and the built-in vocabulary's read nothing
+ *  beyond the text).
  *
  *  Separate from `runManifest` so the shape can be asserted without a process:
  *  the hub e2e cannot cover it — that container tracks with the `telo` its base
@@ -413,19 +438,27 @@ export async function buildManifestJsonPayload(
   ref: string,
   text: string,
   log: Logger,
-): Promise<ManifestJsonPayload> {
+  requirementsOf: () => Promise<ContractRequirements | undefined>,
+): Promise<ManifestJsonPayload | undefined> {
   // A local module has neither: no cache location, and no transport whose
   // verification a pin would be checked against.
   const local = localManifestPath(ref) !== null;
   const docs = parseDocs(text);
   const builtins = isBuiltinVocabularyRoot(docs[0]?.toJSON());
+  const moduleDoc = findModuleDoc(docs)?.toJSON() as { kind?: unknown } | undefined;
+  let application: ApplicationContract | null = null;
+  if (!builtins && moduleDoc?.kind === "Telo.Application") {
+    const requirements = await requirementsOf();
+    if (!requirements) return undefined;
+    application = readApplicationContract(moduleDoc, requirements);
+  }
   return {
     ref,
     cacheKey: local ? null : cacheKeyForRef(ref, text),
     manifest: text,
     integrity: local ? null : await integrityForRef(ref, log),
     runtime: builtins ? null : extractKindRuntimes(docs, log),
-    application: builtins ? null : readApplicationContract(findModuleDoc(docs)?.toJSON()),
+    application,
   };
 }
 
@@ -435,7 +468,8 @@ async function runManifest(argv: { ref: string; json: boolean }): Promise<void> 
   if (argv.json || output().isJson) {
     // The hub's tracker parses this document; it is the payload, not a log
     // line, so it bypasses `outLine` (a no-op under `-o json`).
-    output().document(await buildManifestJsonPayload(ref, text, log));
+    const payload = await buildManifestJsonPayload(ref, text, log, () => analysedRequirements(ref, log));
+    if (payload) output().document(payload);
     return;
   }
   output().raw(text.endsWith("\n") ? text : `${text}\n`);
@@ -675,7 +709,7 @@ export function moduleCommand(yargs: Argv): Argv {
                 type: "boolean",
                 default: false,
                 describe:
-                  "Emit { ref, cacheKey, manifest, integrity, runtime, application } as JSON; `ref` is the version read and `integrity` the pin an imports: entry writes after it",
+                  "Emit { ref, cacheKey, manifest, integrity, runtime, application } as JSON; `ref` is the version read and `integrity` the pin an imports: entry writes after it. An application's graph is loaded and analysed for `application` (each input's `required` / `requiredWhen`, and its `dimensions`); one the analysis refuses prints nothing and exits 1",
               }),
           async (argv) => {
             await runManifest(argv as any);

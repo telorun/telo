@@ -1,3 +1,4 @@
+import { requirementSentence, type RequirementDimension } from "@telorun/analyzer";
 import type { Argv } from "yargs";
 import { loadNeedTable } from "../load-need-table.js";
 import { createLogger, type Logger } from "../logger.js";
@@ -15,15 +16,29 @@ async function runReport(argv: { manifest: string }): Promise<void> {
   const loaded = await loadNeedTable(argv.manifest, log, "needs report");
   if (!loaded) return;
 
-  const report = buildNeedsReport(loaded.graph, loaded.table, loaded.needType);
+  const report = buildNeedsReport(
+    loaded.graph,
+    loaded.table,
+    loaded.needType,
+    loaded.requirements,
+    loaded.dimensions,
+  );
   if (output().isJson) {
     output().document(report);
     return;
   }
-  printReport(report, log);
+  printReport(report, loaded.dimensions, log);
 }
 
-function printReport(report: NeedsReport, log: Logger): void {
+/** `optional`, `required`, `required when <sentence>`, or nothing for a need
+ *  no configuration requires. */
+function requirementMark(need: NeedsReport["needs"][number], dimensions: readonly RequirementDimension[]): string {
+  if (need.optional) return "optional";
+  if (!need.required) return "";
+  return need.requiredWhen ? `required when ${requirementSentence(need.requiredWhen, dimensions)}` : "required";
+}
+
+function printReport(report: NeedsReport, dimensions: readonly RequirementDimension[], log: Logger): void {
   if (report.needs.length === 0) {
     outLine("No needs are read from the environment.");
     return;
@@ -31,7 +46,8 @@ function printReport(report: NeedsReport, log: Logger): void {
   report.needs.forEach((need, index) => {
     if (index > 0) outLine();
     const type = need.type.module ? `${need.type.name} (${need.type.module})` : need.type.name;
-    outLine(`${need.path}  ${log.dim(type)}${need.optional ? `  ${log.dim("optional")}` : ""}`);
+    const mark = requirementMark(need, dimensions);
+    outLine(`${need.path}  ${log.dim(type)}${mark ? `  ${log.dim(mark)}` : ""}`);
     outLine(`  declared by ${need.declaredBy}`);
     if (need.version !== null) outLine(`  version ${need.version}`);
     if (need.features.length > 0) outLine(`  features ${need.features.join(", ")}`);

@@ -38,6 +38,7 @@ describe("telo needs report", () => {
     expect(status).toBe(0);
     expect(JSON.parse(stdout)).toEqual({
       reportVersion: 1,
+      dimensions: [],
       needs: [
         {
           path: "sessionKey",
@@ -47,6 +48,7 @@ describe("telo needs report", () => {
           features: [],
           parameters: {},
           optional: false,
+          required: true,
           fields: { value: field("SESSION_KEY", "bound", true, true) },
         },
         {
@@ -57,6 +59,7 @@ describe("telo needs report", () => {
           features: [],
           parameters: {},
           optional: true,
+          required: false,
           fields: {
             url: field("TELO_NEED_AUDIT__URL", "derived", true, true),
             schema: field("TELO_NEED_AUDIT__SCHEMA", "derived", false, false),
@@ -70,6 +73,7 @@ describe("telo needs report", () => {
           features: [],
           parameters: { extensions: ["pgvector"] },
           optional: false,
+          required: true,
           fields: {
             url: field("TELO_NEED_ORDERS__DATABASE_ACCESS__URL", "derived", true, true),
             schema: field("TELO_NEED_ORDERS__DATABASE_ACCESS__SCHEMA", "derived", false, false),
@@ -92,8 +96,43 @@ describe("telo needs report", () => {
         features: ["pgvector"],
         parameters: {},
         optional: false,
+        required: true,
         fields: { url: field("CONSUME_DATABASE_URL", "bound", true, true) },
       },
+    ]);
+  });
+
+  it("lists the dimensions a need's requirement is keyed by, and the configurations requiring it", () => {
+    const fixture = path.join(ROOT, "tests/__fixtures__/configurations/needs/database.yaml");
+    const json = runCli(["needs", "report", "-o", "json", fixture]);
+    expect(json.status).toBe(0);
+    const report = JSON.parse(json.stdout);
+    expect(report.dimensions).toEqual([
+      { key: "resources.databaseAccess", values: ["present", "absent"], env: ["DATABASE_URL"] },
+    ]);
+    expect(report.needs.map((n: { path: string; required: boolean; requiredWhen?: unknown }) => [n.path, n.required, n.requiredWhen])).toEqual([
+      ["databaseAccess", false, undefined],
+      ["data", true, [{ "resources.databaseAccess": "absent" }]],
+    ]);
+    const text = runCli(["needs", "report", fixture]);
+    expect(text.stdout).toMatch(/^data  DurableDirectory \(Telo\)  required when DATABASE_URL is unset$/m);
+    expect(text.stdout).toMatch(/^databaseAccess  .*  optional$/m);
+  });
+
+  it("lists a library's need through every import level, keyed by its need path", () => {
+    const fixture = path.join(ROOT, "tests/__fixtures__/configurations/needs/shelf-app.yaml");
+    const { stdout, status } = runCli(["needs", "report", "-o", "json", fixture]);
+    expect(status).toBe(0);
+    const report = JSON.parse(stdout);
+    expect(report.dimensions).toEqual([
+      {
+        key: "resources.Shelf.Notes.databaseAccess",
+        values: ["present", "absent"],
+        env: ["TELO_NEED_SHELF__NOTES__DATABASE_ACCESS__URL"],
+      },
+    ]);
+    expect(report.needs.find((n: { path: string }) => n.path === "Shelf.Notes.data").requiredWhen).toEqual([
+      { "resources.Shelf.Notes.databaseAccess": "absent" },
     ]);
   });
 

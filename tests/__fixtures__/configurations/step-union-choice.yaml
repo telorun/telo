@@ -1,0 +1,33 @@
+# Which branch of the step union a step takes is chosen by a choice: `invoke:`
+# where flag1 holds, `value:` where neither flag holds, and neither where only
+# flag2 does. `timeout: 0` is refused by the invoke branch and read by nothing
+# in the value branch, so the step is wrong where flag1 holds and where only
+# flag2 does, and right where neither does.
+kind: Telo.Application
+metadata:
+  name: StepUnionChoice
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+  flag2: { env: FLAG_2, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Run.Value
+metadata:
+  name: target
+value: 1
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: chosen
+    invoke: !if
+      if: !cel "variables.flag1"
+      then: !ref target
+    value: !if
+      if: !cel "!variables.flag1 && !variables.flag2"
+      then: 1
+    timeout: 0

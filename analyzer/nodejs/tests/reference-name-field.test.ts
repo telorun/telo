@@ -141,13 +141,13 @@ describe("normalization", () => {
   it("reads the legacy `{ kind, name }` of a kind declaring no `name` field as the reference it means", () => {
     const out = normalized({ kind: "Fx.Open", name: "other" });
     expect(out).toHaveLength(1);
-    expect(out[0]!.target).toEqual({ __ref: true, kind: "Fx.Open", name: "other" });
+    expect(out[0]!.target).toEqual({ __ref: true, kind: "Fx.Open", name: "other", indexes: [] });
   });
 
   it("extracts the same spelling for a kind declaring `name`", () => {
     const out = normalized({ kind: "Fx.Named", name: "house" });
     expect(out.map((m) => m.metadata.name)).toEqual(["holder", "holder_target"]);
-    expect(out[0]!.target).toEqual({ __ref: true, kind: "Fx.Named", name: "holder_target" });
+    expect(out[0]!.target).toEqual({ __ref: true, kind: "Fx.Named", name: "holder_target", indexes: [] });
     expect(out[1]!.name).toBe("house");
   });
 });

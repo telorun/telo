@@ -12,28 +12,28 @@ import type { LibraryDeclarations } from "./library-declarations.js";
  * The scope RULE itself is not re-implemented — {@link CelScopeResolver} is the
  * one that answers, here and in the pass. What this module adds is the way in.
  */
+import type { DeclarationRequests } from "./declaration-requests.js";
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { scopeReadAt } from "./scoped-name-resolver.js";
 import type { CelEnvironment } from "@telorun/cel";
 import { AliasResolver, type ModuleScopes } from "./alias-resolver.js";
 import { buildCelEnvironment } from "./cel-environment.js";
-import { moduleCallNamesByModule } from "./module-call-names.js";
 import { ModuleFunctionIndex } from "./module-function-index.js";
 import { CallableFlagsIndex } from "./callable-flags.js";
 import { CelScopeResolver, type CelScope, type ReferrerVariant } from "./cel-scope.js";
-import { buildCallGraph, referrerSlotsOf, type CallGraph } from "./call-graph.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import { accessorSiteAt, celEvalModeAt, governedCelEvalSites, scopeMatchOf } from "./eval-paths.js";
 import { buildKernelGlobalsIndex } from "./kernel-globals.js";
+import { bodyResourcesFor } from "./template-body-resources.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
-import { isKindDocument } from "./kind-declaration.js";
-import { isModuleKind } from "./module-kinds.js";
 import { navigateConcretePath } from "./manifest-path.js";
 import { kindAtPath } from "./validate-cel-context.js";
-import { findManifest } from "./find-manifest.js";
 import { resolveLocalRef, walkStepArray } from "./schema-walk.js";
 import { readStepSlot } from "./step-slot.js";
 import {
-  buildObservedStateIndex,
+  observedDeclarations,
+  celScopeHolderOf,
+  scopedResourcesOf,
   buildObservedStateResourcesSchema,
 } from "./validate-observed-state.js";
 import {
@@ -107,41 +107,52 @@ export class CelScopeQuery {
   private readonly scopeCache = new Map<ResourceManifest, Map<string, CelScope>>();
 
   constructor(
-    private readonly manifests: ResourceManifest[],
+    /** The set's declarations, by request — the slots referencing one among
+     *  them. */
+    private readonly declarations: DeclarationRequests,
     ctx: CelScopeQueryContext,
+    /** CEL call names per declaring module (`moduleCallNamesByModule`): the
+     *  editor resolves a module call exactly as the checker does, since an
+     *  offered name is a claim that `telo check` will accept it. */
+    moduleCallNames: ReadonlyMap<string, ReadonlySet<string>>,
     celEnv?: CelEnvironment,
   ) {
     const { defs, aliases, aliasesByModule, libraries } = ctx;
     const rootModules = new Set<string>();
-    for (const m of manifests) {
-      if (isModuleKind(m.kind) && m.metadata?.name) rootModules.add(m.metadata.name as string);
+    for (const m of declarations.moduleDocuments()) {
+      if (m.metadata?.name) rootModules.add(m.metadata.name as string);
     }
     const scopes: ModuleScopes = { aliasesByModule, rootModules, libraries };
-    const observedState = buildObservedStateIndex(manifests, defs, aliases, scopes);
+    const observed = [...observedDeclarations(declarations, defs, aliases, scopes)];
+    const observedState = new Map(observed.map((d) => [d.key, d.resource]));
     const reportsObservedState = [...observedState.values()].some((r) => r.status || r.reading);
     const moduleFunctions = new ModuleFunctionIndex(
-      manifests,
+      declarations,
       defs,
       aliases,
       aliasesByModule,
       rootModules,
     );
-    // The editor resolves a module call exactly as the checker does: an offered
-    // name is a claim that `telo check` will accept it, and a call read as the
-    // catalog's here and as a module's there is two answers.
-    const moduleCallNames = moduleCallNamesByModule(manifests);
-
     this.resolver = new CelScopeResolver({
       celEnv: celEnv ?? buildCelEnvironment(),
       defs,
       aliases,
       scopes,
-      allManifests: manifests,
-      kernelGlobals: buildKernelGlobalsIndex(manifests, observedState, moduleFunctions),
+      declarations,
+      shapes: defs.shapeLookup,
+      kernelGlobals: buildKernelGlobalsIndex(
+        declarations,
+        observedState,
+        moduleFunctions,
+        undefined,
+        scopedResourcesOf(observed, (m) => celScopeHolderOf(m, defs, aliases, aliasesByModule)),
+        undefined,
+        bodyResourcesFor(defs, aliases, scopes),
+      ),
       moduleFunctions,
       moduleManifest:
-        manifests.find((mm) => mm.kind === "Telo.Application") ??
-        manifests.find((mm) => mm.kind === "Telo.Library"),
+        declarations.moduleDocuments().find((mm) => mm.kind === "Telo.Application") ??
+        declarations.moduleDocuments().find((mm) => mm.kind === "Telo.Library"),
       observedStateContext: reportsObservedState
         ? {
             type: "object",
@@ -151,22 +162,19 @@ export class CelScopeQuery {
         : null,
       moduleCallNames,
       callableFlags: new CallableFlagsIndex(moduleFunctions, moduleCallNames),
-      referrersOf: (m) =>
-        referrerSlotsOf((this.callGraph ??= buildCallGraph(manifests, defs, { aliases, aliasesByModule })), m),
       definitionOf: (m) => this.definitionFor(m),
       caughtDataAt: ctx.caughtDataAt,
     });
     this.ctx = ctx;
   }
 
-  private callGraph: CallGraph | undefined;
-
   private readonly ctx: CelScopeQueryContext;
 
-  /** The manifest a cursor's document addresses — {@link findManifest}, the one
-   *  implementation `ManifestAnalysis` also answers from. */
+  /** The manifest a cursor's document addresses — what `findManifest` answers
+   *  over a list, asked by name. */
   resourceFor(kind: string | undefined, name: string | undefined): ResourceManifest | undefined {
-    return findManifest(this.manifests, kind, name);
+    if (!kind || !name) return undefined;
+    return this.declarations.names.declarationsOf(name).find((m) => m.kind === kind);
   }
 
   /**
@@ -323,8 +331,14 @@ export class CelScopeQuery {
       );
       if (!reference) return undefined;
       const { ref, subpath } = reference;
-      const target = this.manifests.find(
-        (m) => m.kind === ref.kind && (m.metadata as { name?: string } | undefined)?.name === ref.name,
+      const { names } = this.declarations;
+      const member = names.scopeMember(ref.name, scopeReadAt(root, sitePath));
+      const target = (
+        member
+          ? member.kind === ref.kind
+            ? member
+            : undefined
+          : names.declarationsOf(ref.name).find((m) => m.kind === ref.kind)
       ) as Record<string, any> | undefined;
       if (!target) return undefined;
       return { manifest: target, path: subpath.split("/").join("."), propertyMap: false };
@@ -366,11 +380,9 @@ export class CelScopeQuery {
       // wrong kind's annotations, silently. Falls back to name alone only when the
       // kind did not resolve to a canonical form, where there is nothing to narrow
       // by and a best-effort match is still better than none.
-      const named = this.manifests.filter(
-        (m) =>
-          isKindDocument(m) &&
-          (m.metadata as { name?: string } | undefined)?.name === suffix,
-      ) as Record<string, any>[];
+      const named = this.declarations
+        .kindDocuments()
+        .filter((m) => (m.metadata as { name?: string } | undefined)?.name === suffix) as Record<string, any>[];
       const target =
         (owningModule
           ? named.find((m) => (m.metadata as { module?: string } | undefined)?.module === owningModule)

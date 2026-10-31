@@ -1,0 +1,51 @@
+# A whole-value chain to a dimension is that configuration's literal at its
+# slot: a value the narrower slot refuses is a schema violation in that
+# configuration alone.
+kind: Telo.Application
+metadata:
+  name: Narrowing
+imports:
+  Run: ../../../modules/run
+variables:
+  dialect:
+    env: DIALECT
+    type: string
+    enum: [postgres, sqlite, mysql]
+    default: postgres
+targets:
+  - !ref main
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    dialect:
+      type: string
+      enum: [postgres, sqlite]
+      x-telo-eval: compile
+invoke: !ref echo
+resources:
+  - kind: Run.Value
+    metadata: { name: echo }
+    value: 1
+---
+kind: Self.Store
+metadata:
+  name: store
+dialect: !cel "variables.dialect"
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: pick
+    value: !switch
+      switch: !cel "variables.dialect"
+      cases:
+        postgres: 1
+      default: 2
+  - name: call
+    invoke: !ref store

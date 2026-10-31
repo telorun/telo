@@ -1,0 +1,239 @@
+# Families: one list into N named resources, referenced by binding — and what
+# a family and its member references refuse at the definition.
+kind: Telo.Library
+metadata:
+  name: Families
+imports:
+  Schedule: ../../../../../modules/scheduler
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Jobs, Refusals, Duplicate, Nested, Arity]
+---
+kind: Telo.Definition
+metadata: { name: Jobs }
+capability: Telo.Service
+schema:
+  type: object
+  required: [jobs]
+  properties:
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+        required: [cron, invoke]
+        properties:
+          cron: { type: string }
+          invoke: { x-telo-ref: { kind: Telo.Executable, use: trigger.inbound } }
+resources:
+  - !for-each
+    metadata: { name: crons }
+    in: !cel "self.jobs"
+    emit:
+      kind: Schedule.Cron
+      cron: !cel "each.value.cron"
+      crno: typo
+      invoke: !cel "each.value.invoke"
+targets:
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref crons[each.key]
+---
+kind: Telo.Definition
+metadata: { name: Refusals }
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    jobs:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          cron: { type: string }
+    others:
+      type: object
+      additionalProperties: { type: object }
+    list:
+      type: array
+      items: { type: string }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: tick }
+    steps:
+      - name: noop
+        value: 1
+  - !for-each
+    metadata: { name: crons }
+    in: !cel "self.jobs"
+    emit:
+      kind: Schedule.Cron
+      cron: !cel "each.value.cron"
+      invoke: !ref tick
+  - !for-each
+    metadata: { name: listed }
+    in: !cel "self.list"
+    emit:
+      - kind: Schedule.Cron
+        cron: !cel "each.value"
+        invoke: !ref tick
+  - !for-each
+    metadata: { name: filtered }
+    in: !cel "self.jobs"
+    emit: !if
+      if: !cel "each.value.cron == ''"
+      then:
+        kind: Schedule.Cron
+        cron: "0 * * * *"
+        invoke: !ref tick
+  - !for-each
+    metadata: { name: listedCrons }
+    in: !cel "self.list"
+    emit:
+      kind: Schedule.Cron
+      cron: !cel "each.value"
+      invoke: !ref tick
+targets:
+  - !ref crons
+  - !for-each
+    in: !cel "self.others"
+    as: other
+    emit: !ref crons[other.key]
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref crons[each.index]
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref listedCrons[each.key]
+  - !ref crons[missing.key]
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref tick[each.key]
+---
+kind: Telo.Definition
+metadata: { name: Duplicate }
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    list:
+      type: array
+      items: { type: string }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: tick }
+    steps:
+      - name: noop
+        value: 1
+  - !for-each
+    metadata: { name: tick }
+    in: !cel "self.list"
+    emit:
+      kind: Run.Sequence
+      steps:
+        - name: noop
+          value: 1
+---
+kind: Telo.Definition
+metadata: { name: Nested }
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    tables:
+      type: object
+      additionalProperties:
+        type: object
+        properties:
+          operations:
+            type: object
+            additionalProperties:
+              type: object
+              properties:
+                cron: { type: string }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: tick }
+    steps:
+      - name: noop
+        value: 1
+  - !for-each
+    metadata: { name: ops }
+    in: !cel "self.tables"
+    as: table
+    emit: !for-each
+      in: !cel "table.value.operations"
+      as: op
+      emit:
+        kind: Schedule.Cron
+        cron: !cel "op.value.cron"
+        invoke: !ref tick
+targets:
+  - !for-each
+    in: !cel "self.tables"
+    as: t
+    emit: !for-each
+      in: !cel "t.value.operations"
+      as: o
+      emit: !ref ops[t.key][o.key]
+  - !for-each
+    in: !cel "self.tables"
+    as: x
+    emit: !for-each
+      in: !cel "self.tables"
+      as: z
+      emit: !for-each
+        in: !cel "z.value.operations"
+        as: y
+        emit: !ref ops[x.key][y.key]
+  - !for-each
+    in: !cel "self.tables"
+    as: t
+    emit: !ref ops[t.key]
+---
+kind: Telo.Definition
+metadata: { name: Arity }
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    on: { type: boolean }
+    jobs:
+      type: object
+      additionalProperties: { type: object }
+resources:
+  - !if
+    metadata: { name: chosen }
+    if: !cel "self.on"
+    then: !for-each
+      in: !cel "self.jobs"
+      emit:
+        kind: Run.Sequence
+        steps:
+          - name: noop
+            value: 1
+    else: !for-each
+      in: !cel "self.jobs"
+      emit:
+        kind: Run.Sequence
+        steps:
+          - name: other
+            value: 2
+  - !if
+    metadata: { name: mixed }
+    if: !cel "self.on"
+    then: !for-each
+      in: !cel "self.jobs"
+      emit:
+        kind: Run.Sequence
+        steps:
+          - name: noop
+            value: 1
+    else:
+      kind: Run.Sequence
+      steps:
+        - name: other
+          value: 2
+targets:
+  - !for-each
+    in: !cel "self.jobs"
+    emit: !ref chosen[each.key]

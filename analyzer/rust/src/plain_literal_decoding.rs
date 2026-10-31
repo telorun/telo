@@ -99,9 +99,10 @@ mod tests {
         let found = leaves(&json!({ "roots": ["/x"], "a/b": "t" }), &schema);
         assert_eq!(
             found,
+            // In written order, as the Node half walks it.
             vec![
-                ("/a~1b".into(), "t".into(), json!({ "type": "string" })),
                 ("/roots/0".into(), "/x".into(), json!({ "type": "string", "x-telo-type": "Telo.HostPath" })),
+                ("/a~1b".into(), "t".into(), json!({ "type": "string" })),
             ]
         );
     }

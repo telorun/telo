@@ -8,6 +8,7 @@ import {
 import { parseCelSource } from "./cel-environment.js";
 import type { NamedShapeLookup } from "./eval-paths.js";
 import { extractContextsFromSchema } from "./validate-cel-context.js";
+import { fieldPlace, READS_IDENTITY, type ReadReporter } from "./read-place.js";
 
 /** Annotation on an `x-telo-context` node naming the resource field that holds
  *  the kind's named CEL bindings. The field is read from the RESOURCE ROOT, not
@@ -206,3 +207,11 @@ export function resolveBindingOrder(
   for (const name of Object.keys(bindings)) visit(name);
   return { order, cycles };
 }
+
+/** What `x-telo-bindings-from` reads: the bindings field of the resource — a
+ *  binding is typed by its own expression, so a declaration named there by its
+ *  identity. */
+export const bindingsFromReads: ReadReporter = ({ value }) => {
+  const keys = fieldPlace([], value);
+  return keys ? [{ kind: "reference", keys, transitive: false, reads: READS_IDENTITY }] : [];
+};

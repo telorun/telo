@@ -15,6 +15,9 @@
  */
 
 export const X_TELO_CAUGHT_MEMBER = "x-telo-caught-member";
+import { kindPlaces, type ReadReporter, type ReferentReads } from "./read-place.js";
+import { isRefSlot } from "./ref-slot.js";
+import { isStepSlot } from "./step-slot.js";
 
 export const CAUGHT_MEMBERS = ["code", "data"] as const;
 export type CaughtMember = (typeof CAUGHT_MEMBERS)[number];
@@ -131,3 +134,21 @@ function intersectPropertySchemas(schemas: Record<string, any>[]): Record<string
   }
   return {};
 }
+
+/** Where a resource something drives is read for what it throws: every place
+ *  its kind lets it drive another from — a reference slot, a step body, a
+ *  scope — and every catch list it answers with. */
+export const drivenReads: ReferentReads = (referent) =>
+  kindPlaces(
+    referent,
+    (node) =>
+      isRefSlot(node) ||
+      isStepSlot(node) ||
+      node["x-telo-scope"] !== undefined ||
+      node["x-telo-outcome-list"] !== undefined ||
+      node["x-telo-catches-for"] !== undefined,
+  ).map((keys) => ({ kind: "value", keys }));
+
+/** What `x-telo-caught-member` reads: the codes a catch entry matches come from
+ *  everything the resource drives. */
+export const caughtMemberReads: ReadReporter = () => [{ kind: "reference", keys: [], transitive: true, reads: drivenReads }];

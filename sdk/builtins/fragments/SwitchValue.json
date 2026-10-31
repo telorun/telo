@@ -1,0 +1,22 @@
+{
+  "title": "`!switch` at a value position",
+  "description": "An item of a list or the value of a field, chosen by value before boot.",
+  "type": "object",
+  "properties": {
+    "switch": {
+      "description": "A string, integer or boolean decided before boot: a `!cel` selector or a literal."
+    },
+    "cases": {
+      "type": "object",
+      "description": "Each case key read as a value of the selector's type, mapped to what the tag stands for."
+    },
+    "default": {
+      "description": "What the tag stands for when no case matches."
+    }
+  },
+  "required": [
+    "switch",
+    "cases"
+  ],
+  "additionalProperties": false
+}

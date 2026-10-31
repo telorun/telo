@@ -13,6 +13,14 @@
  * (refusing the same issues, since a stamped analysis may have skipped them).
  */
 
+import {
+  needEnvNames,
+  requirementSentence,
+  type InputRequirement,
+  type RequirementDimension,
+} from "./input-requirements.js";
+import type { NeedEnvironmentEntry } from "./need-table.js";
+
 export type ArgValueType = "string" | "integer" | "number" | "boolean";
 
 export type ArgBindingBlock = "variables" | "ports";
@@ -328,13 +336,28 @@ export function renderArgumentSynopsis(moduleDoc: unknown): string {
     .join(" ");
 }
 
+/** What `--help` says about each input's requiredness: the application's
+ *  requirements (`inputRequirements`), the dimensions they are decided over
+ *  with their environment variables (`requirementDimensions`), and every need
+ *  the application reads from the environment (the need table's). */
+export interface ApplicationUsageRequirements {
+  readonly inputs: readonly InputRequirement[];
+  readonly dimensions: readonly RequirementDimension[];
+  readonly needs: readonly NeedEnvironmentEntry[];
+}
+
 /**
  * The answer to `--help`: the synopsis, then every binding with its type,
- * default, environment variable and description, then every input read from the
- * environment alone, and the needs, as the application declares them.
- * Normative: `kernel/specs/application-arguments.md` §5.
+ * default, environment variable, requiredness and description, then every input
+ * read from the environment alone, and every need with the variables it is read
+ * from. Requiredness is `requirements`' — `required`, `required when <sentence>`,
+ * or nothing for an input no configuration requires. Normative:
+ * `kernel/specs/application-arguments.md` §5.
  */
-export function renderApplicationUsage(moduleDoc: unknown): string {
+export function renderApplicationUsage(
+  moduleDoc: unknown,
+  requirements: ApplicationUsageRequirements,
+): string {
   const metadata = isRecord(moduleDoc) && isRecord(moduleDoc.metadata) ? moduleDoc.metadata : {};
   const appName = typeof metadata.name === "string" ? metadata.name : "application";
   const { bindings } = readApplicationArguments(moduleDoc);
@@ -347,7 +370,10 @@ export function renderApplicationUsage(moduleDoc: unknown): string {
     lines.push("", `${title}:`);
     for (const [left, right] of rows) lines.push(`  ${left.padEnd(width)}  ${right}`.trimEnd());
   };
-  const describe = (binding: ArgBinding) => describeFacts(binding, factsOf(moduleDoc, binding));
+  const requiredness = (block: InputRequirement["block"], name: string) =>
+    requirementNote(requirements, block, name);
+  const describe = (binding: ArgBinding) =>
+    describeFacts(binding, factsOf(moduleDoc, binding), requiredness(binding.block, binding.name));
 
   section(
     "Arguments",
@@ -368,21 +394,42 @@ export function renderApplicationUsage(moduleDoc: unknown): string {
         return [`${short}${spelled}`, describe(binding)];
       }),
   );
-  section("Environment", environmentRows(moduleDoc, bindings));
-  const needs = isRecord(moduleDoc) && isRecord(moduleDoc.needs) ? Object.keys(moduleDoc.needs) : [];
-  if (needs.length > 0) {
-    lines.push(
-      "",
-      `Needs: ${needs.join(", ")} — \`telo needs report\` lists the environment variables they read.`,
-    );
-  }
+  section("Environment", environmentRows(moduleDoc, bindings, requiredness));
+  section(
+    "Needs",
+    requirements.needs.map((entry) => {
+      const path = entry.path.join(".");
+      const notes = [entry.need.type ?? entry.need.kind];
+      const note = requiredness("needs", path);
+      if (note) notes.push(note);
+      return [path, `${needEnvNames(entry).join(", ")} [${notes.join("; ")}]`];
+    }),
+  );
   return lines.join("\n") + "\n";
+}
+
+/** `required` for an input every configuration requires, `required when
+ *  <sentence>` for one some do, and nothing for one none does. */
+function requirementNote(
+  requirements: ApplicationUsageRequirements,
+  block: InputRequirement["block"],
+  name: string,
+): string | undefined {
+  const input = requirements.inputs.find((i) => i.block === block && i.name === name);
+  if (!input?.required) return undefined;
+  return input.requiredWhen
+    ? `required when ${requirementSentence(input.requiredWhen, requirements.dimensions)}`
+    : "required";
 }
 
 /** Every `variables:` / `secrets:` / `ports:` entry bound by `env:` and by no
  *  command-line argument, in that block order; a bound one is listed under its
- *  argument. A secret shows its type and whether it is required, never a value. */
-function environmentRows(moduleDoc: unknown, bindings: readonly ArgBinding[]): Array<[string, string]> {
+ *  argument. A secret shows its type and its requiredness, never a value. */
+function environmentRows(
+  moduleDoc: unknown,
+  bindings: readonly ArgBinding[],
+  requiredness: (block: InputRequirement["block"], name: string) => string | undefined,
+): Array<[string, string]> {
   const rows: Array<[string, string]> = [];
   for (const block of ["variables", "secrets", "ports"] as const) {
     const entries = isRecord(moduleDoc) ? moduleDoc[block] : undefined;
@@ -391,8 +438,10 @@ function environmentRows(moduleDoc: unknown, bindings: readonly ArgBinding[]): A
       if (!isRecord(entry) || typeof entry.env !== "string") continue;
       if (bindings.some((binding) => binding.block === block && binding.name === name)) continue;
       const notes = [inputValueTypeName(block, entry)];
-      if (block === "secrets") notes.push(entry.default === undefined ? "secret; required" : "secret");
-      else notes.push(entry.default === undefined ? "required" : `default: ${JSON.stringify(entry.default)}`);
+      const note = requiredness(block, name);
+      if (block === "secrets") notes.push(note ? `secret; ${note}` : "secret");
+      else if (entry.default !== undefined) notes.push(`default: ${JSON.stringify(entry.default)}`);
+      else if (note) notes.push(note);
       notes.push(`${block}.${name}`);
       const text = [entry.title, entry.description].find((t) => typeof t === "string") as string | undefined;
       rows.push([entry.env, [text, `[${notes.join("; ")}]`].filter(Boolean).join(" ")]);
@@ -412,13 +461,14 @@ export function inputValueTypeName(block: string, entry: Record<string, unknown>
   return typeof entry.type === "string" ? entry.type : "any";
 }
 
-function describeFacts(binding: ArgBinding, facts: UsageFacts): string {
+function describeFacts(binding: ArgBinding, facts: UsageFacts, requiredness: string | undefined): string {
   const text = [facts.title, facts.description].find((t) => typeof t === "string") as
     | string
     | undefined;
   const notes: string[] = [];
   if (binding.form === "position") notes.push(binding.valueType);
   if (facts.default !== undefined) notes.push(`default: ${JSON.stringify(facts.default)}`);
+  else if (requiredness) notes.push(requiredness);
   if (typeof facts.env === "string") notes.push(`env: ${facts.env}`);
   const suffix = notes.length > 0 ? `[${notes.join("; ")}]` : "";
   return [text, suffix].filter(Boolean).join(" ");

@@ -36,6 +36,7 @@
 import { AXIS_VALUE_FORMS } from "./artifact-axes.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import type { BrowserEntry } from "./module-browser.js";
+import { enclosingKeys, placeAt, type ReadReporter } from "./read-place.js";
 
 export const BROWSER_EXPORT_ANNOTATION = "x-telo-browser-export";
 
@@ -386,3 +387,10 @@ export function browserExportAnnotationProblems(
   visit(schema, at);
   return problems;
 }
+
+/** What `x-telo-browser-export` reads: the sibling holding the entry's
+ *  specifier, by its pointer from the enclosing object. */
+export const browserExportReads: ReadReporter = ({ value, at }) => {
+  const entry = (value as { entry?: unknown } | undefined)?.entry;
+  return typeof entry === "string" ? [{ kind: "value", keys: placeAt(enclosingKeys(at), entry) }] : [];
+};

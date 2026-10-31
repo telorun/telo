@@ -12,6 +12,10 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use serde_json::Value;
+use telo_templating::{
+    expansion_tag_of, parse_ref_source, ref_sentinel_source, ref_sentinel_verdict, ParsedRef, RefVerdict,
+    SPLICE_KEY,
+};
 use telo_analyzer::builtin_vocabulary::{
     builtin_vocabulary_import_message, BUILTIN_VOCABULARY_KIND, BUILTIN_VOCABULARY_NOT_A_MODULE,
 };
@@ -64,6 +68,7 @@ pub fn load_module(
     role: ModuleRole,
 ) -> Result<LoadedModule, KernelError> {
     let loaded = env.loader.load(path)?;
+    reject_expansion_constructs(&loaded.manifests, &loaded.text, &loaded.source)?;
     let documents: Vec<Value> = loaded.documents().cloned().collect();
 
     let module_doc = documents.first().ok_or_else(|| {
@@ -243,6 +248,84 @@ fn reject_unsupported_module_fields(module_doc: &Value, source: &str) -> Result<
     Ok(())
 }
 
+/// `!if` / `!switch` / `!for-each`, a `...` splice, a family member's
+/// `!ref <family>[<binding>.key]` and a `!ref` outside the grammar: this kernel
+/// evaluates no CEL, so it expands nothing and refuses the module at load, naming
+/// the construct, its document's line and its path there.
+fn reject_expansion_constructs(
+    manifests: &[Option<Value>],
+    text: &str,
+    source: &str,
+) -> Result<(), KernelError> {
+    let lines = document_start_lines(text);
+    for (index, manifest) in manifests.iter().enumerate() {
+        let Some(manifest) = manifest else { continue };
+        if let Some((path, what)) = first_expansion_construct(manifest, &mut String::new()) {
+            let line = lines.get(index).copied().unwrap_or(0) + 1;
+            let at = if path.is_empty() { "the whole document".to_string() } else { format!("`{path}`") };
+            return Err(KernelError::new(
+                "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+                format!(
+                    "'{source}' (the document at line {line}, {at}) holds {what}; this kernel evaluates no CEL and does not expand templates yet"
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The first expansion construct under `value`, with its dotted path and what it is.
+fn first_expansion_construct(value: &Value, path: &mut String) -> Option<(String, String)> {
+    if let Some(tag) = expansion_tag_of(value) {
+        return Some((path.clone(), format!("`!{tag}`")));
+    }
+    if let Some(verdict) = ref_sentinel_verdict(value) {
+        let source = ref_sentinel_source(value).unwrap_or_default();
+        return match verdict {
+            RefVerdict::Parsed(parsed) if parsed.indexes.is_empty() => None,
+            RefVerdict::Parsed(_) => Some((path.clone(), format!("the family member reference `!ref {source}`"))),
+            RefVerdict::Refusal { offset } => Some((
+                path.clone(),
+                format!("`!ref {source}`, which is not a reference (inadmissible text at offset {offset})"),
+            )),
+        };
+    }
+    let length = path.len();
+    let found = match value {
+        Value::Array(items) => items.iter().enumerate().find_map(|(index, item)| {
+            path.truncate(length);
+            path.push_str(&format!("[{index}]"));
+            first_expansion_construct(item, path)
+        }),
+        Value::Object(map) => map.iter().find_map(|(key, item)| {
+            path.truncate(length);
+            if !path.is_empty() {
+                path.push('.');
+            }
+            path.push_str(key);
+            if key == SPLICE_KEY {
+                return Some((path.clone(), format!("a `{SPLICE_KEY}` splice")));
+            }
+            first_expansion_construct(item, path)
+        }),
+        _ => None,
+    };
+    path.truncate(length);
+    found
+}
+
+/// The 0-based line each YAML document of `text` starts on: line 0, then the
+/// line of each `---` separator after the first line.
+fn document_start_lines(text: &str) -> Vec<usize> {
+    let mut lines = vec![0];
+    for (index, line) in text.lines().enumerate() {
+        if index > 0 && (line == "---" || line.starts_with("--- ")) {
+            lines.push(index);
+        }
+    }
+    lines
+}
+
 /// A `Telo.NeedType` registers a kind whose resources are need fulfilments, which
 /// this kernel does not implement. Refused by name rather than as an unknown
 /// built-in kind, so the message says what is missing.
@@ -389,11 +472,14 @@ fn unresolved_reference_error(
     source: &str,
 ) -> KernelError {
     let at = format!("'{}' at '{path}'", context.source);
-    let (alias, name) = match source.split_once('.') {
-        None => (None, source),
-        Some(("Self", name)) => (None, name),
-        Some((alias, name)) => (Some(alias), name),
+    // Read through the `!ref` engine, never by splitting the text here; a text
+    // outside the grammar was refused at load, so a refusal names it whole.
+    let parsed = match parse_ref_source(source) {
+        RefVerdict::Parsed(parsed) => parsed,
+        RefVerdict::Refusal { .. } => ParsedRef { alias: None, name: source.to_string(), indexes: vec![] },
     };
+    let alias = parsed.alias.as_deref().filter(|alias| *alias != "Self");
+    let name = parsed.name.as_str();
 
     match alias {
         None => KernelError::resource_not_found(format!(

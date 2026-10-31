@@ -36,6 +36,7 @@ import {
   type NeedResolution,
   type ValueIssue,
   valueIssue,
+  refSentinelTarget,
 } from "@telorun/sdk";
 import type { TextRecord } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
@@ -50,6 +51,9 @@ import {
   type NamedContractShape,
   type NamedShapeLookup,
   type ReachPosition,
+  type ReachSite,
+  type ExpansionSite,
+  readExpansionSites,
   isAddressNeedType,
   needTypeOf,
   outermostNeedEntry,
@@ -60,9 +64,11 @@ import {
   resolvedReference,
   type ResolvedReference,
   type SchemaIssue,
+  type AnalysisRegistry,
 } from "@telorun/analyzer";
 import { isRefSentinel } from "@telorun/templating";
 import { ZoneContext } from "./zone-context.js";
+import type { InstanceExpansionInputs } from "./controllers/resource-definition/template-instance-expansion.js";
 import { isNeedFulfilment, type NeedFulfilment } from "./need-fulfilment.js";
 import type { NeedObservations } from "./need-observation.js";
 import {
@@ -89,6 +95,7 @@ import type { LibraryAnalysisHost } from "./internal-context.js";
 interface KernelModuleContext {
   getLoggingConfig?(): ScopeConfig | undefined;
   callNames(): ReadonlySet<string>;
+  readonly analysisView?: AnalysisRegistry;
 }
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { resolveTypeFieldSchema, typeReferenceKey } from "./type-field-schema.js";
@@ -734,7 +741,7 @@ export class ResourceContextImpl implements ResourceContext {
       );
     }
     const site = referenceSiteAt(
-      this.kernel.getAnalysisRegistry().referenceSitesOf(manifest as unknown as ResourceManifest),
+      this.analysisView.referenceSitesOf(manifest as unknown as ResourceManifest),
       pointer,
     );
     if (!site) {
@@ -884,25 +891,25 @@ export class ResourceContextImpl implements ResourceContext {
     // The Node kernel resolves the sentinel here. Polyglot controllers don't get
     // this rescue.
     if (isRefSentinel(resource)) {
-      const source = resource.source;
-      const dot = source.indexOf(".");
-      const alias = dot > 0 ? source.slice(0, dot) : undefined;
+      // The `!ref` engine's verdict the loader attached; a text outside the
+      // grammar, or a family member's reference, is ERR_REF_UNRESOLVED there.
+      const target = refSentinelTarget(resource)!;
+      const alias = target.alias;
       // Cross-module exported instance (`!ref Alias.name`) — resolve the {kind, name} ref
       // from the import's exported scope and reattach the alias so downstream scope
       // resolution (executeInvokeStep → ScopeContext.getInstance) routes into the import's
       // child context rather than scope-local resources.
-      if (alias && alias !== "Self") {
-        const name = source.slice(dot + 1);
-        const ref = this.moduleContext.resolveImportedRef(alias, name);
+      if (alias) {
+        const ref = this.moduleContext.resolveImportedRef(alias, target.name);
         if (!ref) {
           throw new RuntimeError(
             "ERR_RESOURCE_NOT_FOUND",
-            `[${this.metadata.name}] !ref '${source}' is not an exported instance of import '${alias}'.`,
+            `[${this.metadata.name}] !ref '${resource.source}' is not an exported instance of import '${alias}'.`,
           );
         }
         return resolvedReference(ref.kind, ref.name, alias);
       }
-      const refName = alias === "Self" ? source.slice(dot + 1) : source;
+      const refName = target.name;
       // Mirror the legacy `{kind, name}` path: return a `{kind, name}` ref and let
       // the downstream resolution (module-global `invoke`, or scope-local
       // `executeInvokeStep → ScopeContext.getInstance`) find it by name at invoke
@@ -1035,13 +1042,52 @@ export class ResourceContextImpl implements ResourceContext {
    *  entry before it expands one (`refuseComputedRefSlots`); the host shape is
    *  `DefinitionScopeHost`'s. */
   referencePositionsOf(resource: ResourceManifest, data: unknown = resource): ReachPosition[] {
-    return this.kernel.getAnalysisRegistry().referencePositionsOf(resource, data);
+    return this.analysisView.referencePositionsOf(resource, data);
+  }
+
+  /** The expansion constructs a template definition's body holds that the
+   *  position reader accepted, by the tag's mapping — what a template
+   *  controller decides each instance's expansion by. */
+  expansionSitesOf(definition: Record<string, unknown>): ReadonlyMap<unknown, ExpansionSite> {
+    const context = this.kernel.getAnalysisRegistry()._context();
+    const reading = readExpansionSites(
+      [definition as unknown as ResourceManifest],
+      [],
+      context.definitions!,
+      context.aliases,
+      context.aliasesByModule,
+      true,
+    );
+    return new Map(reading.sites.filter((site) => site.refusal === undefined).map((site) => [site.value, site]));
+  }
+
+  /** The definitions and alias tables a template instance's expansion reads
+   *  kinds through — the analysis registry's, shared with `telo check`. */
+  analysisContext(): InstanceExpansionInputs["analysis"] {
+    const context = this.kernel.getAnalysisRegistry()._context();
+    return {
+      definitions: context.definitions!,
+      aliases: context.aliases!,
+      aliasesByModule: context.aliasesByModule ?? new Map(),
+    };
+  }
+
+  /** The concrete reference sites of a declaration, as Phase-5 injection reads
+   *  them: through the analysis view of this resource's module. */
+  referenceSitesOf(resource: ResourceManifest, data: unknown = resource): ReachSite[] {
+    return this.analysisView.referenceSitesOf(resource, data);
   }
 
   /** The named-shape lookup the eval-site walk takes, the analysis registry's —
    *  what a template controller reads a body entry's kind through. */
   get shapeLookup(): NamedShapeLookup {
-    return this.kernel.getAnalysisRegistry().shapeLookup;
+    return this.analysisView.shapeLookup;
+  }
+
+  /** The analysis registry as the running configuration of this resource's
+   *  module holds it. */
+  private get analysisView(): AnalysisRegistry {
+    return (this.moduleContext as unknown as KernelModuleContext).analysisView ?? this.kernel.getAnalysisRegistry();
   }
 
   registerDefinition(def: any) {

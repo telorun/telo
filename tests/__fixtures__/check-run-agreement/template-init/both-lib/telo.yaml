@@ -1,0 +1,33 @@
+# A body deciding a choice and iterating a collection by what the consumer wrote.
+kind: Telo.Library
+metadata:
+  name: TemplateInitBoth
+exports:
+  kinds: [Both]
+imports:
+  Run: ../../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Both
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    flag: { type: boolean, x-telo-eval: compile }
+    hooks:
+      type: object
+      x-telo-eval: compile
+      additionalProperties: { type: object }
+resources:
+  - kind: Run.Value
+    metadata: { name: names }
+    value:
+      - !for-each
+        in: !cel "self.hooks"
+        as: hook
+        emit: !cel "hook.key"
+      - !if
+        if: !cel "self.flag"
+        then: flagged
+invoke: !ref names

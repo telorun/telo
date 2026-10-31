@@ -1,0 +1,51 @@
+# Whether any declaration reports observed state decides whether a startup
+# field reading `.status` is refused, though the field reads no reporter: the
+# read is refused only where the reporter is declared.
+kind: Telo.Application
+metadata:
+  name: ObservedStateFlag
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref plain
+  - !ref holder
+--- !if
+metadata: { name: reporter }
+if: !cel "variables.flag1"
+then: { kind: Self.Reporter }
+---
+kind: Telo.Definition
+metadata:
+  name: Reporter
+capability: Telo.Runnable
+schema:
+  type: object
+status:
+  type: object
+  properties:
+    ready: { type: boolean }
+---
+kind: Telo.Definition
+metadata:
+  name: Plain
+capability: Telo.Runnable
+schema:
+  type: object
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+capability: Telo.Service
+schema:
+  type: object
+  properties:
+    at: { x-telo-eval: compile }
+---
+kind: Self.Plain
+metadata:
+  name: plain
+---
+kind: Self.Holder
+metadata:
+  name: holder
+at: !cel "resources.plain.status.ready"

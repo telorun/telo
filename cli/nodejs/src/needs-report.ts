@@ -2,7 +2,12 @@ import {
   needFeatures,
   needParametersWithDefaults,
   needVersionRange,
+  reportedDimensions,
+  type Assignment,
+  type InputRequirements,
   type LoadedGraph,
+  type ReportedDimension,
+  type RequirementDimension,
   type NeedTable,
   type NeedEnvironmentEntry,
   type NeedTypeShape,
@@ -17,6 +22,9 @@ import { fileURLToPath } from "url";
  */
 export interface NeedsReport {
   reportVersion: 1;
+  /** The dimensions a need's `requiredWhen` is keyed by, each with its values
+   *  and the environment variables its value is read from. */
+  dimensions: ReportedDimension[];
   needs: NeedsReportEntry[];
 }
 
@@ -33,6 +41,11 @@ export interface NeedsReportEntry {
   /** As the need states them, with its type's schema defaults filled in. */
   parameters: unknown;
   optional: boolean;
+  /** True when some configuration of the application requires the need. */
+  required: boolean;
+  /** The configurations requiring it, as partial assignments keyed by
+   *  dimension; absent when it is required in every configuration or none. */
+  requiredWhen?: Assignment[];
   fields: Record<
     string,
     { env: string; envSource: "bound" | "derived"; required: boolean; sensitive: boolean }
@@ -43,10 +56,13 @@ export function buildNeedsReport(
   graph: LoadedGraph,
   table: NeedTable,
   needType: (kind: string) => NeedTypeShape | undefined,
+  requirements: InputRequirements,
+  dimensions: readonly RequirementDimension[],
 ): NeedsReport {
   return {
     reportVersion: 1,
-    needs: table.environment.map((entry) => reportEntry(graph, entry, needType)),
+    dimensions: reportedDimensions(dimensions),
+    needs: table.environment.map((entry) => reportEntry(graph, entry, needType, requirements)),
   };
 }
 
@@ -54,7 +70,10 @@ function reportEntry(
   graph: LoadedGraph,
   entry: NeedEnvironmentEntry,
   needType: (kind: string) => NeedTypeShape | undefined,
+  requirements: InputRequirements,
 ): NeedsReportEntry {
+  const path = entry.path.join(".");
+  const requirement = requirements.inputs.find((input) => input.block === "needs" && input.name === path);
   const type = entry.need.type ?? entry.need.kind;
   const fields: NeedsReportEntry["fields"] = {};
   for (const [name, field] of Object.entries(entry.fields ?? {})) {
@@ -66,7 +85,7 @@ function reportEntry(
     };
   }
   return {
-    path: entry.path.join("."),
+    path,
     declaredBy: moduleLocation(graph, entry.declaredBy),
     type: {
       // A type no module document declares is the kernel's: its canonical module name.
@@ -81,6 +100,8 @@ function reportEntry(
       entry.need.parameters,
     ),
     optional: entry.need.optional,
+    required: requirement?.required ?? true,
+    ...(requirement?.requiredWhen ? { requiredWhen: [...requirement.requiredWhen] } : {}),
     fields,
   };
 }

@@ -12,6 +12,9 @@ import {
 } from "@telorun/sdk";
 import { AliasResolver, moduleScopedDefResolver, type ModuleScopes } from "./alias-resolver.js";
 import { moduleAliasScope } from "./module-alias-scope.js";
+import { isResolvedReference } from "./resolved-reference.js";
+import { scopeReadAt } from "./scoped-name-resolver.js";
+import type { DeclarationRequests } from "./declaration-requests.js";
 import { DefinitionRegistry } from "./definition-registry.js";
 import {
   type ContractDirection,
@@ -20,13 +23,16 @@ import {
   effectiveContractField,
 } from "./extends-resolution.js";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
+import { READS_IDENTITY, type ReadPlace, type ReferentReads } from "./read-place.js";
+import { projectionFromReads } from "./schema-projection.js";
+import { valueDerivedSlot } from "./value-derived-contract.js";
 import { membersSlotOf } from "./members-value-slot.js";
 import { resolveRefIn } from "./schema-compat.js";
 import { isTypeKind, resolveTypeFieldToSchema } from "./validate-cel-context.js";
-import { resolveContractValueSchemas, type ValueSchemaHost } from "./value-schema-slot.js";
+import { resolveContractValueSchemas, valueSchemaFromReads, type ValueSchemaHost } from "./value-schema-slot.js";
 import { namedContractShape, type NamedContractShape } from "./validate-value-schema-location.js";
 import {
-  manifestListScope,
+  projectionScopeOf,
   resolveSchemaProjections,
   type ProjectionFailure,
   type ProjectionModules,
@@ -37,20 +43,20 @@ export type { ContractDirection };
 /** The {@link ContractScope} the analyzer resolves invocation contracts in: kinds
  *  resolve in the module that declared the definition they were read off (so an
  *  `extends` chain crossing module boundaries re-scopes at every hop), and named
- *  `telo#Type` references resolve against the flattened manifest list. `resolveIn`
+ *  `telo#Type` references resolve by name among `declarations`. `resolveIn`
  *  is the top-level entry point, where the kind was written by the READING
  *  module and there is no declaring definition yet. */
 export function analyzerContractScope(
   defs: DefinitionRegistry,
   aliases: AliasResolver,
   scopes: ModuleScopes,
-  allManifests: Record<string, any>[],
+  declarations: DeclarationRequests,
 ): ContractScope & { resolveIn(kind: string, module?: string): ResourceDefinition | undefined } {
   const resolve = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, scopes);
   return {
     resolveDefinition: resolve,
     resolveIn: resolve.in,
-    typeManifestsFor: () => allManifests,
+    declarationsFor: () => declarations,
     projectionModules: projectionModules(defs, aliases, scopes),
   };
 }
@@ -118,16 +124,16 @@ export interface ContractScope {
    *  chain crossing module boundaries re-scopes at each hop. */
   resolveDefinition: DefResolver;
   /**
-   * Manifests a named `telo#Type` reference resolves against, given the
+   * The declarations a named `telo#Type` reference resolves among, given the
    * definition that DECLARED the type field.
    *
    * The parameter exists for a caller that keeps types per module. The analyzer
-   * does not: it works from one flattened list where names are already unique
-   * per module, so it ignores the argument and returns that list. A caller
-   * holding several scopes uses it to avoid resolving a bare name against the
-   * wrong module's type of the same name.
+   * does not: its declarations are one flattened set where names are already
+   * unique per module, so it ignores the argument. A caller holding several
+   * scopes uses it to avoid resolving a bare name against the wrong module's
+   * type of the same name.
    */
-  typeManifestsFor(def: ResourceDefinition | undefined): Record<string, any>[];
+  declarationsFor(def: ResourceDefinition | undefined): DeclarationRequests;
   /** How a projection hop reads the flattened list's module stamps. Absent,
    *  every reference resolves by name alone. */
   projectionModules?: ProjectionModules;
@@ -165,7 +171,7 @@ export function resolveContract(
 ): ResolvedContract | undefined {
   const own = manifest?.[direction];
   if (own !== undefined && own !== null) {
-    const schema = resolveTypeFieldToSchema(own, scope.typeManifestsFor(definition));
+    const schema = resolveTypeFieldToSchema(own, scope.declarationsFor(definition), manifest);
     if (schema) {
       return {
         schema: declarationResolved(schema, manifest, scope, definition, projectionFailures),
@@ -177,7 +183,7 @@ export function resolveContract(
   const declared = effectiveContractField(definition, scope.resolveDefinition, direction);
   if (declared === undefined || declared === null) return undefined;
   const declarer = contractDeclarer(definition, scope.resolveDefinition, direction);
-  const schema = resolveTypeFieldToSchema(declared, scope.typeManifestsFor(declarer));
+  const schema = resolveTypeFieldToSchema(declared, scope.declarationsFor(declarer));
   if (!schema) return undefined;
   return {
     schema: declarationResolved(schema, manifest, scope, declarer, projectionFailures),
@@ -209,8 +215,8 @@ function declarationResolved(
 
 /** What resolving a named shape reads from its host. */
 export interface NamedShapeScope {
-  /** The declarations a module-and-name lookup searches. */
-  readonly typeManifests: Record<string, any>[];
+  /** The declarations a module-and-name lookup asks by name. */
+  readonly declarations: DeclarationRequests;
   /** The holder's import table, and each imported library's own declarations. */
   readonly modules?: Pick<ProjectionModules, "moduleForAlias" | "libraries">;
 }
@@ -256,20 +262,28 @@ export function resolveNamedShape(
 
   const isShape = (candidate: Record<string, any> | undefined): boolean =>
     !!candidate &&
-    isTypeKind(candidate.kind, scope.typeManifests) &&
+    isTypeKind(candidate.kind, scope.declarations) &&
     !!candidate.schema &&
     typeof candidate.schema === "object";
-  const declared =
-    scope.typeManifests.find((candidate) => {
-      const metadata = candidate?.metadata as
-        | { name?: unknown; module?: unknown; declaringModule?: unknown }
-        | undefined;
-      return (
-        metadata?.name === name &&
-        (metadata.module === module || (module !== undefined && metadata.declaringModule === module)) &&
-        isShape(candidate)
-      );
-    }) ??
+  // A bare or `Self` name written in a scope member reads its scope first,
+  // whatever module-level id the canonical pass stamped beside it.
+  const written = !stamped || isResolvedReference(typeField);
+  const within =
+    written && (named.alias === undefined || named.alias === "Self") ? scopeReadAt(holder) : undefined;
+  const names = scope.declarations.names;
+  const member = names.scopeMember(name, within);
+  const declared = member
+    ? member
+    : names
+      .declarationsOf(name)
+      .find((candidate) => {
+        const metadata = candidate.metadata as { module?: unknown; declaringModule?: unknown };
+        return (
+          (metadata.module === module ||
+            (module !== undefined && metadata.declaringModule === module)) &&
+          isShape(candidate)
+        );
+      }) ??
     (module !== undefined
       ? (scope.modules?.libraries?.declaration(module, name) as Record<string, any> | undefined)
       : undefined);
@@ -277,7 +291,8 @@ export function resolveNamedShape(
 
   const schema = resolveTypeFieldToSchema(
     { schema: declared!.schema, extends: declared!.extends },
-    scope.typeManifests,
+    scope.declarations,
+    declared,
   );
   return schema ? { name: named.name, schema } : undefined;
 }
@@ -290,22 +305,22 @@ export function valueSchemaHostOf(
   scope: ContractScope,
   declarer?: ResourceDefinition,
 ): ValueSchemaHost {
-  const typeManifests = scope.typeManifestsFor(declarer);
-  const declarations = manifestListScope(
-    typeManifests,
+  const declared = scope.declarationsFor(declarer);
+  const declarations = projectionScopeOf(
+    declared,
     (kind, declaration) =>
       scope.resolveDefinition(kind, declaration as ResourceDefinition | undefined) as
         | Record<string, any>
         | undefined,
     scope.projectionModules,
   );
-  const shapes: NamedShapeScope = { typeManifests, modules: scope.projectionModules };
+  const shapes: NamedShapeScope = { declarations: declared, modules: scope.projectionModules };
   return {
     scope: declarations,
     typeSchemaOf: (value, holder) =>
       namedContractShape(value)
         ? resolveNamedShape(value, holder, shapes)?.schema
-        : resolveTypeFieldToSchema(value, typeManifests),
+        : resolveTypeFieldToSchema(value, declared, holder),
   };
 }
 
@@ -772,7 +787,8 @@ export interface DeclaredScalarPath {
  *  exactly as {@link defaultBearingPaths} is: a contract declaring no such
  *  scalar walks nothing at dispatch. A union counts when it names exactly one of
  *  the two — `["integer", "null"]` is still the integer branch, while
- *  `["integer", "number"]` fixes nothing and is left alone. */
+ *  `["integer", "number"]` fixes nothing and is left alone. A map's values are
+ *  the `*` segment, emitted only for an object declaring no names or patterns. */
 export function declaredScalarPaths(
   schema: Record<string, any>,
   resolveRef?: (ref: string) => Record<string, any> | undefined,
@@ -821,6 +837,11 @@ export function declaredScalarPaths(
       if (Array.isArray(list)) for (const child of list) walk(child, path, here, document);
     }
     if (s.items) walk(s.items, [...path, "[]"], here, document);
+    // A map's values: only where no declared name or pattern could claim a key
+    // with another schema, since a path names no exceptions.
+    if (!properties && !s.patternProperties && s.additionalProperties && typeof s.additionalProperties === "object") {
+      walk(s.additionalProperties, [...path, "*"], here, document);
+    }
   };
 
   walk(schema, [], [], schema);
@@ -882,6 +903,19 @@ function normalizeAlong(
     return changed ? next : node;
   }
 
+  if (head === "*") {
+    if (Array.isArray(node)) return node;
+    const map = node as Record<string, unknown>;
+    let copy: Record<string, unknown> | undefined;
+    for (const [key, child] of Object.entries(map)) {
+      const next = rest.length === 0 ? asForm(child, form) : normalizeAlong(child, rest, form);
+      if (next === child) continue;
+      copy ??= { ...map };
+      copy[key] = next;
+    }
+    return copy ?? node;
+  }
+
   const container = node as Record<string, unknown>;
   if (!(head! in container)) return node;
   const child = container[head!];
@@ -929,4 +963,66 @@ function scalarFormOf(declared: unknown): DeclaredScalarForm | undefined {
   // rewriting one into the other would be a choice the declaration never made.
   if (integer === number) return undefined;
   return scalarFormOfJsonType(integer ? "integer" : "number")?.form;
+}
+
+/**
+ * What typing a value by `manifest`'s `direction` contract reads of the
+ * declaration: the instance's own field and what it names — a type by its
+ * identity, a named shape whole — and, where the instance's own contract or
+ * the one its kind declares (`kindContract`, the field resolved along
+ * `extends`) derives a part of the contract from the declaration it binds to,
+ * what each such derivation reads, `definition` being the definition the
+ * declaration's kind resolves to.
+ */
+export function contractReads(
+  direction: ContractDirection,
+  manifest: Record<string, any>,
+  kindContract: unknown,
+  definition: Record<string, any> | undefined,
+): ReadPlace[] {
+  const out: ReadPlace[] = [{ kind: "reference", keys: [direction], transitive: false, reads: READS_IDENTITY }];
+  const visit = (value: unknown): void => {
+    if (value === null || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    const node = value as Record<string, any>;
+    const annotated = { node, at: [], item: [], delegate: () => [], definition };
+    if (node["x-telo-schema-projection-from"] !== undefined) {
+      out.push(...projectionFromReads({ ...annotated, value: node["x-telo-schema-projection-from"] }));
+    }
+    if (node["x-telo-value-schema-from"] !== undefined) {
+      out.push(...valueSchemaFromReads({ ...annotated, value: node["x-telo-value-schema-from"] }));
+    }
+    for (const field of Object.values(node)) visit(field);
+  };
+  visit(manifest[direction]);
+  visit(kindContract);
+  return out;
+}
+
+/** Where a declaration a CEL site's typing reaches through a reference is
+ *  read: what a dispatch to it is typed by — its contracts, a type each names
+ *  by its identity, a named shape whole, and the value slot its kind derives
+ *  an output contract from. */
+export const dispatchReads: ReferentReads = (referent) => {
+  const slot = valueDerivedSlot(referent.schema, "outputType");
+  return [
+    { kind: "reference", keys: ["outputType"], transitive: false, reads: READS_IDENTITY },
+    { kind: "reference", keys: ["inputType"], transitive: false, reads: READS_IDENTITY },
+    ...(slot ? [{ kind: "value" as const, keys: slot }] : []),
+  ];
+};
+
+/** Whether a contract field holds a node typed from the declaration it binds
+ *  to: a projection, or a value held to a type the declaration names. */
+export function derivesFromDeclaration(value: unknown): boolean {
+  if (value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some(derivesFromDeclaration);
+  for (const [key, field] of Object.entries(value)) {
+    if (key === "x-telo-schema-projection-from" || key === "x-telo-value-schema-from") return true;
+    if (derivesFromDeclaration(field)) return true;
+  }
+  return false;
 }

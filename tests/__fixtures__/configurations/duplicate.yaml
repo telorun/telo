@@ -1,0 +1,20 @@
+# A plain declaration under the name a declaration-position choice holds.
+kind: Telo.Application
+metadata:
+  name: Duplicate
+imports:
+  Run: ../../../modules/run
+variables:
+  pick:
+    env: PICK
+    type: boolean
+    default: false
+--- !if
+metadata: { name: db }
+if: !cel "variables.pick"
+then: { kind: Run.Value, value: 1 }
+---
+kind: Run.Value
+metadata:
+  name: db
+value: 2

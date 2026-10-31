@@ -910,12 +910,17 @@ export class EvaluationContext implements IEvaluationContext {
    */
   deferPendingStartupReads(label: string, resource: ResourceManifest, sites: CelEvalSites): void {
     for (const read of startupObservedStateReads(resource, sites)) {
-      const producer = read.alias ?? read.name;
-      if (!this.hasManifest(producer) || this.resourceInstances.has(producer)) continue;
-      throw new RuntimeError(
-        "ERR_LOCAL_REF_PENDING",
-        `${label}: reads the observed state of '${producer}' at startup, and '${producer}' is registered but not initialized yet (deferring to a later init pass)`,
-      );
+      // A read through a family's index names the family: its members are the
+      // producers, whichever key is read.
+      const named = read.alias ?? read.name;
+      const members = this.familyMembersOf?.(named) ?? [];
+      for (const producer of members.length > 0 ? members : [named]) {
+        if (!this.hasManifest(producer) || this.resourceInstances.has(producer)) continue;
+        throw new RuntimeError(
+          "ERR_LOCAL_REF_PENDING",
+          `${label}: reads the observed state of '${producer}' at startup, and '${producer}' is registered but not initialized yet (deferring to a later init pass)`,
+        );
+      }
     }
   }
 
@@ -1157,7 +1162,34 @@ export class EvaluationContext implements IEvaluationContext {
    * configuration beside the call-time names that kind binds.
    */
   bindContextValue(name: string, value: unknown): void {
-    this._context = { ...this._context, [name]: value };
+    // Descriptors, not values: a spread would read an accessor (the layered
+    // `resources` of a template instance) once and keep that reading.
+    const next = Object.defineProperties({}, Object.getOwnPropertyDescriptors(this._context));
+    this._context = Object.assign(next, { [name]: value }) as Record<string, unknown>;
+  }
+
+  /** The members of a family of the layered body record, where there is one. */
+  private familyMembersOf?: (family: string) => string[];
+
+  /**
+   * Make this context's CEL `resources` the record `layer` reads over `base`,
+   * and publish what the context's own resources report into `layer`. Layering
+   * happens at read time, as for a scope run, so a reading the enclosing module
+   * republishes is seen on the next read.
+   */
+  layerResources(
+    layer: {
+      publish(name: string, reading: Record<string, unknown>): void;
+      descriptor(base: () => unknown): PropertyDescriptor;
+      membersOf(family: string): string[];
+    },
+    base: () => unknown,
+  ): void {
+    this.familyMembersOf = (family) => layer.membersOf(family);
+    const next = Object.defineProperties({}, Object.getOwnPropertyDescriptors(this._context));
+    Object.defineProperty(next, "resources", layer.descriptor(base));
+    this._context = next as Record<string, unknown>;
+    this.snapshotSink = (name, snap) => layer.publish(name, snap);
   }
 
   /** Spawn a fresh child context attached to this node — the isolated scope a
@@ -3153,6 +3185,21 @@ function formatErrorForDiagnostic(err: unknown): {
   ) {
     return {
       message: summarizeInitFailures(err.diagnostics),
+      code: err.code,
+      children: err.diagnostics,
+    };
+  }
+
+  // An `ERR_MANIFEST_VALIDATION_FAILED` carrying diagnostics — a library's analysis
+  // refused by an import, or a template instance's expansion refused at `init()` —
+  // keeps them structured the same way, each reported under its own code.
+  if (
+    err instanceof RuntimeError &&
+    err.code === "ERR_MANIFEST_VALIDATION_FAILED" &&
+    err.diagnostics?.length
+  ) {
+    return {
+      message: `${err.diagnostics.length} manifest ${err.diagnostics.length === 1 ? "error" : "errors"}`,
       code: err.code,
       children: err.diagnostics,
     };

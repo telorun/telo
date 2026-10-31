@@ -1,0 +1,37 @@
+# A consumer of the routes template: literal hooks, an integer-like key, a
+# computed source, and a forwarded handler of a kind the route slot refuses.
+kind: Telo.Application
+metadata:
+  name: Consumer
+imports:
+  Hooks: ./routes.yaml
+  Run: ../../../../../modules/run
+  Http: ../../../../../modules/http-server
+variables:
+  tables:
+    env: TABLES
+    type: object
+    default: {}
+---
+kind: Run.Value
+metadata:
+  name: handle
+value: 1
+---
+kind: Http.Api
+metadata:
+  name: other
+routes: []
+---
+kind: Hooks.Receiver
+metadata:
+  name: receiver
+hooks:
+  github:
+    handler: !ref handle
+    status: !ref other
+    secret: s
+  "2024":
+    handler: !ref handle
+    status: !ref handle
+tables: !cel "variables.tables"

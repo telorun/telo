@@ -1,0 +1,35 @@
+# A step reads the result of a step invoking a declaration whose own output
+# contract a choice decides: the read is refused only where the member is left
+# out.
+kind: Telo.Application
+metadata:
+  name: StepTarget
+imports:
+  Run: ../../../modules/run
+variables:
+  flag1: { env: FLAG_1, type: boolean, default: false }
+targets:
+  - !ref main
+---
+kind: Run.Value
+metadata:
+  name: target
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      x: !if
+        if: !cel "variables.flag1"
+        then: { type: integer }
+value: { x: 1 }
+---
+kind: Run.Sequence
+metadata:
+  name: main
+steps:
+  - name: call
+    invoke: !ref target
+  - name: read
+    value: !cel "steps.call.result.x"

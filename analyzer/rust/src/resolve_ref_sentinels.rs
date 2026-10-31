@@ -4,13 +4,16 @@
 //!
 //! The walk is value-tree-driven, not field-map-driven: a `!ref` tag is an
 //! explicit reference marker, so any sentinel found anywhere is unambiguously a
-//! reference. The source string is split on its FIRST dot, which is what makes
-//! the "resource names contain no dot" rule load-bearing:
+//! reference. What it names is the `!ref` engine's verdict the loader attached
+//! (`telo_templating::ref_sentinel_verdict`), never a reading of the text here:
 //!
 //!   `!ref writeLine`          → local resource `writeLine`
 //!   `!ref Self.writeLine`     → local resource `writeLine`
 //!   `!ref Console.writeLine`  → instance `writeLine` exported by the import
 //!                               aliased `Console`
+//!
+//! A text the grammar refuses, and a family member's reference
+//! (`stores[each.key]`), stay sentinels; the kernel refuses both.
 //!
 //! An unresolved sentinel is left in place rather than replaced with a
 //! placeholder, exactly as the Node pass does — but for a different reason and
@@ -25,7 +28,7 @@
 use std::collections::HashMap;
 
 use serde_json::{json, Value};
-use telo_templating::ref_sentinel_source;
+use telo_templating::{ref_sentinel_source, ref_sentinel_verdict, ParsedRef, RefVerdict};
 
 use crate::resolved_reference::{is_resolved_reference, RESOLVED_REFERENCE_MARKER as RESOLVED_REF_MARKER};
 
@@ -53,28 +56,28 @@ impl RefTargets {
         self.foreign.insert((alias.into(), name.into()), kind.into());
     }
 
-    fn resolve(&self, source: &str) -> Option<Value> {
-        match source.split_once('.') {
-            None => self
-                .local
-                .get(source)
-                .map(|kind| json!({ RESOLVED_REF_MARKER: true, "kind": kind, "name": source })),
-            Some(("Self", name)) => self
-                .local
-                .get(name)
-                .map(|kind| json!({ RESOLVED_REF_MARKER: true, "kind": kind, "name": name })),
-            Some((alias, name)) => self.foreign.get(&(alias.to_string(), name.to_string())).map(
-                |kind| json!({ RESOLVED_REF_MARKER: true, "kind": kind, "name": name, "alias": alias }),
-            ),
+    fn resolve(&self, target: &ParsedRef) -> Option<Value> {
+        let name = target.name.as_str();
+        match target.alias.as_deref() {
+            None | Some("Self") => self.local.get(name).map(|kind| {
+                json!({ RESOLVED_REF_MARKER: true, "kind": kind, "name": name, "indexes": [] })
+            }),
+            Some(alias) => self.foreign.get(&(alias.to_string(), name.to_string())).map(|kind| {
+                json!({ RESOLVED_REF_MARKER: true, "kind": kind, "name": name, "alias": alias, "indexes": [] })
+            }),
         }
     }
 }
 
 /// Resolve every sentinel in `value` against `targets`.
 pub fn resolve_ref_sentinels(value: &mut Value, targets: &RefTargets) {
-    if let Some(source) = ref_sentinel_source(value) {
-        if let Some(resolved) = targets.resolve(source) {
-            *value = resolved;
+    if let Some(verdict) = ref_sentinel_verdict(value) {
+        if let RefVerdict::Parsed(target) = verdict {
+            if target.indexes.is_empty() {
+                if let Some(resolved) = targets.resolve(&target) {
+                    *value = resolved;
+                }
+            }
         }
         return;
     }
@@ -189,7 +192,7 @@ mod tests {
             "qualified": make_tagged_sentinel("ref", "Self.localThing"),
         });
         resolve_ref_sentinels(&mut value, &targets());
-        let expected = json!({ "__ref": true, "kind": "demo.Thing", "name": "localThing" });
+        let expected = json!({ "__ref": true, "kind": "demo.Thing", "name": "localThing", "indexes": [] });
         assert_eq!(value["bare"], expected);
         assert_eq!(value["qualified"], expected);
     }
@@ -200,7 +203,13 @@ mod tests {
         resolve_ref_sentinels(&mut value, &targets());
         assert_eq!(
             value[0]["invoke"],
-            json!({ "__ref": true, "kind": "console.WriteLine", "name": "writeLine", "alias": "Console" })
+            json!({
+                "__ref": true,
+                "kind": "console.WriteLine",
+                "name": "writeLine",
+                "alias": "Console",
+                "indexes": []
+            })
         );
         assert!(as_resolved_ref(&value[0]["invoke"]).is_some());
     }

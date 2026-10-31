@@ -1,0 +1,37 @@
+# One library imported twice, each import choosing its export's backend: a
+# reference through each import reaches that import's own instance.
+kind: Telo.Application
+metadata:
+  name: Instances
+imports:
+  Backends: ./backends
+  A:
+    source: ./instances-lib
+    variables:
+      dialect: first
+  B:
+    source: ./instances-lib
+    variables:
+      dialect: second
+---
+kind: Telo.Definition
+metadata:
+  name: Probe
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Probe
+schema:
+  type: object
+  properties:
+    store:
+      x-telo-ref: { kind: Backends.First, use: dependency }
+---
+kind: Self.Probe
+metadata:
+  name: firstProbe
+store: !ref A.db
+---
+kind: Self.Probe
+metadata:
+  name: secondProbe
+store: !ref B.db

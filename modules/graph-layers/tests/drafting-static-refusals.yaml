@@ -127,13 +127,13 @@ source: ./__fixtures__/drafting/outside-session.yaml
 expect:
   errors:
     - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "GraphLayers.NodeConflicts 'SequenceListNodesSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+      message: "the inline GraphLayers.NodeConflicts requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
     - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "GraphLayers.RelationshipConflicts 'SequenceListLinksSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+      message: "the inline GraphLayers.RelationshipConflicts requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
     - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "GraphLayers.ResolveNodeConflict 'SequenceDecideNodeSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+      message: "the inline GraphLayers.ResolveNodeConflict requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
     - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "GraphLayers.ResolveRelationshipConflict 'SequenceDecideLinkSteps0Call' requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
+      message: "the inline GraphLayers.ResolveRelationshipConflict requires a GraphLayers.DraftSession zone on Layers.Store 'team'"
 ---
 kind: Assert.Manifest
 metadata: { name: sessionOnAnotherStore }

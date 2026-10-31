@@ -58,7 +58,7 @@ describe("visitManifest", () => {
     expect(refTargets).toEqual(["b"]);
   });
 
-  it("emits a scope boundary before that resource's ref sites, carrying enclosed names", () => {
+  it("emits a scope boundary before that resource's ref sites, carrying its declarations", () => {
     const reg = registry();
     const resources: ResourceManifest[] = [
       {
@@ -76,14 +76,14 @@ describe("visitManifest", () => {
       {
         onScope: (e) => {
           seen.push("scope");
-          enclosed = [...e.enclosedNames];
+          enclosed = e.declarations.map((d) => `${d.path}:${d.manifest.metadata!.name as string}`);
         },
         onRef: () => seen.push("ref"),
       },
       { aliases: reg._context().aliases },
     );
 
-    expect(enclosed).toEqual(["scoped"]);
+    expect(enclosed).toEqual(["tasks[0]:scoped"]);
     // Scope is delivered before any ref site of the same resource.
     expect(seen[0]).toBe("scope");
   });
