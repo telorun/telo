@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.9.0 - 2026-11-01
 ### Added
 * The renderer draws a listing as a list, cards, a kanban board (a column per group headed by its count, each loading more on its own), a calendar of months, weeks or days, a timeline at a day, week, month or quarter scale in lanes, or a tree whose expanded records stay expanded across reloads, each with a sort control where it has no headers. Dragging a card to another column, an event to another day or column, a bar to another lane or a record under another parent runs the layout's move with to filled, never a replace through the edit form; every move also has a Move to menu, and a column or a day can create a record holding its value. New layout contract ui_react_layouts-1, published in @telorun/ui-react-contract as layouts and layoutVectors with runLayoutVector beside the controls contract: a Ui.ComponentLayout's component gets the records, groups, the shown period, tree children and the sort and reports intents, the built-in layouts being its reference implementation, and one built for another ABI is refused at start with ERR_UI_COMPONENT_ABI_UNSUPPORTED. New parts listing-sort, listing-sort-option, listing-detail, record-move, record-create and the parts of each layout (list-layout, cards-layout, board-layout, calendar-layout, timeline-layout, tree-layout and theirs); calendar-grid, timeline-axis and timeline-track reserve display and grid-template-columns.

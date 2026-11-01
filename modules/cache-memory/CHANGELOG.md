@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.10.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

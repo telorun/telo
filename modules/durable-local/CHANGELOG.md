@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.3 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.5.2 - 2026-11-01
 ### Fixed
 * DurableLocal.Deliver reads the shape of the wait it names from that wait's declaration, so the payload is still checked now that a 'use: schema' reference is never replaced by an instance.

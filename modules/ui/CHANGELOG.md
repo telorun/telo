@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.8.0 - 2026-11-01
 ### Added
 * A filter bar's node carries basePath, its presentation's source basePath as written, which a values: present field's facet request is sent to and whose changes reload its values. Ui.Words gains two required words, valueCount ({$label} ({$count}), a value offered with how many records hold it) and operatorAbsent (not set, the caption of an absent filter), and Ui.words carries both in English; a Ui.Words set lacking either is refused.

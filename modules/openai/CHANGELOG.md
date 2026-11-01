@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.18.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.15.0 - 2026-10-23
 ### Fixed
 * A buffered model call whose tool call arrives with no id now gets a minted one, as the streaming kinds already did, so the tool result answering it carries an id the next request accepts.

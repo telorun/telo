@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.14.0 - 2026-11-01
 ### Added
 * Test.Suite fails with a non-zero exit when it discovers no tests, so a mistyped include or filter cannot pass as green; set allowEmpty: true to accept an empty run. The repository's own test suites take --allow-empty.

@@ -5,7 +5,7 @@
 kind: Telo.Library
 metadata:
   name: ApprovalApp
-  version: 0.4.2
+  version: 0.4.3
   license: MIT
   description: >-
     A complete approval application from one declaration: describe the request,

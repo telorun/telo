@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.3.0 - 2026-10-23
 ### Added
 * BlobFs.Store's root declares that it names a directory: telo check refuses a !module-path naming a file there, or a host-path variable declared entry: file, and the store refuses an existing file at its root when it is created. Requires telo 0.121.0.

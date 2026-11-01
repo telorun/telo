@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.2.0 - 2026-10-23
 ### Added
 * New module. I18n.Catalog holds one language's translations — each entry a source text, an optional context and the message translating it, plural cases included — written literally and checked against its source. I18n.Translator is a deterministic CEL function, called as Self.t(text, lang, values?): the text is written at the call, lang is one tag, and the translation is looked up through the tag's shorter variants (pl-PL, then pl) before the source is formatted as written in its own language; numbers and plural cases follow the chosen language's CLDR rules. Its catalogs are one catalog set, so a text translated twice in one language across them is refused before the app runs. I18n.Negotiator, called with an Accept-Language value, answers the best of the translator's catalog languages and its default by quality and RFC 4647 lookup, skipping malformed ranges and falling back to the default. The @telorun/i18n code specifier reads a translator's catalog set for a dependent module's controller (catalogSetOf).
