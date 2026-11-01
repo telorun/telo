@@ -21,7 +21,7 @@ application's `targets:`, an HTTP route's `handler:`, another sequence's step.
 ```yaml
 kind: Run.Sequence
 metadata:
-  name: PlaceOrder
+  name: placeOrder
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -30,16 +30,16 @@ inputType:
       cartId: { type: string }
     required: [cartId]
 steps:
-  - name: LoadCart
-    invoke: !ref GetCart
+  - name: loadCart
+    invoke: !ref getCart
     inputs:
       id: !cel "inputs.cartId"
-  - name: Charge
-    invoke: !ref PaymentGateway
+  - name: charge
+    invoke: !ref paymentGateway
     inputs:
-      amount: !cel "steps.LoadCart.result.total"
+      amount: !cel "steps.loadCart.result.total"
 outputs:
-  orderId: !cel "steps.Charge.result.id"
+  orderId: !cel "steps.charge.result.id"
 ```
 
 Four parts, and only `steps:` is required:
@@ -67,10 +67,10 @@ Beyond `name`, a step is exactly one of the following.
 ### Invoke
 
 ```yaml
-- name: Charge
-  invoke: !ref PaymentGateway
+- name: charge
+  invoke: !ref paymentGateway
   inputs:
-    amount: !cel "steps.LoadCart.result.total"
+    amount: !cel "steps.loadCart.result.total"
   retry:
     attempts: 3
     delay: 200ms
@@ -82,11 +82,11 @@ declaration. `inputs:` is a CEL-templatable map. `retry:` is optional.
 ### Value — compute without dispatching
 
 ```yaml
-- name: Total
-  value: !cel "sum(steps.LoadCart.result.lines.map(l, l.price * double(l.qty)))"
+- name: total
+  value: !cel "sum(steps.loadCart.result.lines.map(l, l.price * double(l.qty)))"
 ```
 
-A step with `value:` instead of `invoke:` publishes `steps.Total.result` exactly
+A step with `value:` instead of `invoke:` publishes `steps.total.result` exactly
 as an invoke step does, so nothing downstream can tell the difference — but it
 dispatches nothing: no resource, no span, no topology node. Reach for it when an
 intermediate is derived from an earlier step and would otherwise cost a whole
@@ -101,29 +101,29 @@ and `Run.Choice` take a `bindings:` map — see
 ### Conditional — `if` / `elseif` / `then` / `else`
 
 ```yaml
-- name: BranchOnTotal
-  if: !cel "steps.LoadCart.result.total > 100"
+- name: branchOnTotal
+  if: !cel "steps.loadCart.result.total > 100"
   then:
-    - name: ApplyDiscount
-      invoke: !ref Discount
+    - name: applyDiscount
+      invoke: !ref discount
   elseif:
-    - if: !cel "steps.LoadCart.result.total > 50"
+    - if: !cel "steps.loadCart.result.total > 50"
       then:
-        - name: ApplySmallDiscount
-          invoke: !ref SmallDiscount
+        - name: applySmallDiscount
+          invoke: !ref smallDiscount
   else:
-    - name: NoDiscount
-      invoke: !ref Noop
+    - name: noDiscount
+      invoke: !ref noop
 ```
 
 ### Loop — `while` / `do`
 
 ```yaml
-- name: Poll
-  while: !cel "steps.Check.result.status == 'pending'"
+- name: poll
+  while: !cel "steps.check.result.status == 'pending'"
   do:
-    - name: Check
-      invoke: !ref CheckStatus
+    - name: check
+      invoke: !ref checkStatus
 ```
 
 A do-while falls out of sharing a step name between an initializer before the
@@ -132,36 +132,36 @@ loop and the body inside it — each iteration overwrites the previous result.
 ### Switch — `switch` / `cases` / `default`
 
 ```yaml
-- name: RouteByRole
-  switch: !cel "steps.Auth.result.role"
+- name: routeByRole
+  switch: !cel "steps.auth.result.role"
   cases:
     admin:
-      - name: AdminAction
-        invoke: !ref AdminHandler
+      - name: adminAction
+        invoke: !ref adminHandler
     viewer:
-      - name: ViewerAction
-        invoke: !ref ViewerHandler
+      - name: viewerAction
+        invoke: !ref viewerHandler
   default:
-    - name: Reject
-      invoke: !ref Deny
+    - name: reject
+      invoke: !ref deny
 ```
 
 ### Error boundary — `try` / `catch` / `finally`
 
 ```yaml
-- name: Attempt
+- name: attempt
   try:
-    - name: Charge
-      invoke: !ref PaymentGateway
+    - name: charge
+      invoke: !ref paymentGateway
   catch:
-    - name: Compensate
-      invoke: !ref ReleaseHold
+    - name: compensate
+      invoke: !ref releaseHold
       inputs:
         reason: !cel "error.message"
         failedStep: !cel "error.step"
   finally:
-    - name: Audit
-      invoke: !ref WriteAuditLog
+    - name: audit
+      invoke: !ref writeAuditLog
       inputs:
         # `error` is NULL here on the success path — guard it, or the
         # analyzer reports CEL_NULLABLE_ACCESS
@@ -174,7 +174,7 @@ Inside `catch:`, `error` carries `code`, `message`, `step`, and `data`. Inside
 ### Throw
 
 ```yaml
-- name: Reject
+- name: reject
   throw:
     code: UNAUTHORIZED
     message: "token expired"
@@ -191,9 +191,9 @@ are `SCREAMING_SNAKE_CASE` by convention.
 above:
 
 ```yaml
-- name: NotifyOps
+- name: notifyOps
   when: !cel "variables.environment == 'production'"
-  invoke: !ref PagerDuty
+  invoke: !ref pagerDuty
 ```
 
 ## Scoped resources — `with` and `targets`
@@ -206,21 +206,21 @@ names which of them to `run()` first:
 ```yaml
 kind: Run.Sequence
 metadata:
-  name: CheckTheApi
+  name: checkTheApi
 with:
   - kind: Http.Server
     metadata:
-      name: TempServer
+      name: tempServer
     listen:
       port: 8099
     mounts:
       - path: /
-        mount: !ref Api
+        mount: !ref api
 targets:
-  - !ref TempServer
+  - !ref tempServer
 steps:
-  - name: CallIt
-    invoke: !ref Probe
+  - name: callIt
+    invoke: !ref probe
 ```
 
 A scoped name resolves only inside the sequence, and each run gets its own
@@ -249,21 +249,21 @@ says more about intent and is easier to read:
 
 Full field schemas for each are on the [hub](https://hub.telo.run/module/oci/ghcr.io/telorun/run/).
 
-## When to reach for a script instead
+## Scripts are deprecated
 
-`JavaScript.Script` runs inline code and is occasionally the right answer, but
-the cases that used to justify it mostly have declarative forms now: arithmetic
-no single expression makes readable is `bindings:` or a `value:` step, a string
-transform is usually one CEL call (`regexReplace`, `split`, `parseJson`,
-`base64Encode`, `sha256`, `uuidv7`, `nowIso` — see the
-[CEL reference](/cel)), and branching is `Run.Choice`.
+`JavaScript.Script` is deprecated: it still runs, and declaring one reports a
+`DEPRECATED_KIND` warning at its `kind:` line. A body of JavaScript is opaque to
+the analyzer, the editor and the topology view, so there is no single successor —
+what replaces a script depends on what it does:
 
-Prefer composition first: a step graph stays visible to the analyzer, the
-editor, and the topology view, while the inside of a script is opaque to all
-three. What genuinely remains for a script is a Node.js API the kernel does not
-expose — `Buffer` and byte-level work, streams, a native library. And if you
-find yourself writing a script that calls out to something, that something
-probably wants to be a resource.
+- **Shaping a value, branching, iterating** — the step grammar on this page:
+  arithmetic no single expression makes readable is `bindings:` or a `value:`
+  step, a string transform is usually one CEL call (`regexReplace`, `split`,
+  `parseJson`, `base64Encode`, `sha256`, `uuidv7`, `nowIso` — see the
+  [CEL reference](/cel)), and branching is `Run.Choice`.
+- **Reaching an API nothing else exposes** — `Buffer` and byte-level work,
+  streams, a native library — is a new resource kind with a controller of its
+  own, which the analyzer and editor can see.
 
 ## See also
 

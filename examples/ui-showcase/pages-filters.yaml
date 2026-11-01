@@ -3,8 +3,7 @@
 # pinned filters and defaults, and each place a bar keeps its state. Every bar
 # holds the same table, which obeys the bar around it.
 kind: Ui.View
-metadata:
-  name: filtersPage
+metadata: { name: filtersPage }
 content:
   type: stack
   children:
@@ -20,8 +19,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         content: { type: composite, ref: !ref taskList }
 
     # ---- Every control ----
@@ -37,8 +35,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: title, operator: contains, pinned: true }
           - { property: status, operator: in, control: options, default: [ todo, doing, review ] }
@@ -79,8 +76,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: title, operator: contains }
           - { property: status, operator: eq }
@@ -110,8 +106,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: status, operator: in }
           - { property: assigneeEmail, operator: in }
@@ -142,8 +137,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: title, operator: contains, pinned: true }
           - { property: status, operator: eq, default: doing }
@@ -165,8 +159,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: title, operator: contains, pinned: true }
           - { property: label, operator: in, control: options, default: [ bug ] }
@@ -187,8 +180,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: title, operator: contains, pinned: true }
           - { property: status, operator: in }
@@ -211,8 +203,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: priority, operator: gte, control: slider }
           - { property: estimate, operator: lt }
@@ -234,8 +225,7 @@ content:
     - type: composite
       ref:
         kind: Ui.Filters
-        model: !ref Task
-        collection: !ref taskModel
+        presentation: !ref tasksPresentation
         fields:
           - { property: status, operator: eq, control: options }
           - { property: assigneeEmail, operator: eq }
@@ -249,28 +239,27 @@ content:
               compact: { kind: Ui.Drawer, side: bottom }
         content: { type: composite, ref: !ref taskList }
 ---
-# The table every bar on the page holds: five tasks to a page, sortable by the
-# columns the collection sorts by.
-kind: Ui.Table
-metadata:
-  name: taskList
+# The listing every bar on the page holds, drawn as a table: five tasks to a
+# page, sortable by the columns the collection sorts by.
+kind: Ui.Listing
+metadata: { name: taskList }
+presentation: !ref tasksPresentation
 model: !ref Task
-collection: !ref taskModel
-source: { basePath: /api/tasks }
 pageSize: 5
-columns:
-  - value: !cel "row.title"
-  - value: !cel "row.status"
-  - value: !cel "row.label"
-  - value: !cel "row.priority"
-  - value: !cel "row.estimate"
-  - value: !cel "row.dueOn"
-  - value: !cel "row.assigneeEmail"
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.title"
+    - value: !cel "row.status"
+    - value: !cel "row.label"
+    - value: !cel "row.priority"
+    - value: !cel "row.estimate"
+    - value: !cel "row.dueOn"
+    - value: !cel "row.assigneeEmail"
 ---
 # The page every application lists at /filters, placing the view.
 kind: Ui.Page
-metadata:
-  name: filtersScreen
+metadata: { name: filtersScreen }
 path: /filters
 title: Filters
 children:

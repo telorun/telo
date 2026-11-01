@@ -496,7 +496,7 @@ export function detectContext(
   // Key position (existing key, blank line, or trailing indent). Complete
   // against the nearest enclosing inline resource's schema (or the root
   // resource), with the path made relative to it — so a prop key inside
-  // `mount: { kind: Crud.Resource, … }` offers Crud.Resource's fields, not the
+  // `mount: { kind: Crud.Api, … }` offers Crud.Api's fields, not the
   // outer ref slot's.
   const scopeKind = resolved.resourceKind ?? docKind;
   if (!scopeKind) return undefined;

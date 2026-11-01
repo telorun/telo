@@ -13,7 +13,7 @@ Two tags embed a file as a manifest value:
 
 ```yaml
 kind: PdfMake.Document
-metadata: { name: CustomerReport }
+metadata: { name: customerReport }
 fonts:
   Brand:
     normal: !include-bytes assets/Brand-Regular.ttf

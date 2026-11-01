@@ -14,6 +14,7 @@ Driver-agnostic SQL database access — the `Sql.Connection` abstract plus raw q
 ## Docs
 
 - [Declarative schema](docs/declarative-schema.md) — declaring tables instead of migrating to them, and how tombstoning and reclamation work.
+- [Foreign keys](docs/declarative-schema.md#foreign-keys) — the typed entry every engine's `Table` takes, and what it checks.
 - [Transactions](docs/transactions.md) — how membership works (ambient, per connection), what `transaction:` actually declares, and what `telo check` reports.
 - [Writing a SQL backend](docs/writing-a-backend.md) — what a backend owes in any language: the kind, the connection behaviours, the dialect, the lifecycle.
 - [Node backends](docs/nodejs-backend.md) — the `@telorun/sql` helper library (`SqlConnection` / `SqlDialect` / `SqlConnectionBase`) for backends written in TypeScript.

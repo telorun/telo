@@ -287,3 +287,77 @@ describe("resource rules — resolve across references", () => {
     expect(refused.map((i) => i.path)).toEqual(["schema.x-telo-resource-rules[0].resolve[0]"]);
   });
 });
+
+/** A pointer continuing through a collection whose entries only HOLD a
+ *  reference walks into each entry, to the reference it names. */
+describe("resource rules — resolve through entries holding a reference", () => {
+  const schemas: Record<string, Record<string, any>> = {
+    "std.Holder": {
+      type: "object",
+      properties: { table: { "x-telo-ref": { kind: "std.Table", use: "dependency" } } },
+      "x-telo-resource-rules": [
+        {
+          resolve: ["/table/keys/*/references/table"],
+          condition: cel("self.table.keys.all(n, self.table.keys[n].references.table.physical == 'authors')"),
+          code: "KEY_ELSEWHERE",
+          message: "a key references another table",
+        },
+      ],
+    },
+    "std.Table": {
+      type: "object",
+      properties: {
+        physical: { type: "string" },
+        keys: {
+          type: "object",
+          additionalProperties: {
+            type: "object",
+            properties: {
+              references: {
+                type: "object",
+                properties: { table: { "x-telo-ref": { kind: "std.Table", use: "schema" } } },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+  const table = (name: string, physical: string, keys: Record<string, string> = {}) =>
+    ({
+      kind: "std.Table",
+      metadata: { name },
+      physical,
+      keys: Object.fromEntries(
+        Object.entries(keys).map(([key, target]) => [key, { references: { table: { __ref: true, kind: "std.Table", name: target } } }]),
+      ),
+    }) as unknown as ResourceManifest;
+  const binderFor = (declarations: ResourceManifest[]) => {
+    const byName = new Map(declarations.map((d) => [d.metadata!.name as string, d]));
+    return new PeerBinder({
+      declarationOf: (r: ReferenceValue) => byName.get(r.name),
+      refSlotsOf: (kind) => declaredReach(schemas[kind] ?? {}).references.map((r) => r.path),
+      refSitesOf: (manifest, kind) =>
+        new Map(
+          reachSites(schemas[kind] ?? {}, manifest)
+            .filter((site) => site.refs.length > 0)
+            .map((site) => [site.path, { shape: site.refs[0]!.fieldPath, kinds: site.refs.flatMap((r) => r.slot.kinds) }]),
+        ),
+    });
+  };
+  const holder = { kind: "std.Holder", metadata: { name: "holder" }, table: { __ref: true, kind: "std.Table", name: "posts" } } as unknown as ResourceManifest;
+  const evaluate = (target: string) =>
+    evaluateResourceRules(
+      holder,
+      schemas["std.Holder"],
+      undefined,
+      undefined,
+      binderFor([table("posts", "posts", { author: target }), table("authors", "authors"), table("editors", "editors")]),
+      "std.Holder",
+    ).map((f) => f.kind);
+
+  it("reads the declaration each entry's reference names", () => {
+    expect(evaluate("authors")).toEqual([]);
+    expect(evaluate("editors")).toEqual(["violation"]);
+  });
+});

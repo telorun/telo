@@ -1,5 +1,5 @@
 ---
-description: "Run.Value: a declarative invocable that returns a CEL-evaluated value (or a constant) — the type-safe replacement for a Js.Script that only shapes data."
+description: "Run.Value: a declarative invocable that returns a CEL-evaluated value (or a constant) — the declarative way to shape data, with no script."
 sidebar_label: Run.Value
 ---
 
@@ -7,22 +7,11 @@ sidebar_label: Run.Value
 
 > Examples below assume this module is imported with an `imports:` entry under alias `Run`. Kind references (`Run.Value`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
-`Run.Value` is a `Telo.Invocable` whose result is a CEL expression — or a structure with CEL leaves, or a plain constant — evaluated over the caller's `inputs`. It is the declarative replacement for a `JS.Script` that only **shapes a value**: string concatenation, field mapping, arithmetic, or returning a fixed literal. No I/O, no branching, no Node API — those still belong in `JS.Script` (or a purpose-built resource kind).
+`Run.Value` is a `Telo.Invocable` whose result is a CEL expression — or a structure with CEL leaves, or a plain constant — evaluated over the caller's `inputs`. It is how a handler **shapes a value**: string concatenation, field mapping, arithmetic, or returning a fixed literal. No I/O, no branching, no Node API — those belong in `Run.Choice`, a `Run.Sequence`, or a purpose-built resource kind.
 
 ## Why it exists
 
-A `JS.Script` like this isn't really JavaScript — it concatenates a string:
-
-```yaml
-kind: JS.Script
-metadata: { name: MakeId }
-code: |
-  function main({ seed }) {
-    return { documentId: "drawings/" + seed + ".png" };
-  }
-```
-
-`Run.Value` expresses the same thing declaratively, so the analyzer type-checks it, the editor can render it, and there is no JavaScript to audit:
+A handler that only concatenates a string needs no code. `Run.Value` expresses it declaratively, so the analyzer type-checks it and the editor can render it:
 
 ```yaml
 kind: Run.Value
@@ -133,4 +122,4 @@ See [Bindings and pure steps](./bindings.md) for the ordering, laziness and shad
 
 `value` is pure CEL, but "pure CEL" covers more than it sounds: the CEL catalog already has `parseJson` / `json`, `base64Encode` / `base64Decode`, `sha256` / `sha1` / `sha512` / `hmac`, `uuidv4` / `uuidv7`, `nowIso` / `today`, `regexGroups` / `regexExtractAll`, `sum` / `avg` / `min` / `max`, and `sort` / `distinct` / `flatten` / `range`. Branching is [`Run.Choice`](./choice.md), mapping is [`Run.Projection`](./projection.md), and aggregation lives in the `collection` module.
 
-What is left for a `JS.Script` (or a dedicated resource kind) is a Node.js API the kernel does not expose: `fetch`, `Buffer` / byte-level inspection, streams, a native library.
+What is left for a dedicated resource kind is a Node.js API the kernel does not expose: `fetch`, `Buffer` / byte-level inspection, streams, a native library.

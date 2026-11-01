@@ -1,0 +1,65 @@
+kind: Telo.Application
+metadata:
+  name: DataModelRelations
+  version: 1.0.0
+imports:
+  DataModel: ../../../
+  Lib: ./lib
+---
+kind: Telo.JsonSchema
+metadata: { name: Employee }
+schema:
+  type: object
+  required: [id, name]
+  properties:
+    id: { type: integer }
+    name: { type: string }
+    managerId: { type: [integer, "null"] }
+    tagIds: { type: array, items: { type: string } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    featuredPostId: { type: [integer, "null"] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    authorId: { type: integer }
+---
+# Related to itself, with a nullable property `absent` fits and a list of keys
+# into a collection another module exports.
+kind: DataModel.Collection
+metadata: { name: employees }
+model: !ref Employee
+query:
+  filters:
+    - { property: id, operator: in }
+    - { property: managerId, operator: absent }
+  sort: []
+relations:
+  managerId: { collection: !ref employees }
+  tagIds: { collection: !ref Lib.tags }
+---
+# Two collections relating to each other.
+kind: DataModel.Collection
+metadata: { name: authors }
+model: !ref Author
+query: { filters: [{ property: id, operator: in }], sort: [] }
+relations:
+  featuredPostId: { collection: !ref posts }
+---
+kind: DataModel.Collection
+metadata: { name: posts }
+model: !ref Post
+query: { filters: [{ property: id, operator: in }], sort: [] }
+relations:
+  authorId: { collection: !ref authors }

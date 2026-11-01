@@ -295,6 +295,7 @@ steps:
           - [ /actions, Actions ]
           - [ /components, Components ]
           - [ /crud, CRUD ]
+          - [ /records, Related records ]
           - [ /themes, Themes ]
         compactBelow: [ 48rem, 48rem, 48rem, 48rem ]
         samePages: true
@@ -310,6 +311,7 @@ steps:
                 - [ Input, text-cursor-input.svg, [ [ /forms, clipboard-list.svg ], [ /actions, zap.svg ] ] ]
             - [ /components, puzzle.svg ]
             - [ /crud, list-checks.svg ]
+            - [ /records, network.svg ]
             - [ /themes, palette.svg ]
           - *tree
           - *tree
@@ -451,7 +453,7 @@ steps:
       expected:
         polish:
           lang: pl
-          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Motywy ]
+          pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Motywy ]
           logo: { lang: pl, message: [ Logo pokazu interfejsu ] }
           menus: [ Język, Motyw ]
         english:
@@ -496,7 +498,7 @@ steps:
       expected:
         lang: pl
         title: { lang: pl, message: [ Pokaz interfejsu ] }
-        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Motywy ]
+        pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Motywy ]
         save: { lang: pl, message: [ Zapisz ] }
         heading: { lang: pl, message: [ Każdy rodzaj węzła ] }
 
@@ -518,7 +520,7 @@ steps:
           cel.bind(t, steps.nodes.result.overview[25], [t.address, t.tabs.map(tab, [tab.text.message[0], tab.children.map(c, c.type)])])
         polishTab: !cel "steps.polishOverview.result.body.children[0].children[25].tabs[0].text"
       expected:
-        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, data, text, text, table, text, columns, text, text, text, box, text, text, tabs ]
+        kinds: [ text, text, columns, text, text, columns, columns, text, text, columns, text, text, columns, data, text, text, listing, text, columns, text, text, text, box, text, text, tabs ]
         containers: [ box, stack, box ]
         styles: [ heading, subheading, muted, strong, accent, danger, warning, success, [ strong, accent ] ]
         badges: [ [ badge, "-" ], [ badge, accent ], [ badge, success ], [ badge, warning ], [ badge, danger ] ]
@@ -596,7 +598,7 @@ steps:
             team: { root: data, path: [ name ] }
             project: { root: data, path: [ latestProject ] }
 
-  # Style rules on a table's rows and on a column's cells, and one word told
+  # Style rules on a table listing's rows and on a column's cells, and one word told
   # apart by its context in two column headers and in two nodes' own texts.
   - name: verifyStyleRules
     invoke: { kind: Assert.Equals }
@@ -604,8 +606,8 @@ steps:
       actual:
         basePath: !cel "steps.nodes.result.overview[16].basePath"
         rowStyle: !cel "steps.nodes.result.overview[16].rowStyle"
-        columns: !cel "steps.nodes.result.overview[16].columns.map(c, [c.header, 'style' in c ? c.style : null])"
-        polishHeaders: !cel "steps.polishOverview.result.body.children[0].children[16].columns.map(c, c.header.message[0])"
+        columns: !cel "steps.nodes.result.overview[16].layout.columns.map(c, [c.header, 'style' in c ? c.style : null])"
+        polishHeaders: !cel "steps.polishOverview.result.body.children[0].children[16].layout.columns.map(c, c.header.message[0])"
         nodeTexts: !cel "steps.nodes.result.overview[18].children.map(c, [c.type, c.text])"
         polishNodeTexts: !cel "steps.polishOverview.result.body.children[0].children[18].children.map(c, c.text.message[0])"
       expected:
@@ -841,9 +843,9 @@ steps:
             - [ /api/session/signout, End the session quietly, { refreshes: [] } ]
             - [ /api/session/signout, Sign out, { refreshes: [ /api/session ] } ]
 
-  # Tables: columns derived from the model with the default page size and
-  # dialog; written columns with style rules and the sortable ones marked;
-  # members behind references; a filter from the page's query and a fixed one;
+  # Tables: listings drawn as tables, columns derived from the model with the
+  # default page size and dialog; written columns with style rules and the
+  # sortable ones marked; members behind references; a filter from the page's query and a fixed one;
   # and create and edit on every kind of surface, every member filled.
   - name: verifyTables
     invoke: { kind: Assert.Equals }
@@ -851,7 +853,7 @@ steps:
       actual:
         kinds: !cel "steps.nodes.result.tables.map(c, c.type)"
         derived:
-          columns: !cel "steps.nodes.result.tables[2].columns.map(c, ['sort' in c ? c.sort : '-', c.header.message[0]])"
+          columns: !cel "steps.nodes.result.tables[2].layout.columns.map(c, ['sort' in c ? c.sort : '-', c.header.message[0]])"
           pageSize: !cel "steps.nodes.result.tables[2].pageSize"
           create: !cel "[steps.nodes.result.tables[2].create.surface, steps.nodes.result.tables[2].create.afterSubmit, steps.nodes.result.tables[2].create.unsaved]"
           forms: !cel "[steps.nodes.result.tables[2].create.form.fields.map(f, f.property), steps.nodes.result.tables[2].edit.form.fields.map(f, f.property)]"
@@ -859,10 +861,10 @@ steps:
         written:
           pageSize: !cel "steps.nodes.result.tables[5].pageSize"
           rowStyle: !cel "steps.nodes.result.tables[5].rowStyle"
-          columns: !cel "steps.nodes.result.tables[5].columns.map(c, [c.header.message[0], 'sort' in c ? c.sort : '-', 'style' in c ? c.style : null])"
+          columns: !cel "steps.nodes.result.tables[5].layout.columns.map(c, [c.header.message[0], 'sort' in c ? c.sort : '-', 'style' in c ? c.style : null])"
         members:
           source: !cel "[steps.nodes.result.tables[8].basePath, steps.nodes.result.tables[8].pageSize]"
-          columns: !cel "steps.nodes.result.tables[8].columns.map(c, [c.header.message[0], c.value.path, c.present])"
+          columns: !cel "steps.nodes.result.tables[8].layout.columns.map(c, [c.header.message[0], c.value.path, c.present])"
         byQuery:
           links: !cel "steps.nodes.result.tables[11].children.map(c, c.href)"
           query: !cel "steps.nodes.result.tables[12].query"
@@ -872,48 +874,48 @@ steps:
           [20, 23, 26, 29, 32, 35, 38].map(i, steps.nodes.result.tables[i]).map(t, [
             t.create.surface, t.create.afterSubmit, t.create.unsaved,
             t.edit.surface, t.edit.afterSubmit, t.edit.unsaved, t.delete])
-        polish: !cel "[steps.polishTables.result.body.children[0].children[0].text.message[0], steps.polishTables.result.body.children[0].children[2].columns[3].labels[1].label.message[0]]"
+        polish: !cel "[steps.polishTables.result.body.children[0].children[0].text.message[0], steps.polishTables.result.body.children[0].children[2].layout.columns[3].labels[1].label.message[0]]"
       expected:
         kinds:
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
           - columns
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
           - text
           - text
-          - table
+          - listing
         derived:
           columns:
             - [ title, Task ]
@@ -1185,7 +1187,7 @@ steps:
               - [ assigneeEmail, eq, auto, false ]
             - []
         content:
-          - &taskList [ table, /api/tasks, 5 ]
+          - &taskList [ listing, /api/tasks, 5 ]
           - *taskList
           - *taskList
           - *taskList
@@ -1402,8 +1404,8 @@ steps:
         kinds:
           [
             text, text, action, text, text, action, text, text, action, text, action, text, text, columns, text, text,
-            data, action, text, text, action, text, text, table, text, text, data, text, text, columns, text, text,
-            action, text, action, text, text, columns, table,
+            data, action, text, text, action, text, text, listing, text, text, data, text, text, columns, text, text,
+            action, text, action, text, text, columns, listing,
           ]
         bare: [ /api/unblock, Unblock TEL-42, [], { refreshes: [ /api/tasks, /api/task-counts ] }, false, false ]
         estimate:
@@ -1560,7 +1562,7 @@ steps:
             [c.export, c.abi, c.external, c.module.name, c.props, c.stylesheets.map(s, s.name)])
         table: !cel "cel.bind(t, steps.nodes.result.components[5], [t.basePath, t.filters, t.pageSize, 'edit' in t, t.delete])"
         cell: !cel >-
-          cel.bind(c, steps.nodes.result.components[5].columns[2], [c.header.message[0], c.cell.export, c.cell.props,
+          cel.bind(c, steps.nodes.result.components[5].layout.columns[2], [c.header.message[0], c.cell.export, c.cell.props,
             c.cell.module == steps.nodes.result.components[2].module])
         module: !cel >-
           [steps.componentModule.result.status, steps.componentModule.result.headers['content-type'],
@@ -1568,7 +1570,7 @@ steps:
         stylesheet: !cel "[steps.componentStylesheet.result.status, steps.componentStylesheet.result.headers['content-type'], steps.componentStylesheet.result.body.contains('.showcase-desk')]"
         polish: !cel "steps.polishComponents.result.body.children[0].children.filter(c, c.type == 'text' && c.style == 'heading').map(c, c.text.message[0])"
       expected:
-        kinds: [ text, text, component, text, text, table, text, text ]
+        kinds: [ text, text, component, text, text, listing, text, text ]
         desk:
           - TaskDesk
           - ui_react-1
@@ -1588,7 +1590,7 @@ steps:
 
   # The generated admin screen: a bar over the tasks collection with the policy
   # written, keeping its state under the key the Filters page's aside bar keeps
-  # its own, a table with both forms on their surfaces and a confirmed delete.
+  # its own, a listing with both forms on their surfaces and a confirmed delete.
   - name: verifyCrud
     invoke: { kind: Assert.Equals }
     inputs:
@@ -1599,7 +1601,7 @@ steps:
             f.state.store, size(f.fields)])
         sharedState: !cel "[steps.nodes.result.crud[4].state.key, steps.nodes.result.crud[4].state.store] == [steps.nodes.result.filters[8].state.key, steps.nodes.result.filters[8].state.store]"
         table: !cel >-
-          cel.bind(t, steps.nodes.result.crud[4].content, [t.basePath, t.rowKey, t.delete, t.columns.map(c, c.value.path[0]),
+          cel.bind(t, steps.nodes.result.crud[4].content, [t.basePath, t.key, t.delete, t.layout.columns.map(c, c.value.path[0]),
             t.create.form.fields.map(f, f.property) == t.edit.form.fields.map(f, f.property)])
         create: !cel "cel.bind(o, steps.nodes.result.crud[4].content.create, [o.surface.type, o.surface.side, o.afterSubmit, o.unsaved])"
         edit: !cel "cel.bind(o, steps.nodes.result.crud[4].content.edit, [o.surface.type, o.surface.address, o.afterSubmit, o.unsaved])"

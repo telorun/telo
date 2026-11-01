@@ -497,9 +497,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: Wygenerowany ekran administracyjny }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "Jedna deklaracja nad modelem zadań, z którego serwowane jest API: pasek filtrów, sortowana tabela ze stronami, formularz dodawania zadania i formularz jego zmiany oraz potwierdzane usuwanie w każdym wierszu. Kolumny, pola i filtry wynikają z modelu, więc ekran oferuje dokładnie to, co przyjmuje API." }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "Jedna deklaracja nad modelem zadań, z którego serwowane jest API: pasek filtrów, sortowana tabela ze stronami, formularz dodawania zadania i formularz jego zmiany oraz potwierdzane usuwanie w każdym wierszu. Kolumny, pola i filtry wynikają z modelu, więc ekran oferuje dokładnie to, co przyjmuje API." }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "Pasek stoi obok tabeli przy końcowej krawędzi i pokazuje tylko wybrane filtry, każdy jako żeton otwierający swoją kontrolkę. Swój wybór trzyma w tej przeglądarce pod kluczem aside — kluczem paska obok tabeli na stronie filtrów, więc filtr wybrany na jednej stronie jest wybrany na obu." }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "Nowe zadanie otwiera się w szufladzie od końcowej krawędzi i zostaje otwarte, wyczyszczone, dla następnego. Zadanie zmienia się w panelu obok listy, który jest częścią adresu, a opuszczenie go z niezapisanymi danymi najpierw pyta." }
+
+  # Related records.
+  - { text: "Related records", translation: "Powiązane rekordy" }
+  - { text: "Posts and their authors", translation: "Wpisy i ich autorzy" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "Każdy wpis wskazuje swojego autora kluczem. Kolumna autora pokazuje zamiast tego imię i nazwisko autora, odczytane jednym żądaniem dla wszystkich autorów na stronie, a filtr autora na pasku oferuje każdego autora z nazwiska. Formularze tworzenia i edycji wybierają autora z listy autorów, przeszukiwanej po nazwisku." }
+  - { text: "Only the authors with posts", translation: "Tylko autorzy z wpisami" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "Te filtry oferują tylko tych autorów i te statusy, które występują we wpisach pozostawionych przez inne filtry, każdy z liczbą wpisów. Wpisy są rysowane jako karty, a poniżej punktu przełamania jako lista, która doczytuje kolejne, gdy dojdziesz do końca." }
+  - { text: "On a board by status", translation: "Na tablicy według statusu" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "Jedna kolumna na status, każda czytana i liczona osobno. Przeciągnij kartę do innej kolumny albo przenieś ją z jej menu, aby zmienić jej status; każda lista wpisów na stronie czyta się ponownie." }
+  - { text: "On a calendar", translation: "W kalendarzu" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "Wpisy w dniu publikacji każdego z nich, po miesiącu naraz; pokazany miesiąc czyta każdy wpis datowany w nim. Wpis bez daty nie trafia do kalendarza." }
+  - { text: "The authors", translation: "Autorzy" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "Własny ekran autorów, wygenerowany z ich kolekcji. Czyta ten sam adres co filtr i wybór autora wpisów, więc dodany tu autor jest tam od razu dostępny." }
+  - { text: "Reporting lines as a tree", translation: "Hierarchia jako drzewo" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "Każda osoba wskazuje, komu podlega: relacja osób z nimi samymi. Drzewo czyta najpierw osoby, które nikomu nie podlegają, a podwładnych osoby, gdy zostanie rozwinięta. Formularz wybiera przełożonego spośród tych samych osób." }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "Autor" }
+  - { text: "Draft", translation: "Szkic" }
+  - { text: "Published", translation: "Opublikowany" }
+  - { text: "Published on", translation: "Data publikacji" }
+  - { text: "Reports to", translation: "Przełożony" }
+  - { text: "Post", translation: "Wpis" }
 
   # Themes.
   - { text: Four mounts of one design, translation: Cztery punkty montowania jednego projektu }
@@ -619,3 +641,8 @@ texts:
   - text: "Must have at most {$limit} items"
     translation: { plural: limit, cases: { one: "Najwyżej {$limit} element", few: "Najwyżej {$limit} elementy", many: "Najwyżej {$limit} elementów", other: "Najwyżej {$limit} elementu" } }
   - { text: Must not repeat an item, translation: Elementy nie mogą się powtarzać }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "Wczytaj więcej" }
+  - { text: "Move to", translation: "Przenieś do" }
+  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
+  - { text: "not set", translation: "nie ustawiono" }

@@ -24,14 +24,14 @@ A reusable module is a `Telo.Library` (importable). Its first document declares 
 ```yaml
 kind: Telo.Library
 metadata:
-  name: console
+  name: Console
   version: 0.9.0
 exports:
   resources:
     - writeLine
 ```
 
-`metadata.name` becomes the kind prefix — definitions in this file are referenced as `Console.<Kind>` by importers. See [Module System](/reference/kernel/modules) for imports, aliases, and exports.
+`metadata.name` is the module's own name. The prefix on its kinds is the **alias the importer chooses** in its `imports:` map (`Console: oci://…/console@<version>` gives `Console.<Kind>`; another alias gives another prefix). See [Module System](/reference/kernel/modules) for imports, aliases, and exports.
 
 ### Provenance
 
@@ -39,12 +39,12 @@ exports:
 
 ```yaml
 metadata:
-  name: console
+  name: Console
   version: 0.9.0
   description: Write lines to stdout and read them back from stdin.
   repository: https://github.com/telorun/telo
   homepage: https://telo.run/modules/console
-  license: Apache-2.0
+  license: MIT
   documentation: https://hub.telo.run/module/oci/ghcr.io/telorun/console/
 ```
 
@@ -66,7 +66,7 @@ Note the field is `repository`, not `source`: inside the `imports` map, `source:
 
 ```yaml
 metadata:
-  name: cache-redis
+  name: CacheRedis
   categories: [Performance, Storage]
 ```
 
@@ -120,7 +120,7 @@ capability: Telo.Invocable
 controllers:
   - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritelineController
 inputType:
-  kind: Type.JsonSchema
+  kind: Telo.JsonSchema
   schema:
     type: object
     properties:
@@ -187,11 +187,13 @@ The instance implements the method that matches the declared capability:
 
 | Capability | Implement | For |
 |---|---|---|
-| `Telo.Invocable` | `invoke(inputs, ctx?)` | request handlers, scripts |
+| `Telo.Invocable` | `invoke(inputs, ctx?)` | request handlers, queries |
 | `Telo.Runnable` | `run(ctx?)` | one-shot tasks, pipelines |
 | `Telo.Provider` | `init?()` + `provide()` | config / secret / value sources |
 | `Telo.Service` | `init()` + `run()` | long-lived servers, pools |
 | `Telo.Mount` | mounted into a Service | HTTP APIs, middleware |
+| `Telo.Sink` | `write(record)` + `flush()` / `close()` | log and trace record destinations |
+| `Telo.Callable` | `call(args)`, synchronous | functions reached from CEL by module name |
 
 Any instance may also implement optional `init()` and `snapshot()` (the snapshot is what `resources.<name>` exposes in CEL). Cleanup is not a method — `init()` and `run()` return it (see below).
 
@@ -357,7 +359,7 @@ targets:
       output: "Hello from Telo!"
 ```
 
-Run it with `telo ./manifest.yaml` ([CLI](/learn/installation-and-cli)) and cover it with a [test manifest](/build/testing).
+Run it with `telo ./manifest.yaml` ([CLI](/learn/telo-cli)) and cover it with a [test manifest](/build/testing).
 
 ## Errors
 
@@ -369,7 +371,7 @@ Throw an `InvokeError` for domain failures that are part of your kind's contract
 
 Publish refuses to ship changed bytes at an unchanged `metadata.version`: it compares each built layer's content digest against the one already published under that version. A bundle inlines its dependencies, so a fix in a shared library changes a module's bytes while touching no file the module owns — bumping the version is what makes that fix reach consumers.
 
-To make the module discoverable, register its ref with the [hub](https://hub.telo.run). See the [CLI reference](/learn/installation-and-cli).
+To make the module discoverable, register its ref with the [hub](https://hub.telo.run). See the [CLI reference](/learn/telo-cli).
 
 ## See also
 

@@ -901,6 +901,9 @@ importers:
       typescript:
         specifier: ^5.0.0
         version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/benchmark/nodejs:
     dependencies:
@@ -1106,8 +1109,26 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  modules/crud-ui/nodejs:
+    devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+      yaml:
+        specifier: ^2.8.3
+        version: 2.8.3
+
   modules/crud/nodejs:
     dependencies:
+      '@telorun/data-model':
+        specifier: workspace:*
+        version: link:../../data-model/nodejs
       '@telorun/sql':
         specifier: workspace:*
         version: link:../../sql/nodejs
@@ -1130,6 +1151,21 @@ importers:
       yaml:
         specifier: ^2.8.3
         version: 2.8.3
+
+  modules/data-model/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
 
   modules/docker/nodejs:
     devDependencies:
@@ -3106,6 +3142,9 @@ importers:
       react-dom:
         specifier: ^19.2.4
         version: 19.2.4(react@19.2.4)
+      shiki:
+        specifier: ^4.3.1
+        version: 4.3.1
       yaml:
         specifier: ^2.8.3
         version: 2.8.3

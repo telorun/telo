@@ -31,22 +31,22 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 
 ```yaml
 kind: Telo.Application
-metadata: { name: hello-http, version: 1.0.0 }
+metadata: { name: HelloHttp, version: 1.0.0 }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.38.0
-  JS: oci://ghcr.io/telorun/javascript@0.7.0
-targets: [ !ref Server ]
+  Run: oci://ghcr.io/telorun/run@0.13.0
+targets: [ !ref server ]
 ---
 kind: Http.Server
-metadata: { name: Server }
+metadata: { name: server }
 listen:
   port: 8080
 mounts:
   - path: /api
-    mount: !ref Api
+    mount: !ref api
 ---
 kind: Http.Api
-metadata: { name: Api }
+metadata: { name: api }
 routes:
   # Declare request.schema and the response content.schema so the route is
   # type-checked AND fully described in the generated OpenAPI document. Put
@@ -64,7 +64,7 @@ routes:
               examples: [ "Ada" ]
     inputs:
       name: !cel "request.params.name"
-    handler: !ref Greet
+    handler: !ref greet
     returns:
       - status: 200
         content:
@@ -78,10 +78,16 @@ routes:
                   examples: [ "Hello, Ada!" ]
             body: { message: !cel "result.message" }
 ---
-kind: JS.Script
-metadata: { name: Greet }
-code: |
-  return { message: `Hello, ${inputs.name}!` };
+kind: Run.Value
+metadata: { name: greet }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [name]
+    properties: { name: { type: string } }
+value:
+  message: !interpolate "Hello, ${{ inputs.name }}!"
 ```
 
 ## Reference

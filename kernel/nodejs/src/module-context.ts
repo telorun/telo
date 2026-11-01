@@ -29,6 +29,7 @@ import {
 } from "@telorun/sdk";
 import { MODULE_CALL_DISPATCH_KEY } from "@telorun/templating";
 import { EvaluationContext } from "./evaluation-context.js";
+import type { DispatchCaller } from "./failure-location.js";
 import { ModuleFunctionTable, splitQualifiedCall } from "./module-functions.js";
 import type { NeedFulfilment } from "./need-fulfilment.js";
 import { isResolvedReference, resolvedReference, type AnalysisRegistry } from "@telorun/analyzer";
@@ -269,9 +270,14 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     this._rebuildContext();
   }
 
-  setTargets(vars: BootTarget[]): void {
+  /** The boot targets, and the Application declaration writing them — the
+   *  caller a failure leaving a target's dispatch is located in. */
+  setTargets(vars: BootTarget[], declaration?: ResourceManifest): void {
     this.targets = vars;
+    this.targetsDeclaration = declaration;
   }
+
+  private targetsDeclaration: ResourceManifest | undefined;
 
   setSecrets(secrets: Record<string, unknown>): void {
     this._secrets = secrets;
@@ -895,8 +901,9 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
     name: string,
     inputs: TInputs,
     ctx?: InvokeContext,
+    caller?: DispatchCaller,
   ): Promise<any> {
-    const result = await super.invoke(kind, name, inputs, ctx);
+    const result = await super.invoke(kind, name, inputs, ctx, caller);
     // Same publication path as the post-init capture and `setStatus()`:
     // one shape, one target, so a declared `status:` is a guarantee on every
     // path rather than on some of them.
@@ -973,11 +980,24 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         : ctx;
 
     const steps: Record<string, unknown> = {};
+    const caller: DispatchCaller = {
+      kind: "Telo.Application",
+      name: appLabel,
+      module: this.source,
+      ...(this.targetsDeclaration ? { declaration: this.targetsDeclaration } : {}),
+    };
+    // The boot run's own context, carrying only the per-dispatch place of the
+    // target's inputs the leaf sends.
+    const dispatchCtx = (sent: InvokeContext | undefined): InvokeContext | undefined =>
+      sent?.inputsAt === undefined || targetCtx === undefined
+        ? targetCtx
+        : deriveContext(targetCtx, { inputsAt: sent.inputsAt });
     const stepCtx: InvokeStepContext = {
       expandValue: (value, context) => this.expandWith(value, context),
-      invoke: (kind, name, inputs) => this.invoke(kind, name, inputs, targetCtx),
-      invokeResolved: (kind, name, instance, inputs) =>
-        this.invokeResolved(kind, name, instance, inputs, targetCtx),
+      invoke: (kind, name, inputs, options?: { ctx?: InvokeContext }) =>
+        this.invoke(kind, name, inputs, dispatchCtx(options?.ctx), caller),
+      invokeResolved: (kind, name, instance, inputs, sent) =>
+        this.invokeResolved(kind, name, instance, inputs, dispatchCtx(sent), caller),
       resolveImportedInstance: (alias, name) => this.resolveImportedInstance(alias, name),
     };
     // Route a pre-resolved boot target through the instrumented chokepoint
@@ -1046,7 +1066,12 @@ export class ModuleContext extends EvaluationContext implements IModuleContext {
         };
         // The boot cancellation, so a target parked in a retry backoff ends on
         // SIGINT rather than sitting out the remaining delay.
-        await executeInvokeStep(step, stepCtx, { steps, invokeCtx: ctx, site: `targets[${i}]` });
+        await executeInvokeStep(step, stepCtx, {
+          steps,
+          invokeCtx: ctx,
+          site: `targets[${i}]`,
+          inputsAt: `/targets/${i}/inputs`,
+        });
         continue;
       }
       if ("ref" in target && target.ref != null) {

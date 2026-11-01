@@ -136,8 +136,8 @@ export interface BuildSessionPodArgs {
  *    its environment before anything runs, and the runner's host values.
  *  - **The env split IS the credential boundary.** The operator env goes on
  *    `agent` alone; `workspace` gets neither.
- *  - **A shared GID.** Every container writes `/workspace`, so the pod needs an
- *    `fsGroup` they all share.
+ *  - **One user.** Every container, the agent's included, runs as the session
+ *    user, and writes `/workspace` through its group as the pod's `fsGroup`.
  *  - **The volume is not owned by the pod**, so deleting the pod (suspend, an
  *    agent change) keeps the files, the module cache and the agent's state.
  */
@@ -169,9 +169,9 @@ export function buildSessionPod(args: BuildSessionPodArgs): V1Pod {
       ...(config.runtimeClass ? { runtimeClassName: config.runtimeClass } : {}),
       securityContext: {
         runAsNonRoot: true,
-        runAsUser: 1000,
-        runAsGroup: 1000,
-        fsGroup: 1000,
+        runAsUser: config.sessionUser.uid,
+        runAsGroup: config.sessionUser.gid,
+        fsGroup: config.sessionUser.gid,
         seccompProfile: { type: "RuntimeDefault" },
       },
       initContainers: [supervisorInitContainer(args)],
@@ -322,6 +322,8 @@ function agentContainer(args: BuildSessionPodArgs, agent: RunnerAgent): V1Contai
       { name: "WORKSPACE_DIR", value: WORKSPACE_DIR },
       { name: "TELO_HOST_STATE_DIR", value: AGENT_STATE_DIR },
       ...(module !== undefined ? [{ name: "TELO_CACHE_DIR", value: `${AGENT_STATE_DIR}/telo-cache` }] : []),
+      { name: "HOME", value: HOME_DIR },
+      { name: "npm_config_cache", value: `${HOME_DIR}/.npm` },
       { name: "CLICOLOR_FORCE", value: "1" },
     ],
     ...(agent.port !== undefined ? { ports: [{ containerPort: agent.port, protocol: "TCP" }] } : {}),

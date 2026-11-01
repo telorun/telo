@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata: { name: CrossingKinds }
+exports:
+  kinds: [Collection, Source, Presentation]
+---
+kind: Telo.Definition
+metadata: { name: Collection }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+---
+kind: Telo.Definition
+metadata: { name: Source }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    collection: { x-telo-ref: { kind: Self.Collection, use: dependency } }
+---
+# `row` in each entry is a record of the collection that entry's source reads.
+kind: Telo.Definition
+metadata: { name: Presentation }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./x.mjs#X]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    relations:
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        properties:
+          source: { x-telo-ref: { kind: Self.Source, use: dependency } }
+          label:
+            type: string
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }

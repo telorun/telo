@@ -1,0 +1,58 @@
+# Each relation's `row` is a record of its own source's collection: an author
+# has a `name`, a reviewer a `handle`.
+kind: Telo.Library
+metadata:
+  name: UiInvalidRelationRowUnknown
+  version: 1.0.0
+  description: Test fixture whose presentation reads a member a related record does not have.
+imports:
+  Ui: ../../../../
+  DataModel: ../../../../../data-model
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+schema: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Reviewer }
+schema: { type: object, required: [id, handle], properties: { id: { type: integer }, handle: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, authorId: { type: integer }, reviewerId: { type: integer } }
+---
+kind: DataModel.Collection
+metadata: { name: authors }
+model: !ref Author
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: reviewers }
+model: !ref Reviewer
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: postCollection }
+model: !ref Post
+query: { filters: [{ property: id, operator: in }], sort: [] }
+relations:
+  authorId: { collection: !ref authors }
+  reviewerId: { collection: !ref reviewers }
+---
+kind: Ui.CollectionSource
+metadata: { name: authorsSource }
+collection: !ref authors
+basePath: /api/authors
+---
+kind: Ui.CollectionPresentation
+metadata: { name: posts }
+source: { kind: Ui.CollectionSource, collection: !ref postCollection, basePath: /api/posts }
+relations:
+  authorId: { source: !ref authorsSource, label: !cel "row.name", hint: !cel "row.handle" }
+  reviewerId:
+    source: { kind: Ui.CollectionSource, collection: !ref reviewers, basePath: /api/reviewers }
+    label: !cel "row.handle"
+    href: !cel "row.name"

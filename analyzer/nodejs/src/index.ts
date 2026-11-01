@@ -22,6 +22,7 @@ export { collectApplicationSources, type ApplicationSourceRecords } from "./chil
 export { assembleGraphDiagnostics, compromisedFiles } from "./graph-diagnostics.js";
 export { findPositions, locateDiagnostic, resolveRange } from "./diagnostic-location.js";
 export type { DiagnosticPositions } from "./diagnostic-location.js";
+export { writtenFailureSite, writtenRootOf, type WrittenFailureSite } from "./failure-site.js";
 export type {
     ApplicationSourceLoad,
     GraphLoadError,
@@ -574,7 +575,8 @@ export {
   type RefSentinelTarget,
 } from "./ref-sentinel-target.js";
 export type { RefFieldEntry, ValueBranchValidator } from "./reference-field-map.js";
-export { reachPositions, reachSites, type ReachPosition } from "./reference-reach.js";
+export { namedShapeReading } from "./named-shape-reading.js";
+export { isDeclarationReadSite, reachPositions, reachSites, type ReachPosition } from "./reference-reach.js";
 export {
   computedRefSlots,
   evaluatedCelSource,
@@ -602,6 +604,7 @@ export {
   hasDeclaredUse,
   isNeedConstraint,
   isRefSlot,
+  isSchemaOnlySlot,
   NEED_CONSTRAINTS,
   isRefUse,
   possibleUses,

@@ -9,9 +9,10 @@ import { ControlsContext, useControl } from "./effective-controls.js";
 import { useHostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import { ListView, type ListColumn } from "./list.js";
+import { Listing } from "./listing.js";
 import { MenuNode } from "./menu-node.js";
+import { RelatedContext, RelatedValue } from "./related-labels.js";
 import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
-import { Table } from "./table.js";
 import { TabsNode } from "./tabs-node.js";
 import { Presented } from "./value-cell.js";
 import { formatWord, useSay, useText, WordsContext } from "./texts.js";
@@ -130,6 +131,7 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
   const store = useHostStore();
   const environment = useContext(RendererContext);
   const roots = useContext(RootsContext);
+  const related = useContext(RelatedContext);
   const text = useText();
   const style = styleAttribute(node.style);
   // An app-relative address is the application's own: it lives under the mount.
@@ -206,6 +208,15 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
       );
     case "value": {
       const read = readBinding(node.value, roots);
+      // A record's property with a relation shows the related record's label.
+      const relation = node.value.root === "row" && node.value.path.length === 1 ? node.value.path[0] : undefined;
+      if (relation !== undefined && related && Object.hasOwn(related.relations, relation)) {
+        return (
+          <span data-telo-part="value" data-style={style}>
+            <RelatedValue relation={relation} value={read.present ? read.value : undefined} />
+          </span>
+        );
+      }
       return (
         <span data-telo-part="value" data-style={style}>
           <Presented
@@ -229,8 +240,8 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
       );
     case "data":
       return <DataNode node={node} />;
-    case "table":
-      return <Table node={node} />;
+    case "listing":
+      return <Listing node={node} />;
     case "form":
       return <Form node={node} target={{ method: "POST", url: local(node.basePath) }} />;
     case "action":

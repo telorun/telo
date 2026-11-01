@@ -1,0 +1,25 @@
+# An extends child's resource rules are its parent's plus its own, and a code it
+# inherits is one it may not declare again.
+kind: Telo.Application
+metadata:
+  name: RuleInheritanceTest
+  version: 1.0.0
+  description: A merge-form child's rules join its parent's, and an inherited code is refused at the child.
+imports:
+  Assert: ../modules/assert
+targets: [!ref ruleInheritanceJoined, !ref ruleInheritanceRedeclared]
+---
+kind: Assert.Manifest
+metadata: { name: ruleInheritanceJoined }
+source: ./__fixtures__/rule-inheritance/joined/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: has no label. }
+    - { code: RESOURCE_RULE_VIOLATED, message: has no tag. }
+---
+kind: Assert.Manifest
+metadata: { name: ruleInheritanceRedeclared }
+source: ./__fixtures__/rule-inheritance/redeclared/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_INVALID, message: "Rule code 'BASE_NEEDS_LABEL' is inherited from" }

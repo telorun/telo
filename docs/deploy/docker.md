@@ -14,15 +14,17 @@ The canonical pattern: a **build** stage runs `telo install` to materialize `.te
 
 ```dockerfile
 FROM telorun/node:<ver>-slim AS build
-WORKDIR /build
-COPY ./apps/my-app/ ./
+WORKDIR /workspace
+COPY --chown=node:node ./apps/my-app/ ./
 RUN telo install .
 
 FROM telorun/node:<ver>-slim AS production
-WORKDIR /srv
-COPY --from=build /build /srv
-CMD ["telo", "."]
+WORKDIR /workspace
+COPY --from=build --chown=node:node /workspace /workspace
+CMD ["telo", "run", "--no-input", "."]
 ```
+
+`--no-input` makes a missing input a refusal (exit status 1, naming the variables) instead of a prompt when the container has a terminal. The image runs as the unprivileged `node` user (uid and gid 1000, `HOME=/home/node`) and its working directory `/workspace` belongs to it, so a derived image needs no `USER` line. Copy your files with `COPY --chown=node:node` — a plain `COPY` leaves them root-owned and `telo install` cannot write `.telo/` beside them — and switch with `USER root` … `USER node` for the one step that needs root, such as `RUN apt-get install`. A read-only root filesystem, an arbitrary uid and a health check: [Running unprivileged](/deploy/production#running-unprivileged).
 
 The image has a smart entrypoint (like the official `node` image): a bare manifest path or a flag is routed to `telo`, so the explicit `CMD ["telo", "--watch", "apps/my-app/telo.yaml"]` and the terse `CMD ["apps/my-app/telo.yaml"]` both work. At run time, `docker run … <image> ./manifest.yaml` or `docker run … <image> --watch ./manifest.yaml` reach the CLI, while `docker run … <image> bash` drops into a shell.
 
@@ -55,26 +57,26 @@ Either keep the marker with the manifest, or pin the location:
 
 ```dockerfile
 FROM telorun/node:<ver>-slim AS build
-WORKDIR /build
-COPY . .
+WORKDIR /workspace
+COPY --chown=node:node . .
 RUN telo install apps/my-app
 
 FROM telorun/node:<ver>-slim AS production
-WORKDIR /srv
-# The marker at /srv/telo-workspace.yaml is what makes the kernel look for
-# /srv/.telo. The cache is copied as its own instruction, to its own path:
+WORKDIR /workspace
+# The marker at /workspace/telo-workspace.yaml is what makes the kernel look for
+# /workspace/.telo. The cache is copied as its own instruction, to its own path:
 # a COPY with a directory source copies the directory's CONTENTS, so listing
-# .telo beside the marker would scatter them across /srv.
-COPY --from=build /build/telo-workspace.yaml /srv/telo-workspace.yaml
-COPY --from=build /build/.telo /srv/.telo
-COPY --from=build /build/apps/my-app /srv/apps/my-app
+# .telo beside the marker would scatter them across /workspace.
+COPY --from=build --chown=node:node /workspace/telo-workspace.yaml /workspace/telo-workspace.yaml
+COPY --from=build --chown=node:node /workspace/.telo /workspace/.telo
+COPY --from=build --chown=node:node /workspace/apps/my-app /workspace/apps/my-app
 CMD ["telo", "apps/my-app"]
 ```
 
 Or, independent of any marker:
 
 ```dockerfile
-ENV TELO_CACHE_DIR=/srv/.telo
+ENV TELO_CACHE_DIR=/workspace/.telo
 ```
 
 set in **both** stages, so the build writes where the run reads. Verify the image before shipping it: run it once with networking disabled (`docker run --network none …`) and it must boot.
@@ -86,13 +88,23 @@ set in **both** stages, so the build writes where the run reads. Verify the imag
 | `telorun/node:<ver>`                      | debian      | no                                                          |
 | `telorun/node:<ver>-slim`                 | debian-slim | no — **recommended for production**                         |
 | `telorun/node:<ver>-rust-<rust-ver>`      | debian-slim | yes — for controllers compiling native deps at install time |
-| `telorun/node:<ver>-rust-<rust-ver>-slim` | debian-slim | yes — the same image, under its historical name             |
+| `telorun/node:<ver>-rust-<rust-ver>-slim` | debian-slim | yes — the same image as the row above, published under both tag spellings |
 
 `<ver>` accepts an exact CLI version (`1.4.2`), a major (`1`), a major.minor (`1.4`), or `latest`. **Pin to an exact version in production** — rolling tags move with each release.
 
 The `-rust-*` variants carry rustc, cargo and rust-std plus a C build environment of gcc, libc6-dev, make and pkg-config — enough for a pure-Rust crate or one whose `build.rs` drives a C compiler. They deliberately do not carry git, python3 or cmake; a dependency whose build needs one of those must vendor it or ship prebuilt.
 
-The `-rust-*` variants only need to be present in the **build** stage if your controllers compile native code at install time. Use the slim variant for the production stage either way; copying the warmed `/srv` tree across is a single `COPY --from=build`.
+The `-rust-*` variants only need to be present in the **build** stage if your controllers compile native code at install time. Use the slim variant for the production stage either way; copying the warmed `/workspace` tree across is a single `COPY --from=build`.
+
+## Provide needs
+
+An application that declares `needs:` fails at load with `ERR_NEED_UNMET` unless the container is given each required one. Run `telo needs report ./manifest.yaml` in the build stage or in CI — it boots nothing — and supply what it lists:
+
+- **`Telo.DurableDirectory`** — mount a volume and set the `TELO_NEED_<NEED>__PATH` variable the report names, or mount one volume and set `TELO_HOST_STATE_DIR` to it: every directory need without a variable then becomes `<state dir>/needs/<need path>`. See [Persistent state and replicas](/deploy/production#persistent-state-and-replicas) and [Durable directories](/learn/providing-needs#durable-directories).
+- **`Telo.PublicUrl`** — set the need's variable to the address the container is reached at, or set `TELO_HOST_PUBLIC_URL_TEMPLATE` (and `TELO_HOST_PUBLIC_URL_SECONDARY_TEMPLATE` for a second address on one port) and let the kernel derive them. See [Public addresses](/learn/providing-needs#public-addresses) and [deriving addresses from the templates](/learn/providing-needs#deriving-addresses-from-the-templates).
+- **Any other need** — one variable per field, `TELO_NEED_<PATH>__<FIELD>` or the name its `env:` binds.
+
+Every name is in [Environment variables](/reference/environment-variables); the host values and need variables are hidden from controllers once read.
 
 ## Configuring at runtime
 
@@ -123,6 +135,25 @@ services:
     restart: unless-stopped
 ```
 
+## Air-gapped and private registries
+
+Modules and the image come from two places and are resolved separately.
+
+**Modules.** An `oci://<host>/<repo>@<version>` import is fetched over HTTPS from the host written in the ref, and from nowhere else; there is no registry setting that redirects `ghcr.io` elsewhere (`TELO_OCI_REGISTRY` is where `telo release` publishes, not where imports are read from). Credentials come from the Docker configuration: the `config.json` under `DOCKER_CONFIG` (default `~/.docker`), using a per-registry `credHelpers` entry, then a global `credsStore`, then an inline `auths` entry, and anonymous access when none matches. In a build stage, mount that file as a build secret rather than copying it into a layer.
+
+**A mirror.** To serve modules from a registry you control, copy the artifacts of the `telorun/*` modules you import to it with an OCI copy tool, keeping the org layout (the standard library's modules import each other by relative path, so they must stay siblings), then change each `imports:` source to the mirror's host. The `#sha256-` pin is over the manifest's bytes, so a byte-identical copy verifies against the pin you already have. Confirm a mirror with `telo install` against it and the offline run below.
+
+**No registry at run time.** The deploy needs none when the image is built from a warmed cache:
+
+```bash
+docker build -t my-app:1.0.0 .
+docker run --rm --network none --read-only --tmpfs /tmp -e PORT=8080 my-app:1.0.0
+```
+
+Run the built image once with `--network none` and the real environment; if it boots, nothing was fetched. Only the build stage ever reaches a registry, and it is the only place the credentials are needed. To carry the image into a network with no registry at all, `docker save` / `docker load` it. The base image comes from a registry too: mirror `telorun/node` and name the mirror in `FROM`, pinned by digest ([hardening checklist](/deploy/security#hardening-checklist)).
+
+Packaging as a [standalone binary](/learn/packaging-an-app) is the other offline shape: the payload carries every module and controller.
+
 ## One-shot vs long-running
 
 The same image runs both shapes — the difference is what the manifest declares.
@@ -150,6 +181,8 @@ docker buildx build \
 
 ## See also
 
-- [Installation & CLI](/learn/installation-and-cli) — full `telo install` reference, including registry and package-manager overrides.
+- [Telo CLI](/learn/telo-cli) — full `telo install` reference, including registry and package-manager overrides.
 - [Application Environment Variables](/reference/kernel/application-env-variables) — declaring `variables:` / `secrets:` against host env.
+- [Environment variables](/reference/environment-variables) — every variable the runtime reads.
+- [Running in production](/deploy/production) — signals, exit codes, probes, non-root, persistent state.
 - [AWS Lambda](/deploy/lambda) — the serverless alternative, for event-driven workloads.

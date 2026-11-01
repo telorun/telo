@@ -1,0 +1,46 @@
+kind: Telo.Library
+metadata:
+  name: UiInvalidRelationSearchNotAccepted
+  version: 1.0.0
+  description: Test fixture exporting a presentation searching related records with a filter their collection does not accept.
+imports:
+  Ui: ../../../../../
+  DataModel: ../../../../../../data-model
+exports:
+  resources: [posts]
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+schema: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema: { type: object, required: [id], properties: { id: { type: integer }, title: { type: string }, authorId: { type: integer } } }
+---
+kind: DataModel.Collection
+metadata: { name: authors }
+model: !ref Author
+query: { filters: [{ property: id, operator: in }, { property: name, operator: contains }], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: postCollection }
+model: !ref Post
+query: { filters: [{ property: id, operator: in }], sort: [] }
+relations:
+  authorId: { collection: !ref authors }
+---
+kind: Ui.CollectionSource
+metadata: { name: authorsSource }
+collection: !ref authors
+basePath: /api/authors
+---
+kind: Ui.CollectionSource
+metadata: { name: postsSource }
+collection: !ref postCollection
+basePath: /api/posts
+---
+kind: Ui.CollectionPresentation
+metadata: { name: posts }
+source: !ref postsSource
+relations:
+  authorId: { source: !ref authorsSource, label: !cel "row.name", search: { property: name, operator: eq } }

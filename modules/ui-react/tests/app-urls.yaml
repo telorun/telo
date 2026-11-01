@@ -206,7 +206,7 @@ steps:
           specVersion: 1
           title: { lang: en, message: [Fixture Admin] }
           lang: en
-          pages: [/, /done, /all, /variants, /new, /components, /gallery]
+          pages: [/, /done, /all, /variants, /new, /components, /layouts, /gallery]
           stylesheets: [renderer.css, default-theme.css, tokens.css, ui.css]
           controlStylesheets:
             [
@@ -232,7 +232,7 @@ steps:
           title: { lang: en, message: [Done] }
           width: full
           sameBundle: true
-          children: [text, table]
+          children: [text, listing]
           fixedFilter: { isDone: { value: true } }
         pageAgain: 304
         noPage: { status: 404, body: { type: about:blank, title: Not Found, status: 404 } }

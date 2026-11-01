@@ -8,7 +8,7 @@ metadata:
     grid cell, a sheet of every design token as the page applies it, and the
     page's typefaces in each face with whether the application serves them.
 imports:
-  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
+  Ui: ../../../modules/ui
 exports:
   resources: [ taskDesk, priorityMeter, tokenSheet, typefaceSamples ]
   browser:
@@ -24,8 +24,7 @@ exports:
 # Adds tasks to one project and shows how it stands, at the collection and the
 # counts route it is given.
 kind: Ui.ComponentExport
-metadata:
-  name: taskDesk
+metadata: { name: taskDesk }
 entry: "@ui-showcase/components"
 export: TaskDesk
 props:
@@ -40,8 +39,7 @@ props:
       project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: priorityMeter
+metadata: { name: priorityMeter }
 entry: "@ui-showcase/components"
 export: PriorityMeter
 props:
@@ -55,8 +53,7 @@ props:
       blocked: { type: boolean }
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: tokenSheet
+metadata: { name: tokenSheet }
 entry: "@ui-showcase/components"
 export: TokenSheet
 props:
@@ -64,8 +61,7 @@ props:
   schema: { type: object, additionalProperties: false }
 ---
 kind: Ui.ComponentExport
-metadata:
-  name: typefaceSamples
+metadata: { name: typefaceSamples }
 entry: "@ui-showcase/components"
 export: TypefaceSamples
 props:

@@ -1,8 +1,9 @@
 import { readBinding, type Binding } from "./bindings.js";
 import type { Host } from "./host.js";
+import { underMount } from "./renderer-context.js";
 import { networkError, responseError } from "./ui-error.js";
 
-export type Operator = "eq" | "contains" | "gt" | "gte" | "lt" | "lte" | "in";
+export type Operator = "eq" | "contains" | "gt" | "gte" | "lt" | "lte" | "in" | "absent";
 
 /** One query parameter of a collection request. */
 export type Param = [name: string, value: string];
@@ -63,4 +64,41 @@ export async function send(host: Host, url: string, init?: RequestInit): Promise
 export async function fetchPage(host: Host, url: string, view: CollectionView): Promise<CollectionPage> {
   const response = await send(host, collectionUrl(url, view), { headers: { accept: "application/json" } });
   return (await response.json()) as CollectionPage;
+}
+
+/** A request of the collection contract: an app-relative path and its query
+ *  parameters in the order sent. */
+export interface CollectionRequest {
+  path: string;
+  params: Param[];
+}
+
+/** The URL a request is sent to: its path under the mount, its parameters in order. */
+export function requestUrl(prefix: string, request: CollectionRequest): string {
+  const query = new URLSearchParams();
+  for (const [name, value] of request.params) query.append(name, value);
+  return `${underMount(prefix, request.path)}?${query}`;
+}
+
+/** One page of a listing read, as a collection answers it. */
+export async function fetchRequest(host: Host, prefix: string, request: CollectionRequest): Promise<CollectionPage> {
+  const response = await send(host, requestUrl(prefix, request), { headers: { accept: "application/json" } });
+  return (await response.json()) as CollectionPage;
+}
+
+/** One present value of a property, with how many records hold it. */
+export interface FacetValue {
+  value: unknown;
+  count: number;
+}
+
+export interface FacetPage {
+  values: FacetValue[];
+  next: string | null;
+}
+
+/** One page of a facet request's answer. */
+export async function fetchFacet(host: Host, prefix: string, request: CollectionRequest): Promise<FacetPage> {
+  const response = await send(host, requestUrl(prefix, request), { headers: { accept: "application/json" } });
+  return (await response.json()) as FacetPage;
 }

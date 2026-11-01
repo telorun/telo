@@ -6,11 +6,11 @@ describe("inlineResourceKind", () => {
   it("recognizes a resource declared inline at a ref slot", () => {
     expect(
       inlineResourceKind({
-        kind: "Crud.Resource",
+        kind: "Crud.Api",
         plural: "todos",
         model: { kind: "Telo.JsonSchema", schema: { type: "object" } },
       }),
-    ).toBe("Crud.Resource");
+    ).toBe("Crud.Api");
   });
 
   it("is a declaration of a kind whose configuration has a `name` field", () => {
@@ -18,7 +18,7 @@ describe("inlineResourceKind", () => {
   });
 
   it("is not a resolved reference — the loader's shape carries the marker", () => {
-    expect(inlineResourceKind({ __ref: true, kind: "Crud.Resource", name: "todos" })).toBeNull();
+    expect(inlineResourceKind({ __ref: true, kind: "Crud.Api", name: "todos" })).toBeNull();
   });
 
   it("is not a `!ref` sentinel", () => {

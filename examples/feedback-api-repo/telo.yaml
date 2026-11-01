@@ -9,7 +9,7 @@ metadata:
     maps `request.*` into them and `result.rows` back out.
 
     Reach for this shape when the routes are yours to design but the queries are
-    plain table access; reach for `Crud.Resource` (see `todo-app`) when you want
+    plain table access; reach for `Crud.Api` (see `todo-app`) when you want
     the whole REST surface generated, and for `Sql.Query` when you need a join.
 
     Run, then:
@@ -40,13 +40,11 @@ variables:
     default: feedback.db
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: !cel "variables.dbFile"
 ---
 kind: SQLite.Table
-metadata:
-  name: feedback
+metadata: { name: feedback }
 table: feedback
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -56,8 +54,7 @@ columns:
   created_at: { type: text, defaultExpression: "datetime('now')" }
 ---
 kind: SQLite.Schema
-metadata:
-  name: migrate
+metadata: { name: migrate }
 connection: !ref db
 tables:
   - !ref feedback
@@ -65,20 +62,17 @@ tables:
 # One repository resource per operation, not per route: `readFeedback` serves
 # both the list and the by-id route — the `filters:` differ at the call site.
 kind: SqlRepository.Create
-metadata:
-  name: insertFeedback
+metadata: { name: insertFeedback }
 connection: !ref db
 table: !ref feedback
 ---
 kind: SqlRepository.Read
-metadata:
-  name: readFeedback
+metadata: { name: readFeedback }
 connection: !ref db
 table: !ref feedback
 ---
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   port: !cel "ports.http"
 openapi:
@@ -90,8 +84,7 @@ mounts:
     mount: !ref feedbackRoutes
 ---
 kind: Http.Api
-metadata:
-  name: feedbackRoutes
+metadata: { name: feedbackRoutes }
 routes:
   # POST /v1/feedback — insert a new entry. The request schema is the validation:
   # a rating outside 1–5 never reaches the database.

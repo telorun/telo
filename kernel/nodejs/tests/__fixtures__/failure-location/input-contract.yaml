@@ -1,0 +1,25 @@
+# A call whose input the target's declared `inputType` refuses.
+kind: Telo.Application
+metadata: { name: FailureInputContract }
+imports:
+  Run: ../../../../../modules/run
+targets: [!ref caller]
+---
+kind: Run.Sequence
+metadata: { name: doubled }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [n]
+    properties: { n: { type: integer } }
+steps:
+  - { name: computed, value: !cel "inputs.n * 2" }
+---
+kind: Run.Sequence
+metadata: { name: caller }
+steps:
+  - name: call
+    invoke: !ref doubled
+    inputs:
+      n: !cel "dyn('two')"

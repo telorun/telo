@@ -415,13 +415,13 @@ describe("document-level helpers", () => {
     ].join("\n");
     const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
     const prev = { mounts: [{ path: "/x", mount: makeTaggedSentinel("ref", "todos") }] };
-    const next = { mounts: [{ path: "/x", mount: { kind: "Crud.Resource", plural: "todos" } }] };
+    const next = { mounts: [{ path: "/x", mount: { kind: "Crud.Api", plural: "todos" } }] };
     let out = docs;
     for (const op of diffFields(prev, next, "")) out = applyEdit(out, 0, op);
     const yaml = out[0].toString();
     expect(yaml).not.toContain("!ref");
     expect(out[0].toJSON()).toMatchObject({
-      mounts: [{ path: "/x", mount: { kind: "Crud.Resource", plural: "todos" } }],
+      mounts: [{ path: "/x", mount: { kind: "Crud.Api", plural: "todos" } }],
     });
   });
 
@@ -433,12 +433,12 @@ describe("document-level helpers", () => {
       "mounts:",
       "  - path: /x",
       "    mount:",
-      "      kind: Crud.Resource",
+      "      kind: Crud.Api",
       "      plural: todos",
       "",
     ].join("\n");
     const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
-    const prev = { mounts: [{ path: "/x", mount: { kind: "Crud.Resource", plural: "todos" } }] };
+    const prev = { mounts: [{ path: "/x", mount: { kind: "Crud.Api", plural: "todos" } }] };
     const next = { mounts: [{ path: "/x", mount: makeTaggedSentinel("ref", "todos") }] };
     let out = docs;
     for (const op of diffFields(prev, next, "")) out = applyEdit(out, 0, op);
@@ -452,7 +452,7 @@ describe("document-level helpers", () => {
     // three keys of its JS shape and stopped being a reference.
     const text = "kind: Telo.Application\nmetadata:\n  name: app\n";
     const { loaded: { documents: docs } } = parseModuleDocument("/ws/telo.yaml", text);
-    const next = addResourceDocument(docs, "Crud.Resource", "todos", {
+    const next = addResourceDocument(docs, "Crud.Api", "todos", {
       connection: makeTaggedSentinel("ref", "db"),
       model: makeTaggedSentinel("include-text", "./model.json"),
       plural: "todos",

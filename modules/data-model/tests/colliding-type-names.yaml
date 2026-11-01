@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: DataModelCollidingTypeNamesTest
+  version: 1.0.0
+  description: |
+    A collection reads each shape it names in the module that wrote the
+    reference, whatever another module declares under the same name: its own
+    model, and the model of each relation's target — a local target's and an
+    imported one's alike. Each fixture passes `telo check` and boots.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref model
+  - !ref relation
+---
+kind: Assert.Manifest
+metadata: { name: model }
+source: ./__fixtures__/colliding-type-names/model/telo.yaml
+expect: { errors: [], runs: true }
+---
+kind: Assert.Manifest
+metadata: { name: relation }
+source: ./__fixtures__/colliding-type-names/relation/telo.yaml
+expect: { errors: [], runs: true }

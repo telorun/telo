@@ -1,0 +1,122 @@
+kind: Telo.Application
+metadata:
+  name: AssertEqualsDifferencesTest
+  version: 1.0.0
+  description: >-
+    A failed Assert.Equals names every difference by its path, one per line:
+    changed values, missing and unexpected keys, array lengths with only the
+    surplus items, at most ten lines, long values cut, keys in sorted order.
+    A step after each failing assertion throws, so an assertion that passes is
+    caught as a wrong message.
+imports:
+  Assert: ../
+  Run: ../../run
+targets: [!ref changedValue, !ref missingAndUnexpectedKeys, !ref arrayLength, !ref cappedLines, !ref longValue, !ref integerAndSortedKeys]
+---
+kind: Run.Sequence
+metadata: { name: changedValue }
+steps:
+  - name: compared
+    try:
+      - name: differs
+        invoke: !ref Assert.equals
+        inputs:
+          actual: { server: { host: a, port: 80 } }
+          expected: { server: { host: a, port: 8080 } }
+      - { name: unreached, throw: { code: UNREACHED } }
+    catch:
+      - name: reported
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "{'code': error.code, 'message': error.message}"
+          expected: { code: ERR_ASSERTION_FAILED, message: "Assert.Equals \"equals\": server.port: expected 8080, got 80" }
+---
+kind: Run.Sequence
+metadata: { name: missingAndUnexpectedKeys }
+steps:
+  - name: compared
+    try:
+      - name: differs
+        invoke: !ref Assert.equals
+        inputs:
+          actual: { c: 2, b: 1 }
+          expected: { b: 1, a: 0 }
+      - { name: unreached, throw: { code: UNREACHED } }
+    catch:
+      - name: reported
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.message"
+          expected: "Assert.Equals \"equals\": 2 differences:\n  a: missing, expected 0\n  c: unexpected, got 2"
+---
+kind: Run.Sequence
+metadata: { name: arrayLength }
+steps:
+  - name: compared
+    try:
+      - name: differs
+        invoke: !ref Assert.equals
+        inputs:
+          actual: { rows: [1, 2, 3, 4] }
+          expected: { rows: [1, 9] }
+      - { name: unreached, throw: { code: UNREACHED } }
+    catch:
+      - name: reported
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.message"
+          expected: "Assert.Equals \"equals\": 4 differences:\n  rows[1]: expected 9, got 2\n  rows: expected 2 items, got 4\n  rows[2]: unexpected item 3\n  rows[3]: unexpected item 4"
+---
+kind: Run.Sequence
+metadata: { name: cappedLines }
+steps:
+  - name: compared
+    try:
+      - name: differs
+        invoke: !ref Assert.equals
+        inputs:
+          actual: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          expected: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+      - { name: unreached, throw: { code: UNREACHED } }
+    catch:
+      - name: reported
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.message"
+          expected: "Assert.Equals \"equals\": 12 differences:\n  [0]: expected 1, got 0\n  [1]: expected 1, got 0\n  [2]: expected 1, got 0\n  [3]: expected 1, got 0\n  [4]: expected 1, got 0\n  [5]: expected 1, got 0\n  [6]: expected 1, got 0\n  [7]: expected 1, got 0\n  [8]: expected 1, got 0\n  [9]: expected 1, got 0\n  … and 2 more"
+---
+kind: Run.Sequence
+metadata: { name: longValue }
+steps:
+  - name: compared
+    try:
+      - name: differs
+        invoke: !ref Assert.equals
+        inputs:
+          actual: { text: x }
+          expected: { text: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+      - { name: unreached, throw: { code: UNREACHED } }
+    catch:
+      - name: reported
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.message"
+          expected: "Assert.Equals \"equals\": text: expected \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…, got \"x\""
+---
+kind: Run.Sequence
+metadata: { name: integerAndSortedKeys }
+steps:
+  - name: compared
+    try:
+      - name: differs
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "{'z': 1, 'a': 2}"
+          expected: map
+      - { name: unreached, throw: { code: UNREACHED } }
+    catch:
+      - name: reported
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.message"
+          expected: "Assert.Equals \"equals\": expected \"map\", got {\"a\":2,\"z\":1}"

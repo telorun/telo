@@ -5,8 +5,7 @@
 # a table and on a list. Every application places this view on its `/actions`
 # page.
 kind: Ui.View
-metadata:
-  name: actionsPage
+metadata: { name: actionsPage }
 content:
   type: stack
   children:
@@ -228,19 +227,19 @@ content:
         dialog for the e-mail, which the row does not give, and shows the server's refusal on its field.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source:
-          basePath: /api/tasks
-          filters: { projectCode: TEL-42 }
+        filters: { projectCode: TEL-42 }
         pageSize: 8
-        columns:
-          - { header: Number, value: !cel "row.id" }
-          - value: !cel "row.title"
-          - value: !cel "row.status"
-          - value: !cel "row.assigneeEmail"
-          - value: !cel "row.blocked"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - { header: Number, value: !cel "row.id" }
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.assigneeEmail"
+            - value: !cel "row.blocked"
         rowActions:
           - action:
               kind: Ui.Action
@@ -437,20 +436,20 @@ content:
         - { type: link, text: Neither, href: /actions }
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
         query:
           project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
           moveTo: { type: string, enum: [ todo, doing, review, done ] }
-        source:
-          basePath: /api/tasks
-          filters: { projectCode: !cel "query.project" }
+        filters: { projectCode: !cel "query.project" }
         pageSize: 5
-        columns:
-          - value: !cel "row.title"
-          - value: !cel "row.status"
-          - value: !cel "row.priority"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.priority"
         rowActions:
           - action:
               kind: Ui.Action
@@ -476,8 +475,7 @@ content:
 # and on each row of the TEL-42 table, where it asks for the e-mail alone. Its
 # failure tree names the task and the error.
 kind: Ui.Action
-metadata:
-  name: assignTask
+metadata: { name: assignTask }
 inputModel: !ref Assignment
 outputModel: !ref AssignAnswer
 source: { path: /api/assign }
@@ -507,8 +505,7 @@ failure:
 ---
 # The page every application lists at /actions, placing the view.
 kind: Ui.Page
-metadata:
-  name: actionsScreen
+metadata: { name: actionsScreen }
 path: /actions
 title: Actions
 children:

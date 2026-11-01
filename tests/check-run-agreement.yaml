@@ -380,6 +380,8 @@ targets:
   - !ref accessorRuns
   - !ref accessorNotPlainChain
   - !ref accessorNotPlainChainAtRuntime
+  - !ref accessorForwarded
+  - !ref accessorForwardedAtRuntime
   - !ref browserEntryRuns
   - !ref browserEntryUnknown
   - !ref browserEntryUnknownAtRuntime
@@ -610,6 +612,12 @@ targets:
   - !ref bodyResourcesStartupFamily
   - !ref bodyResourcesProviderRead
   - !ref bodyResourcesProviderFamilyRead
+  - !ref schemaReferenceSelf
+  - !ref schemaReferenceMutual
+  - !ref schemaForwardInherited
+  - !ref schemaForwardInheritedAtRuntime
+  - !ref templateBodyLiteralAtLibrary
+  - !ref templateBodyLiteralAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -4072,6 +4080,29 @@ expect:
   errors: []
   runFails: "AccessorKinds.Table/notChains: 'rowStyle: !cel \"variables.style\"' is not a plain chain the field can name"
 ---
+# A templated kind's own accessor field, forwarded to the entry it composes, is
+# judged where its consumer wrote it: no plain chain is refused there, and a
+# chain is typed as the entry's field — each once…
+kind: Assert.Manifest
+metadata:
+  name: accessorForwarded
+source: ./__fixtures__/check-run-agreement/accessor/forwarded/lib/telo.yaml
+expect:
+  errors:
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Acc.Styled/notChain: 'rowStyle: !cel \"row.text + '!'\"' is not a plain chain"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Acc.Styled/mistyped: 'rowStyle' is forwarded into the Self.Table entry 'table' as 'rowStyle', which checks it as its own field — !cel: 'row.txt' is not defined (available: text)"
+---
+# …and the kernel refuses the forwarder at creation, before anything is handed on.
+kind: Assert.Manifest
+metadata:
+  name: accessorForwardedAtRuntime
+source: ./__fixtures__/check-run-agreement/accessor/forwarded/telo.yaml
+expect:
+  errors: []
+  runFails: "AccessorKinds.Styled/notChain: 'rowStyle: !cel \"row.text + '!'\"' is not a plain chain"
+---
 # A browser entry is resolved by its specifier — the one a resource names
 # against the module that declared the resource, the controller's own against
 # the module declaring the kind — and built on first use in a checkout, with the
@@ -6722,3 +6753,64 @@ source: ./__fixtures__/check-run-agreement/body-resources/provider-family-read.y
 expect:
   errors: []
   runs: true
+---
+# A `use: schema` slot is a declaration read: the kernel neither injects nor
+# waits for its target, so a resource naming itself there boots…
+kind: Assert.Manifest
+metadata:
+  name: schemaReferenceSelf
+source: ./__fixtures__/check-run-agreement/schema-reference/self.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …and so do two naming each other, which no init order could construct.
+kind: Assert.Manifest
+metadata:
+  name: schemaReferenceMutual
+source: ./__fixtures__/check-run-agreement/schema-reference/mutual.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A forward past a schema reference reads the shape with its `extends` folded,
+# so an inherited property the entry refuses is reported where it is forwarded…
+kind: Assert.Manifest
+metadata:
+  name: schemaForwardInherited
+source: ./__fixtures__/check-run-agreement/schema-reference/shape-forward/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "is forwarded into the Self.Answer entry 'answer' as 'idType'"
+---
+# …and refused by the kernel, which reads the same fold, from a consumer whose
+# entry-scoped check is silent.
+kind: Assert.Manifest
+metadata:
+  name: schemaForwardInheritedAtRuntime
+source: ./__fixtures__/check-run-agreement/schema-reference/shape-forward/telo.yaml
+expect:
+  errors: []
+  runFails: "/idType must be equal to constant"
+---
+# A literal a template body writes that its entry's kind refuses is reported
+# once, by the declaring library's own check…
+kind: Assert.Manifest
+metadata:
+  name: templateBodyLiteralAtLibrary
+source: ./__fixtures__/check-run-agreement/template-entry-views/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "the Run.Value entry 'answer': /bindings must be object"
+---
+# …never at a consumer, whose check judges the entry as it instantiates it,
+# while the kernel refuses the entry when the consumer's instance creates it.
+kind: Assert.Manifest
+metadata:
+  name: templateBodyLiteralAtRuntime
+source: ./__fixtures__/check-run-agreement/template-entry-views/telo.yaml
+expect:
+  errors: []
+  runFails: "/bindings must be object [ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]"

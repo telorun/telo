@@ -18,12 +18,13 @@ import { celSelfView } from "../../evaluation-context.js";
 import { declarationOfInstance, outermostDeclarationOf } from "../../instance-declaration.js";
 import type { ModuleContext } from "../../module-context.js";
 import { refuseExpansionConstructs } from "../../expansion-refusals.js";
+import { crossedDeclaration, forwardedValue, type WrittenScope } from "./reference-crossing.js";
 
 /**
  * A TEMPLATE BODY EXPANDED FOR ONE INSTANCE, at its `init()`.
  *
  * The expansion is the analyzer's (`createConsumerExpander`), the one `telo
- * check` runs for each consumer: this file supplies its two seams and raises
+ * check` runs for each consumer: this file supplies its seams and raises
  * what it refuses. A refusal is a consumer's value refused at creation, so it is
  * raised as `telo check` words it — one `ERR_MANIFEST_VALIDATION_FAILED`
  * carrying every refusal under its static code — and nothing here decides a
@@ -41,11 +42,15 @@ export interface InstanceExpansionInputs {
     readonly definitions: ConsumerExpansionEnvironment["registry"];
     readonly aliases: ConsumerExpansionEnvironment["aliases"];
     readonly aliasesByModule: ConsumerExpansionEnvironment["aliasesByModule"];
+    readonly readDeclaration: ConsumerExpansionEnvironment["readDeclaration"];
   };
   /** The context that declares the kind: where the library's inputs are read. */
   readonly definingContext: ModuleContext;
   /** The context the instance is declared in. */
   readonly consumerContext: ModuleContext;
+  /** Where a reference the instance's own manifest holds is resolved: the
+   *  context that owns the instance. */
+  readonly instanceScope: WrittenScope;
   readonly referenceSitesOf: (resource: ResourceManifest) => ReachSite[];
   /** The owner a body entry is stamped with. */
   readonly stampDeclaringModule: (entry: any) => any;
@@ -107,26 +112,31 @@ function liveBindings(instance: LoopInstance): Record<string, unknown> {
   return out;
 }
 
-/** What `holder` holds at `keys`. */
-function valueAt(holder: unknown, keys: readonly (string | number)[]): unknown {
-  let cur: any = holder;
-  for (const key of keys) cur = cur?.[key];
-  return cur;
-}
-
 export function expandTemplateInstance(inputs: InstanceExpansionInputs): TemplateBodyExpansion {
   const { resource, definition, definingContext, consumerContext } = inputs;
   const expander = createConsumerExpander({
     registry: inputs.analysis.definitions,
     aliases: inputs.analysis.aliases,
     aliasesByModule: inputs.analysis.aliasesByModule,
-    declarationAt: (value) => {
-      if (isResolvedReference(value)) return { declaration: undefined, module: undefined };
+    readDeclaration: inputs.analysis.readDeclaration,
+    declarationAt: (value, at) => {
+      if (isResolvedReference(value)) {
+        const declaration = crossedDeclaration(value, at.holder, inputs.instanceScope);
+        return { declaration, module: declaration ? manifestModuleOf(declaration) : undefined };
+      }
       const declaration = outermostDeclarationOf(value) ?? declarationOfInstance(value);
       return declaration ? { declaration, module: manifestModuleOf(declaration) } : undefined;
     },
     emitted: (value, instance, forward) => {
-      if (forward) return valueAt(forward.holder, forward.keys);
+      if (forward) {
+        return forwardedValue(
+          forward.holder,
+          forward.keys,
+          inputs.instanceScope,
+          inputs.analysis.readDeclaration,
+          forward.holder,
+        );
+      }
       return isCompiledValue(value) ? closeOverBindings(value, instance) : value;
     },
     decidedValue: (holder, source, node) => {

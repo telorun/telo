@@ -16,7 +16,7 @@ FROM telorun/node:${TELO_NODE_VERSION}-slim as build
 
 WORKDIR /build
 
-COPY . ./telo-authoring-agent
+COPY --chown=node:node . ./telo-authoring-agent
 
 # Pre-fetch every controller declared in the manifest graph so boot does
 # no network I/O. Cache is baked under telo-authoring-agent/.telo.
@@ -25,7 +25,7 @@ RUN telo install ./telo-authoring-agent
 FROM telorun/node:${TELO_NODE_VERSION}-slim as production
 
 WORKDIR /srv
-# Owned by `node` (uid 1000, the user a runner runs the image as): the kernel
+# Owned by `node` (uid 1000, the image's default user and the one a runner runs it as): the kernel
 # writes into the baked .telo cache at start (controller shims, parse and CEL
 # caches), and a root-owned copy fails every kind with EACCES.
 COPY --from=build --chown=node:node /build /srv
@@ -40,7 +40,9 @@ RUN mkdir -p workspace
 # load); a runner sets TELO_HOST_STATE_DIR to session storage of its own, and
 # AGENT_STATE_DIR names the directory outright. Owned by `node` (uid 1000),
 # the user the runners run the agent as.
+USER root
 RUN mkdir -p /var/lib/telo-agent && chown node:node /var/lib/telo-agent
+USER node
 ENV TELO_HOST_STATE_DIR=/var/lib/telo-agent
 
 ENV PORT=8080

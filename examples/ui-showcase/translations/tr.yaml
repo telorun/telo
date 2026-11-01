@@ -476,9 +476,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: Otomatik oluşturulan bir yönetim ekranı }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "API'nin sunulduğu görev modeli üzerine tek bir bildirim: bir filtre çubuğu, sıralanabilir ve sayfalı bir tablo, görev eklemek için bir form, değiştirmek için bir başka form ve her satırda onaylı silme. Sütunlar, alanlar ve filtrelerin tümü modelden türetilir, bu yüzden ekran tam olarak API'nin kabul ettiklerini sunar." }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "API'nin sunulduğu görev modeli üzerine tek bir bildirim: bir filtre çubuğu, sıralanabilir ve sayfalı bir tablo, görev eklemek için bir form, değiştirmek için bir başka form ve her satırda onaylı silme. Sütunlar, alanlar ve filtrelerin tümü modelden türetilir, bu yüzden ekran tam olarak API'nin kabul ettiklerini sunar." }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "Çubuk, tablonun yanında bitiş kenarında durur ve yalnızca seçtiğiniz filtreleri, her birini denetimini açan bir çip olarak gösterir. Seçimini bu tarayıcıda aside anahtarı altında saklar — bu, Filtreler sayfasında tablonun yanındaki çubuğun anahtarıdır; bu yüzden iki sayfadan birinde seçilen filtre ikisinde de seçili olur." }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "Yeni görev, bitiş kenarından açılan bir çekmecede açılır ve bir sonraki için boşaltılıp açık kalır. Bir görev, listenin yanındaki, adresin parçası olan bir panelde değiştirilir; kaydedilmemiş girdiyle panelden çıkmak önce sorar." }
+
+  # Related records.
+  - { text: "Related records", translation: "İlişkili kayıtlar" }
+  - { text: "Posts and their authors", translation: "Yazılar ve yazarları" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "Her yazı yazarını anahtarıyla belirtir. Yazar sütunu bunun yerine yazarın adını gösterir; sayfadaki tüm yazarlar için tek bir istekle okunur ve çubuğun yazar filtresi her yazarı adıyla sunar. Oluşturma ve düzenleme formları yazarı, ada göre aranan bir yazar listesinden seçer." }
+  - { text: "Only the authors with posts", translation: "Yalnızca yazısı olan yazarlar" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "Bu filtreler yalnızca diğer filtrelerin bıraktığı yazılarda bulunan yazarları ve durumları, her birinin kaç yazısı olduğuyla birlikte sunar. Yazılar kart olarak, kırılma noktasının altında ise sona ulaştıkça daha fazlasını yükleyen bir liste olarak çizilir." }
+  - { text: "On a board by status", translation: "Duruma göre bir panoda" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "Her durum için bir sütun, her biri ayrı okunur ve sayılır. Durumunu değiştirmek için bir kartı başka bir sütuna sürükleyin ya da menüsünden taşıyın; sayfadaki her yazı listesi yeniden okunur." }
+  - { text: "On a calendar", translation: "Bir takvimde" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "Yazılar, her birinin yayımlandığı günde, bir seferde bir ay; gösterilen ay, içinde tarihlenen her yazıyı okur. Tarihi olmayan bir yazı takvimde yer almaz." }
+  - { text: "The authors", translation: "Yazarlar" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "Yazarların kendi ekranı, koleksiyonlarından üretilir. Yazıların yazar filtresi ve seçicisinin okuduğu adresi okur, böylece burada eklenen bir yazar orada hemen sunulur." }
+  - { text: "Reporting lines as a tree", translation: "Bir ağaç olarak raporlama hatları" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "Her kişi kime bağlı olduğunu belirtir: kişilerin kendileriyle ilişkisi. Ağaç önce kimseye bağlı olmayan kişileri, bir kişi açıldığında da ona bağlı olanları okur. Form, yöneticiyi aynı kişiler arasından seçer." }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "Yazar" }
+  - { text: "Draft", translation: "Taslak" }
+  - { text: "Published", translation: "Yayımlandı" }
+  - { text: "Published on", translation: "Yayın tarihi" }
+  - { text: "Reports to", translation: "Bağlı olduğu kişi" }
+  - { text: "Post", translation: "Yazı" }
 
   # Themes.
   - { text: Four mounts of one design, translation: Tek tasarımın dört bağlama noktası }
@@ -589,3 +611,8 @@ texts:
   - { text: "Must have at least {$limit} items", translation: "En az {$limit} öğe içermeli" }
   - { text: "Must have at most {$limit} items", translation: "En fazla {$limit} öğe içermeli" }
   - { text: Must not repeat an item, translation: Öğeler tekrarlanmamalı }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "Daha fazla yükle" }
+  - { text: "Move to", translation: "Şuraya taşı" }
+  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
+  - { text: "not set", translation: "ayarlanmamış" }

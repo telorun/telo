@@ -8,6 +8,7 @@ metadata:
   version: 1.0.0
 imports:
   Ui: ../../../../
+  DataModel: ../../../../../data-model
   Widgets: ../../widgets
 ---
 kind: Ui.View
@@ -45,7 +46,9 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string }
     isDone: { type: boolean }
 ---
@@ -58,13 +61,19 @@ props:
   done: !cel "row.isDone"
   colour: red
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: both
 model: !ref Todo
-collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
-source: { basePath: /api/todos }
-columns:
-  - value: !cel "row.text"
-    cell: !ref pill
-  - value: !cel "row.txt"
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/todos
+    collection: { kind: DataModel.Collection, model: !ref Todo, query: { filters: [], sort: [] } }
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
+      cell: !ref pill
+    - value: !cel "row.txt"

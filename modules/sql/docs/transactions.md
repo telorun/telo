@@ -125,7 +125,7 @@ the runtime assertion remains the enforcement.
 
 ## Bodies are `Telo.Executable`
 
-`steps:` accepts any `Telo.Executable` — a `Run.Sequence`, a `JS.Script`,
+`steps:` accepts any `Telo.Executable` — a `Run.Sequence`, a `Run.Value`,
 anything with an entry point. Wire the body through a sequence rather than
 naming a bound statement directly: a statement's `transaction:` ref and the
 transaction's `steps:` ref are both injection sites, so wiring them to each

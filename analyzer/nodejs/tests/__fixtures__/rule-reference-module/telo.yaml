@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata: { name: RuleReferenceApp }
+imports:
+  Model: ./model
+  Lib: ./lib
+---
+kind: Model.Collection
+metadata: { name: posts }
+origin: app
+---
+kind: Model.Collection
+metadata: { name: holder }
+origin: app
+related: !ref Lib.entry

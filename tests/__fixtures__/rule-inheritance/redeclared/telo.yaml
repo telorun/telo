@@ -1,0 +1,31 @@
+# A child may add rules to the ones it inherits, never declare one under an inherited code.
+kind: Telo.Library
+metadata:
+  name: RuleInheritanceRedeclared
+exports:
+  kinds: [Entry]
+---
+kind: Telo.Definition
+metadata: { name: Base }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./base.mjs#Base]
+schema:
+  type: object
+  properties:
+    label: { type: string }
+  x-telo-resource-rules:
+    - condition: !cel "has(self.label)"
+      code: BASE_NEEDS_LABEL
+      message: has no label.
+---
+kind: Telo.Definition
+metadata: { name: Entry }
+extends: Self.Base
+schema:
+  type: object
+  properties:
+    tag: { type: string }
+  x-telo-resource-rules:
+    - condition: !cel "has(self.tag)"
+      code: BASE_NEEDS_LABEL
+      message: has no tag.

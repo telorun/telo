@@ -147,6 +147,91 @@ export function loadTeloImageSource(env: NodeJS.ProcessEnv): TeloImageSource {
   };
 }
 
+/**
+ * The numeric user and group every container of a session's workload runs as,
+ * whatever its image's own `USER`, and that owns the session's files.
+ */
+export interface SessionUser {
+  uid: number;
+  gid: number;
+}
+
+/** The kernel image's `node` user. */
+export const DEFAULT_SESSION_USER: Readonly<SessionUser> = Object.freeze({ uid: 1000, gid: 1000 });
+
+/** The docker runner's setting; the k8s runner reads `user` from its session file. */
+export const SESSION_USER_VARIABLE = "RUNNER_SESSION_USER";
+
+/** Kubernetes' bound on `runAsUser` / `runAsGroup`, held on both backends. */
+const MAX_ID = 2147483647;
+
+/**
+ * The session user from `RUNNER_SESSION_USER` (`<uid>:<gid>`, both numeric),
+ * {@link DEFAULT_SESSION_USER} when unset. A user name is refused: what it
+ * means is decided by each image's own `/etc/passwd`.
+ */
+export function loadSessionUserFromEnv(env: NodeJS.ProcessEnv): SessionUser {
+  const raw = env[SESSION_USER_VARIABLE]?.trim();
+  if (!raw) return { ...DEFAULT_SESSION_USER };
+  const [uid, gid, ...rest] = raw.split(":");
+  const shape = `write it as <uid>:<gid>, both numeric (e.g. 1000:1000), got '${raw}'`;
+  if (!/^[0-9]+$/.test(uid!)) {
+    throw new RunnerConfigError(`${SESSION_USER_VARIABLE} must name the user by number — ${shape}.`);
+  }
+  if (gid === undefined || gid === "") {
+    throw new RunnerConfigError(`${SESSION_USER_VARIABLE} names no gid — ${shape}.`);
+  }
+  if (rest.length > 0 || !/^[0-9]+$/.test(gid)) {
+    throw new RunnerConfigError(`${SESSION_USER_VARIABLE} must name the group by number — ${shape}.`);
+  }
+  return resolveSessionUser(Number(uid), Number(gid), {
+    uid: `the uid of ${SESSION_USER_VARIABLE}`,
+    gid: `the gid of ${SESSION_USER_VARIABLE}`,
+  });
+}
+
+/**
+ * The session user from an already-parsed configuration file's map at `path`
+ * (`{ uid, gid }`, both integers), {@link DEFAULT_SESSION_USER} when the map is
+ * absent. Closed and validated exactly as {@link loadSessionUserFromEnv},
+ * refusals naming the file's keys.
+ */
+export function loadSessionUserFromObject(value: unknown, at: { file: string; path: string }): SessionUser {
+  const name = (key?: string): string => `\`${key === undefined ? at.path : `${at.path}.${key}`}\` in ${at.file}`;
+  if (value === undefined || value === null) return { ...DEFAULT_SESSION_USER };
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new RunnerConfigError(`${name()} must be a map of a numeric uid and gid, e.g. { uid: 1000, gid: 1000 }.`);
+  }
+  const map = value as Record<string, unknown>;
+  for (const key of Object.keys(map)) {
+    if (key !== "uid" && key !== "gid") {
+      throw new RunnerConfigError(`${name(key)} is not a setting this runner reads (expected one of: uid, gid).`);
+    }
+  }
+  const id = (key: "uid" | "gid"): number => {
+    const raw = map[key];
+    if (raw === undefined || raw === null) {
+      throw new RunnerConfigError(`${name(key)} is required: the session user is a numeric uid and gid together.`);
+    }
+    if (typeof raw !== "number" || !Number.isInteger(raw)) {
+      throw new RunnerConfigError(`${name(key)} must be a number, got '${String(raw)}'.`);
+    }
+    return raw;
+  };
+  return resolveSessionUser(id("uid"), id("gid"), { uid: name("uid"), gid: name("gid") });
+}
+
+function resolveSessionUser(uid: number, gid: number, names: { uid: string; gid: string }): SessionUser {
+  if (uid === 0) {
+    throw new RunnerConfigError(
+      `${names.uid} is 0: a session runs untrusted code, so its user is never root — name a non-root uid.`,
+    );
+  }
+  if (uid < 1 || uid > MAX_ID) throw new RunnerConfigError(`${names.uid} must be in 1..${MAX_ID}, got ${uid}.`);
+  if (gid < 0 || gid > MAX_ID) throw new RunnerConfigError(`${names.gid} must be in 0..${MAX_ID}, got ${gid}.`);
+  return { uid, gid };
+}
+
 /** Why a container backend cannot run `version` whatever its registry holds, or
  *  `undefined`. A build identity (`X+unreleased`) names no published image: it
  *  is a working copy, run only where the operator said which image was built

@@ -1,0 +1,560 @@
+{
+  "generation": "ui_react_layouts-1",
+  "supplied": [
+    "react",
+    "react/jsx-runtime",
+    "react-dom",
+    "@telorun/ui-react"
+  ],
+  "props": [
+    "records",
+    "total",
+    "hasMore",
+    "loading",
+    "error",
+    "children",
+    "props",
+    "groups",
+    "span",
+    "expanded",
+    "sort",
+    "paging",
+    "empty",
+    "can",
+    "words",
+    "lang",
+    "onEndReached",
+    "onPeriodChange",
+    "onExpand",
+    "onOpen",
+    "onSortChange",
+    "onMove",
+    "onCreate"
+  ],
+  "record": [
+    "key",
+    "row",
+    "props",
+    "labels",
+    "actions",
+    "detail",
+    "style",
+    "selected",
+    "movable"
+  ],
+  "group": [
+    "value",
+    "label",
+    "heading",
+    "records",
+    "total",
+    "hasMore",
+    "loading",
+    "error",
+    "children"
+  ],
+  "intents": {
+    "onEndReached": null,
+    "onPeriodChange": "span",
+    "onExpand": null,
+    "onOpen": null,
+    "onSortChange": null,
+    "onMove": null,
+    "onCreate": null
+  },
+  "layouts": {
+    "list": {
+      "export": "ListLayout",
+      "group": "layout",
+      "description": "Records one under another, each drawn with its content: a feed.",
+      "props": [
+        "records",
+        "total",
+        "hasMore",
+        "loading",
+        "error",
+        "children",
+        "props",
+        "groups",
+        "span",
+        "expanded",
+        "sort",
+        "paging",
+        "empty",
+        "can",
+        "words",
+        "lang",
+        "onEndReached",
+        "onPeriodChange",
+        "onExpand",
+        "onOpen",
+        "onSortChange",
+        "onMove",
+        "onCreate"
+      ],
+      "roots": [
+        "list-layout"
+      ],
+      "rootProp": null,
+      "subParts": [
+        "error",
+        "error-code",
+        "error-message",
+        "icon",
+        "list-item",
+        "listing-empty",
+        "listing-loading",
+        "listing-sort",
+        "listing-sort-option",
+        "load-more",
+        "loading"
+      ],
+      "intents": {
+        "onEndReached": null,
+        "onPeriodChange": "span",
+        "onExpand": null,
+        "onOpen": null,
+        "onSortChange": null,
+        "onMove": null,
+        "onCreate": null
+      },
+      "states": [],
+      "semantics": false,
+      "portal": []
+    },
+    "cards": {
+      "export": "CardsLayout",
+      "group": "layout",
+      "description": "Records as a grid of cards, each drawn with its content, as wide as `props.size` says.",
+      "props": [
+        "records",
+        "total",
+        "hasMore",
+        "loading",
+        "error",
+        "children",
+        "props",
+        "groups",
+        "span",
+        "expanded",
+        "sort",
+        "paging",
+        "empty",
+        "can",
+        "words",
+        "lang",
+        "onEndReached",
+        "onPeriodChange",
+        "onExpand",
+        "onOpen",
+        "onSortChange",
+        "onMove",
+        "onCreate"
+      ],
+      "roots": [
+        "cards-layout"
+      ],
+      "rootProp": null,
+      "subParts": [
+        "card",
+        "error",
+        "error-code",
+        "error-message",
+        "icon",
+        "listing-empty",
+        "listing-loading",
+        "listing-sort",
+        "listing-sort-option",
+        "load-more",
+        "loading"
+      ],
+      "intents": {
+        "onEndReached": null,
+        "onPeriodChange": "span",
+        "onExpand": null,
+        "onOpen": null,
+        "onSortChange": null,
+        "onMove": null,
+        "onCreate": null
+      },
+      "states": [
+        {
+          "attribute": "data-size",
+          "values": [
+            "small",
+            "medium",
+            "large"
+          ],
+          "on": [
+            "$root"
+          ]
+        }
+      ],
+      "semantics": false,
+      "portal": []
+    },
+    "board": {
+      "export": "BoardLayout",
+      "group": "layout",
+      "description": "A column per group, headed by its label and count, each paged on its own; a card moves to another column by drag and drop or its \"Move to\" menu.",
+      "props": [
+        "records",
+        "total",
+        "hasMore",
+        "loading",
+        "error",
+        "children",
+        "props",
+        "groups",
+        "span",
+        "expanded",
+        "sort",
+        "paging",
+        "empty",
+        "can",
+        "words",
+        "lang",
+        "onEndReached",
+        "onPeriodChange",
+        "onExpand",
+        "onOpen",
+        "onSortChange",
+        "onMove",
+        "onCreate"
+      ],
+      "roots": [
+        "board-layout"
+      ],
+      "rootProp": null,
+      "subParts": [
+        "board-card",
+        "board-cards",
+        "board-column",
+        "board-heading",
+        "error",
+        "error-code",
+        "error-message",
+        "icon",
+        "listing-empty",
+        "listing-loading",
+        "listing-sort",
+        "listing-sort-option",
+        "load-more",
+        "loading",
+        "menu",
+        "menu-item",
+        "record-create",
+        "record-move",
+        "tooltip"
+      ],
+      "intents": {
+        "onEndReached": null,
+        "onPeriodChange": "span",
+        "onExpand": null,
+        "onOpen": null,
+        "onSortChange": null,
+        "onMove": null,
+        "onCreate": null
+      },
+      "states": [
+        {
+          "attribute": "data-state",
+          "values": [
+            "open",
+            "closed"
+          ],
+          "on": [
+            "menu"
+          ]
+        },
+        {
+          "attribute": "data-highlighted",
+          "values": [
+            ""
+          ],
+          "on": [
+            "menu-item"
+          ]
+        }
+      ],
+      "semantics": false,
+      "portal": [
+        "menu",
+        "tooltip"
+      ]
+    },
+    "calendar": {
+      "export": "CalendarLayout",
+      "group": "layout",
+      "description": "Records on the days of a month, a week or a day; an event moves to another day by drag and drop or its \"Move to\" menu.",
+      "props": [
+        "records",
+        "total",
+        "hasMore",
+        "loading",
+        "error",
+        "children",
+        "props",
+        "groups",
+        "span",
+        "expanded",
+        "sort",
+        "paging",
+        "empty",
+        "can",
+        "words",
+        "lang",
+        "onEndReached",
+        "onPeriodChange",
+        "onExpand",
+        "onOpen",
+        "onSortChange",
+        "onMove",
+        "onCreate"
+      ],
+      "roots": [
+        "calendar-layout"
+      ],
+      "rootProp": null,
+      "subParts": [
+        "calendar-day",
+        "calendar-day-label",
+        "calendar-event",
+        "calendar-grid",
+        "calendar-header",
+        "calendar-next",
+        "calendar-period",
+        "calendar-prev",
+        "calendar-title",
+        "calendar-weekday",
+        "error",
+        "error-code",
+        "error-message",
+        "icon",
+        "listing-empty",
+        "listing-loading",
+        "loading",
+        "menu",
+        "menu-item",
+        "record-create",
+        "record-move",
+        "tooltip"
+      ],
+      "intents": {
+        "onEndReached": null,
+        "onPeriodChange": "span",
+        "onExpand": null,
+        "onOpen": null,
+        "onSortChange": null,
+        "onMove": null,
+        "onCreate": null
+      },
+      "states": [
+        {
+          "attribute": "data-state",
+          "values": [
+            "open",
+            "closed"
+          ],
+          "on": [
+            "menu"
+          ]
+        },
+        {
+          "attribute": "data-highlighted",
+          "values": [
+            ""
+          ],
+          "on": [
+            "menu-item"
+          ]
+        }
+      ],
+      "semantics": false,
+      "portal": [
+        "menu",
+        "tooltip"
+      ]
+    },
+    "timeline": {
+      "export": "TimelineLayout",
+      "group": "layout",
+      "description": "Records as bars along time at a scale, in a lane per group; a bar moves to another column or lane by drag and drop or its \"Move to\" menu.",
+      "props": [
+        "records",
+        "total",
+        "hasMore",
+        "loading",
+        "error",
+        "children",
+        "props",
+        "groups",
+        "span",
+        "expanded",
+        "sort",
+        "paging",
+        "empty",
+        "can",
+        "words",
+        "lang",
+        "onEndReached",
+        "onPeriodChange",
+        "onExpand",
+        "onOpen",
+        "onSortChange",
+        "onMove",
+        "onCreate"
+      ],
+      "roots": [
+        "timeline-layout"
+      ],
+      "rootProp": null,
+      "subParts": [
+        "error",
+        "error-code",
+        "error-message",
+        "icon",
+        "listing-empty",
+        "listing-loading",
+        "load-more",
+        "loading",
+        "menu",
+        "menu-item",
+        "record-move",
+        "timeline-axis",
+        "timeline-bar",
+        "timeline-header",
+        "timeline-lane",
+        "timeline-lane-label",
+        "timeline-next",
+        "timeline-prev",
+        "timeline-scale",
+        "timeline-tick",
+        "timeline-title",
+        "timeline-track",
+        "tooltip"
+      ],
+      "intents": {
+        "onEndReached": null,
+        "onPeriodChange": "span",
+        "onExpand": null,
+        "onOpen": null,
+        "onSortChange": null,
+        "onMove": null,
+        "onCreate": null
+      },
+      "states": [
+        {
+          "attribute": "data-state",
+          "values": [
+            "open",
+            "closed"
+          ],
+          "on": [
+            "menu"
+          ]
+        },
+        {
+          "attribute": "data-highlighted",
+          "values": [
+            ""
+          ],
+          "on": [
+            "menu-item"
+          ]
+        }
+      ],
+      "semantics": false,
+      "portal": [
+        "menu",
+        "tooltip"
+      ]
+    },
+    "tree": {
+      "export": "TreeLayout",
+      "group": "layout",
+      "description": "Records as a hierarchy, a record's children under it once expanded, each level paged; a record is reparented by drag and drop or its \"Move to\" menu.",
+      "props": [
+        "records",
+        "total",
+        "hasMore",
+        "loading",
+        "error",
+        "children",
+        "props",
+        "groups",
+        "span",
+        "expanded",
+        "sort",
+        "paging",
+        "empty",
+        "can",
+        "words",
+        "lang",
+        "onEndReached",
+        "onPeriodChange",
+        "onExpand",
+        "onOpen",
+        "onSortChange",
+        "onMove",
+        "onCreate"
+      ],
+      "roots": [
+        "tree-layout"
+      ],
+      "rootProp": null,
+      "subParts": [
+        "error",
+        "error-code",
+        "error-message",
+        "icon",
+        "listing-empty",
+        "listing-loading",
+        "listing-sort",
+        "listing-sort-option",
+        "load-more",
+        "loading",
+        "menu",
+        "menu-item",
+        "record-move",
+        "tree-children",
+        "tree-item",
+        "tree-toggle"
+      ],
+      "intents": {
+        "onEndReached": null,
+        "onPeriodChange": "span",
+        "onExpand": null,
+        "onOpen": null,
+        "onSortChange": null,
+        "onMove": null,
+        "onCreate": null
+      },
+      "states": [
+        {
+          "attribute": "data-state",
+          "values": [
+            "open",
+            "closed"
+          ],
+          "on": [
+            "menu"
+          ]
+        },
+        {
+          "attribute": "data-highlighted",
+          "values": [
+            ""
+          ],
+          "on": [
+            "menu-item"
+          ]
+        }
+      ],
+      "semantics": false,
+      "portal": [
+        "menu"
+      ]
+    }
+  }
+}

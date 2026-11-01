@@ -7,27 +7,25 @@ metadata:
   name: UiInvalid
   version: 1.0.0
   description: >-
-    Test fixture exporting tables, a form and filter bars that each name a
-    property, an operator or a filter their data model or their collection
-    does not support, surfaces whose compact surface is addressed or has a
+    Test fixture exporting listings, a form and filter bars that each name a
+    property, an operator, a facet or an option source their data model or
+    their collection does not support, surfaces whose compact surface is addressed or has a
     compact surface of its own, a form and actions whose fields their model
     cannot answer for or no control can enter, an action clearing its answer on
-    a property its input model does not declare, and a table and a list whose
+    a property its input model does not declare, and a listing and a list whose
     row action is given inputs that make no record of its input model.
 imports:
   Ui: ../../../../
+  DataModel: ../../../../../data-model
 exports:
   resources:
     - sourceFilter
     - sourceFilterNotAccepted
     - formField
     - formFieldUnsupported
-    - filterProperty
-    - filterOperator
     - filterNotAccepted
-    - filterModelIncomplete
-    - filterModelMistyped
-    - filterModelUntyped
+    - filterValuesNotFaceted
+    - filterOptionValueMismatch
     - compactAddressed
     - compactNested
     - filterDuplicate
@@ -53,122 +51,47 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string }
     isDone: { type: boolean }
     count: { type: integer }
 ---
-# A shape declaring no property at all.
-kind: Telo.JsonSchema
-metadata:
-  name: Opaque
-schema:
-  type: object
----
-kind: Ui.Collection
-metadata:
-  name: todos
-query:
-  filters:
-    - { property: text, operator: contains }
-  sort: []
----
-# Accepts a filter by a property `Todo` does not declare.
-kind: Ui.Collection
-metadata:
-  name: wider
-query:
-  filters:
-    - { property: status, operator: eq }
-  sort: []
----
-# Accepts a filter whose operator `Todo.count`, an integer, cannot carry.
-kind: Ui.Collection
-metadata:
-  name: counted
-query:
-  filters:
-    - { property: count, operator: contains }
-  sort: []
----
-kind: Ui.Table
-metadata:
-  name: sourceFilter
-model: !ref Todo
-collection: !ref todos
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
 source:
+  kind: Ui.CollectionSource
   basePath: /api/todos
-  filters: { done: true }
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query: { filters: [{ property: text, operator: contains }], sort: [] }
 ---
-kind: Ui.Table
-metadata:
-  name: sourceFilterNotAccepted
+kind: Ui.Listing
+metadata: { name: sourceFilter }
 model: !ref Todo
-collection: !ref todos
-source:
-  basePath: /api/todos
-  filters: { isDone: true }
+presentation: !ref todos
+filters: { done: true }
+---
+kind: Ui.Listing
+metadata: { name: sourceFilterNotAccepted }
+model: !ref Todo
+presentation: !ref todos
+filters: { isDone: true }
 ---
 kind: Ui.Form
-metadata:
-  name: formField
+metadata: { name: formField }
 model: !ref Todo
-source: { basePath: /api/todos }
-fields: [text, title]
+presentation: !ref todos
+fields: [id, text, title]
 ---
 kind: Ui.Filters
-metadata:
-  name: filterProperty
-model: !ref Todo
-collection: !ref todos
+metadata: { name: filterNotAccepted }
+presentation: !ref todos
 fields:
-  - property: status
-    operator: eq
-content: { type: text, text: Todos }
----
-kind: Ui.Filters
-metadata:
-  name: filterOperator
-model: !ref Todo
-collection: !ref todos
-fields:
-  - property: isDone
-    operator: contains
-content: { type: text, text: Todos }
----
-kind: Ui.Filters
-metadata:
-  name: filterNotAccepted
-model: !ref Todo
-collection: !ref todos
-fields:
-  - property: text
-    operator: contains
-  - property: text
-    operator: eq
-content: { type: text, text: Todos }
----
-kind: Ui.Filters
-metadata:
-  name: filterModelIncomplete
-model: !ref Todo
-collection: !ref wider
-content: { type: text, text: Todos }
----
-# No `fields`: the bar would draw the collection's `count` + `contains`, which a
-# listed field is refused for.
-kind: Ui.Filters
-metadata:
-  name: filterModelMistyped
-model: !ref Todo
-collection: !ref counted
-content: { type: text, text: Todos }
----
-kind: Ui.Filters
-metadata:
-  name: filterModelUntyped
-model: !ref Opaque
-collection: !ref todos
+  - { property: text, operator: contains }
+  - { property: text, operator: eq }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Panel
@@ -185,22 +108,53 @@ compact:
   kind: Ui.Drawer
   compact: { kind: Ui.Dialog }
 ---
-# Accepts everything the six bars below ask for.
-kind: Ui.Collection
-metadata:
-  name: flags
-query:
-  filters:
-    - { property: text, operator: contains }
-    - { property: isDone, operator: eq }
-    - { property: count, operator: gte }
-  sort: []
+# Accepts everything the bars below ask for, and facets nothing.
+kind: Ui.CollectionPresentation
+metadata: { name: flags }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query:
+      filters:
+        - { property: text, operator: contains }
+        - { property: isDone, operator: eq }
+        - { property: count, operator: gte }
+      sort: []
+---
+kind: Ui.Filters
+metadata: { name: filterValuesNotFaceted }
+presentation: !ref flags
+fields:
+  - { property: isDone, operator: eq, values: present }
+content: { type: text, text: Todos }
+---
+# Options whose value is text, for an integer property.
+kind: Ui.Filters
+metadata: { name: filterOptionValueMismatch }
+presentation: !ref flags
+fields:
+  - property: count
+    operator: gte
+    options:
+      kind: Ui.CollectionOptions
+      model: !ref Todo
+      value: !cel "row.text"
+      label: !cel "row.text"
+      source: { kind: Ui.CollectionSource, collection: !ref todoValues, basePath: /api/todos }
+content: { type: text, text: Todos }
+---
+kind: DataModel.Collection
+metadata: { name: todoValues }
+model: !ref Todo
+query: { filters: [{ property: text, operator: in }], sort: [] }
 ---
 kind: Ui.Filters
 metadata:
   name: filterDuplicate
-model: !ref Todo
-collection: !ref flags
+presentation: !ref flags
 fields:
   - { property: text, operator: contains }
   - { property: text, operator: contains }
@@ -209,8 +163,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: filterDefaultInvalid
-model: !ref Todo
-collection: !ref flags
+presentation: !ref flags
 fields:
   - { property: isDone, operator: eq, default: "yes" }
 content: { type: text, text: Todos }
@@ -218,8 +171,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: filterControlUnsupported
-model: !ref Todo
-collection: !ref flags
+presentation: !ref flags
 fields:
   - { property: count, operator: gte, control: toggle }
 content: { type: text, text: Todos }
@@ -227,8 +179,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: presetUnknownFilter
-model: !ref Todo
-collection: !ref flags
+presentation: !ref flags
 fields:
   - { property: isDone, operator: eq }
 presets:
@@ -240,8 +191,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: presetValueInvalid
-model: !ref Todo
-collection: !ref flags
+presentation: !ref flags
 fields:
   - { property: isDone, operator: eq }
 presets:
@@ -253,8 +203,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: presetLabelDuplicate
-model: !ref Todo
-collection: !ref flags
+presentation: !ref flags
 presets:
   - label: Done
     values:
@@ -270,26 +219,32 @@ metadata:
   name: Loose
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     note: { type: [string, "null"] }
     anything: {}
     isDone: { type: [boolean, "null"] }
 ---
-kind: Ui.Collection
-metadata:
-  name: loose
-query:
-  filters:
-    - { property: note, operator: eq }
-    - { property: anything, operator: eq }
-    - { property: isDone, operator: eq }
-  sort: []
+kind: Ui.CollectionPresentation
+metadata: { name: loose }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/loose
+  collection:
+    kind: DataModel.Collection
+    model: !ref Loose
+    query:
+      filters:
+        - { property: note, operator: eq }
+        - { property: anything, operator: eq }
+        - { property: isDone, operator: eq }
+      sort: []
 ---
 kind: Ui.Filters
 metadata:
   name: toggleOverText
-model: !ref Loose
-collection: !ref loose
+presentation: !ref loose
 fields:
   - { property: note, operator: eq, control: toggle }
 content: { type: text, text: Todos }
@@ -297,8 +252,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: toggleUntyped
-model: !ref Loose
-collection: !ref loose
+presentation: !ref loose
 fields:
   - { property: anything, operator: eq, control: toggle }
 content: { type: text, text: Todos }
@@ -306,8 +260,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: toggleDefaultOff
-model: !ref Loose
-collection: !ref loose
+presentation: !ref loose
 fields:
   - { property: isDone, operator: eq, control: toggle, default: false }
 content: { type: text, text: Todos }
@@ -315,8 +268,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: togglePresetOff
-model: !ref Loose
-collection: !ref loose
+presentation: !ref loose
 fields:
   - { property: isDone, operator: eq, control: toggle }
 presets:
@@ -343,7 +295,7 @@ kind: Ui.Form
 metadata:
   name: formFieldUnsupported
 model: !ref Report
-source: { basePath: /api/reports }
+presentation: !ref todos
 fields: [month, options, pages]
 ---
 # A list of scalars is a field a form can enter: nothing is reported.
@@ -356,7 +308,7 @@ model:
     type: object
     properties:
       tags: { type: array, items: { type: string } }
-source: { basePath: /api/reports }
+presentation: !ref todos
 fields: [tags]
 ---
 kind: Ui.Action
@@ -425,12 +377,11 @@ clearAnswerOn: [count, total]
 ---
 # A key the closed model does not declare, a value its property refuses, and
 # the required input left unbound.
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: rowActionInputs
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref remove
     inputs: { total: !cel "row.count", note: 5 }

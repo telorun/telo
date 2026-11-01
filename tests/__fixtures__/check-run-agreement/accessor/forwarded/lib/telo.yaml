@@ -1,0 +1,45 @@
+# An accessor field of a templated kind, written by its consumer, is judged
+# where the consumer writes it: an expression that is no plain chain is
+# refused there, and a plain chain is typed against the row model there.
+kind: Telo.Library
+metadata:
+  name: AccessorForwardedLib
+  version: 1.0.0
+  description: >-
+    Fixture library whose styled tables write, at the templated kind's own
+    accessor field, a value no accessor holds and a chain the row model
+    refuses.
+imports:
+  Acc: ../../kinds
+  Run: ../../../../../../modules/run
+exports:
+  resources: [probe]
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Todo
+schema:
+  type: object
+  additionalProperties: false
+  required: [text]
+  properties:
+    text: { type: string }
+---
+kind: Acc.Styled
+metadata:
+  name: notChain
+model: !ref Todo
+rowStyle: !cel "row.text + '!'"
+---
+kind: Acc.Styled
+metadata:
+  name: mistyped
+model: !ref Todo
+rowStyle: !cel "row.txt"
+---
+kind: Run.Sequence
+metadata:
+  name: probe
+steps:
+  - name: read
+    value: !cel "1"

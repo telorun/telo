@@ -1,0 +1,4 @@
+modules:
+  modules/graph-layers-sql: Fixed
+body: The layered-SQL guide states that a concrete kind's own rules run beside every
+  rule it inherits.

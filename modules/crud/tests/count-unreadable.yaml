@@ -9,6 +9,7 @@ metadata:
     total is not a number.
 imports:
   Crud: ../
+  SQLite: ../../sqlite
   Countless: ./__fixtures__/countless-connection
   Http: ../../http-server
   HttpClient: ../../http-client
@@ -17,42 +18,33 @@ imports:
 targets:
   - !ref test
 ---
-kind: Crud.Resource
-metadata: { name: tasks }
+kind: Crud.Api
+metadata: { name: tasksApi }
 connection:
   kind: Countless.Connection
-  rows:
-    - { id: 1, text: One }
-    - { id: 2, text: Two }
+  rows: [{ id: 1, text: One }, { id: 2, text: Two }]
 singular: task
 plural: tasks
-model:
-  kind: Crud.Model
-  schemas:
-    read: !ref TaskRecord
-    list: !ref TaskRecord
-    create: !ref Task
-    update: !ref Task
-  query:
-    filters: []
-    sort: []
+collection:
+  kind: Crud.Collection
+  model: !ref TaskRecord
+  table:
+    kind: SQLite.Table
+    table: tasks
+    columns:
+      id: { type: integer, primaryKey: true }
+      text: { type: text }
+  schemas: { list: !ref TaskRecord, create: !ref Task, update: !ref Task }
+  query: { filters: [], sort: [] }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Task }
-schema:
-  type: object
-  additionalProperties: false
-  properties:
-    text: { type: string }
+schema: { type: object, additionalProperties: false, properties: { text: { type: string } } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: TaskRecord }
 extends: Task
-schema:
-  type: object
-  required: [id]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -64,7 +56,7 @@ with:
       port: 19317
     mounts:
       - path: /tasks
-        mount: !ref tasks
+        mount: !ref tasksApi
     catches:
       - when: !cel "error.code == 'ERR_OUTPUT_INVALID'"
         status: 500

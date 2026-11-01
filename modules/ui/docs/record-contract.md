@@ -35,6 +35,6 @@ answers every error with) and `message` its `detail`; without a `detail`,
 `message` is the renderer's own word for the status. Keywords of the model
 outside the profile are left to the API.
 
-A 401 or 403 to a request made *inside* the content — a table's page, a form's
+A 401 or 403 to a request made *inside* the content — a listing's page, a form's
 save — is shown where it happened, not by the reader; with `reloadOn:
 [unauthorized]`, a 401 there also makes the reader read again.

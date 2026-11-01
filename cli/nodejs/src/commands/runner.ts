@@ -6,6 +6,7 @@ import type { Argv } from "yargs";
 import { cliVersion } from "../distribution-versions.js";
 import { EXIT_REFUSED } from "../exit-status.js";
 import { outEmit, outErrLine, outLine } from "../output.js";
+import { containerRunnerSettingRefusal } from "../runner/container-runner-settings.js";
 
 interface RunnerArgv {
   port: number;
@@ -83,6 +84,13 @@ async function runRunner(argv: RunnerArgv): Promise<void> {
 
   if (!Number.isInteger(argv.port) || argv.port < 0 || argv.port > 65535) {
     outErrLine(`telo runner: --port must be 0 (pick a free one) or 1..65535, got '${argv.port}'.`);
+    process.exitCode = EXIT_REFUSED;
+    return;
+  }
+
+  const refusal = containerRunnerSettingRefusal(process.env, os.userInfo().username);
+  if (refusal) {
+    outErrLine(`telo runner: ${refusal}`);
     process.exitCode = EXIT_REFUSED;
     return;
   }

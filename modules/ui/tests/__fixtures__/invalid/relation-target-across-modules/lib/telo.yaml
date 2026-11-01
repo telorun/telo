@@ -1,0 +1,29 @@
+# `authorId` reads its records from the authors, `editorId` from the posts.
+kind: Telo.Library
+metadata:
+  name: UiInvalidRelationTargetAcrossModules
+  version: 1.0.0
+  description: Test fixture exporting a presentation reading a relation's records, across modules, from another collection than its target.
+imports:
+  Ui: ../../../../../
+  Posts: ../posts
+  Writers: ../authors
+exports:
+  resources: [postsPresentation]
+---
+kind: Ui.CollectionSource
+metadata: { name: writersSource }
+collection: !ref Writers.authors
+basePath: /api/authors
+---
+kind: Ui.CollectionSource
+metadata: { name: postsSource }
+collection: !ref Posts.posts
+basePath: /api/posts
+---
+kind: Ui.CollectionPresentation
+metadata: { name: postsPresentation }
+source: !ref postsSource
+relations:
+  authorId: { source: !ref writersSource, label: !cel "row.name" }
+  editorId: { source: !ref postsSource, label: !cel "row.title" }

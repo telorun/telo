@@ -1,0 +1,34 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminRefusalsTest
+  version: 1.0.0
+  description: |
+    `CrudUi.Admin`'s presentation keys are checked where the application writes
+    them: a key `filters`, `create` or `edit` does not have, an `afterSubmit`
+    outside what that opener takes — `again` on `edit` among them — a resource
+    at `surface` that is no surface, and a `paging` the listing does not take
+    are each reported against the application's own `CrudUi.Admin`.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref refused
+---
+kind: Assert.Manifest
+metadata: { name: refused }
+source: ./__fixtures__/admin-refusals/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "CrudUi.Admin/filtersKey: /filters must NOT have additional properties ('sumary' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "CrudUi.Admin/createKey: /create must NOT have additional properties ('afterSubmitt' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "CrudUi.Admin/editKey: /edit must NOT have additional properties ('unsavd' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "CrudUi.Admin/createAfter: /create/afterSubmit must be equal to one of the allowed values (close | again | keep)"
+    - code: SCHEMA_VIOLATION
+      message: "CrudUi.Admin/editAfter: /edit/afterSubmit must be equal to one of the allowed values (close | keep)"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "CrudUi.Admin/createSurface: reference at 'create.surface' → 'Ui.LocalStore' does not implement 'Ui.Surface'"
+    - code: SCHEMA_VIOLATION
+      message: "CrudUi.Admin/pagingValue: /paging must be equal to one of the allowed values (pages | more | scroll)"

@@ -290,6 +290,8 @@ The value is `<refField>/<subpath>`. The analyzer resolves `refField` to the man
 
 This is the mechanism that types the `result` variable in HTTP response body CEL expressions based on the `outputSchema` declared on the handler resource (e.g. `Sql.Select`).
 
+A `subpath` of several segments may cross reference slots: past a field the referenced declaration's kind declares as a reference (`x-telo-ref`), the walk continues inside the declaration that field names, resolved in the module that wrote it. A type reference it ends on is read as the shape it names, `extends` folded. `x-telo-context-ref-from: "source/collection/model"` beside a `source` slot types the binding as a record of the model the source's collection names; inside a map of such entries, each entry is typed from its own `source`. A walk that reaches no type falls back as above.
+
 #### `x-telo-bindings-from`
 
 Gives a kind **named CEL bindings**: an author-declared map of intermediate values, each readable by bare name inside the annotated contexts and inside the other bindings. Declare the field in the schema, then point every context that should see the names at it.

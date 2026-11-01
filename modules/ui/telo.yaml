@@ -6,14 +6,12 @@ metadata:
   license: MIT
   categories: [UI]
   description: >-
-    Declarative user interfaces written as data: pages built from layout, text,
-    links and images, records read when a page opens with content shown by
-    condition, data tables with sorting, paging and row actions, forms
-    validated live against a data model with grouped fields, option lists and
-    pickers read from an API, date ranges with presets and values kept between
-    visits, filter bars, custom components and design tokens. A renderer turns
-    the result into a web admin panel, dashboard or back-office screen without
-    hand-written frontend code.
+    Declarative user interfaces written as data: pages, records read when a
+    page opens, record listings drawn as tables, cards, kanban boards,
+    calendars, timelines or trees with paging, row actions and related records
+    shown by name, live-validated forms with pickers, filter bars with counts,
+    custom components and design tokens — rendered into an admin panel or
+    back-office screen without frontend code.
 requires:
   # 0.120.1 refuses this file: it does not know `x-telo-context-eval` (an
   # unknown keyword in a context binding), the relative pointer of
@@ -27,13 +25,15 @@ requires:
   # `x-telo-text-values`). Verified by execution against 0.120.1.
   telo: ">=0.121.0"
 lang: en
-# The conformance rows a renderer's tests read: the interpreted profile's, and
-# which control fits which property.
+# The conformance rows a renderer's tests read: the interpreted profile's,
+# which control fits which property, and what a listing's read plan requests.
 files:
   - conformance/match.json
   - conformance/control-fits.json
+  - conformance/listing-reads.json
 imports:
   Font: ../font
+  DataModel: ../data-model
 exports:
   kinds:
     - Words
@@ -66,11 +66,21 @@ exports:
     - FileIcon
     - Page
     - View
-    - Table
+    - CollectionSource
+    - CollectionPresentation
+    - Listing
+    - ListingLayout
+    - TableLayout
+    - ListLayout
+    - CardLayout
+    - BoardLayout
+    - CalendarLayout
+    - TimelineLayout
+    - TreeLayout
+    - ComponentLayout
     - Form
     - Action
     - Filters
-    - Collection
     - Component
     - ComponentExport
     - DesignTokens
@@ -89,14 +99,20 @@ exports:
     - Condition
     - Enablement
     - RequestError
+    - AppRelativeReference
     - QueryParameters
     - Control
     - FieldGroup
     - StateRecord
     - FieldAnswer
     - OptionSourceSpec
+    - Relations
+    - ListingLayoutSpec
+    - ListingLayoutAnswer
     - controlFits
     - RowAction
+    - Grouping
+    - Span
     - Node
     - SpecNode
     - OverlaySpec
@@ -250,6 +266,16 @@ schema:
     status: { type: integer, title: Status }
     code: { type: string, title: Code }
     message: { type: string, title: Message }
+---
+# An address under the application's mount: `/` followed by anything but `/`
+# or `\`, holding no control character. Every place a manifest writes one names
+# this shape, alone or beside the absolute addresses it also takes.
+kind: Telo.JsonSchema
+metadata:
+  name: AppRelativeReference
+schema:
+  type: string
+  pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
 ---
 # The query parameters a page or a reader declares: each a string, or a list
 # of strings for a key given more than once. A name is a Telo name that does not
@@ -418,17 +444,312 @@ schema:
           properties:
             value: {}
 ---
+# How one set of screens shows the records a collection's properties point at,
+# keyed by property. Presentation only: which records are related, and the
+# value a relation holds (the target's key), are the collection's own. A kind
+# forwarding a presentation's relations types them with this shape; it is
+# written out in `CollectionPresentation.relations` too, since a rule's
+# `resolve:` does not follow `$ref`, and a unit test holds the two equal.
+kind: Telo.JsonSchema
+metadata:
+  name: Relations
+schema:
+  type: object
+  additionalProperties:
+    type: object
+    additionalProperties: false
+    required: [source, label]
+    properties:
+      source:
+        title: Source
+        description: Where the related records are read from. Its collection is the relation's target.
+        x-telo-ref: { kind: Self.CollectionSource, use: dependency }
+      label:
+        title: Label
+        description: How a related record is shown, as a path into it or a fixed text.
+        type: string
+        x-telo-eval: accessor
+        x-telo-context:
+          type: object
+          properties:
+            row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
+      hint:
+        title: Hint
+        description: Text shown beside the label.
+        type: string
+        x-telo-eval: accessor
+        x-telo-context:
+          type: object
+          properties:
+            row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
+      href:
+        title: Link
+        description: Where a related record links to, as a path into it.
+        type: string
+        x-telo-eval: accessor
+        x-telo-context:
+          type: object
+          properties:
+            row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
+      search:
+        title: Search
+        description: >-
+          The filter what the viewer types is sent as when choosing a related
+          record. Omitted, the choices are not searched.
+        type: object
+        additionalProperties: false
+        required: [property, operator]
+        properties:
+          property: { title: Property, type: string }
+          operator: { title: Operator, enum: [eq, contains, gt, gte, lt, lte, in] }
+      pageSize:
+        title: Page size
+        description: >-
+          Related records per request, sent as `limit`: a page of choices, and
+          at most this many keys per label lookup.
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+---
+# How a layout groups records: one read per value of a property, each adding
+# `<property>=<value>`.
+kind: Telo.JsonSchema
+metadata:
+  name: Grouping
+schema:
+  type: object
+  additionalProperties: false
+  required: [property]
+  properties:
+    property:
+      title: Property
+      description: The model property records are grouped by, sent as `<property>=<value>` on each group's read.
+      type: string
+    values:
+      title: Values
+      description: >-
+        Which groups are drawn: every value the property can hold — its `enum`,
+        a boolean's two, or the related records of its presented relation —
+        or only those `present` in the filtered records, with counts.
+      enum: [all, present]
+      default: all
+---
+# Where a record sits in time: a start, and optionally an end, each a date or
+# date-time property of the model.
+kind: Telo.JsonSchema
+metadata:
+  name: Span
+schema:
+  type: object
+  additionalProperties: false
+  required: [start]
+  properties:
+    start:
+      title: Start
+      description: The property holding when a record starts, a `date` or `date-time` string.
+      type: string
+    end:
+      title: End
+      description: >-
+        The property holding when it ends, of the same format as `start`.
+        Omitted, a record is an instant at `start`.
+      type: string
+---
+# How a listing's records are drawn, as a renderer receives it: renderer-neutral
+# and closed, one branch per layout, tagged on `type`. `reads` is the read plan
+# — one read per group value, per shown period, or per tree level, each paged —
+# so a renderer executes it and never chooses a query itself.
+kind: Telo.JsonSchema
+metadata:
+  name: ListingLayoutSpec
+schema:
+  type: object
+  oneOf:
+    - additionalProperties: false
+      required: [type, columns, reads]
+      properties:
+        type: { const: table }
+        columns:
+          type: array
+          items: { $ref: "#/$defs/Column" }
+        reads: { $ref: "#/$defs/Reads" }
+    # A record per item of one column, `content` drawn for each.
+    - additionalProperties: false
+      required: [type, content, reads]
+      properties:
+        type: { const: list }
+        content: { $ref: "telo:Ui/SpecNode" }
+        reads: { $ref: "#/$defs/Reads" }
+    - additionalProperties: false
+      required: [type, content, size, reads]
+      properties:
+        type: { const: cards }
+        content: { $ref: "telo:Ui/SpecNode" }
+        size: { enum: [small, medium, large] }
+        reads: { $ref: "#/$defs/Reads" }
+    # A column per group of `reads.groups`; `move` re-groups a record.
+    - additionalProperties: false
+      required: [type, content, reads]
+      properties:
+        type: { const: board }
+        content: { $ref: "telo:Ui/SpecNode" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        reads: { $ref: "#/$defs/Reads" }
+    # Records placed on the days of `period`, the initial one shown, over
+    # `reads.span`.
+    - additionalProperties: false
+      required: [type, period, content, reads]
+      properties:
+        type: { const: calendar }
+        period: { enum: [month, week, day] }
+        content: { $ref: "telo:Ui/SpecNode" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        reads: { $ref: "#/$defs/Reads" }
+    # Records as bars along time at `scale`, over `reads.span`, in a lane per
+    # group of `reads.groups` when it is present.
+    - additionalProperties: false
+      required: [type, scale, content, reads]
+      properties:
+        type: { const: timeline }
+        scale: { enum: [day, week, month, quarter] }
+        content: { $ref: "telo:Ui/SpecNode" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        reads: { $ref: "#/$defs/Reads" }
+    # Root records, and a record's children under it when it is expanded,
+    # over `reads.parent`.
+    - additionalProperties: false
+      required: [type, content, reads]
+      properties:
+        type: { const: tree }
+        content: { $ref: "telo:Ui/SpecNode" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        reads: { $ref: "#/$defs/Reads" }
+    # A browser component drawing the records the plan reads; each prop a
+    # fixed value, or a path into `row` delivered per record.
+    - additionalProperties: false
+      required: [type, module, export, external, stylesheets, props, reads]
+      properties:
+        type: { const: component }
+        module: { $ref: "telo:Ui/SpecNode#/$defs/AssetRef" }
+        export: { type: string }
+        abi: { type: string }
+        external: { type: array, items: { type: string } }
+        stylesheets: { type: array, items: { $ref: "telo:Ui/SpecNode#/$defs/AssetRef" } }
+        props:
+          type: object
+          additionalProperties: { $ref: "telo:Ui/SpecNode#/$defs/Binding" }
+        move: { $ref: "telo:Ui/SpecNode#/$defs/RowAction" }
+        reads: { $ref: "#/$defs/Reads" }
+  $defs:
+    # Three dimensions composing as a product; none of them is pages alone.
+    Reads:
+      type: object
+      additionalProperties: false
+      properties:
+        # One read per group value, each adding `<property>=<value>`.
+        groups:
+          type: object
+          additionalProperties: false
+          required: [property, values, labels]
+          properties:
+            property: { type: string }
+            # `present`: the values of the facet request, with counts.
+            # `all`: `enum` in order, or the related records of `relation`, paged.
+            values: { enum: [all, present] }
+            # With `all`, the values the property can hold: its `enum`, `null`
+            # aside, or a boolean's `[true, false]`.
+            enum:
+              type: array
+              items: { type: [string, number, integer, boolean] }
+            # Present where the presentation presents the property's relation:
+            # the key of the listing's `relations` a value is labelled through.
+            relation: { type: string }
+            # What each value the model labels is shown as.
+            labels: { $ref: "telo:Ui/SpecNode#/$defs/Labels" }
+        # Each read adds the shown period's bounds: `<start>.gte` and
+        # `<start>.lte`, or with `end` the overlap pair `<start>.lte` and
+        # `<end>.gte`.
+        span:
+          type: object
+          additionalProperties: false
+          required: [start, format]
+          properties:
+            start: { type: string }
+            end: { type: string }
+            # How a bound is written: a date, or a date-time.
+            format: { enum: [date, date-time] }
+        # Roots read with `<parent>.absent=true`, a record's children with
+        # `<parent>=<key>`.
+        parent: { type: string }
+    Column:
+      type: object
+      additionalProperties: false
+      required: [header, labels]
+      properties:
+        header: { $ref: "telo:Ui/SpecNode#/$defs/Text" }
+        value: { $ref: "telo:Ui/SpecNode#/$defs/Binding" }
+        # What each value the model labels is shown as.
+        labels: { $ref: "telo:Ui/SpecNode#/$defs/Labels" }
+        # Present when the column is sortable: the property sent as `sort`.
+        sort: { type: string }
+        # Present when the value is a property with a relation: the key of the
+        # listing's `relations` its related record is labelled through.
+        relation: { type: string }
+        # The model's own description of the value, which decides how a cell
+        # is shown.
+        present: { type: object }
+        style: { $ref: "telo:Ui/SpecNode#/$defs/StyleRule" }
+        # A component node, or the error node standing in for one.
+        cell: { $ref: "telo:Ui/SpecNode" }
+---
+# What a listing layout answers for the listing calling it: why it cannot draw
+# that listing's records, and — when it can — the layout spec and the files a
+# browser loads for it.
+kind: Telo.JsonSchema
+metadata:
+  name: ListingLayoutAnswer
+schema:
+  type: object
+  additionalProperties: false
+  required: [problems, assets]
+  properties:
+    problems:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [code, message]
+        properties:
+          code: { type: string, pattern: "^[A-Z][A-Z0-9_]*$" }
+          message: { type: string }
+    # Present exactly when nothing is wrong.
+    spec: { $ref: "telo:Ui/ListingLayoutSpec" }
+    assets:
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        required: [digest, name, file, mediaType]
+        properties:
+          digest: { type: string }
+          name: { type: string }
+          file: { type: string }
+          mediaType: { type: string }
+---
 # Whether a control can enter a property. `operator` is the filter's, or null
 # for a form field, whose value is a list when the property is an `array` and
 # is then entered by its `items`. A control states what it needs, so a type it
 # cannot read is refused: types are read with `null` set aside. A field's
 # property must hold one plain value or a list of them whatever its control.
+# `absent` holds whether the property is missing, so it is entered as a toggle.
 kind: Telo.Function
 metadata:
   name: controlFits
   description: >-
     Whether a control fits a property: auto, select, options, toggle, slider or
-    tags, over a filter's operator or a form field's property.
+    tags, over a filter's operator or a form field's property. A filter on
+    whether a property is absent is entered with a toggle.
 params:
   - name: control
     schema: { type: string }
@@ -439,6 +760,7 @@ params:
 returns:
   schema: { type: boolean }
 body: !cel >-
+  operator == 'absent' ? control in ['auto', 'toggle', 'none'] :
   cel.bind(declared, !('type' in property) ? [] : (type(property.type) == type([]) ? property.type : [property.type]).filter(t, t != 'null'),
   cel.bind(listed, operator == null && declared == ['array'],
   cel.bind(element, !listed ? property : ('items' in property && type(property.items) == type({}) ? property.items : {}),
@@ -455,7 +777,7 @@ body: !cel >-
       : control == 'none' && operator != null)))))))
 ---
 # An operation a row offers: the action run, what of the row it is sent, and
-# how a press is asked and allowed. Shared by a table's rows and a list node's;
+# how a press is asked and allowed. Shared by a listing's records and a list node's;
 # `row` and the other roots its accessors read are bound where it is used.
 kind: Telo.JsonSchema
 metadata:
@@ -508,11 +830,12 @@ schema:
 ---
 # One node of a page, as an author writes it. Internally tagged on `type`, each
 # branch closed, so a misspelled type lists the valid ones and a stray key is
-# reported on the branch it was written in. Layout is not a field anywhere: it
-# belongs to the styling contract of whatever renders the tree. `when` decides
-# whether a node is delivered — evaluated per request on a page's own nodes, at
-# creation inside a composite — and `shown` whether a delivered node is drawn,
-# a condition the renderer reads over the roots the place it is written binds.
+# reported on the branch it was written in. Spacing — gap, alignment, width —
+# is not a field anywhere: it belongs to the styling contract of whatever
+# renders the tree. `when` decides whether a node is delivered — evaluated per
+# request on a page's own nodes, at creation inside a composite — and `shown`
+# whether a delivered node is drawn, a condition the renderer reads over the
+# roots the place it is written binds.
 kind: Telo.JsonSchema
 metadata:
   name: Node
@@ -541,7 +864,7 @@ schema:
       properties:
         type: { const: link }
         text: { $ref: "telo:Ui/BoundText" }
-        href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
+        href: { type: string, anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }] }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
@@ -594,7 +917,7 @@ schema:
       required: [type, src, alt]
       properties:
         type: { const: image }
-        src: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://)" }
+        src: { type: string, anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://)" }] }
         alt: { $ref: "telo:Ui/BoundText" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
@@ -620,7 +943,7 @@ schema:
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
     # The rows of a list one answer holds, a column per value. Bounded by the
-    # answer: it never pages.
+    # answer: it never pages — an unbounded set is a listing's.
     - additionalProperties: false
       required: [type, rows, columns]
       properties:
@@ -740,7 +1063,7 @@ schema:
       required: [type, src, alt]
       properties:
         type: { const: image }
-        src: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://)" }
+        src: { type: string, anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://)" }] }
         alt: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
@@ -752,12 +1075,17 @@ schema:
         alt: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+    # Records read page by page from a collection and drawn by `layout` (by
+    # `compact` below the application's breakpoint, keeping the listing's
+    # state). Everything but the drawing is the listing's, whatever the layout.
     - additionalProperties: false
-      required: [type, schema, basePath, query, rowKey, pageSize, columns, rowActions, delete]
+      required: [type, schema, basePath, key, query, pageSize, paging, sort, delete, rowActions, relations, empty, layout]
       properties:
-        type: { const: table }
+        type: { const: listing }
         schema: { type: object }
         basePath: { type: string }
+        # The property identifying a record, in item URLs and across reloads.
+        key: { type: string }
         # The declared query parameters its row actions read, by name; empty
         # when none is.
         query: { type: object }
@@ -766,8 +1094,10 @@ schema:
         filters:
           type: object
           additionalProperties: { $ref: "#/$defs/Binding" }
-        rowKey: { type: string }
         pageSize: { type: integer }
+        paging: { enum: [pages, more, scroll] }
+        # The properties the viewer may sort by, sent as `sort`.
+        sort: { type: array, items: { type: string } }
         rowStyle: { $ref: "#/$defs/StyleRule" }
         create:
           type: object
@@ -788,30 +1118,20 @@ schema:
             afterSubmit: { enum: [close, keep] }
             unsaved: { enum: [confirm, discard] }
         delete: { type: boolean }
-        # What each row offers beyond edit and delete, in order: an operation
-        # run with values of the row.
+        # What each record offers beyond edit and delete, in order: an
+        # operation run with values of the record.
         rowActions:
           type: array
           items: { $ref: "#/$defs/RowAction" }
-        columns:
-          type: array
-          items:
-            type: object
-            additionalProperties: false
-            required: [header, labels]
-            properties:
-              header: { $ref: "#/$defs/Text" }
-              value: { $ref: "#/$defs/Binding" }
-              # What each value the model labels is shown as.
-              labels: { $ref: "#/$defs/Labels" }
-              # Present when the column is sortable: the property sent as `sort`.
-              sort: { type: string }
-              # The model's own description of the value, which decides how a
-              # cell is shown.
-              present: { type: object }
-              style: { $ref: "#/$defs/StyleRule" }
-              # A component node, or the error node standing in for one.
-              cell: { $ref: "#" }
+        # The related records each property with a relation is labelled from,
+        # by property: read with its key under `in`, one batch per page.
+        relations:
+          type: object
+          additionalProperties: { $ref: "telo:Ui/OptionSourceSpec" }
+        # Drawn where the records would be when the reads answer none.
+        empty: { $ref: "#" }
+        layout: { $ref: "telo:Ui/ListingLayoutSpec" }
+        compact: { $ref: "telo:Ui/ListingLayoutSpec" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
@@ -831,23 +1151,33 @@ schema:
         shown: { $ref: "#/$defs/Shown" }
     - $ref: "#/$defs/Action"
     - additionalProperties: false
-      required: [type, fields, content, show, placement, controls, apply, summary, state, presets]
+      required: [type, basePath, fields, content, show, placement, controls, apply, summary, state, presets]
       properties:
         type: { const: filters }
+        # The presentation's source `basePath` as written: where a `values:
+        # present` field's facet request goes, and the path whose changes
+        # reload its values.
+        basePath: { type: string }
         fields:
           type: array
           items:
             type: object
             additionalProperties: false
-            required: [property, operator, label, labels, schema, pinned, control]
+            required: [property, operator, label, labels, schema, pinned, control, values]
             properties:
               property: { type: string }
-              operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
+              operator: { enum: [eq, contains, gt, gte, lt, lte, in, absent] }
               label: { $ref: "#/$defs/Text" }
               labels: { $ref: "#/$defs/Labels" }
               schema: { type: object }
               pinned: { type: boolean }
               control: { enum: [auto, select, options, toggle, slider, tags, none] }
+              # Every value the choices offer, or only those `present` in the
+              # facet answer under the bar's other filters, each with its count.
+              values: { enum: [all, present] }
+              # Present where the choices are records: the property's relation,
+              # or the field's own option source.
+              options: { $ref: "telo:Ui/OptionSourceSpec" }
               # What the filter holds until the user changes it: always a list.
               default:
                 type: array
@@ -875,7 +1205,7 @@ schema:
                   required: [property, operator, value]
                   properties:
                     property: { type: string }
-                    operator: { enum: [eq, contains, gt, gte, lt, lte, in] }
+                    operator: { enum: [eq, contains, gt, gte, lt, lte, in, absent] }
                     value:
                       type: array
                       items: { type: [string, number, boolean] }
@@ -974,7 +1304,7 @@ schema:
       properties:
         type: { const: link }
         text: { $ref: "#/$defs/NodeText" }
-        href: { type: string, pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)" }
+        href: { type: string, anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }] }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     # A text as the renderer receives it from `ui`: the record a controller
@@ -1005,7 +1335,7 @@ schema:
       additionalProperties: false
       required: [word]
       properties:
-        word: { enum: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames] }
+        word: { enum: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, loadMore, moveTo, valueCount, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, operatorAbsent, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames] }
     # A text, or none.
     Description:
       anyOf:
@@ -1572,7 +1902,7 @@ schema:
             Where the entry leads: a path under the application's mount, or an
             `https:`, `http:` or `mailto:` address.
           type: string
-          pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)"
+          anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }]
         icon: { $ref: "#/$defs/Icon" }
         when:
           title: When
@@ -2539,8 +2869,8 @@ schema:
         The page's address under the application's mount: `/` followed by
         anything but `/` or `\`, holding no control character, and not under
         `/_telo`.
-      type: string
-      pattern: "^/(?!_telo(/|$))([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+      $ref: "telo://Self/AppRelativeReference"
+      not: { pattern: "^/_telo(/|$)" }
     title:
       title: Title
       description: Shown above the page, and in the navigation unless an entry says otherwise.
@@ -2666,8 +2996,7 @@ schema:
           description: >-
             App-relative URL of the record: `/` followed by anything but `/` or
             `\`, holding no control character. Read with `GET`.
-          type: string
-          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+          $ref: "telo://Self/AppRelativeReference"
         params:
           title: Parameters
           description: >-
@@ -2723,186 +3052,227 @@ schema:
       uniqueItems: true
       items: { enum: [focus, unauthorized] }
 ---
-# What a list request may ask of a collection. A screen offers only what is
-# declared here, and whatever serves the collection accepts only the same — so
-# the two cannot drift apart. A kind serving a collection extends this one.
+# A collection as the browser reaches it: what it is and where its list
+# endpoint is. It carries no relations, so an option source reading it can
+# never form a cycle; a kind narrowing `collection` extends this one.
 kind: Telo.Definition
 metadata:
-  name: Collection
+  name: CollectionSource
   description: >-
-    Declares what a list request may ask of a collection of records: which
-    properties it can be filtered by and with which operator — equals, contains,
-    greater or less than, one of several — and which properties it can be sorted
-    by. Data grids and filter bars offer exactly these, so a screen never sends
-    a query its backend would refuse.
+    Where a browser reads a collection of records from: the declared
+    collection — its record shape, key, accepted filters, sort orders and
+    facets — and the app-relative URL of its list endpoint. Written once and
+    used by every screen, filter and picker reading those records.
 capability: Telo.Provider
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionController
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionSourceController
 schema:
   type: object
   additionalProperties: false
-  required: [query]
-  examples:
-    - query:
-        filters:
-          - { property: text, operator: contains }
-          - { property: isDone, operator: eq }
-        sort:
-          - { property: dueOn }
+  required: [collection, basePath]
   properties:
-    query:
-      title: Query
-      description: What a list request may filter and sort by. Nothing else is accepted.
+    collection:
+      title: Collection
+      description: >-
+        The collection read: what a record is and what its list request
+        accepts.
+      x-telo-ref: { kind: DataModel.Collection, use: dependency }
+    basePath:
+      title: Base path
+      description: >-
+        App-relative URL of the collection: `/` followed by anything but `/`
+        or `\`, holding no control character.
+      $ref: "telo://Self/AppRelativeReference"
+---
+# How one set of screens shows a collection: its source, and how each related
+# record is read and labelled. Listings, filter bars and forms over the same
+# records share one.
+kind: Telo.Definition
+metadata:
+  name: CollectionPresentation
+  description: >-
+    How screens show one collection of records: where they are read from, and
+    for each property pointing at another collection's records, where those
+    are read, how one is labelled, hinted, linked and searched. Listings show
+    the related record's name, filters and forms offer related records to pick.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionPresentationController
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: Where the collection's records are read from.
+      x-telo-ref: { kind: Self.CollectionSource, use: dependency }
+    relations:
+      title: Relations
+      description: >-
+        How each related record is shown, keyed by a property the collection
+        declares a relation for. Omitted, related records are shown by key.
       type: object
-      additionalProperties: false
-      required: [filters, sort]
-      properties:
-        filters:
-          title: Filters
-          description: The accepted filters, each one property with one operator.
-          type: array
-          uniqueItems: true
-          items:
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [source, label]
+        properties:
+          source:
+            title: Source
+            description: Where the related records are read from. Its collection is the relation's target.
+            x-telo-ref: { kind: Self.CollectionSource, use: dependency }
+          label:
+            title: Label
+            description: How a related record is shown, as a path into it or a fixed text.
+            type: string
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
+          hint:
+            title: Hint
+            description: Text shown beside the label.
+            type: string
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
+          href:
+            title: Link
+            description: Where a related record links to, as a path into it.
+            type: string
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
+          search:
+            title: Search
+            description: >-
+              The filter what the viewer types is sent as when choosing a related
+              record. Omitted, the choices are not searched.
             type: object
             additionalProperties: false
             required: [property, operator]
             properties:
               property: { title: Property, type: string }
-              operator:
-                title: Operator
-                enum: [eq, contains, gt, gte, lt, lte, in]
-        sort:
-          title: Sort
-          description: The properties a list may be ordered by.
-          type: array
-          uniqueItems: true
-          items:
-            type: object
-            additionalProperties: false
-            required: [property]
-            properties:
-              property: { title: Property, type: string }
+              operator: { title: Operator, enum: [eq, contains, gt, gte, lt, lte, in] }
+          pageSize:
+            title: Page size
+            description: >-
+              Related records per request, sent as `limit`: a page of choices, and
+              at most this many keys per label lookup.
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 25
+  x-telo-resource-rules:
+    - resolve: [/source/collection]
+      in: /relations
+      condition: !cel >-
+        has(self.source.collection.relations) && key in self.source.collection.relations
+      code: UI_RELATION_UNDECLARED
+      message: >-
+        presents a relation the collection does not declare. Declare it under
+        the collection's `relations`, or remove this entry.
+    - resolve: [/source/collection, /source/collection/relations/*/collection, /relations/*/source/collection]
+      in: /relations
+      condition: !cel >-
+        !has(self.source.collection.relations) || !(key in self.source.collection.relations)
+        || cel.bind(target, self.source.collection.relations[key].collection,
+             target.metadata.name == this.source.collection.metadata.name
+             && target.metadata.module == this.source.collection.metadata.module)
+      code: UI_RELATION_TARGET_MISMATCH
+      message: >-
+        reads related records from a source whose collection is not the
+        relation's target. Point `source` at a source of the collection the
+        relation names.
+    - resolve: [/relations/*/source/collection]
+      in: /relations
+      condition: !cel >-
+        !('search' in this)
+        || this.source.collection.query.filters.exists(f,
+             f.property == this.search.property && f.operator == this.search.operator)
+      code: UI_RELATION_SEARCH_NOT_ACCEPTED
+      message: >-
+        searches related records with a property and operator their collection
+        does not accept. Declare the pair under that collection's
+        `query.filters`, or change `search`.
 ---
 kind: Telo.Definition
 metadata:
-  name: Table
+  name: Listing
   description: >-
-    A data grid over a REST collection: rows fetched page by page with a cursor,
-    one-click sorting on the columns the collection can be ordered by, a total
-    count, per-row and per-cell conditional styling, and optional create, edit
-    and delete actions. Columns come from the row model unless listed, so a
-    property added to the model appears without an edit and a renamed one is
-    caught before deploy.
+    Records of a REST collection read page by page with a cursor — a pager,
+    "load more" or infinite scroll — sortable by the viewer, with related
+    records shown by name, create, edit and delete forms, row actions,
+    conditional row styling and an empty state. Drawn by a layout, a table
+    unless another is chosen, with another below a breakpoint.
 capability: Telo.Provider
 extends: Self.Composite
 controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TableController
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListingController
 schema:
   type: object
   additionalProperties: false
-  required: [model, collection, source]
+  required: [presentation, model]
   properties:
+    presentation:
+      title: Presentation
+      description: >-
+        The collection shown and how its related records are labelled. The
+        viewer sorts by what its collection lists under `query.sort`.
+      x-telo-ref: { kind: Self.CollectionPresentation, use: dependency }
     model:
       title: Model
-      description: The shape of one row.
+      description: The shape of one record.
       x-telo-ref: { kind: Telo.Type, use: schema }
-    collection:
-      title: Collection
+    filters:
+      title: Filters
       description: >-
-        What the collection's list request accepts. A column sorts where its
-        value is a property this lists under `query.sort`.
-      x-telo-ref: { kind: Self.Collection, use: dependency }
-    source:
-      title: Source
+        Equalities applied to every request, keyed by model property: a fixed
+        value, or a path into `query`. Each is a filter the collection accepts
+        with `eq`. While one holds nothing, the listing reads nothing.
       type: object
-      additionalProperties: false
-      required: [basePath]
-      properties:
-        basePath:
-          title: Base path
-          description: >-
-            App-relative URL of the collection: `/` followed by anything but
-            `/` or `\`, holding no control character.
-          type: string
-          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
-        filters:
-          title: Filters
-          description: >-
-            Equalities applied to every request, keyed by model property: a
-            fixed value, or a path into `query`. Each is a filter the
-            collection accepts with `eq`. While one holds nothing, the table
-            reads nothing.
-          type: object
-          x-telo-context:
-            type: object
-            properties:
-              query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-          additionalProperties:
-            type: [string, number, integer, boolean]
-            x-telo-eval: accessor
-            x-telo-value-schema-from: { from: /model, member: "0#" }
-    rowKey:
-      title: Row key
-      description: The property identifying a row in item URLs.
-      type: string
-      default: id
-    columns:
-      title: Columns
-      description: >-
-        The columns, left to right. Omitted, there is one per model property
-        but the row key, in declaration order.
-      type: array
-      items:
+      x-telo-context:
         type: object
-        additionalProperties: false
         properties:
-          header: { title: Header, $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-          value:
-            title: Value
-            description: The value shown, as a path into the row or a fixed value.
-            x-telo-eval: accessor
-            x-telo-context:
-              type: object
-              properties:
-                row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
-          cell:
-            title: Cell
-            description: A component drawn in place of a value.
-            x-telo-ref: { kind: Self.Component, use: dependency }
-          style:
-            title: Style rule
-            description: Styles chosen by a value of the row.
-            type: object
-            additionalProperties: false
-            required: [by, cases]
-            properties:
-              by:
-                title: By
-                x-telo-eval: accessor
-                x-telo-context:
-                  type: object
-                  properties:
-                    row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
-              cases:
-                title: Cases
-                description: Styles keyed by the plain text of the value.
-                type: object
-                additionalProperties: { $ref: "#/$defs/Style" }
-              default: { $ref: "#/$defs/Style" }
-        # Exactly one of the two.
-        oneOf:
-          - required: [value]
-          - required: [cell]
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+      additionalProperties:
+        type: [string, number, integer, boolean]
+        x-telo-eval: accessor
+        x-telo-value-schema-from: { from: /model, member: "0#" }
+    query:
+      title: Query
+      description: >-
+        The page query parameters its filters and row actions read, each a
+        string or a list of strings for a key given more than once. Read as
+        `query`.
+      $ref: "telo://Self/QueryParameters"
     pageSize:
       title: Page size
-      description: Rows per page, sent as `limit`.
+      description: >-
+        Records per read, sent as `limit`: each page, and each group, period or
+        tree level of a layout reading several.
       type: integer
       minimum: 1
       maximum: 100
       default: 25
+    paging:
+      title: Paging
+      description: >-
+        How further pages are reached: a pager that replays the pages already
+        read (`pages`), a "Load more" control appending the next (`more`), or
+        the next loaded as the end comes into view, the control kept at the
+        end (`scroll`). Both layouts follow it.
+      enum: [pages, more, scroll]
+      default: pages
     rowStyle:
       title: Style rule
-      description: Styles chosen by a value of the row.
+      description: Styles chosen by a value of the record, on its element in every layout.
       type: object
       additionalProperties: false
       required: [by, cases]
@@ -2922,7 +3292,7 @@ schema:
         default: { $ref: "#/$defs/Style" }
     create:
       title: Create
-      description: The form that adds a row, and where and how it opens.
+      description: The form that adds a record, and where and how it opens.
       type: object
       additionalProperties: false
       required: [form]
@@ -2950,7 +3320,7 @@ schema:
           $ref: "telo://Self/UnsavedInput"
     edit:
       title: Edit
-      description: The form that changes a row, prefilled from the record, and where and how it opens.
+      description: The form that changes a record, prefilled from it, and where and how it opens.
       type: object
       additionalProperties: false
       required: [form]
@@ -2977,21 +3347,15 @@ schema:
           $ref: "telo://Self/UnsavedInput"
     delete:
       title: Delete
-      description: Whether each row offers a confirmed delete.
+      description: Whether each record offers a confirmed delete.
       type: boolean
       default: false
-    query:
-      title: Query
-      description: >-
-        The page query parameters its row actions read, each a string or a
-        list of strings for a key given more than once. Read as `query`.
-      $ref: "telo://Self/QueryParameters"
     rowActions:
       title: Row actions
       description: >-
-        Operations each row offers, in order, drawn before edit and delete,
+        Operations each record offers, in order, drawn before edit and delete,
         over `row` and `query`. A pressed one draws its action's answer in
-        place of its button, kept while that row is on the shown page.
+        place of its button, kept while that record is shown.
       type: array
       x-telo-context:
         type: object
@@ -2999,6 +3363,34 @@ schema:
           row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
       items: { $ref: "telo://Self/RowAction" }
+    empty:
+      title: Empty
+      description: >-
+        Drawn where the records would be when the reads answer none. Omitted,
+        the renderer's words for no records.
+      $ref: "telo://Self/Node"
+    layout:
+      title: Layout
+      description: >-
+        How the records are drawn. Omitted, a table with one column per model
+        property but the key.
+      x-telo-ref: { kind: Self.ListingLayout, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
+    compact:
+      title: Compact
+      description: >-
+        How the records are drawn below the application's breakpoint, keeping
+        the listing's state. Omitted, `layout` is drawn at every width.
+      x-telo-ref: { kind: Self.ListingLayout, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
   $defs:
     StyleName:
       enum: [heading, subheading, muted, strong, accent, danger, warning, success]
@@ -3009,33 +3401,825 @@ schema:
           items: { $ref: "#/$defs/StyleName" }
   x-telo-resource-rules:
     - resolve: [/model]
-      in: /source/filters
+      in: /filters
       condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && key in (has(self.model.schema) ? self.model.schema : self.model).properties"
       code: UI_SOURCE_FILTER_UNKNOWN_PROPERTY
       message: >-
         filters its source by a property the row model does not declare. Use a
         property of `model`, or add this one to it.
-    - resolve: [/collection]
-      in: /source/filters
+    - resolve: [/presentation/source/collection]
+      in: /filters
       condition: !cel >-
-        !has(self.collection.query) || !has(self.collection.query.filters)
-        || self.collection.query.filters.exists(f, f.property == key && f.operator == 'eq')
+        !has(self.presentation.source.collection.query) || !has(self.presentation.source.collection.query.filters)
+        || self.presentation.source.collection.query.filters.exists(f, f.property == key && f.operator == 'eq')
       code: UI_SOURCE_FILTER_NOT_ACCEPTED
       message: >-
         filters its source by a property the collection does not accept an
         equality on. Declare it with operator `eq` under the collection's
         `query.filters`, or remove this filter.
 ---
+# How a listing's records are drawn. The listing calls its layout with its row
+# model, its collection and its relations; the layout answers the spec it draws
+# them with, or why it cannot. A layout's fit to a listing is a referrer rule on
+# the listing, so `telo check` reports what the call refuses.
+kind: Telo.Abstract
+metadata:
+  name: ListingLayout
+  description: >-
+    How a listing draws its records — table, list, cards, board, calendar,
+    timeline, tree or a custom component — and the reads it needs: one per
+    group, per shown period or per tree level. Answers, for the listing using
+    it, whether it can draw that collection and the renderer-neutral spec.
+capability: Telo.Invocable
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [model, collection, relations]
+    properties:
+      model:
+        title: Model
+        description: The schema of one record of the listing.
+        type: object
+      collection:
+        title: Collection
+        description: The listing's collection — its record shape, key and accepted query.
+        type: object
+      relations:
+        title: Relations
+        description: The related records the listing labels, by property.
+        type: object
+outputType: !ref ListingLayoutAnswer
+schema:
+  type: object
+---
+kind: Telo.Definition
+metadata:
+  name: TableLayout
+  description: >-
+    Draws records as a data grid: a column per value, one-click sorting on
+    the columns the collection can be ordered by, per-cell conditional
+    styling and custom cell components. Columns come from the record model
+    unless listed, so a property added to the model appears without an edit
+    and a renamed one is caught before deploy.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TableLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    columns:
+      title: Columns
+      description: >-
+        The columns, left to right. Omitted, there is one per model property
+        but the collection's key, in declaration order.
+      type: array
+      items:
+        type: object
+        additionalProperties: false
+        properties:
+          header: { title: Header, $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+          value:
+            title: Value
+            description: >-
+              The value shown, as a path into the record or a fixed value. A
+              property with a relation shows its related record's label.
+            x-telo-eval: accessor
+            x-telo-context:
+              type: object
+              properties:
+                row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          cell:
+            title: Cell
+            description: A component drawn in place of a value.
+            x-telo-ref: { kind: Self.Component, use: dependency }
+          style:
+            title: Style rule
+            description: Styles chosen by a value of the record.
+            type: object
+            additionalProperties: false
+            required: [by, cases]
+            properties:
+              by:
+                title: By
+                x-telo-eval: accessor
+                x-telo-context:
+                  type: object
+                  properties:
+                    row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+              cases:
+                title: Cases
+                description: Styles keyed by the plain text of the value.
+                type: object
+                additionalProperties: { $ref: "#/$defs/Style" }
+              default: { $ref: "#/$defs/Style" }
+        # Exactly one of the two.
+        oneOf:
+          - required: [value]
+          - required: [cell]
+  $defs:
+    StyleName:
+      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+    Style:
+      anyOf:
+        - $ref: "#/$defs/StyleName"
+        - type: array
+          items: { $ref: "#/$defs/StyleName" }
+---
+kind: Telo.Definition
+metadata:
+  name: ListLayout
+  description: >-
+    Draws records as a vertical list or feed, each record drawn with the
+    same content built from its values — a title, a summary, a badge, an
+    image — paged with a pager, a "load more" control or infinite scroll.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    content:
+      title: Content
+      description: >-
+        What is drawn for each record, over `row` and `query`. Omitted, the
+        record's values, one per model property but the key.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+---
+kind: Telo.Definition
+metadata:
+  name: CardLayout
+  description: >-
+    Draws records as a grid of cards or a gallery, each record's content —
+    its title, image, badges and values — on a card of a small, medium or
+    large size, paged with a pager, a "load more" control or infinite scroll.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CardLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    content:
+      title: Content
+      description: >-
+        What is drawn for each record, over `row` and `query`. Omitted, the
+        record's values, one per model property but the key.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+    size:
+      title: Size
+      description: How wide each card is drawn.
+      enum: [small, medium, large]
+      default: medium
+---
+kind: Telo.Definition
+metadata:
+  name: BoardLayout
+  description: >-
+    Draws records as a kanban board: a column per value of a property —
+    every value it can hold, or only those present with their counts — each
+    column paged on its own, and a record dragged to another column or moved
+    from the keyboard. A grouping the API cannot filter by is caught before
+    deploy.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#BoardLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  required: [groups]
+  properties:
+    groups:
+      title: Groups
+      description: >-
+        The property records are grouped by: a column per value, each
+        read and paged on its own.
+      $ref: "telo://Self/Grouping"
+    content:
+      title: Content
+      description: >-
+        What is drawn for each record, over `row` and `query`. Omitted, the
+        record's values, one per model property but the key.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+    move:
+      title: Move
+      description: >-
+        The operation a record is moved by — dragged to another column, or chosen from its "Move
+        to" menu — over `row`, the record as read, and `to`, the record as the
+        move leaves it. A success reloads the collection. Omitted, records stay
+        where they are.
+      $ref: "telo://Self/RowAction"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+  x-telo-referrer-rules:
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          ([self.groups.property]).all(n, has(m.properties) && n in m.properties))
+      code: UI_LAYOUT_PROPERTY_UNKNOWN
+      message: >-
+        names a property the listing's model does not declare in `groups.property`.
+        Use a property of the listing's `model`, or add this one to it.
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        !has(self.groups) || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          !has(m.properties) || !(self.groups.property in m.properties)
+          || cel.bind(p, m.properties[self.groups.property],
+             cel.bind(types, ('type' in p ? (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null')
+                       : ('enum' in p ? p.enum.filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                           .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number')) : [])),
+               size(types) == 0 || types.exists(t, t in ['string', 'number', 'integer', 'boolean']))))
+      code: UI_LAYOUT_GROUP_UNSUPPORTED
+      message: >-
+        groups records by a property that does not hold one plain value — a
+        string, a number or a boolean — so no group can be read by equality. Group
+        by a property holding one.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups)
+        || (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []).exists(f, f.property == self.groups.property && f.operator == 'eq')
+      code: UI_LAYOUT_GROUP_NOT_FILTERABLE
+      message: >-
+        groups records by a property the collection does not accept an equality
+        on, so no group can be read. Declare it with operator `eq` under the
+        collection's `query.filters`, or group by another property.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups) || !has(self.groups.values) || self.groups.values != 'present'
+        || (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.facets)
+            && referrer.presentation.source.collection.query.facets.exists(f, f.property == self.groups.property))
+      code: UI_LAYOUT_GROUPS_NOT_FACETED
+      message: >-
+        draws only the groups present for a property the collection does not
+        facet, so their values cannot be read. List it under the collection's
+        `query.facets`, or draw `values: all`.
+    - referrer: Self.Listing
+      resolve: [/model, /presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups) || (has(self.groups.values) && self.groups.values == 'present')
+        || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          !has(m.properties) || !(self.groups.property in m.properties)
+          || cel.bind(p, m.properties[self.groups.property],
+             ('enum' in p && type(p.enum) == list)
+             || ('type' in p && (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null') == ['boolean'])
+             || (has(referrer.presentation.relations) && self.groups.property in referrer.presentation.relations)))
+      code: UI_LAYOUT_GROUPS_NOT_ENUMERABLE
+      message: >-
+        draws every group of a property whose values cannot be listed: it
+        declares no `enum`, is not a boolean, and the presentation presents no
+        relation for it. Declare its values, present its relation, or draw
+        `values: present`.
+---
+kind: Telo.Definition
+metadata:
+  name: CalendarLayout
+  description: >-
+    Draws records on a month, week or day calendar by a date or date-time
+    property, or from a start to an end, reading every record of the shown
+    period; an event is rescheduled or resized by dragging or from the
+    keyboard. Dates the API cannot filter by are caught before deploy.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CalendarLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  required: [span]
+  properties:
+    span:
+      title: Span
+      description: The date properties a record starts and ends at; each shown period reads the records it overlaps.
+      $ref: "telo://Self/Span"
+    period:
+      title: Period
+      description: The period shown first; the viewer moves between periods and changes it.
+      enum: [month, week, day]
+      default: month
+    content:
+      title: Content
+      description: >-
+        What is drawn for each record, over `row` and `query`. Omitted, the
+        record's values, one per model property but the key.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+    move:
+      title: Move
+      description: >-
+        The operation a record is moved by — rescheduled or resized by dragging, or chosen from its "Move
+        to" menu — over `row`, the record as read, and `to`, the record as the
+        move leaves it. A success reloads the collection. Omitted, records stay
+        where they are.
+      $ref: "telo://Self/RowAction"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+  x-telo-referrer-rules:
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          ([self.span.start] + (has(self.span.end) ? [self.span.end] : [])).all(n, has(m.properties) && n in m.properties))
+      code: UI_LAYOUT_PROPERTY_UNKNOWN
+      message: >-
+        names a property the listing's model does not declare in `span.start` or `span.end`.
+        Use a property of the listing's `model`, or add this one to it.
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        !has(self.span) || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          cel.bind(names, [self.span.start] + (has(self.span.end) ? [self.span.end] : []),
+          !has(m.properties) || names.exists(n, !(n in m.properties))
+          || cel.bind(formats, names.map(n, cel.bind(p, m.properties[n],
+               'type' in p && (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null') == ['string']
+               && 'format' in p && p.format in ['date', 'date-time'] ? p.format : '')),
+             formats.all(f, f != '' && f == formats[0]))))
+      code: UI_LAYOUT_SPAN_NOT_DATE
+      message: >-
+        spans records by a property that is not a `date` or `date-time` string,
+        or by a start and an end of different formats, so no period bounds it.
+        Span by date properties of one format.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.span) || cel.bind(fs, (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []),
+          has(self.span.end)
+          ? fs.exists(f, f.property == self.span.start && f.operator == 'lte')
+            && fs.exists(f, f.property == self.span.end && f.operator == 'gte')
+          : fs.exists(f, f.property == self.span.start && f.operator == 'gte')
+            && fs.exists(f, f.property == self.span.start && f.operator == 'lte'))
+      code: UI_LAYOUT_SPAN_NOT_FILTERABLE
+      message: >-
+        spans records by bounds the collection does not accept, so no period
+        can be read. Without `end` it needs `start` with `gte` and `lte`; with
+        `end`, `start` with `lte` and `end` with `gte`, under the collection's
+        `query.filters`.
+---
+kind: Telo.Definition
+metadata:
+  name: TimelineLayout
+  description: >-
+    Draws records as bars along time — a Gantt chart or schedule — from a
+    start to an end date, at a day, week, month or quarter scale, optionally
+    in a lane per value of a property, reading every record of the shown
+    period; a bar is moved or resized by dragging or from the keyboard.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TimelineLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  required: [span]
+  properties:
+    span:
+      title: Span
+      description: The date properties a record starts and ends at; each shown period reads the records it overlaps.
+      $ref: "telo://Self/Span"
+    groups:
+      title: Groups
+      description: >-
+        The property records are laid in lanes by: a lane per value,
+        each read on its own. Omitted, one lane.
+      $ref: "telo://Self/Grouping"
+    scale:
+      title: Scale
+      description: The unit of time a column of the timeline spans; the viewer changes it.
+      enum: [day, week, month, quarter]
+      default: month
+    content:
+      title: Content
+      description: >-
+        What is drawn for each record, over `row` and `query`. Omitted, the
+        record's values, one per model property but the key.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+    move:
+      title: Move
+      description: >-
+        The operation a record is moved by — moved or resized by dragging, or chosen from its "Move
+        to" menu — over `row`, the record as read, and `to`, the record as the
+        move leaves it. A success reloads the collection. Omitted, records stay
+        where they are.
+      $ref: "telo://Self/RowAction"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+  x-telo-referrer-rules:
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          ([self.span.start] + (has(self.span.end) ? [self.span.end] : []) + (has(self.groups) ? [self.groups.property] : [])).all(n, has(m.properties) && n in m.properties))
+      code: UI_LAYOUT_PROPERTY_UNKNOWN
+      message: >-
+        names a property the listing's model does not declare in `span.start`, `span.end` or `groups.property`.
+        Use a property of the listing's `model`, or add this one to it.
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        !has(self.span) || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          cel.bind(names, [self.span.start] + (has(self.span.end) ? [self.span.end] : []),
+          !has(m.properties) || names.exists(n, !(n in m.properties))
+          || cel.bind(formats, names.map(n, cel.bind(p, m.properties[n],
+               'type' in p && (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null') == ['string']
+               && 'format' in p && p.format in ['date', 'date-time'] ? p.format : '')),
+             formats.all(f, f != '' && f == formats[0]))))
+      code: UI_LAYOUT_SPAN_NOT_DATE
+      message: >-
+        spans records by a property that is not a `date` or `date-time` string,
+        or by a start and an end of different formats, so no period bounds it.
+        Span by date properties of one format.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.span) || cel.bind(fs, (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []),
+          has(self.span.end)
+          ? fs.exists(f, f.property == self.span.start && f.operator == 'lte')
+            && fs.exists(f, f.property == self.span.end && f.operator == 'gte')
+          : fs.exists(f, f.property == self.span.start && f.operator == 'gte')
+            && fs.exists(f, f.property == self.span.start && f.operator == 'lte'))
+      code: UI_LAYOUT_SPAN_NOT_FILTERABLE
+      message: >-
+        spans records by bounds the collection does not accept, so no period
+        can be read. Without `end` it needs `start` with `gte` and `lte`; with
+        `end`, `start` with `lte` and `end` with `gte`, under the collection's
+        `query.filters`.
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        !has(self.groups) || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          !has(m.properties) || !(self.groups.property in m.properties)
+          || cel.bind(p, m.properties[self.groups.property],
+             cel.bind(types, ('type' in p ? (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null')
+                       : ('enum' in p ? p.enum.filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                           .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number')) : [])),
+               size(types) == 0 || types.exists(t, t in ['string', 'number', 'integer', 'boolean']))))
+      code: UI_LAYOUT_GROUP_UNSUPPORTED
+      message: >-
+        groups records by a property that does not hold one plain value — a
+        string, a number or a boolean — so no group can be read by equality. Group
+        by a property holding one.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups)
+        || (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []).exists(f, f.property == self.groups.property && f.operator == 'eq')
+      code: UI_LAYOUT_GROUP_NOT_FILTERABLE
+      message: >-
+        groups records by a property the collection does not accept an equality
+        on, so no group can be read. Declare it with operator `eq` under the
+        collection's `query.filters`, or group by another property.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups) || !has(self.groups.values) || self.groups.values != 'present'
+        || (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.facets)
+            && referrer.presentation.source.collection.query.facets.exists(f, f.property == self.groups.property))
+      code: UI_LAYOUT_GROUPS_NOT_FACETED
+      message: >-
+        draws only the groups present for a property the collection does not
+        facet, so their values cannot be read. List it under the collection's
+        `query.facets`, or draw `values: all`.
+    - referrer: Self.Listing
+      resolve: [/model, /presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups) || (has(self.groups.values) && self.groups.values == 'present')
+        || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          !has(m.properties) || !(self.groups.property in m.properties)
+          || cel.bind(p, m.properties[self.groups.property],
+             ('enum' in p && type(p.enum) == list)
+             || ('type' in p && (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null') == ['boolean'])
+             || (has(referrer.presentation.relations) && self.groups.property in referrer.presentation.relations)))
+      code: UI_LAYOUT_GROUPS_NOT_ENUMERABLE
+      message: >-
+        draws every group of a property whose values cannot be listed: it
+        declares no `enum`, is not a boolean, and the presentation presents no
+        relation for it. Declare its values, present its relation, or draw
+        `values: present`.
+---
+kind: Telo.Definition
+metadata:
+  name: TreeLayout
+  description: >-
+    Draws records as a tree or hierarchy by a property holding each
+    record's parent — an org chart, folders, nested categories — reading the
+    roots, then a record's children when it is expanded, and reparenting a
+    record by dragging or from the keyboard.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TreeLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  required: [parent]
+  properties:
+    parent:
+      title: Parent
+      description: >-
+        The property holding the key of a record's parent, a relation of the
+        collection to itself. Records holding none are the roots.
+      type: string
+    content:
+      title: Content
+      description: >-
+        What is drawn for each record, over `row` and `query`. Omitted, the
+        record's values, one per model property but the key.
+      $ref: "telo://Self/Node"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+    move:
+      title: Move
+      description: >-
+        The operation a record is moved by — dragged under another record, or chosen from its "Move
+        to" menu — over `row`, the record as read, and `to`, the record as the
+        move leaves it. A success reloads the collection. Omitted, records stay
+        where they are.
+      $ref: "telo://Self/RowAction"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+  x-telo-referrer-rules:
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          ([self.parent]).all(n, has(m.properties) && n in m.properties))
+      code: UI_LAYOUT_PROPERTY_UNKNOWN
+      message: >-
+        names a property the listing's model does not declare in `parent`.
+        Use a property of the listing's `model`, or add this one to it.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection, /presentation/source/collection/relations/*/collection]
+      condition: !cel >-
+        !has(self.parent) || cel.bind(c, referrer.presentation.source.collection,
+          has(c.relations) && self.parent in c.relations
+          && cel.bind(t, c.relations[self.parent].collection,
+             t.metadata.name == c.metadata.name
+             && (has(t.metadata.module) ? t.metadata.module : '') == (has(c.metadata.module) ? c.metadata.module : '')))
+      code: UI_LAYOUT_PARENT_NOT_SELF_RELATION
+      message: >-
+        nests records under a property with no relation to the listing's own
+        collection, so a parent cannot be one of its records. Declare a relation
+        from the property to this collection under its `relations`, or nest by
+        another property.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.parent) || cel.bind(fs, (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []),
+          fs.exists(f, f.property == self.parent && f.operator == 'eq')
+          && fs.exists(f, f.property == self.parent && f.operator == 'absent'))
+      code: UI_LAYOUT_PARENT_NOT_FILTERABLE
+      message: >-
+        nests records under a property the collection cannot read roots and
+        children by. Declare it with operators `eq` and `absent` under the
+        collection's `query.filters`.
+---
+kind: Telo.Definition
+metadata:
+  name: ComponentLayout
+  description: >-
+    Draws records with a custom browser component — a map, a timeline of
+    your own, a seat plan — given the records the declared reads return,
+    grouped, by period or as a tree, with fixed or per-record properties. The
+    renderer runs paging, filters, labels, openers and moves.
+capability: Telo.Invocable
+extends: Self.ListingLayout
+controllers:
+  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentLayoutController
+schema:
+  type: object
+  additionalProperties: false
+  required: [component]
+  properties:
+    component:
+      title: Component
+      description: The component drawing the records, written against the renderer's layout component contract.
+      x-telo-ref: { kind: Self.ComponentExport, use: dependency }
+    props:
+      title: Properties
+      description: >-
+        What the component receives, by name: a fixed value, given once, or a
+        path into `row`, given per record.
+      type: object
+      x-telo-value-schema-from: "/component/props"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+      additionalProperties:
+        x-telo-eval: accessor
+    groups:
+      title: Groups
+      description: >-
+        The property records are grouped by, each group read on its own.
+        Omitted, the records are not grouped.
+      $ref: "telo://Self/Grouping"
+    span:
+      title: Span
+      description: The date properties a record starts and ends at; each shown period reads the records it overlaps. Omitted, records are not read by period.
+      $ref: "telo://Self/Span"
+    parent:
+      title: Parent
+      description: >-
+        The property holding the key of a record's parent, a relation of the
+        collection to itself: roots are read, then a record's children when it
+        is expanded. Omitted, records are not nested.
+      type: string
+    move:
+      title: Move
+      description: >-
+        The operation a record is moved by — as the component reports it, or chosen from its "Move
+        to" menu — over `row`, the record as read, and `to`, the record as the
+        move leaves it. A success reloads the collection. Omitted, records stay
+        where they are.
+      $ref: "telo://Self/RowAction"
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
+  x-telo-referrer-rules:
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          ((has(self.groups) ? [self.groups.property] : []) + (has(self.span) ? [self.span.start] + (has(self.span.end) ? [self.span.end] : []) : []) + (has(self.parent) ? [self.parent] : [])).all(n, has(m.properties) && n in m.properties))
+      code: UI_LAYOUT_PROPERTY_UNKNOWN
+      message: >-
+        names a property the listing's model does not declare in `groups.property`, `span.start`, `span.end` or `parent`.
+        Use a property of the listing's `model`, or add this one to it.
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        !has(self.groups) || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          !has(m.properties) || !(self.groups.property in m.properties)
+          || cel.bind(p, m.properties[self.groups.property],
+             cel.bind(types, ('type' in p ? (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null')
+                       : ('enum' in p ? p.enum.filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                           .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number')) : [])),
+               size(types) == 0 || types.exists(t, t in ['string', 'number', 'integer', 'boolean']))))
+      code: UI_LAYOUT_GROUP_UNSUPPORTED
+      message: >-
+        groups records by a property that does not hold one plain value — a
+        string, a number or a boolean — so no group can be read by equality. Group
+        by a property holding one.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups)
+        || (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []).exists(f, f.property == self.groups.property && f.operator == 'eq')
+      code: UI_LAYOUT_GROUP_NOT_FILTERABLE
+      message: >-
+        groups records by a property the collection does not accept an equality
+        on, so no group can be read. Declare it with operator `eq` under the
+        collection's `query.filters`, or group by another property.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups) || !has(self.groups.values) || self.groups.values != 'present'
+        || (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.facets)
+            && referrer.presentation.source.collection.query.facets.exists(f, f.property == self.groups.property))
+      code: UI_LAYOUT_GROUPS_NOT_FACETED
+      message: >-
+        draws only the groups present for a property the collection does not
+        facet, so their values cannot be read. List it under the collection's
+        `query.facets`, or draw `values: all`.
+    - referrer: Self.Listing
+      resolve: [/model, /presentation/source/collection]
+      condition: !cel >-
+        !has(self.groups) || (has(self.groups.values) && self.groups.values == 'present')
+        || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          !has(m.properties) || !(self.groups.property in m.properties)
+          || cel.bind(p, m.properties[self.groups.property],
+             ('enum' in p && type(p.enum) == list)
+             || ('type' in p && (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null') == ['boolean'])
+             || (has(referrer.presentation.relations) && self.groups.property in referrer.presentation.relations)))
+      code: UI_LAYOUT_GROUPS_NOT_ENUMERABLE
+      message: >-
+        draws every group of a property whose values cannot be listed: it
+        declares no `enum`, is not a boolean, and the presentation presents no
+        relation for it. Declare its values, present its relation, or draw
+        `values: present`.
+    - referrer: Self.Listing
+      resolve: [/model]
+      condition: !cel >-
+        !has(self.span) || cel.bind(m, has(referrer.model.schema) ? referrer.model.schema : referrer.model,
+          cel.bind(names, [self.span.start] + (has(self.span.end) ? [self.span.end] : []),
+          !has(m.properties) || names.exists(n, !(n in m.properties))
+          || cel.bind(formats, names.map(n, cel.bind(p, m.properties[n],
+               'type' in p && (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null') == ['string']
+               && 'format' in p && p.format in ['date', 'date-time'] ? p.format : '')),
+             formats.all(f, f != '' && f == formats[0]))))
+      code: UI_LAYOUT_SPAN_NOT_DATE
+      message: >-
+        spans records by a property that is not a `date` or `date-time` string,
+        or by a start and an end of different formats, so no period bounds it.
+        Span by date properties of one format.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.span) || cel.bind(fs, (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []),
+          has(self.span.end)
+          ? fs.exists(f, f.property == self.span.start && f.operator == 'lte')
+            && fs.exists(f, f.property == self.span.end && f.operator == 'gte')
+          : fs.exists(f, f.property == self.span.start && f.operator == 'gte')
+            && fs.exists(f, f.property == self.span.start && f.operator == 'lte'))
+      code: UI_LAYOUT_SPAN_NOT_FILTERABLE
+      message: >-
+        spans records by bounds the collection does not accept, so no period
+        can be read. Without `end` it needs `start` with `gte` and `lte`; with
+        `end`, `start` with `lte` and `end` with `gte`, under the collection's
+        `query.filters`.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection, /presentation/source/collection/relations/*/collection]
+      condition: !cel >-
+        !has(self.parent) || cel.bind(c, referrer.presentation.source.collection,
+          has(c.relations) && self.parent in c.relations
+          && cel.bind(t, c.relations[self.parent].collection,
+             t.metadata.name == c.metadata.name
+             && (has(t.metadata.module) ? t.metadata.module : '') == (has(c.metadata.module) ? c.metadata.module : '')))
+      code: UI_LAYOUT_PARENT_NOT_SELF_RELATION
+      message: >-
+        nests records under a property with no relation to the listing's own
+        collection, so a parent cannot be one of its records. Declare a relation
+        from the property to this collection under its `relations`, or nest by
+        another property.
+    - referrer: Self.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.parent) || cel.bind(fs, (has(referrer.presentation.source.collection.query) && has(referrer.presentation.source.collection.query.filters) ? referrer.presentation.source.collection.query.filters : []),
+          fs.exists(f, f.property == self.parent && f.operator == 'eq')
+          && fs.exists(f, f.property == self.parent && f.operator == 'absent'))
+      code: UI_LAYOUT_PARENT_NOT_FILTERABLE
+      message: >-
+        nests records under a property the collection cannot read roots and
+        children by. Declare it with operators `eq` and `absent` under the
+        collection's `query.filters`.
+---
 kind: Telo.Definition
 metadata:
   name: Form
   description: >-
     An input form generated from a data model: a labelled control per property,
-    chosen from its type — checkbox, select, number, date, text, and a
-    multi-choice or tag list for a list of values — validated in the browser
+    chosen from its type — checkbox, select, number, date, text, a tag list,
+    and a searchable picker for a related record — validated in the browser
     against the model's own rules before anything is sent, with the server's
     field errors shown beside the fields they name. Creates a record, or edits
-    one when a data grid opens it.
+    one a listing opens.
 capability: Telo.Provider
 extends: Self.Composite
 controllers:
@@ -3043,31 +4227,24 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [model, source]
+  required: [model, presentation]
   properties:
     model:
       title: Model
-      description: The shape of the record the form edits.
+      description: The shape of the record the form sends.
       x-telo-ref: { kind: Telo.Type, use: schema }
-    source:
-      title: Source
-      type: object
-      additionalProperties: false
-      required: [basePath]
-      properties:
-        basePath:
-          title: Base path
-          description: >-
-            App-relative URL of the collection written to: `/` followed by
-            anything but `/` or `\`, holding no control character.
-          type: string
-          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+    presentation:
+      title: Presentation
+      description: >-
+        The collection written to, and how its related records are offered.
+      x-telo-ref: { kind: Self.CollectionPresentation, use: dependency }
     fields:
       title: Fields
       description: >-
-        The fields, top to bottom: a property name, entered as the model
-        says, or a field kind. Omitted, every model property a control can
-        enter: a scalar, or a list of scalars.
+        The fields, top to bottom: a property name, entered as the model says
+        — with a picker of related records where the presentation presents the
+        property's relation — or a field kind. Omitted, every model property a
+        control can enter: a scalar, or a list of scalars.
       type: array
       x-telo-context:
         type: object
@@ -3269,8 +4446,7 @@ schema:
           description: >-
             App-relative URL of the operation: `/` followed by anything but
             `/` or `\`, holding no control character.
-          type: string
-          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+          $ref: "telo://Self/AppRelativeReference"
     label:
       title: Label
       description: The text of the button that runs the operation.
@@ -3385,7 +4561,7 @@ schema:
             any other loads it; an `https://` or `http://` address replaces the
             page. A value that is no such address navigates nowhere.
           type: string
-          pattern: "^(/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$|https://|http://|mailto:)"
+          anyOf: [{ $ref: "telo://Self/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }]
           x-telo-eval: accessor
           x-telo-context:
             type: object
@@ -3399,13 +4575,12 @@ schema:
         refreshes:
           title: Refreshes
           description: >-
-            App-relative paths read again: every table whose `source.basePath`
-            and every reader whose `source.path` equals one of them.
+            App-relative paths read again: every listing whose collection
+            source's `basePath`, and every reader whose `source.path`, equals
+            one of them.
           type: array
           uniqueItems: true
-          items:
-            type: string
-            pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
+          items: { $ref: "telo://Self/AppRelativeReference" }
     concurrency:
       title: Concurrency
       description: >-
@@ -3514,11 +4689,11 @@ kind: Telo.Definition
 metadata:
   name: Filters
   description: >-
-    A filter bar over the data grids it contains: one control per filter the
-    collection accepts, with named presets, summary chips for what is chosen,
-    and a reset. The controls can fold behind a button or open in an overlay.
-    Chosen values are kept between visits and shareable in the page address;
-    every grid inside narrows to them.
+    A filter bar over the record listings it contains: one control per filter
+    the collection accepts, related records offered by name, optionally only
+    the values present with their counts, named presets, summary chips and a
+    reset. The controls can fold behind a button or open in an overlay.
+    Chosen values are kept between visits and shareable in the page address.
 capability: Telo.Provider
 extends: Self.Composite
 controllers:
@@ -3526,18 +4701,15 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [model, collection, content]
+  required: [presentation, content]
   properties:
-    model:
-      title: Model
-      description: The shape of the rows being filtered.
-      x-telo-ref: { kind: Telo.Type, use: schema }
-    collection:
-      title: Collection
+    presentation:
+      title: Presentation
       description: >-
-        What the collection's list request accepts. The bar offers only filters
-        this lists under `query.filters`.
-      x-telo-ref: { kind: Self.Collection, use: dependency }
+        The collection filtered and how its related records are offered. The
+        bar offers only filters its collection lists under `query.filters`,
+        over its `model`.
+      x-telo-ref: { kind: Self.CollectionPresentation, use: dependency }
     fields:
       title: Fields
       description: >-
@@ -3552,7 +4724,7 @@ schema:
           property: { title: Property, type: string }
           operator:
             title: Operator
-            enum: [eq, contains, gt, gte, lt, lte, in]
+            enum: [eq, contains, gt, gte, lt, lte, in, absent]
           pinned:
             title: Pinned
             description: >-
@@ -3566,11 +4738,26 @@ schema:
               How the value is entered: derived from the property (`auto`), a
               `select` list, `options` side by side, a `toggle`, a `slider`,
               typed `tags`, or `none` — drawn nowhere, set by a preset or a
-              default only.
+              default only. `absent` is entered with a toggle.
             anyOf:
               - $ref: "telo://Self/Control"
               - const: none
             default: auto
+          values:
+            title: Values
+            description: >-
+              Which choices are offered: `all` the property can hold, or only
+              those `present` in the records the bar's other filters leave,
+              each with its count. `present` needs the property listed under
+              the collection's `query.facets`.
+            enum: [all, present]
+            default: all
+          options:
+            title: Options
+            description: >-
+              Where the choices and their labels come from, in place of the
+              property's relation or its `enum`.
+            x-telo-ref: { kind: Self.OptionSource, use: dependency }
           default:
             title: Default
             description: >-
@@ -3603,7 +4790,7 @@ schema:
                 property: { title: Property, type: string }
                 operator:
                   title: Operator
-                  enum: [eq, contains, gt, gte, lt, lte, in]
+                  enum: [eq, contains, gt, gte, lt, lte, in, absent]
                 value:
                   title: Value
                   anyOf:
@@ -3622,69 +4809,47 @@ schema:
       description: The node the filters apply to.
       $ref: "telo://Self/Node"
   x-telo-resource-rules:
-    - resolve: [/model]
-      in: /fields
-      condition: !cel "!has(self.model) || has((has(self.model.schema) ? self.model.schema : self.model).properties) && this.property in (has(self.model.schema) ? self.model.schema : self.model).properties"
-      code: UI_FILTER_UNKNOWN_PROPERTY
-      message: >-
-        filters by a property the model does not declare. Use a property of
-        `model`, or add this one to it.
-    # `contains` reads text and the comparisons read an ordered value, so each
-    # is refused on a property whose declared type cannot carry it. Checked
-    # only where the property declares one plain type.
-    - resolve: [/model]
+    - resolve: [/presentation/source/collection]
       in: /fields
       condition: !cel >-
-        !has(self.model) ||
-        !has((has(self.model.schema) ? self.model.schema : self.model).properties)
-        || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
-        || !('type' in (has(self.model.schema) ? self.model.schema : self.model).properties[this.property])
-        || type((has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type) != string
-        || (this.operator in ['eq', 'in']
-            && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type in ['string', 'number', 'integer', 'boolean'])
-        || (this.operator == 'contains'
-            && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type == 'string')
-        || (this.operator in ['gt', 'gte', 'lt', 'lte']
-            && (has(self.model.schema) ? self.model.schema : self.model).properties[this.property].type in ['string', 'number', 'integer'])
-      code: UI_FILTER_OPERATOR_UNSUPPORTED
-      message: >-
-        uses an operator the property's type does not support: `contains` needs a
-        string, `gt` / `gte` / `lt` / `lte` a string or a number, and no operator
-        applies to an object or a list.
-    - resolve: [/collection]
-      in: /fields
-      condition: !cel >-
-        !has(self.collection.query) || !has(self.collection.query.filters)
-        || self.collection.query.filters.exists(f, f.property == this.property && f.operator == this.operator)
+        !has(self.presentation.source.collection.query) || !has(self.presentation.source.collection.query.filters)
+        || self.presentation.source.collection.query.filters.exists(f, f.property == this.property && f.operator == this.operator)
       code: UI_FILTER_NOT_ACCEPTED
       message: >-
         filters by a property and operator the collection does not accept.
         Declare the pair under the collection's `query.filters`, or remove this
         field.
-    # With no `fields`, every filter the collection accepts becomes a control,
-    # drawn from the model's property of that name — so each is held to what a
-    # listed field is: a declared property, and an operator its type carries.
-    - resolve: [/model, /collection]
+    - resolve: [/presentation/source/collection]
+      in: /fields
       condition: !cel >-
-        !has(self.model) ||
-        has(self.fields) || !has(self.collection.query) || !has(self.collection.query.filters)
-        || self.collection.query.filters.all(f,
-             has((has(self.model.schema) ? self.model.schema : self.model).properties)
-             && f.property in (has(self.model.schema) ? self.model.schema : self.model).properties
-             && (!('type' in (has(self.model.schema) ? self.model.schema : self.model).properties[f.property])
-                 || type((has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type) != string
-                 || (f.operator in ['eq', 'in']
-                     && (has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type in ['string', 'number', 'integer', 'boolean'])
-                 || (f.operator == 'contains'
-                     && (has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type == 'string')
-                 || (f.operator in ['gt', 'gte', 'lt', 'lte']
-                     && (has(self.model.schema) ? self.model.schema : self.model).properties[f.property].type in ['string', 'number', 'integer'])))
-      code: UI_FILTER_MODEL_INCOMPLETE
+        !('values' in this) || this.values != 'present'
+        || (has(self.presentation.source.collection.query.facets) && self.presentation.source.collection.query.facets.exists(f, f.property == this.property))
+      code: UI_FILTER_VALUES_NOT_FACETED
       message: >-
-        shows every filter the collection accepts, and the model cannot answer
-        for one of them: it does not declare the property, or the operator does
-        not fit the property's type. Give the bar a model that can, or list the
-        filters to show under `fields`.
+        offers only the values present for a property the collection does not
+        facet. Add the property to the collection's `query.facets`, or offer
+        `all` values.
+    # Judged where the source yields one property of the record, as a field's
+    # option value is.
+    - resolve: [/presentation/source/collection, /presentation/source/collection/model, /fields/*/options/model]
+      in: /fields
+      condition: !cel >-
+        !('options' in this) ||
+        cel.bind(m, (has(self.presentation.source.collection.model.schema) ? self.presentation.source.collection.model.schema : self.presentation.source.collection.model),
+        cel.bind(o, has(this.options.model.schema) ? this.options.model.schema : this.options.model,
+          !has(m.properties) || !(this.property in m.properties)
+          || !('root' in this.options.value) || size(this.options.value.path) != 1
+          || !has(o.properties) || !(this.options.value.path[0] in o.properties)
+          || cel.bind(want, (!('type' in m.properties[this.property]) ? [] : (type(m.properties[this.property].type) == list ? m.properties[this.property].type : [m.properties[this.property].type]).filter(t, t != 'null')),
+             cel.bind(v, o.properties[this.options.value.path[0]],
+             cel.bind(have, (!('type' in v) ? [] : (type(v.type) == list ? v.type : [v.type]).filter(t, t != 'null')),
+               want.size() == 0 || have.size() == 0
+               || have.all(t, t in want || (t == 'integer' && 'number' in want)))))))
+      code: UI_FILTER_OPTION_VALUE_MISMATCH
+      message: >-
+        offers options whose value is of another type than the property holds.
+        Make the source's `value` read a property of the property's type, or
+        filter another property.
     # State, defaults and presets are keyed by the pair, so it names one filter.
     - in: /fields
       condition: !cel "self.fields.exists_one(f, f.property == this.property && f.operator == this.operator)"
@@ -3692,67 +4857,68 @@ schema:
       message: >-
         lists a property and operator another field already has. A filter is
         one property with one operator: remove one of the two.
-    - resolve: [/model]
+    - resolve: [/presentation/source/collection, /presentation/source/collection/model]
       in: /fields
       condition: !cel >-
-        !has(self.model) ||
         !('default' in this)
-        || ((!('control' in this) || this.control != 'toggle' || type(this.default) != bool || this.default != false)
-        && (!has((has(self.model.schema) ? self.model.schema : self.model).properties)
-        || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
-        || ((type(this.default) == list) == (this.operator == 'in')
-            && [(has(self.model.schema) ? self.model.schema : self.model).properties[this.property]].all(p,
-               (type(this.default) == list ? this.default : [this.default]).all(v,
+        || ((!(('control' in this && this.control == 'toggle') || this.operator == 'absent') || type(this.default) != bool || this.default != false)
+        && (this.operator == 'absent' ? type(this.default) == bool
+        : cel.bind(m, (has(self.presentation.source.collection.model.schema) ? self.presentation.source.collection.model.schema : self.presentation.source.collection.model),
+          !has(m.properties) || !(this.property in m.properties)
+          || ((type(this.default) == list) == (this.operator == 'in')
+              && [m.properties[this.property]].all(p,
+                 (type(this.default) == list ? this.default : [this.default]).all(v,
                  (!('enum' in p) || v in p.enum)
                  && (!('type' in p) || type(p.type) != string
                      || !(p.type in ['string', 'boolean', 'integer', 'number'])
                      || (p.type == 'string' && type(v) == string)
                      || (p.type == 'boolean' && type(v) == bool)
                      || (p.type == 'integer' && (type(v) == int || (type(v) == double && double(int(v)) == v)))
-                     || (p.type == 'number' && (type(v) == int || type(v) == double))))))))
+                     || (p.type == 'number' && (type(v) == int || type(v) == double)))))))))
       code: UI_FILTER_DEFAULT_INVALID
       message: >-
         declares a default its filter cannot hold: a value that is not of the
         property's type or not one of its `enum`, a list without the `in`
-        operator, a single value with it, or `false` for a filter entered with
-        a `toggle`, which holds true or nothing.
+        operator, a single value with it, anything but `true` under `absent`,
+        or `false` for a filter entered with a `toggle`, which holds true or
+        nothing.
     # The one fit predicate every control rule reads, over the filter's operator.
-    - resolve: [/model]
+    - resolve: [/presentation/source/collection, /presentation/source/collection/model]
       in: /fields
       condition: !cel >-
-        !has(self.model) ||
         !('control' in this) || this.control in ['auto', 'none']
-        || !has((has(self.model.schema) ? self.model.schema : self.model).properties)
-        || !(this.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
-        || Self.controlFits(this.control, (has(self.model.schema) ? self.model.schema : self.model).properties[this.property], this.operator)
+        || cel.bind(m, (has(self.presentation.source.collection.model.schema) ? self.presentation.source.collection.model.schema : self.presentation.source.collection.model),
+             !has(m.properties) || !(this.property in m.properties)
+             || Self.controlFits(this.control, m.properties[this.property], this.operator))
       code: UI_FILTER_CONTROL_UNSUPPORTED
       message: >-
         asks for a control its filter cannot be entered with: `select` and
-        `options` need an `enum` or a boolean, `toggle` a boolean with `eq`,
-        `slider` a number or integer declaring `minimum` and `maximum` with
-        `eq` or a comparison, and `tags` the `in` operator.
-    - resolve: [/collection]
+        `options` need an `enum` or a boolean, `toggle` a boolean with `eq` or
+        any property under `absent`, `slider` a number or integer declaring
+        `minimum` and `maximum` with `eq` or a comparison, and `tags` the `in`
+        operator.
+    - resolve: [/presentation/source/collection]
       in: /presets
       condition: !cel >-
         this.values.all(v, has(self.fields)
           ? self.fields.exists(f, f.property == v.property && f.operator == v.operator)
-          : (!has(self.collection.query) || !has(self.collection.query.filters)
-             || self.collection.query.filters.exists(f, f.property == v.property && f.operator == v.operator)))
+          : (!has(self.presentation.source.collection.query) || !has(self.presentation.source.collection.query.filters)
+             || self.presentation.source.collection.query.filters.exists(f, f.property == v.property && f.operator == v.operator)))
       code: UI_FILTER_PRESET_UNKNOWN_FILTER
       message: >-
         sets a property and operator the bar does not show. Name a pair listed
         under `fields`, or one the collection accepts when `fields` is left out.
-    - resolve: [/model]
+    - resolve: [/presentation/source/collection, /presentation/source/collection/model]
       in: /presets
       condition: !cel >-
-        !has(self.model) ||
+        cel.bind(m, (has(self.presentation.source.collection.model.schema) ? self.presentation.source.collection.model.schema : self.presentation.source.collection.model),
         this.values.all(e,
-          (!has(self.fields) || type(e.value) != bool || e.value != false
-           || !self.fields.exists(f, f.property == e.property && f.operator == e.operator && 'control' in f && f.control == 'toggle'))
-          && (!has((has(self.model.schema) ? self.model.schema : self.model).properties)
-          || !(e.property in (has(self.model.schema) ? self.model.schema : self.model).properties)
+          (type(e.value) != bool || e.value != false || (e.operator != 'absent' && (!has(self.fields)
+           || !self.fields.exists(f, f.property == e.property && f.operator == e.operator && 'control' in f && f.control == 'toggle'))))
+          && (e.operator == 'absent' ? type(e.value) == bool
+          : (!has(m.properties) || !(e.property in m.properties)
           || ((type(e.value) == list) == (e.operator == 'in')
-              && [(has(self.model.schema) ? self.model.schema : self.model).properties[e.property]].all(p,
+              && [m.properties[e.property]].all(p,
                  (type(e.value) == list ? e.value : [e.value]).all(v,
                  (!('enum' in p) || v in p.enum)
                  && (!('type' in p) || type(p.type) != string
@@ -3760,26 +4926,26 @@ schema:
                      || (p.type == 'string' && type(v) == string)
                      || (p.type == 'boolean' && type(v) == bool)
                      || (p.type == 'integer' && (type(v) == int || (type(v) == double && double(int(v)) == v)))
-                     || (p.type == 'number' && (type(v) == int || type(v) == double))))))))
+                     || (p.type == 'number' && (type(v) == int || type(v) == double))))))))))
       code: UI_FILTER_PRESET_VALUE_INVALID
       message: >-
         sets a value its filter cannot hold: one that is not of the property's
         type or not one of its `enum`, a list without the `in` operator, a
-        single value with it, or `false` for a filter entered with a `toggle`,
-        which holds true or nothing.
+        single value with it, anything but `true` under `absent`, or `false`
+        for a filter entered with a `toggle`, which holds true or nothing.
     - in: /presets
       condition: !cel "self.presets.exists_one(p, p.label == this.label)"
       code: UI_FILTER_PRESET_LABEL_DUPLICATE
       message: >-
         has the label of another preset. A preset is chosen by its label: give
         each its own.
-    - resolve: [/collection]
+    - resolve: [/presentation/source/collection]
       condition: !cel >-
         !has(self.policy) || !has(self.policy.state) || !has(self.policy.state.fields)
         || self.policy.state.fields.all(k, has(self.fields)
           ? self.fields.exists(f, f.property == k)
-          : !has(self.collection.query) || !has(self.collection.query.filters)
-            || self.collection.query.filters.exists(f, f.property == k))
+          : !has(self.presentation.source.collection.query) || !has(self.presentation.source.collection.query.filters)
+            || self.presentation.source.collection.query.filters.exists(f, f.property == k))
       code: UI_STATE_FIELD_UNKNOWN
       message: >-
         keeps a property under `policy.state.fields` no filter of the bar
@@ -4257,43 +5423,30 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [collection, source]
+  required: [source]
   properties:
-    collection:
-      title: Collection
-      description: >-
-        What the collection's list request accepts: `value` is filtered with
-        `in`, `search` and every source filter are filters it lists.
-      x-telo-ref: { kind: Self.Collection, use: dependency }
     source:
       title: Source
+      description: >-
+        Where the options are read from: `value` is filtered with `in`,
+        `search` and every filter are filters its collection lists.
+      x-telo-ref: { kind: Self.CollectionSource, use: dependency }
+    filters:
+      title: Filters
+      description: >-
+        Equalities applied to every request, keyed by model property: a fixed
+        value, or a path into the form's `values`. While one holds nothing,
+        nothing is read or offered; when one changes, the options are read
+        again.
       type: object
-      additionalProperties: false
-      required: [basePath]
-      properties:
-        basePath:
-          title: Base path
-          description: >-
-            App-relative URL of the collection: `/` followed by anything but
-            `/` or `\`, holding no control character.
-          type: string
-          pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
-        filters:
-          title: Filters
-          description: >-
-            Equalities applied to every request, keyed by model property: a
-            fixed value, or a path into the form's `values`. While one holds
-            nothing, nothing is read or offered; when one changes, the options
-            are read again.
-          type: object
-          x-telo-context:
-            type: object
-            properties:
-              values: { x-telo-context-from-referrer: values, x-telo-context-eval: accessor }
-          additionalProperties:
-            type: [string, number, integer, boolean]
-            x-telo-eval: accessor
-            x-telo-value-schema-from: { from: /model, member: "0#" }
+      x-telo-context:
+        type: object
+        properties:
+          values: { x-telo-context-from-referrer: values, x-telo-context-eval: accessor }
+      additionalProperties:
+        type: [string, number, integer, boolean]
+        x-telo-eval: accessor
+        x-telo-value-schema-from: { from: /model, member: "0#" }
     pageSize:
       title: Page size
       description: >-
@@ -4316,36 +5469,36 @@ schema:
         operator: { title: Operator, enum: [eq, contains, gt, gte, lt, lte, in] }
   x-telo-resource-rules:
     - resolve: [/model]
-      in: /source/filters
+      in: /filters
       condition: !cel "has((has(self.model.schema) ? self.model.schema : self.model).properties) && key in (has(self.model.schema) ? self.model.schema : self.model).properties"
       code: UI_SOURCE_FILTER_UNKNOWN_PROPERTY
       message: >-
         filters its source by a property the option model does not declare.
         Use a property of `model`, or add this one to it.
-    - resolve: [/collection]
-      in: /source/filters
+    - resolve: [/source/collection]
+      in: /filters
       condition: !cel >-
-        !has(self.collection.query) || !has(self.collection.query.filters)
-        || self.collection.query.filters.exists(f, f.property == key && f.operator == 'eq')
+        !has(self.source.collection.query) || !has(self.source.collection.query.filters)
+        || self.source.collection.query.filters.exists(f, f.property == key && f.operator == 'eq')
       code: UI_SOURCE_FILTER_NOT_ACCEPTED
       message: >-
         filters its source by a property the collection does not accept an
         equality on. Declare it with operator `eq` under the collection's
         `query.filters`, or remove this filter.
-    - resolve: [/collection]
+    - resolve: [/source/collection]
       condition: !cel >-
-        !has(self.search) || !has(self.collection.query) || !has(self.collection.query.filters)
-        || self.collection.query.filters.exists(f, f.property == self.search.property && f.operator == self.search.operator)
+        !has(self.search) || !has(self.source.collection.query) || !has(self.source.collection.query.filters)
+        || self.source.collection.query.filters.exists(f, f.property == self.search.property && f.operator == self.search.operator)
       code: UI_OPTION_SEARCH_NOT_ACCEPTED
       message: >-
         searches with a property and operator the collection does not accept.
         Declare the pair under the collection's `query.filters`, or change
         `search`.
-    - resolve: [/collection]
+    - resolve: [/source/collection]
       condition: !cel >-
         'root' in self.value && self.value.root == 'row' && size(self.value.path) == 1
-        && (!has(self.collection.query) || !has(self.collection.query.filters)
-            || self.collection.query.filters.exists(f, f.property == self.value.path[0] && f.operator == 'in'))
+        && (!has(self.source.collection.query) || !has(self.source.collection.query.filters)
+            || self.source.collection.query.filters.exists(f, f.property == self.value.path[0] && f.operator == 'in'))
       code: UI_OPTION_VALUE_NOT_FILTERABLE
       message: >-
         yields a value no request can look options up by: `value` must be a
@@ -4505,7 +5658,7 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames]
+  required: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, loadMore, moveTo, valueCount, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, operatorAbsent, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames]
   properties:
     loading: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     noRows: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
@@ -4522,6 +5675,9 @@ schema:
     pagerRange: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"first": {"type": "integer"}, "last": {"type": "integer"}, "total": {"type": "integer"}} }
     pagerEmpty: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"total": {"type": "integer"}} }
     nextPage: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    loadMore: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    moveTo: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    valueCount: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "count": {"type": "integer"}} }
     yes: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     no: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     none: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
@@ -4549,6 +5705,7 @@ schema:
     operatorLt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     operatorLte: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     operatorIn: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+    operatorAbsent: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     filterControl: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "operator": {"type": "string"}} }
     filterChip: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "operator": {"type": "string"}, "value": {"type": "string"}} }
     filterGroupSummary: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "summary": {"type": "string"}} }
@@ -4616,6 +5773,9 @@ previousPage: "Previous page"
 pagerRange: "{$first}–{$last} of {$total}"
 pagerEmpty: "0 of {$total}"
 nextPage: "Next page"
+loadMore: "Load more"
+moveTo: "Move to"
+valueCount: "{$label} ({$count})"
 yes: "Yes"
 no: "No"
 none: "None"
@@ -4643,6 +5803,7 @@ operatorGte: "from"
 operatorLt: "before"
 operatorLte: "to"
 operatorIn: "one of"
+operatorAbsent: "not set"
 filterControl: "{$label} {$operator}"
 filterChip: "{$label} {$operator} {$value}"
 filterGroupSummary: "{$label}: {$summary}"

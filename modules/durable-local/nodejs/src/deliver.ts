@@ -45,9 +45,8 @@ interface DeliverManifest extends ResourceManifest {
 }
 
 class DeliverController {
-  /** Compiled from the named wait's own declared shape, once. Lazy rather than
-   *  built in `create()`, because the reference is a live instance only after
-   *  the kernel has injected it. */
+  /** Compiled from the named wait's own declared shape, once, on the first
+   *  delivery — by then every named shape is registered. */
   #validator: DataValidator | null | undefined;
 
   constructor(
@@ -115,8 +114,7 @@ class DeliverController {
    */
   private validate(payload: unknown, name: string, token: string): void {
     if (this.#validator === undefined) {
-      const declared = (this.resource.await as { resource?: { outputType?: unknown } } | undefined)
-        ?.resource?.outputType as { schema?: unknown } | undefined;
+      const declared = this.awaitedOutputType() as { schema?: unknown } | undefined;
       const schema = declared?.schema ?? declared;
       this.#validator = schema ? this.ctx.createTypeValidator(schema as never) : null;
     }
@@ -135,6 +133,18 @@ class DeliverController {
         { cause: err },
       );
     }
+  }
+
+  /** The `outputType` the named wait declares. The slot is a declaration read,
+   *  so it holds the reference, and the wait is read from its declaration. */
+  private awaitedOutputType(): unknown {
+    const awaited = this.resource.await as { name?: unknown; alias?: unknown } | undefined;
+    if (!awaited || typeof awaited.name !== "string") return undefined;
+    const declared = this.ctx.resolveDeclaredManifest?.(
+      awaited.name,
+      typeof awaited.alias === "string" ? awaited.alias : undefined,
+    ) as { outputType?: unknown } | undefined;
+    return declared?.outputType;
   }
 
   snapshot(): Record<string, unknown> {

@@ -244,6 +244,16 @@ A filter that resolves to no kind is `REFERRER_RULE_INVALID` at the kind that
 wrote it: it matches nothing, so the rule would pass everywhere while checking
 nothing.
 
+## Inheritance
+
+Referrer rules inherit as [resource rules do](./resource-rules.md#inheritance):
+an `extends` child without `base:` is judged by its ancestors' referrer rules
+and its own, ancestors' first, and never loses one. A rule's identity is its
+`code` under its `referrer:` filter, so a child declaring a rule with an
+inherited code for the same filter is `REFERRER_RULE_INVALID` at the child's
+`code`; the same code under another filter is a rule of its own. A `base:` child
+inherits none.
+
 ## Polarity, restrictions, budget
 
 Identical to resource rules, and for the same reasons: `condition` is TRUE when

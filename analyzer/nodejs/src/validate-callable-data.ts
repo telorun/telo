@@ -520,6 +520,9 @@ export function validateCallableData(input: CallableDataInput): AnalysisDiagnost
     if (!isInstanceDocument(manifest) || isInjectedDeclaration(manifest)) continue;
     if (isForwardedDeclaration(manifest)) continue;
     for (const site of dataSites(manifest)) {
+      // A body entry's sibling, as one consumer instantiates it, is judged
+      // below, where that consumer wrote what it holds.
+      if (input.forwards?.holdsSiblingReference(manifest, site.path)) continue;
       const found = judgeValue(site.data, manifest as Record<string, any>, undefined, [manifest], false);
       if (!found) continue;
       diagnostics.push({

@@ -16,7 +16,7 @@ sidebar_label: Graph store contract
 
 The operations then type themselves: a node's `key` is `{ from: /node, pick: /node/key }`, its `properties` `{ from: /node, omit: [/node/key] }`, a relationship's endpoints are picked from the endpoint node types' projections, and its `properties` are the relationship kind's projection.
 
-A backend declares no referrer rules on its relationship kind — `Graph.Relationship`'s endpoint-membership rule is inherited, and a child's rules replace its parent's per annotation key. It declares its own storage rules as resource rules on its own kinds, each with a creation-time twin.
+A backend declares no referrer rules on its relationship kind — `Graph.Relationship`'s endpoint-membership rule is inherited, and a child's rules are added to its parent's, never replacing one. It declares its own storage rules as resource rules on its own kinds, each with a creation-time twin.
 
 ## The store interface — `@telorun/graph`
 

@@ -1,6 +1,6 @@
 # One value per place a shape of the vocabulary holds another: a dialog whose
 # compact surface is addressed, a panel whose compact surface is a popover, a
-# table node whose create surface has a size no dialog takes, a filter overlay
+# listing node whose create surface has a size no dialog takes, a filter overlay
 # in a panel, a placement whose compact placement does not fold, and a filters
 # node whose placement and whose store are no kind's.
 kind: Telo.Application
@@ -38,16 +38,20 @@ spec:
 ---
 kind: Echo.TypedNode
 metadata:
-  name: tableSurface
+  name: listingSurface
 node:
-  type: table
+  type: listing
   schema: {}
   basePath: /api/todos
+  key: id
   query: {}
-  rowKey: id
   pageSize: 25
-  columns: []
+  paging: pages
+  sort: []
   rowActions: []
+  relations: {}
+  empty: { type: text, text: { word: noRows } }
+  layout: { type: table, columns: [], reads: {} }
   delete: false
   create:
     form: { type: form, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
@@ -74,6 +78,7 @@ metadata:
   name: filtersPlacement
 node:
   type: filters
+  basePath: /api/todos
   fields: []
   content: { type: text, text: { word: loading } }
   show: all
@@ -89,6 +94,7 @@ metadata:
   name: filtersStore
 node:
   type: filters
+  basePath: /api/todos
   fields: []
   content: { type: text, text: { word: loading } }
   show: all

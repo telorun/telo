@@ -1,0 +1,37 @@
+kind: Telo.Library
+metadata:
+  name: UiAdminFixture
+  version: 1.0.0
+  description: Test fixture declaring a screen kind that generates a listing from its body, its layout forwarded whole.
+imports:
+  Ui: ../../../
+exports:
+  kinds: [Admin]
+---
+kind: Telo.Definition
+metadata: { name: Admin }
+capability: Telo.Provider
+extends: Ui.Composite
+schema:
+  type: object
+  additionalProperties: false
+  required: [source, model]
+  properties:
+    source: { x-telo-ref: { kind: Ui.CollectionSource, use: dependency } }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
+    layout:
+      x-telo-ref: { kind: Ui.ListingLayout, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+resources:
+  - kind: Ui.CollectionPresentation
+    metadata: { name: presentation }
+    source: !cel "self.source"
+  - kind: Ui.Listing
+    metadata: { name: listing }
+    presentation: !ref presentation
+    model: !cel "self.model"
+    layout: !cel "self.layout"
+provide: !ref listing

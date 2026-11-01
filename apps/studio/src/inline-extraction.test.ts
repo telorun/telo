@@ -9,7 +9,7 @@ const hostFields = {
     {
       path: "/api/todos",
       mount: {
-        kind: "Crud.Resource",
+        kind: "Crud.Api",
         plural: "todos",
         model: { kind: "Telo.JsonSchema", schema: { type: "object" } },
       },
@@ -20,7 +20,7 @@ const hostFields = {
 describe("planInlineExtraction", () => {
   it("takes the declaration's config, without kind or metadata", () => {
     const plan = planInlineExtraction(hostFields, "/mounts/1/mount", "todos")!;
-    expect(plan.kind).toBe("Crud.Resource");
+    expect(plan.kind).toBe("Crud.Api");
     expect(plan.config).toEqual({
       plural: "todos",
       // A nested inline declaration travels verbatim — extracting one level
@@ -44,7 +44,7 @@ describe("planInlineExtraction", () => {
     expect(mounts[1].path).toBe("/api/todos");
     // The original is untouched — the caller diffs against it to write the AST.
     expect(hostFields.mounts[1].mount).toEqual({
-      kind: "Crud.Resource",
+      kind: "Crud.Api",
       plural: "todos",
       model: { kind: "Telo.JsonSchema", schema: { type: "object" } },
     });
@@ -71,7 +71,7 @@ const referencingHost = {
 };
 
 const todos = {
-  kind: "Crud.Resource",
+  kind: "Crud.Api",
   name: "todos",
   fields: {
     plural: "todos",
@@ -84,7 +84,7 @@ describe("planReferenceInlining", () => {
     const plan = planReferenceInlining(referencingHost, "/mounts/1/mount", todos)!;
     const mounts = plan.hostFields.mounts as { mount: unknown }[];
     expect(mounts[1].mount).toEqual({
-      kind: "Crud.Resource",
+      kind: "Crud.Api",
       plural: "todos",
       // A reference the moved resource holds is carried, not resolved — moving
       // a declaration is not the same as flattening what it points at.

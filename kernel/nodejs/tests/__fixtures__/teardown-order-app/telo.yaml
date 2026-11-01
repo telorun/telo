@@ -10,20 +10,28 @@ imports:
   Fixture: ../teardown-order/telo.yaml
 ---
 kind: Fixture.Node
-metadata:
-  name: localProvider
+metadata: { name: localProvider }
 label: localProvider
 ---
 kind: Fixture.Node
-metadata:
-  name: localConsumer
+metadata: { name: localConsumer }
 label: localConsumer
 holds: !ref localProvider
 ---
 # The cross-boundary case: the target is in the child context the `Fixture`
 # import owns, so it is reached only through that import's own inverse.
 kind: Fixture.Node
-metadata:
-  name: consumer
+metadata: { name: consumer }
 label: consumer
 holds: !ref Fixture.provider
+---
+# A declaration read: `reader` is declared and created first and holds nothing
+# of `readTarget`, so reverse creation order unwinds `readTarget` first.
+kind: Fixture.Node
+metadata: { name: reader }
+label: reader
+reads: !ref readTarget
+---
+kind: Fixture.Node
+metadata: { name: readTarget }
+label: readTarget

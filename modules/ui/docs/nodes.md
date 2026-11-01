@@ -110,7 +110,7 @@ A value is presented as its schema says: a `format: uri` / `uri-reference`
 string is a link, held to the address rule below, drawn as `text` when that is
 given; a date and a time as a date; a boolean as yes or no. A `list` draws the
 rows of one answer and is bounded by it — it never pages; a set that grows
-without limit is a [`Ui.Table`](table.md) over the collection contract. A
+without limit is a [`Ui.Listing`](listing.md) over the collection contract. A
 column's header defaults to the `title` of the value it reads, and its `shown`
 reads the roots the list is drawn under, never `row`. `row` is typed as an
 element of what `rows` names, so `row.nmae` is refused by `telo check`.
@@ -147,11 +147,11 @@ check`. See [Texts and translation](texts.md).
 Each `type` is a closed shape: a key it does not take is an error naming the
 key, and a `type` outside the list is an error listing the valid ones.
 
-There is no layout field — no gap, alignment, width or image size — and no
-button that runs anything. How nodes are arranged is the renderer's styling
-contract; a button that runs an operation is a composite — a
-[`Ui.Action`](action.md), or what a table offers on its rows — and a `menu`'s
-button only opens its links.
+Spacing is not a field — no gap, alignment, width or image size — and no
+button runs anything. How nodes are spaced is the renderer's styling contract;
+a button that runs an operation is a composite — a [`Ui.Action`](action.md),
+or what a listing offers on its records — and a `menu`'s button only opens its
+links.
 
 ## Addresses
 
@@ -168,14 +168,18 @@ button only opens its links.
   | `//host/x`, `/\host/x` | refused: a browser reads it as another host |
   | `/` followed by a tab, then `/x` | refused: a browser drops the tab and reads `//x` |
 
-  The same rule holds for a table's and a form's `source.basePath` and an
-  action's `source.path`. A literal
+  It is one exported shape, `Ui.AppRelativeReference`, named by every field
+  holding an address — a navigation entry's `href`, a page's `path`, a reader's
+  and an action's `source.path`, an action's `onSuccess.navigate` and
+  `refreshes`, and a collection source's `basePath` — so a kind of another
+  module holding one references it too. A literal
   one is refused by `telo check`; a computed `href` or `src` that breaks it is
   replaced by an `error` node for that request — for a menu item, the whole
   menu.
 - An app-relative path is the application's own: a renderer mounted under a
   prefix resolves every one under that prefix — a `link`'s `href`, an
-  `image`'s `src`, a `source.basePath` and an action's `source.path` alike.
+  `image`'s `src`, a collection source's `basePath` and an action's
+  `source.path` alike.
 - `svg.markup` is never inserted into the page. A renderer draws it as an
   image, so nothing in it can run or reach the document.
 
@@ -219,7 +223,7 @@ null value takes `default`; a value no case names takes `default` too.
 
 `Ui.SpecNode` is the same vocabulary after resolution: every `when` decided
 and gone — a menu's items and a `tabs` node's tabs included, so a `menu` carries at least one item and `tabs` at least one tab — every `shown` carried as written (`{ at, matches }`, `at` a binding),
-every composite replaced by the node it provides (`table`, `form`, `action`,
+every composite replaced by the node it provides (`listing`, `form`, `action`,
 `filters`, `data`, `component`), and `error` for a node that could not be
 produced. A `value` node carries `present` — what the schema it reads says
 (`type`, `format`) — and each `list` column its `header` and `present`, both
@@ -233,7 +237,7 @@ both must hold. It carries no resource name. Row-bound values in it are **bindin
 chain, `{ value }` for a literal — which a renderer resolves by following the
 path; no expression engine runs in the browser.
 
-**A node carries every presentation member, declared or not.** A `table` node's
+**A node carries every presentation member, declared or not.** A `listing` node's
 `create` and `edit` are each `{ form, surface, afterSubmit, unsaved }`, all four
 present: `form` the form node, `surface` a [`Ui.SurfaceSpec`](surfaces.md#what-a-renderer-receives)
 with every member its kind has, `afterSubmit` and `unsaved` as declared or
@@ -241,8 +245,9 @@ defaulted. The defaults are this module's, filled before the node is provided,
 so two renderers cannot disagree about them and none carries a table of its
 own.
 
-A `table` node always carries `query` (its declared parameters, empty when
-none) and `rowActions`, an empty list when the table declares none; a `list`
+A `listing` node always carries `query` (its declared parameters, empty when
+none), `rowActions` (an empty list when the listing declares none), `relations`,
+`empty` and its `layout`; a `list`
 node carries `rowActions` when it declares them. An entry is
 `{ action, inputs, confirm?, prompt?, enabled? }`: `action` is the action's
 own node, `inputs` maps each input property to a binding, `confirm` is present

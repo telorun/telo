@@ -3,25 +3,29 @@
 A complete application served from a single Telo manifest on one port, with no
 hand-written frontend:
 
-- **API** — the whole REST surface is one `Crud.Resource` over the `todos` table,
-  mounted at `/api/todos`. No handlers, no SQL, no route list.
-- **UI** — a `UiReact.App` mounted at `/`: a filterable, sortable, paged table
+- **API** — the whole REST surface is one `Crud.Api` over the `todos`
+  collection, mounted at `/api/todos`. No handlers, no SQL, no route list.
+- **UI** — a `UiReact.App` mounted at `/`: a filterable, sortable, paged listing
   with create and edit forms and delete. There is no HTML, JavaScript or CSS in
   this example.
 - **Storage** — a SQLite file (`SQLite.Connection`), schema created on boot by
   `SQLite.Schema`.
 
-The API and the UI share one model (`todoModel`). It declares what the list may
-be filtered and sorted by — `text` by `contains`, `isDone` by equality, `dueOn` by a range of days, sorted
-by `text`, `dueOn` or `createdAt` — so the API refuses every other query and the screen
-offers exactly those controls. It also names a todo's shape for each operation: `NewTodo` is what creates one — its title alone —
-`TodoEdit` extends it with `isDone` and `dueOn` for an update, and `Todo` extends that with
-the key and `createdAt`, which the table fills in. The table's columns and
-the forms' fields are derived from those shapes, so adding a
-property adds it to the screen — and renaming one is a `telo check` error
-wherever the manifest still names the old one, not a page that silently breaks.
-The create form has one field and the edit form three; `createdAt` is shown in
-the table and in no form, and a request that sends it is refused.
+The API and the UI share one collection (`todos`, a `Crud.Collection` over the
+`todos` table). It declares what the list may be filtered and sorted by —
+`text` by `contains`, `isDone` by equality, `dueOn` by a range of days, sorted
+by `text`, `dueOn` or `createdAt` — so the API refuses every other query and
+the screen offers exactly those controls. It also names a todo's shape for each
+operation: `NewTodo` is what creates one — its title alone — `TodoEdit` extends
+it with `isDone` and `dueOn` for an update, and `Todo`, the collection's
+`model`, extends that with the key and `createdAt`, which the table fills in.
+The listing's columns and the forms' fields are derived from those shapes, so
+adding a property adds it to the screen — and renaming one is a `telo check`
+error wherever the manifest still names the old one, not a page that silently
+breaks. The create form has one field and the edit form three; `createdAt` is
+shown in the listing and in no form, and a request that sends it is refused.
+Every property of `Todo` needs its snake_case column in the table, and
+`telo check` says so when one is missing.
 
 ## Run
 
@@ -42,10 +46,10 @@ become pinned `oci://` refs, like every other example's, once they are.
 
 ```
 Http.Server (:8077)
-├── /api/todos → Crud.Resource ──► SQLite.Connection
+├── /api/todos → Crud.Api ──► Crud.Collection ──► SQLite.Table
 └── /          → UiReact.App
-                 ├── /        Crud.Ui     (filters, table, forms, delete — derived)
-                 └── /status  Ui.Filters  (the same, written out by hand)
+                 ├── /        CrudUi.Admin (filters, listing, forms, delete — derived)
+                 └── /status  Ui.Filters   (the same, written out by hand)
 ```
 
 The UI calls the same-origin API, so there is no CORS and no separate
@@ -53,8 +57,9 @@ deployment.
 
 ## Two pages, two levels
 
-- **`/`** is one declaration: `Crud.Ui` with the model and the path the API is
-  mounted at. Everything on the page comes from the model. Three more keys say
+- **`/`** is one declaration: `CrudUi.Admin` over `todosSource`, a
+  `CrudUi.CollectionSource` naming the collection and the path the API is
+  mounted at. Everything on the page comes from the collection. Three more keys say
   how it behaves, not what it shows:
   - `filters` — the bar shows only the filters you choose from its list,
     summarises the active ones as removable chips, and keeps them under the key
@@ -67,16 +72,19 @@ deployment.
     address (`?_telo.open.todo=<id>`), so an open todo is a link too, and
     leaving it with unsaved input asks first.
 
-  A key left out takes the default of the table or the bar it reaches;
-  `Crud.Ui` adds none of its own.
+  A key left out takes the default of the listing or the bar it reaches;
+  `CrudUi.Admin` adds none of its own.
 - **`/status`** is what that one declaration stands for, written by hand, for
-  what `Crud.Ui` has no key for: a `Ui.Filters` whose bar folds a range of due
-  days behind a toggle, with the text search pinned outside the fold, an `isDone` filter that has no control and is set only by the presets
-  **All** / **Open** / **Done**, and a `Ui.Table` whose two openers say nothing
-  but their form — so each opens as the table decides, in a dialog that closes
-  after a save. Nothing `Crud.Ui` generates is out of reach — when a screen needs
-  something of its own, replace the one declaration with the kinds it expands into
-  (listed in [`Crud.Ui`'s doc](../../modules/crud/docs/ui.md)) and edit those.
+  what `CrudUi.Admin` has no key for. One `Ui.CollectionPresentation` over the
+  same source is named by a `Ui.Filters` whose bar folds a range of due days
+  behind a toggle, with the text search pinned outside the fold and an `isDone`
+  filter that has no control and is set only by the presets **All** / **Open**
+  / **Done**; by a `Ui.Listing` whose two openers say nothing but their form —
+  so each opens as the listing decides, in a dialog that closes after a save;
+  and by both forms. Nothing `CrudUi.Admin` generates is out of reach — when a
+  screen needs something of its own, replace the one declaration with the kinds
+  it expands into (listed in
+  [`CrudUi.Admin`'s doc](../../modules/crud-ui/docs/admin.md)) and edit those.
 
 Every surface, placement and store here is a resource of the `ui` module chosen
 by `kind:` — `Ui.Drawer`, `Ui.Dialog`, `Ui.CollapsiblePlacement`,
@@ -98,8 +106,8 @@ keeps the brand. Every element the UI renders carries a stable
 
 ## Routes
 
-`Crud.Resource` derives all five from `plural: todos` / `singular: todo` and the
-model — the table below is what it generates, not what the manifest lists:
+`Crud.Api` derives all five from `plural: todos` / `singular: todo` and the
+collection — the table below is what it generates, not what the manifest lists:
 
 | Method | Path | Result |
 | --- | --- | --- |
@@ -110,13 +118,14 @@ model — the table below is what it generates, not what the manifest lists:
 | `DELETE` | `/api/todos/{todoId}` | 204, or 404 |
 
 The list takes `limit`, `cursor`, `sort` (`sort=-text`) and the filters the
-model declares (`isDone=true`, `text.contains=milk`, and a date range as
+collection declares (`isDone=true`, `text.contains=milk`, and a date range as
 `dueOn.gte=2026-10-01&dueOn.lte=2026-10-31`, both days included); anything else — `text=milk`,
 `sort=id` — is a 400 naming the parameter. See the
 [list route](../../modules/crud/docs/list-route.md).
 
-The model is enforced on the way in, with no conversion: a `POST` missing
+The collection's shapes are enforced on the way in, with no conversion: a `POST` missing
 `text`, with a property its shape does not declare (`isDone` and `createdAt`
 among them), or with a value of the wrong type is a 400 naming the field,
-before anything touches the database. A `PUT` body holds `text` and `isDone`, and `dueOn` when the todo has a due day. Column names are the snake_case
-form of each property, so `isDone` reads and writes `is_done`.
+before anything touches the database. A `PUT` body holds `text` and `isDone`,
+and `dueOn` when the todo has a due day. Column names are the snake_case form of
+each property, so `isDone` reads and writes `is_done`.

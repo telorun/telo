@@ -226,7 +226,7 @@ function inspection(c: FakeContainer): InspectedSessionContainer {
   return {
     Id: c.id,
     Name: `/${c.name}`,
-    Config: { Image: c.opts.Image, Env: c.opts.Env, Labels: c.opts.Labels },
+    Config: { Image: c.opts.Image, User: c.opts.User, Env: c.opts.Env, Labels: c.opts.Labels },
     State: { Status: c.status, Running: c.status === "running", ExitCode: c.exitCode },
     NetworkSettings: { Networks: network && c.ip ? { [network]: { IPAddress: c.ip } } : {} },
   };

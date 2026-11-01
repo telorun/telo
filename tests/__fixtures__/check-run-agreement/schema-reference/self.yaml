@@ -1,0 +1,27 @@
+# A resource whose `use: schema` slot names itself: a declaration read, so the
+# kernel neither injects nor waits for the target, and it boots.
+kind: Telo.Application
+metadata:
+  name: SchemaReferenceSelf
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Node
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    parent:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata: { name: body }
+    value: ok
+invoke: !ref body
+---
+kind: Self.Node
+metadata: { name: tree }
+parent: !ref tree

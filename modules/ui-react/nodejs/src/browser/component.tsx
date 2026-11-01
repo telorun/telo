@@ -68,26 +68,29 @@ function Mounted({ onMounted }: { onMounted: () => void }) {
   return null;
 }
 
-/**
- * A custom component: loaded once, given exactly its declared properties —
- * those bound to a row resolved against the row it is drawn for — and kept
- * inside an error boundary and a suspense boundary of its own.
- */
-export function ComponentNode({ node }: { node: SpecNode }) {
+/** A component module's export, drawn with these props inside an error boundary and a suspense boundary of its own. */
+export function LoadedComponent({
+  module,
+  name,
+  stylesheets,
+  style,
+  props,
+}: {
+  module: { digest: string; name: string };
+  name: string;
+  stylesheets: { digest: string; name: string }[];
+  style?: string;
+  props: Record<string, unknown>;
+}) {
   const environment = useContext(RendererContext);
-  const row = useContext(RowContext);
   const [state, setState] = useState<"loading" | "idle" | "error">("loading");
-  const url = assetUrl(environment, node.module);
-  const Loaded = componentFor(environment.loadModule, url, node.export);
-  const stylesheets = (node.stylesheets as { digest: string; name: string }[]).map((sheet) => assetUrl(environment, sheet));
-  useEffect(() => stylesheets.forEach(attachStylesheet), [stylesheets.join("\n")]);
-  const props: Record<string, unknown> = {};
-  for (const [name, binding] of Object.entries(node.props as Record<string, Binding>)) {
-    props[name] = resolveBinding(binding, { row });
-  }
+  const url = assetUrl(environment, module);
+  const Loaded = componentFor(environment.loadModule, url, name);
+  const sheets = stylesheets.map((sheet) => assetUrl(environment, sheet));
+  useEffect(() => sheets.forEach(attachStylesheet), [sheets.join("\n")]);
   return (
-    <div data-telo-part="component" data-state={state} data-style={styleAttribute(node.style)}>
-      <Boundary key={`${url}#${node.export}`} onError={() => setState("error")}>
+    <div data-telo-part="component" data-state={state} data-style={style}>
+      <Boundary key={`${url}#${name}`} onError={() => setState("error")}>
         <Suspense fallback={<Loading />}>
           <Loaded {...props} />
           <Mounted onMounted={() => setState("idle")} />
@@ -95,4 +98,17 @@ export function ComponentNode({ node }: { node: SpecNode }) {
       </Boundary>
     </div>
   );
+}
+
+/**
+ * A custom component: loaded once, given exactly its declared properties —
+ * those bound to a row resolved against the row it is drawn for.
+ */
+export function ComponentNode({ node }: { node: SpecNode }) {
+  const row = useContext(RowContext);
+  const props: Record<string, unknown> = {};
+  for (const [name, binding] of Object.entries(node.props as Record<string, Binding>)) {
+    props[name] = resolveBinding(binding, { row });
+  }
+  return <LoadedComponent module={node.module} name={node.export} stylesheets={node.stylesheets} style={styleAttribute(node.style)} props={props} />;
 }

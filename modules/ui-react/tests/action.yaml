@@ -3,7 +3,7 @@ metadata:
   name: UiReactActionTest
   version: 1.0.0
   description: |
-    An application serves an action, a table's row actions and a page list's
+    An application serves an action, a listing's row actions and a page list's
     row actions as the nodes they provide — each row action carrying its
     action's own node, its inputs and its condition — and the routes they name
     take exactly what the renderer sends: the record a jsdom test holds the
@@ -38,7 +38,7 @@ steps:
       actual:
         status: !cel "steps.page.result.status"
         action: !cel "steps.page.result.body.children[0]"
-        table: !cel "steps.page.result.body.children[1].type"
+        listing: !cel "steps.page.result.body.children[1].type"
         rowActions: !cel "steps.page.result.body.children[1].rowActions.map(r, {'action': [r.action.path, r.action.label, r.action.result], 'inputs': r.inputs, 'confirm': r.confirm, 'enabled': r.enabled})"
         months: !cel "steps.page.result.body.children[2]"
       expected:
@@ -95,7 +95,7 @@ steps:
           onSuccess: { refreshes: [/api/todos] }
           concurrency: serial
           clearAnswerOn: [month]
-        table: table
+        listing: listing
         rowActions:
           - action: [ /api/archive, { lang: und, message: [Archive] }, { type: value, value: { root: result, path: [ archived ] }, labels: [], present: { type: boolean } } ]
             inputs:

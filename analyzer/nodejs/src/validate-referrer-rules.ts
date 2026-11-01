@@ -55,7 +55,8 @@ import {
   untaggedConditionFix,
 } from "./rule-condition.js";
 import type { DiagnosticFix } from "./types.js";
-import { resolvedRuleView } from "./validate-resource-rules.js";
+import { ruleIdentity } from "./rule-inheritance.js";
+import { inheritedCodeMessage, resolvedRuleView } from "./validate-resource-rules.js";
 
 export interface ReferrerRuleIssue {
   code: "REFERRER_RULE_INVALID";
@@ -123,6 +124,9 @@ export interface ReferrerRuleDeclarationContext {
   readonly selfDeclares?: (pointer: string) => "ok" | "absent" | "unknown";
   /** The declaring kind's module names — see {@link ReferrerRuleContext}. */
   readonly moduleNames?: ReadonlySet<string>;
+  /** For a merge-form child, each rule identity it inherits (`ruleIdentity`)
+   *  and the kind declaring it. */
+  readonly inherited?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -178,9 +182,19 @@ export function validateReferrerRuleDeclarations(
     } else {
       // One code per referrer filter: two rules of one code over different
       // referrer kinds are one judgement told apart by the kind they judge.
-      const key = `${entry.code}\0${typeof entry.referrer === "string" ? entry.referrer : ""}`;
+      const key = ruleIdentity(REFERRER_RULES_ANNOTATION, entry)!;
       const first = seen.get(key);
-      if (first !== undefined) {
+      const ancestor = context.inherited?.get(key);
+      if (ancestor !== undefined) {
+        issue(
+          `${at}.code`,
+          inheritedCodeMessage(
+            entry.code,
+            ancestor,
+            typeof entry.referrer === "string" ? ` for referrer '${entry.referrer}'` : "",
+          ),
+        );
+      } else if (first !== undefined) {
         issue(
           `${at}.code`,
           `Rule code '${entry.code}' is already used by rule ${first} for the same referrer. A code ` +
@@ -385,6 +399,8 @@ function validateResolveDeclaration(
  */
 export function evaluateReferrerRules(
   manifest: ResourceManifest,
+  /** The kind's author schema, or the rules one declarer of its chain declares
+   *  (`declaredReferrerRules`). */
   definitionSchema: unknown,
   referrers: readonly Referrer[],
   /** Whether a referrer of `kind` satisfies a rule's `referrer:` filter —
@@ -393,7 +409,9 @@ export function evaluateReferrerRules(
   kindMatches: (filter: string, kind: string) => boolean,
   context: ReferrerRuleContext = {},
 ): ReferrerRuleFinding[] {
-  const rules = readReferrerRules(definitionSchema);
+  const rules = Array.isArray(definitionSchema)
+    ? (definitionSchema as readonly ReferrerRule[])
+    : readReferrerRules(definitionSchema);
   if (rules.length === 0) return [];
 
   const view = <T extends ResourceManifest>(declaration: T): T =>

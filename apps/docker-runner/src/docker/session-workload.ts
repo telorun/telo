@@ -27,7 +27,7 @@ import {
   type WorkloadTokens,
   type WorkspaceAccess,
 } from "@telorun/runner-core";
-import { appContainerConfig, type TeloImageSource } from "@telorun/runner-core/container";
+import { appContainerConfig, type SessionUser, type TeloImageSource } from "@telorun/runner-core/container";
 
 import {
   agentContainer,
@@ -40,6 +40,7 @@ import {
   SUPERVISOR_LISTEN_ENV,
   SUPERVISOR_TOKEN_ENV,
   supervisorPortFor,
+  userSpec,
   workspaceContainer,
   WORKSPACE_PORT,
   type SessionContainerArgs,
@@ -53,6 +54,7 @@ import {
   type WaitResult,
 } from "./docker-api.js";
 import { ensureImage } from "./image-pull.js";
+import { giveToSessionUser } from "./session-directory-owner.js";
 import type { DeliveredSupervisor } from "./supervisor-delivery.js";
 
 /** The workspace container is a kernel boot plus a module resolve. */
@@ -77,6 +79,8 @@ export interface DockerWorkloadDeps {
   workspaceImage: string;
   /** The supervisor build every app container created from now on mounts. */
   supervisor: DeliveredSupervisor;
+  /** Who every container runs as, and who owns the session's directory. */
+  sessionUser: SessionUser;
 }
 
 export interface DockerWorkloadSpec {
@@ -155,6 +159,7 @@ export class DockerSessionWorkload implements BackendWorkload {
       bundleVolume: deps.bundleVolume,
       childNetwork: deps.childNetwork,
       publicBaseUrl: deps.publicBaseUrl,
+      user: deps.sessionUser,
     };
   }
 
@@ -178,7 +183,7 @@ export class DockerSessionWorkload implements BackendWorkload {
     callbacks: WorkloadCallbacks,
     found: InspectedSessionContainer[],
   ): Promise<AdoptionOutcome> {
-    const read = readAdoptable(found, spec, deps.childNetwork, deps.workspaceImage);
+    const read = readAdoptable(found, spec, deps.childNetwork, deps.workspaceImage, userSpec(deps.sessionUser));
     if ("stale" in read) return { kind: "stale", reason: read.stale };
     const agent = withAgentToken(spec.agent, read.agentToken);
     const workload = new DockerSessionWorkload(deps, { ...spec, agent }, callbacks);
@@ -408,15 +413,17 @@ export class DockerSessionWorkload implements BackendWorkload {
     this.reportRunning(rt);
   }
 
-  /** The session's directory on the bundle volume: `workspace/` and `agent/`
-   *  (both mounted by `Subpath`, which needs them to exist), the workspace
-   *  application's manifest and its cache. Kept across suspend. */
+  /** The session's directory on the bundle volume: `workspace/`, `agent/` and
+   *  each role's `home/` (all mounted by `Subpath`, which needs them to exist),
+   *  the workspace application's manifest and its cache, all the session
+   *  user's. Kept across suspend. */
   private async prepareStorage(): Promise<void> {
     const root = join(this.deps.bundleRoot, this.spec.sessionId);
-    for (const dir of ["workspace", "agent", "workspace-app", "cache"]) {
+    for (const dir of ["workspace", "agent", "workspace-app", "cache", "home/workspace", "home/apps", "home/agent"]) {
       await mkdir(join(root, dir), { recursive: true });
     }
     await writeFile(join(root, "workspace-app", WORKSPACE_APP_FILENAME), workspaceAppManifest(), "utf8");
+    await giveToSessionUser(root, this.deps.sessionUser);
   }
 
   private async pullAppImages(apps: BackendAppSpec[]): Promise<void> {
@@ -655,6 +662,7 @@ function readAdoptable(
   spec: DockerWorkloadSpec,
   network: string,
   kernelImage: string,
+  user: string,
 ):
   | {
       workspace: InspectedSessionContainer;
@@ -679,6 +687,11 @@ function readAdoptable(
   for (const c of found) {
     if (!c.NetworkSettings?.Networks?.[network]?.IPAddress) {
       return { stale: `container '${containerNameOf(c)}' has no address on network '${network}'` };
+    }
+    // A container from before the session user may have written what one
+    // created now could not; the resume gives the directory to the user first.
+    if (c.Config?.User !== user) {
+      return { stale: `container '${containerNameOf(c)}' does not run as the session user ${user}` };
     }
   }
   const tokens: Record<string, string> = {};

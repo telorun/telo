@@ -2,7 +2,7 @@ import type { ResourceManifest } from "@telorun/sdk";
 import type { AnalysisDiagnostic } from "./types.js";
 import { reportedAtHolder } from "./quoted-place.js";
 
-interface XTeloOrigin {
+export interface XTeloOrigin {
   parentKind: string;
   parentName: string;
   pathFromParent: string;
@@ -10,7 +10,7 @@ interface XTeloOrigin {
   keysFromParent?: (string | number)[];
 }
 
-function readOrigin(manifest: unknown): XTeloOrigin | undefined {
+export function readOrigin(manifest: unknown): XTeloOrigin | undefined {
   if (!manifest || typeof manifest !== "object") return undefined;
   const origin = (manifest as { metadata?: { xTeloOrigin?: XTeloOrigin } }).metadata?.xTeloOrigin;
   if (
@@ -83,7 +83,7 @@ export function rewriteSyntheticOrigins(
   });
 }
 
-type Segment = string | number;
+export type Segment = string | number;
 
 /** Replace every scope-array index that holds an extraction with the position
  *  the extraction was written at, until none is left. */
@@ -153,7 +153,7 @@ function nameOf(value: unknown): string | undefined {
 
 /** Where an extraction was written in its parent: the stamped keys, or the
  *  dotted path for an origin that carries none (a step's dispatch target). */
-function originSegments(origin: XTeloOrigin): Segment[] {
+export function originSegments(origin: XTeloOrigin): Segment[] {
   const keys = origin.keysFromParent;
   return Array.isArray(keys) &&
     keys.every((key) => typeof key === "string" || typeof key === "number")
@@ -170,7 +170,7 @@ function parseSegments(path: string): Segment[] {
   return out;
 }
 
-function formatSegments(segments: Segment[]): string {
+export function formatSegments(segments: Segment[]): string {
   let out = "";
   for (const segment of segments) {
     if (typeof segment === "number") out += `[${segment}]`;

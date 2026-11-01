@@ -16,6 +16,7 @@ pages/.docusaurus
 **/.next
 **/coverage
 **/*.log
-.env
-.env.*
+# Every directory's, not only the root's: a runner's holds the agent's secrets.
+**/.env
+**/.env.*
 .DS_Store

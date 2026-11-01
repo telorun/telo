@@ -67,7 +67,7 @@ import {
   type TextWalkOptions,
   type ValuePath,
 } from "@telorun/analyzer";
-import { declarationOfInstance } from "./instance-declaration.js";
+import { instanceDeclaration } from "./instance-declaration.js";
 
 /** Who wrote a value: the writing module's `lang:` (`null` when it declares none,
  *  absent for the module creating the resource) and whether it was computed. */
@@ -197,17 +197,11 @@ export function textProvenanceOf(manifest: object): TextProvenance | undefined {
   return provenances.get(manifest);
 }
 
-function isLiveInstance(value: unknown): value is object {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype !== Object.prototype && prototype !== null;
-}
-
 /**
  * The provenance of what a bare `self.<path>` reads, step by step as the
- * forwarding controller reads it: past a live instance, a member the instance
- * holds itself is its own computation, and one it does not is read off its
- * declaration, whose provenance creation recorded.
+ * forwarding controller reads it: past a live instance, off its outermost
+ * declaration, whose provenance creation recorded — never off a member of the
+ * instance.
  */
 export function provenanceAlong(
   value: unknown,
@@ -217,11 +211,10 @@ export function provenanceAlong(
   let current: unknown = value;
   let at = provenance;
   for (const key of keys) {
-    if (isLiveInstance(current)) {
-      const own = (current as Record<string, unknown>)[key];
-      const declaration = declarationOfInstance(current);
-      const declared = declaration ? textProvenanceOf(declaration) : undefined;
-      if (own !== undefined || !declaration || !declared) return TextProvenance.of({ computed: true });
+    const declaration = instanceDeclaration(current);
+    if (declaration) {
+      const declared = textProvenanceOf(declaration);
+      if (!declared) return TextProvenance.of({ computed: true });
       at = declared;
       current = declaration;
     }

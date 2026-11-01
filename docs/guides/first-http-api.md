@@ -25,7 +25,7 @@ imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
   Run: oci://ghcr.io/telorun/run@<version>
 targets:
-  - !ref Server
+  - !ref server
 ports:
   http:
     env: PORT
@@ -33,21 +33,21 @@ ports:
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
 listen:
   port: !cel "ports.http"
 mounts:
   - path: /v1
-    mount: !ref Api
+    mount: !ref api
 ---
 kind: Http.Api
 metadata:
-  name: Api
+  name: api
 routes:
   - request:
       path: /greet
       method: GET
-    handler: !ref Greet
+    handler: !ref greet
     returns:
       - status: 200
         content:
@@ -57,7 +57,7 @@ routes:
 ---
 kind: Run.Value
 metadata:
-  name: Greet
+  name: greet
 value:
   message: Hello!
 ```
@@ -77,7 +77,7 @@ That is a complete application. Read it top to bottom:
   environment variable with a default, and resolves into the `ports.http` CEL
   scope. `port: !cel "ports.http"` reads it: one declaration, one source of
   truth, and a runner knows the exposed port without starting the app.
-- **`targets:`** is the boot sequence — `!ref Server` says "start this".
+- **`targets:`** is the boot sequence — `!ref server` says "start this".
 - **A server does not contain routes.** It **mounts** routers, each under a path
   prefix. That is what makes `Http.Api` reusable and independently testable.
 - **A route is three things**: a request matcher, a `handler:` reference, and a
@@ -88,6 +88,10 @@ That is a complete application. Read it top to bottom:
 
 The server stays up after it starts — a `Telo.Service` holds the process open
 until you stop it. Ctrl-C tears everything down in order.
+
+The server logs as it goes. A log record names its emitter by the kind's own
+module name (`HttpServer.Server`), not by the alias you imported it under
+(`Http.Server`); see [Logging basics](/learn/logging-basics).
 
 ## 2. Read something from the request
 
@@ -104,7 +108,7 @@ routes:
           properties:
             name: { type: string }
           required: [name]
-    handler: !ref Greet
+    handler: !ref greet
     inputs:
       name: !cel "request.query.name"
     returns:
@@ -127,7 +131,7 @@ Now give the handler a contract and use the input:
 ```yaml
 kind: Run.Value
 metadata:
-  name: Greet
+  name: greet
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -173,8 +177,10 @@ value:
   message: !cel "variables.greeting + ', ' + inputs.name + '!'"
 ```
 
-Values resolve at load. A required variable that is missing fails the whole
-load with a message naming it — not on the first request that needed it. Use
+Values resolve at load. A required variable with no value is never discovered on
+the first request that needed it: run at a terminal, `telo` asks for it; with
+`--no-input`, or under a runner, the load is refused with a message naming the
+missing inputs. Use
 `secrets:` instead of `variables:` for anything sensitive: same shape, but the
 values are redacted from logs automatically.
 
@@ -189,7 +195,7 @@ imports:
   Http: oci://ghcr.io/telorun/http-server@<version>
   Run: oci://ghcr.io/telorun/run@<version>
 targets:
-  - !ref Server
+  - !ref server
 ports:
   http:
     env: PORT
@@ -202,7 +208,7 @@ variables:
 ---
 kind: Http.Server
 metadata:
-  name: Server
+  name: server
 listen:
   port: !cel "ports.http"
 openapi:
@@ -211,11 +217,13 @@ openapi:
     version: 1.0.0
 mounts:
   - path: /v1
-    mount: !ref Api
+    mount: !ref api
+  - path: /docs
+    mount: { kind: Http.Reference }
 ---
 kind: Http.Api
 metadata:
-  name: Api
+  name: api
 routes:
   - request:
       path: /greet
@@ -226,7 +234,7 @@ routes:
           properties:
             name: { type: string }
           required: [name]
-    handler: !ref Greet
+    handler: !ref greet
     inputs:
       name: !cel "request.query.name"
     returns:
@@ -244,7 +252,7 @@ routes:
 ---
 kind: Run.Value
 metadata:
-  name: Greet
+  name: greet
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -276,7 +284,11 @@ curl -i 'http://localhost:8080/v1/greet'
 
 The `openapi:` block means the server also describes itself — the generated
 OpenAPI document covers every route, matcher and response schema you declared,
-because they are declarations rather than code.
+because they are declarations rather than code. The `Http.Reference` mount under
+`/docs` is what serves it: open `http://localhost:8080/docs/` for the browsable
+reference, or fetch the document itself from `/docs/openapi.json`
+(`/docs/openapi.yaml` for YAML). Without that mount the document is collected
+but nothing serves it.
 
 ## What to do next
 

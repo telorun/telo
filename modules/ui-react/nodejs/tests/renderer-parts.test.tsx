@@ -35,16 +35,21 @@ describe("the styling contract", () => {
     expect(words).toEqual(englishWords);
   });
 
-  it("is emitted whole by the scenes, and nothing outside it is", async () => {
+  // One test per scene, so each is bounded on its own rather than all of them by one timeout.
+  describe("is emitted whole by the scenes, and nothing outside it is", () => {
     const seen = new Set<string>();
     const collect = () => {
       for (const element of document.querySelectorAll("[data-telo-part]")) seen.add(element.getAttribute("data-telo-part") as string);
     };
     for (const scene of scenes) {
-      expect(await runScene({ window, scene, words, mount: renderer, afterStep: collect }), scene.name).toEqual([]);
+      it(`scene '${scene.name}'`, async () => {
+        expect(await runScene({ window, scene, words, mount: renderer, afterStep: collect })).toEqual([]);
+      });
     }
-    expect([...seen].filter((part) => !listed.includes(part))).toEqual([]);
-    expect(listed.filter((part) => !seen.has(part))).toEqual([]);
+    it("every part listed, and only those", () => {
+      expect([...seen].filter((part) => !listed.includes(part))).toEqual([]);
+      expect(listed.filter((part) => !seen.has(part))).toEqual([]);
+    });
   });
 
   it("lists exactly the states the renderer and its built-in controls set", async () => {

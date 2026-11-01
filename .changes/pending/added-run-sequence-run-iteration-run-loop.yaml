@@ -1,0 +1,5 @@
+modules:
+  modules/run: Added
+body: Run.Sequence, Run.Iteration, Run.Loop and Run.Projection tell each step's dispatch
+  where that step's inputs are written in the resource, so a failure inside them can be
+  traced to its place in the manifest.

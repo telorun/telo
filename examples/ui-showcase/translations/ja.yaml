@@ -471,9 +471,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: "生成された管理画面" }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "API の提供元であるタスクモデルに対する 1 つの宣言です。フィルターバー、並べ替え可能でページ分割されたテーブル、タスクの追加フォームと変更フォーム、そしてすべての行の確認付き削除です。カラム、フィールド、フィルターはすべてモデルから導出されるため、画面は API が受け付けるものをそのまま提供します。" }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "API の提供元であるタスクモデルに対する 1 つの宣言です。フィルターバー、並べ替え可能でページ分割されたテーブル、タスクの追加フォームと変更フォーム、そしてすべての行の確認付き削除です。カラム、フィールド、フィルターはすべてモデルから導出されるため、画面は API が受け付けるものをそのまま提供します。" }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "バーはテーブルの横の終了側の端に置かれ、選んだフィルターだけを、それぞれコントロールを開くチップとして表示します。選択内容はこのブラウザーのキー aside に保持されます — これはフィルターのページでテーブルの横にあるバーのキーと同じなので、どちらかのページで選んだフィルターは両方で選択されます。" }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "新しいタスクは終了側の端からのドロワーで開き、保存後も空になって開いたままなので次のタスクを続けて作成できます。タスクの変更はリストの横のパネルで行い、パネルはアドレスの一部になります。未保存の入力があるまま離れようとすると、先に確認します。" }
+
+  # Related records.
+  - { text: "Related records", translation: "関連レコード" }
+  - { text: "Posts and their authors", translation: "投稿とその著者" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "各投稿は著者をキーで示します。著者列は代わりに著者の名前を表示し、ページ上のすべての著者について1回のリクエストで読み込みます。バーの著者フィルターは各著者を名前で提示します。作成フォームと編集フォームは、名前で検索できる著者の一覧から著者を選びます。" }
+  - { text: "Only the authors with posts", translation: "投稿のある著者だけ" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "これらのフィルターは、ほかのフィルターが残す投稿の中にある著者とステータスだけを、それぞれの投稿数とともに提示します。投稿はカードとして描かれ、ブレークポイント未満では一覧として描かれ、末尾に達するとさらに読み込みます。" }
+  - { text: "On a board by status", translation: "ステータス別のボード" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "ステータスごとに1列で、各列は個別に読み込まれ数えられます。ステータスを変えるには、カードを別の列へドラッグするか、メニューから移動します。ページ上の投稿の一覧はすべて読み込み直されます。" }
+  - { text: "On a calendar", translation: "カレンダー上" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "投稿はそれぞれの公開日に、1か月ずつ表示されます。表示中の月は、その月の日付を持つすべての投稿を読み込みます。日付のない投稿はカレンダーに載りません。" }
+  - { text: "The authors", translation: "著者" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "著者自身の画面で、そのコレクションから生成されます。投稿の著者フィルターと選択欄が読むのと同じアドレスを読むので、ここで追加した著者はすぐにそこでも提示されます。" }
+  - { text: "Reporting lines as a tree", translation: "ツリーで見る報告系統" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "各人は自分の上司を示します。人と人自身の関係です。ツリーはまず誰にも報告しない人を読み、ある人を開くとその部下を読み込みます。フォームは同じ人たちの中から上司を選びます。" }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "著者" }
+  - { text: "Draft", translation: "下書き" }
+  - { text: "Published", translation: "公開済み" }
+  - { text: "Published on", translation: "公開日" }
+  - { text: "Reports to", translation: "上司" }
+  - { text: "Post", translation: "投稿" }
 
   # Themes.
   - { text: Four mounts of one design, translation: "1 つのデザインの 4 つのマウント" }
@@ -584,3 +606,8 @@ texts:
   - { text: "Must have at least {$limit} items", translation: "{$limit} 個以上の項目が必要です" }
   - { text: "Must have at most {$limit} items", translation: "項目は {$limit} 個以下にしてください" }
   - { text: Must not repeat an item, translation: "項目を重複させることはできません" }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "さらに読み込む" }
+  - { text: "Move to", translation: "移動先" }
+  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
+  - { text: "not set", translation: "未設定" }

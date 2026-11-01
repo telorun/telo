@@ -1,0 +1,39 @@
+# The failing step belongs to a template body's entry, which no file declares;
+# a module resource of the same kind and name holds the same steps.
+kind: Telo.Application
+metadata: { name: FailureTemplateBody }
+imports:
+  Assert: ../../../../../modules/assert
+  Run: ../../../../../modules/run
+targets: [!ref wrapper]
+---
+kind: Run.Sequence
+metadata: { name: body }
+steps:
+  - name: inner
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - name: matches
+          invoke: { kind: Assert.Equals }
+          inputs: { actual: 2, expected: 3 }
+---
+kind: Telo.Definition
+metadata: { name: Wrapper }
+capability: Telo.Runnable
+schema: { type: object }
+resources:
+  - kind: Run.Sequence
+    metadata: { name: body }
+    steps:
+      - name: inner
+        invoke:
+          kind: Run.Sequence
+          steps:
+            - name: matches
+              invoke: { kind: Assert.Equals }
+              inputs: { actual: 2, expected: 3 }
+run: !ref body
+---
+kind: Self.Wrapper
+metadata: { name: wrapper }

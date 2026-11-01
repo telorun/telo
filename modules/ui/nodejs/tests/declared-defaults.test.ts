@@ -8,7 +8,10 @@ import { DateRangeFieldController, InputFieldController } from "../src/field-con
 import * as FiltersController from "../src/filters-controller.js";
 import * as CollectionOptionsController from "../src/option-source.js";
 import * as surfaces from "../src/surface-controllers.js";
-import * as TableController from "../src/table-controller.js";
+import * as CollectionPresentationController from "../src/collection-presentation.js";
+import * as ListingController from "../src/listing-controller.js";
+import * as TableLayoutController from "../src/table-layout.js";
+import { BoardLayoutController, CalendarLayoutController, CardLayoutController, TimelineLayoutController } from "../src/listing-layouts.js";
 
 type Schema = Record<string, any>;
 
@@ -36,6 +39,17 @@ const resource = (config: Schema = {}) => ({ kind: "Ui.Fixture", metadata: { nam
 const provided = async (controller: { create: (...args: any[]) => Promise<any> }, config?: Schema): Promise<Schema> =>
   (await controller.create(resource(config), ctx)).provide();
 
+const facts = (filters: Schema[] = [], model: Schema = { type: "object", properties: {} }) => ({
+  model,
+  key: "id",
+  query: { filters, sort: [], facets: [] },
+  relations: {},
+});
+const source = (basePath: string, collection: Schema = facts()) => ({ basePath, collection: () => collection });
+const presentation = (basePath: string, collection: Schema = facts()) => ({
+  presentation: () => ({ basePath, collection, relations: {} }),
+});
+
 describe("a default the manifest declares", () => {
   it.each(["Dialog", "Drawer", "Popover", "InlineSurface", "Panel"] as const)("is what %s provides for a member left out", async (kind) => {
     const { type, ...members } = await provided(surfaces[`${kind}Controller`]);
@@ -56,9 +70,11 @@ describe("a default the manifest declares", () => {
   it("is what a filter bar carries for a policy member, a field member and a state member left out", async () => {
     const bar = (policy?: Schema) =>
       provided(FiltersController, {
-        model: { type: "object", properties: { text: { type: "string" } } },
-        collection: { query: { filters: [{ property: "text", operator: "contains" }], sort: [] } },
-        fields: [{ property: "text", operator: "contains", pinned: undefined, control: undefined, default: undefined }],
+        presentation: presentation(
+          "/api/todos",
+          facts([{ property: "text", operator: "contains" }], { type: "object", properties: { text: { type: "string" } } }),
+        ),
+        fields: [{ property: "text", operator: "contains", pinned: undefined, control: undefined, values: undefined, default: undefined }],
         content: { type: "text", text: "Todos" },
         policy,
       });
@@ -70,8 +86,8 @@ describe("a default the manifest declares", () => {
       const { type, ...placement } = node.placement;
       expect([type, placement]).toEqual(["above", defaultsOf(declared("AbovePlacement"))]);
       expect(node.state).toEqual({ address: false, store: { type: "memory" }, fields: ["text"] });
-      const { pinned, control } = node.fields[0];
-      expect({ pinned, control }).toEqual(defaultsOf(declared("Filters").properties.fields.items));
+      const { pinned, control, values } = node.fields[0];
+      expect({ pinned, control, values }).toEqual(defaultsOf(declared("Filters").properties.fields.items));
     }
     const store = { provide: async () => ({ type: "local" }) };
     const { node } = await bar({ state: { key: "todos", address: undefined, store } });
@@ -96,19 +112,75 @@ describe("a default the manifest declares", () => {
       model: { type: "object", properties: { id: { type: "string" } } },
       value: { root: "row", path: ["id"] },
       label: { root: "row", path: ["id"] },
-      collection: { query: { filters: [{ property: "id", operator: "in" }], sort: [] } },
-      source: { basePath: "/api/people" },
+      source: source("/api/people", facts([{ property: "id", operator: "in" }])),
       pageSize: undefined,
     });
     expect({ pageSize: spec.pageSize }).toEqual(defaultsOf(declared("CollectionOptions")));
   });
 
-  it("is what a table's opener carries when it names only its form", async () => {
-    const form = { provide: async () => ({ node: { type: "form" }, assets: [] }) };
-    const { node } = await provided(TableController, {
+  it("is what a presentation's relation sends for a page size left out", async () => {
+    const authors = facts([{ property: "id", operator: "in" }]);
+    const posts = { ...facts(), relations: { authorId: {} } };
+    const instance = await CollectionPresentationController.create(
+      resource({
+        source: source("/api/posts", posts),
+        relations: { authorId: { source: source("/api/authors", authors), label: { root: "row", path: ["name"] }, pageSize: undefined } },
+      }),
+      ctx,
+    );
+    const { relations } = (instance as unknown as { presentation(): Schema }).presentation();
+    expect({ pageSize: relations.authorId.pageSize }).toEqual(defaultsOf(declared("Relations").additionalProperties));
+  });
+
+  it("is what a listing carries for a member left out", async () => {
+    const { node } = await provided(ListingController, {
+      presentation: presentation("/api/todos"),
       model: { type: "object", properties: {} },
-      collection: { query: { filters: [], sort: [] } },
-      source: { basePath: "/api/todos" },
+      pageSize: undefined,
+      paging: undefined,
+      delete: undefined,
+    });
+    const { pageSize, paging, delete: remove } = defaultsOf(declared("Listing"));
+    expect({ pageSize: node.pageSize, paging: node.paging, delete: node.delete }).toEqual({ pageSize, paging, delete: remove });
+  });
+
+  it("is a table layout's with nothing listed, for a listing that names no layout", async () => {
+    const model = { type: "object", properties: { id: { type: "string" }, title: { type: "string" } } };
+    const listing = (layout?: unknown) => provided(ListingController, { presentation: presentation("/api/todos"), model, layout });
+    const table = await TableLayoutController.create(resource({ columns: undefined }), ctx);
+    expect(JSON.stringify((await listing()).node)).toBe(JSON.stringify((await listing(table)).node));
+  });
+
+  it("is what a layout spec carries for a member left out", async () => {
+    const model = {
+      type: "object",
+      properties: { id: { type: "string" }, status: { enum: ["open", "done"] }, on: { type: "string", format: "date" } },
+    };
+    const collection = facts(
+      [
+        { property: "status", operator: "eq" },
+        { property: "on", operator: "gte" },
+        { property: "on", operator: "lte" },
+      ],
+      model,
+    );
+    const spec = async (controller: { create: (...args: any[]) => Promise<any> }, config: Schema) =>
+      (await (await controller.create(resource(config), ctx)).invoke({ model, collection, relations: {} })).spec;
+    const cards = await spec(CardLayoutController, { size: undefined });
+    const calendar = await spec(CalendarLayoutController, { span: { start: "on", end: undefined }, period: undefined });
+    const timeline = await spec(TimelineLayoutController, { span: { start: "on" }, groups: undefined, scale: undefined });
+    const board = await spec(BoardLayoutController, { groups: { property: "status", values: undefined } });
+    expect({ size: cards.size }).toEqual(defaultsOf(declared("CardLayout")));
+    expect({ period: calendar.period }).toEqual(defaultsOf(declared("CalendarLayout")));
+    expect({ scale: timeline.scale }).toEqual(defaultsOf(declared("TimelineLayout")));
+    expect({ values: board.reads.groups.values }).toEqual(defaultsOf(declared("Grouping")));
+  });
+
+  it("is what a listing's opener carries when it names only its form", async () => {
+    const form = { provide: async () => ({ node: { type: "form" }, assets: [] }) };
+    const { node } = await provided(ListingController, {
+      model: { type: "object", properties: {} },
+      presentation: presentation("/api/todos"),
       create: { form, surface: undefined, afterSubmit: undefined, unsaved: undefined },
       edit: { form },
     });

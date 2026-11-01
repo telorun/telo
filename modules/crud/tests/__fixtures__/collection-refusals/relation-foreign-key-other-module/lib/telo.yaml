@@ -1,0 +1,45 @@
+# The relation names one module's authors; the foreign key on its column, another
+# module's table resource of the same name.
+kind: Telo.Library
+metadata:
+  name: CrudCollectionRelationForeignKeyOtherModule
+  version: 1.0.0
+  description: Test fixture exporting a collection refused as CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH across modules.
+imports:
+  Crud: ../../../../../
+  SQLite: ../../../../../../sqlite
+  Authors: ../authors
+  Other: ../other
+exports:
+  resources: [collection]
+---
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties: { title: { type: string }, authorId: { type: integer } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+extends: PostDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: SQLite.Table
+metadata: { name: postsTable }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true }
+  title: { type: text }
+  author_id: { type: integer }
+foreignKeys:
+  author: { columns: [author_id], references: { table: !ref Other.authorsTable, columns: [id] } }
+---
+kind: Crud.Collection
+metadata: { name: collection }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query: { filters: [], sort: [] }
+relations: { authorId: { collection: !ref Authors.authors } }

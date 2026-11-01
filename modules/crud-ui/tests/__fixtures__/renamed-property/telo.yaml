@@ -1,0 +1,82 @@
+# An application whose model property `text` was renamed `title`. The generated
+# screen names no property, so it follows the rename by itself; the three places
+# the application still spells the old name — a column of the admin's own
+# layout, a hand-written listing's column and a filter field — are what must be
+# reported, each once.
+kind: Telo.Application
+metadata:
+  name: CrudUiRenamedPropertyApp
+  version: 1.0.0
+imports:
+  CrudUi: ../../../
+  Crud: ../../../../crud
+  SQLite: ../../../../sqlite
+  Ui: ../../../../ui
+---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  is_done: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    isDone: { type: boolean }
+---
+# What is read back: everything a client writes, plus the key.
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref TaskRecord
+table: !ref tasksTable
+schemas: { list: !ref TaskRecord, create: !ref Task, update: !ref Task }
+query: { filters: [{ property: title, operator: contains }], sort: [] }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+kind: CrudUi.Admin
+metadata: { name: admin }
+source: !ref tasksSource
+---
+kind: CrudUi.Admin
+metadata: { name: laidOut }
+source: !ref tasksSource
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
+---
+kind: Ui.Listing
+metadata: { name: summary }
+presentation: { kind: Ui.CollectionPresentation, source: !ref tasksSource }
+model: !ref Task
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
+---
+kind: Ui.Filters
+metadata: { name: search }
+presentation: { kind: Ui.CollectionPresentation, source: !ref tasksSource }
+fields:
+  - { property: text, operator: contains }
+content: { type: composite, ref: !ref admin }

@@ -17,6 +17,7 @@ imports:
   Http: ../../../../http-server
   I18n: ../../../../i18n
   Ui: ../../../../ui
+  DataModel: ../../../../data-model
   UiReact: ../../../
 ports:
   http: { env: PORT, default: 8130 }
@@ -73,7 +74,12 @@ kind: Ui.Form
 metadata:
   name: invoiceForm
 model: !ref Invoice
-source: { basePath: /api/invoices }
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/invoices
+    collection: { kind: DataModel.Collection, model: !ref Invoice, key: number, query: { filters: [], sort: [] } }
 ---
 kind: Ui.View
 metadata:

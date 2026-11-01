@@ -4,7 +4,7 @@
   "spec": "7. Resolution & schema",
   "request": {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The manifest a name was declared with, resolved in the context that owns this resource. Readable whether or not the target has been constructed, which is what lets a slot wanting a fact about its target avoid an ordering edge.",
+    "description": "The manifest a name was declared with, resolved in the context that owns this resource — or, with `holder`, in the context that declared an earlier answer, where a reference that answer holds was written. Readable whether or not the target has been constructed, which is what lets a slot wanting a fact about its target avoid an ordering edge.",
     "type": "object",
     "properties": {
       "instance": {
@@ -18,6 +18,11 @@
       "alias": {
         "type": "string",
         "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+      },
+      "holder": {
+        "description": "The `declaration` handle of an earlier answer the name was read from.",
+        "type": "string",
+        "minLength": 1
       }
     },
     "required": [
@@ -33,11 +38,18 @@
     "properties": {
       "manifest": {
         "description": "The declared resource document."
+      },
+      "declaration": {
+        "description": "A handle naming this declaration, which a later request passes as `holder`.",
+        "type": "string",
+        "minLength": 1
       }
     },
     "additionalProperties": false
   },
-  "errors": [],
+  "errors": [
+    "ERR_REF_UNRESOLVED"
+  ],
   "synchronous": true,
   "reentrant": false
 }

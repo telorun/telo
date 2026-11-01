@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { SqlDialect } from "@telorun/sql";
-import { planQuery } from "../src/collection-query.js";
-import { countStatement, insertStatement, pageStatement, replaceStatement } from "../src/collection-statement.js";
+import { planFacet, planQuery } from "../src/collection-query.js";
+import {
+  countStatement,
+  facetStatement,
+  insertStatement,
+  pageStatement,
+  replaceStatement,
+} from "../src/collection-statement.js";
 import { modelProperties } from "../src/model-properties.js";
-import { encodeCursor } from "../src/page-cursor.js";
+import { encodeCursor, encodeFacetCursor } from "../src/page-cursor.js";
 
 const quote = (name: string) => `"${name}"`;
 
@@ -94,6 +100,52 @@ describe("the statements of one list request", () => {
     expect(pageStatement(qmark, "tasks", properties.values(), amongNulls).sql).toContain(
       `WHERE ("due_on" IS NULL AND "id" > ?) ORDER BY ("due_on" IS NULL) ASC, "due_on" ASC, "id" ASC`,
     );
+  });
+});
+
+describe("an absent filter", () => {
+  const optional = { ...accepted, filters: [{ property: "dueOn", operator: "absent" }] };
+  const where = (value: string) =>
+    countStatement(qmark, "tasks", planQuery(properties, optional, { filters: [{ property: "dueOn", operator: "absent", value }] }));
+
+  it("selects the rows holding no value, binding nothing", () => {
+    expect(where("true")).toEqual({ sql: `SELECT COUNT(*) AS "total" FROM tasks WHERE "due_on" IS NULL`, params: [] });
+  });
+
+  it("selects the rows holding one when false", () => {
+    expect(where("false").sql).toBe(`SELECT COUNT(*) AS "total" FROM tasks WHERE "due_on" IS NOT NULL`);
+  });
+});
+
+describe("the statement of one facet page", () => {
+  const faceted = { ...accepted, facets: [{ property: "status" }] };
+
+  it("counts each present value under the filters, in value order, one past the page", () => {
+    const facet = planFacet(properties, faceted, {
+      facet: "status",
+      filters: [{ property: "text", operator: "contains", value: "plan" }],
+      limit: 5,
+    });
+    expect(facetStatement(qmark, "tasks", facet)).toEqual({
+      sql:
+        `SELECT "status" AS "value", COUNT(*) AS "count" FROM tasks` +
+        ` WHERE LOWER("text") LIKE LOWER(?) ESCAPE '!' AND "status" IS NOT NULL` +
+        ` GROUP BY "status" ORDER BY "status" ASC LIMIT ?`,
+      params: ["%plan%", 6],
+    });
+  });
+
+  it("continues after the cursor's value, numbering placeholders where the dialect does", () => {
+    const facet = planFacet(properties, faceted, {
+      facet: "status",
+      cursor: encodeFacetCursor({ property: "status", value: "done" }),
+    });
+    expect(facetStatement(numbered, "tasks", facet)).toEqual({
+      sql:
+        `SELECT "status" AS "value", COUNT(*) AS "count" FROM tasks WHERE "status" IS NOT NULL AND "status" > $1` +
+        ` GROUP BY "status" ORDER BY "status" ASC LIMIT $2`,
+      params: ["done", 26],
+    });
   });
 });
 

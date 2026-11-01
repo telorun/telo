@@ -74,7 +74,7 @@ export function ListView({
             ))}
             {items.length === 0 && (
               <tr>
-                <td data-telo-part="table-empty" colSpan={Math.max(shown.length + (offered ? 1 : 0), 1)}>
+                <td data-telo-part="list-empty" colSpan={Math.max(shown.length + (offered ? 1 : 0), 1)}>
                   {say("noRows")}
                 </td>
               </tr>

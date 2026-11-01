@@ -37,6 +37,7 @@ import { loadLibraryTarget, resolveLibraryScope } from "./library-scope.js";
 import { isDefinitionRegistered } from "../resource-definition/registered-definitions.js";
 import { isNeedFulfilment, needFulfilment, type NeedFulfilment } from "../../need-fulfilment.js";
 import { refuseUnusableDirectories } from "../../durable-directories.js";
+import { markWrittenDeclaration } from "../../failure-location.js";
 import { environmentNeed } from "./environment-needs.js";
 import { expandForImport } from "../../running-configuration.js";
 import {
@@ -432,6 +433,7 @@ export async function create(
     ) {
       continue;
     }
+    markWrittenDeclaration(manifest);
     child.registerManifest(manifest);
   }
 

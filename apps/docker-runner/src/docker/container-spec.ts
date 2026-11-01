@@ -5,6 +5,7 @@ import {
   type ReservedPort,
   type RunnerAgent,
 } from "@telorun/runner-core";
+import type { SessionUser } from "@telorun/runner-core/container";
 
 import type { CreateContainerOpts, PortBindings, VolumeMount } from "./docker-api.js";
 
@@ -34,6 +35,17 @@ export const SUPERVISOR_PATH = `${SUPERVISOR_DIR}/supervisor`;
 
 export const SUPERVISOR_LISTEN_ENV = "TELO_SUPERVISOR_LISTEN";
 export const SUPERVISOR_TOKEN_ENV = "TELO_SUPERVISOR_TOKEN";
+
+/** Where every container finds a writable `HOME` (its role's directory under
+ *  the session's `home/`), as on kubernetes: a session user the image's passwd
+ *  does not list would otherwise get `HOME=/`. */
+export const HOME_DIR = "/home/telo";
+export type HomeOwner = "workspace" | "apps" | "agent";
+
+/** The Engine API's `User` for a session user. */
+export function userSpec(user: SessionUser): string {
+  return `${user.uid}:${user.gid}`;
+}
 
 export const WORKSPACE_PORT = 8099;
 const INSPECT_PORT_BASE = 9230;
@@ -67,7 +79,7 @@ export function appRole(app: string): string {
 }
 
 /** The session's directory on the bundle volume, relative to its root. */
-export function sessionSubpath(sessionId: string, entry: "workspace" | "agent"): string {
+export function sessionSubpath(sessionId: string, entry: "workspace" | "agent" | `home/${HomeOwner}`): string {
   return `${sessionId}/${entry}`;
 }
 
@@ -79,6 +91,8 @@ export interface SessionContainerArgs {
   /** Set: a proxy fronts sessions by name and nothing is published on the
    *  host. Unset: declared ports are published to the same host port. */
   publicBaseUrl?: string;
+  /** Who every container runs as, whatever the image's own `USER`. */
+  user: SessionUser;
 }
 
 function labels(sessionId: string, role: string, extra: Record<string, string> = {}): Record<string, string> {
@@ -98,6 +112,19 @@ function workspaceMount(args: SessionContainerArgs): VolumeMount {
   };
 }
 
+function homeMount(args: SessionContainerArgs, owner: HomeOwner): VolumeMount {
+  return {
+    Type: "volume",
+    Source: args.bundleVolume,
+    Target: HOME_DIR,
+    VolumeOptions: { Subpath: sessionSubpath(args.sessionId, `home/${owner}`) },
+  };
+}
+
+function homeEnv(): string[] {
+  return [`HOME=${HOME_DIR}`, `npm_config_cache=${HOME_DIR}/.npm`];
+}
+
 function aliased(args: SessionContainerArgs, alias: string): Pick<CreateContainerOpts, "NetworkingConfig"> {
   return { NetworkingConfig: { EndpointsConfig: { [args.childNetwork]: { Aliases: [alias] } } } };
 }
@@ -112,12 +139,23 @@ export function workspaceContainer(args: SessionContainerArgs, image: string): C
   return {
     name: containerName(args.sessionId, "workspace"),
     Image: image,
+    User: userSpec(args.user),
     Cmd: ["telo", "run", `${root}/workspace-app/${WORKSPACE_APP_FILENAME}`],
     WorkingDir: `${root}/workspace`,
-    Env: [`PORT=${WORKSPACE_PORT}`, `WORKSPACE_DIR=${root}/workspace`, `TELO_CACHE_DIR=${root}/cache/workspace`],
+    Env: [
+      `PORT=${WORKSPACE_PORT}`,
+      `WORKSPACE_DIR=${root}/workspace`,
+      `TELO_CACHE_DIR=${root}/cache/workspace`,
+      ...homeEnv(),
+    ],
     Labels: labels(args.sessionId, "workspace"),
     ...idle(),
-    HostConfig: { Binds: [`${args.bundleVolume}:${SRV}`], AutoRemove: false, NetworkMode: args.childNetwork },
+    HostConfig: {
+      Binds: [`${args.bundleVolume}:${SRV}`],
+      AutoRemove: false,
+      NetworkMode: args.childNetwork,
+      Mounts: [homeMount(args, "workspace")],
+    },
   };
 }
 
@@ -151,9 +189,14 @@ export function appContainer(args: SessionContainerArgs, a: AppContainerArgs): C
   return {
     name: containerName(args.sessionId, role),
     Image: a.image,
+    User: userSpec(args.user),
     Entrypoint: [SUPERVISOR_PATH],
     WorkingDir: WORKSPACE_MOUNT,
-    Env: [`${SUPERVISOR_LISTEN_ENV}=0.0.0.0:${supervisorPortFor(a.index)}`, `${SUPERVISOR_TOKEN_ENV}=${a.token}`],
+    Env: [
+      `${SUPERVISOR_LISTEN_ENV}=0.0.0.0:${supervisorPortFor(a.index)}`,
+      `${SUPERVISOR_TOKEN_ENV}=${a.token}`,
+      ...homeEnv(),
+    ],
     Labels: labels(args.sessionId, "app", { [APP_LABEL]: a.app.name, [SUPERVISOR_BUILD_LABEL]: a.supervisor.build }),
     ...idle(),
     ...(a.app.ports.length > 0 ? { ExposedPorts: exposed } : {}),
@@ -172,6 +215,7 @@ export function appContainer(args: SessionContainerArgs, a: AppContainerArgs): C
           ReadOnly: true,
           VolumeOptions: { Subpath: a.supervisor.subpath },
         },
+        homeMount(args, "apps"),
       ],
     },
   };
@@ -199,6 +243,7 @@ export function agentContainer(
   return {
     name: containerName(args.sessionId, "agent"),
     Image: agentImage(agent, kernelImage),
+    User: userSpec(args.user),
     ...(module !== undefined
       ? {
           Cmd: ["telo", "run", "--no-input", hostPath ? AGENT_MODULE_MOUNT : module],
@@ -210,6 +255,7 @@ export function agentContainer(
       `WORKSPACE_DIR=${WORKSPACE_MOUNT}`,
       `TELO_HOST_STATE_DIR=${AGENT_STATE_DIR}`,
       ...(module !== undefined ? [`TELO_CACHE_DIR=${AGENT_STATE_DIR}/telo-cache`] : []),
+      ...homeEnv(),
       "CLICOLOR_FORCE=1",
     ],
     Labels: labels(args.sessionId, "agent"),
@@ -229,6 +275,7 @@ export function agentContainer(
           Target: AGENT_STATE_DIR,
           VolumeOptions: { Subpath: sessionSubpath(args.sessionId, "agent") },
         },
+        homeMount(args, "agent"),
       ],
     },
   };

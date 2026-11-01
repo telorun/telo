@@ -375,7 +375,7 @@ export function generateExamplesIndex(examplesRoot: string, outFile: string): vo
     "# Examples",
     "",
     "Runnable Telo manifests showing common patterns. Each example is a complete",
-    "application. To run an example, install [`@telorun/cli`](/learn/installation-and-cli),",
+    "application. To run an example, install [`@telorun/cli`](/learn/telo-cli),",
     "and run `telo <file-url>` to execute it. Most examples carry their own tests,",
     "listed beneath the example with the same one-line command.",
     "",

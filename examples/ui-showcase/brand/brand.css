@@ -129,8 +129,11 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="data"] { gap: var(--telo-space-sm); }
 
 /* ---- Buttons: every pressable part, quiet by default ---- */
-[data-telo-part="table-create"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"],
-[data-telo-part="pager-prev"], [data-telo-part="pager-next"], [data-telo-part="submit"], [data-telo-part="cancel"],
+[data-telo-part="listing-create"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"],
+[data-telo-part="pager-prev"], [data-telo-part="pager-next"], [data-telo-part="load-more"], [data-telo-part="listing-sort-option"],
+[data-telo-part="record-move"], [data-telo-part="record-create"], [data-telo-part="calendar-prev"], [data-telo-part="calendar-next"],
+[data-telo-part="calendar-period"], [data-telo-part="timeline-prev"], [data-telo-part="timeline-next"], [data-telo-part="timeline-scale"],
+[data-telo-part="tree-toggle"], [data-telo-part="submit"], [data-telo-part="cancel"],
 [data-telo-part="tag-remove"], [data-telo-part="options-more"], [data-telo-part="picker-trigger"],
 [data-telo-part="date-range-preset"], [data-telo-part="filters-toggle"], [data-telo-part="filters-add"],
 [data-telo-part="filters-apply"], [data-telo-part="filters-reset"], [data-telo-part="filters-preset"],
@@ -145,7 +148,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
   cursor: pointer;
 }
 :where(button)[data-telo-part]:disabled { cursor: default; opacity: 0.5; }
-[data-telo-part="submit"], [data-telo-part="table-create"], [data-telo-part="filters-apply"] {
+[data-telo-part="submit"], [data-telo-part="listing-create"], [data-telo-part="filters-apply"] {
   border-color: var(--telo-color-accent);
   background: var(--telo-color-accent);
   color: var(--telo-color-accent-text);
@@ -158,9 +161,10 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="summary-chip-remove"], [data-telo-part="filter-remove"] { padding: 0 var(--telo-space-xs); border-color: transparent; background: none; }
 
 /* ---- Tables and lists ---- */
-[data-telo-part="table"] { gap: var(--telo-space-sm); }
-[data-telo-part="table-toolbar"] { gap: var(--telo-space-sm); }
-[data-telo-part="table-main"] { gap: var(--telo-space-md); }
+[data-telo-part="listing"], [data-telo-part="table"] { gap: var(--telo-space-sm); }
+[data-telo-part="listing"]:has(> [data-surface="panel"]) { column-gap: var(--telo-space-xl); }
+[data-telo-part="listing-toolbar"] { gap: var(--telo-space-sm); }
+[data-telo-part="listing-main"] { gap: var(--telo-space-md); }
 [data-telo-part="table-frame"] {
   border: 1px solid var(--telo-color-border);
   border-radius: var(--telo-radius-md);
@@ -179,11 +183,76 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="row-actions"] { gap: var(--telo-space-xs); }
 [data-telo-part="table-detail"] { padding: var(--telo-space-md); background: var(--telo-color-background); }
 [data-telo-part="pager"] { gap: var(--telo-space-sm); padding: var(--telo-space-sm) var(--telo-space-md); }
-[data-telo-part="pager-status"], [data-telo-part="table-empty"], [data-telo-part="table-loading"] {
+[data-telo-part="pager-status"], [data-telo-part="listing-empty"], [data-telo-part="listing-loading"], [data-telo-part="list-empty"] {
   color: var(--telo-color-muted);
   font-size: var(--telo-font-size-sm);
 }
-[data-telo-part="table-empty"], [data-telo-part="table-loading"] { padding: var(--telo-space-lg); text-align: center; }
+[data-telo-part="listing-empty"], [data-telo-part="listing-loading"], [data-telo-part="list-empty"] { padding: var(--telo-space-lg); text-align: center; }
+[data-telo-part="load-more"] { align-self: center; }
+[data-telo-part="load-more"][aria-busy="true"] { opacity: 0.6; }
+[data-telo-part="listing-sort"] { gap: var(--telo-space-xs); }
+[data-telo-part="listing-sort-option"], [data-telo-part="record-move"], [data-telo-part="calendar-period"], [data-telo-part="timeline-scale"] {
+  border-color: transparent;
+  background: none;
+  color: var(--telo-color-muted);
+  font-variant: small-caps;
+}
+[data-telo-part="listing-sort-option"][data-sorted], [data-telo-part="record-move"][aria-expanded="true"],
+:is([data-telo-part="calendar-period"], [data-telo-part="timeline-scale"])[aria-pressed="true"] { color: var(--telo-color-accent); }
+[data-telo-part="record-create"], [data-telo-part="tree-toggle"] { padding: 0 var(--telo-space-xs); border-color: transparent; background: none; color: var(--telo-color-muted); }
+[data-telo-part="listing-detail"] { padding: var(--telo-space-md); background: var(--telo-color-background); }
+
+/* ---- Listing layouts: a list, cards, a board, a calendar, a timeline, a tree ---- */
+[data-telo-part="list-layout"], [data-telo-part="tree-layout"] {
+  border: 1px solid var(--telo-color-border);
+  border-radius: var(--telo-radius-md);
+  background: var(--telo-color-surface);
+}
+[data-telo-part="list-item"] { gap: var(--telo-space-xs); padding: var(--telo-space-sm) var(--telo-space-md); border-bottom: 1px solid var(--telo-color-border); }
+[data-telo-part="list-item"]:last-child { border-bottom: none; }
+[data-telo-part="cards-layout"], [data-telo-part="board-layout"] { gap: var(--telo-space-md); }
+[data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"] {
+  gap: var(--telo-space-xs);
+  border: 1px solid var(--telo-color-border);
+  border-radius: var(--telo-radius-sm);
+  background: var(--telo-color-surface);
+  box-shadow: var(--telo-shadow-sm);
+}
+[data-telo-part="card"] { padding: var(--telo-space-md); }
+[data-telo-part="board-card"] { padding: var(--telo-space-sm); }
+[data-telo-part="calendar-event"], [data-telo-part="timeline-bar"] {
+  padding: 0 var(--telo-space-xs);
+  border-inline-start: 3px solid var(--telo-color-accent);
+  font-size: var(--telo-font-size-sm);
+}
+:is([data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"],
+  [data-telo-part="timeline-bar"], [data-telo-part="tree-item"])[data-style~="strong"] { font-weight: 700; }
+:is([data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"],
+  [data-telo-part="timeline-bar"], [data-telo-part="tree-item"])[data-style~="muted"] { color: var(--telo-color-muted); }
+:is([data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"])[draggable="true"] { cursor: grab; }
+[data-telo-part="board-column"] { gap: var(--telo-space-sm); padding: var(--telo-space-sm); border-radius: var(--telo-radius-md); background: var(--telo-color-background); }
+[data-telo-part="board-heading"], [data-telo-part="timeline-lane-label"] { gap: var(--telo-space-xs); font-variant: small-caps; font-weight: 700; }
+[data-telo-part="board-cards"] { gap: var(--telo-space-sm); min-height: 2rem; }
+[data-telo-part="calendar-layout"], [data-telo-part="timeline-layout"] { gap: var(--telo-space-sm); }
+[data-telo-part="calendar-header"], [data-telo-part="timeline-header"] { gap: var(--telo-space-xs); }
+[data-telo-part="calendar-title"], [data-telo-part="timeline-title"] {
+  margin: 0;
+  font-family: var(--telo-font-heading), system-ui, sans-serif;
+  font-size: var(--telo-font-size-lg);
+  font-weight: 400;
+}
+[data-telo-part="calendar-grid"] { gap: 1px; border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-border); }
+[data-telo-part="calendar-weekday"] { padding: var(--telo-space-xs); background: var(--telo-color-background); color: var(--telo-color-muted); font-variant: small-caps; text-align: center; }
+[data-telo-part="calendar-day"] { gap: 2px; min-height: 5rem; padding: var(--telo-space-xs); background: var(--telo-color-surface); }
+[data-telo-part="calendar-day"][aria-hidden="true"] { background: var(--telo-color-background); }
+[data-telo-part="calendar-day-label"], [data-telo-part="timeline-tick"] { color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); font-variant-numeric: oldstyle-nums; }
+[data-telo-part="timeline-axis"], [data-telo-part="timeline-track"] { gap: 2px; }
+[data-telo-part="timeline-tick"] { padding: var(--telo-space-xs) 0; border-bottom: 1px solid var(--telo-color-border); text-align: center; }
+[data-telo-part="timeline-lane"] { gap: var(--telo-space-sm); padding-block: var(--telo-space-xs); border-bottom: 1px solid var(--telo-color-border); }
+[data-telo-part="timeline-track"] { min-height: 1.75rem; }
+[data-telo-part="tree-layout"] { padding: var(--telo-space-xs); }
+[data-telo-part="tree-item"] { gap: var(--telo-space-xs); padding-block: 2px; }
+[data-telo-part="tree-children"] { margin-inline-start: 0.75rem; padding-inline-start: var(--telo-space-lg); border-inline-start: 1px solid var(--telo-color-border); }
 
 /* ---- Forms ---- */
 [data-telo-part="form"] { gap: var(--telo-space-md); }

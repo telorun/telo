@@ -56,8 +56,10 @@ import {
   type ModuleSource,
   type SourceEntry,
   type StandIns,
+  type DeclarationRequests,
   isKindDocument,
   listRequests,
+  namedShapeReading,
   describeModuleSource,
 } from "@telorun/analyzer";
 import {
@@ -81,6 +83,7 @@ import {
   type NamedContractShape,
   type ProjectionScope,
   type ReachSite,
+  isDeclarationReadSite,
   isResolvedReference,
 } from "@telorun/analyzer";
 import {
@@ -104,7 +107,7 @@ import {
   type TraceSinkInstance,
   type BrowserEntryFiles,
 } from "@telorun/sdk";
-import type { TextRecord } from "@telorun/sdk";
+import type { RuntimeDiagnostic, TextRecord } from "@telorun/sdk";
 import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
 import { ControllerRegistry } from "./controller-registry.js";
 import { loadBuiltinControllers } from "./builtin-controllers.js";
@@ -175,9 +178,11 @@ import type { LogSinkInstance } from "./logging/log-sink.js";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import { CelEmittedModules } from "./cel-emitted-modules.js";
+import { failureDiagnostics, markWrittenDeclaration } from "./failure-location.js";
 import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtSite, resolveReference } from "./dependency-injection.js";
+import { declarationOnlyNames, recordDeclarationReads } from "./declaration-reads.js";
 import { refuseCatalogSetDuplicates, type CatalogSetKernelHost } from "./text-catalog-sets.js";
 import {
   deliverDataSites,
@@ -233,6 +238,7 @@ import {
   buildSiblingLibraries,
   type SiblingLibraryMap,
 } from "./controller-loaders/sibling-libraries.js";
+import { BundlePreparations } from "./controller-loaders/bundle-preparations.js";
 import { defaultTransportRegistry } from "./transports/transport-registry.js";
 import {
   collectDeclaredEnvKeys,
@@ -377,6 +383,9 @@ export class Kernel implements IKernel {
    *  file staged after a failed lookup resolves on the next ask. */
   private readonly nativeFileUris = new Map<string, Promise<string>>();
   private readonly stagedEntryMatches = new Map<string, Promise<EnsuredEntryState>>();
+  /** What this load has prepared for its controller bundles; cleared with the
+   *  rest of the load's artifact state. */
+  readonly bundlePreparations = new BundlePreparations();
   private _loadedGraph?: LoadedGraph;
   /** Declaration signatures of the installed set, taken at load time — see
    *  `ManifestDiffOptions.previousSignatures` for why they cannot be taken
@@ -1038,7 +1047,10 @@ export class Kernel implements IKernel {
     const reinitialized = [...new Set([...impacted, ...added])].filter((name) =>
       surviving.has(name),
     );
-    for (const name of reinitialized) this.rootContext.registerManifest(surviving.get(name)!);
+    for (const name of reinitialized) {
+      markWrittenDeclaration(surviving.get(name)!);
+      this.rootContext.registerManifest(surviving.get(name)!);
+    }
     // A survivor keeps its instance and its declaration, but the declaration
     // object is the previous load's and carries that load's `sourceLine`. Swap
     // in the fresh one so a diagnostic anchored on a resource nobody touched
@@ -1541,7 +1553,8 @@ export class Kernel implements IKernel {
             );
           }
         });
-        this.rootContext.setTargets(rawTargets as BootTarget[]);
+        markWrittenDeclaration(manifest);
+        this.rootContext.setTargets(rawTargets as BootTarget[], manifest);
         // `module.<field>` — the module doc's own metadata, so a manifest reads
         // its version instead of restating it in a second place nothing keeps in
         // sync. Set from the module doc rather than the application specifically:
@@ -1578,6 +1591,7 @@ export class Kernel implements IKernel {
       // A `needs:` entry's kind-only stand-in is never created: the need is
       // bound below to what the environment holds for it.
       if (isInjectedDeclaration(manifest)) continue;
+      markWrittenDeclaration(manifest);
       this.rootContext.registerManifest(manifest);
     }
 
@@ -2089,9 +2103,30 @@ export class Kernel implements IKernel {
       await this.boot();
       await this.runTargets();
       await this.waitForIdle();
+    } catch (err) {
+      // Located while the declarations and the graph it is located against are
+      // still loaded; teardown drops both.
+      if (err !== null && typeof err === "object") {
+        this.settledFailures.set(err, failureDiagnostics(err, this._loadedGraph));
+      }
+      throw err;
     } finally {
       await this.teardown();
     }
+  }
+
+  private readonly settledFailures = new WeakMap<object, RuntimeDiagnostic[]>();
+
+  /**
+   * The diagnostics a failure is reported with — those it carries, else one for
+   * itself — each that left a dispatch carrying, beside its `location`, the
+   * `origin` `locateDiagnostic` resolves against the loaded graph, when its place
+   * is provably the one written. A failure `start()` raised is answered as it was
+   * located before teardown.
+   */
+  failureDiagnostics(err: unknown): RuntimeDiagnostic[] {
+    const settled = err !== null && typeof err === "object" ? this.settledFailures.get(err) : undefined;
+    return settled ?? failureDiagnostics(err, this._loadedGraph);
   }
 
   /**
@@ -2190,6 +2225,7 @@ export class Kernel implements IKernel {
     this.moduleLangs.clear();
     this.nativeFileUris.clear();
     this.stagedEntryMatches.clear();
+    this.bundlePreparations.clear();
     const transports = defaultTransportRegistry();
     const entryDir = this._entryUrl ? resolveEntryDir(this._entryUrl) ?? "" : "";
     // The same pre-anchor root `LocalManifestCacheSource` falls back to. Layers
@@ -2920,9 +2956,18 @@ export class Kernel implements IKernel {
         { external: schemaForRef },
       );
     }
+    // A controller that forwards its configuration (a template's, an inherited
+    // `base:` child's) hands its fields on as written, so an accessor field
+    // reaches the kind that reads it as the chain, and becomes a binding there.
+    const forwardsConfig =
+      !!definition &&
+      ((hasOwnControllerOrTemplate(definition) && !definition.controllers?.length) ||
+        isInheritedDelegation(definition, this.scopedDefResolver()));
     // The checks above read each evaluated result against its slot; a binding
     // is not a result, so it replaces the accessor field only now.
-    const processedResource = withAccessorBindings(expandedResource, accessorFieldsHeld);
+    const processedResource = forwardsConfig
+      ? expandedResource
+      : withAccessorBindings(expandedResource, accessorFieldsHeld);
 
     const moduleCtx = this.findModuleContext(evalContext);
     if (redactedMembers.length > 0) (moduleCtx as unknown as RedactionHost).addRedactedValues(redactedMembers);
@@ -2935,15 +2980,11 @@ export class Kernel implements IKernel {
         throw new RuntimeError(`ERR_${problem.code}`, `${resourceLabel}: ${problem.message}`);
       }
     }
-    // A controller that forwards its configuration (a template's, an inherited
-    // `base:` child's) receives the text as written, its provenance recorded for
-    // the manifests it hands on; every other receives each `Text` as its record,
-    // on a copy, so the declaration keeps what its author wrote — and a text an
-    // expression it evaluates later produces is settled when it evaluates it.
-    const forwardsConfig =
-      !!definition &&
-      ((hasOwnControllerOrTemplate(definition) && !definition.controllers?.length) ||
-        isInheritedDelegation(definition, this.scopedDefResolver()));
+    // A forwarding controller receives the text as written too, its provenance
+    // recorded for the manifests it hands on; every other receives each `Text`
+    // as its record, on a copy, so the declaration keeps what its author wrote —
+    // and a text an expression it evaluates later produces is settled when it
+    // evaluates it.
     const settledTexts = settleResourceTexts(
       processedResource,
       textSite,
@@ -3194,7 +3235,7 @@ export class Kernel implements IKernel {
   private readonly literalDecodingHost: LiteralDecodingHost = {
     registry: () => this.registry,
     rootModules: () => new Set(this._appName ? [this._appName] : []),
-    typeDeclarations: () => this.typeDeclarations(),
+    typeRequests: () => this.typeRequests(),
   };
 
   /**
@@ -3208,9 +3249,44 @@ export class Kernel implements IKernel {
   ): NamedContractShape | undefined {
     return this.registry.namedShapeOf(typeField, holder, {
       rootModules: this.literalDecodingHost.rootModules(),
-      types: listRequests(this.typeDeclarations() as unknown as ResourceManifest[]),
+      types: this.typeRequests(),
     });
   }
+
+  /**
+   * A declaration as a read across a reference sees it — a named shape with its
+   * `extends` parents folded — by the reading `telo check` takes, over the
+   * declarations the load holds, so it answers whether or not the shape exists.
+   */
+  readAcrossReference<T extends Record<string, any>>(declaration: T): T {
+    const requests = this.typeRequests();
+    if (this.acrossReading?.requests !== requests) {
+      this.acrossReading = { requests, read: namedShapeReading(requests) };
+    }
+    return this.acrossReading.read(declaration);
+  }
+
+  private acrossReading?: {
+    requests: DeclarationRequests;
+    read: ReturnType<typeof namedShapeReading>;
+  };
+
+  /** Requests over {@link typeDeclarations}, a shape the analysis extracted from
+   *  a library's export — which no document holds — answered from the registry. */
+  private typeRequests(): DeclarationRequests {
+    const declarations = this.typeDeclarations();
+    if (this.typeRequestsMemo?.declarations !== declarations) {
+      this.typeRequestsMemo = {
+        declarations,
+        requests: listRequests(declarations as unknown as ResourceManifest[], {
+          shapes: (id) => this.registry.shapeLookup(id),
+        }),
+      };
+    }
+    return this.typeRequestsMemo.requests;
+  }
+
+  private typeRequestsMemo?: { declarations: Record<string, any>[]; requests: DeclarationRequests };
 
   /** Every declaration a named type resolves against: the analyzed set plus each
    *  module's own documents, since a library's internal shapes are not forwarded. */
@@ -3406,7 +3482,9 @@ export class Kernel implements IKernel {
     isPending: ((name: string) => boolean) | undefined,
     owner: IEvaluationContext,
   ): void {
-    for (const site of this.referenceSitesIn(owner, resource)) {
+    const sites = this.referenceSitesIn(owner, resource);
+    recordDeclarationReads(resource, declarationOnlyNames(sites));
+    for (const site of sites) {
       if (site.scopes.length > 0) {
         if (!Array.isArray(site.data) || !site.holder) continue;
         for (const entry of site.data) {
@@ -3432,7 +3510,9 @@ export class Kernel implements IKernel {
         );
         continue;
       }
-      if (site.refs.length > 0) injectAtSite(site, getInstance, isPending);
+      // A declaration read is answered from declarations, never injected, so it
+      // neither waits for its target nor holds it.
+      if (site.refs.length > 0 && !isDeclarationReadSite(site)) injectAtSite(site, getInstance, isPending);
     }
     // The copy a controller received its text records on holds the references
     // the declaration does.

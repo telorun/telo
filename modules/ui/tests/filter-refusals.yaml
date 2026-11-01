@@ -1,0 +1,141 @@
+kind: Telo.Application
+metadata:
+  name: UiFilterRefusalsTest
+  version: 1.0.0
+  description: |
+    What a filter bar refuses — a pair listed twice, a default, control or
+    preset its filter cannot hold, a duplicate preset label — statically and
+    again when the bar is first read, and where pinning a filter is a warning.
+imports:
+  Assert: ../../assert
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+targets:
+  - !ref filterDuplicateAtRuntime
+  - !ref filterDefaultInvalidAtRuntime
+  - !ref filterControlUnsupportedAtRuntime
+  - !ref presetUnknownFilterAtRuntime
+  - !ref presetValueInvalidAtRuntime
+  - !ref presetLabelDuplicateAtRuntime
+  - !ref toggleOverTextAtRuntime
+  - !ref toggleUntypedAtRuntime
+  - !ref toggleDefaultOffAtRuntime
+  - !ref togglePresetOffAtRuntime
+  - !ref filterPolicy
+  - !ref pinned
+---
+kind: Assert.Manifest
+metadata:
+  name: filterDuplicateAtRuntime
+source: ./__fixtures__/invalid/filter-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterDuplicate': 'fields[1]' lists a property and operator another field already has ('contains' on 'text')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterDefaultInvalidAtRuntime
+source: ./__fixtures__/invalid/filter-default-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterDefaultInvalid': 'fields[0]' declares a default its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterControlUnsupportedAtRuntime
+source: ./__fixtures__/invalid/filter-control-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterControlUnsupported': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'gte' on 'count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: presetUnknownFilterAtRuntime
+source: ./__fixtures__/invalid/preset-unknown-filter/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'presetUnknownFilter': 'presets[0]' sets a property and operator the bar does not show ('gte' on 'count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: presetValueInvalidAtRuntime
+source: ./__fixtures__/invalid/preset-value-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'presetValueInvalid': 'presets[0]' sets a value its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: presetLabelDuplicateAtRuntime
+source: ./__fixtures__/invalid/preset-label-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'presetLabelDuplicate': 'presets[1]' has the label of another preset ('Done')"
+---
+kind: Assert.Manifest
+metadata:
+  name: toggleOverTextAtRuntime
+source: ./__fixtures__/invalid/toggle-over-text/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'toggleOverText': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'eq' on 'note')"
+---
+kind: Assert.Manifest
+metadata:
+  name: toggleUntypedAtRuntime
+source: ./__fixtures__/invalid/toggle-untyped/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'toggleUntyped': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'eq' on 'anything')"
+---
+kind: Assert.Manifest
+metadata:
+  name: toggleDefaultOffAtRuntime
+source: ./__fixtures__/invalid/toggle-default-off/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'toggleDefaultOff': 'fields[0]' declares a default its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: togglePresetOffAtRuntime
+source: ./__fixtures__/invalid/toggle-preset-off/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'togglePresetOff': 'presets[0]' sets a value its filter cannot hold ('eq' on 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterPolicy
+source: ./__fixtures__/invalid/filter-policy/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Filters/keepsNothing: /policy/state matches no alternative — expected one with 'store', or one with 'address'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Filters/addressOff: /policy/state is missing required property 'store'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.CollapsiblePlacement/collapsibleCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.LocalStore/storeKey: / must NOT have additional properties ('key' is not allowed)"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.OverlayPlacement/overlayInPanel: reference at 'surface' → 'Ui.Panel' does not implement 'Ui.Overlay'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.AsidePlacement/compactAbove: reference at 'compact' → 'Ui.AbovePlacement' does not implement 'Ui.FoldingFilterPlacement'"
+---
+# Ten bars pin a filter under every placement; the two where nothing ever folds
+# are told it says nothing. An aside bar folds on a narrow viewport, compact
+# named or not.
+kind: Run.Sequence
+metadata:
+  name: pinned
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/pinned/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.check.result.reported.map(r, r.substring(0, r.indexOf(' pins a field')))"
+      expected:
+        - "RESOURCE_RULE_VIOLATED Ui.Filters/omitted:"
+        - "REFERRER_RULE_VIOLATED Ui.Filters/above at 'policy.placement': required by Ui.AbovePlacement —"

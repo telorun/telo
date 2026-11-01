@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata: { name: RuleLibraryPrivateModel }
+exports:
+  kinds: [Collection]
+---
+kind: Telo.Definition
+metadata: { name: Collection }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./collection.mjs#Collection]
+schema:
+  type: object
+  properties:
+    origin: { type: string }
+    related:
+      x-telo-ref: { kind: Self.Collection, use: schema }
+  x-telo-resource-rules:
+    - resolve: [/related/related]
+      condition: !cel "!has(self.related) || !has(self.related.related) || self.related.related.origin != 'bad'"
+      code: SECOND_HOP_BAD
+      message: relates to a collection relating to a bad one.
+    - resolve: [/related/related/related]
+      condition: !cel "!has(self.related) || !has(self.related.related) || !has(self.related.related.related) || self.related.related.related.origin != 'bad'"
+      code: THIRD_HOP_BAD
+      message: relates, three hops out, to a bad collection.

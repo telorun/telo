@@ -116,6 +116,17 @@ export interface InvokeContext {
    * at the top of a run, where the base is `steps`.
    */
   readonly durablePath?: string;
+  /**
+   * Where the caller wrote this dispatch's inputs: an RFC 6901 pointer into the
+   * calling resource's own declaration (`/steps/1/inputs`). Absent when the
+   * caller knows no written place.
+   *
+   * **Per dispatch, never inherited**: it describes the call that carries it, so
+   * a context derived for a nested dispatch drops it ({@link deriveContext}),
+   * and the kernel reads it at the dispatch it arrives on and hands the target a
+   * context without it. An error's `inputPointer` is joined onto it there.
+   */
+  readonly inputsAt?: string;
 }
 
 /**
@@ -125,9 +136,13 @@ export interface InvokeContext {
  * `--debug`, a safety property flipping on a debug flag. Every context-rebuild
  * site (the kernel's tracing branches, span derivation) goes through here so a
  * field added to {@link InvokeContext} propagates without each site opting in.
+ *
+ * The one member that does not propagate is the per-dispatch `inputsAt`: it is
+ * kept only when `overrides` states it.
  */
 export function deriveContext(base: InvokeContext, overrides: Partial<InvokeContext>): InvokeContext {
-  return { ...base, ...overrides };
+  const { inputsAt, ...inherited } = base;
+  return { ...inherited, ...overrides };
 }
 
 /** How an invocation ended.

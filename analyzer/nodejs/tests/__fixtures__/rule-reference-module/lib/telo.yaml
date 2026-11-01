@@ -1,0 +1,17 @@
+# `entry` relates to this library's `posts`; the application declares a `posts` too,
+# and both are in the application's analysis.
+kind: Telo.Library
+metadata: { name: RuleReferenceLib }
+imports:
+  Model: ../model
+exports:
+  resources: [entry, posts]
+---
+kind: Model.Collection
+metadata: { name: posts }
+origin: lib
+---
+kind: Model.Collection
+metadata: { name: entry }
+origin: lib
+related: !ref posts

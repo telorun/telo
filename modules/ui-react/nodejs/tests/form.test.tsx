@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { presetRange } from "../src/browser/date-range.js";
 import { controlFor } from "../src/browser/record-fields.js";
 import { render, type Rendered } from "./harness.js";
-import { formNode, memoryState, opener, tableNode, todos, todoSchema } from "./spec-nodes.js";
+import { formNode, memoryState, opener, listingNode, todos, todoSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -19,7 +19,7 @@ async function edit(row: Record<string, unknown>, fields?: string[]) {
     path: "/",
     required: ["text"],
     collections: { "/api/todos": [row] },
-    pages: { "/": { title: "Todos", children: [tableNode({ columns: [], edit: opener({ form: shown }) })] } },
+    pages: { "/": { title: "Todos", children: [listingNode({ columns: [], edit: opener({ form: shown }) })] } },
   });
   const bodies: unknown[] = [];
   const platform = globalThis.fetch;
@@ -221,7 +221,7 @@ describe("a form", () => {
     rendered = await render({
       path: "/",
       collections: { "/api/lists": [row] },
-      pages: { "/": { title: "Lists", children: [tableNode({ basePath: "/api/lists", schema: listSchema, columns: [], rowStyle: undefined, edit: opener({ form: listForm }) })] } },
+      pages: { "/": { title: "Lists", children: [listingNode({ basePath: "/api/lists", schema: listSchema, columns: [], rowStyle: undefined, edit: opener({ form: listForm }) })] } },
     });
     await rendered.click(rendered.part("row-edit"));
     expect(rendered.parts("option").map((option) => option.getAttribute("data-state"))).toEqual(["off", "on", "off"]);

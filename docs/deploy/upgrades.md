@@ -88,13 +88,20 @@ Run `telo upgrade` and `telo check` **with the same CLI version that will run
 the manifest**. In a Docker deployment that is one command:
 
 ```bash
-docker run --rm -v "$PWD":/w -w /w telorun/node:<ver>-slim \
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/w -w /w telorun/node:<ver>-slim \
   telo upgrade apps/my-app
-docker run --rm -v "$PWD":/w -w /w telorun/node:<ver>-slim \
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/w -w /w telorun/node:<ver>-slim \
   telo check apps/my-app
 ```
 
-with `<ver>` the exact tag your Dockerfile's `FROM` names. The first moves pins
+`-u` keeps the files `upgrade` rewrites (and the `.telo/` cache `check` may add)
+owned by you rather than root. `upgrade` queries the registries your imports name,
+so it needs network and any registry credentials
+([Air-gapped and private registries](/deploy/docker#air-gapped-and-private-registries)).
+`check` resolves from the `.telo/` cache when it holds the modules.
+
+with `<ver>` the exact tag your Dockerfile's `FROM` names (pin the image by
+digest too — [hardening checklist](/deploy/security#hardening-checklist)). The first moves pins
 only to versions that kernel can host; the second is the gate, and it fails with
 `MODULE_REQUIRES_NEWER_RUNTIME` if a hand-written pin — a ref copied from the
 hub, say — reaches past it. Put the `check` in CI and the skew cannot reach a
@@ -111,7 +118,12 @@ Because the safe direction is *older module on newer kernel*:
    the installed CLI), rebuild, `telo check` — every existing pin keeps loading.
 2. **Then move the modules.** `telo upgrade` inside the new image now selects
    versions the new kernel can host that the old one could not.
-3. **Check the pins came back.** `telo upgrade` rewrites each moved import with
+3. **Re-read the needs.** A newer version of the application or of a module can
+   declare a need the old one did not. `telo needs report apps/my-app` lists
+   what the host must now provide; a required one nothing supplies stops the new
+   version at load with `ERR_NEED_UNMET`, naming the variables
+   ([Providing needs](/learn/providing-needs)).
+4. **Check the pins came back.** `telo upgrade` rewrites each moved import with
    the new version *and* its `#sha256-` hash, and pins in place any import that
    was already current but unpinned. Fetching a hash is best-effort: an import
    reported as `left unpinned` needs one added by hand
@@ -121,7 +133,11 @@ Because the safe direction is *older module on newer kernel*:
 **Rolling back** is the other way round: put the *previous manifest* back with
 the *previous image*, together. With the Docker recipe on this site the manifest,
 its cache and the kernel are one image, so a rollback is the previous tag and
-there is nothing to keep consistent. Skew is a property of deployments that ship
+there is nothing to keep consistent. What a rollback does not undo is state: a
+`Telo.DurableDirectory` keeps what the newer version wrote
+([Persistent state and replicas](/deploy/production#persistent-state-and-replicas)),
+so an older version that cannot read it needs the directory restored from your
+own backup. Skew is a property of deployments that ship
 the two separately — a workspace synced into a long-lived runner, a manifest
 directory updated under a systemd unit — and those are where the check above
 earns its place.
@@ -138,7 +154,8 @@ for anything you deploy; the mutable form is for development.
 
 - [Declaring runtime requirements](/extend/declaring-runtime-requirements) —
   the grammar, and how the range is verified by execution at publish.
-- [Running in production](/deploy/production) — image pinning and the runtime
-  environment.
+- [Running in production](/deploy/production) — signals, probes, unprivileged runs,
+  persistent state.
+- [Environment variables](/reference/environment-variables) — what the runtime reads.
 - [Diagnostics reference](/reference/diagnostics) — `MODULE_REQUIRES_NEWER_RUNTIME`
   and `REQUIRES_INVALID`.

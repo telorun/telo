@@ -39,11 +39,11 @@ variables:
     default: Hello
 exports:
   resources:
-    - Greeter
+    - greeter
 ---
 kind: Run.Value
 metadata:
-  name: Greeter
+  name: greeter
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -82,19 +82,19 @@ imports:
     variables:
       greeting: Hej
 targets:
-  - !ref Main
+  - !ref main
 ---
 kind: Run.Sequence
 metadata:
-  name: Main
+  name: main
 steps:
-  - name: Greet
-    invoke: !ref Greetings.Greeter    # <Alias>.<exported name>
+  - name: greet
+    invoke: !ref Greetings.greeter    # <Alias>.<exported name>
     inputs:
       name: World
-  - name: Print
+  - name: print
     inputs:
-      output: !cel "steps.Greet.result.message"
+      output: !cel "steps.greet.result.message"
     invoke: !ref Console.writeLine
 ```
 
@@ -132,7 +132,7 @@ consumer with **one** import instead of two:
 ```yaml
 exports:
   resources:
-    - Db          # a configured Sql.Connection, ready to use
+    - db          # a configured Sql.Connection, ready to use
 ```
 
 ### `exports.kinds` — types the importer may instantiate

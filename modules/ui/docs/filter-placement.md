@@ -49,7 +49,7 @@ toggle.
   that address opens it. A surface's own `compact` is honoured too.
 
   A name is one state on its page: an overlay that shares its name with a
-  table's create opener opens and closes together with the create form. Give
+  listing's create opener opens and closes together with the create form. Give
   the overlay a name of its own unless that is meant.
 
 ## On a narrow viewport

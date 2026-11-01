@@ -320,6 +320,45 @@
       ]
     },
     {
+      "name": "a located failure crosses unchanged",
+      "note": "The dispatch's context says where the caller wrote its inputs; the kernel joins that with the failure's input pointer into its location where the failure leaves the dispatch, and the controller hands the same error on without touching either member.",
+      "open": [
+        "s1"
+      ],
+      "frames": [
+        {
+          "from": "controller",
+          "meta": "{\"id\":1,\"payload\":{\"instance\":\"h1\"},\"session\":\"s1\",\"type\":\"Dispatch.Detach\"}",
+          "frame": "00000051010000004c7b226964223a312c227061796c6f6164223a7b22696e7374616e6365223a226831227d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e446574616368227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":1,\"payload\":{\"ok\":{\"context\":{\"cancellation\":{\"source\":\"c2\"}},\"task\":\"t3\"}},\"session\":\"s1\",\"type\":\"Dispatch.Detach\"}",
+          "frame": "0000007f010000007a7b226964223a312c227061796c6f6164223a7b226f6b223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226332227d7d2c227461736b223a227433227d7d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e446574616368227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":3,\"payload\":{\"context\":{\"cancellation\":{\"source\":\"c2\"},\"inputsAt\":\"/steps/1/inputs\"},\"inputs\":{\"port\":\"eighty\"},\"instance\":\"h1\",\"kind\":\"Net.Probe\",\"name\":\"probe\"},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "000000d601000000d17b226964223a332c227061796c6f6164223a7b22636f6e74657874223a7b2263616e63656c6c6174696f6e223a7b22736f75726365223a226332227d2c22696e707574734174223a222f73746570732f312f696e70757473227d2c22696e70757473223a7b22706f7274223a22656967687479227d2c22696e7374616e6365223a226831222c226b696e64223a224e65742e50726f6265222c226e616d65223a2270726f6265227d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":3,\"payload\":{\"error\":{\"code\":\"ERR_INPUT_INVALID\",\"inputPointer\":\"/port\",\"location\":{\"kind\":\"Run.Sequence\",\"module\":\"file:///app/telo.yaml\",\"name\":\"check\",\"pointer\":\"/steps/1/inputs/port\"},\"message\":\"Net.Probe 'probe': inputs/port must be integer\"}},\"session\":\"s1\",\"type\":\"Dispatch.Invoke\"}",
+          "frame": "0000012c01000001277b226964223a332c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f494e5055545f494e56414c4944222c22696e707574506f696e746572223a222f706f7274222c226c6f636174696f6e223a7b226b696e64223a2252756e2e53657175656e6365222c226d6f64756c65223a2266696c653a2f2f2f6170702f74656c6f2e79616d6c222c226e616d65223a22636865636b222c22706f696e746572223a222f73746570732f312f696e707574732f706f7274227d2c226d657373616765223a224e65742e50726f6265202770726f6265273a20696e707574732f706f7274206d75737420626520696e7465676572227d7d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e496e766f6b65227d"
+        },
+        {
+          "from": "controller",
+          "meta": "{\"id\":5,\"payload\":{\"error\":{\"code\":\"ERR_INPUT_INVALID\",\"inputPointer\":\"/port\",\"location\":{\"kind\":\"Run.Sequence\",\"module\":\"file:///app/telo.yaml\",\"name\":\"check\",\"pointer\":\"/steps/1/inputs/port\"},\"message\":\"Net.Probe 'probe': inputs/port must be integer\"},\"instance\":\"h1\",\"outcome\":\"failed\",\"task\":\"t3\"},\"session\":\"s1\",\"type\":\"Dispatch.DetachSettle\"}",
+          "frame": "00000161010000015c7b226964223a352c227061796c6f6164223a7b226572726f72223a7b22636f6465223a224552525f494e5055545f494e56414c4944222c22696e707574506f696e746572223a222f706f7274222c226c6f636174696f6e223a7b226b696e64223a2252756e2e53657175656e6365222c226d6f64756c65223a2266696c653a2f2f2f6170702f74656c6f2e79616d6c222c226e616d65223a22636865636b222c22706f696e746572223a222f73746570732f312f696e707574732f706f7274227d2c226d657373616765223a224e65742e50726f6265202770726f6265273a20696e707574732f706f7274206d75737420626520696e7465676572227d2c22696e7374616e6365223a226831222c226f7574636f6d65223a226661696c6564222c227461736b223a227433227d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e446574616368536574746c65227d"
+        },
+        {
+          "from": "kernel",
+          "meta": "{\"id\":5,\"payload\":{\"ok\":{}},\"session\":\"s1\",\"type\":\"Dispatch.DetachSettle\"}",
+          "frame": "0000004f010000004a7b226964223a352c227061796c6f6164223a7b226f6b223a7b7d7d2c2273657373696f6e223a227331222c2274797065223a2244697370617463682e446574616368536574746c65227d"
+        }
+      ]
+    },
+    {
       "name": "suspension is a signal, not an error",
       "note": "The dispatch parks and the entry point re-raises the same code rather than converting it: anything that catches rethrows it.",
       "open": [

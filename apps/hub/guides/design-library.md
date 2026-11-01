@@ -210,8 +210,9 @@ result:
   such a value with an expression (`self.items.map(…)`): CEL values are data,
   the reference is lost, and it is `REF_SLOT_COMPUTED`. Declare the field on
   your kind already shaped as the entry expects and forward it whole. A bare
-  path may continue past one of your reference slots into the resource it
-  names (`!cel "self.model.schemas.list"`).
+  path may continue past one of your reference slots into what the resource
+  it names was declared with (`!cel "self.model.schemas.list"`), never into a
+  member of its instance.
 - **A forwarded value is checked as the entry's own field**, against the
   entry kind's schema, reference slots and CEL contexts, and reported on the
   importer's own line. So your `schema:` declares only what your kind adds —

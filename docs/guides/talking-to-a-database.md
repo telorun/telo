@@ -13,8 +13,9 @@ the [standard library](/reference/standard-library) — the shapes are the same.
 
 ## 1. A connection and a table
 
-Two resources. The connection says *where* the database is; the migrations say
-what must exist in it before anything runs:
+The connection says *where* the database is; the migrations say what must exist
+in it before anything runs; the server is what the requests will reach. Put every
+document in this guide into one `notes-api/telo.yaml`:
 
 ```yaml
 kind: Telo.Application
@@ -26,21 +27,27 @@ imports:
   Sql: oci://ghcr.io/telorun/sql@<version>
   SQLite: oci://ghcr.io/telorun/sqlite@<version>
 targets:
-  - !ref Migrate
-  - !ref Server
+  - !ref migrate
+  - !ref server
 ports:
   http:
     env: PORT
     default: 8080
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: file }
+    default: ./notes.db
 ---
 kind: SQLite.Connection
 metadata:
-  name: Db
-file: ./notes.db
+  name: db
+file: !cel "variables.dbFile"
 ---
 kind: SQLite.Table
 metadata:
-  name: Notes
+  name: notes
 table: notes
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -49,23 +56,37 @@ columns:
 ---
 kind: SQLite.Schema
 metadata:
-  name: Migrate
-connection: !ref Db
+  name: migrate
+connection: !ref db
 tables:
-  - !ref Notes
+  - !ref notes
+---
+kind: Http.Server
+metadata:
+  name: server
+listen:
+  port: !cel "ports.http"
+mounts:
+  - path: /v1
+    mount: !ref notesApi
 ```
 
-Three things to notice:
+Four things to notice:
+
+- **The file is a `Telo.HostPath` variable.** A path on the machine running the
+  app is never a plain string: `x-telo-type: Telo.HostPath` makes `./notes.db`
+  resolve against the directory you run `telo` in, and `DB_FILE` moves it
+  elsewhere. `entry: file` says it names a file, not a directory.
 
 - **Two imports, not one.** `sql` declares the vocabulary — `Connection`,
   `Query`, `Command`, `Transaction`. `sqlite` implements the connection.
   That split is what section 5 cashes in.
-- **`Migrate` is first in `targets:`.** Boot targets run in the order written,
+- **`migrate` is first in `targets:`.** Boot targets run in the order written,
   so the table exists before the server accepts a request. The schema is
   *declared*, not migrated to: the pass creates what is absent and records what
   was removed, so re-running the app is a no-op.
-- **Nothing declares an ordering between `Db` and `Migrate`.** `Migrate`
-  references `Db`, and that reference *is* the ordering.
+- **Nothing declares an ordering between `db` and `migrate`.** `migrate`
+  references `db`, and that reference *is* the ordering.
 
 ## 2. Reading and writing
 
@@ -76,21 +97,21 @@ lets one resource serve several routes:
 ```yaml
 kind: Sql.Command
 metadata:
-  name: InsertNote
-connection: !ref Db
+  name: insertNote
+connection: !ref db
 ---
 kind: Sql.Query
 metadata:
-  name: ListNotes
-connection: !ref Db
+  name: listNotes
+connection: !ref db
 ```
 
-and the routes supply the SQL:
+and the router `server` mounts at `/v1` supplies the SQL:
 
 ```yaml
 kind: Http.Api
 metadata:
-  name: Notes
+  name: notesApi
 routes:
   - request:
       path: /notes
@@ -103,7 +124,7 @@ routes:
           properties:
             title: { type: string, minLength: 1 }
             body: { type: string }
-    handler: !ref InsertNote
+    handler: !ref insertNote
     inputs:
       sql: !sql "INSERT INTO notes (title, body) VALUES (${{ request.body.title }}, ${{ request.body.body }})"
     returns:
@@ -116,7 +137,7 @@ routes:
   - request:
       path: /notes
       method: GET
-    handler: !ref ListNotes
+    handler: !ref listNotes
     inputs:
       sql: "SELECT id, title, body FROM notes ORDER BY id"
     returns:
@@ -124,6 +145,10 @@ routes:
         content:
           application/json:
             body: !cel "result.rows"
+```
+
+```bash
+telo ./notes-api
 ```
 
 ```bash
@@ -135,6 +160,9 @@ curl -X POST localhost:8080/v1/notes \
 curl localhost:8080/v1/notes
 # [{"id":1,"title":"first","body":"hello"}]
 ```
+
+The database is created on first start, so `notes.db` appears in the directory
+you ran from.
 
 `result.rows` and `result.rowCount` are the whole result surface: a `Query`
 returns rows, a `Command` returns a count.
@@ -171,7 +199,8 @@ the example above would have dropped the table.
 ## 3. Skipping SQL for plain table access
 
 When a route is just "insert a row" or "select by column", `sql-repository`
-gives you the operation without the statement:
+gives you the operation without the statement. Add the import, then replace
+`insertNote` and `listNotes` with these:
 
 ```yaml
 imports:
@@ -179,34 +208,43 @@ imports:
 ---
 kind: SqlRepository.Create
 metadata:
-  name: InsertNote
-connection: !ref Db
-table: !ref Notes
+  name: insertNote
+connection: !ref db
+table: !ref notes
 ---
 kind: SqlRepository.Read
 metadata:
-  name: ReadNotes
-connection: !ref Db
-table: !ref Notes
+  name: readNotes
+connection: !ref db
+table: !ref notes
 ```
 
-One resource per **operation**, not per route — `ReadNotes` serves both the list
-and the by-id route, because the filter is a call-site input:
+One resource per **operation**, not per route — `readNotes` serves both the list
+and the by-id route, because the filter is a call-site input. The routes of
+`notesApi` become:
 
 ```yaml
-  - request:
-      path: /notes
-      method: POST
-    handler: !ref InsertNote
+  - request: { path: /notes, method: POST }
+    handler: !ref insertNote
     inputs:
       data:
         title: !cel "request.body.title"
         body: !cel "request.body.body"
+    returns:
+      - status: 201
+        content:
+          application/json:
+            body: { created: !cel "result.rowCount" }
 
   - request: { path: /notes, method: GET }
-    handler: !ref ReadNotes
+    handler: !ref readNotes
     inputs:
       filters: {}
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result.rows"
 
   - request:
       path: /notes/{id}
@@ -217,7 +255,7 @@ and the by-id route, because the filter is a call-site input:
           required: [id]
           properties:
             id: { type: integer }
-    handler: !ref ReadNotes
+    handler: !ref readNotes
     inputs:
       filters:
         id: !cel "request.params.id"
@@ -247,48 +285,66 @@ is a resource to run inside the transaction — usually a `Run.Sequence`:
 ```yaml
 kind: Sql.Transaction
 metadata:
-  name: Transfer
-connection: !ref Db
-steps: !ref TransferSteps
+  name: transfer
+connection: !ref db
+steps: !ref transferSteps
 inputs:
   amount: !cel "inputs.amount"
 ---
 kind: Run.Sequence
 metadata:
-  name: TransferSteps
+  name: transferSteps
 steps:
-  - name: Debit
-    invoke: !ref Move
+  - name: debit
+    invoke: !ref move
     inputs:
       sql: !sql "UPDATE accounts SET balance = balance - ${{ inputs.amount }} WHERE name = 'alice'"
-  - name: Credit
-    invoke: !ref Move
+  - name: credit
+    invoke: !ref move
     inputs:
       sql: !sql "UPDATE accounts SET balance = balance + ${{ inputs.amount }} WHERE name = 'bob'"
 ---
 kind: Sql.Command
 metadata:
-  name: Move
-transaction: !ref Transfer
+  name: move
+transaction: !ref transfer
 ```
 
-`Move` declares `transaction: !ref Transfer` and **no `connection:`** — the
+`move` declares `transaction: !ref transfer` and **no `connection:`** — the
 connection is derived from the transaction it joins. If either step fails, both
-roll back.
+roll back. The transaction runs when something invokes it — a route's `handler:`,
+or a step: `invoke: !ref transfer` with `inputs: { amount: 30 }`. (The
+`accounts` table is declared like `notes`, and the `Run` import is
+`oci://ghcr.io/telorun/run@<version>`.)
 
 ### The compiler knows a statement is in the wrong place
 
 `transaction:` is not documentation. It is a requirement that "I must be reached
 through a `Sql.Transaction` on this connection", and `telo check` verifies it by
-walking every path that can reach the resource. Put `Move` straight into
-`targets:` and the check fails before anything runs:
+walking every path that can reach the resource. Invoke `move` from a step of a
+sequence that is not inside the transaction, and the check fails before anything
+runs:
+
+```yaml
+kind: Run.Sequence
+metadata:
+  name: oops
+steps:
+  - name: pay
+    invoke: !ref move
+    inputs:
+      sql: "UPDATE accounts SET balance = balance - 1 WHERE name = 'alice'"
+```
 
 ```
-error  Sql.Command 'Move' requires a sql.Transaction zone on SQLite.Connection 'Db',
-       and the path Move → TxDemo.targets[3] reaches the application's boot targets,
+error  Sql.Command 'move' requires a SQL.Transaction zone on SQLite.Connection 'db',
+       and the path move → oops → NotesApi.targets[2] reaches the application's boot targets,
        which nothing encloses. the statement would execute outside any transaction.
        ZONE_REQUIREMENT_UNSATISFIED
 ```
+
+(Here `oops` is listed in `targets:`; the path would end at a route's handler
+or any other entry point the same way.)
 
 That is an [execution zone](/extend/execution-zones). The general shape — a
 resource that only makes sense inside another's body — is not SQL-specific.
@@ -297,7 +353,7 @@ resource that only makes sense inside another's body — is not SQL-specific.
 
 `Sql.Connection` is a `Telo.Abstract`: a contract with no implementation.
 `SQLite.Connection` extends it, and so does the Postgres backend. Every slot in
-this guide — `Migrate`, `InsertNote`, `ListNotes` — declares that it takes a
+this guide — `migrate`, `insertNote`, `listNotes` — declares that it takes a
 `Sql.Connection`, so it accepts either.
 
 Moving to Postgres is an import, a need for the database, and a connection
@@ -314,7 +370,7 @@ needs:
 ---
 kind: Postgres.Connection
 metadata:
-  name: Db
+  name: db
 access: !ref databaseAccess
 ```
 
@@ -324,15 +380,15 @@ password is redacted from every log line — and the connection checks the
 server's version against `>=15.0.0` when it starts, refusing to start against an
 older one. [Declaring a need](/learn/declaring-a-need) covers needs in full.
 
-Keep the resource named `Db` and every `!ref Db` in the manifest still resolves.
+Keep the resource named `db` and every `!ref db` in the manifest still resolves.
 This is the payoff for the two imports in section 1: the vocabulary your
 manifest is written against is not the same thing as the driver behind it.
 
 ## Where to go next
 
-- **Don't hardcode the file path** — bind it to the environment with
-  `variables:` / `secrets:`, as [Configuring an application](/learn/configuration)
-  covers. A database's address belongs in a need, as section 5 shows.
+- **Move the file** — it is already a `Telo.HostPath` variable, so `DB_FILE=/var/lib/notes/notes.db`
+  needs no edit; [Configuring an application](/learn/configuration#file-paths)
+  covers the type. A database's address belongs in a need, as section 5 shows.
 - **Test it** — [Testing your manifests](/build/testing). A `:memory:` SQLite
   connection gives each test a fresh database with no cleanup.
 - **The full field reference** for every kind here is on the

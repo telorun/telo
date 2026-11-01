@@ -16,8 +16,8 @@ describe("the schema a model slot names", () => {
   });
 
   it("is refused when the slot names no registered shape", () => {
-    expect(() => modelSchema({ kind: "Telo.JsonSchema", name: "Missing" }, ctx, "Ui.Table 't'")).toThrow(
-      "Ui.Table 't': 'model' does not name a data shape.",
+    expect(() => modelSchema({ kind: "Telo.JsonSchema", name: "Missing" }, ctx, "Ui.Listing 't'")).toThrow(
+      "Ui.Listing 't': 'model' does not name a data shape.",
     );
   });
 });
@@ -38,13 +38,13 @@ describe("a member reached through a reference", () => {
       $defs: { A: { $ref: "#/$defs/B" }, B: { $ref: "#/$defs/A" } },
       properties: { owner: { $ref: "#/$defs/A" } },
     };
-    const reader = { ctx, owner: "Ui.Table 't'" };
+    const reader = { ctx, owner: "Ui.Listing 't'" };
     expect(() => schemaAt(modelShape(model, reader, "model"), ["owner"], reader, "model")).toThrow(
-      "Ui.Table 't': 'model.owner' holds a reference ('#/$defs/A') that leads back to itself, so it names no data shape. Point it at a shape that does not lead back here.",
+      "Ui.Listing 't': 'model.owner' holds a reference ('#/$defs/A') that leads back to itself, so it names no data shape. Point it at a shape that does not lead back here.",
     );
   });
 
-  const reader = { ctx, owner: "Ui.Table 't'" };
+  const reader = { ctx, owner: "Ui.Listing 't'" };
 
   it("is read as written when it holds a `name` or a `schema` that is no reference", () => {
     const model = {
@@ -62,7 +62,7 @@ describe("a member reached through a reference", () => {
   it("is refused when a pointer token is no URI text", () => {
     const model = { type: "object", properties: { owner: { $ref: "#/$defs/100%" } } };
     expect(() => schemaAt(modelShape(model, reader, "model"), ["owner"], reader, "model")).toThrow(
-      "Ui.Table 't': 'model.owner' holds a reference ('#/$defs/100%') that does not name a data shape. Declare that shape, or correct the reference.",
+      "Ui.Listing 't': 'model.owner' holds a reference ('#/$defs/100%') that does not name a data shape. Declare that shape, or correct the reference.",
     );
   });
 });

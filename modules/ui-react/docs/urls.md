@@ -24,9 +24,9 @@ A [surface](../../ui/docs/surfaces.md#address) declared with
 | --- | --- |
 | `/todos` | nothing is open |
 | `/todos?_telo.open.todo=` | the create form, where a create opener declares the name |
-| `/todos?_telo.open.todo=42` | the edit form over the row whose key is `42` |
+| `/todos?_telo.open.todo=42` | the edit form over the record whose key is `42` |
 
-- Opening adds a history entry, unless a form of the same table is already
+- Opening adds a history entry, unless a form of the same listing is already
   open in the address: then it takes that form's entry, so closing never
   returns to the form before. Closing removes only that surface's key — by
   going back when the current entry is the one this visit's opening of it
@@ -78,7 +78,7 @@ application document carries each navigation entry's key as `key`, and a page
 document each tab's.
 
 A name is one state on its page: an overlay that shares its name with a
-table's create opener opens and closes together with the create form. Give the
+listing's create opener opens and closes together with the create form. Give the
 overlay a name of its own unless that is meant.
 
 ## Filter state

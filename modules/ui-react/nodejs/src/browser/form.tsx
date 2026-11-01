@@ -99,6 +99,7 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     const checked = entry.check(held);
     if (!checked.ok) return setState("error");
     setState("submitting");
+    let answered: unknown;
     try {
       const response = await host
         .fetch(target.url, { method: target.method, headers: { "content-type": "application/json" }, body: JSON.stringify(checked.record) })
@@ -111,6 +112,8 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
         return setState("error");
       }
       if (!response.ok) throw await responseError(response);
+      // A record the write answered with is drawn from that answer wherever it is shown.
+      if (response.headers.get("content-type")?.includes("json")) answered = await response.json();
     } catch (error) {
       setFailure(errorSpec(error, "ERR_UI_REQUEST_FAILED"));
       setState("error");
@@ -118,6 +121,7 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     }
     setState("idle");
     release();
+    if (answered !== null && typeof answered === "object" && !Array.isArray(answered)) store.written(node.basePath, answered as Record<string, unknown>);
     host.notifyChanged(node.basePath);
     onSaved?.();
     if (afterSubmit === "close") return onDone?.();

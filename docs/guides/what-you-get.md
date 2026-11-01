@@ -10,6 +10,19 @@ gets, whatever it imports. **Standard library** is what its modules add.
 Within each group, the features people ask about most come first. The page
 grows with every release.
 
+## In plain terms
+
+If you are weighing Telo rather than building with it, these are the things your
+team does not have to build or remember, each described in detail below:
+
+- **Mistakes are caught before the app runs.** Wrong wiring, wrong value types and unhandled errors are reported with the place to fix, not discovered in production.
+- **Shutdown and cancellation behave.** When a user disconnects or the app is stopped, in-flight work is cancelled and cleaned up in a defined order.
+- **Retries and timeouts are safe.** A failing call can be retried with backoff, and a call that times out is stopped rather than left running.
+- **Work survives a crash.** Durable runs record each step, so a restart continues where it stopped, including waits of days.
+- **Configuration is visible.** The app lists every setting it needs, reports all missing ones together before starting, and keeps secrets out of logs.
+- **Logging and tracing are built in.** Structured logs and traces carry the same ids, with no code to write.
+- **Every change is a readable file diff.** Applications are plain files in Git, so review, sign-off and rollback use the tools you already have.
+
 ## Telo itself
 
 ### Running
@@ -114,16 +127,18 @@ grows with every release.
 
 ### CRUD
 
-- **Models instead of DTOs.** `Crud.Model` gives four shapes — read, list, create, update — checked for consistency.
+- **Shapes instead of DTOs.** `Crud.Collection` gives the record `model` and three shapes — list, create, update — checked for consistency, and a relation that contradicts the table's foreign key is refused before the app runs.
 - **Safe list queries.** Only declared filters and sorts are accepted, `limit` / `sort` / `cursor` are validated, and seek cursors return every row once even while rows are inserted.
 
 ### User interfaces
 
+- **Show a collection any way.** A `Ui.Listing` declares a collection's openers, row actions, filters and labels once, and its `layout` draws the records as a table, a list, cards, a board, a calendar, a timeline or a tree, with a `compact` layout below `compactBelow` that keeps an open form, paged with a pager, a "Load more" control or infinite scroll. Moving a card, rescheduling an event or reparenting a tree item runs an action you declare, and every listing over the same collection reloads. A layout that needs a filter the API does not accept is refused before the app runs.
+- **Filter and pick by related record.** Declare once that `posts.authorId` points at authors, and a listing shows the author's name instead of the key, a filter bar offers authors by name — optionally only those who have posts, with counts (`values: present`) — and a form enters the author with a picker. A relation that names a property the collection lacks, or a source for another collection, is refused before the app runs.
 - **Screens that follow their data, with no frontend code.** A `Ui.Data` reads a record when its page is drawn — a loading state first, a failure state for a refused read, again on window focus or when a request inside it answers 401 — and a node's `shown` condition decides in the browser what is drawn from the answer, the page's query parameters or a form's values; hidden content keeps what was typed and requests nothing. A sign-in gate is a reader and two conditions. A condition that can never hold for the value it reads, or that reads a value its place does not hold, is refused before the app runs.
 - **Responsive navigation.** `navigation:` on a `UiReact.App` is a tree of pages, links and nested groups, each with an optional icon — a Lucide glyph from `ui-lucide` or an image of your own, drawn in the colour of its text — shown as a menu bar with dropdowns, a sidebar that collapses to a rail of icons and remembers its open groups (`Ui.SidebarNavigation`), and below `compactBelow` a menu button opening a drawer or a bottom tab bar (`Ui.TabBarNavigation`), with keyboard and screen-reader support. Entries name pages by reference, so a changed path moves the menu with it, and an entry naming a page the app does not serve, or a glyph the icon set does not have, is refused before the app runs.
 - **Forms with lookups, date ranges and remembered values.** A form's fields are kinds: a choice or a picker over options read from your API — searched as the viewer types, paged as the list scrolls, chosen values labelled by one lookup, narrowed by other fields of the form — a date range with presets such as this month or last quarter in the viewer's time zone, and sliders, switches and tags. Fields are grouped into labelled sections, checked against the model as values are typed with the server's refusals shown on the field they name, and kept in the page address or the browser's storage across visits (`state:`). A field whose control or options do not fit its property — from `ui` or from any other module — is refused before the app runs.
 - **Swappable themes, with your brand on top.** `theme:` on a `UiReact.App` picks the look of every screen — `UiReact.defaultTheme`, `Radix.theme` from `ui-react-radix` with its selects, menus and dialogs drawn by Radix, or a theme of your own — so switching it restyles every screen and swaps its selects, menus and dialogs at once, while your brand stays in `tokens:` and applies over any theme, light and dark; whether pages sit in the look's centred measure or fill the screen is one key, for the app (`pageWidth`) or a page (`width`), with the header's content lined up to the page column, under any theme. A module publishing a theme holds it to the renderer's contract from its own tests with `UiReactConformance.CheckTheme`: every element styled, no layout rule the screens rely on overridden, every control's keyboard, focus and dismissal behaviour met.
-- **Buttons that answer in place, with no double submits.** A `Ui.Action` draws a success as its `result:` tree and any failure — a refusal, a 401, no answer at all — as its `failure:` tree, then reloads every reader and table over the paths `onSuccess.refreshes` names and moves the page where `onSuccess.navigate` says. A form or a row takes no second press while its first is pending, `concurrency: serial` runs presses one after another, and a table's or a list's row draws the answer of its action — a download link, a status — in place of its button. A row's inputs that cannot make a valid request are refused before the app runs.
+- **Buttons that answer in place, with no double submits.** A `Ui.Action` draws a success as its `result:` tree and any failure — a refusal, a 401, no answer at all — as its `failure:` tree, then reloads every reader and listing over the paths `onSuccess.refreshes` names and moves the page where `onSuccess.navigate` says. A form or a row takes no second press while its first is pending, `concurrency: serial` runs presses one after another, and a listing's or a list node's row draws the answer of its action — a download link, a status — in place of its button. A row's inputs that cannot make a valid request are refused before the app runs.
 - **Screens in the viewer's language.** Give `UiReact.App` a `translator:` and a `lang:` read from `Accept-Language` or a cookie, and every page title, label, model title, enumeration label and built-in word is served translated, with plurals and numbers formatted in the browser by the language's rules and a heading over data composed from the values it names (`{ text, values }`). Each language is one cached document with `Vary` naming exactly the headers read.
 
 ### Durable execution
@@ -187,6 +202,7 @@ grows with every release.
 
 ## For module authors
 
+- **Your own layout.** A browser component written for the layout contract is drawn by `Ui.ComponentLayout` — the renderer does the fetching, paging, reloading, label lookups and moves, and the component draws the records; a module can also ship a layout kind of its own, checked against the collection with no change to `ui`.
 - **Rules for your kinds.** State cross-field and referrer rules as data, checked before the app runs.
 - **Templated definitions.** Checked like any manifest; an error in a forwarded value is reported on the consumer's line. A template turns a consumer's list or map into resources, routes, map entries and steps with `!for-each`, and chooses with `!if` / `!switch` from what the consumer wrote; it is checked with no consumer and again for each one before the app runs, and each generated resource keeps a stable name that does not shift when an entry is added.
 - **Typed node trees.** A kind whose schema is a recursive node tree (`$ref` to a named shape) gets every expression in it typed and evaluated at every depth, a nested `x-telo-context` adding its names to the enclosing one; a condition's schema that can never hold for the value it names (`x-telo-match-for`) is refused before the app runs.

@@ -1,7 +1,7 @@
 # Ui.Composite
 
 The contract a piece of interface with its own configuration provides through.
-An abstract: `Ui.View`, `Ui.Table`, `Ui.Form`, `Ui.Action`, `Ui.Filters` and
+An abstract: `Ui.View`, `Ui.Listing`, `Ui.Form`, `Ui.Action`, `Ui.Filters` and
 `Ui.Component` extend it, and so can a kind of your own.
 
 A composite provides:

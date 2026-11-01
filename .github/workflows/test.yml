@@ -146,6 +146,25 @@ jobs:
       - name: Check starter and blueprint manifests
         run: pnpm run check starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml
 
+      # The docs and Studio load these by URL, and an HTTP source cannot expand
+      # an `include:` glob — which a filesystem check never notices. The repo
+      # root is served so relative imports of `modules/` resolve too.
+      - name: Check example, starter and blueprint manifests over HTTP
+        run: |
+          set -euo pipefail
+          pnpm run starters --dir . --port 8787 &
+          server=$!
+          trap 'kill "$server"' EXIT
+          for _ in $(seq 1 60); do
+            curl -sf -o /dev/null http://127.0.0.1:8787/examples/hello-world/telo.yaml && break
+            sleep 1
+          done
+          urls=()
+          for f in examples/*/telo.yaml examples/*/*/telo.yaml starters/apps/*/telo.yaml starters/libs/*/telo.yaml blueprints/*/telo.yaml; do
+            urls+=("http://127.0.0.1:8787/$f")
+          done
+          pnpm run check "${urls[@]}"
+
       # Packaging is picky in ways a build is not — `@types/vscode` outranking
       # `engines.vscode` fails here while `tsc` and esbuild both pass. Running it
       # per-PR keeps that failure off `vscode-release.yml`, which packages the
@@ -749,7 +768,10 @@ jobs:
           SUITE_ARGS: ${{ needs.select.outputs.args }}
         run: |
           args=(); while IFS= read -r a; do args+=("$a"); done < <(jq -r '.[]' <<<"$SUITE_ARGS")
-          docker run --rm -v "$PWD":/workspace -v /workspace/.telo -w /workspace telo:ci ./test-suite.yaml "${args[@]}"
+          # The image runs as `node` (uid 1000); the checkout belongs to the runner user, so run as that
+          # user, with a home and a writable (memory-backed) cache the checkout never sees. The cache
+          # holds cargo's target dir, whose build scripts run from it, so it must not be `noexec`.
+          docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp --tmpfs /workspace/.telo:mode=1777,exec -v "$PWD":/workspace -w /workspace telo:ci ./test-suite.yaml "${args[@]}"
 
   # Tests whose subject is several telo installations over ONE workspace cache —
   # a host process and two containers, glibc and musl. They live outside the

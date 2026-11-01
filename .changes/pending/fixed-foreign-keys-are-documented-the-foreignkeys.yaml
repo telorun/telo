@@ -1,0 +1,4 @@
+modules:
+  modules/postgres: Fixed
+body: "Foreign keys are documented: the foreignKeys entry of Postgres.Table, and how a
+  key is added, matched and dropped."

@@ -1,0 +1,18 @@
+# An `!if` that drops a step shifts the failing step's index in the running
+# configuration: index 0 there is the `!if` as written.
+kind: Telo.Application
+metadata: { name: FailureShifted }
+imports:
+  Assert: ../../../../../modules/assert
+  Run: ../../../../../modules/run
+targets: [!ref compare]
+---
+kind: Run.Sequence
+metadata: { name: compare }
+steps:
+  - !if
+    if: !cel "false"
+    then: { name: skipped, value: 0 }
+  - name: matches
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: 2, expected: 3 }

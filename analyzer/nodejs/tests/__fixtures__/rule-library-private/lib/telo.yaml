@@ -1,0 +1,21 @@
+# `entry` is exported; what it relates to, and what that relates to, are not.
+kind: Telo.Library
+metadata: { name: RuleLibraryPrivateLib }
+imports:
+  Kinds: ../model
+exports:
+  resources: [entry]
+---
+kind: Kinds.Collection
+metadata: { name: entry }
+origin: good
+related: !ref hidden
+---
+kind: Kinds.Collection
+metadata: { name: hidden }
+origin: bad
+related: !ref deeper
+---
+kind: Kinds.Collection
+metadata: { name: deeper }
+origin: bad

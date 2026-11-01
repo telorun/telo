@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: FailureInputLocationsTest
+  version: 1.0.0
+  description: |
+    A failure leaving a step's dispatch is reported at the place the caller wrote
+    the input it is about, whatever declares the step's target: a child run
+    writes `<file>:<line>:<col>` of the first difference before the failure.
+imports:
+  Assert: ../modules/assert
+targets: [!ref inlineTarget, !ref refTarget]
+---
+kind: Assert.Manifest
+metadata: { name: inlineTarget }
+source: ./__fixtures__/failure-input-locations/inline-target.yaml
+expect:
+  runFails: "inline-target.yaml:17:63  Assert.Equals \"SequenceCompareSteps1Matches\": rows[1]: expected 3, got 2"
+---
+kind: Assert.Manifest
+metadata: { name: refTarget }
+source: ./__fixtures__/failure-input-locations/ref-target.yaml
+expect:
+  runFails: "ref-target.yaml:20:29  Assert.Equals \"matcher\": rows[1]: expected 3, got 2"

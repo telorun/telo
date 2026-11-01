@@ -1,0 +1,53 @@
+kind: Telo.Library
+metadata:
+  name: CrudUiLayoutRefusals
+  version: 1.0.0
+  description: Test fixture exporting an admin drawn as a board grouped by a property its collection cannot filter by equality.
+imports:
+  CrudUi: ../../../../
+  Crud: ../../../../../crud
+  SQLite: ../../../../../sqlite
+  Ui: ../../../../../ui
+exports:
+  resources: [byPriority]
+---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  priority: { type: text, nullable: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskDraft }
+schema:
+  type: object
+  required: [title, priority]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    priority: { enum: [low, high] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+extends: TaskDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+# `priority` is no filter the collection accepts.
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref Task
+table: !ref tasksTable
+schemas: { list: !ref Task, create: !ref TaskDraft, update: !ref TaskDraft }
+query: { filters: [{ property: title, operator: contains }], sort: [] }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+kind: CrudUi.Admin
+metadata: { name: byPriority }
+source: !ref tasksSource
+layout: { kind: Ui.BoardLayout, groups: { property: priority } }

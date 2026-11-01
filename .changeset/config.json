@@ -41,6 +41,8 @@
     "@telorun/console-build",
     "@telorun/container",
     "@telorun/crud-build",
+    "@telorun/crud-ui-build",
+    "@telorun/data-model",
     "@telorun/docker-build",
     "@telorun/durable-build",
     "@telorun/durable-journal-file-build",

@@ -11,8 +11,9 @@ rather than written. That is the same bargain every platform below offers.
 
 Where they part company is **who the tool is for and who owns what it makes**.
 Most low-code platforms build an application for someone who is not a
-programmer, and keep the artifact in their own store. Telo builds a backend
-service for a team that is, and the artifact is a file in your repository. Those
+programmer, and keep the artifact in their own store. Telo builds backend
+services, and the data screens on top of them, for a team that is, and the
+artifact is a file in your repository. Those
 two choices explain almost every row that follows.
 
 This page compares seven platforms across the axes that actually differ. It
@@ -22,7 +23,7 @@ deliberately avoids connector counts and pricing, both of which change monthly.
 
 | | What you build | Where it runs | Source of truth | Extending it | License |
 | --- | --- | --- | --- | --- | --- |
-| **Telo** | A backend service — HTTP APIs, jobs, agents | Your own container, one process | YAML in your repo | A `Telo.Definition` + controller, in Node.js, Rust or Go | MIT SDK and standard library; fair-code runtime (Sustainable Use) |
+| **Telo** | A backend service — HTTP APIs, jobs, agents | Your own container, one process | YAML in your repo | A `Telo.Definition` + controller, in TypeScript (Rust for some native modules) | MIT SDK and standard library; fair-code runtime (Sustainable Use), see [Licensing](/learn/licensing) |
 | **n8n** | An automation between SaaS apps | n8n Cloud, or a self-hosted server | The n8n database; JSON export | A custom node in n8n's SDK | Fair-code (Sustainable Use) |
 | **Windmill** | Scripts and flows, developer-first | Windmill Cloud, or a self-hosted server + workers | Scripts in git, synced to the workspace | Ordinary code in TS/Python/Go | AGPL-3.0 (+ enterprise edition) |
 | **Node-RED** | A message flow, often at the edge | A Node-RED server you host | `flows.json` | A custom node package on npm | Apache-2.0 |
@@ -60,8 +61,9 @@ to you.
   in Telo an AI model is one resource kind among many, wired to HTTP, SQL,
   queues and schedulers by the same rules as everything else.
 
-Telo has a visual builder, but it builds a *service*, not a *screen*. That is a
-scope statement, not a ranking: if what you need is an admin table over a
+Telo has a visual editor for the structure of a service, and screens are
+declared in YAML. There is no drag-and-drop screen builder. That is a scope
+statement, not a ranking: if what you need is an admin table over a
 database by Thursday, an internal-tool builder will get you there faster and
 this page is not an argument against it.
 
@@ -121,10 +123,11 @@ first-class path to your own.
   are type-checked and — for a [templated kind](/extend/templated-definitions) —
   its behaviour are manifest documents, so an extension is visible to the
   editor and the checker rather than code beside the canvas.
-- **Controllers are polyglot** — Node.js, Rust and Go. The kind's contract is
-  language-neutral by design, so which language a controller is written in is
-  invisible to the manifest that uses it. Node.js ships today; the Rust kernel
-  is in progress.
+- **Controllers are language-neutral by design.** Today you extend Telo in
+  TypeScript (Rust for some native modules); the runtime is designed so other
+  languages can be added. Which language a controller is written in is
+  invisible to the manifest that uses it. The Node.js runtime ships today; a
+  narrower Rust runtime is in progress.
 - **Modules publish as OCI artifacts** with semver, imports pinned by digest,
   and discovery through the [hub](https://hub.telo.run). Reuse is a versioned
   dependency, not a copied template.
@@ -147,7 +150,7 @@ over there and does not here.
 | Performance | A step is an in-process call — no queue hop, no per-step persistence; expressions and schemas compile once at load | Per-step orchestration overhead, plus a network round trip per connector call on the hosted platforms |
 | Load testing | `Benchmark.Suite` — a resource in the same manifest, with p99 thresholds that fail CI | An external tool, if the platform can be driven by one |
 | Observability | Structured logging, OTLP tracing, `--inspect` for a live topology | A per-execution log viewer |
-| Durable state | Not today — durable execution is in progress | Built in on the workflow platforms |
+| Durable state | Durable runs record each step, so a crash and restart continue where the work stopped; see [Durable execution](/learn/durable-execution) | Built in on the workflow platforms |
 
 The performance difference is architectural rather than a matter of tuning. An
 automation platform schedules an execution, then moves it between nodes through
@@ -166,10 +169,13 @@ database faster, and on an LLM workflow the orchestration overhead is noise
 either way. Where it does matter, `Benchmark.Suite` measures it from inside the
 same manifest, with `p99` thresholds that exit non-zero in CI.
 
-Telo runs inside one process and boots once; it does not persist state across a
-crash. The automation platforms do, and for a long-running saga that matters
-today. See [Coming from somewhere else](/learn/coming-from) for where that line
-sits.
+An ordinary Telo sequence runs inside one process and does not persist state
+across a crash. Work that must survive one — a payment, an order across several
+systems, a wait of days for an approval — is declared as a durable run, which
+records each step as it completes and continues after a restart. Durable
+execution ships today; the [guide](/learn/durable-execution) says what is
+recorded and where it applies, and the automation platforms still have the
+larger catalogue of ready-made connectors to wait on.
 
 ## Where Telo is weaker
 

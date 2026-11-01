@@ -891,11 +891,15 @@ export class DefinitionRegistry {
   getByExtends(abstractKind: string): ResourceDefinition[] {
     const result: ResourceDefinition[] = [];
     const queue = [abstractKind];
+    const seen = new Set<string>(queue);
     while (queue.length > 0) {
       const parent = queue.shift()!;
       const children = this.extendedBy.get(parent);
       if (!children) continue;
       for (const child of children) {
+        // A kind reached by two paths (its parent and the role it plays) is one kind.
+        if (seen.has(child)) continue;
+        seen.add(child);
         const def = this.defs.get(child);
         if (def) result.push(def);
         queue.push(child);

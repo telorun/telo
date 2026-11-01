@@ -13,9 +13,12 @@
  * `REPEAT_KEY_DUPLICATE`, and a `targets:` list the expansion leaves naming no
  * entry or starting what is never run).
  *
- * Two seams, nothing else, are the caller's: `declarationAt` — the declaration
- * a reference names and the module it belongs to (the analyzer resolves a name,
- * the kernel reads a live instance's declaration) — and `emitted`, what an
+ * Three seams, nothing else, are the caller's: `declarationAt` — the
+ * declaration a reference names and the module it belongs to (the analyzer
+ * resolves a name, the kernel a reference in the scope that wrote it or a live
+ * instance's declaration); `readDeclaration` — that declaration as a read past
+ * the reference sees it (`namedShapeReading`, over each half's declarations);
+ * and `emitted`, what an
  * emitted item receives for a value that reads a loop's binding (the analyzer
  * gives the forward marker, the kernel the live value or the expression closed
  * over its bindings). `decidedValue` reads a value chained to a dimension from
@@ -92,6 +95,9 @@ export interface ConsumerExpansion {
   readonly consumer: ResourceManifest;
   readonly runner: ResourceDefinition;
   readonly expansion: TemplateBodyExpansion;
+  /** True when a choice or repeat was refused, leaving the body incomplete:
+   *  the refusal is the one report about it. */
+  readonly refused: boolean;
   /** The place a consumer wrote the element an instance stands in. */
   readonly locate: (instance: LoopInstance) => Location | undefined;
 }
@@ -108,6 +114,9 @@ export interface ConsumerExpansionEnvironment {
     at: Location,
     consumer: ResourceManifest,
   ): { declaration: ResourceManifest | undefined; module: string | undefined } | undefined;
+  /** SEAM. A declaration a reference names, as it is read past the reference:
+   *  a named shape with its `extends` parents folded. */
+  readDeclaration(declaration: ResourceManifest): ResourceManifest;
   /** SEAM. What an emitted item receives for a CEL value that reads a loop's
    *  binding; `forward` is where the consumer wrote the value when the
    *  expression is a bare `<binding>.value.<path>`. */
@@ -324,7 +333,11 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
                 });
                 continue;
               }
-              descend({ node: crossed.declaration, holder: crossed.declaration, keys: [], written: lift ? [] : undefined, holding: h }, i, segment);
+              descend(
+                { node: env.readDeclaration(crossed.declaration), holder: crossed.declaration, keys: [], written: lift ? [] : undefined, holding: h },
+                i,
+                segment,
+              );
             }
             return;
           }
@@ -715,7 +728,7 @@ export function createConsumerExpander(env: ConsumerExpansionEnvironment): {
           `${runnerLabel(runner)}, expanded for this instance: ${problem.message}`);
       }
     }
-    return { consumer, runner, expansion, locate };
+    return { consumer, runner, expansion, refused: refusals > 0, locate };
   };
 
   return { records, expand };

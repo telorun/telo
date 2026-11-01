@@ -45,15 +45,15 @@ ARN:
 
 ```yaml
 kind: Lambda.Function
-metadata: { name: Main }
+metadata: { name: main }
 handlers:
-  - !ref WebApi
-  - !ref OrderProcessor
-  - !ref AdminTools
+  - !ref webApi
+  - !ref orderProcessor
+  - !ref adminTools
 ```
 
 A handler's `handler:` slot takes any `Telo.Invocable` or `Telo.Runnable`, so
-the work itself is ordinary Telo — a `Run.Sequence`, a `JS.Script`, a `Crud`
+the work itself is ordinary Telo — a `Run.Sequence`, a `Run.Value`, a `Crud`
 resource — and is not Lambda-specific.
 
 ## Packaging
@@ -79,9 +79,9 @@ zip -r function.zip telo.yaml index.mjs .telo node_modules
 imported manifest into `.telo/` beside the manifest, so a cold start performs no
 network I/O. Ship that directory inside the artifact.
 
-**The bootstrap looks for a `Lambda.Function` named `Main`.** That is the only
-convention it hardcodes; if your function resource has a different name, copy
-the bootstrap and edit the literal in it.
+**The bootstrap invokes the `Lambda.Function` named `main`.** Name your resource
+`main`, as the worked examples do, or the invoke finds no resource. It is the
+only convention the bootstrap hardcodes.
 
 Test locally with the [AWS Lambda Runtime Interface Emulator](https://github.com/aws/aws-lambda-runtime-interface-emulator)
 against a synthetic event payload for the source you are wiring.
@@ -94,7 +94,27 @@ keep that boot inside AWS's init budget, defer expensive resources — a resourc
 declared inside an `x-telo-scope` block is constructed on first use rather than
 at boot.
 
-## Environment and secrets
+## Environment, needs and the filesystem
+
+The artifact is a Node process embedding the kernel, not the `telo` CLI: there are
+no CLI flags, and nothing prompts — an input nothing supplies fails the init.
+Lambda already runs the function unprivileged with the package directory read-only
+and `/tmp` writable, so the container hardening in
+[Running in production](/deploy/production#running-unprivileged) has no
+counterpart here. The baked `.telo/` is read from the package; entries the kernel
+would derive on top of it cannot be persisted there.
+
+An application with `needs:` must get each required one from the function
+configuration, as `telo needs report ./telo.yaml` lists them (run it at build
+time): a `Telo.PublicUrl` takes the API Gateway URL in its `TELO_NEED_…`
+variable, and a `Telo.DurableDirectory` takes the mount path of an EFS file
+system. Execution environments run concurrently, so declare the directory
+`access: shared`; the local `/tmp` is neither durable nor shared. See
+[Providing needs](/learn/providing-needs). Every runtime-read variable is in
+[Environment variables](/reference/environment-variables); `TELO_EGRESS` and
+the registry settings only matter at `telo install` time in your build.
+
+### Variables and secrets
 
 Lambda environment variables bind exactly as anywhere else: declare
 `variables:` / `secrets:` on the `Telo.Application` with an `env:` key, and set
@@ -120,3 +140,4 @@ Runnable manifests, one per source:
 - [Deploy overview](/deploy) — choosing a deployment model.
 - [Docker image](/deploy/docker) — the long-running alternative.
 - [Running in production](/deploy/production) — signals, exit codes, health checks.
+- [Upgrades & version skew](/deploy/upgrades) — keep the kernel the bootstrap embeds and the module pins together.

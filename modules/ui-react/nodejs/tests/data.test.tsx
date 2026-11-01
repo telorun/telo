@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Page, type Rendered } from "./harness.js";
-import { actionNode, dataNode, operation, reportSchema, tableNode, todos } from "./spec-nodes.js";
+import { actionNode, dataNode, operation, reportSchema, listingNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -61,7 +61,7 @@ describe("a reader", () => {
             children: [
               { type: "text", text: "Sign in first.", shown: { at: { root: "data", path: ["authorized"] }, matches: { const: false } } },
               {
-                ...tableNode({ columns: [], rowActions: [{ action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }), inputs: { id: { root: "row", path: ["id"] } } }] }),
+                ...listingNode({ columns: [], rowActions: [{ action: operation("/api/todos/archive", "Archive", { type: "object", properties: { id: { type: "integer" } } }), inputs: { id: { root: "row", path: ["id"] } } }] }),
                 shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
               },
             ],
@@ -73,7 +73,7 @@ describe("a reader", () => {
     await rendered.click(rendered.parts("row-action")[0]);
     expect(reads(rendered)).toBe(2);
     expect(shownTexts(rendered, "text")).toEqual(["Sign in first."]);
-    expect(shownTexts(rendered, "table")).toEqual([]);
+    expect(shownTexts(rendered, "listing")).toEqual([]);
   });
 
   it("never reads again for its own refused read, and draws its failure tree over the error", async () => {

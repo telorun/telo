@@ -27,8 +27,8 @@ The rules are short:
   resource `camelCase`, which is what distinguishes `!ref Console.writeLine`
   from `kind: Console.WriteLine` — see the
   [style guide](./style-guide.md).
-- **The tag is mandatory.** A bare string (`handler: Greet`) or the old object
-  form (`handler: { kind: Run.Value, name: Greet }`) is rejected with
+- **The tag is mandatory.** A bare string (`handler: greet`) or the old object
+  form (`handler: { kind: Run.Value, name: greet }`) is rejected with
   `INVALID_REFERENCE_FORM`, which names the `!ref` to write. The object form is
   read that way only for a kind that declares no `name` field; for a kind that
   does, `{ kind, name }` is an inline declaration (below). A library you import
@@ -49,8 +49,8 @@ A reference names a resource and nothing else. Anything about *this particular
 call* is a sibling key:
 
 ```yaml
-- name: Greet
-  invoke: !ref Greet      # which resource
+- name: greet
+  invoke: !ref greet      # which resource
   inputs:                 # what to pass it — a sibling, not part of the ref
     name: !cel "request.query.name"
 ```
@@ -98,11 +98,10 @@ bytes as UTF-8. `telo check` reports a hole it cannot convert (a list, a map) as
 `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE`. Concatenation inside `!cel`
 (`!cel "'Hello, ' + inputs.name"`) is still valid.
 
-A plain string holding `${{ … }}` is never evaluated. Older manifests wrote it
-that way: it still loads — a lone `"${{ x }}"` is read as `!cel "x"` and any other
-as `!interpolate` — with a `DEPRECATED_UNTAGGED_INTERPOLATION` warning, and
-`telo migrate` rewrites the file. Text that is literally `${{` is written
-`!literal`.
+A plain string holding `${{ … }}` is the deprecated untagged spelling. At load
+the `untagged-interpolation` migration rewrites it to the tagged form and
+reports `DEPRECATED_UNTAGGED_INTERPOLATION` as a warning; `telo migrate` rewrites
+the file itself. Text that is literally `${{` is written `!literal`.
 
 ### What is in scope, and where
 
@@ -123,7 +122,7 @@ the single most useful table on the page:
 | `error.*` | inside `catch:` / `finally:` / `catches:` | the caught failure: `code`, `message`, `step`, `data` |
 | a bare name | inside a kind that declares `bindings:` | a value you named yourself — see below |
 
-Everything here is **typed**. `steps.Greet.result.mesage` is a
+Everything here is **typed**. `steps.greet.result.mesage` is a
 `CEL_UNKNOWN_FIELD` error at check time, not `undefined` at 3am. That holds
 through a named shape too: an `inputType` or `outputType` property written as
 `!ref Money` types `inputs.price.amont` and `steps.quote.result.price.amont`
@@ -152,7 +151,7 @@ kind's expressions and in the other bindings.
 
 ```yaml
 kind: Run.Value
-metadata: { name: PriceLine }
+metadata: { name: priceLine }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -184,7 +183,20 @@ between computing a shared value once and computing it per row:
 
 ```yaml
 kind: Run.Choice
-metadata: { name: ShippingTier }
+metadata: { name: shippingTier }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [items]
+    properties:
+      items:
+        type: array
+        items:
+          type: object
+          required: [grams]
+          properties:
+            grams: { type: integer }
 bindings:
   weight: !cel "sum(inputs.items.map(i, i.grams)) / 1000.0"
 choices:
@@ -203,14 +215,14 @@ dispatches nothing:
 
 ```yaml
 steps:
-  - name: Cart
-    invoke: !ref LoadCart
-  - name: Total
-    value: !cel "sum(steps.Cart.result.lines.map(l, l.price * double(l.qty)))"
-  - name: Charge
-    invoke: !ref PaymentGateway
+  - name: cart
+    invoke: !ref loadCart
+  - name: total
+    value: !cel "sum(steps.cart.result.lines.map(l, l.price * double(l.qty)))"
+  - name: charge
+    invoke: !ref paymentGateway
     inputs:
-      amount: !cel "steps.Total.result"
+      amount: !cel "steps.total.result"
 ```
 
 A binding may not shadow a name already in scope — `inputs`, `steps`, `error`,
@@ -247,10 +259,10 @@ The common case is `error` inside a `finally:` block, which is null when the
 ## Putting both together
 
 ```yaml
-- name: Charge
-  invoke: !ref PaymentGateway               # !ref: which resource
+- name: charge
+  invoke: !ref paymentGateway               # !ref: which resource
   inputs:
-    amount: !cel "steps.Cart.result.total"  # !cel: computed from an earlier step
+    amount: !cel "steps.cart.result.total"  # !cel: computed from an earlier step
     currency: !cel "variables.currency"     # !cel: from module config
   retry:
     attempts: 3                             # a plain literal needs no tag

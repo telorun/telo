@@ -1,0 +1,21 @@
+kind: Telo.Library
+metadata:
+  name: DataModelCollidingModelLib
+  version: 1.0.0
+  description: Test fixture declaring a shape named like one its importer declares.
+imports:
+  DataModel: ../../../../../
+exports:
+  resources: [things]
+---
+kind: Telo.JsonSchema
+metadata: { name: Item }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: string } }
+---
+kind: DataModel.Collection
+metadata: { name: things }
+model: !ref Item
+query: { filters: [{ property: id, operator: in }], sort: [] }

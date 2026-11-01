@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: UiFieldValueRefusalsTest
+  version: 1.0.0
+  description: |
+    What the values a field offers refuse when first read: an option source
+    searching, filtering or looking a value up as its collection does not
+    accept, a picker's value type, and a date range's property, default, presets
+    and labels.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref fieldOptionFilterNotAcceptedAtRuntime
+  - !ref fieldPickerMismatchAtRuntime
+  - !ref fieldRangeDefaultAtRuntime
+  - !ref fieldRangeLabelDuplicateAtRuntime
+  - !ref fieldRangePresetUnknownAtRuntime
+  - !ref fieldRangePropertyAtRuntime
+  - !ref fieldSearchNotAcceptedAtRuntime
+  - !ref fieldValueNotFilterableAtRuntime
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldOptionFilterNotAcceptedAtRuntime
+source: ./__fixtures__/invalid/field-option-filter-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.CollectionOptions 'optionFilterNotAccepted': 'filters.name' filters its source by a property the collection does not accept an equality on"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldPickerMismatchAtRuntime
+source: ./__fixtures__/invalid/field-picker-mismatch/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'pickerMismatch': 'fields[0]' offers options whose value is of another type than the property holds, or than its items hold for a list ('count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldRangeDefaultAtRuntime
+source: ./__fixtures__/invalid/field-range-default/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'rangeDefault': 'fields[0]' starts at a preset while the model gives the property a 'default' too ('period')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldRangeLabelDuplicateAtRuntime
+source: ./__fixtures__/invalid/field-range-label-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'rangeLabelDuplicate': 'fields[0]' has two presets labelled 'Month'"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldRangePresetUnknownAtRuntime
+source: ./__fixtures__/invalid/field-range-preset-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'rangePresetUnknown': 'fields[0]' starts at a preset it does not declare ('Yesterday')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldRangePropertyAtRuntime
+source: ./__fixtures__/invalid/field-range-property/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'rangeProperty': 'fields[0]' enters a property that is not a date range ('text')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldSearchNotAcceptedAtRuntime
+source: ./__fixtures__/invalid/field-search-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.CollectionOptions 'searchNotAccepted': 'search' searches with a property and operator the collection does not accept ('contains' on 'team')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldValueNotFilterableAtRuntime
+source: ./__fixtures__/invalid/field-value-not-filterable/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.CollectionOptions 'valueNotFilterable': 'value' yields a value no request can look options up by: 'value' must be a property of the record, read as 'row.<property>', that the collection accepts with operator 'in', so a chosen val"

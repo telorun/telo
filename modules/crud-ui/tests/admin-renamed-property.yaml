@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminRenamedPropertyTest
+  version: 1.0.0
+  description: |
+    Renaming a model property is caught before deploy for an application that
+    uses `CrudUi.Admin`: the generated screen follows the model and reports
+    nothing, and every place the application itself still names the old
+    property — a column of a layout written at the admin, a hand-written
+    listing's column, a filter field — is reported, each once.
+imports:
+  Probe: ../../ui/tests/__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: renamed
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/renamed-property/telo.yaml }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.renamed.result.reported"
+      expected:
+        - "RESOURCE_RULE_VIOLATED Ui.Filters/search at 'fields[0]': filters by a property and operator the collection does not accept. Declare the pair under the collection's `query.filters`, or remove this field."
+        - "CEL_UNKNOWN_FIELD CrudUi.Admin/laidOut: !cel: 'row.text' is not defined (available: title, isDone, id)"
+        - "CEL_UNKNOWN_FIELD Ui.Listing/summary: !cel: 'row.text' is not defined (available: title, isDone)"

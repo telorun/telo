@@ -1,0 +1,8 @@
+modules:
+  modules/ui: Added
+body: "A filter bar's node carries basePath, its presentation's source basePath as
+  written, which a values: present field's facet request is sent to and whose changes
+  reload its values. Ui.Words gains two required words, valueCount ({$label} ({$count}),
+  a value offered with how many records hold it) and operatorAbsent (not set, the
+  caption of an absent filter), and Ui.words carries both in English; a Ui.Words set
+  lacking either is refused."

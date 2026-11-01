@@ -50,7 +50,7 @@
 import { isRefSentinel } from "@telorun/templating";
 import { resolveSchemaPointer } from "./manifest-navigation.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
-import { readRefSlot, type RefSlot } from "./ref-slot.js";
+import { isSchemaOnlySlot, readRefSlot, type RefSlot } from "./ref-slot.js";
 import { readStepSlot, type StepSlot } from "./step-slot.js";
 import type {
   RefFieldEntry,
@@ -969,6 +969,15 @@ export interface ReachSchemaFrom {
   document: Record<string, any>;
   /** True when a schema-from anchor's schema writes it, not the kind's own. */
   viaAnchor: boolean;
+}
+
+/**
+ * True when every slot at a concrete site is `schema`-only: the site is a
+ * DECLARATION READ — what it names is answered from declarations, never
+ * injected as an instance, so it needs no init order and may name its holder.
+ */
+export function isDeclarationReadSite(site: ReachSite): boolean {
+  return site.refs.length > 0 && site.refs.every(({ slot }) => isSchemaOnlySlot(slot));
 }
 
 /** One reference entry standing for every slot at a site: kinds unioned in

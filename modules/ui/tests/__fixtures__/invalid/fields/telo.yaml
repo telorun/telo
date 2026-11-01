@@ -12,6 +12,7 @@ metadata:
     each break one rule of field kinds, groups, kept state or option sources.
 imports:
   Ui: ../../../../
+  DataModel: ../../../../../data-model
 exports:
   resources:
     - fieldUnknown
@@ -56,28 +57,35 @@ metadata:
   name: Person
 schema:
   type: object
+  required: [id]
   properties:
     id: { type: string }
     name: { type: string }
     team: { type: string }
 ---
-kind: Ui.Collection
-metadata:
-  name: people
-query:
-  filters:
-    - { property: id, operator: in }
-    - { property: name, operator: contains }
-    - { property: team, operator: eq }
-  sort: []
+kind: Ui.CollectionSource
+metadata: { name: people }
+basePath: /api/people
+collection:
+  kind: DataModel.Collection
+  model: !ref Person
+  query:
+    filters:
+      - { property: id, operator: in }
+      - { property: name, operator: contains }
+      - { property: team, operator: eq }
+    sort: []
 ---
-kind: Ui.Collection
-metadata:
-  name: tasks
-query:
-  filters:
-    - { property: text, operator: contains }
-  sort: []
+# A task as it is read: the forms below send `Task`.
+kind: Ui.CollectionPresentation
+metadata: { name: tasks }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/tasks
+  collection:
+    kind: DataModel.Collection
+    model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: integer }, text: { type: string } } } }
+    query: { filters: [{ property: text, operator: contains }], sort: [] }
 ---
 kind: Ui.CollectionOptions
 metadata:
@@ -85,15 +93,14 @@ metadata:
 model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
-collection: !ref people
-source: { basePath: /api/people }
+source: !ref people
 search: { property: name, operator: contains }
 ---
 kind: Ui.Form
 metadata:
   name: fieldUnknown
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: title }
 ---
@@ -101,7 +108,7 @@ kind: Ui.Form
 metadata:
   name: fieldDuplicate
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - text
   - { kind: Ui.InputField, property: text }
@@ -117,14 +124,14 @@ model:
     properties:
       owner: { type: string }
       text: { type: string }
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields: [text]
 ---
 kind: Ui.Form
 metadata:
   name: groupUnknown
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: text, group: details }
 ---
@@ -132,7 +139,7 @@ kind: Ui.Form
 metadata:
   name: groupDuplicate
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 groups:
   - { name: main, label: Main }
   - { name: main, label: Again }
@@ -142,7 +149,7 @@ kind: Ui.Form
 metadata:
   name: groupSplit
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 groups:
   - { name: main, label: Main }
 fields:
@@ -154,15 +161,14 @@ kind: Ui.Form
 metadata:
   name: stateFieldUnknown
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields: [text]
 state: { key: task, address: true, fields: [count] }
 ---
 kind: Ui.Filters
 metadata:
   name: filtersStateFieldUnknown
-model: !ref Task
-collection: !ref tasks
+presentation: !ref tasks
 fields:
   - { property: text, operator: contains }
 policy:
@@ -173,7 +179,7 @@ kind: Ui.Form
 metadata:
   name: inputControl
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: text, control: toggle }
 ---
@@ -190,7 +196,7 @@ kind: Ui.Form
 metadata:
   name: choiceControl
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.ChoiceField, property: owner, options: !ref personOptions, control: tags }
 ---
@@ -198,7 +204,7 @@ kind: Ui.Form
 metadata:
   name: choiceMismatch
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.ChoiceField, property: count, options: !ref personOptions }
 ---
@@ -206,7 +212,7 @@ kind: Ui.Form
 metadata:
   name: pickerMismatch
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.PickerField, property: count, options: !ref personOptions }
 ---
@@ -214,7 +220,7 @@ kind: Ui.Form
 metadata:
   name: rangeProperty
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.DateRangeField, property: text, presets: [] }
 ---
@@ -232,7 +238,7 @@ model:
         properties:
           from: { type: string, format: date }
           to: { type: string, format: date }
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - kind: Ui.DateRangeField
     property: period
@@ -250,7 +256,7 @@ kind: Ui.Form
 metadata:
   name: rangePresetUnknown
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields: [!ref startsNowhere]
 ---
 kind: Ui.DateRangeField
@@ -265,7 +271,7 @@ kind: Ui.Form
 metadata:
   name: rangeLabelDuplicate
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields: [!ref twoMonths]
 ---
 kind: Ui.CollectionOptions
@@ -274,8 +280,7 @@ metadata:
 model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
-collection: !ref people
-source: { basePath: /api/people }
+source: !ref people
 search: { property: team, operator: contains }
 ---
 kind: Ui.CollectionOptions
@@ -284,8 +289,7 @@ metadata:
 model: !ref Person
 value: !cel "row.name"
 label: !cel "row.name"
-collection: !ref people
-source: { basePath: /api/people }
+source: !ref people
 ---
 kind: Ui.CollectionOptions
 metadata:
@@ -293,5 +297,5 @@ metadata:
 model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
-collection: !ref people
-source: { basePath: /api/people, filters: { name: Ada } }
+source: !ref people
+filters: { name: Ada }

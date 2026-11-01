@@ -24,22 +24,24 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  text: { type: text, nullable: false }
+  is_done: { type: integer, nullable: false, default: 0 }
+  priority: { type: integer }
+  status: { type: text }
+  due_on: { type: text }
+---
 kind: SQLite.Schema
 metadata: { name: migrate }
 connection: !ref db
 version: !cel "module.version"
+tables: [!ref tasksTable]
 migrations:
-  0001_tasks:
-    statement: |
-      CREATE TABLE tasks (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        text     TEXT    NOT NULL,
-        is_done  INTEGER NOT NULL DEFAULT 0,
-        priority INTEGER,
-        status   TEXT,
-        due_on   TEXT
-      )
-  0002_seed:
+  0001_seed:
     statement: |
       INSERT INTO tasks (text, is_done, priority, status, due_on) VALUES
         ('Write the plan',  1, 2,    'done',    '2026-10-01'),
@@ -65,19 +67,13 @@ schema:
 kind: Telo.JsonSchema
 metadata: { name: TaskRecord }
 extends: Task
-schema:
-  type: object
-  required: [id]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
-kind: Crud.Model
-metadata: { name: taskModel }
-schemas:
-  read: !ref TaskRecord
-  list: !ref TaskRecord
-  create: !ref Task
-  update: !ref Task
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref TaskRecord
+table: !ref tasksTable
+schemas: { list: !ref TaskRecord, create: !ref Task, update: !ref Task }
 query:
   filters:
     - { property: id, operator: in }
@@ -96,12 +92,12 @@ query:
     - { property: text }
     - { property: dueOn }
 ---
-kind: Crud.Resource
-metadata: { name: tasks }
+kind: Crud.Api
+metadata: { name: tasksApi }
 connection: !ref db
 singular: task
 plural: tasks
-model: !ref taskModel
+collection: !ref tasks
 ---
 kind: Http.Reference
 metadata: { name: docs }
@@ -118,7 +114,7 @@ with:
       info: { title: Tasks API, version: 1.0.0 }
     mounts:
       - path: /tasks
-        mount: !ref tasks
+        mount: !ref tasksApi
       - path: /reference
         mount: !ref docs
 targets:
@@ -127,16 +123,14 @@ steps:
   # ── Typed values: a boolean is true / false although SQLite stores 0 / 1 ──
   - name: create
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks", method: POST }
-    inputs:
-      body: { text: Typed, isDone: true }
+    inputs: { body: { text: Typed, isDone: true } }
   - name: filterDone
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?isDone=true" }
   - name: readOne
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks/6" }
   - name: undo
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks/1", method: PUT }
-    inputs:
-      body: { text: Write the plan, isDone: false, priority: 2, status: done, dueOn: "2026-10-01" }
+    inputs: { body: { text: Write the plan, isDone: false, priority: 2, status: done, dueOn: "2026-10-01" } }
   - name: readUndone
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks/1" }
   - name: verifyTyped
@@ -163,8 +157,7 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks?sort=text&limit=2" }
   - name: insertEarlier
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/tasks", method: POST }
-    inputs:
-      body: { text: Aardvark }
+    inputs: { body: { text: Aardvark } }
   - name: page2
     invoke: { kind: HttpClient.Request }
     inputs:
@@ -360,11 +353,15 @@ steps:
           - { pointer: /query/cursor, keyword: invalid, params: {} }
         statuses: [400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400, 400]
 
-  # ── The envelope is the documented response ──
+  # ── The envelope is the documented response, a list's and a facet's ──
   - name: spec
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19313/reference/openapi.json" }
   - name: verifySpec
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "steps.spec.result.body.paths['/tasks'].get.responses['200'].content['application/json'].schema.required"
-      expected: [rows, total, next]
+      actual:
+        properties: !cel "keys(steps.spec.result.body.paths['/tasks'].get.responses['200'].content['application/json'].schema.properties)"
+        required: !cel "steps.spec.result.body.paths['/tasks'].get.responses['200'].content['application/json'].schema.required"
+      expected:
+        properties: [rows, total, values, next]
+        required: [next]

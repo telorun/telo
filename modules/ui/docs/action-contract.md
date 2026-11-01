@@ -36,7 +36,7 @@ is the renderer's own word for the status. With no answer at all `status` is
 absent and `code` is `ERR_UI_REQUEST_FAILED`.
 
 **A 400** is the validation problem
-[a collection answers with](collection-contract.md#refusals--400), its findings
+[a collection answers with](../../data-model/docs/collection-contract.md#refusals--400), its findings
 in `data.issues`:
 
 ```json
@@ -138,5 +138,5 @@ resolves to nothing left out — and, where the entry declares `prompt`, each
 field its dialog entered. Its answer is read and drawn as the action's own:
 the `result` tree in place of the row's button, the `failure` tree beside it;
 a 400 to an entry that prompts is shown on its dialog's fields, as a form's
-is. In a table, any 2xx also reloads every table over the same
-`source.basePath` on the page.
+is. In a listing, any 2xx also reloads every listing over the same collection
+source `basePath` on the page.

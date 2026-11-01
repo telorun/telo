@@ -6,6 +6,7 @@ import {
   READS_IDENTITY,
   type ReadPlace,
   type ReadReporter,
+  type ReferentPlace,
   type ReferentReads,
 } from "./read-place.js";
 import { CEL_ENGINE, isTaggedSentinel } from "@telorun/templating";
@@ -38,6 +39,8 @@ import {
   type NamedShapeLookup,
 } from "./eval-paths.js";
 import { isResolvedReference } from "./resolved-reference.js";
+import { declarationValuesAt } from "./schema-projection.js";
+import type { ValueSchemaHost } from "./value-schema-slot.js";
 
 /** True when a node's value is decided at load or dispatch rather than written
  *  — a tagged sentinel (`!cel`, `!sql`, an embed) or an already-compiled value.
@@ -112,6 +115,10 @@ export interface ContextResolveOpts {
   /** The concrete path on `manifestRoot` of the expression being typed — where
    *  a reference `x-telo-context-ref-from` follows is read. */
   sitePath?: string;
+  /** How an `x-telo-context-ref-from` subpath crosses the reference slots of the
+   *  declarations it walks, and reads the type field it ends on. Absent, the
+   *  subpath is read inside the referenced declaration alone. */
+  referenceHost?: ValueSchemaHost;
 }
 
 /**
@@ -235,6 +242,10 @@ export function resolveTypeFieldToSchema(
           reader,
         );
       }
+      // A shape no declaration of the set carries — one an analysis extracted
+      // from a library's export — answered by the host holding its shapes.
+      const registered = declarations.shapes?.(obj.$ref);
+      if (registered) return registered;
       // A module that is not in this set — a single-file analysis, or an import
       // whose library was not forwarded. Fall through to the bare name, which is
       // what this resolved before the canonical form existed.
@@ -482,6 +493,7 @@ export function resolveContextAnnotations(
     declarations,
     shapes,
     sitePath,
+    referenceHost,
   } = normalizedOpts;
 
   const from = schema["x-telo-context-from"] as string | undefined;
@@ -666,17 +678,11 @@ export function resolveContextAnnotations(
           ? member.kind === ref.kind
             ? member
             : undefined
-          : names.declarationsOf(ref.name).find((m) => m.kind === ref.kind)
+          : (names.declarationsOf(ref.name).find((m) => m.kind === ref.kind) ?? crossedDeclaration(ref, manifestRoot, referenceHost))
       ) as Record<string, any> | undefined;
       if (refManifest) {
-        const resolved = resolveTypeFieldToSchema(
-          navigatePath(refManifest, segments) as unknown,
-          declarations,
-          refManifest,
-        );
-        if (resolved && typeof resolved === "object") {
-          return resolved;
-        }
+        const resolved = refFromSchema(refManifest, segments, declarations, referenceHost);
+        if (resolved) return resolved;
       }
       // The instance declares nothing, so fall back to its KIND's declaration —
       // the same layering `buildStepContextSchema` applies to `steps.<name>.result`,
@@ -730,6 +736,47 @@ export function resolveContextAnnotations(
   }
 
   return schema;
+}
+
+/**
+ * The declaration a reference written in `holder` names, resolved in the module
+ * that wrote it: a `!ref <Alias>.<name>` names another module's declaration,
+ * whose written kind the canonical kind on the reference does not match.
+ */
+function crossedDeclaration(
+  ref: Record<string, any>,
+  holder: Record<string, any>,
+  host: ValueSchemaHost | undefined,
+): Record<string, any> | undefined {
+  const lookup = host?.scope.resolveManifest(ref, holder);
+  return lookup && "manifest" in lookup ? lookup.manifest : undefined;
+}
+
+/**
+ * The schema an `x-telo-context-ref-from` subpath reaches in `refManifest`, the
+ * declaration its reference names. A segment after one of a declaration's
+ * reference slots continues in the declaration that slot names, resolved in the
+ * module that wrote it, to any depth (`collection/model`); the type field the
+ * walk ends on is the shape it names, `extends` folded. A walk reaching several
+ * types, or none, types nothing.
+ */
+function refFromSchema(
+  refManifest: Record<string, any>,
+  segments: readonly string[],
+  declarations: DeclarationRequests,
+  host: ValueSchemaHost | undefined,
+): Record<string, any> | undefined {
+  // One segment crosses nothing: it is a field of the referenced declaration.
+  if (!host || segments.length === 1) {
+    const resolved = resolveTypeFieldToSchema(navigatePath(refManifest, [...segments]), declarations, refManifest);
+    return resolved && typeof resolved === "object" ? resolved : undefined;
+  }
+  const schemas: Record<string, any>[] = [];
+  for (const { value, holder } of declarationValuesAt(refManifest, segments, host.scope)) {
+    const schema = host.typeSchemaOf(value, holder) ?? resolveTypeFieldToSchema(value, declarations, holder);
+    if (schema && typeof schema === "object" && !schemas.includes(schema)) schemas.push(schema);
+  }
+  return schemas.length === 1 ? schemas[0] : undefined;
 }
 
 /**
@@ -930,33 +977,47 @@ export const contextFromRefKindReads: ReadReporter = ({ value }) => {
 
 const refFromTargetReads = new Map<string, ReferentReads>();
 
-/** What `x-telo-context-ref-from` reads in the declaration its reference names:
- *  the field at `subpath`, a type there by its identity, and — for a single
- *  field — the value slot its kind derives that field from. */
+/** What `x-telo-context-ref-from` reads in the declaration its reference names.
+ *  A single field: that field, a type there by its identity, and the value slot
+ *  its kind derives that field from. A subpath that may cross references: in
+ *  every declaration it crosses into, each run of its segments — wherever along
+ *  it the next reference stands. */
 function refFromReads(subpath: string): ReferentReads {
   let reads = refFromTargetReads.get(subpath);
   if (reads) return reads;
   const segments = subpath.split("/");
-  const field = placeAt([], `/${subpath}`);
-  reads = (referent) => {
-    const slot = segments.length === 1 ? valueDerivedSlot(referent.schema, segments[0]!) : undefined;
-    return [
-      { kind: "reference", keys: field, transitive: false, reads: READS_IDENTITY },
-      ...(slot ? [{ kind: "value" as const, keys: slot }] : []),
-    ];
-  };
+  if (segments.length > 1) {
+    const runs: ReferentPlace[] = [];
+    for (let from = 0; from < segments.length; from++) {
+      for (let to = from + 1; to <= segments.length; to++) {
+        runs.push({ kind: "value", keys: placeAt([], `/${segments.slice(from, to).join("/")}`) });
+      }
+    }
+    reads = () => runs;
+  } else {
+    const field = placeAt([], `/${subpath}`);
+    reads = (referent) => {
+      const slot = valueDerivedSlot(referent.schema, segments[0]!);
+      return [
+        { kind: "reference", keys: field, transitive: false, reads: READS_IDENTITY },
+        ...(slot ? [{ kind: "value" as const, keys: slot }] : []),
+      ];
+    };
+  }
   refFromTargetReads.set(subpath, reads);
   return reads;
 }
 
 /** What `x-telo-context-ref-from` reads: the sibling reference on the object
- *  holding the region, and in the declaration it names the field the binding
- *  is typed from. */
+ *  holding the region, and in the declaration it names — and, for a subpath of
+ *  several segments, onward in each one a reference on the way names — the
+ *  places the binding is typed from. */
 export const contextRefFromReads: ReadReporter = ({ value, at }) => {
   if (typeof value !== "string" || value.indexOf("/") <= 0) return [];
   const keys = fieldPlace(enclosingKeys(at), value.slice(0, value.indexOf("/")));
+  const subpath = value.slice(value.indexOf("/") + 1);
   return keys
-    ? [{ kind: "reference", keys, transitive: false, reads: refFromReads(value.slice(value.indexOf("/") + 1)) }]
+    ? [{ kind: "reference", keys, transitive: subpath.includes("/"), reads: refFromReads(subpath) }]
     : [];
 };
 

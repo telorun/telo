@@ -59,10 +59,17 @@ describe("k8s runner config", () => {
 
   it("refuses to boot with a variable a configuration file replaced, naming the key to set", () => {
     expect(() =>
-      loadK8sRunnerConfig({ ...BASE_ENV, RUNNER_MAX_CPU: "500m", AGENT_ENV: "{}", RUNNER_BASE_IMAGE_REPO: "x/y" }),
+      loadK8sRunnerConfig({
+        ...BASE_ENV,
+        RUNNER_MAX_CPU: "500m",
+        AGENT_ENV: "{}",
+        RUNNER_BASE_IMAGE_REPO: "x/y",
+        RUNNER_SESSION_USER: "2000:2000",
+      }),
     ).toThrow(
       "this runner reads these settings from its configuration files, so the variables must be unset:\n" +
         "  RUNNER_MAX_CPU: set `resources.limits.cpu` in the session file (SESSION_CONFIG_FILE).\n" +
+        "  RUNNER_SESSION_USER: set `user` in the session file (SESSION_CONFIG_FILE).\n" +
         "  RUNNER_BASE_IMAGE_REPO: set `baseImages.repository` in the session file (SESSION_CONFIG_FILE).\n" +
         "  AGENT_ENV: set `env` in the agent file (AGENT_CONFIG_FILE).\n" +
         "A secret value of the agent's env is listed by name in `secretEnv` and read from AGENT_SECRET_<NAME>.",
@@ -94,12 +101,14 @@ describe("the configuration files", () => {
     expect(config.agent).toBeUndefined();
   });
 
-  it("read the session file's resources, containers and base images", () => {
+  it("read the session file's resources, user, containers and base images", () => {
+    expect(loadK8sRunnerConfig(BASE_ENV).sessionUser).toEqual({ uid: 1000, gid: 1000 });
     const config = withSession(
       [
         "resources:",
         "  limits: { cpu: 1, memory: 1Gi }",
         "  requests: { cpu: 250m }",
+        "user: { uid: 2000, gid: 0 }",
         "containers:",
         "  enabled: true",
         "  max: 2",
@@ -116,6 +125,7 @@ describe("the configuration files", () => {
       limits: { cpu: "1", memory: "1Gi", ephemeralStorage: "1Gi" },
       requests: { cpu: "250m", memory: "512Mi" },
     });
+    expect(config.sessionUser).toEqual({ uid: 2000, gid: 0 });
     expect(config.sessionContainers).toEqual({ enabled: true, max: 2, internalUrl: "http://runner:8062" });
     expect(config.sessionContainerResources.limits).toEqual({ memory: "512Mi", ephemeralStorage: "2Gi" });
     expect(config.baseImageCatalog).toMatchObject({
@@ -130,6 +140,10 @@ describe("the configuration files", () => {
     const path = file("resources:\n  limit: { cpu: 1 }\n");
     expect(() => loadK8sRunnerConfig({ ...BASE_ENV, SESSION_CONFIG_FILE: path })).toThrow(
       `\`resources.limit\` in ${path} is not a setting this runner reads (expected one of: limits, requests).`,
+    );
+    const user = file("user: { uid: 2000, gid: 2000, name: node }\n");
+    expect(() => loadK8sRunnerConfig({ ...BASE_ENV, SESSION_CONFIG_FILE: user })).toThrow(
+      `\`user.name\` in ${user} is not a setting this runner reads (expected one of: uid, gid).`,
     );
   });
 

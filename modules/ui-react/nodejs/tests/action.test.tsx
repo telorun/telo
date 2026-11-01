@@ -111,7 +111,7 @@ describe("an action", () => {
     ]);
     // `totals` is not a list in this answer.
     expect(texts([...totals.querySelectorAll('[data-telo-part="table-header-cell"]')])).toEqual(["Made"]);
-    expect(totals.querySelector('[data-telo-part="table-empty"]')?.textContent).toBe("No rows.");
+    expect(totals.querySelector('[data-telo-part="list-empty"]')?.textContent).toBe("No rows.");
     expect(totals.querySelectorAll('[data-telo-part="table-row"]')).toHaveLength(0);
   });
 
@@ -121,7 +121,7 @@ describe("an action", () => {
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
     // A list with nothing in it shows the empty state too.
-    expect(rendered.parts("table-empty")).toHaveLength(2);
+    expect(rendered.parts("list-empty")).toHaveLength(2);
     let finish: (response: Response) => void = () => {};
     respond = () => new Promise<Response>((resolve) => (finish = resolve));
     await rendered.click(rendered.part("submit"));

@@ -39,8 +39,11 @@ import {
   type ReferentReads,
 } from "./read-place.js";
 import { compileRuleCondition } from "./rule-condition.js";
+import type { ResourceDefinition } from "@telorun/sdk";
+import { authorSchemaChain, type DefResolver } from "./extends-resolution.js";
+import { RESOURCE_RULES_ANNOTATION } from "./rule-inheritance.js";
 
-export const RESOURCE_RULES_ANNOTATION = "x-telo-resource-rules";
+export { RESOURCE_RULES_ANNOTATION };
 
 export type ResourceRuleSeverity = "error" | "warning";
 
@@ -178,6 +181,32 @@ export function readResourceRules(schema: unknown): ResourceRule[] {
     });
   });
   return rules;
+}
+
+/** The rules one definition of an `extends` chain declares itself. */
+export interface DeclaredResourceRules {
+  readonly declarer: ResourceDefinition;
+  readonly rules: readonly ResourceRule[];
+}
+
+/**
+ * The rules a kind's resources are judged by, grouped by the definition that
+ * declares them, ancestors first — the chain `effectiveAuthorSchema` joins, with
+ * each rule's `index` its place in its own declarer's annotation, which is where
+ * a defect in it is reported. A code already inherited is not read again.
+ */
+export function declaredResourceRules(
+  definition: ResourceDefinition,
+  resolve: DefResolver,
+): DeclaredResourceRules[] {
+  const seen = new Set<string>();
+  const out: DeclaredResourceRules[] = [];
+  for (const declarer of authorSchemaChain(definition, resolve)) {
+    const rules = readResourceRules(declarer.schema).filter((rule) => !seen.has(rule.code));
+    for (const rule of rules) seen.add(rule.code);
+    if (rules.length > 0) out.push({ declarer, rules });
+  }
+  return out;
 }
 
 /** Split a JSON Pointer into its unescaped segments. `/` alone is the root. */

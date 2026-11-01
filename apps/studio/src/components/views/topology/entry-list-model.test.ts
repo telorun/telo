@@ -180,14 +180,14 @@ describe("entry list model", () => {
       entries: [
         {
           path: "/api/todos",
-          mount: { kind: "Crud.Resource", plural: "todos", singular: "todo" },
+          mount: { kind: "Crud.Api", plural: "todos", singular: "todo" },
         },
       ],
       list: entryListOf(schema)!,
       pointer: "/mounts",
       declared: new Set(),
     });
-    expect(row).toMatchObject({ inlineKind: "Crud.Resource", unresolved: false });
+    expect(row).toMatchObject({ inlineKind: "Crud.Api", unresolved: false });
     // Not a target: there is no named resource to open.
     expect(row!.target).toBeUndefined();
   });

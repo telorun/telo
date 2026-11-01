@@ -138,7 +138,7 @@ describe("buildDefinition", () => {
   it("resolves a local ref to the same-file resource", () => {
     const src = "/app/telo.yaml";
     const text = [
-      "kind: Crud.Resource",
+      "kind: Crud.Api",
       "metadata:",
       "  name: server",
       "connection: !ref Db",
@@ -148,7 +148,7 @@ describe("buildDefinition", () => {
       "  name: Db",
     ].join("\n");
     const file = loadedFile(src, text, [
-      { kind: "Crud.Resource", metadata: { name: "server" } },
+      { kind: "Crud.Api", metadata: { name: "server" } },
       { kind: "Sql.Connection", metadata: { name: "Db" } },
     ]);
     const graph = {

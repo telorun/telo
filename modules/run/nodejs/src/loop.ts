@@ -140,6 +140,7 @@ class RunLoop {
             },
             invokeCtx,
             turnStepPath(invokeCtx, iteration),
+            "/steps",
           );
           previous = steps;
           iteration += 1;

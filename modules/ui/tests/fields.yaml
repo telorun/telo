@@ -11,6 +11,7 @@ metadata:
     form is first read.
 imports:
   Ui: ..
+  DataModel: ../../data-model
   Stars: ./__fixtures__/external-field
   Assert: ../../assert
   Probe: ./__fixtures__/probe
@@ -43,6 +44,7 @@ metadata:
   name: Person
 schema:
   type: object
+  required: [id]
   properties:
     id: { type: string }
     name: { type: string, title: Name }
@@ -57,31 +59,43 @@ value: !cel "row.id"
 label: !cel "row.name"
 hint: !cel "row.team"
 href: !cel "row.page"
-collection:
-  kind: Ui.Collection
-  query:
-    filters:
-      - { property: id, operator: in }
-      - { property: name, operator: contains }
-      - { property: team, operator: eq }
-    sort: []
 source:
+  kind: Ui.CollectionSource
   basePath: /api/people
-  filters: { team: !cel "values.title" }
+  collection:
+    kind: DataModel.Collection
+    model: !ref Person
+    query:
+      filters:
+        - { property: id, operator: in }
+        - { property: name, operator: contains }
+        - { property: team, operator: eq }
+      sort: []
+filters: { team: !cel "values.title" }
 search: { property: name, operator: contains }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasks }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/tasks
+  collection:
+    kind: DataModel.Collection
+    model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+    query: { filters: [], sort: [] }
 ---
 kind: Ui.Form
 metadata:
   name: bare
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields: [title]
 ---
 kind: Ui.Form
 metadata:
   name: kinded
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: title }
 ---
@@ -89,7 +103,7 @@ kind: Ui.Form
 metadata:
   name: full
 model: !ref Task
-source: { basePath: /api/tasks }
+presentation: !ref tasks
 groups:
   - { name: who, label: Who, description: The people on it. }
   - name: when
@@ -142,6 +156,7 @@ steps:
               type: collection
               schema:
                 type: object
+                required: [id]
                 properties:
                   id: { type: string }
                   name: { type: string, title: Name }

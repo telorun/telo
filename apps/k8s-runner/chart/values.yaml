@@ -176,7 +176,7 @@ session:
   # (init) containers. Every app of a session shares the `apps` container's, and
   # an app resolves its own module closure, so a memory limit below what a
   # closure needs turns an ordinary run into an OOMKill. No `limits.cpu` → no
-  # CPU limit; a request above its limit refuses to boot. With `resources`,
+  # CPU limit; a request above its limit refuses to boot. With `user`,
   # `containers` and `baseImages` below, this reaches the runner as the file
   # `session.yaml` of the `<name>-session` ConfigMap; a change rolls the runner.
   resources:
@@ -186,6 +186,12 @@ session:
     requests:
       cpu: "500m"
       memory: "512Mi"
+  # The numeric user every container of a session pod runs as, its agent's
+  # included, whatever the image's own USER: `{ uid, gid }` sets the pod's
+  # runAsUser, runAsGroup and fsGroup. uid 0 refuses to boot; gid 0 is allowed
+  # (OpenShift). Empty → the runner's default, 1000:1000 (the kernel image's
+  # `node` user).
+  user: {}
   # Image spawned for each run. Always offered in the picker below and used as
   # the fallback when the Docker Hub catalog is unreachable.
   #

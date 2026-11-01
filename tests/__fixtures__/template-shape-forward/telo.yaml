@@ -1,0 +1,50 @@
+# A templated kind whose body forwards a path past the instance's `model`
+# reference into the shape it names — `self.model.schema.properties.id.type` —
+# to an entry whose `idType` admits only `string`. The shape is read as it IS,
+# its `extends` parents folded, by `telo check` and at boot alike.
+kind: Telo.Library
+metadata:
+  name: ShapeForward
+  version: 1.0.0
+  description: >-
+    Fixture library exporting a callable kind that answers with the type its
+    instance's shape declares for `id`, inherited properties included.
+imports:
+  Run: ../../../modules/run
+exports:
+  kinds: [IdType]
+---
+kind: Telo.Definition
+metadata:
+  name: Answer
+  description: Answers with its `idType`, which only `string` satisfies.
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [idType]
+  additionalProperties: false
+  properties:
+    idType: { const: string }
+resources:
+  - kind: Run.Value
+    metadata: { name: body }
+    value: !cel "self.idType"
+invoke: !ref body
+---
+kind: Telo.Definition
+metadata:
+  name: IdType
+  description: Answers with the type the instance's shape declares for `id`.
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [model]
+  additionalProperties: false
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+resources:
+  - kind: Self.Answer
+    metadata: { name: answer }
+    idType: !cel "self.model.schema.properties.id.type"
+invoke: !ref answer

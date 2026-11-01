@@ -3,13 +3,13 @@ metadata:
   name: CrudDeclaredQueryTest
   version: 1.0.0
   description: |
-    The list route accepts only what the model declares. A filter is one
+    The list route accepts only what the collection declares. A filter is one
     property with one operator: the declared pair answers, and the same
     property under another operator, or another property a record reads as, is
     a 400 naming the parameter. A sort is one of the listed properties: a
     listed one pages to the end returning each row once, and an unlisted one —
     the key included — is a 400 on `sort`. With no `sort` the order is the key.
-    One record is read by its key whatever the model declares.
+    One record is read by its key whatever the collection declares.
 imports:
   Crud: ../
   SQLite: ../../sqlite
@@ -25,20 +25,22 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  text: { type: text, nullable: false }
+  is_done: { type: integer, nullable: false, default: 0 }
+  due_on: { type: text }
+---
 kind: SQLite.Schema
 metadata: { name: migrate }
 connection: !ref db
 version: !cel "module.version"
+tables: [!ref tasksTable]
 migrations:
-  0001_tasks:
-    statement: |
-      CREATE TABLE tasks (
-        id      INTEGER PRIMARY KEY AUTOINCREMENT,
-        text    TEXT    NOT NULL,
-        is_done INTEGER NOT NULL DEFAULT 0,
-        due_on  TEXT
-      )
-  0002_seed:
+  0001_seed:
     statement: |
       INSERT INTO tasks (text, is_done, due_on) VALUES
         ('Write the plan',  1, '2026-10-01'),
@@ -53,19 +55,12 @@ schema:
   type: object
   required: [text]
   additionalProperties: false
-  properties:
-    text: { type: string }
-    isDone: { type: boolean }
-    dueOn: { type: string, format: date }
+  properties: { text: { type: string }, isDone: { type: boolean }, dueOn: { type: string, format: date } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: TaskRecord }
 extends: Task
-schema:
-  type: object
-  required: [id]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -78,39 +73,31 @@ with:
     mounts:
       - path: /tasks
         mount:
-          kind: Crud.Resource
+          kind: Crud.Api
           connection: !ref db
           singular: task
           plural: tasks
-          model:
-            kind: Crud.Model
-            schemas:
-              read: !ref TaskRecord
-              list: !ref TaskRecord
-              create: !ref Task
-              update: !ref Task
+          collection:
+            kind: Crud.Collection
+            model: !ref TaskRecord
+            table: !ref tasksTable
+            schemas: { list: !ref TaskRecord, create: !ref Task, update: !ref Task }
             query:
-              filters:
-                - { property: text, operator: contains }
-              sort:
-                - { property: dueOn }
-      # The same table behind a model that accepts no filter and no sort.
+              filters: [{ property: text, operator: contains }]
+              sort: [{ property: dueOn }]
+      # The same table behind a collection that accepts no filter and no sort.
       - path: /bare
         mount:
-          kind: Crud.Resource
+          kind: Crud.Api
           connection: !ref db
           singular: task
           plural: tasks
-          model:
-            kind: Crud.Model
-            schemas:
-              read: !ref TaskRecord
-              list: !ref TaskRecord
-              create: !ref Task
-              update: !ref Task
-            query:
-              filters: []
-              sort: []
+          collection:
+            kind: Crud.Collection
+            model: !ref TaskRecord
+            table: !ref tasksTable
+            schemas: { list: !ref TaskRecord, create: !ref Task, update: !ref Task }
+            query: { filters: [], sort: [] }
 targets:
   - !ref server
 steps:
@@ -198,7 +185,7 @@ steps:
           issues:
             - { pointer: /query/sort, keyword: enum, params: { allowedValues: [dueOn, -dueOn] } }
 
-  # ── One record by its key, on a model that accepts no filter ──
+  # ── One record by its key, on a collection that accepts no filter ──
   - name: readOne
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19321/bare/3" }
   - name: bareFilter

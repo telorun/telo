@@ -5,9 +5,8 @@ import { Kernel } from "../src/kernel.js";
 import { LocalFileSource } from "../src/manifest-sources/local-file-source.js";
 
 /**
- * A template body's bare `self.<path>` may continue past a reference slot: where
- * the referenced instance has no such member, the path continues in what that
- * resource was declared with.
+ * A template body's bare `self.<path>` may continue past a reference slot: the
+ * path continues in what that resource was declared with.
  */
 
 const here = path.dirname(fileURLToPath(import.meta.url));

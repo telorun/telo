@@ -2,6 +2,7 @@ import {
   describeSensitiveValueFinding,
   sensitiveEnvironmentInputs,
   sensitiveValueFindings,
+  type LoadedGraph,
   type LoadedModule,
   type ManifestSource,
   type WorkspaceEnvResolution,
@@ -643,24 +644,33 @@ function cacheFirstResolver(
 
 /** Format an error as diagnostics on the terminal. Returns the non-warning
  *  count so the single-shot path can pick an exit code while watch keeps going.
- *  The kernel's loaded graph is what turns a static failure's `origin` into a
- *  `file:line:col` — it is present for every failure raised after the graph
- *  loaded, which is every static one. */
-function reportError(argv: RunArgv, error: unknown, log: Logger, kernel?: Kernel): number {
+ *  The loaded graph is what turns a diagnostic's `origin` into a `file:line:col`
+ *  — a static failure's, and a failure that left a dispatch, which the kernel
+ *  locates in the declaration of the resource that issued it. `graph` is the one
+ *  captured after load, since a run's teardown drops the kernel's. */
+function reportError(
+  argv: RunArgv,
+  error: unknown,
+  log: Logger,
+  kernel?: Kernel,
+  graph?: LoadedGraph,
+): number {
   const isUrl = argv.path.startsWith("http://") || argv.path.startsWith("https://");
   const displayPath = isUrl
     ? argv.path
     : path.relative(process.cwd(), path.resolve(process.cwd(), argv.path));
   const attached = (error as any)?.diagnostics as RuntimeDiagnostic[] | undefined;
-  const diags: RuntimeDiagnostic[] = attached?.length
-    ? attached
-    : [
-        {
-          message: error instanceof Error ? error.message : String(error),
-          code: (error as any)?.code,
-        },
-      ];
-  formatDiagnostics(diags, log, displayPath, kernel?.getLoadedGraph());
+  const diags: RuntimeDiagnostic[] = kernel
+    ? kernel.failureDiagnostics(error)
+    : attached?.length
+      ? attached
+      : [
+          {
+            message: error instanceof Error ? error.message : String(error),
+            code: (error as any)?.code,
+          },
+        ];
+  formatDiagnostics(diags, log, displayPath, graph ?? kernel?.getLoadedGraph());
   const errorCount = countRootErrors(diags);
   const warnCount = diags.filter((d) => d.severity === "warning").length;
   const out = output();
@@ -748,6 +758,7 @@ export async function run(given: RunArgv): Promise<void> {
   // Held outside the try so the catch can reach the loaded graph a static
   // failure's location resolves against.
   let bootedKernel: Kernel | undefined;
+  let loadedGraph: LoadedGraph | undefined;
   let loaded = false;
   let phase = "kernelCreate";
   try {
@@ -780,6 +791,7 @@ export async function run(given: RunArgv): Promise<void> {
     });
     profiler?.end("load");
     loaded = true;
+    loadedGraph = kernel.getLoadedGraph();
     warnSensitiveValues(kernel, env);
     if (answerApplicationHelp(kernel)) {
       await kernel.teardown();
@@ -846,7 +858,7 @@ export async function run(given: RunArgv): Promise<void> {
     // never reaches a consumer.
     emitRunFailed(debug, loaded ? "start" : "load", error);
     debug?.stop();
-    reportError(argv, error, log, bootedKernel);
+    reportError(argv, error, log, bootedKernel, loadedGraph);
     hintUnresolvedInputs(error, inputs, argv);
     process.exit(1);
   }
@@ -1044,6 +1056,7 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
         ...(inputs ? { inputResolver: cacheFirstResolver(inputs, writeManifestCacheOnce) } : {}),
       });
       warnSensitiveValues(kernel, env);
+      const graph = kernel.getLoadedGraph();
       if (answerApplicationHelp(kernel)) {
         requestStop();
         await kernel.teardown();
@@ -1065,7 +1078,7 @@ async function runWatch(given: RunArgv, log: Logger): Promise<void> {
         .start()
         .catch((err) => {
           emitRunFailed(debug, "start", err);
-          reportError(cycle, err, log, kernel);
+          reportError(cycle, err, log, kernel, graph);
         })
         .finally(() => {
           finished = true;

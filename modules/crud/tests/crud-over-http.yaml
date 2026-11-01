@@ -3,10 +3,11 @@ metadata:
   name: CrudOverHttpTest
   version: 1.0.0
   description: |
-    End-to-end: a templated Crud.Resource mounted on an Http.Server exercises the
-    full REST lifecycle (create / list envelope / read / replace / delete / 404) against a
-    SQLite table. Validates the persistent-target template controller, the
-    `mount:` dispatch, and nested templated handlers resolving across imports.
+    End-to-end: a templated Crud.Api mounted on an Http.Server exercises the
+    full REST lifecycle (create / list envelope / read / replace / delete / 404)
+    against a declared SQLite table. Validates the persistent-target template
+    controller, the `mount:` dispatch, and nested templated handlers resolving
+    across imports.
 imports:
   Crud: ../
   Sql: ../../sql
@@ -23,19 +24,20 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
+kind: SQLite.Table
+metadata: { name: todosTable }
+table: todos
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  text: { type: text, nullable: false }
+  done: { type: integer, nullable: false, default: 0 }
+  due_date: { type: text }
+---
 kind: SQLite.Schema
 metadata: { name: migrate }
 connection: !ref db
 version: !cel "module.version"
-migrations:
-  0001_todos:
-    statement: |
-      CREATE TABLE todos (
-        id       INTEGER PRIMARY KEY AUTOINCREMENT,
-        text     TEXT    NOT NULL,
-        done     INTEGER NOT NULL DEFAULT 0,
-        due_date TEXT
-      )
+tables: [!ref todosTable]
 ---
 # What a client writes. The read shape below extends it, so a property is
 # declared once.
@@ -43,11 +45,11 @@ kind: Telo.JsonSchema
 metadata: { name: TodoDraft }
 schema:
   type: object
-  required: [ text ]
+  required: [text]
   additionalProperties: false
   properties:
     text: { type: string, minLength: 1 }
-    done: { type: integer, enum: [ 0, 1 ] }
+    done: { type: integer, enum: [0, 1] }
     # camelCase property — the column is its snake_case form `due_date`.
     dueDate: { type: string, maxLength: 10 }
 ---
@@ -57,29 +59,21 @@ schema:
 kind: Telo.JsonSchema
 metadata: { name: Todo }
 extends: TodoDraft
-schema:
-  type: object
-  required: [ id, done ]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id, done], properties: { id: { type: integer } } }
 ---
-kind: Crud.Model
-metadata: { name: todoModel }
-schemas:
-  read: !ref Todo
-  list: !ref Todo
-  create: !ref TodoDraft
-  update: !ref TodoDraft
-query:
-  filters: []
-  sort: []
----
-kind: Crud.Resource
+kind: Crud.Collection
 metadata: { name: todos }
+model: !ref Todo
+table: !ref todosTable
+schemas: { list: !ref Todo, create: !ref TodoDraft, update: !ref TodoDraft }
+query: { filters: [], sort: [] }
+---
+kind: Crud.Api
+metadata: { name: todosApi }
 connection: !ref db
 singular: todo
 plural: todos
-model: !ref todoModel
+collection: !ref todos
 ---
 kind: Http.Reference
 metadata: { name: docs }
@@ -100,21 +94,18 @@ with:
         version: 1.0.0
     mounts:
       - path: /todos
-        mount: !ref todos
+        mount: !ref todosApi
       - path: /reference
         mount: !ref docs
 targets:
   - !ref Server
 steps:
-  # The model/name config drives the OpenAPI doc: the collection is `/todos`,
+  # The collection/name config drives the OpenAPI doc: the collection is `/todos`,
   # each item lives at the renamed `/todos/{todoId}` (idParam default), and the
   # operations are named from singular/plural.
   - name: spec
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/reference/openapi.json
-      method: GET
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/reference/openapi.json", method: GET }
   - name: assertSpec
     inputs:
       listOp: !cel "steps.spec.result.body.paths['/todos'].get.operationId"
@@ -124,11 +115,8 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          listOp: { const: listTodos }
-          getOp: { const: getTodo }
-          createOp: { const: createTodo }
-        required: [ listOp, getOp, createOp ]
+        properties: { listOp: { const: listTodos }, getOp: { const: getTodo }, createOp: { const: createTodo } }
+        required: [listOp, getOp, createOp]
 
   - name: create
     inputs: {}
@@ -147,18 +135,13 @@ steps:
       expected:
         status: 201
         body: { id: 1, text: "Buy milk", done: 0, dueDate: "2026-07-01" }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # Body missing the required `text` is rejected by the model schema before the
   # handler runs — no row is created, so the List below still sees exactly one.
   - name: badCreate
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos
-      method: POST
-      body: { done: 1 }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos", method: POST, body: { done: 1 } }
   # A value the model refuses is named by its property, in the validator's own
   # words — which is what lets a form mark the field it was typed into.
   - name: tooLongCreate
@@ -189,15 +172,11 @@ steps:
                 - { pointer: /body/text, keyword: required, params: { missingProperty: text } }
         tooLong:
           - { pointer: /body/dueDate, keyword: maxLength, params: { limit: 10 } }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: list
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos
-      method: GET
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos", method: GET }
   # The list answers with an envelope: one page of rows, the count of every
   # match, and no cursor because nothing follows.
   - name: assertList
@@ -212,15 +191,11 @@ steps:
             - { id: 1, text: "Buy milk", done: 0, dueDate: "2026-07-01" }
           total: 1
           next: null
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: read
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos/1
-      method: GET
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
   - name: assertRead
     inputs:
       status: !cel "steps.read.result.status"
@@ -232,11 +207,8 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          status: { const: 200 }
-          done: { const: 0 }
-          dueDate: { const: "2026-07-01" }
-        required: [ status, done, dueDate ]
+        properties: { status: { const: 200 }, done: { const: 0 }, dueDate: { const: "2026-07-01" } }
+        required: [status, done, dueDate]
 
   # PUT replaces what the update shape declares: `dueDate`, which the body
   # leaves out, is cleared — an optional property, so the row read back has no
@@ -250,10 +222,7 @@ steps:
       body: { text: "Buy milk", done: 1 }
   - name: readUpdated
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos/1
-      method: GET
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
   - name: assertUpdated
     inputs:
       actual:
@@ -264,18 +233,13 @@ steps:
         status: 200
         echoed: { id: 1, text: "Buy milk", done: 1 }
         row: { id: 1, text: "Buy milk", done: 1 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A body without the required `text` is no whole record: refused naming it,
   # and the row is left as it was.
   - name: partialUpdate
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos/1
-      method: PUT
-      body: { done: 0 }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: PUT, body: { done: 0 } }
   # `done: 5` is outside the model's enum [0, 1].
   - name: badUpdate
     inputs: {}
@@ -295,17 +259,10 @@ steps:
       body: { text: "Buy oat milk", done: 0, dueDate: null }
   - name: readAfterRefusals
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos/1
-      method: GET
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
   - name: updateMissing
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos/99
-      method: PUT
-      body: { text: "Nobody" }
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/99", method: PUT, body: { text: "Nobody" } }
   - name: assertRefusedUpdates
     inputs:
       actual:
@@ -335,37 +292,24 @@ steps:
             - { pointer: /body/dueDate, keyword: type, params: { type: string } }
         row: { id: 1, text: "Buy milk", done: 1 }
         missing: 404
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: delete
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos/1
-      method: DELETE
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: DELETE }
   - name: assertDeleted
     inputs:
       status: !cel "steps.delete.result.status"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { status: { const: 204 } }
-        required: [ status ]
+      schema: { type: object, properties: { status: { const: 204 } }, required: [status] }
 
   - name: readGone
     inputs: {}
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8971/todos/1
-      method: GET
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8971/todos/1", method: GET }
   - name: assertGone
     inputs:
       status: !cel "steps.readGone.result.status"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { status: { const: 404 } }
-        required: [ status ]
+      schema: { type: object, properties: { status: { const: 404 } }, required: [status] }

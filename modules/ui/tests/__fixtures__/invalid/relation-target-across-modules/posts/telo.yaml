@@ -1,0 +1,26 @@
+# Its relations name its own import of the authors, an alias its importer does not have.
+kind: Telo.Library
+metadata:
+  name: UiRelationTargetAcrossModulesPosts
+  version: 1.0.0
+  description: Test fixture exporting a collection of posts related to another module's authors.
+imports:
+  DataModel: ../../../../../../data-model
+  Authors: ../authors
+exports:
+  resources: [posts]
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, title: { type: string }, authorId: { type: integer }, editorId: { type: integer } }
+---
+kind: DataModel.Collection
+metadata: { name: posts }
+model: !ref Post
+query: { filters: [{ property: id, operator: in }], sort: [] }
+relations:
+  authorId: { collection: !ref Authors.authors }
+  editorId: { collection: !ref Authors.authors }

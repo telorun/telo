@@ -217,7 +217,8 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
   },
   "x-telo-context-ref-from": {
     title: "Context ref from",
-    description: "Type this node from the named manifest's field, falling back to its kind's.",
+    description:
+      "`<refField>/<subpath>`: type this node from the field at `<subpath>` of the declaration the sibling reference names, falling back to its kind's. A subpath of several segments continues past each reference slot into the declaration it names.",
     type: "string",
   },
   "x-telo-context-parameters-from": {

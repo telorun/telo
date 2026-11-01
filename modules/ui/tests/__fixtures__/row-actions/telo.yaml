@@ -9,13 +9,16 @@ metadata:
     over actions that draw their answer.
 imports:
   Ui: ../../../
+  DataModel: ../../../../data-model
 ---
 kind: Telo.JsonSchema
 metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string }
     count: { type: integer }
 ---
@@ -29,12 +32,17 @@ schema:
   properties:
     count: { type: integer }
 ---
-kind: Ui.Collection
-metadata:
-  name: todos
-query:
-  filters: []
-  sort: []
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query:
+      filters: []
+      sort: []
 ---
 kind: Ui.Action
 metadata:
@@ -58,22 +66,20 @@ label: Remove
 result: { type: value, value: !cel "result.receipt", text: Receipt }
 onSuccess: { refreshes: [/api/todos] }
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: listless
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref remove
     inputs: { count: !cel "row.count" }
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: answered
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref removeAndShow
     inputs: { count: !cel "row.count" }

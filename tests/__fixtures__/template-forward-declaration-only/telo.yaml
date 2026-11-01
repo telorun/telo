@@ -1,0 +1,129 @@
+# Kinds whose bodies, repeats and `base:` mappings forward a path past a
+# reference slot.
+# `Source`'s instance has members named like its declared fields; `Labeled` is a
+# `base:` child of it.
+kind: Telo.Library
+metadata:
+  name: ForwardDeclarationOnly
+  version: 1.0.0
+  description: >-
+    Test fixture: template bodies and inheritance mappings forwarding a path past
+    a reference into the declaration of the resource it names, never into the
+    members of its instance.
+imports:
+  Run: ../../../modules/run
+exports:
+  kinds: [Source, Labeled, Reader, TitleReader, CollectionEcho, Lister]
+---
+kind: Telo.Definition
+metadata:
+  name: Source
+  description: A source whose instance holds a member named like each declared field.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    label: { type: string }
+    collection:
+      type: object
+      properties:
+        name: { type: string }
+controllers:
+  - pkg:telo/local/js?path=./source.mjs#Source
+---
+kind: Telo.Definition
+metadata:
+  name: Labeled
+  description: A source configured by a title, mapped onto the parent's fields.
+extends: Self.Source
+schema:
+  type: object
+  properties:
+    title: { type: string }
+base:
+  label: !cel "self.title"
+  collection: { name: mapped }
+---
+kind: Telo.Definition
+metadata:
+  name: Reader
+  description: Answers with the collection name and label its source was declared with.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    source:
+      x-telo-ref: { kind: Self.Source, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata: { name: read }
+    value:
+      collection: !cel "self.source.collection.name"
+      label: !cel "self.source.label"
+invoke: !ref read
+---
+kind: Telo.Definition
+metadata:
+  name: TitleReader
+  description: Answers with the title its labeled source was declared with.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    source:
+      x-telo-ref: { kind: Self.Labeled, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata: { name: read }
+    value: !cel "self.source.title"
+invoke: !ref read
+---
+kind: Telo.Definition
+metadata:
+  name: Echo
+  description: Answers with the value it was configured with.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    value: {}
+controllers:
+  - pkg:telo/local/js?path=./source.mjs#Echo
+---
+kind: Telo.Definition
+metadata:
+  name: CollectionEcho
+  description: Answers with the collection name and label its source was declared with.
+extends: Self.Echo
+schema:
+  type: object
+  properties:
+    source:
+      x-telo-ref: { kind: Self.Source, use: dependency }
+base:
+  value:
+    collection: !cel "self.source.collection.name"
+    label: !cel "self.source.label"
+---
+kind: Telo.Definition
+metadata:
+  name: Lister
+  description: Answers with the collection name and label each of its sources was declared with.
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    sources:
+      type: array
+      items:
+        x-telo-ref: { kind: Self.Source, use: dependency }
+resources:
+  - kind: Run.Value
+    metadata: { name: read }
+    value:
+      - !for-each
+        in: !cel "self.sources"
+        emit:
+          collection: !cel "each.value.collection.name"
+          label: !cel "each.value.label"
+invoke: !ref read

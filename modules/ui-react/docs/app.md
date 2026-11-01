@@ -373,9 +373,81 @@ the application starts and served from memory under an address that never
 changes. Editing one of your `stylesheets` takes effect when the application
 is started again, under a new address.
 
-## Tables and filter bars
+## Listings and filter bars
 
-- A table, a form and an option source read and write their `basePath` under
+A [`Ui.Listing`](../../ui/docs/listing.md) is drawn by its
+[layout](../../ui/docs/listing-layouts.md) — a table, a list, cards, a board,
+a calendar, a timeline, a tree, or a module's own component — and everything
+but the drawing is the listing's, whatever the layout:
+
+- **Reading.** The listing executes its layout's read plan (`reads`): one
+  read per group value, per shown period and per tree level, each paged by
+  `pageSize` and carrying the listing's `filters`, every filter bar around it
+  and the viewer's sort, in the order
+  [`conformance/listing-reads.json`](../../ui/conformance/README.md) pins.
+  While a fixed filter holds nothing, nothing is read.
+- **Paging.** Under `paging: pages` a pager keeps the cursors read, so
+  previous replays a page. Under `more` a Load more button at the end appends
+  the next page; under `scroll` it stays there, focusable, and is pressed by
+  itself while it is in view and a further page exists. Under both, only the
+  pages near the viewport are drawn — a page out of view stands in at its
+  height, unless it holds the focus or an open inline form — so a long list
+  stays fast however far it is scrolled. The count shown is the collection's
+  `total`.
+- **Sorting.** The viewer's sort is the listing's: a table sorts by a header,
+  a list, cards, a board and a tree by a sort control above the records, each
+  ascending then descending. A calendar and a timeline draw no control but
+  still send the sort. A sort or a filter change returns every read to its
+  first page.
+- **Reloading.** A write, a delete, a row action, `notifyChanged(basePath)`
+  and an action's `onSuccess.refreshes` reload every listing whose source has
+  that `basePath`, and every `values: present` filter over it. A reload keeps
+  what is drawn until it answers: it reads the loaded pages again from the
+  first, each with the cursor the one before answered, and draws them
+  together; with more than 10 pages loaded in a read it reads the first page
+  alone, in place, leaving the rest as drawn. A record whose key remains keeps
+  its element — its focus, an open inline form and what that form holds — and
+  a record a write answered with is drawn from that answer at once, wherever
+  it is shown.
+- **Related records.** A column over a property whose relation the listing
+  presents shows the related record's label, linked where the relation gives
+  `href`. The keys of every page answered in one turn are looked up together
+  with `in`, in batches of the relation's `pageSize`, each key once; a change
+  announced for the relation's source `basePath` looks them up again. A lookup
+  that fails is drawn as an `error` node under the records, which keep their
+  keys.
+- **Moving.** A layout's `move` runs when a record is dragged to another
+  board column, calendar day, timeline column or lane, or tree record — or
+  moved there through its "Move to" menu (`moveTo`), the keyboard path of every
+  drag. The gesture fills `to` and the move's row action is sent with the
+  inputs it binds over `row` and `to`, never a replace through the edit form;
+  a 2xx answer reloads every listing over the collection, as a write does,
+  and a refusal is drawn beside the record's buttons. A board column and a
+  calendar day also offer creating a record holding their value.
+- **Compact.** Below the application's breakpoint the `compact` layout is
+  drawn when there is one; the reads, the sort and an open form are kept.
+- **Empty.** When the reads answer no record, the listing's `empty` node is
+  drawn where the records would be.
+
+Each built-in layout draws its records as the [layout
+contract](layouts-abi.md) hands them over:
+
+| Layout | Draws | Reads |
+| --- | --- | --- |
+| table | a data grid, a header per column | pages, as `paging` says |
+| list | the records one under another, each drawn with `content` | pages, as `paging` says |
+| cards | a grid of cards as wide as `size` says | pages, as `paging` says |
+| board | a column per group, headed by its label and its read's `total` (`valueCount`) | each column on its own, by "Load more" |
+| calendar | the days of a month, a week or a day, the viewer moving between periods and views | every page of the period shown |
+| timeline | bars over a column a day, week, month or quarter — the days of a month, the weeks of a quarter, the months of a year or the quarters of three years — in a lane per group | every page of the period shown, per lane |
+| tree | the roots, a record's children under it once expanded; what is expanded is kept across reloads | each level on its own, by "Load more" |
+| component | whatever the module's component draws | as its plan says |
+
+A component layout's entry is held to the layout contract when the
+application starts; one built for another is drawn as an error node in place
+of its listing (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`).
+
+- A listing, a form and an option source read and write their `basePath` under
   the mount, as a reader reads its `source.path`: mounted at `/admin`,
   `basePath: /api/todos` lists from `/admin/api/todos` and edits
   `/admin/api/todos/<key>`. A write announces the change under the
@@ -383,7 +455,7 @@ is started again, under a new address.
 - A filter bar shows the filters on one property together: one label, and
   each control captioned by its operator — `from` and `to` for a range
   (`gte`, `lte`), `after` and `before` for `gt` and `lt`.
-- A table's create and edit forms open in the [surface](../../ui/docs/surfaces.md)
+- A listing's create and edit forms open in the [surface](../../ui/docs/surfaces.md)
   their opener names — a dialog when it names none — and a delete asks first
   in a confirmation. A modal dialog or drawer holds the keyboard focus and the
   page behind it does not scroll. Escape, a close button and a click outside
@@ -391,19 +463,32 @@ is started again, under a new address.
   Escape or Cancel a confirmation. Nothing closes a surface while its form is
   being sent.
 - A delete the API refuses stays in its confirmation, which shows the refusal
-  as an `error` node; the table and its rows are left as they were.
+  as an `error` node; the listing and its records are left as they were.
 - The browser's autocomplete is off on every control typed into, in a form —
   and on the form itself — and in a filter bar.
 - A filter chosen from a list applies at once. A yes/no property and an
   enumerated one are chosen from a list whose first entry, Any, clears the
   filter; under the `in` operator the list stays open and any number of its
   entries may be chosen. Text typed into a filter applies when it is committed
-  — Enter, or leaving the field — so the tables inside the bar are asked once
+  — Enter, or leaving the field — so the listings inside the bar are asked once
   for the value meant.
+- A filter over a property whose relation the bar's presentation presents, or
+  with `options` of its own, offers the records of that source by their
+  label, a page more as its list is scrolled to its end. Under
+  `values: present` it offers only the values the
+  [facet request](../../data-model/docs/collection-contract.md) answers at the
+  bar's `basePath`, under every other filter of the bar and of the bars
+  around it but never its own, each shown with its count (`valueCount`);
+  related keys are labelled with one batched `in` request per page of values.
+  A change announced for the bar's `basePath` reads them again, whether or not
+  the bar holds a listing.
+- A filter under `absent` is a switch: on sends `<property>.absent=true`, off
+  sends nothing. Two filters on one property are captioned by operator, the
+  `absent` one with `operatorAbsent` (`Manager is`, `Manager not set`).
 - Edit, delete and the pager are icon buttons; each is named for a screen
   reader and shows that name on hover and on keyboard focus.
 - A value whose model property declares `format: uri` or `uri-reference` is
-  drawn as a link showing the value, in a table's cell, in a `list` node and
+  drawn as a link showing the value, in a table layout's cell, in a `list` node and
   in a `value` node. The value must be an address [a `link` node may
   hold](../../ui/docs/nodes.md#addresses): an app-relative path, which leads
   under the application's mount as a `link` node's does, or one starting
@@ -416,7 +501,7 @@ is started again, under a new address.
 
 ### Row actions
 
-A table's [`rowActions`](../../ui/docs/table.md#row-actions) — and a `list`
+A listing's [`rowActions`](../../ui/docs/listing.md#row-actions) — and a `list`
 node's, drawn the same way in a last cell of each row — are text buttons in
 each row, showing each action's label in the order declared, before edit and
 delete.
@@ -443,10 +528,11 @@ delete.
   field and nothing is sent. What was entered is kept until the dialog closes.
 - Once the operation succeeds the confirmation closes, the action's `result`
   tree — when it declares one — is drawn in place of the button
-  (`row-answer`), and its `onSuccess` applies. A table then reloads every table
-  on the page over the same `source.basePath`; the answer stays while that
-  row's key is on the shown page. In a list it stays as long as the answer the
-  list is drawn from.
+  (`row-answer`), and its `onSuccess` applies. The listing then reloads every
+  listing on the page over the same `basePath`, and draws the record from the
+  action's answer when that answer is the record; the answer stays while that
+  record's key is drawn. In a list it stays as long as the answer the list is
+  drawn from.
 - An operation that fails reloads nothing. With a confirmation open, the
   refusal is shown in it as an `error` node: its button sends the record again,
   and Cancel dismisses it; an entry with `prompt` shows a 400 as a form does
@@ -535,8 +621,8 @@ below it what the operation answered.
   renderer's own word for the status — `input` and `values`. A 400 also marks
   the fields its `data.issues` name, each worded from its `keyword` and
   `params` by `Ui.Words`, every other issue under the fields.
-- After a success, every reader whose `source.path` and every table whose
-  `source.basePath` equals an entry of `onSuccess.refreshes` reads again, and
+- After a success, every reader whose `source.path` and every listing whose
+  source's `basePath` equals an entry of `onSuccess.refreshes` reads again, and
   `onSuccess.navigate` moves the page: within the application to a declared
   page, by a full load to any other app-relative address, by replacing the
   page for an `https://`, `http://` or `mailto:` one. A value that is no such
@@ -624,6 +710,8 @@ for each node a composite provided. One built for another ABI, or importing a
 specifier the ABI does not supply, is replaced by an `error` node
 (`ERR_UI_COMPONENT_ABI_UNSUPPORTED`, `ERR_UI_COMPONENT_IMPORT_UNSUPPLIED`) and
 logged once; the rest of the page renders. See [the component ABI](component-abi.md).
+A listing whose `layout` or `compact` is a component built for another than
+the [layout contract](layouts-abi.md) is replaced the same way, as a whole.
 
 ## Authentication
 
@@ -631,6 +719,6 @@ The application adds none. The renderer sends the page's same-origin
 credentials with every request; put a guard on the mount or on the API to
 require them. A 401 or 403 is shown as an `error` node where it happened —
 `ERR_UI_UNAUTHORIZED` / `ERR_UI_FORBIDDEN` — for the page when a document was
-refused, for the one table, form or action when a collection or an operation
+refused, for the one listing, form or action when a collection or an operation
 was. Any other failed request is `ERR_UI_REQUEST_FAILED`, with the HTTP status
 in its message; a form's or an action's 400 is shown on its fields instead.

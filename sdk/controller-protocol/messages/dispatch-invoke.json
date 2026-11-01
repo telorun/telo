@@ -54,6 +54,11 @@
           },
           "durablePath": {
             "type": "string"
+          },
+          "inputsAt": {
+            "description": "Where the caller wrote this dispatch's inputs: an RFC 6901 pointer into the calling resource's own declaration. Per dispatch: the kernel hands the target a context without it.",
+            "type": "string",
+            "pattern": "^(/([^/~]|~[01])*)*$"
           }
         },
         "additionalProperties": false

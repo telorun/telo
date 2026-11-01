@@ -4,12 +4,14 @@ metadata:
   version: 1.0.0
   description: |
     What a page and the application document hold depends on the request: two
-    tables under complementary conditions on a header give page documents one
+    listings under complementary conditions on a header give page documents one
     column apart, two token sets chosen by a header give different
     stylesheets, and equal headers give equal digests. A token set's face is
     served as a font and declared from the family. A section from a library with no controller
     serves its nodes; a component the application cannot host is an error node
-    beside the ones it can; a value that is not a valid node once evaluated is
+    beside the ones it can, and so is a listing whose layout component is built
+    for another contract than the layout one, beside two listings drawn by a
+    module's layout component — through a kind of its own and named directly; a value that is not a valid node once evaluated is
     replaced by an error node — a link whose address is a script, and one a
     browser would read as another host — with the nodes beside it intact; an
     app-relative image is served from a mount beneath the application's.
@@ -45,8 +47,8 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        public: !cel "steps.public.result.body.children.map(t, t.columns.map(c, c.header))"
-        staff: !cel "steps.staff.result.body.children.map(t, t.columns.map(c, c.header))"
+        public: !cel "steps.public.result.body.children.map(t, t.layout.columns.map(c, c.header))"
+        staff: !cel "steps.staff.result.body.children.map(t, t.layout.columns.map(c, c.header))"
         digestsDiffer: !cel "steps.public.result.body.digest != steps.staff.result.body.digest"
         equalHeadersEqualDigest: !cel "steps.public.result.body.digest == steps.publicAgain.result.body.digest"
       expected:
@@ -139,6 +141,8 @@ steps:
       headers: { x-next: "//evil.example" }
   - name: components
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/components" }
+  - name: layouts
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/layouts" }
   - name: image
     invoke: { kind: HttpClient.Request, responseType: text }
     inputs:
@@ -158,6 +162,8 @@ steps:
           rest: !cel "steps.offsite.result.body.children[1].children[2]"
         components: !cel "steps.components.result.body.children.map(c, c.type == 'error' ? c.code : c.type)"
         hosted: !cel "steps.components.result.body.children[0].children.map(c, c.export)"
+        layouts: !cel "steps.layouts.result.body.children.map(c, c.type == 'error' ? c.code : c.layout.abi)"
+        layoutProps: !cel "[steps.layouts.result.body.children[0].layout.props, steps.layouts.result.body.children[1].layout.props]"
         image:
           status: !cel "steps.image.result.status"
           svg: !cel "steps.image.result.body.startsWith('<svg')"
@@ -175,6 +181,10 @@ steps:
           status: 200
           link: ERR_UI_NODE_INVALID
           rest: { type: link, text: { lang: en, message: [Back to todos] }, href: / }
-        components: [columns, ERR_UI_COMPONENT_ABI_UNSUPPORTED, ERR_UI_COMPONENT_IMPORT_UNSUPPLIED, table]
+        components: [columns, ERR_UI_COMPONENT_ABI_UNSUPPORTED, ERR_UI_COMPONENT_IMPORT_UNSUPPLIED, listing]
         hosted: [HostProbe, Counter]
+        layouts: [ui_react_layouts-1, ui_react_layouts-1, ERR_UI_COMPONENT_ABI_UNSUPPORTED]
+        layoutProps:
+          - { title: { value: Todos } }
+          - { title: { value: Tasks }, text: { root: row, path: [text] } }
         image: { status: 200, svg: true }

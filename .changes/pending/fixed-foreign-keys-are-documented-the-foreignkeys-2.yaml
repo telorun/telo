@@ -1,0 +1,4 @@
+modules:
+  modules/sqlite: Fixed
+body: "Foreign keys are documented: the foreignKeys entry of SQLite.Table, and what
+  SQLite allows of a key after its table is created."

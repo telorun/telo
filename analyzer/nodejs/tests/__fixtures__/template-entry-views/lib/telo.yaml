@@ -1,0 +1,145 @@
+# A listing reached through a presentation and a source, and templated kinds
+# wiring them from their body: `Admin` correctly, `Crossed` with a sibling of
+# the wrong kind, `Shared` and `Hidden` through a presentation of this library,
+# exported and not.
+kind: Telo.Library
+metadata:
+  name: EntryViews
+  version: 1.0.0
+exports:
+  kinds: [Source, Layout, Admin, Crossed, Shared, Hidden]
+  resources: [shared, sharedSource]
+---
+kind: Telo.Definition
+metadata: { name: Source }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./views.mjs#Source]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    filters: { type: array, items: { type: string } }
+---
+kind: Telo.Definition
+metadata: { name: Presentation }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./views.mjs#Presentation]
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  properties:
+    source: { x-telo-ref: { kind: Self.Source, use: dependency } }
+---
+kind: Telo.Definition
+metadata: { name: Layout }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./views.mjs#Layout]
+schema:
+  type: object
+  additionalProperties: false
+  required: [group]
+  properties:
+    group: { type: string }
+  x-telo-referrer-rules:
+    - referrer: Self.Listing
+      resolve: [/presentation/source]
+      condition: !cel "self.group in referrer.presentation.source.filters"
+      code: ENTRY_VIEWS_GROUP_NOT_FILTERABLE
+      message: groups by a property its source does not filter by.
+---
+kind: Telo.Definition
+metadata: { name: Listing }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./views.mjs#Listing]
+schema:
+  type: object
+  additionalProperties: false
+  required: [presentation, layout]
+  properties:
+    presentation: { x-telo-ref: { kind: Self.Presentation, use: dependency } }
+    layout: { x-telo-ref: { kind: Self.Layout, use: call } }
+---
+kind: Telo.Definition
+metadata: { name: Admin }
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [source, layout]
+  properties:
+    source: { x-telo-ref: { kind: Self.Source, use: dependency } }
+    layout: { x-telo-ref: { kind: Self.Layout, use: call } }
+resources:
+  - kind: Self.Presentation
+    metadata: { name: presentation }
+    source: !cel "self.source"
+  - kind: Self.Listing
+    metadata: { name: listing }
+    presentation: !ref presentation
+    layout: !cel "self.layout"
+provide: !ref listing
+---
+kind: Telo.Definition
+metadata: { name: Crossed }
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [source, layout]
+  properties:
+    source: { x-telo-ref: { kind: Self.Source, use: dependency } }
+    layout: { x-telo-ref: { kind: Self.Layout, use: call } }
+resources:
+  - kind: Self.Presentation
+    metadata: { name: presentation }
+    source: !cel "self.source"
+  - kind: Self.Listing
+    metadata: { name: listing }
+    presentation: !ref listing
+    layout: !cel "self.layout"
+provide: !ref listing
+---
+kind: Telo.Definition
+metadata: { name: Shared }
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [layout]
+  properties:
+    layout: { x-telo-ref: { kind: Self.Layout, use: call } }
+resources:
+  - kind: Self.Listing
+    metadata: { name: listing }
+    presentation: !ref shared
+    layout: !cel "self.layout"
+provide: !ref listing
+---
+kind: Telo.Definition
+metadata: { name: Hidden }
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [layout]
+  properties:
+    layout: { x-telo-ref: { kind: Self.Layout, use: call } }
+resources:
+  - kind: Self.Listing
+    metadata: { name: listing }
+    presentation: !ref hidden
+    layout: !cel "self.layout"
+provide: !ref listing
+---
+kind: Self.Source
+metadata: { name: sharedSource }
+filters: [status]
+---
+kind: Self.Presentation
+metadata: { name: shared }
+source: !ref sharedSource
+---
+kind: Self.Presentation
+metadata: { name: hidden }
+source: !ref sharedSource

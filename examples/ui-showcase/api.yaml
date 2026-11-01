@@ -14,8 +14,7 @@
 # The studio, as the overview reads it: one value of each shape a `value` node
 # presents its own way, and the projects still running.
 kind: Telo.JsonSchema
-metadata:
-  name: Team
+metadata: { name: Team }
 schema:
   type: object
   required: [ name, homepage, guide, handbook, contact, mirror, foundedOn, updatedAt, hiring, plan, projectCount, latestProject, projects ]
@@ -47,8 +46,7 @@ schema:
 # One project as the conditions and data pages read it. `note` is null when the
 # project has none; `codename` is left out when it has none.
 kind: Telo.JsonSchema
-metadata:
-  name: ProjectSummary
+metadata: { name: ProjectSummary }
 schema:
   type: object
   required: [ code, name, status, memberCount, velocity, tags, note, lead ]
@@ -70,8 +68,7 @@ schema:
         role: { type: string }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ProjectPeople
+metadata: { name: ProjectPeople }
 schema:
   type: object
   required: [ people ]
@@ -88,8 +85,7 @@ schema:
 ---
 # A tag added to the featured project. The route restates it as its body.
 kind: Telo.JsonSchema
-metadata:
-  name: NewTag
+metadata: { name: NewTag }
 schema:
   type: object
   additionalProperties: false
@@ -98,8 +94,7 @@ schema:
     tag: { type: string, title: Tag, pattern: "^[a-z][a-z0-9-]*$", maxLength: 20 }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: TagAnswer
+metadata: { name: TagAnswer }
 schema:
   type: object
   required: [ tag, count ]
@@ -108,8 +103,7 @@ schema:
     count: { type: integer }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Clock
+metadata: { name: Clock }
 schema:
   type: object
   required: [ readAt ]
@@ -117,8 +111,7 @@ schema:
     readAt: { type: string, title: Read at, format: date-time }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Session
+metadata: { name: Session }
 schema:
   type: object
   required: [ signedIn ]
@@ -127,8 +120,7 @@ schema:
 ---
 # Who signs in: a member of the team, by e-mail.
 kind: Telo.JsonSchema
-metadata:
-  name: SignIn
+metadata: { name: SignIn }
 schema:
   type: object
   additionalProperties: false
@@ -137,8 +129,7 @@ schema:
     email: { type: string, title: E-mail, minLength: 3, default: ada@northwind.example }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Account
+metadata: { name: Account }
 schema:
   type: object
   required: [ name, email, memberSince ]
@@ -149,8 +140,7 @@ schema:
 ---
 # Who a task is assigned to, as the task board nests it.
 kind: Telo.JsonSchema
-metadata:
-  name: Member
+metadata: { name: Member }
 schema:
   type: object
   required: [ name, contact ]
@@ -162,8 +152,7 @@ schema:
 # assignee through a named shape, the project through one of this shape's own
 # definitions, whose brief is a further reference titled where it is used.
 kind: Telo.JsonSchema
-metadata:
-  name: TaskCard
+metadata: { name: TaskCard }
 schema:
   type: object
   required: [ id, title, project ]
@@ -184,8 +173,7 @@ schema:
 ---
 # A button that sends nothing.
 kind: Telo.JsonSchema
-metadata:
-  name: NoInput
+metadata: { name: NoInput }
 schema:
   type: object
   additionalProperties: false
@@ -195,8 +183,7 @@ schema:
 # Work asked of the studio: one property of each type a form derives a control
 # for, and an access code the form never keeps.
 kind: Telo.JsonSchema
-metadata:
-  name: Request
+metadata: { name: Request }
 schema:
   type: object
   additionalProperties: false
@@ -241,8 +228,7 @@ schema:
 ---
 # The latest requests, as the forms page lists them.
 kind: Telo.JsonSchema
-metadata:
-  name: RequestList
+metadata: { name: RequestList }
 schema:
   type: object
   required: [ requests ]
@@ -269,11 +255,29 @@ schema:
           urgent: { type: boolean, title: Urgent }
           receivedAt: { type: string, title: Received, format: date-time }
 ---
+# A post moved to another status: what the posts board's move sends, and what
+# the route answers once the post is there.
+kind: Telo.JsonSchema
+metadata: { name: PostMove }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, status]
+  properties:
+    id: { type: integer, title: Post, minimum: 1 }
+    status: { type: string, title: Status, enum: [draft, review, published] }
+---
+# A request as it is stored: what the forms send, under the key the table
+# assigns. The forms page's collection of requests holds it.
+kind: Telo.JsonSchema
+metadata: { name: StoredRequest }
+extends: Request
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
 # Who works on a project and when: a project, a lead of a role, the people
 # around the lead, and a period of dates.
 kind: Telo.JsonSchema
-metadata:
-  name: Booking
+metadata: { name: Booking }
 schema:
   type: object
   additionalProperties: false
@@ -306,10 +310,16 @@ schema:
     site: { type: string, title: Site address, minLength: 3 }
     notes: { type: string, title: Notes, contentMediaType: text/plain, maxLength: 500 }
 ---
+# A booking as it is stored, under the key the table assigns: what the booking
+# form's collection holds.
+kind: Telo.JsonSchema
+metadata: { name: StoredBooking }
+extends: Booking
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
 # The latest bookings, with the names of the people booked.
 kind: Telo.JsonSchema
-metadata:
-  name: BookingList
+metadata: { name: BookingList }
 schema:
   type: object
   required: [ bookings ]
@@ -330,8 +340,7 @@ schema:
 # ---- Shapes of the actions page ----
 # What a computed estimate is asked for, and what it answers.
 kind: Telo.JsonSchema
-metadata:
-  name: EstimateRequest
+metadata: { name: EstimateRequest }
 schema:
   type: object
   additionalProperties: false
@@ -354,8 +363,7 @@ schema:
     pace: { type: integer, title: Hours a week, minimum: 4, maximum: 40, multipleOf: 4, default: 20 }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: EstimateAnswer
+metadata: { name: EstimateAnswer }
 schema:
   type: object
   required: [ projectCode, hours, tasks, weeks, finishBy, breakdown ]
@@ -387,8 +395,7 @@ schema:
 # An answer in days, which the estimate route does not give: an action reading
 # its answer through this shape is refused what the route sends.
 kind: Telo.JsonSchema
-metadata:
-  name: EstimateInDays
+metadata: { name: EstimateInDays }
 schema:
   type: object
   required: [ days ]
@@ -398,8 +405,7 @@ schema:
 # A task given to someone. Only the task is required, so a row asks for the
 # person in a dialog; the route refuses an assignment that names nobody.
 kind: Telo.JsonSchema
-metadata:
-  name: Assignment
+metadata: { name: Assignment }
 schema:
   type: object
   additionalProperties: false
@@ -409,8 +415,7 @@ schema:
     assigneeEmail: { type: string, title: Assignee's e-mail, minLength: 3 }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: AssignAnswer
+metadata: { name: AssignAnswer }
 schema:
   type: object
   required: [ id, title, assignee ]
@@ -421,8 +426,7 @@ schema:
 ---
 # A task moved to another status.
 kind: Telo.JsonSchema
-metadata:
-  name: StatusChange
+metadata: { name: StatusChange }
 schema:
   type: object
   additionalProperties: false
@@ -440,8 +444,7 @@ schema:
         - { const: done, title: Finished }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: StatusAnswer
+metadata: { name: StatusAnswer }
 schema:
   type: object
   required: [ id, title, status ]
@@ -460,8 +463,7 @@ schema:
 ---
 # How a project's tasks stand.
 kind: Telo.JsonSchema
-metadata:
-  name: TaskCounts
+metadata: { name: TaskCounts }
 schema:
   type: object
   required: [ code, todo, doing, review, done, blocked ]
@@ -474,8 +476,7 @@ schema:
     blocked: { type: integer }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ProjectPick
+metadata: { name: ProjectPick }
 schema:
   type: object
   additionalProperties: false
@@ -485,8 +486,7 @@ schema:
 ---
 # Where a project's tasks are listed: a page of this application.
 kind: Telo.JsonSchema
-metadata:
-  name: ProjectPage
+metadata: { name: ProjectPage }
 schema:
   type: object
   required: [ page, name ]
@@ -495,8 +495,7 @@ schema:
     name: { type: string }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Homepage
+metadata: { name: Homepage }
 schema:
   type: object
   required: [ homepage ]
@@ -506,8 +505,7 @@ schema:
 # Two addresses from the team record: the handbook the server serves, and a
 # mirror written the way a browser reads as another host.
 kind: Telo.JsonSchema
-metadata:
-  name: TeamLinks
+metadata: { name: TeamLinks }
 schema:
   type: object
   required: [ handbook, mirror ]
@@ -517,8 +515,7 @@ schema:
 ---
 # A project after a manager paused it.
 kind: Telo.JsonSchema
-metadata:
-  name: ProjectStatus
+metadata: { name: ProjectStatus }
 schema:
   type: object
   required: [ code, name, status ]
@@ -536,8 +533,7 @@ schema:
 ---
 # A comment on a task, and what adding one answers.
 kind: Telo.JsonSchema
-metadata:
-  name: NewComment
+metadata: { name: NewComment }
 schema:
   type: object
   additionalProperties: false
@@ -547,8 +543,7 @@ schema:
     body: { type: string, title: Comment, contentMediaType: text/plain, minLength: 3, maxLength: 280 }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: CommentAnswer
+metadata: { name: CommentAnswer }
 schema:
   type: object
   required: [ id, taskId, taskTitle, count ]
@@ -559,8 +554,7 @@ schema:
     count: { type: integer }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: CommentList
+metadata: { name: CommentList }
 schema:
   type: object
   required: [ comments ]
@@ -580,8 +574,7 @@ schema:
 ---
 # One comment, named by its number.
 kind: Telo.JsonSchema
-metadata:
-  name: CommentRef
+metadata: { name: CommentRef }
 schema:
   type: object
   additionalProperties: false
@@ -592,8 +585,7 @@ schema:
 # A comment rewritten. The new text is optional, so a row asks for it in a
 # dialog, and the route refuses an edit that leaves it out.
 kind: Telo.JsonSchema
-metadata:
-  name: CommentEdit
+metadata: { name: CommentEdit }
 schema:
   type: object
   additionalProperties: false
@@ -677,8 +669,7 @@ body: !cel >-
 ---
 # ---- Routes under /api ----
 kind: Http.Api
-metadata:
-  name: showcaseApi
+metadata: { name: showcaseApi }
 routes:
   # The studio and the projects still running, for the overview.
   - request: { method: GET, path: /team }
@@ -1465,6 +1456,50 @@ routes:
         content:
           application/problem+json: {}
 
+  # Moves a post to another status: what a card dragged to another column of
+  # the posts board, or moved through its menu, sends.
+  - request:
+      method: POST
+      path: /post-status
+      schema:
+        body:
+          type: object
+          additionalProperties: false
+          required: [id, status]
+          properties:
+            id: { type: integer, minimum: 1 }
+            status: { type: string, enum: [draft, review, published] }
+    inputs: !cel "request.body"
+    handler:
+      kind: Run.Sequence
+      inputType: !ref PostMove
+      outputType: !ref PostMove
+      steps:
+        - name: post
+          invoke: { kind: Sql.Query, connection: !ref db }
+          inputs:
+            sql: !sql "SELECT id FROM posts WHERE id = ${{ inputs.id }}"
+        - name: postKnown
+          if: !cel "size(steps.post.result.rows) == 0"
+          then:
+            - name: noPost
+              throw: { code: POST_UNKNOWN, displayMessage: "There is no post {$id}.", data: { id: !cel "string(inputs.id)" } }
+        - name: move
+          invoke: { kind: Sql.Command, connection: !ref db }
+          inputs:
+            sql: !sql "UPDATE posts SET status = ${{ inputs.status }} WHERE id = ${{ inputs.id }}"
+      outputs: { id: !cel "inputs.id", status: !cel "inputs.status" }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "result"
+    catches:
+      - when: !cel "error.code == 'POST_UNKNOWN'"
+        status: 404
+        content:
+          application/problem+json: {}
+
   # How one project's tasks stand, read again after a task moves.
   - request:
       method: GET
@@ -1830,8 +1865,7 @@ routes:
 # The other two mounts draw with a brand of their own, so this route is not
 # served under them.
 kind: Http.Api
-metadata:
-  name: brandSwitch
+metadata: { name: brandSwitch }
 routes:
   # The brand switch: sets or clears the cookie the `/` application's token
   # list reads, and goes to the themes page.
@@ -1869,8 +1903,7 @@ routes:
 ---
 # ---- Routes under /api/private, behind the session guard ----
 kind: Http.Api
-metadata:
-  name: privateApi
+metadata: { name: privateApi }
 routes:
   # Who the session belongs to.
   - request: { method: GET, path: /account }

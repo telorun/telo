@@ -1,0 +1,15 @@
+# Its own check does not reach the library's admin, which is refused when its
+# listing is first read.
+kind: Telo.Application
+metadata:
+  name: CrudUiLayoutRefusalsApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Probe: ../../../../ui/tests/__fixtures__/probe
+targets:
+  - invoke: !ref read
+---
+kind: Probe.Read
+metadata: { name: read }
+source: !ref Lib.byPriority

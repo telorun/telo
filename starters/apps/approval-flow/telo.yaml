@@ -39,12 +39,14 @@ metadata:
 requires:
   telo: ">=0.121.0"
 lang: en
-# `ui` and `ui-react` come from this repository while their changes are
-# unreleased; `telo upgrade --pin-local` pins them again once they ship.
+# `data-model`, `ui` and `ui-react` come from this repository while their
+# changes are unreleased, with `http-server`, which `ui-react` reaches through
+# this repository's `codec`; `telo upgrade --pin-local` pins them once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
-  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
+  Http: ../../../modules/http-server
+  DataModel: ../../../modules/data-model
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
@@ -250,7 +252,7 @@ steps:
 outputs:
   delivered: !cel "steps.deliver.result.delivered"
 ---
-# One page of the ledger, newest first, as the page's tables read it.
+# One page of the ledger, newest first, as the page's listings read it.
 kind: Run.Sequence
 metadata: { name: listRequests }
 inputType:
@@ -442,7 +444,7 @@ routes:
           application/json:
             body: !cel "result"
 
-  # The list the page's tables read: `{ rows, total, next }`, one page at a time.
+  # The list the page's listings read: `{ rows, total, next }`, one page at a time.
   - request:
       path: /requests
       method: GET
@@ -560,13 +562,18 @@ routes:
           application/json:
             body: { delivered: true }
 ---
-# What the list accepts: one status, and no sorting.
-kind: Ui.Collection
-metadata: { name: requestList }
+# What the list route accepts: one status, and no sorting.
+kind: DataModel.Collection
+metadata: { name: purchaseRequests }
+model: !ref PurchaseRequest
 query:
-  filters:
-    - { property: status, operator: eq }
+  filters: [{ property: status, operator: eq }]
   sort: []
+---
+# The requests as the page reads them, named by both listings and the form.
+kind: Ui.CollectionPresentation
+metadata: { name: requestsPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref purchaseRequests, basePath: /api/requests }
 ---
 # The whole frontend: the requests waiting, each with its two decisions and a
 # form to submit another, and under it the ledger.
@@ -584,20 +591,20 @@ pages:
       - { type: text, text: "A request under the limit is approved by the rule and never waits here.", style: muted }
       - type: composite
         ref:
-          kind: Ui.Table
+          kind: Ui.Listing
+          presentation: !ref requestsPresentation
           model: !ref PurchaseRequest
-          collection: !ref requestList
-          source:
-            basePath: /api/requests
-            filters: { status: pending }
-          columns:
-            - value: !cel "row.requester"
-            - value: !cel "row.item"
-            - value: !cel "row.amountCents"
-            - value: !cel "row.costCenter"
-            - value: !cel "row.submittedAt"
+          filters: { status: pending }
+          layout:
+            kind: Ui.TableLayout
+            columns:
+              - value: !cel "row.requester"
+              - value: !cel "row.item"
+              - value: !cel "row.amountCents"
+              - value: !cel "row.costCenter"
+              - value: !cel "row.submittedAt"
           create:
-            form: { kind: Ui.Form, model: !ref NewRequest, source: { basePath: /api/requests } }
+            form: { kind: Ui.Form, model: !ref NewRequest, presentation: !ref requestsPresentation }
           rowActions:
             - action:
                 kind: Ui.Action
@@ -617,17 +624,18 @@ pages:
       - { type: text, text: "Every request", style: heading }
       - type: composite
         ref:
-          kind: Ui.Table
+          kind: Ui.Listing
+          presentation: !ref requestsPresentation
           model: !ref PurchaseRequest
-          collection: !ref requestList
-          source: { basePath: /api/requests }
-          columns:
-            - value: !cel "row.item"
-            - value: !cel "row.requester"
-            - value: !cel "row.amountCents"
-            - value: !cel "row.status"
-            - value: !cel "row.decidedBy"
-            - value: !cel "row.note"
+          layout:
+            kind: Ui.TableLayout
+            columns:
+              - value: !cel "row.item"
+              - value: !cel "row.requester"
+              - value: !cel "row.amountCents"
+              - value: !cel "row.status"
+              - value: !cel "row.decidedBy"
+              - value: !cel "row.note"
 ---
 kind: Http.Server
 metadata: { name: server }

@@ -6,11 +6,18 @@ description: "Install Telo, write a minimal YAML manifest, run it, and understan
 
 # Getting Started
 
-Telo is a runtime for declarative applications — backends and the UIs on top
-of them. You describe what your system should do in YAML, and Telo runs it — no imperative glue code.
+Telo is a runtime for declarative applications — backend services and the
+data screens on top of them (tables, forms, create/edit/delete), all declared in
+YAML; there is no drag-and-drop screen builder. You describe what your system should do in YAML, and Telo runs it — no imperative glue code.
 
 This guide walks through installing Telo, running a minimal manifest, and
 understanding what just happened.
+
+## Try it without installing
+
+Open [Telo Studio](https://studio.telo.run) in your browser. It runs in the
+browser with nothing to install, and has a desktop build for local workspaces.
+See [Telo Studio](/build/studio).
 
 ## Install
 
@@ -52,11 +59,11 @@ artifact, which is how the standard library ships — needs the npm-installed CL
 `telo check` warns when a manifest depends on one and the tool is missing.
 
 Prefer not to install globally? Run Telo via Docker instead — the image mounts
-the current directory and takes the same manifest path the CLI does, so every
+the current directory (`-u` runs it as you, so it can write the `.telo/` cache there) and takes the same manifest path the CLI does, so every
 command below works by substituting it:
 
 ```bash
-docker run -v .:/srv -w /srv telorun/node:latest-slim ./hello.yaml
+docker run -u "$(id -u):$(id -g)" -v .:/srv -w /srv telorun/node:latest-slim ./hello.yaml
 ```
 
 ## Your first manifest
@@ -134,7 +141,7 @@ application is made of.
   the CEL evaluation model.
 - [Style guide](/learn/style-guide) — naming, structure, and CEL
   conventions.
-- [CLI reference](/learn/installation-and-cli) — `telo run`, `telo check`,
+- [CLI reference](/learn/telo-cli) — `telo run`, `telo check`,
   `telo install`, `telo upgrade`, `telo publish` (to OCI), and watch mode.
 - [Catching errors before they run](/learn/static-analysis) — what `telo check`
   finds, and how to debug what it cannot.

@@ -30,6 +30,7 @@ import {
   type Words,
 } from "@telorun/ui";
 import abi from "./contract/abi.json" with { type: "json" };
+import layoutsContract from "./contract/layouts.json" with { type: "json" };
 import { AssetStore, entryAssets, type AssetRef } from "./asset-store.js";
 import { CONTROL_MECHANICS, mechanicsFileName } from "./browser/controls/mechanics.js";
 import { HostedNodes, type SpecNode } from "./component-abi.js";
@@ -283,7 +284,7 @@ export class UiReactApp {
       },
     );
     const hosted = new HostedNodes(
-      { abis: hostAbi === undefined ? [] : [hostAbi], specifiers: SUPPLIED },
+      { abis: hostAbi === undefined ? [] : [hostAbi], layoutAbis: [layoutsContract.generation], specifiers: SUPPLIED },
       (error) =>
         this.ctx.log.error("A component cannot be hosted and is shown as an error", {
           code: error.code,

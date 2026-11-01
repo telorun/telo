@@ -5,6 +5,7 @@ import type {
   ResourceContext,
   ResourceDefinition,
   ResourceInstance,
+  ResourceManifest,
 } from "@telorun/sdk";
 import { isCelRecord, isCompiledValue } from "@telorun/sdk";
 import {
@@ -19,6 +20,7 @@ import { isRefSentinel } from "@telorun/templating";
 import { celHostScopeValue } from "../../cel-host-scope-value.js";
 import { declaringContextOf } from "./declaring-context.js";
 import { mappingProvenance, recordTextProvenance, textProvenanceOf } from "../../text-records.js";
+import { forwardedValue, type WrittenScope } from "./reference-crossing.js";
 import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
 
 /** Typed internal seam implemented by the concrete `ResourceContextImpl`: runs
@@ -26,12 +28,18 @@ import { isWithinSlot, stepValueSlots } from "./step-value-slots.js";
  *  parent instance (or null when the parent controller isn't registered yet — a
  *  retry, same as `_createInstance`). Off the public SDK surface, like
  *  `registerLazyController`. */
-export interface InheritedInstanceHost {
+export interface InheritedInstanceHost extends WrittenScope {
   createInheritedInstance(
     evalContext: EvaluationContext,
     resource: Record<string, unknown>,
   ): Promise<ResourceInstance | null>;
+  /** A declaration as a read past a reference sees it: a named shape with its
+   *  `extends` folded. */
+  readAcrossReference(declaration: ResourceManifest): ResourceManifest;
 }
+
+/** What a bare `self.<path>` in a mapping reads: `forwardedValue` over `self`. */
+type SelfForward = (keys: readonly string[]) => unknown;
 
 interface Snapshotable {
   snapshot(): Record<string, unknown>;
@@ -111,8 +119,9 @@ function withSelfBound(
 }
 
 /** Expand a mapping node against a CEL scope. `self`-only CEL resolves to
- *  literals now; a pure `self.<path>` access is navigated directly so live
- *  instances pass through (CEL's output type checker rejects them). Shared by
+ *  literals now; a pure `self.<path>` access is navigated by `forward`, reading
+ *  declarations only, so live instances pass through (CEL's output type checker
+ *  rejects them) and no member of one is read. Shared by
  *  `base:` (construction, scope `{ self }`) and the dispatch mappings
  *  `inputs:` / `result:` (scope `{ self, inputs }` / `{ self, result }`).
  *  A failing expression's message names the field it sits in (`path`) and the
@@ -120,6 +129,7 @@ function withSelfBound(
 function expandMappingNode(
   value: unknown,
   scope: Record<string, unknown>,
+  forward: SelfForward,
   ctx: EvaluationContext,
   path: string,
   owner: string,
@@ -129,13 +139,7 @@ function expandMappingNode(
     if (kept && isWithinSlot(kept.slots, path)) return kept.keep(value, `${path} of ${owner}`);
     const src = typeof value.source === "string" ? value.source.trim() : "";
     const m = src.match(SELF_PATH);
-    if (m) {
-      let cur: unknown = scope.self;
-      for (const key of m[1].split(".").slice(1)) {
-        cur = (cur as Record<string, unknown> | undefined)?.[key];
-      }
-      return cur;
-    }
+    if (m) return forward(m[1].split(".").slice(1));
     try {
       return ctx.expandWith(value, scope);
     } catch (error) {
@@ -144,7 +148,7 @@ function expandMappingNode(
     }
   }
   if (Array.isArray(value)) {
-    return value.map((v, i) => expandMappingNode(v, scope, ctx, `${path}[${i}]`, owner, kept));
+    return value.map((v, i) => expandMappingNode(v, scope, forward, ctx, `${path}[${i}]`, owner, kept));
   }
   // Asked of the value DOMAIN, never of the prototype: a branded CEL value (an
   // instant, a duration, a uint) is a plain object, and rebuilding one from its
@@ -152,7 +156,7 @@ function expandMappingNode(
   if (value !== null && typeof value === "object" && isCelRecord(value)) {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      const expanded = expandMappingNode(v, scope, ctx, `${path}.${k}`, owner, kept);
+      const expanded = expandMappingNode(v, scope, forward, ctx, `${path}.${k}`, owner, kept);
       // An absent optional stays absent: a key holding `undefined` would read
       // as present to the next level's `has()` and hand CEL a non-value.
       if (expanded !== undefined) out[k] = expanded;
@@ -192,6 +196,7 @@ function bindDispatchMapping(
   instance: ResourceInstance,
   definition: ResourceDefinition,
   self: Record<string, unknown>,
+  forward: SelfForward,
   ctx: EvaluationContext,
 ): void {
   const body = definition as unknown as { inputs?: unknown; result?: unknown };
@@ -213,6 +218,7 @@ function bindDispatchMapping(
         ? (expandMappingNode(
             inputsMapping,
             { self, inputs },
+            forward,
             ctx,
             "inputs",
             mappingOwner(definition),
@@ -220,7 +226,7 @@ function bindDispatchMapping(
         : inputs;
     const result = await original(mappedInputs, ...rest);
     return resultMapping != null
-      ? expandMappingNode(resultMapping, { self, result }, ctx, "result", mappingOwner(definition))
+      ? expandMappingNode(resultMapping, { self, result }, forward, ctx, "result", mappingOwner(definition))
       : result;
   };
 }
@@ -282,6 +288,17 @@ export function createInheritedController(
         self[path] = live;
       }
 
+      const host = ctx as unknown as InheritedInstanceHost;
+      const forward: SelfForward = (keys) =>
+        forwardedValue(self, keys, host, (declaration) => {
+          if (typeof (host as { readAcrossReference?: unknown }).readAcrossReference !== "function") {
+            throw new Error(
+              `Telo.Definition '${definition.metadata.name}': inherited controller requires a ResourceContext host that implements readAcrossReference().`,
+            );
+          }
+          return host.readAcrossReference(declaration);
+        });
+
       // With `base:`, it maps `self` onto the parent's (narrowed) config. Without
       // it, the child is a pure additive extension: it carries the parent's config
       // fields directly, so forward them (reference slots already resolved to live
@@ -291,6 +308,7 @@ export function createInheritedController(
         parentConfig = expandMappingNode(
           base,
           { self },
+          forward,
           definingContext,
           "base",
           mappingOwner(definition),
@@ -317,7 +335,6 @@ export function createInheritedController(
           base != null ? mappingProvenance(base, self, provenance) : provenance,
         );
       }
-      const host = ctx as unknown as InheritedInstanceHost;
       if (typeof (host as { createInheritedInstance?: unknown }).createInheritedInstance !== "function") {
         throw new Error(
           `Telo.Definition '${definition.metadata.name}': inherited controller requires a ResourceContext host that implements createInheritedInstance().`,
@@ -325,7 +342,7 @@ export function createInheritedController(
       }
       const instance = await host.createInheritedInstance(definingContext, parentResource);
       if (!instance) return null;
-      bindDispatchMapping(instance, definition, self, definingContext);
+      bindDispatchMapping(instance, definition, self, forward, definingContext);
       return instance;
     },
   };

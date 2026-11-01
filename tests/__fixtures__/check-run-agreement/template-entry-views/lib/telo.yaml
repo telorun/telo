@@ -1,0 +1,32 @@
+# A literal the body writes that its entry's kind refuses is the definition's
+# defect: its own check reports it once, and the check of a consumer — which
+# judges every entry as that consumer instantiates it — stays silent about it,
+# while the kernel refuses the entry when a consumer's instance creates it.
+kind: Telo.Library
+metadata:
+  name: EntryViewsFaulty
+  version: 1.0.0
+  description: >-
+    Fixture library whose templated kind writes a literal its body entry's kind
+    refuses.
+imports:
+  Run: ../../../../../modules/run
+exports:
+  kinds: [Greeting]
+---
+kind: Telo.Definition
+metadata:
+  name: Greeting
+  description: Answers with its word.
+capability: Telo.Invocable
+schema:
+  type: object
+  required: [word]
+  properties:
+    word: { type: string }
+resources:
+  - kind: Run.Value
+    metadata: { name: answer }
+    bindings: 5
+    value: !cel "self.word"
+invoke: !ref answer

@@ -541,6 +541,42 @@ resources:
     ]);
   });
 
+  it("judges a template body's literal by the defining module's language in each consumer's view of it", async () => {
+    expect(
+      await check({
+        "/lib/telo.yaml": LIB,
+        "/app/telo.yaml": `kind: Telo.Application
+metadata:
+  name: App
+lang: en
+imports:
+  Lib: ../lib
+---
+kind: Lib.Banner
+metadata: { name: banner }
+title: { plural: n, cases: { few: "{$n} files", other: "{$n} files" } }`,
+      }),
+    ).toEqual([["MESSAGE_PLURAL_CATEGORY_INVALID", "title.cases.few"]]);
+  });
+
+  it("leaves a template body's own literal to the definition's check, never a consumer's", async () => {
+    expect(
+      await check({
+        "/lib/telo.yaml": LIB.replace("lang: pl\n", "lang: en\n"),
+        "/app/telo.yaml": `kind: Telo.Application
+metadata:
+  name: App
+lang: en
+imports:
+  Lib: ../lib
+---
+kind: Lib.Banner
+metadata: { name: banner }
+title: Files`,
+      }),
+    ).toEqual([]);
+  });
+
   it("judges a value a base: mapping forwards as its consumer wrote it", async () => {
     expect(
       await check({

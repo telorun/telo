@@ -6,7 +6,7 @@ description: A web and desktop editor for authoring Telo manifests visually — 
 
 # Telo Studio
 
-Telo Studio is a web and desktop application for authoring and running Telo manifests. It opens a workspace directory, parses every `telo.yaml` and `Telo.Application` it finds, runs the same static analysis the [CLI's `telo check`](/learn/installation-and-cli) uses, and exposes four coordinated views over the same underlying model.
+Telo Studio is a web and desktop application for authoring and running Telo manifests. It opens a workspace directory, parses every `telo.yaml` and `Telo.Application` it finds, runs the same static analysis the [CLI's `telo check`](/learn/telo-cli) uses, and exposes four coordinated views over the same underlying model.
 
 **Open it at [studio.telo.run](https://studio.telo.run)** — it runs in the browser, with a desktop build for local workspaces.
 
@@ -194,7 +194,7 @@ A browser cannot read an OCI registry, so the manifest is read through the hub's
 manifest cache (`https://manifests.telo.sh`, or the manifest cache URL set in
 Studio's settings) — the same place Studio resolves `oci://` imports from. The
 cache holds only versions a hub has ingested, so the version must be
-[registered with a hub](/guides/distributing-an-application#register-with-the-hub)
+[registered with a hub](/learn/distributing-an-application#register-with-the-hub)
 first. The bytes read are verified against the pin before anything is shown, and
 written unchanged.
 

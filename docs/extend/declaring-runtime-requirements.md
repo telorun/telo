@@ -95,7 +95,7 @@ fails on the version and never has to interpret an axis it has never heard of.
 
 There is no separate range per kernel. `telo` names the **manifest surface generation** a
 runtime implements — one scale reported by the Node kernel, the Rust kernel and any
-future Go kernel alike. Writing bounds per kernel would restate one fact several times,
+future kernel alike. Writing bounds per kernel would restate one fact several times,
 and would ask you to assert things about kernels you have never run.
 
 **Telo's own packages and crates carry the generation as their version.** The runtime

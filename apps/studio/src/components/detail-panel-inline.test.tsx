@@ -40,7 +40,7 @@ const crudSchema = {
 };
 
 const inlineMount = {
-  kind: "Crud.Resource",
+  kind: "Crud.Api",
   plural: "todos",
   singular: "todo",
   model: { kind: "Telo.JsonSchema", schema: { type: "object" } },
@@ -112,7 +112,7 @@ const viewData = {
         sourceFile: "/t.yaml",
       },
       {
-        kind: "Crud.Resource",
+        kind: "Crud.Api",
         name: "todos",
         fields: { plural: "todos", singular: "todo" },
         sourceFile: "/t.yaml",
@@ -123,7 +123,7 @@ const viewData = {
   },
   kinds: new Map([
     ["Http.Server", { fullKind: "Http.Server", schema: serverSchema, capability: "Telo.Service" }],
-    ["Crud.Resource", { fullKind: "Crud.Resource", schema: crudSchema, capability: "Telo.Mount" }],
+    ["Crud.Api", { fullKind: "Crud.Api", schema: crudSchema, capability: "Telo.Mount" }],
     ["Http.Api", { fullKind: "Http.Api", schema: apiSchema, capability: "Telo.Mount" }],
   ]),
   importedConfig: new Map(),
@@ -176,7 +176,7 @@ afterEach(() => {
 describe("DetailPanel inline resources", () => {
   it("names the inline declaration in the slot instead of an empty picker", () => {
     panel(mountItem);
-    expect(screen.getByTitle("Open this inline resource")).toHaveTextContent("Crud.Resource");
+    expect(screen.getByTitle("Open this inline resource")).toHaveTextContent("Crud.Api");
   });
 
   it("selects the inline resource by its own path", () => {
@@ -197,7 +197,7 @@ describe("DetailPanel inline resources", () => {
 
   it("shows the inline kind as what is being edited", () => {
     panel(inlineSelection);
-    expect(screen.getByText("Crud.Resource")).toBeInTheDocument();
+    expect(screen.getByText("Crud.Api")).toBeInTheDocument();
     expect(screen.getByText("api • /mounts/0/mount")).toBeInTheDocument();
   });
 
@@ -227,7 +227,7 @@ describe("DetailPanel inline resources", () => {
     // make it — reaching it from inside the declaration costs a navigation.
     panel(mountItem);
     fireEvent.click(screen.getByTitle("Extract to its own resource and reference it here"));
-    expect(screen.getByText("Extract Crud.Resource to a resource")).toBeInTheDocument();
+    expect(screen.getByText("Extract Crud.Api to a resource")).toBeInTheDocument();
   });
 
   it("offers inlining at a slot holding a reference", () => {

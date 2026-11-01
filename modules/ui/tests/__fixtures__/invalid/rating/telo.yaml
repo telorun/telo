@@ -7,6 +7,7 @@ metadata:
   description: Test fixture exporting a form rating a property of text.
 imports:
   Ui: ../../../../
+  DataModel: ../../../../../data-model
   Stars: ../../external-field
 exports:
   resources: [rated]
@@ -20,6 +21,14 @@ model:
     type: object
     properties:
       note: { type: string }
-source: { basePath: /api/notes }
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/notes
+    collection:
+      kind: DataModel.Collection
+      model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+      query: { filters: [], sort: [] }
 fields:
   - { kind: Stars.Rating, property: note }

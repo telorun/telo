@@ -586,7 +586,7 @@ describe("buildCompletions — inline resource prop keys", () => {
     const character = text.split("\n")[line].length;
     const results = await buildCompletions(text, line, character, registry);
     const labels = results.map((r) => r.label);
-    // Crud.Resource's own schema keys surface (minus the ones already present).
+    // Crud.Api's own schema keys surface (minus the ones already present).
     expect(labels).toEqual(expect.arrayContaining(["connection", "singular", "model"]));
     expect(labels).not.toContain("plural"); // already on the page
   });

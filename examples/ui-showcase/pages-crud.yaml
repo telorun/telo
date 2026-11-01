@@ -1,9 +1,8 @@
-# CRUD: the admin screen `Crud.Ui` generates over the tasks collection `crud`
-# serves, with a filter policy and surfaces of its own. Every application
+# CRUD: the admin screen `CrudUi.Admin` generates over the tasks collection
+# `crud` serves, with a filter policy and surfaces of its own. Every application
 # places this view on its `/crud` page.
 kind: Ui.View
-metadata:
-  name: crudPage
+metadata: { name: crudPage }
 content:
   type: stack
   children:
@@ -11,9 +10,9 @@ content:
     - type: text
       style: muted
       text: >-
-        One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a
-        form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and
-        the filters are all derived from the model, so the screen offers exactly what the API accepts.
+        One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table,
+        a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields
+        and the filters are all derived from the collection, so the screen offers exactly what the API accepts.
     - type: text
       style: muted
       text: >-
@@ -28,9 +27,8 @@ content:
         first.
     - type: composite
       ref:
-        kind: Crud.Ui
-        model: !ref taskModel
-        basePath: /api/tasks
+        kind: CrudUi.Admin
+        source: !ref tasksSource
         filters:
           show: chosen
           controls: chips
@@ -46,8 +44,7 @@ content:
 ---
 # The page every application lists at /crud, placing the view.
 kind: Ui.Page
-metadata:
-  name: crudScreen
+metadata: { name: crudScreen }
 path: /crud
 title: CRUD
 children:

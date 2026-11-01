@@ -7,12 +7,11 @@ metadata:
   categories: [UI]
   description: >-
     Serves a declarative user interface as a web application: pages with
-    navigation, data grids with sorting, paging and inline create, edit and
-    delete, validated forms, filter bars, swappable themes that restyle every
-    screen and replace its interactive controls, brand tokens, custom fonts and
-    custom React components. Mounted on an HTTP server, it turns page
-    descriptions into a working admin panel or internal tool with no frontend
-    build step.
+    navigation, listings drawn as tables, lists, cards, kanban boards,
+    calendars, timelines or trees with sorting, paging, infinite scroll, drag
+    and drop and inline editing, validated forms, filter bars, swappable themes
+    and custom React components. Mounted on an HTTP server, it turns page
+    descriptions into an admin panel with no frontend build.
 requires:
   # 0.120.1 refuses this file: it does not know `x-telo-context-eval`, which
   # keeps a page's `request` out of what the browser names and its `query` out
@@ -29,16 +28,11 @@ imports:
   I18n: ../i18n
   SseCodec: ../sse-codec
 exports:
-  kinds:
-    - App
-    - Theme
-    - Controls
-  resources:
-    - defaultTheme
-  # The renderer's controls contract as data — the parts, the reserved
-  # properties, the tokens the renderer reads, the controls of `ui_react_controls-2` with their vectors, the
-  # scenes drawing every part — and the DOM-only interpreter that runs them:
-  # what a module checking a theme against the renderer imports.
+  kinds: [App, Theme, Controls]
+  resources: [defaultTheme]
+  # The renderer's contracts as data — the parts, the controls of
+  # `ui_react_controls-2` and the layouts of `ui_react_layouts-1` with their
+  # vectors, the scenes — and the DOM-only interpreter that runs them.
   code:
     - specifier: "@telorun/ui-react-contract"
       format: js

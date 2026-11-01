@@ -1,0 +1,22 @@
+kind: Telo.Application
+metadata:
+  name: EmptySuiteTest
+  version: 1.0.0
+  description: |
+    A suite that discovers no tests fails, so a mistyped include or filter cannot
+    pass as green; `allowEmpty: true` accepts it.
+imports:
+  Assert: ../../assert
+targets: [!ref refuses, !ref allowed]
+---
+kind: Assert.Manifest
+metadata: { name: refuses }
+source: ./__fixtures__/empty-suite/refuses.yaml
+expect:
+  runFails: "no tests found"
+---
+kind: Assert.Manifest
+metadata: { name: allowed }
+source: ./__fixtures__/empty-suite/allowed.yaml
+expect:
+  runs: true

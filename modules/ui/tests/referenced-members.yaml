@@ -6,13 +6,14 @@ metadata:
     A column's header and presentation come from the member it names however
     that member is reached: written in place, through a named shape, through a
     pointer into the model's own definitions, or through a shape a shape names
-    — for a list drawn from an action's answer and for a nested member of a table's
-    row alike, and for a table's derived column over a member that is itself
+    — for a list drawn from an action's answer and for a nested member of a
+    listing's record alike, and for a table's derived column over a member that is itself
     a reference. What is written beside a reference wins over the shape it
     names. A reference that names nothing passes the check and is refused when
     the action is first read.
 imports:
   Ui: ../
+  DataModel: ../../data-model
   Probe: ./__fixtures__/probe
   Run: ../../run
   Assert: ../../assert
@@ -88,6 +89,7 @@ metadata:
   name: Report
 schema:
   type: object
+  required: [id]
   $defs:
     File:
       type: object
@@ -99,21 +101,28 @@ schema:
     latest: { $ref: "#/$defs/File" }
     site: { $ref: "#/$defs/Site" }
 ---
-kind: Ui.Table
+kind: Ui.CollectionPresentation
+metadata: { name: reportsPresentation }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/reports
+  collection: { kind: DataModel.Collection, model: !ref Report, query: { filters: [], sort: [] } }
+---
+kind: Ui.Listing
 metadata:
   name: reports
 model: !ref Report
-collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
-source: { basePath: /api/reports }
-columns:
-  - value: !cel "row.latest.url"
+presentation: !ref reportsPresentation
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.latest.url"
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: derived
 model: !ref Report
-collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
-source: { basePath: /api/reports }
+presentation: !ref reportsPresentation
 ---
 kind: Run.Sequence
 metadata:
@@ -130,8 +139,8 @@ steps:
     inputs:
       actual:
         lists: !cel "steps.generate.result.node.result.children.map(l, l.columns)"
-        table: !cel "steps.reports.result.node.columns"
-        derived: !cel "steps.derived.result.node.columns.filter(c, c.value.path == ['site'])"
+        table: !cel "steps.reports.result.node.layout.columns"
+        derived: !cel "steps.derived.result.node.layout.columns.filter(c, c.value.path == ['site'])"
       expected:
         lists:
           - [ { header: { text: Download, context: null, lang: und, computed: false }, value: { root: row, path: [ url ] }, present: { type: string, format: uri-reference }, labels: [] } ]

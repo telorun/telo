@@ -2,8 +2,7 @@
 # page and drawn in a table's cell. Every application places this view on its
 # `/components` page.
 kind: Ui.View
-metadata:
-  name: componentsPage
+metadata: { name: componentsPage }
 content:
   type: stack
   children:
@@ -34,25 +33,25 @@ content:
         a task is added above; its edits and deletes are heard by the component.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source:
-          basePath: /api/tasks
-          filters: { projectCode: TEL-42 }
+        filters: { projectCode: TEL-42 }
         pageSize: 6
-        columns:
-          - value: !cel "row.title"
-          - value: !cel "row.status"
-          - header: Priority
-            cell:
-              kind: Ui.Component
-              component: !ref Components.priorityMeter
-              model: !ref Task
-              props:
-                priority: !cel "row.priority"
-                blocked: !cel "row.blocked"
-          - value: !cel "row.assigneeEmail"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - header: Priority
+              cell:
+                kind: Ui.Component
+                component: !ref Components.priorityMeter
+                model: !ref Task
+                props:
+                  priority: !cel "row.priority"
+                  blocked: !cel "row.blocked"
+            - value: !cel "row.assigneeEmail"
         edit: { form: !ref taskForm }
         delete: true
 
@@ -67,8 +66,7 @@ content:
 ---
 # The page every application lists at /components, placing the view.
 kind: Ui.Page
-metadata:
-  name: componentsScreen
+metadata: { name: componentsScreen }
 path: /components
 title: Components
 children:

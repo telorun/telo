@@ -243,9 +243,7 @@ throws:
   inherit: true
 schema:
   type: object
-  required:
-    - connection
-    - steps
+  required: [connection, steps]
   properties:
     connection:
       title: Connection
@@ -562,8 +560,45 @@ schema:
       type: object
     foreignKeys:
       title: Foreign Keys
-      description: Foreign keys keyed by name, which is their durable identity.
+      description: >-
+        Foreign keys keyed by name, which is their durable identity. Each maps
+        its columns, one for one, onto the columns of a referenced table.
       type: object
+      additionalProperties:
+        type: object
+        required: [columns, references]
+        properties:
+          columns:
+            title: Columns
+            description: The columns of this table, in the order they map.
+            type: array
+            items: { type: string }
+          references:
+            title: References
+            type: object
+            required: [table, columns]
+            properties:
+              table:
+                title: Table
+                description: The referenced table; it may be this one.
+                # `schema`: a declaration read, so a table may reference itself and
+                # two may reference each other.
+                x-telo-ref: { kind: Self.Table, use: schema }
+              columns:
+                title: Columns
+                description: The columns of the referenced table, in the order they map.
+                type: array
+                items: { type: string }
+          onDelete:
+            title: On Delete
+            description: What happens to this table's rows when the referenced row is deleted.
+            type: string
+            enum: [cascade, restrict, "set null", "set default", "no action"]
+          onUpdate:
+            title: On Update
+            description: What happens to this table's rows when the referenced key changes.
+            type: string
+            enum: [cascade, restrict, "set null", "set default", "no action"]
     checks:
       title: Checks
       description: >-

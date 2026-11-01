@@ -12,6 +12,7 @@ metadata:
     `shown` and an action its `enabled`, unchanged.
 imports:
   Ui: ../
+  DataModel: ../../data-model
   Probe: ./__fixtures__/probe
   Run: ../../run
   Assert: ../../assert
@@ -89,7 +90,15 @@ model:
     properties:
       title: { type: string }
       detail: { type: string }
-source: { basePath: /api/notes }
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/notes
+    collection:
+      kind: DataModel.Collection
+      model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+      query: { filters: [], sort: [] }
 fields:
   - title
   - kind: Ui.InputField

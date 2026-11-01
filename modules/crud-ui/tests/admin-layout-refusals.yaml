@@ -1,0 +1,30 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminLayoutRefusalsTest
+  version: 1.0.0
+  description: |
+    A layout written at a `CrudUi.Admin` is judged against the collection the
+    admin's listing reads: a board grouped by a property the collection cannot
+    filter by equality is refused by `telo check` at the admin that wrote it,
+    and again when the listing is first read, from an application whose own
+    check does not reach the admin.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref groupNotFilterable
+  - !ref groupNotFilterableAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: groupNotFilterable }
+source: ./__fixtures__/layout-refusals/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "CrudUi.Admin/byPriority: 'layout' is forwarded into the UiKit.Listing entry 'listing' as 'layout', which checks it as its own field — the UiKit.Listing entry 'listing' at 'layout': required by Ui.BoardLayout — groups records by a property the collection does not accept an equality on"
+---
+kind: Assert.Manifest
+metadata: { name: groupNotFilterableAtRuntime }
+source: ./__fixtures__/layout-refusals/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'listing': 'layout' groups records by a property the collection does not accept an equality on ('priority')"

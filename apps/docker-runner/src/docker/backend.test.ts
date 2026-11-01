@@ -16,8 +16,10 @@ import { afterEach, describe, expect, it } from "vitest";
 const NO_LOOPBACK_ALIASES = process.platform === "darwin";
 
 import { createDockerBackend } from "./backend.js";
-import { agentContainer, appContainer, workspaceContainer } from "./container-spec.js";
+import { agentContainer, appContainer, userSpec, workspaceContainer } from "./container-spec.js";
+import type { CreateContainerOpts } from "./docker-api.js";
 import { FakeEngine } from "./fake-engine.test-support.js";
+import { testProcessUser } from "./test-process-user.test-support.js";
 
 const NETWORK = "telo_default";
 const VOLUME = "telo_runner-bundles";
@@ -35,6 +37,7 @@ const AGENT = {
   tokenEnv: "AGENT_TOKEN",
 };
 const CONFIG = { image: "telorun/node:0-slim", pullPolicy: "missing" };
+const USER = testProcessUser();
 
 function spec(sessionId: string, overrides: Partial<WorkloadSpec> = {}): WorkloadSpec {
   return { sessionId, apps: APPS, config: CONFIG, tokens: {}, ...overrides };
@@ -73,16 +76,23 @@ function boot() {
     teloImages: loadTeloImageSource({}),
     workspaceImage: "telorun/node:0-slim",
     supervisor: SUPERVISOR,
+    sessionUser: USER,
     log: { info() {}, warn() {} },
   });
 }
 
-/** The containers an earlier runner process created for a session. */
-async function earlierContainers(sessionId: string, options: { agent?: boolean; live?: string } = {}) {
-  const args = { sessionId, bundleVolume: VOLUME, childNetwork: NETWORK, publicBaseUrl: "http://run.test" };
-  await engine.stand(workspaceContainer(args, "telorun/node:0-slim"));
+/** The containers an earlier runner process created for a session; `user`
+ *  overrides who they run as (`""`: a runner from before the session user). */
+async function earlierContainers(
+  sessionId: string,
+  options: { agent?: boolean; live?: string; user?: string } = {},
+) {
+  const args = { sessionId, bundleVolume: VOLUME, childNetwork: NETWORK, publicBaseUrl: "http://run.test", user: USER };
+  const stand = (opts: CreateContainerOpts, live?: string) =>
+    engine.stand(options.user !== undefined ? { ...opts, User: options.user } : opts, live);
+  await stand(workspaceContainer(args, "telorun/node:0-slim"));
   for (const [index, app] of APPS.entries()) {
-    await engine.stand(
+    await stand(
       appContainer(args, {
         app,
         index,
@@ -95,14 +105,14 @@ async function earlierContainers(sessionId: string, options: { agent?: boolean; 
     );
   }
   if (options.agent !== false) {
-    await engine.stand(
+    await stand(
       agentContainer(args, { ...AGENT, env: { ...AGENT.env, AGENT_TOKEN: "agent-token" } }, CONFIG.image),
     );
   }
 }
 
 describe.skipIf(NO_LOOPBACK_ALIASES)("a session's containers", () => {
-  it("run the supervisor in every app container, with no TTY, no stdin and no session env", async () => {
+  it("run as the session user, the supervisor in every app container, with no TTY, no stdin and no session env", async () => {
     const backend = boot();
     const workload = await backend.create(spec("s1", { agent: AGENT }), recorder().callbacks);
     await workload.runApp("web", {
@@ -126,6 +136,8 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a session's containers", () => {
     expect(web.Env).toEqual([
       "TELO_SUPERVISOR_LISTEN=0.0.0.0:9330",
       expect.stringMatching(/^TELO_SUPERVISOR_TOKEN=[\w-]{43}$/),
+      "HOME=/home/telo",
+      "npm_config_cache=/home/telo/.npm",
     ]);
     expect(web.HostConfig.Mounts).toEqual([
       { Type: "volume", Source: VOLUME, Target: "/workspace", VolumeOptions: { Subpath: "s1/workspace" } },
@@ -136,10 +148,13 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("a session's containers", () => {
         ReadOnly: true,
         VolumeOptions: { Subpath: SUPERVISOR.subpath },
       },
+      { Type: "volume", Source: VOLUME, Target: "/home/telo", VolumeOptions: { Subpath: "s1/home/apps" } },
     ]);
     const worker = engine.created.find((c) => c.name === "telo-run-s1-app-worker")!;
     expect(worker.Env[0]).toBe("TELO_SUPERVISOR_LISTEN=0.0.0.0:9331");
     expect(worker.Env[1]).not.toBe(web.Env[1]);
+
+    expect(engine.created.map((c) => c.User)).toEqual(Array(4).fill(userSpec(USER)));
 
     const agent = engine.created.find((c) => c.name === "telo-run-s1-agent")!;
     expect(agent.Env).toContain("TELO_HOST_STATE_DIR=/var/lib/telo-agent-state");
@@ -259,7 +274,7 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
     await expect.poll(() => r.states.at(-1)).toMatchObject({ app: "web", state: "ready" });
   });
 
-  it("removes containers whose supervisors speak another generation, or whose agent is not the stored one, keeping the directory", async () => {
+  it("removes containers whose supervisors speak another generation, whose agent is not the stored one, or that do not run as the session user, keeping the directory", async () => {
     const backend = boot();
     mkdirSync(join(bundleRoot, "s1", "workspace"), { recursive: true });
     engine.generation = 2;
@@ -271,6 +286,14 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
     engine.generation = 1;
     await earlierContainers("s2", { agent: false });
     expect(await backend.adopt!(spec("s2", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
+    expect(engine.names()).toEqual([]);
+
+    await earlierContainers("s3", { user: "" });
+    expect(await backend.adopt!(spec("s3", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
+    expect(engine.names()).toEqual([]);
+
+    await earlierContainers("s4", { user: `${USER.uid + 1}:${USER.gid}` });
+    expect(await backend.adopt!(spec("s4", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
     expect(engine.names()).toEqual([]);
   });
 

@@ -1,0 +1,11 @@
+modules:
+  modules/ai: Fixed
+  modules/benchmark: Fixed
+  modules/mcp-server: Fixed
+  modules/run: Fixed
+  modules/sql: Fixed
+  modules/starlark: Fixed
+  modules/assert: Fixed
+  modules/http-server: Fixed
+body: The documentation no longer recommends the deprecated JavaScript script kind; its
+  examples use the step grammar with CEL instead.

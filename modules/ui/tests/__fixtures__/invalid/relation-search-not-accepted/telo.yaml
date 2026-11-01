@@ -1,0 +1,8 @@
+# Its own check does not reach the library's presentation, which is refused when
+# the import starts.
+kind: Telo.Application
+metadata:
+  name: UiInvalidRelationSearchNotAcceptedApp
+  version: 1.0.0
+imports:
+  Lib: ./lib

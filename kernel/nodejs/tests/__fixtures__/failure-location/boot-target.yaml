@@ -1,0 +1,9 @@
+# An inline invoke boot target whose call fails.
+kind: Telo.Application
+metadata: { name: FailureBootTarget }
+imports:
+  Assert: ../../../../../modules/assert
+targets:
+  - name: matches
+    invoke: !ref Assert.equals
+    inputs: { actual: 2, expected: 3 }

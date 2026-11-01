@@ -5,13 +5,16 @@ metadata:
   description: >-
     Test fixture: browser components written against the UI host — one using
     every host capability, one holding state, a status pill, one built for a
-    newer host and one importing something the host does not supply — and two
-    control sets over one entry that both implement the box control.
+    newer host and one importing something the host does not supply — a listing
+    layout drawing records as chips, and one built for the component ABI rather
+    than the layout one — and two control sets over one entry that both
+    implement the box control.
 imports:
   Ui: ../../../../ui
   UiReact: ../../../
 exports:
-  resources: [hostProbe, counter, statusPill, future, unsupplied, controls, checkboxes]
+  kinds: [RecordStrip]
+  resources: [hostProbe, counter, statusPill, future, unsupplied, recordStrip, misbuiltStrip, controls, checkboxes]
   browser:
     - specifier: "@fixture/components"
       path: ./browser/components.js
@@ -31,6 +34,18 @@ exports:
       abi: ui_react-1
       external: [react, react/jsx-runtime, react-dom/client]
       exports: [Unsupplied]
+    - specifier: "@fixture/layouts"
+      path: ./browser/layouts.js
+      source: ./nodejs/src/layouts.tsx
+      abi: ui_react_layouts-1
+      external: [react, react/jsx-runtime]
+      exports: [RecordStrip]
+    - specifier: "@fixture/misbuilt-layouts"
+      path: ./browser/misbuilt-layouts.js
+      source: ./nodejs/src/layouts.tsx
+      abi: ui_react-1
+      external: [react, react/jsx-runtime]
+      exports: [RecordStrip]
     - specifier: "@fixture/controls"
       path: ./browser/controls.js
       source: ./nodejs/src/controls.tsx
@@ -98,6 +113,44 @@ export: Unsupplied
 props:
   kind: Telo.JsonSchema
   schema: { type: object, additionalProperties: false }
+---
+kind: Ui.ComponentExport
+metadata: { name: recordStrip }
+entry: "@fixture/layouts"
+export: RecordStrip
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [title]
+    properties:
+      title: { type: string }
+      text: { type: string }
+---
+kind: Ui.ComponentExport
+metadata: { name: misbuiltStrip }
+entry: "@fixture/misbuilt-layouts"
+export: RecordStrip
+props:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false, properties: { title: { type: string }, text: { type: string } } }
+---
+# A layout of this module: a heading of its own over the records' chips.
+kind: Telo.Definition
+metadata:
+  name: RecordStrip
+  description: Draws a listing's records as chips under a heading, reading more while more exists.
+extends: Ui.ComponentLayout
+schema:
+  type: object
+  additionalProperties: false
+  required: [title]
+  properties:
+    title: { type: string, description: The heading drawn above the chips. }
+base:
+  component: !ref recordStrip
+  props: !cel "{'title': self.title}"
 ---
 kind: UiReact.Controls
 metadata:

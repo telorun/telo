@@ -117,6 +117,7 @@ class RunProjection {
             },
             invokeCtx,
             turnStepPath(invokeCtx, index),
+            "/steps",
           );
           if (this.resource.outputs !== undefined) {
             return this.ctx.expandValue(this.resource.outputs, {

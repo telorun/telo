@@ -66,6 +66,7 @@ pnpm run test --include modules/sql/tests/query.yaml --include 'modules/sqlite/t
 | `exclude` | string[] | no | Glob patterns to exclude. Defaults to `["**/__fixtures__/**"]`. A pattern naming a directory's whole contents (`dir/**` or `dir/`) also stops discovery from descending into that directory, so a large excluded tree costs nothing to skip; `node_modules`, `.git` and `.telo` are never entered. |
 | `filter` | string | no | Substring filter applied to discovered paths. An empty string filters nothing. |
 | `concurrency` | integer | no | Maximum number of tests to run in parallel (minimum `1`). Defaults to `3` — small enough that Node's single JS thread isn't the bottleneck (which would inflate per-test wall-clock without meaningfully shortening the total), large enough to overlap I/O across a few tests. Each test still runs in its own isolated kernel. When more than one test is in the run, each test's stdout/stderr is buffered per-test and emitted only if the test fails (passing tests' output is dropped); single-test runs stream output live to the parent without buffering. |
+| `allowEmpty` | boolean | no | Accept a run that discovers no tests. Defaults to `false`: a suite that finds nothing prints `no tests found` and exits non-zero, so a mistyped `include` or `filter` cannot pass as green. |
 | `env` | map of string | no | Environment variables every test manifest runs with. Evaluated at startup, so a value may be computed from another resource — the address of a database the suite's application started for its tests. Wins over the host environment the suite forwards and over the tests' env files. |
 
 ## Command-line arguments
@@ -80,5 +81,5 @@ pnpm run test --include modules/sql/tests/query.yaml --include 'modules/sqlite/t
 4. Runs `kernel.load(testPath)` + `kernel.start()` on the child kernel.
 5. When more than one test is in the run, captures the child kernel's stdout/stderr per-test and emits it only on failure (passing tests' output is dropped). Single-test runs stream output live to the parent without buffering.
 6. Reports PASS/FAIL per test with timing **as each test completes** (so order is non-deterministic when `concurrency > 1`), and a summary at the end.
-7. Exits non-zero if any test fails.
+7. Exits non-zero if any test fails, or if none were discovered and `allowEmpty` is not set.
 

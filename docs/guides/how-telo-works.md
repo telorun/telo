@@ -21,7 +21,7 @@ first document is always `Telo.Application` (a runnable entry point) or
 ```yaml
 kind: Http.Server        # what sort of thing this is
 metadata:
-  name: Server           # what to call it
+  name: server           # what to call it
 listen:                  # its configuration, at the top level
   port: 8080
 ```
@@ -71,8 +71,9 @@ slots will accept it:
 | --- | --- | --- |
 | `Telo.Service` | `init()`, `run()` | Servers, connection pools — long-lived |
 | `Telo.Runnable` | `run()` | One-shot tasks, sequences, pipelines |
-| `Telo.Invocable` | `invoke(inputs)` | Handlers, scripts — things you call |
-| `Telo.Provider` | `provide()` | Configuration and value sources |
+| `Telo.Invocable` | `invoke(inputs)` | Handlers, queries — things you call |
+| `Telo.Provider` | `init()`, optional `provide()` | Configuration, secret and value sources |
+| `Telo.Callable` | `call(args)`, synchronous | Functions reached from CEL by module name (`Self.fn(x)`) |
 | `Telo.Mount` | mounted into a service | HTTP routers, middleware |
 | `Telo.Sink` | `write(record)`, `flush()` | Log sinks — record-stream destinations |
 | `Telo.Type` | nothing — schema only | Shared type declarations |
@@ -96,7 +97,9 @@ telo ./manifest.yaml
 
 1. **Load.** The manifest and every import are parsed, `!cel` expressions are
    compiled, and `variables:` / `secrets:` / `ports:` are bound from the host
-   environment. A missing required variable fails here — before any code runs.
+   environment. A required variable with no value is asked for when `telo` runs
+   at a terminal; otherwise (`--no-input`, a runner) the load is refused here,
+   naming the missing inputs — before any code runs.
 2. **Analyze.** The same static checks `telo check` performs run against the
    loaded graph: unknown kinds, broken references, CEL type errors.
 3. **Init.** Each resource is constructed in dependency order — derived from

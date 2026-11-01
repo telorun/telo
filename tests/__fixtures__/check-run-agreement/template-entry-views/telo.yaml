@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata:
+  name: EntryViewsConsumer
+  version: 1.0.0
+imports:
+  Faulty: ./lib
+targets:
+  - invoke: !ref greeting
+---
+kind: Faulty.Greeting
+metadata: { name: greeting }
+word: hello

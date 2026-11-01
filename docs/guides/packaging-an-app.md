@@ -110,6 +110,13 @@ reached through `TELO_APP_CLI=1` instead (*The telo inside it*, below).
 `.env.local` are read **from the working directory you run the binary in**, with
 the same walk `telo run` uses.
 
+**Needs are provided the same way.** `telo needs report dist/orders` lists them,
+and `TELO_HOST_STATE_DIR`, the public-URL templates and the `TELO_NEED_…`
+variables are read as under `telo run` ([Providing needs](/learn/providing-needs)).
+Under a supervisor, with no terminal, an input nothing supplies is refused and the
+binary exits with status 1; at a terminal it asks. To refuse there too, start the
+telo inside it with the option: `TELO_APP_CLI=1 ./orders run --no-input ./orders`.
+
 **Files the application writes live in the working directory, not in the
 payload.** The payload unpacks to a cache directory (below) that belongs to the
 binary, so anything the manifest locates relative to *itself* lands there. Name
@@ -129,7 +136,9 @@ The payload unpacks once into the user cache
 start reclaims the same application's older trees, provided no live process is
 using them — a reclaimed tree comes straight back out of the binary, so nothing
 is lost. `TELO_APP_DIR` moves that root, which is what a read-only container
-needs; with nowhere writable at all, the app refuses at startup and says so.
+needs; with nowhere writable at all, the app refuses at startup and says so. An
+unprivileged user needs only that directory (or `HOME`, or a writable temporary
+directory) — see [Running unprivileged](/deploy/production#running-unprivileged).
 `TELO_CACHE_DIR` is ignored inside a packaged app: the payload *is* its cache.
 
 ## Reading a packaged binary

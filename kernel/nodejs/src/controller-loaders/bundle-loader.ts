@@ -25,6 +25,7 @@ import {
   type ModuleArtifact,
 } from "../bundle/module-artifact.js";
 import type { ControllerResolveSource, ControllerWorkReporter } from "../controller-loader.js";
+import { BundlePreparations } from "./bundle-preparations.js";
 import { ControllerEnvMissingError, projectNapiController } from "./napi-loader.js";
 import { ensureRealmShims } from "./realm.js";
 import { isWritableShimSlot, shimPackageJson, writeIfChanged } from "./shim-package.js";
@@ -212,7 +213,36 @@ export class BundleControllerLoader {
     /** Reports what resolution had to leave alone — a sibling-library slot an
      *  installer already owns, which resolves but not to this module's own copy. */
     private readonly log?: Logger,
+    /** The load's preparations, shared by every kind's loader; this loader's own
+     *  when none is given. */
+    private readonly preparations: BundlePreparations = new BundlePreparations(),
   ) {}
+
+  /** A current build of `source`, once per load for each externals set. */
+  private buildOnce(
+    source: string,
+    externals: SiblingLibrary[],
+    report?: ControllerWorkReporter,
+  ): Promise<string> {
+    return this.preparations.once(`build\0${source}\0${JSON.stringify(externals)}`, () =>
+      buildControllerFromSource(source, this.cacheRoot!, externals, report, this.log),
+    );
+  }
+
+  /** Whether a file every kind of a module asks about is on disk, once per load. */
+  private existsOnce(file: string): Promise<boolean> {
+    return this.preparations.once(`exists\0${file}`, () => pathExists(file));
+  }
+
+  /** {@link prepareBundleDir}, once per load for each directory and shim set. */
+  private prepareBundleDirOnce(
+    bundleDir: string,
+    shims: ReadonlyArray<{ specifier: string; entryFile: string }>,
+  ): Promise<void> {
+    return this.preparations.once(`dir\0${bundleDir}\0${JSON.stringify(shims)}`, () =>
+      prepareBundleDir(bundleDir, shims, this.cacheRoot, this.log),
+    );
+  }
 
   async load(
     purl: string,
@@ -274,10 +304,11 @@ export class BundleControllerLoader {
     if (!seen.has(library.moduleSource)) {
       seen.add(library.moduleSource);
       const nested = await this.libraryEntries(library.libraries, format, purl, seen);
-      await ensureLibraryShims(dir, nested, this.cacheRoot, this.log);
+      // A library entry imports `@telorun/sdk` like any controller does.
+      await this.prepareBundleDirOnce(dir, nested);
+    } else {
+      await this.preparations.once(`realm\0${dir}`, () => ensureRealmShims(dir, this.cacheRoot, this.log));
     }
-    // A library entry imports `@telorun/sdk` like any controller does.
-    await ensureRealmShims(dir, this.cacheRoot, this.log);
     return entryFile;
   }
 
@@ -330,16 +361,10 @@ export class BundleControllerLoader {
     if (
       source !== undefined &&
       this.cacheRoot !== undefined &&
-      (await pathExists(source)) &&
+      (await this.existsOnce(source)) &&
       (await canBuildFromSource())
     ) {
-      return buildControllerFromSource(
-        source,
-        this.cacheRoot,
-        buildExternals(library.libraries, format),
-        undefined,
-        this.log,
-      );
+      return this.buildOnce(source, buildExternals(library.libraries, format));
     }
 
     const prebuilt = path.resolve(library.moduleDir, library.path);
@@ -441,7 +466,7 @@ export class BundleControllerLoader {
     const buildFromSource =
       sourceFile !== undefined &&
       cacheRoot !== undefined &&
-      (await pathExists(sourceFile)) &&
+      (await this.existsOnce(sourceFile)) &&
       (await canBuildFromSource());
     // Every sibling library this bundle imports, resolved before the bundle is:
     // its `import { KeyedClaim } from "@telorun/kv-store"` has to have a file
@@ -471,20 +496,14 @@ export class BundleControllerLoader {
             // than wrapping the call: only the builder knows whether its
             // content-addressed cache answered, and reporting a cache hit would
             // put a line on screen for work nobody waited for.
-            built = await buildControllerFromSource(
-              sourceFile!,
-              cacheRoot!,
-              buildExternals(libraries, format),
-              report,
-              this.log,
-            );
+            built = await this.buildOnce(sourceFile!, buildExternals(libraries, format), report);
           } catch (err) {
             if (!(err instanceof ControllerEnvMissingError)) throw err;
             if (!(await pathExists(prebuilt))) throw err;
-            await prepareBundleDir(path.dirname(prebuilt), shims, this.cacheRoot, this.log);
+            await this.prepareBundleDirOnce(path.dirname(prebuilt), shims);
             return importControllerModule(prebuilt, purl, fragment);
           }
-          await prepareBundleDir(path.dirname(built), shims, this.cacheRoot, this.log);
+          await this.prepareBundleDirOnce(path.dirname(built), shims);
           return importControllerModule(built, purl, fragment);
         },
       };
@@ -526,7 +545,7 @@ export class BundleControllerLoader {
     }
 
     const absFile = path.resolve(bundleDir, relPath);
-    if (!(await pathExists(absFile))) {
+    if (!(await this.existsOnce(absFile))) {
       throw new ControllerEnvMissingError(
         `pkg:telo controller bundle not found at "${absFile}" (from "${purl}")`,
       );
@@ -534,7 +553,7 @@ export class BundleControllerLoader {
 
     // Make bare `@telorun/sdk` (etc.) and every sibling library resolve before
     // importing the bundle, so authors write normal imports.
-    await prepareBundleDir(path.dirname(absFile), shims, this.cacheRoot, this.log);
+    await this.prepareBundleDirOnce(path.dirname(absFile), shims);
 
     return {
       source,

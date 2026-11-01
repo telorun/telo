@@ -1,0 +1,45 @@
+kind: Telo.Application
+metadata:
+  name: TemplateShapeForwardTest
+  version: 1.0.0
+  description: |
+    A template body forwarding a path past a `use: schema` reference into the
+    shape it names. The instance is declared above the shape, and the shape
+    inherits `id` from a parent declared after it: the forward reads the
+    inherited property whatever the creation order.
+imports:
+  Lib: ./__fixtures__/template-shape-forward
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verifyInheritedProperty
+---
+kind: Lib.IdType
+metadata: { name: described }
+model: !ref Child
+---
+kind: Telo.JsonSchema
+metadata: { name: Child }
+extends: Base
+schema:
+  type: object
+  properties:
+    label: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Base }
+schema:
+  type: object
+  properties:
+    id: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: verifyInheritedProperty }
+steps:
+  - name: idType
+    invoke: !ref described
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.idType.result"
+      expected: string

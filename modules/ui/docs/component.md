@@ -1,6 +1,6 @@
 # Ui.Component
 
-Places a custom browser component — on a page, or in a table cell.
+Places a custom browser component — on a page, or in a table layout's cell.
 
 | Field | | |
 | --- | --- | --- |
@@ -23,7 +23,7 @@ typed from `model`. The whole `props` map is checked against the properties
 the export declares, so a missing, unknown or mistyped one is an error at
 `telo check`.
 
-A row-bound property resolves only inside a table cell; anywhere else it has
+A row-bound property resolves only inside a table layout's cell; anywhere else it has
 no row and the component receives nothing for it.
 
 What the component is — how it is written, what it may import, what the host

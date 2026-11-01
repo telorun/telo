@@ -1,0 +1,1340 @@
+{
+  "list": {
+    "props": {
+      "records": [
+        {
+          "key": "1",
+          "row": {
+            "id": 1,
+            "text": "Write the plan",
+            "status": "open"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Write the plan"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        },
+        {
+          "key": "2",
+          "row": {
+            "id": 2,
+            "text": "Review the plan",
+            "status": "done"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Review the plan"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        }
+      ],
+      "total": 3,
+      "hasMore": true,
+      "loading": false,
+      "sort": {
+        "sortable": [
+          {
+            "property": "text",
+            "label": "Task"
+          }
+        ]
+      },
+      "paging": "more",
+      "empty": {
+        "element": "p",
+        "text": "Nothing to do."
+      },
+      "can": {
+        "open": false,
+        "create": false,
+        "move": false
+      },
+      "words": {
+        "loadMore": "Load more",
+        "moveTo": "Move to",
+        "none": "None",
+        "newRecord": "New record"
+      },
+      "lang": "en",
+      "props": {
+        "windowed": false,
+        "pageSize": 2
+      }
+    },
+    "vectors": [
+      {
+        "name": "reports onEndReached when its Load more is pressed, and from the keyboard",
+        "steps": [
+          {
+            "click": {
+              "part": "load-more"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onEndReached"
+                ]
+              ]
+            }
+          },
+          {
+            "focus": {
+              "part": "load-more"
+            }
+          },
+          {
+            "key": "Enter"
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onEndReached"
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "draws each record's content in order, and no Load more once nothing further exists",
+        "props": {
+          "hasMore": false,
+          "total": 2
+        },
+        "steps": [
+          {
+            "expect": {
+              "text": [
+                {
+                  "of": {
+                    "part": "list-item",
+                    "index": 0
+                  },
+                  "value": "Write the plan"
+                },
+                {
+                  "of": {
+                    "part": "list-item",
+                    "index": 1
+                  },
+                  "value": "Review the plan"
+                }
+              ],
+              "absent": [
+                {
+                  "part": "load-more"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reports a sort by a property, then by it descending",
+        "steps": [
+          {
+            "click": {
+              "part": "listing-sort-option"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onSortChange",
+                  "text"
+                ]
+              ]
+            }
+          },
+          {
+            "props": {
+              "sort": {
+                "value": "text",
+                "sortable": [
+                  {
+                    "property": "text",
+                    "label": "Task"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "expect": {
+              "attributes": [
+                {
+                  "of": {
+                    "part": "listing-sort-option"
+                  },
+                  "name": "aria-pressed",
+                  "value": "true"
+                }
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "listing-sort-option"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onSortChange",
+                  "-text"
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "draws the empty node where the records would be when the reads answer none",
+        "props": {
+          "records": [],
+          "total": 0,
+          "hasMore": false
+        },
+        "steps": [
+          {
+            "expect": {
+              "text": [
+                {
+                  "of": {
+                    "part": "listing-empty"
+                  },
+                  "value": "Nothing to do."
+                }
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "cards": {
+    "props": {
+      "records": [
+        {
+          "key": "1",
+          "row": {
+            "id": 1,
+            "text": "Write the plan",
+            "status": "open"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Write the plan"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        },
+        {
+          "key": "2",
+          "row": {
+            "id": 2,
+            "text": "Review the plan",
+            "status": "done"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Review the plan"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        }
+      ],
+      "total": 3,
+      "hasMore": true,
+      "loading": false,
+      "sort": {
+        "sortable": [
+          {
+            "property": "text",
+            "label": "Task"
+          }
+        ]
+      },
+      "paging": "more",
+      "empty": {
+        "element": "p",
+        "text": "Nothing to do."
+      },
+      "can": {
+        "open": false,
+        "create": false,
+        "move": false
+      },
+      "words": {
+        "loadMore": "Load more",
+        "moveTo": "Move to",
+        "none": "None",
+        "newRecord": "New record"
+      },
+      "lang": "en",
+      "props": {
+        "windowed": false,
+        "pageSize": 2,
+        "size": "small"
+      }
+    },
+    "vectors": [
+      {
+        "name": "draws a card per record at its size, and reports onEndReached from its Load more",
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                {
+                  "of": {
+                    "part": "cards-layout"
+                  },
+                  "name": "data-size",
+                  "value": "small"
+                }
+              ],
+              "text": [
+                {
+                  "of": {
+                    "part": "card",
+                    "index": 1
+                  },
+                  "value": "Review the plan"
+                }
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "load-more"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onEndReached"
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "board": {
+    "props": {
+      "records": [
+        {
+          "key": "1",
+          "row": {
+            "id": 1,
+            "text": "Write the plan",
+            "status": "open"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Write the plan"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        },
+        {
+          "key": "2",
+          "row": {
+            "id": 2,
+            "text": "Review the plan",
+            "status": "done"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Review the plan"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        }
+      ],
+      "hasMore": false,
+      "loading": false,
+      "props": {
+        "group": "status"
+      },
+      "groups": [
+        {
+          "value": "open",
+          "label": "Open",
+          "heading": "Open (1)",
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "text": "Write the plan",
+                "status": "open"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Write the plan"
+                }
+              },
+              "labels": {},
+              "actions": null,
+              "selected": false,
+              "movable": true
+            }
+          ],
+          "total": 1,
+          "hasMore": true,
+          "loading": false
+        },
+        {
+          "value": "done",
+          "label": "Done",
+          "heading": "Done (1)",
+          "records": [
+            {
+              "key": "2",
+              "row": {
+                "id": 2,
+                "text": "Review the plan",
+                "status": "done"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Review the plan"
+                }
+              },
+              "labels": {},
+              "actions": null,
+              "selected": false,
+              "movable": true
+            }
+          ],
+          "total": 1,
+          "hasMore": false,
+          "loading": false
+        }
+      ],
+      "sort": {
+        "sortable": [
+          {
+            "property": "text",
+            "label": "Task"
+          }
+        ]
+      },
+      "paging": "more",
+      "empty": {
+        "element": "p",
+        "text": "Nothing to do."
+      },
+      "can": {
+        "open": true,
+        "create": true,
+        "move": true
+      },
+      "words": {
+        "loadMore": "Load more",
+        "moveTo": "Move to",
+        "none": "None",
+        "newRecord": "New record"
+      },
+      "lang": "en"
+    },
+    "vectors": [
+      {
+        "name": "heads each column with its label and count",
+        "steps": [
+          {
+            "expect": {
+              "text": [
+                {
+                  "of": {
+                    "part": "board-heading",
+                    "index": 0
+                  },
+                  "value": "Open (1)"
+                },
+                {
+                  "of": {
+                    "part": "board-heading",
+                    "index": 1
+                  },
+                  "value": "Done (1)"
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "moves a card to another column through its Move to menu, with the column's value",
+        "steps": [
+          {
+            "click": {
+              "part": "record-move",
+              "within": {
+                "part": "board-card",
+                "index": 0
+              }
+            }
+          },
+          {
+            "expect": {
+              "outside": [
+                {
+                  "part": "menu"
+                }
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "menu-item",
+              "text": "Done"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onMove",
+                  "1",
+                  {
+                    "status": "done"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "creates in a column with the column's value",
+        "steps": [
+          {
+            "click": {
+              "part": "record-create",
+              "index": 1
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onCreate",
+                  {
+                    "status": "done"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reads more of one column only",
+        "steps": [
+          {
+            "click": {
+              "part": "load-more",
+              "within": {
+                "part": "board-column",
+                "index": 0
+              }
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onEndReached",
+                  {
+                    "group": "open"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "calendar": {
+    "props": {
+      "records": [
+        {
+          "key": "1",
+          "row": {
+            "id": 1,
+            "startsOn": "2026-10-07",
+            "endsOn": "2026-10-08"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Kick-off"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        }
+      ],
+      "total": 1,
+      "hasMore": false,
+      "loading": false,
+      "props": {
+        "start": "startsOn",
+        "end": "endsOn",
+        "format": "date",
+        "period": "month"
+      },
+      "span": {
+        "from": "2026-10-01",
+        "to": "2026-10-31"
+      },
+      "sort": {
+        "sortable": []
+      },
+      "paging": "more",
+      "empty": {
+        "element": "p",
+        "text": "Nothing to do."
+      },
+      "can": {
+        "open": false,
+        "create": false,
+        "move": true
+      },
+      "words": {
+        "loadMore": "Load more",
+        "moveTo": "Move to",
+        "none": "None",
+        "newRecord": "New record"
+      },
+      "lang": "en"
+    },
+    "vectors": [
+      {
+        "name": "draws an event on every day it spans, under the month's title",
+        "steps": [
+          {
+            "expect": {
+              "text": [
+                {
+                  "of": {
+                    "part": "calendar-title"
+                  },
+                  "value": "October 2026"
+                }
+              ],
+              "present": [
+                {
+                  "tag": "span",
+                  "text": "Kick-off",
+                  "within": {
+                    "part": "calendar-event",
+                    "within": {
+                      "part": "calendar-day",
+                      "attributes": {
+                        "aria-label": "Oct 7"
+                      }
+                    }
+                  }
+                },
+                {
+                  "tag": "span",
+                  "text": "Kick-off",
+                  "within": {
+                    "part": "calendar-event",
+                    "within": {
+                      "part": "calendar-day",
+                      "attributes": {
+                        "aria-label": "Oct 8"
+                      }
+                    }
+                  }
+                }
+              ],
+              "absent": [
+                {
+                  "part": "calendar-event",
+                  "within": {
+                    "part": "calendar-day",
+                    "attributes": {
+                      "aria-label": "Oct 9"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "asks for the next month, then for the week its first day is in",
+        "steps": [
+          {
+            "click": {
+              "part": "calendar-next"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPeriodChange",
+                  {
+                    "from": "2026-11-01",
+                    "to": "2026-11-30"
+                  }
+                ]
+              ],
+              "text": [
+                {
+                  "of": {
+                    "part": "calendar-title"
+                  },
+                  "value": "November 2026"
+                }
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "calendar-period",
+              "text": "week"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPeriodChange",
+                  {
+                    "from": "2026-10-26",
+                    "to": "2026-11-01"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reschedules an event through its Move to menu, its end moved by as many days",
+        "steps": [
+          {
+            "click": {
+              "part": "record-move",
+              "within": {
+                "part": "calendar-day",
+                "attributes": {
+                  "aria-label": "Oct 7"
+                }
+              }
+            }
+          },
+          {
+            "click": {
+              "part": "menu-item",
+              "text": "Oct 10"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onMove",
+                  "1",
+                  {
+                    "startsOn": "2026-10-10",
+                    "endsOn": "2026-10-11"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "timeline": {
+    "props": {
+      "records": [
+        {
+          "key": "1",
+          "row": {
+            "id": 1,
+            "startsOn": "2026-10-07",
+            "endsOn": "2026-10-09",
+            "team": "core"
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Kick-off"
+            }
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        }
+      ],
+      "hasMore": false,
+      "loading": false,
+      "props": {
+        "start": "startsOn",
+        "end": "endsOn",
+        "format": "date",
+        "scale": "day",
+        "group": "team"
+      },
+      "groups": [
+        {
+          "value": "core",
+          "label": "Core",
+          "heading": "Core (1)",
+          "records": [
+            {
+              "key": "1",
+              "row": {
+                "id": 1,
+                "startsOn": "2026-10-07",
+                "endsOn": "2026-10-09",
+                "team": "core"
+              },
+              "props": {
+                "content": {
+                  "element": "span",
+                  "text": "Kick-off"
+                }
+              },
+              "labels": {},
+              "actions": null,
+              "selected": false,
+              "movable": true
+            }
+          ],
+          "total": 1,
+          "hasMore": false,
+          "loading": false
+        },
+        {
+          "value": "web",
+          "label": "Web",
+          "heading": "Web (0)",
+          "records": [],
+          "total": 0,
+          "hasMore": false,
+          "loading": false
+        }
+      ],
+      "span": {
+        "from": "2026-10-01",
+        "to": "2026-10-31"
+      },
+      "sort": {
+        "sortable": []
+      },
+      "paging": "more",
+      "empty": {
+        "element": "p",
+        "text": "Nothing to do."
+      },
+      "can": {
+        "open": false,
+        "create": false,
+        "move": true
+      },
+      "words": {
+        "loadMore": "Load more",
+        "moveTo": "Move to",
+        "none": "None",
+        "newRecord": "New record"
+      },
+      "lang": "en"
+    },
+    "vectors": [
+      {
+        "name": "draws a bar in its lane over the days it spans, and asks for the period before",
+        "steps": [
+          {
+            "expect": {
+              "text": [
+                {
+                  "of": {
+                    "part": "timeline-lane-label",
+                    "index": 0
+                  },
+                  "value": "Core (1)"
+                }
+              ],
+              "absent": [
+                {
+                  "part": "timeline-bar",
+                  "within": {
+                    "part": "timeline-lane",
+                    "index": 1
+                  }
+                }
+              ],
+              "present": [
+                {
+                  "tag": "span",
+                  "text": "Kick-off",
+                  "within": {
+                    "part": "timeline-bar",
+                    "within": {
+                      "part": "timeline-lane",
+                      "index": 0
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "timeline-prev"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onPeriodChange",
+                  {
+                    "from": "2026-09-01",
+                    "to": "2026-09-30"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "moves a bar to another column or lane through its Move to menu",
+        "steps": [
+          {
+            "click": {
+              "part": "record-move"
+            }
+          },
+          {
+            "click": {
+              "part": "menu-item",
+              "text": "Web (0)"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onMove",
+                  "1",
+                  {
+                    "team": "web"
+                  }
+                ]
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "record-move"
+            }
+          },
+          {
+            "click": {
+              "part": "menu-item",
+              "text": "12"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onMove",
+                  "1",
+                  {
+                    "startsOn": "2026-10-12",
+                    "endsOn": "2026-10-14"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "tree": {
+    "props": {
+      "records": [
+        {
+          "key": "1",
+          "row": {
+            "id": 1,
+            "name": "Ada",
+            "managerId": null
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Ada"
+            },
+            "title": "Ada"
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        },
+        {
+          "key": "2",
+          "row": {
+            "id": 2,
+            "name": "Grace",
+            "managerId": null
+          },
+          "props": {
+            "content": {
+              "element": "span",
+              "text": "Grace"
+            },
+            "title": "Grace"
+          },
+          "labels": {},
+          "actions": null,
+          "selected": false,
+          "movable": true
+        }
+      ],
+      "total": 2,
+      "hasMore": false,
+      "loading": false,
+      "children": {},
+      "props": {
+        "parent": "managerId",
+        "recordKey": "id"
+      },
+      "expanded": [],
+      "sort": {
+        "sortable": [
+          {
+            "property": "text",
+            "label": "Task"
+          }
+        ]
+      },
+      "paging": "more",
+      "empty": {
+        "element": "p",
+        "text": "Nothing to do."
+      },
+      "can": {
+        "open": false,
+        "create": false,
+        "move": true
+      },
+      "words": {
+        "loadMore": "Load more",
+        "moveTo": "Move to",
+        "none": "None",
+        "newRecord": "New record"
+      },
+      "lang": "en"
+    },
+    "vectors": [
+      {
+        "name": "asks for a record's children, then stops reading them",
+        "steps": [
+          {
+            "click": {
+              "part": "tree-toggle",
+              "index": 0
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onExpand",
+                  "1",
+                  true
+                ]
+              ]
+            }
+          },
+          {
+            "props": {
+              "expanded": [
+                "1"
+              ],
+              "children": {
+                "1": {
+                  "records": [
+                    {
+                      "key": "3",
+                      "row": {
+                        "id": 3,
+                        "name": "Linus",
+                        "managerId": 1
+                      },
+                      "props": {
+                        "content": {
+                          "element": "span",
+                          "text": "Linus"
+                        },
+                        "title": "Linus"
+                      },
+                      "labels": {},
+                      "actions": null,
+                      "selected": false,
+                      "movable": true
+                    }
+                  ],
+                  "total": 1,
+                  "hasMore": false,
+                  "loading": false,
+                  "children": {}
+                }
+              }
+            }
+          },
+          {
+            "expect": {
+              "attributes": [
+                {
+                  "of": {
+                    "part": "tree-item",
+                    "index": 0
+                  },
+                  "name": "aria-expanded",
+                  "value": "true"
+                }
+              ],
+              "present": [
+                {
+                  "tag": "span",
+                  "text": "Linus",
+                  "within": {
+                    "part": "tree-children"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "tree-toggle",
+              "index": 0
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onExpand",
+                  "1",
+                  false
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reads more of one level",
+        "props": {
+          "expanded": [
+            "1"
+          ],
+          "children": {
+            "1": {
+              "records": [
+                {
+                  "key": "3",
+                  "row": {
+                    "id": 3,
+                    "name": "Linus",
+                    "managerId": 1
+                  },
+                  "props": {
+                    "content": {
+                      "element": "span",
+                      "text": "Linus"
+                    },
+                    "title": "Linus"
+                  },
+                  "labels": {},
+                  "actions": null,
+                  "selected": false,
+                  "movable": true
+                }
+              ],
+              "total": 2,
+              "hasMore": true,
+              "loading": false,
+              "children": {}
+            }
+          }
+        },
+        "steps": [
+          {
+            "click": {
+              "part": "load-more",
+              "within": {
+                "part": "tree-children"
+              }
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onEndReached",
+                  {
+                    "parent": "1"
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "reparents through its Move to menu, under another record or back among the roots",
+        "props": {
+          "expanded": [
+            "1"
+          ],
+          "children": {
+            "1": {
+              "records": [
+                {
+                  "key": "3",
+                  "row": {
+                    "id": 3,
+                    "name": "Linus",
+                    "managerId": 1
+                  },
+                  "props": {
+                    "content": {
+                      "element": "span",
+                      "text": "Linus"
+                    },
+                    "title": "Linus"
+                  },
+                  "labels": {},
+                  "actions": null,
+                  "selected": false,
+                  "movable": true
+                }
+              ],
+              "total": 1,
+              "hasMore": false,
+              "loading": false,
+              "children": {}
+            }
+          }
+        },
+        "steps": [
+          {
+            "click": {
+              "part": "record-move",
+              "within": {
+                "part": "tree-children"
+              }
+            }
+          },
+          {
+            "click": {
+              "part": "menu-item",
+              "text": "Grace"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onMove",
+                  "3",
+                  {
+                    "managerId": 2
+                  }
+                ]
+              ]
+            }
+          },
+          {
+            "click": {
+              "part": "record-move",
+              "within": {
+                "part": "tree-children"
+              }
+            }
+          },
+          {
+            "click": {
+              "part": "menu-item",
+              "text": "None"
+            }
+          },
+          {
+            "expect": {
+              "intents": [
+                [
+                  "onMove",
+                  "3",
+                  {
+                    "managerId": null
+                  }
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

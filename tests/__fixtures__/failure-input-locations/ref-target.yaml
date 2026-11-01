@@ -1,0 +1,20 @@
+# A failing step whose target is a `!ref` to a declared instance: the failure is
+# located inside the calling step's `inputs:`, never at the target.
+kind: Telo.Application
+metadata: { name: FailureRefTarget }
+imports:
+  Assert: ../../../modules/assert
+  Run: ../../../modules/run
+targets: [!ref compare]
+---
+kind: Assert.Equals
+metadata: { name: matcher }
+---
+kind: Run.Sequence
+metadata: { name: compare }
+steps:
+  - name: matches
+    invoke: !ref matcher
+    inputs:
+      actual: { rows: [1, 2] }
+      expected: { rows: [1, 3] }

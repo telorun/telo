@@ -1,0 +1,144 @@
+kind: Telo.Application
+metadata:
+  name: UiSurfaceRefusalsTest
+  version: 1.0.0
+  description: |
+    What the node vocabulary, surfaces, navigation placements, conditions and
+    texts refuse before anything runs, and what a compact surface refuses when
+    it is first read.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref shapes
+  - !ref surfaces
+  - !ref navigationPlacements
+  - !ref compactAddressedAtRuntime
+  - !ref compactNestedAtRuntime
+  - !ref conditions
+  - !ref texts
+---
+kind: Assert.Manifest
+metadata:
+  name: shapes
+source: ./__fixtures__/invalid/shapes/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | list | composite)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/offsiteLink: /content/href must match pattern"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/offsiteItem: /content/items/1/href must match pattern"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Component/pill: `props` does not satisfy the type declared at `/component/props`: / must NOT have additional properties ('colour' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/both: /layout/columns/0 must match exactly one schema in oneOf"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Listing/both: !cel: 'row.txt' is not defined (available: id, text, isDone)"
+---
+kind: Assert.Manifest
+metadata:
+  name: surfaces
+source: ./__fixtures__/invalid/surfaces/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Dialog/dialogSide: / must NOT have additional properties ('side' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Drawer/drawerAlign: / must NOT have additional properties ('align' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Popover/popoverAddress: / must NOT have additional properties ('address' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.InlineSurface/inlineSize: / must NOT have additional properties ('size' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Panel/panelModal: / must NOT have additional properties ('modal' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.PageSurface/pageCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.PageSurface/pageUnaddressed: / is missing required property 'address'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Panel/compactPopover: reference at 'compact' → 'Ui.Popover' does not implement 'Ui.ViewportOverlay'"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.Listing/surfaceIsForm: reference at 'create.surface' → 'Ui.Form' does not implement 'Ui.Surface'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/editAgain: /edit/afterSubmit must be equal to one of the allowed values (close | keep)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/bareCreate: /create is missing required property 'form'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/bareCreate: /create must NOT have additional properties ('kind' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/bareCreate: /create must NOT have additional properties ('name' is not allowed)"
+---
+kind: Assert.Manifest
+metadata:
+  name: navigationPlacements
+source: ./__fixtures__/invalid/navigation/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.OverlayNavigation/overlayCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.TabBarNavigation/tabBarCompact: / must NOT have additional properties ('compact' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.TabBarNavigation/tooManyTabs: /visible must be <= 5"
+    - code: REFERENCE_KIND_MISMATCH
+      message: "Ui.HeaderNavigation/sidebarAsCompact: reference at 'compact' → 'Ui.SidebarNavigation' does not implement 'Ui.CompactNavigationPlacement'"
+---
+kind: Assert.Manifest
+metadata:
+  name: compactAddressedAtRuntime
+source: ./__fixtures__/invalid/compact-addressed/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Panel 'compactAddressed': names a compact surface that declares an address"
+---
+kind: Assert.Manifest
+metadata:
+  name: compactNestedAtRuntime
+source: ./__fixtures__/invalid/compact-nested/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Dialog 'compactNested': names a compact surface that declares a compact surface of its own"
+---
+# A condition holds only keywords of the interpreted profile and can hold for
+# the type it reads; a reader's query parameters leave `_telo` to the renderer;
+# `data`, `values` and `query` are read only where they are bound — `data` and
+# `query` by a reader, `values` by a form — and only by a value that is named,
+# never by an expression the server evaluates.
+kind: Assert.Manifest
+metadata:
+  name: conditions
+source: ./__fixtures__/invalid/conditions/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.View/outsideProfile: /content/shown/matches must NOT have additional properties ('if' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Data/reservedQuery: /query must NOT have additional properties ('_teloOpen' is not allowed)"
+    - code: MATCH_UNSATISFIABLE
+      message: "Ui.Data/unsatisfiable: the schema at 'content.shown.matches' can never hold for 'content.shown.at' — it requires \"billing\", and the value is integer."
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.View/dataOutsideReader: !cel: unknown identifier 'data'"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.View/valuesOutsideForm: !cel: unknown identifier 'values'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Data/undeclaredQuery: !cel: 'query.signn' is not defined (available: signin)"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Data/evaluatedData: !cel: unknown identifier 'data'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Data/evaluatedData: !cel: 'data' is not defined"
+---
+# A node text is formatted with no values unless it is written as a text with
+# values, and then with exactly the values it binds.
+kind: Assert.Manifest
+metadata:
+  name: texts
+source: ./__fixtures__/invalid/texts/telo.yaml
+expect:
+  errors:
+    - code: MESSAGE_PLACEHOLDER_UNBOUND
+      message: "Ui.View/noValues: the text at 'content.text' is refused: no value is given for name, which the message reads, but whoever shows this text formats it with no values — write it without placeholders."
+    - code: MESSAGE_PLACEHOLDER_UNBOUND
+      message: "Ui.Data/partlyBound: the values for the text at 'content.text.text' at 'content.text.values' is refused: no value is given for total, which the message reads."

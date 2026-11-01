@@ -29,7 +29,10 @@
  *   through the defining module's imports. What a consumer forwards into an
  *   entry with a bare `self.<path>` is judged on the forward view, together with
  *   what the entry writes itself — the set the entry gathers at creation — and
- *   reported at the consumer's own path.
+ *   reported at the consumer's own path. An entry forwarding nothing is judged
+ *   on its view too, its sibling references reaching the siblings' views, less
+ *   each duplicate the body as written already holds at the same place — the
+ *   defining module's own finding.
  *
  * Linear in the catalogs' entries. Browser-safe: no Node built-ins.
  */
@@ -306,11 +309,19 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
   const holds = (manifest: ResourceManifest): boolean => declaresTextCatalogSet(input.schemaOf(manifest));
 
   /** Every duplicate of `declaration`'s set, reported on `root` — the resource
-   *  or definition holding it — at `prefix` before the set's own path. */
-  const judgeHolder = (root: ResourceManifest, declaration: ResourceManifest, prefix: string, label?: string): void => {
+   *  or definition holding it — at `prefix` before the set's own path, less
+   *  each at a place `skip` names. */
+  const judgeHolder = (
+    root: ResourceManifest,
+    declaration: ResourceManifest,
+    prefix: string,
+    label?: string,
+    skip?: ReadonlySet<string>,
+  ): void => {
     if (!holds(declaration)) return;
     const holder: Held = { manifest: declaration, throughInput: false };
     for (const duplicate of textCatalogSetDuplicates(textCatalogSetMembers(holder, host), host)) {
+      if (skip?.has(renderValuePath(duplicate.at))) continue;
       diagnostics.push({
         severity: DiagnosticSeverity.Error,
         code: "MESSAGE_ENTRY_DUPLICATE",
@@ -361,9 +372,8 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
     }
   };
 
-  // A forward view's set is judged over its body entry with the forwards filled
-  // in, below — never over the forwarded members alone.
-  const views = new Set<ResourceManifest>(input.forwards?.manifests ?? []);
+  // A forward view of an entry forwarding a value is judged over its body entry
+  // with the forwards filled in, below — never over the forwarded members alone.
   const mergedViews = new Set<ResourceManifest>();
 
   // Every resource a module declares, by name — what a template body of that
@@ -454,6 +464,25 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
       });
     }
   };
+  // The places of a body entry where its set, as the body writes it, already
+  // holds a duplicate: the defining module's own finding, which a view of the
+  // entry does not make again.
+  const ownDuplicates = new Map<ResourceManifest, ReadonlySet<string>>();
+  const ownDuplicatesOf = (entry: ResourceManifest): ReadonlySet<string> => {
+    let found = ownDuplicates.get(entry);
+    if (!found) {
+      found = holds(entry)
+        ? new Set(
+            textCatalogSetDuplicates(textCatalogSetMembers({ manifest: entry, throughInput: false }, host), host).map(
+              (duplicate) => renderValuePath(duplicate.at),
+            ),
+          )
+        : new Set();
+      ownDuplicates.set(entry, found);
+    }
+    return found;
+  };
+  const entryOfView = new Map<ResourceManifest, ResourceManifest>();
   if (input.forwards) {
     for (const [holder, runner] of input.forwards.holders()) {
       const built = bodyOf(runner as unknown as ResourceManifest);
@@ -461,7 +490,9 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
       for (const entry of built.entries) {
         const name = entry.view.metadata?.name;
         const view = typeof name === "string" ? input.forwards.viewFor(holder, name) : undefined;
-        if (view) judgeForwarded(view, entry.view, built.body);
+        if (!view) continue;
+        entryOfView.set(view, entry.view);
+        judgeForwarded(view, entry.view, built.body);
       }
     }
   }
@@ -472,7 +503,9 @@ export function validateTextCatalogSets(input: TextCatalogSetInput): AnalysisDia
     const module = moduleOf(manifest);
     if (module !== undefined && !rootModules.has(module)) continue;
     if (!isInstanceDocument(manifest) || isInjectedDeclaration(manifest) || isForwardedDeclaration(manifest)) continue;
-    if (!views.has(manifest) || !mergedViews.has(manifest)) judgeHolder(manifest, manifest, "");
+    if (mergedViews.has(manifest)) continue;
+    const entry = entryOfView.get(manifest);
+    judgeHolder(manifest, manifest, "", undefined, entry ? ownDuplicatesOf(entry) : undefined);
   }
 
   // The entries of each template body the entry's own modules define, and the

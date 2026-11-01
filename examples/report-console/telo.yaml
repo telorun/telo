@@ -10,21 +10,22 @@ metadata:
     projects of the chosen sheet, columns and output options; the answer is
     drawn as headings with plural counts, warning boxes and a results list whose
     rows draft an e-mail or upload the report. A second page lists a sheet's
-    projects in a table. The backend is a set of stub routes over fixture data.
+    projects in a table listing. The backend is a set of stub routes over fixture data.
 # Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
 # vocabulary are read from 0.121.0.
 requires:
   telo: ">=0.121.0"
 lang: en
-# `http-server`, `run`, `ui`, `ui-react` and `i18n` come from this repository
-# while their changes are unreleased; `telo upgrade --pin-local` pins them again
-# once they ship.
+# `http-server`, `i18n`, `data-model`, `ui` and `ui-react` come from this
+# repository while their changes are unreleased; `telo upgrade --pin-local` pins
+# them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: ../../modules/http-server
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
-  I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
-  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
+  I18n: ../../modules/i18n
+  DataModel: ../../modules/data-model
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include:
@@ -41,8 +42,7 @@ ports:
 # What the sign-in check answers: whether a session is open, and why the last
 # sign-in did not complete.
 kind: Telo.JsonSchema
-metadata:
-  name: Auth
+metadata: { name: Auth }
 schema:
   type: object
   required: [ authorized ]
@@ -51,8 +51,7 @@ schema:
     failure: { type: string, enum: [ denied, expired ] }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Account
+metadata: { name: Account }
 schema:
   type: object
   required: [ email ]
@@ -61,16 +60,14 @@ schema:
 ---
 # A button that sends nothing: connecting and signing out.
 kind: Telo.JsonSchema
-metadata:
-  name: NoInput
+metadata: { name: NoInput }
 schema:
   type: object
   additionalProperties: false
   properties: {}
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ConsentLink
+metadata: { name: ConsentLink }
 schema:
   type: object
   required: [ url ]
@@ -79,8 +76,7 @@ schema:
 ---
 # A file of the Drive the console reads timesheets from and uploads reports to.
 kind: Telo.JsonSchema
-metadata:
-  name: DriveFile
+metadata: { name: DriveFile }
 schema:
   type: object
   required: [ id, name, kind, url ]
@@ -98,9 +94,9 @@ schema:
     url: { type: string, title: Open, format: uri }
     closed: { type: boolean, title: Closed }
 ---
-kind: Ui.Collection
-metadata:
-  name: driveCollection
+kind: DataModel.Collection
+metadata: { name: driveCollection }
+model: !ref DriveFile
 query:
   filters:
     - { property: id, operator: in }
@@ -108,10 +104,14 @@ query:
     - { property: name, operator: contains }
   sort: []
 ---
+kind: Ui.CollectionSource
+metadata: { name: driveSource }
+collection: !ref driveCollection
+basePath: /api/drive/files
+---
 # A client project whose hours one timesheet holds.
 kind: Telo.JsonSchema
-metadata:
-  name: Project
+metadata: { name: Project }
 schema:
   type: object
   required: [ id, name, spreadsheetId ]
@@ -121,19 +121,23 @@ schema:
     email: { type: string, title: Billing e-mail }
     spreadsheetId: { type: string, title: Timesheet }
 ---
-kind: Ui.Collection
-metadata:
-  name: projectCollection
+kind: DataModel.Collection
+metadata: { name: projectCollection }
+model: !ref Project
 query:
   filters:
     - { property: id, operator: in }
     - { property: spreadsheetId, operator: eq }
   sort: []
 ---
+kind: Ui.CollectionSource
+metadata: { name: projectSource }
+collection: !ref projectCollection
+basePath: /api/projects
+---
 # What the report form sends. The route restates it as its request body.
 kind: Telo.JsonSchema
-metadata:
-  name: ReportRequest
+metadata: { name: ReportRequest }
 schema:
   type: object
   additionalProperties: false
@@ -184,8 +188,7 @@ schema:
 # What generating answers: one file per project with time in the period, and
 # what could not be billed.
 kind: Telo.JsonSchema
-metadata:
-  name: ReportAnswer
+metadata: { name: ReportAnswer }
 schema:
   type: object
   required: [ kind, period, projectsInPeriod, skipped, files, unpriced, unassigned, noCurrency, projectsLink ]
@@ -235,8 +238,7 @@ schema:
           project: { type: string, title: Project }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: DraftRequest
+metadata: { name: DraftRequest }
 schema:
   type: object
   additionalProperties: false
@@ -247,8 +249,7 @@ schema:
     project: { type: string, title: Project }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: DraftAnswer
+metadata: { name: DraftAnswer }
 schema:
   type: object
   required: [ url ]
@@ -256,8 +257,7 @@ schema:
     url: { type: string, title: Draft, format: uri }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: UploadRequest
+metadata: { name: UploadRequest }
 schema:
   type: object
   additionalProperties: false
@@ -269,8 +269,7 @@ schema:
     to: { type: string, title: To, format: date }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: UploadAnswer
+metadata: { name: UploadAnswer }
 schema:
   type: object
   required: [ link, target ]
@@ -279,8 +278,7 @@ schema:
     target: { type: string }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: RemindRequest
+metadata: { name: RemindRequest }
 schema:
   type: object
   additionalProperties: false
@@ -291,8 +289,7 @@ schema:
     sheet: { type: string, title: Timesheet }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: RemindAnswer
+metadata: { name: RemindAnswer }
 schema:
   type: object
   required: [ sentTo ]
@@ -301,14 +298,12 @@ schema:
 ---
 # The language a request is answered in, chosen from the translator's catalogs.
 kind: I18n.Negotiator
-metadata:
-  name: language
+metadata: { name: language }
 translator: !ref t
 default: en
 ---
 kind: UiReact.App
-metadata:
-  name: console
+metadata: { name: console }
 title: Reports
 words: !ref Ui.words
 translator: !ref t
@@ -417,8 +412,8 @@ pages:
                             label: !cel "row.name"
                             hint: !cel "row.owner"
                             href: !cel "row.url"
-                            collection: !ref driveCollection
-                            source: { basePath: /api/drive/files, filters: { kind: spreadsheet } }
+                            source: !ref driveSource
+                            filters: { kind: spreadsheet }
                             search: { property: name, operator: contains }
                         - kind: Ui.PickerField
                           property: folder
@@ -429,8 +424,8 @@ pages:
                             value: !cel "row.id"
                             label: !cel "row.name"
                             href: !cel "row.url"
-                            collection: !ref driveCollection
-                            source: { basePath: /api/drive/files, filters: { kind: folder } }
+                            source: !ref driveSource
+                            filters: { kind: folder }
                             search: { property: name, operator: contains }
                         - kind: Ui.DateRangeField
                           property: period
@@ -455,8 +450,8 @@ pages:
                             value: !cel "row.id"
                             label: !cel "row.name"
                             hint: !cel "row.email"
-                            collection: !ref projectCollection
-                            source: { basePath: /api/projects, filters: { spreadsheetId: !cel "values.spreadsheetId" } }
+                            source: !ref projectSource
+                            filters: { spreadsheetId: !cel "values.spreadsheetId" }
                         - { kind: Ui.InputField, property: columns, group: content }
                         - { kind: Ui.InputField, property: hoursFormat, group: output, control: options }
                         - { kind: Ui.InputField, property: merge, group: output, control: toggle }
@@ -635,17 +630,19 @@ pages:
               - type: composite
                 shown: { at: !cel "data.authorized", matches: { const: true } }
                 ref:
-                  kind: Ui.Table
+                  kind: Ui.Listing
+                  presentation: { kind: Ui.CollectionPresentation, source: !ref projectSource }
                   model: !ref Project
-                  collection: !ref projectCollection
                   # The sheet is the page address's `sheet`, which the report
-                  # links to; with none, the table reads nothing.
+                  # links to; with none, the listing reads nothing.
                   query:
                     sheet: { type: string, minLength: 1 }
-                  source: { basePath: /api/projects, filters: { spreadsheetId: !cel "query.sheet" } }
-                  columns:
-                    - value: !cel "row.name"
-                    - value: !cel "row.email"
+                  filters: { spreadsheetId: !cel "query.sheet" }
+                  layout:
+                    kind: Ui.TableLayout
+                    columns:
+                      - value: !cel "row.name"
+                      - value: !cel "row.email"
                   rowActions:
                     - action:
                         kind: Ui.Action
@@ -669,8 +666,7 @@ pages:
                         disabledText: The project has no billing e-mail.
 ---
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   port: !cel "ports.http"
 mounts:

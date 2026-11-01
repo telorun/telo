@@ -77,11 +77,12 @@ resolves references and type-checks expressions without running anything.
 
 ## Questions this raises
 
-**Is this a workflow engine?** No, though it can host one. `Run.Sequence` is
-in-process control flow — it does not persist state across a crash. When you
-need durable workflows (retries surviving a restart, long-running sagas), the
-`workflow` module declares that explicitly, with a backend such as Temporal
-behind it.
+**Is this a workflow engine?** No, though it can host durable work. `Run.Sequence`
+is in-process control flow — it does not persist state across a crash. When you
+need work that survives a restart (retries across a crash, waits of days, an
+order that must not be charged twice), a durable run records each step as it
+completes and continues where it stopped. It ships today; see
+[Durable execution](/learn/durable-execution).
 
 **Do I have to write YAML for everything?** No — and the declarative surface is
 wider than "wiring". Structure is declared (what exists, what it connects to,

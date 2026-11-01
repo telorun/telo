@@ -4,17 +4,11 @@ import type { DeclaredEnum } from "./declared-schema.js";
 /**
  * Resolves a column's `type:` slot when it holds a `!ref` to a declared enum.
  *
- * The mirror of `tableReferenceResolver`, and for the identical reason: a table
- * reads this slot while it is being CREATED, and Phase-5 injection replaces a
- * reference only when the target is already registered — so the same manifest
- * hands over a live instance on one pass of the init loop and the raw
- * `{ kind, name }` on another. Reading only one of them is what would make a
- * cross-resource reference fail on whichever pass lost the race.
- *
- * The reference is resolved to the target's DECLARATION, which carries
- * everything a column needs from it — the physical name and the values — whether
- * or not the target has been constructed. That is also why the slot stays
- * `use: schema` and registers no ordering edge.
+ * The mirror of `tableReferenceResolver`: the slot is `use: schema`, a
+ * declaration read the kernel never injects, and the reference is resolved to
+ * the target's DECLARATION, which carries everything a column needs from it —
+ * the physical name and the values — whether or not the target has been
+ * constructed.
  */
 export type ColumnEnumResolver = (value: unknown, column: string) => DeclaredEnum | undefined;
 
@@ -75,13 +69,6 @@ export function enumReferenceResolver(
         );
       }
       return readDeclaration(declared as Record<string, unknown>, where);
-    }
-
-    // Injection won the race: the slot holds the live enum resource, which
-    // reports the same declaration.
-    const injected = (value as { declaration?: unknown } | null)?.declaration;
-    if (injected && typeof injected === "object") {
-      return readDeclaration(injected as Record<string, unknown>, where);
     }
 
     throw new Error(`${where} is neither a storage class nor a reference to a ${enumKind}.`);

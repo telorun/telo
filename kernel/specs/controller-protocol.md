@@ -384,15 +384,23 @@ A **response** frame carries the requester's `id` and the same `type`, and its
 `payload` is an object with exactly one member:
 
 - `ok` — the response body; or
-- `error` — `{ "code": "<ERR_*>", "message": "<text>", "data": <value>, "displayMessage": <record> }`,
-  `data` and `displayMessage` optional. `message` is the developer's;
+- `error` — `{ "code": "<ERR_*>", "message": "<text>", "data": <value>, "displayMessage": <record>, "inputPointer": "<pointer>", "location": { "kind", "name", "module", "pointer" } }`,
+  every member but `code` and `message` optional. `message` is the developer's;
   `displayMessage` is the text a person is shown for the failure, as its record
   (`{ "text", "context", "lang", "computed" }`, the `TextRecord` fragment), whose
   values are `data`. A controller rethrowing a failure it caught carries the
   `displayMessage` it received unchanged, and a kernel attaches a kind's declared
   display message to an error carrying none (`kernel/specs/invocation-contract.md`).
-  `displayMessage` is an additive member within `telo-7`, which no carrier speaks
-  yet. An error's `cause` is not carried.
+  `inputPointer` is an RFC 6901 pointer into the inputs of the dispatch that
+  raised the failure, naming the input it is about. `location` is where in a
+  manifest the failure was caused — the calling resource's `kind` and `name`
+  (both required), the `module` declaring it and a `pointer` into its
+  declaration — attached by the kernel where a failure carrying none leaves a
+  dispatch, the pointer joining the dispatch's `inputsAt` (§6.2) and the
+  failure's `inputPointer`; the first location attached is kept, and a
+  controller rethrowing a failure carries both members unchanged.
+  `displayMessage`, `inputPointer` and `location` are additive members within
+  `telo-7`, which no carrier speaks yet. An error's `cause` is not carried.
 
 A message whose `response` in `messages/` is `null` is a **notification**: no
 response frame is ever sent for it, and a peer that sends one is in violation.
@@ -703,7 +711,11 @@ all five.
 
 Every dispatch carries a context: the cancellation source it is scoped to, the
 invocation and parent invocation ids, the trace id, the open zone stack and the
-durable step path. One member of the in-process context deliberately does **not**
+durable step path. A `Dispatch.Invoke` / `Dispatch.InvokeResolved` context may
+also carry `inputsAt`, an RFC 6901 pointer to where the calling resource's
+declaration writes this call's inputs (`/steps/1/inputs`). It belongs to that
+one dispatch: the kernel reads it there and hands the target a context without
+it, so it never reaches a nested dispatch (§3.2's `location`). One member of the in-process context deliberately does **not**
 cross: the durable run handle, which is a live object with methods. The kernel is
 a pure conduit for it — it carries it and never calls it — so a second runtime
 threads a handle it owns rather than deserializing this one.
@@ -814,7 +826,17 @@ and a controller that wants the target's identity for a dispatch wants this one.
 context that owns the asking resource. A declaration is readable whether or not
 the target has been constructed, which is what lets a slot wanting a fact about
 its target avoid an ordering edge — and what lets a resource read a slot pointing
-at itself.
+at itself. A reference read off an answer means what it means where it was
+WRITTEN, so each answer carries a `declaration` handle, and a request naming one
+as `holder` is resolved in the context that declared that answer — its own names
+and its own imports' aliases, whichever module asks. A `holder` that names no
+answer is `ERR_REF_UNRESOLVED`. `holder` and `declaration` are additive members
+within `telo-7`.
+
+A reference site whose every slot is `use: schema` — in every case of a case
+map — is a **declaration read**: a runtime MUST NOT substitute an instance there
+and MUST NOT defer the holder on its target. The holder receives the resolved
+reference and reads through it with `Ref.Declaration` and `Schema.Resolve`.
 
 ### 7.2 Schemas
 
@@ -827,7 +849,10 @@ the instance that compiled it.
 
 `Schema.Resolve` resolves a named type reference to its schema, in the scope of
 the module that WROTE the name — never to whichever loaded module registered a
-type of the same name.
+type of the same name. The answer is the type's effective shape, its `extends`
+parents folded, and it is answered ORDER-FREE: from the type's declaration when
+the type has not been created yet, by the same fold, so a declaration read never
+waits for the shape it names.
 
 `Schema.Check` answers with a verdict and its issues; `Schema.Validate` raises
 `ERR_INPUT_INVALID`. A caller asking a question gets an answer; a caller
@@ -1066,7 +1091,11 @@ diagnostic with no code). A diagnostic's further message lines and its `details`
 lines follow it, two spaces further in; a nested context's diagnostics (an
 import's own failed resources) follow their entry, two spaces further in; an
 entry that failed only because another did (`derived`) writes no line of its
-own, while its nested diagnostics still do. No source location is written — the
+own, while its nested diagnostics still do. A failure that left a dispatch the
+kernel located in a written manifest (its `location`, provably the place written)
+is preceded on its line — the refusal's own when the refusal is that failure —
+by `<file>:<line>:<col>` and two spaces, 1-based, the file shown as the host's
+`telo run` shows it. No other source location is written — a static diagnostic's
 located, structured form is `Runtime.Check`'s answer. A code is written as the
 refusal carries it: a diagnostic of the load's static analysis keeps the
 analyzer's unprefixed code, so a caller matching `[<CODE>] <message>` can tell a
@@ -1136,7 +1165,7 @@ codes cross unchanged and are not listed here.
 | `ERR_MESSAGE_PLACEHOLDER_UNBOUND` | a text's values lack a name the text reads | `Value.Expand` |
 | `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` | a text's value is neither a string nor a number, or a selector's is not a number | `Value.Expand` |
 | `ERR_MODULE_FILES_UNAVAILABLE` | a module file could not be staged or is unpinned | `Module.File`, `Module.ControllerFile` |
-| `ERR_REF_UNRESOLVED` | a pointer names no reference slot of the asking instance's kind, or one whose target is not a need's fulfilment | `Need.Resolve`, `Need.Verify` |
+| `ERR_REF_UNRESOLVED` | a pointer names no reference slot of the asking instance's kind, or one whose target is not a need's fulfilment; a `holder` names no earlier answer | `Need.Resolve`, `Need.Verify`, `Ref.Declaration` |
 | `ERR_NEED_UNMET` | an observation does not satisfy the outermost need; `data` holds `need`, `type`, `source`, `required` and `actual` | `Need.Verify`, and the entry point whose controller reported it: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
 | `ERR_NEED_OBSERVATION_INVALID` | an observation at a slot that does not observe, one missing or extra member, or a version that is not semver; or an observing slot left unreported when the entry point its deadline names returns | `Need.Verify`, and that entry point: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
 | `ERR_NATIVE_FILE_UNAVAILABLE` | no `native:` entry of that name matches the host, or its staged file could not be brought to its pin | `Native.File` |

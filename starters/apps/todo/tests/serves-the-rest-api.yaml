@@ -4,9 +4,9 @@ metadata:
   version: 1.0.0
   description: >-
     Runs the starter and walks its REST surface: create, list, replace,
-    delete, a create the model refuses and ones naming what a create may not set. The model IS the request contract in
-    this starter, so the rejected create is what shows validation happening before
-    the database is touched. It then asks the declared UI for its shell and its
+    delete, a create the collection refuses and ones naming what a create may not
+    set. The collection IS the request contract in this starter, so the rejected
+    create is what shows validation happening before the database is touched. It then asks the declared UI for its shell and its
     two pages, which is what shows the frontend is served from the same manifest
     — and that the first page's filter policy and form surfaces, and the second
     page's presets, pinned filter and plain openers, reach the browser as declared.
@@ -64,7 +64,7 @@ steps:
 
   # The list is a page of a collection: `rows`, the `total` the filter matches,
   # and a cursor for the next page. Filtering by the text — `contains`, the one
-  # filter the model declares for it — finds exactly this row.
+  # filter the collection declares for it — finds exactly this row.
   - name: list
     invoke:
       kind: HttpClient.Request
@@ -274,8 +274,8 @@ steps:
         lang: en
         shellLang: true
 
-  # `/` is one `Crud.Ui`: what its three keys say is what the bar and the
-  # table's two openers carry, and what they leave out is the default.
+  # `/` is one `CrudUi.Admin`: what its three keys say is what the bar and the
+  # listing's two openers carry, and what they leave out is the default.
   - name: verifyGeneratedPage
     invoke: { kind: Assert.Equals }
     inputs:

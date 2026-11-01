@@ -1,0 +1,55 @@
+# A collection its own declarations contradict. `telo check` reports it here; a
+# consumer's check sees nothing, so there the collection refuses itself when
+# it is created.
+kind: Telo.Library
+metadata:
+  name: CrudCollectionPropertyTypeDiffers
+  version: 1.0.0
+  description: Test fixture exporting a collection refused as CRUD_COLLECTION_PROPERTY_TYPE_DIFFERS.
+imports:
+  Crud: ../../../../../
+  SQLite: ../../../../../../sqlite
+exports:
+  resources: [collection]
+---
+kind: Telo.JsonSchema
+metadata: { name: Draft }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Record }
+extends: Draft
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    note: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Retyped }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    text: { type: integer }
+---
+kind: SQLite.Table
+metadata: { name: notesTable }
+table: notes
+columns:
+  id: { type: integer, primaryKey: true }
+  text: { type: text }
+  note: { type: text }
+---
+kind: Crud.Collection
+metadata: { name: collection }
+model: !ref Record
+table: !ref notesTable
+schemas: { list: !ref Record, create: !ref Draft, update: !ref Retyped }
+query: { filters: [], sort: [] }

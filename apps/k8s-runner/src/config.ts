@@ -1,4 +1,10 @@
-import { loadTeloImageSource, type TeloImageSource } from "@telorun/runner-core/container";
+import {
+  loadSessionUserFromObject,
+  loadTeloImageSource,
+  SESSION_USER_VARIABLE,
+  type SessionUser,
+  type TeloImageSource,
+} from "@telorun/runner-core/container";
 import {
   loadAgentFromObject,
   loadCoreConfig,
@@ -124,6 +130,9 @@ export interface K8sRunnerConfig extends RunnerCoreConfig {
   /** The `apps`, `workspace` and `supervisor` containers' resources (the
    *  session file's `resources`). */
   sessionResources: ContainerSizing;
+  /** Who every container of a session pod runs as (`runAsUser`, `runAsGroup`)
+   *  and the group its volumes belong to (`fsGroup`): the session file's `user`. */
+  sessionUser: SessionUser;
   /** The operator's co-resident agent (the agent file); none when unset. */
   agent?: RunnerAgent;
   /** The agent's container's resources (the agent file's `resources`): an
@@ -184,6 +193,7 @@ const MOVED_TO_FILES: ReadonlyArray<{ name: string; file: "session" | "agent"; k
   { name: "RUNNER_MAX_CPU", file: "session", key: "resources.limits.cpu" },
   { name: "RUNNER_MAX_MEMORY", file: "session", key: "resources.limits.memory" },
   { name: "RUNNER_MAX_EPHEMERAL_STORAGE", file: "session", key: "resources.limits.ephemeral-storage" },
+  { name: SESSION_USER_VARIABLE, file: "session", key: "user" },
   { name: "RUNNER_SESSION_CONTAINERS", file: "session", key: "containers.enabled" },
   { name: "RUNNER_SESSION_CONTAINERS_MAX", file: "session", key: "containers.max" },
   { name: "RUNNER_SESSION_CONTAINERS_RESOURCES", file: "session", key: "containers.resources" },
@@ -291,22 +301,25 @@ function loadSessionRoutingConfig(
   };
 }
 
-/** The session file (`SESSION_CONFIG_FILE`): `resources`, `containers` and
- *  `baseImages`, every key defaulting when the file or the key is absent. */
+/** The session file (`SESSION_CONFIG_FILE`): `resources`, `user`, `containers`
+ *  and `baseImages`, every key defaulting when the file or the key is absent. */
 function loadSessionFile(env: NodeJS.ProcessEnv): {
   resources: ContainerSizing;
+  user: SessionUser;
   containers: { enabled: boolean; max: number; resources: ContainerSizing; enabledBy: string };
   baseImageCatalog: BaseImageCatalogConfig;
 } {
   const read = readConfigFile(env, FILE_VARIABLES.session);
   const root = ConfigSection.root(read?.file ?? FILE_VARIABLES.session, read?.value, [
     "resources",
+    "user",
     "containers",
     "baseImages",
   ]);
   const containers = root.section("containers", ["enabled", "max", "resources"]);
   return {
     resources: readContainerSizing(root, "resources"),
+    user: loadSessionUserFromObject(root.raw("user"), { file: root.file, path: "user" }),
     containers: {
       enabled: containers.boolean("enabled", false),
       max: containers.positiveInt("max", 4),
@@ -415,6 +428,7 @@ export function loadK8sRunnerConfig(env: NodeJS.ProcessEnv): K8sRunnerConfig {
     sessionRouting: loadSessionRoutingConfig(env, sessionNamespace),
     managedByLabel: env.RUNNER_MANAGED_BY?.trim() || "telo-k8s-runner",
     sessionResources: session.resources,
+    sessionUser: session.user,
     ...(agentFile.agent ? { agent: agentFile.agent } : {}),
     agentResources: agentFile.resources,
     baseImageCatalog: session.baseImageCatalog,

@@ -1,0 +1,15 @@
+# Its own check does not reach the library's source, which is refused when it
+# is created.
+kind: Telo.Application
+metadata:
+  name: UiAppRelativeReferenceConsumerApp
+  version: 1.0.0
+imports:
+  Lib: ../lib
+  Probe: ../../probe
+targets:
+  - invoke: !ref read
+---
+kind: Probe.Read
+metadata: { name: read }
+source: !ref Lib.protocolRelative

@@ -42,10 +42,11 @@ dsn:     !cel "secrets.databaseUrl"
 
 ## Why declare it instead of reading the environment
 
-- **It fails at load, not at 3am.** A missing required variable stops the whole
-  load with a message naming it, before any resource initializes. Every failure
-  in the block is aggregated into one report, so you fix them all at once
-  instead of one restart at a time.
+- **It fails at load, not at 3am.** A required variable with no value is never
+  found on a request: at a terminal `telo run` [asks for it](#being-asked-for-what-is-missing);
+  with `--no-input`, or under a runner, the load stops with a message naming it,
+  before any resource initializes. Every failure in the block is aggregated into
+  one report, so you fix them all at once instead of one restart at a time.
 - **It is typed.** `type: integer` means the string `"3"` arrives as `3`. An
   `object` or `array` value is JSON-decoded from the variable. A value that
   cannot be coerced, or that fails any further JSON Schema keyword you add, is a
@@ -65,7 +66,7 @@ Every entry binds `env:` — a `variables:` entry may bind `arg:` instead, or bo
 | --- | --- |
 | `env:` | The host environment variable to read. Conventionally `SCREAMING_SNAKE_CASE`. |
 | `arg:` | The command-line argument to read — see [Command-line arguments](#command-line-arguments). Not on `secrets:`; beside `env:` on `ports:`. |
-| `type:` | `string`, `integer`, `number`, `boolean`, `object`, or `array`. Not written on `ports:` entries — a port is always an integer. |
+| `type:` | `string`, `integer`, `number`, `boolean`, `object`, or `array`. Not written on `ports:` entries — a port is always an integer. A path on the host is a `string` marked `x-telo-type: Telo.HostPath` — see [File paths](#file-paths). |
 | `default:` | Used when neither the argument nor the variable is given. An entry with no default is **required**. |
 | anything else | Any further JSON Schema keyword — `minimum`, `enum`, `pattern`, … — validated at load. |
 
@@ -82,12 +83,44 @@ variables:
     default: {}
 ```
 
+## File paths
+
+A path on the machine running the app is not a plain string. Mark the variable
+`x-telo-type: Telo.HostPath` (add `entry: file` or `entry: directory` to say
+which it names):
+
+```yaml
+variables:
+  dataDir:
+    env: DATA_DIR
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./data
+```
+
+The value, relative or not, is resolved against the working directory at load —
+the directory `.env` is read from — so `./data` means the same place whatever
+the manifest's own location. Read as `!cel "variables.dataDir"` it goes to a
+host-path field such as `SQLite.Connection.file`; `.joinPath('sub')` extends it.
+A plain `string` variable at such a field is refused by `telo check`
+(`HOST_PATH_UNTYPED_SOURCE`).
+
+A file that ships *with* the module — a frontend, a template, a data file — is
+not configuration: name it with `!module-path`, which resolves to its absolute
+path inside the module, wherever the module was installed.
+
+```yaml
+root: !module-path "./web/dist"
+```
+
 ## Command-line arguments
 
 The same entry can be bound to the command line with `arg:`. Everything after the
 manifest path belongs to the application — `telo run [telo options] ./telo.yaml
 [application arguments]`, the way `node [options] app.js [args]` works — and a
-packaged application gets every argument after its program name.
+packaged application gets every argument after its program name. `telo` itself
+reads none of those tokens: one that no `arg:` binding declares is refused before
+boot, and `--help` after the path prints the application's usage, not `telo`'s.
 
 ```yaml
 variables:
@@ -295,4 +328,5 @@ Save GOOGLE_CLIENT_ID to .env and GOOGLE_CLIENT_SECRET to .env.local? [y/N]
 - [Choosing by configuration](/learn/choosing-by-configuration) — one application on several backends, and asking only for the inputs the chosen setup uses.
 - [Application environment variables](/reference/kernel/application-env-variables) — the normative rules.
 - [Application ports](/reference/kernel/application-ports) — protocol brands and wiring checks.
-- [Running in production](/deploy/production) — the `TELO_*` variables the runtime itself reads.
+- [Environment variables](/reference/environment-variables) — the `TELO_*` variables the runtime itself reads, and the order inputs resolve in.
+- [Running in production](/deploy/production) — signals, exit codes, probes, unprivileged runs.

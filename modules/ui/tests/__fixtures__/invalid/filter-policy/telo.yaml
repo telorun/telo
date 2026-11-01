@@ -7,28 +7,35 @@ metadata:
   version: 1.0.0
 imports:
   Ui: ../../../../
+  DataModel: ../../../../../data-model
 ---
 kind: Telo.JsonSchema
 metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string }
 ---
-kind: Ui.Collection
-metadata:
-  name: todos
-query:
-  filters:
-    - { property: text, operator: contains }
-  sort: []
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query:
+      filters:
+        - { property: text, operator: contains }
+      sort: []
 ---
 kind: Ui.Filters
 metadata:
   name: keepsNothing
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 policy:
   state: { key: todos }
 content: { type: text, text: Todos }
@@ -36,8 +43,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: addressOff
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 policy:
   state: { key: todos, address: false }
 content: { type: text, text: Todos }

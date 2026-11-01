@@ -97,7 +97,6 @@ controllers:
   # Ordered list of Package URL (PURL) candidates — first match for the current runtime is used
   - pkg:npm/@telorun/run@>=1.0.0?local_path=./nodejs#sequence
   - pkg:cargo/telorun-run@>=1.0.0?local_path=./rust#sequence
-  - pkg:golang/github.com/telorun/run@>=1.0.0?local_path=./go#sequence
 ```
 
 When a `Telo.Definition` instance initializes, it resolves and loads the controller module

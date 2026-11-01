@@ -1,0 +1,92 @@
+# A collection its own declarations contradict. `telo check` reports it here; a
+# consumer's check sees nothing, so there the collection refuses itself when
+# it is created.
+kind: Telo.Library
+metadata:
+  name: CrudCollectionRelationForeignKeyMismatch
+  version: 1.0.0
+  description: Test fixture exporting a collection refused as CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH.
+imports:
+  Crud: ../../../../../
+  SQLite: ../../../../../../sqlite
+exports:
+  resources: [collection]
+---
+kind: Telo.JsonSchema
+metadata: { name: AuthorDraft }
+schema:
+  type: object
+  required: [name]
+  additionalProperties: false
+  properties:
+    name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+extends: AuthorDraft
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: SQLite.Table
+metadata: { name: authorsTable }
+table: authors
+columns:
+  id: { type: integer, primaryKey: true }
+  name: { type: text }
+  tenant_id: { type: integer }
+---
+kind: Crud.Collection
+metadata: { name: authors }
+model: !ref Author
+table: !ref authorsTable
+schemas: { list: !ref Author, create: !ref AuthorDraft, update: !ref AuthorDraft }
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: SQLite.Table
+metadata: { name: editorsTable }
+table: editors
+columns:
+  id: { type: integer, primaryKey: true }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    authorId: { type: integer }
+    tenantId: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+extends: PostDraft
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+# The relation names the authors; the foreign key on its column, the editors.
+kind: SQLite.Table
+metadata: { name: postsTable }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true }
+  title: { type: text }
+  author_id: { type: integer }
+  tenant_id: { type: integer }
+foreignKeys:
+  author: { columns: [author_id], references: { table: !ref editorsTable, columns: [id] } }
+---
+kind: Crud.Collection
+metadata: { name: collection }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query: { filters: [], sort: [] }
+relations: { authorId: { collection: !ref authors } }

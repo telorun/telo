@@ -1,0 +1,26 @@
+kind: Telo.Library
+metadata:
+  name: UiInvalidLayoutExtension
+  version: 1.0.0
+  description: Test fixture exporting a listing drawn by another module's layout, grouping by a property its collection cannot filter by.
+imports:
+  Ui: ../../../../../
+  DataModel: ../../../../../../data-model
+  Rooms: ../../../room-plan
+exports:
+  resources: [plan]
+---
+kind: Telo.JsonSchema
+metadata: { name: Booking }
+schema: { type: object, required: [id, roomId], properties: { id: { type: integer }, roomId: { type: integer } } }
+---
+kind: DataModel.Collection
+metadata: { name: bookings }
+model: !ref Booking
+query: { filters: [{ property: id, operator: in }], sort: [], facets: [{ property: roomId }] }
+---
+kind: Ui.Listing
+metadata: { name: plan }
+presentation: { kind: Ui.CollectionPresentation, source: { kind: Ui.CollectionSource, collection: !ref bookings, basePath: /api/bookings } }
+model: !ref Booking
+layout: { kind: Rooms.RoomPlan, room: roomId, title: Rooms }

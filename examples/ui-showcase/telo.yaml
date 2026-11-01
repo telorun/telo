@@ -8,34 +8,37 @@ metadata:
     frontend, in fifteen languages: every node type and text form, conditions
     and query parameters, data readers with loading and failure states and a
     sign-in gate, data grids, filter bars, forms, actions, custom components,
-    a generated admin screen, tabs and themes. The same pages are served four
+    a generated admin screen, related records drawn as a table, cards, a board,
+    a calendar and a tree, tabs and themes. The same pages are served four
     times — under the built-in look with a brand chosen per request, under a
     Radix theme, under a theme of the example's own with a bundled typeface,
     and with a sidebar that collapses to a rail and becomes a bottom tab bar
-    on a phone. The
-    data is a small studio's team, people, projects, tasks, requests, bookings
-    and comments in SQLite, with real sessions behind a sign-in gate.
+    on a phone. The data is a small studio's team, people, projects, tasks,
+    requests, bookings, comments, blog posts and reporting lines in SQLite,
+    with real sessions behind a sign-in gate.
 # Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
 # vocabulary are read from 0.121.0.
 requires:
   telo: ">=0.121.0"
 lang: en
-# The UI modules and `crud` come from this repository while their changes are
-# unreleased, and `http-server` and `sql` with them, because `crud` imports
-# this repository's copies (and `sqlite` with `sql`, so the two run as one
-# module scope); `telo upgrade --pin-local` pins them again once they ship.
+# The UI modules, `data-model`, `crud` and `crud-ui` come from this repository
+# while their changes are unreleased, with every module they reach in it:
+# `http-server`, `sql`, `sqlite`, `font` and `i18n`; `telo upgrade --pin-local`
+# pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: ../../modules/http-server
   Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
-  Crud: oci://ghcr.io/telorun/crud@0.31.1#sha256-IzCauMonvChTD5wG__W6z1TfPDFZvmdlMRwh5oE3VR0
-  Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
-  I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
-  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
-  Radix: oci://ghcr.io/telorun/ui-react-radix@0.4.1#sha256-rPVtkc4_jc3Cf551MpSvHH-E9Au6Kqbp1LB64esxjaE
-  UiLucide: oci://ghcr.io/telorun/ui-lucide@0.4.1#sha256-76CWjm-fBdd_lSRpWvZ7Itn0S3CogjDjyd4EZ6ZzxXc
+  Sql: ../../modules/sql
+  SQLite: ../../modules/sqlite
+  Crud: ../../modules/crud
+  CrudUi: ../../modules/crud-ui
+  DataModel: ../../modules/data-model
+  Font: ../../modules/font
+  I18n: ../../modules/i18n
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
+  Radix: ../../modules/ui-react-radix
+  UiLucide: ../../modules/ui-lucide
   # Two libraries of the example's own: its browser components, and the theme
   # the `/brand` mount draws with.
   Components: ./components
@@ -47,7 +50,20 @@ include:
   - ./data.yaml
   - ./api.yaml
   - ./translator.yaml
-  - ./translations/*.yaml
+  - ./translations/de.yaml
+  - ./translations/es.yaml
+  - ./translations/fr.yaml
+  - ./translations/hi.yaml
+  - ./translations/it.yaml
+  - ./translations/ja.yaml
+  - ./translations/ko.yaml
+  - ./translations/nl.yaml
+  - ./translations/pl.yaml
+  - ./translations/pt.yaml
+  - ./translations/ru.yaml
+  - ./translations/tr.yaml
+  - ./translations/uk.yaml
+  - ./translations/zh.yaml
   - ./pages-overview.yaml
   - ./pages-conditions.yaml
   - ./pages-data.yaml
@@ -57,6 +73,7 @@ include:
   - ./pages-actions.yaml
   - ./pages-components.yaml
   - ./pages-crud.yaml
+  - ./pages-records.yaml
   - ./pages-themes.yaml
 targets:
   - !ref migrate
@@ -107,14 +124,12 @@ provide: !ref view
 # image's `src` resolves under the mount it is drawn in, and the files are
 # served under each mount, so one view serves all four.
 kind: Ui.View
-metadata:
-  name: logo
+metadata: { name: logo }
 content: { type: image, src: /files/mark.svg, alt: UI showcase logo }
 ---
 # The language a request is answered in, chosen from the translator's catalogs.
 kind: I18n.Negotiator
-metadata:
-  name: language
+metadata: { name: language }
 translator: !ref t
 default: en
 ---
@@ -134,8 +149,7 @@ default: en
 # one adds the brand switch to its Theme menu, each item delivered only while
 # it changes something.
 kind: UiReact.App
-metadata:
-  name: showcase
+metadata: { name: showcase }
 title: UI showcase
 words: !ref Ui.words
 translator: !ref t
@@ -287,6 +301,7 @@ pages:
   - !ref actionsScreen
   - !ref componentsScreen
   - !ref crudScreen
+  - !ref recordsScreen
   - !ref rootThemes
 # The pages as a tree: the screens built from nodes in one group, the ones
 # entering data in a group inside it.
@@ -309,13 +324,13 @@ navigation:
             - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
     - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
     - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
     - { type: page, page: !ref rootThemes, icon: !ref themesIcon }
 ---
 # The overview at the root: the view every application places, and nodes of
 # this application's own evaluated per request.
 kind: Ui.Page
-metadata:
-  name: rootOverview
+metadata: { name: rootOverview }
 path: /
 title: Overview
 children:
@@ -351,8 +366,7 @@ children:
 ---
 # The conditions at the root, with a node of the page's own reading its query.
 kind: Ui.Page
-metadata:
-  name: rootConditions
+metadata: { name: rootConditions }
 path: /conditions
 title: Conditions
 query:
@@ -374,8 +388,7 @@ children:
 ---
 # The themes at the root, with links to the other two mounts and the brand switch.
 kind: Ui.Page
-metadata:
-  name: rootThemes
+metadata: { name: rootThemes }
 path: /themes
 title: Themes
 children:
@@ -408,8 +421,7 @@ children:
 ---
 # The same pages under the Radix theme: its stylesheet and its thirteen controls.
 kind: UiReact.App
-metadata:
-  name: radixShowcase
+metadata: { name: radixShowcase }
 title: UI showcase — Radix
 words: !ref Ui.words
 translator: !ref t
@@ -541,6 +553,7 @@ pages:
   - !ref actionsScreen
   - !ref componentsScreen
   - !ref crudScreen
+  - !ref recordsScreen
   - !ref themesScreen
 navigation:
   items:
@@ -561,6 +574,7 @@ navigation:
             - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
     - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
     - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The same pages under a theme of the example's own (`brand/`): Radix's
@@ -568,8 +582,7 @@ navigation:
 # its own. The application's brand is one token set, which ships the Inter
 # faces the theme names.
 kind: UiReact.App
-metadata:
-  name: brandShowcase
+metadata: { name: brandShowcase }
 title: UI showcase — brand
 words: !ref Ui.words
 translator: !ref t
@@ -705,6 +718,7 @@ pages:
   - !ref actionsScreen
   - !ref componentsScreen
   - !ref crudScreen
+  - !ref recordsScreen
   - !ref themesScreen
 navigation:
   items:
@@ -725,6 +739,7 @@ navigation:
             - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
     - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
     - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
 # The same pages under the built-in look, their navigation in a sidebar beside
@@ -734,8 +749,7 @@ navigation:
 # and whether it is collapsed are kept in the browser's local storage. Below the breakpoint it
 # becomes a tab bar along the bottom edge, its fourth tab More holding the rest.
 kind: UiReact.App
-metadata:
-  name: sidebarShowcase
+metadata: { name: sidebarShowcase }
 title: UI showcase — sidebar
 words: !ref Ui.words
 translator: !ref t
@@ -870,6 +884,7 @@ pages:
   - !ref actionsScreen
   - !ref componentsScreen
   - !ref crudScreen
+  - !ref recordsScreen
   - !ref themesScreen
 navigation:
   items:
@@ -890,6 +905,7 @@ navigation:
             - { type: page, page: !ref actionsScreen, icon: !ref actionsIcon }
     - { type: page, page: !ref componentsScreen, icon: !ref componentsIcon }
     - { type: page, page: !ref crudScreen, icon: !ref crudIcon }
+    - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
   placement:
     kind: Ui.SidebarNavigation
@@ -901,71 +917,62 @@ navigation:
 # the showcase's own mark drawn from a file of the example's. A glyph takes the
 # colour of its entry's text, so no theme styles one.
 kind: Ui.FileIcon
-metadata:
-  name: overviewIcon
+metadata: { name: overviewIcon }
 file: !module-path ./icons/mark.svg
 ---
 kind: UiLucide.Icon
-metadata:
-  name: buildingBlocksIcon
+metadata: { name: buildingBlocksIcon }
 name: blocks
 ---
 kind: UiLucide.Icon
-metadata:
-  name: conditionsIcon
+metadata: { name: conditionsIcon }
 name: split
 ---
 kind: UiLucide.Icon
-metadata:
-  name: dataIcon
+metadata: { name: dataIcon }
 name: database
 ---
 kind: UiLucide.Icon
-metadata:
-  name: tablesIcon
+metadata: { name: tablesIcon }
 name: table
 ---
 kind: UiLucide.Icon
-metadata:
-  name: filtersIcon
+metadata: { name: filtersIcon }
 name: funnel
 ---
 kind: UiLucide.Icon
-metadata:
-  name: inputIcon
+metadata: { name: inputIcon }
 name: text-cursor-input
 ---
 kind: UiLucide.Icon
-metadata:
-  name: formsIcon
+metadata: { name: formsIcon }
 name: clipboard-list
 ---
 kind: UiLucide.Icon
-metadata:
-  name: actionsIcon
+metadata: { name: actionsIcon }
 name: zap
 ---
 kind: UiLucide.Icon
-metadata:
-  name: componentsIcon
+metadata: { name: componentsIcon }
 name: puzzle
 ---
 kind: UiLucide.Icon
-metadata:
-  name: crudIcon
+metadata: { name: crudIcon }
 name: list-checks
 ---
 kind: UiLucide.Icon
-metadata:
-  name: themesIcon
+metadata: { name: recordsIcon }
+name: network
+---
+kind: UiLucide.Icon
+metadata: { name: themesIcon }
 name: palette
 ---
 # The typeface the brand ships. Inter comes with the example (`fonts/`, under
 # the SIL Open Font License), so the `/brand` application serves its four
 # faces with `@font-face`.
 kind: Font.Family
-metadata:
-  name: inter
+metadata: { name: inter }
 family: Inter
 faces:
   normal: !include-bytes fonts/Inter-Regular.woff2
@@ -976,8 +983,7 @@ faces:
 # Files served under each application's mount: a link node's `href` and an
 # image's `src` resolve under the mount they are drawn in.
 kind: Http.Static
-metadata:
-  name: files
+metadata: { name: files }
 root: !module-path ./files
 ---
 # The session check behind every `/api/private` mount: a request whose cookie
@@ -985,8 +991,7 @@ root: !module-path ./files
 # body, a reader shows as ERR_UI_UNAUTHORIZED and the sign-in gate around it
 # reads again on.
 kind: Run.Sequence
-metadata:
-  name: sessionGuard
+metadata: { name: sessionGuard }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1006,41 +1011,60 @@ steps:
         throw: { code: UNAUTHORIZED, message: Sign in first. }
 ---
 # The projects collection: list, read, create, replace and delete, with
-# paging, sorting and the filters the model declares.
-kind: Crud.Resource
-metadata:
-  name: projectsApi
+# paging, sorting and the filters the collection declares.
+kind: Crud.Api
+metadata: { name: projectsApi }
 connection: !ref db
 singular: project
 plural: projects
-model: !ref projectModel
+collection: !ref projects
 ---
-# The tasks the tables and filter bars list, page, sort, filter and write.
-kind: Crud.Resource
-metadata:
-  name: tasksApi
+# The tasks the listings and filter bars list, page, sort, filter and write.
+kind: Crud.Api
+metadata: { name: tasksApi }
 connection: !ref db
 singular: task
 plural: tasks
-model: !ref taskModel
+collection: !ref tasks
 ---
 # The team the forms' pickers and choices offer, searched by name and
 # labelled by e-mail.
-kind: Crud.Resource
-metadata:
-  name: peopleApi
+kind: Crud.Api
+metadata: { name: peopleApi }
 connection: !ref db
 singular: person
 plural: people
-model: !ref peopleModel
+collection: !ref people
+---
+# The related-records page: authors, their posts — whose facet request answers
+# each author's and each status's count — and the reporting lines.
+kind: Crud.Api
+metadata: { name: authorsApi }
+connection: !ref db
+singular: author
+plural: authors
+collection: !ref authors
+---
+kind: Crud.Api
+metadata: { name: postsApi }
+connection: !ref db
+singular: post
+plural: posts
+collection: !ref posts
+---
+kind: Crud.Api
+metadata: { name: employeesApi }
+connection: !ref db
+singular: employee
+plural: employees
+collection: !ref employees
 ---
 # The four applications share their pages, whose request paths are
 # app-relative: each application reads and writes them under its own mount, so
 # the API is served under each mount, as the files are. The brand switch
 # belongs to the root application alone.
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   port: !cel "ports.http"
 mounts:
@@ -1059,6 +1083,12 @@ mounts:
     mount: !ref tasksApi
   - path: /api/people
     mount: !ref peopleApi
+  - path: /api/authors
+    mount: !ref authorsApi
+  - path: /api/posts
+    mount: !ref postsApi
+  - path: /api/employees
+    mount: !ref employeesApi
   - path: /api
     mount: !ref showcaseApi
   - path: /radix/api/private
@@ -1076,6 +1106,12 @@ mounts:
     mount: !ref tasksApi
   - path: /radix/api/people
     mount: !ref peopleApi
+  - path: /radix/api/authors
+    mount: !ref authorsApi
+  - path: /radix/api/posts
+    mount: !ref postsApi
+  - path: /radix/api/employees
+    mount: !ref employeesApi
   - path: /radix/api
     mount: !ref showcaseApi
   - path: /brand/api/private
@@ -1093,6 +1129,12 @@ mounts:
     mount: !ref tasksApi
   - path: /brand/api/people
     mount: !ref peopleApi
+  - path: /brand/api/authors
+    mount: !ref authorsApi
+  - path: /brand/api/posts
+    mount: !ref postsApi
+  - path: /brand/api/employees
+    mount: !ref employeesApi
   - path: /brand/api
     mount: !ref showcaseApi
   - path: /sidebar/api/private
@@ -1110,6 +1152,12 @@ mounts:
     mount: !ref tasksApi
   - path: /sidebar/api/people
     mount: !ref peopleApi
+  - path: /sidebar/api/authors
+    mount: !ref authorsApi
+  - path: /sidebar/api/posts
+    mount: !ref postsApi
+  - path: /sidebar/api/employees
+    mount: !ref employeesApi
   - path: /sidebar/api
     mount: !ref showcaseApi
   - path: /api

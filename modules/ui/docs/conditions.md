@@ -25,7 +25,7 @@ Both may sit on one node. `when` never reads a browser root, and `shown` never
 reads `request` — `telo check` refuses either (`CEL_UNKNOWN_IDENTIFIER`).
 
 Content whose `shown` does not hold stays mounted, out of sight: a form keeps
-what was typed, a table keeps its page, and nothing inside starts a request. A
+what was typed, a listing keeps its page, and nothing inside starts a request. A
 reload that a [reader](data.md) is asked for while hidden is remembered and
 read once when it is shown; a request already in flight completes into the kept
 state. Hiding and disabling are inverted with `not`.
@@ -85,9 +85,9 @@ in.
 | `error` | inside a `Ui.Data`'s or a [`Ui.Action`](action.md#the-answer)'s `failure`: a `Ui.RequestError` |
 | `result` | inside an action's `result`, and its `onSuccess.navigate`: the answer, typed from `outputModel` |
 | `input` | inside an action's `result` and `failure`: the record sent, typed from `inputModel` |
-| `query` | wherever the resource or the page declares `query:` (a page, a reader, a table's row actions); with none declared it is closed and empty |
+| `query` | wherever the resource or the page declares `query:` (a page, a reader, a listing's row actions); with none declared it is closed and empty |
 | `values` | a form's or an action's field `shown`, an action's `enabled`, its `result` and `failure`, typed from the model |
-| `row` | a `list` node's column and row actions, a table's row actions; typed as an element of what the list's `rows` names, or from the table's model |
+| `row` | a `list` node's column and row actions, a listing's row actions and layouts; typed as an element of what the list's `rows` names, or from the listing's model |
 
 Every root is read only by what is named — a condition's `at`, a `value` or
 `list` node, a reader's `source.params` — and never by an expression the

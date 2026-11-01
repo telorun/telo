@@ -17,6 +17,7 @@
  * Browser-safe.
  */
 import type { ResourceManifest } from "@telorun/sdk";
+import type { NamedShapeLookup } from "./eval-paths.js";
 import { isKindDocument } from "./kind-declaration.js";
 import { isModuleKind } from "./module-kinds.js";
 import { manifestNames, type ScopedNameResolver } from "./scoped-name-resolver.js";
@@ -56,12 +57,18 @@ export interface DeclarationRequests {
    *  absent, every one's is. A `resources` record lists one whose content is
    *  not under a type that holds no member. */
   holdsContentOf?(m: ResourceManifest): boolean;
+  /** A named shape's folded schema by its canonical `telo:<module>/<Type>` id,
+   *  for a shape no declaration of the set carries — a host holding the shapes
+   *  an analysis registered (the kernel, past load). Absent, none. */
+  readonly shapes?: NamedShapeLookup;
 }
 
 /** What the full-list requests need beside the list. */
 export interface ListRequestOptions {
   /** The slots referencing a declaration; absent, none. */
   readonly referrersOf?: (m: ResourceManifest) => readonly ReferringSlot[];
+  /** The shapes answered beside the list; absent, none. */
+  readonly shapes?: NamedShapeLookup;
 }
 
 const NO_REFERRERS = (): readonly ReferringSlot[] => [];
@@ -78,7 +85,8 @@ export function listRequests(
   manifests: readonly ResourceManifest[],
   options: ListRequestOptions = {},
 ): DeclarationRequests {
-  if (!options.referrersOf) {
+  const memoized = !options.referrersOf && !options.shapes;
+  if (memoized) {
     const known = memo.get(manifests);
     if (known) return known;
   }
@@ -103,7 +111,8 @@ export function listRequests(
     callables: () => manifests,
     catchScope: () => manifests,
     referrersOf: options.referrersOf ?? NO_REFERRERS,
+    ...(options.shapes ? { shapes: options.shapes } : {}),
   };
-  if (!options.referrersOf) memo.set(manifests, requests);
+  if (memoized) memo.set(manifests, requests);
   return requests;
 }

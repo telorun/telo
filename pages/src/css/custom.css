@@ -205,3 +205,48 @@
     flex-basis: 100%;
   }
 }
+
+/* Shiki-highlighted manifests (plugins/remark-shiki.js) */
+.teloCode {
+  position: relative;
+  margin-bottom: var(--ifm-leading);
+}
+
+.teloCode pre {
+  margin: 0;
+  padding: var(--ifm-pre-padding);
+  overflow-x: auto;
+  border-radius: var(--ifm-pre-border-radius);
+  font-size: var(--ifm-code-font-size);
+  line-height: var(--ifm-pre-line-height);
+  background-color: #292d3e !important;
+  box-shadow: var(--ifm-global-shadow-lw);
+}
+
+.teloCode code {
+  display: block;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: inherit;
+}
+
+.teloCodeCopy {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  padding: 0.35rem;
+  color: #d4d4d4;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: var(--ifm-global-radius);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.teloCode:hover .teloCodeCopy,
+.teloCodeCopy:focus-visible {
+  opacity: 1;
+}
