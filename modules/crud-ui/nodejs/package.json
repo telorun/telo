@@ -1,6 +1,6 @@
 {
   "name": "@telorun/crud-ui-build",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "private": true,
   "description": "Test-only package for the std/crud-ui module, which has no controller code. Never published; it runs the module's unit tests.",

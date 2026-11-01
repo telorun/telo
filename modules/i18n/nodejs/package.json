@@ -1,6 +1,6 @@
 {
   "name": "@telorun/i18n",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "license": "MIT",
   "private": true,
   "description": "The std/i18n module's controller bundle and the surface a dependent module's controller reaches through `@telorun/i18n` (the module's `exports.code:` entry): the reader of a translator's catalog set. Never published to npm — the code ships inside the module artifact; this package exists to TYPE-CHECK the source, which esbuild does not do.",

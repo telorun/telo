@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.4.0 - 2026-10-23
 ### Fixed
 * `Anthropic.MessagesModel` and `Anthropic.MessagesModelStream` refuse a `tool` message with no `toolCallId`, or an empty one, before anything is sent — by the `Ai.Model` contract (`ERR_INPUT_INVALID`) when dispatched, and as `ERR_MODEL_REQUEST_REJECTED` naming its index in `messages` for a caller that bypasses it — instead of sending an empty `tool_use_id`.

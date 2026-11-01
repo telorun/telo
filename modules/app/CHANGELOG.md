@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.5.0 - 2026-10-25
 ### Added
 * App.Instance gains needs: — fulfilments of the child's own needs, keyed by the child's need name, each a !ref to a need or fulfilment of this module handed over whole or a map of the need type's fields. The child answers a need supplied there before its own environment and host values, so a test gives each application it starts a durable directory of its own. Requires telo 0.123.0.

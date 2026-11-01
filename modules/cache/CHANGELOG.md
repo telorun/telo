@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.13.1 - 2026-10-23
 ### Fixed
 * Cache.View's invoke slot accepts a runnable as well as an invocable, as its dispatch always did, so wrapping a Run.Sequence no longer fails telo check.

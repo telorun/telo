@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.28.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.27.0 - 2026-10-25
 ### Fixed
 * An MCP tool call answered with isError now raises ERR_MCP_TOOL_ERROR with the server's own text in its message (and the raw content in its data), so a model reading the error learns why the call failed instead of seeing only that it did.

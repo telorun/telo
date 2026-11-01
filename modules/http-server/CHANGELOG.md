@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.41.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.41.1 - 2026-11-01
 ### Fixed
 * An expression in an `Http.Server` `notFoundHandler.returns` entry is now typed against `request` (`method`, `path`, `host`, `params`, `query`, `headers`, `body`) and `result` (the `invoke:` target's `outputType`), as the server evaluates it — before, `telo check` and the load refused every such expression as `CEL_IN_NON_EVAL_FIELD`.

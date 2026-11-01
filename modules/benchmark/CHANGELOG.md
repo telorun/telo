@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.11.1 - 2026-11-01
 ### Fixed
 * The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
