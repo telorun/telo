@@ -42,27 +42,27 @@ metadata:
 requires:
   telo: ">=0.123.0"
 imports:
-  Ai: oci://ghcr.io/telorun/ai@0.31.0#sha256-fvvEF5Vqyuro1t9wx7tJlDSzPoqOO5fQ-2s9nyvPAQ0
-  Anthropic: oci://ghcr.io/telorun/anthropic@0.5.0#sha256-mcYbvU6ZOXrWbgRdYBqsa_tD0g1TwYAEVo4D8yUWUdk
-  HttpClient: oci://ghcr.io/telorun/http-client@0.23.1#sha256-WXBltAPrw5QZ98n7u5uFP7Romdhk4ACQTZkhzNNmFOY
-  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.27.0#sha256-gVBYAnpj01A5jS6KRthRH-qhpoDvRxBKrWPsBljueYU
+  Ai: oci://ghcr.io/telorun/ai@0.32.0#sha256-wFl0WwbqZ9Nq6-N2Y18VePWibYUwNKJs2pu6d5_0Zcc
+  Anthropic: oci://ghcr.io/telorun/anthropic@0.7.0#sha256-3U4hWqGiQGp5GHLQvjW9Nfd29wyZv-fi-CFbiUudHEw
+  HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
+  AiMcp: oci://ghcr.io/telorun/ai-mcp@0.28.0#sha256-XXtWQwRQXsLzpwyHDKS6OlitK5MA93ofv2gXw2fpys4
   Mcp: oci://ghcr.io/telorun/mcp-client@0.17.0#sha256-wMlnrVxgeWHAX6_f1pr7v059KzgjYHuICg5Ui68v2zc
   Fs: oci://ghcr.io/telorun/fs@0.15.0#sha256-H4NxPag-G5AFKLIAZBTxxx1u2KgmmF2v4gqJnfCM9CQ
   TextDiff: oci://ghcr.io/telorun/text-diff@0.3.0#sha256-FaVk4PVZVI1-ryRkgdTmN1MNtEP1E8bjAXXl365nSW4
   Shell: oci://ghcr.io/telorun/shell@0.13.1#sha256-EuLg0IyhQahI2u11cyY5gqPLbLxecA6zwofr2nRT8Ow
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
+  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
+  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.9.0#sha256-mkVdF8GOFVDrSExWWtNIYa9zAyuUrJmLBGxBTHNHTdk
   Stream: oci://ghcr.io/telorun/stream@0.14.0#sha256-4lK-_jEZ4H1CCdxyLGrsfmkWj5PTXsf2b8NYk0RTxGk
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   KvStoreMemory: oci://ghcr.io/telorun/kv-store-memory@0.8.0#sha256-GmMDeJ2eYatJ0_ewaUI6A6bnfkqlphjd4YKWtqZ5d2Y
   Cache: oci://ghcr.io/telorun/cache@0.13.1#sha256-I7DgXjd5VlbhFuAmpOALY7Fbu9LvD7hBrMmE8jOWXbE
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.1#sha256-DIwBfYFt1lviymf0OxCZE2i3uL1hw99bmWxrZUKpElU
   Idempotency: oci://ghcr.io/telorun/idempotency@0.11.0#sha256-hd4NvqYA6OioV89wn7SNk7BXrHIFYzv0cNL68Cscgd4
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.14.1#sha256-HUh0QikIQZylfIkGGYxG8ucEK9-XhSFbOPw9N9THWzI
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.15.0#sha256-PS7VTBaOLuEirlk9FgfFA7WeDwyoVS1c3PDVn7c07to
   SecretScan: oci://ghcr.io/telorun/secret-scan@0.3.0#sha256-j5LTmj50zPdy65badRWFTPmICPURIf1n4Q-Iaq6dFSo
   Log: oci://ghcr.io/telorun/log@0.3.0#sha256-zHq0Vq_G85EDj7Wfbcla8_6hvE4imxgVQoMZsxZwIwE
   Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg

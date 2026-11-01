@@ -36,7 +36,7 @@ metadata:
     manifest --json` reads with what is recorded for the requested ref.
 imports:
   Console: ../../../../../../modules/console
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 variables:
   group:
     type: string

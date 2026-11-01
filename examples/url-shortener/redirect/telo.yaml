@@ -23,10 +23,10 @@ variables:
     x-telo-type: { name: Telo.HostPath, entry: file }
     description: Path to the shared SQLite database file.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
-  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.18.1#sha256-G-Vqb7XzcYbr1L8nwZtEfwLpdlBbxeV6dm8LSAXlbNE
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
+  SqlRepository: oci://ghcr.io/telorun/sql-repository@0.19.0#sha256-zzm1U8IxjqIY7lPpXBW6aS_GX317CZbFDtMTBGdN0MM
+  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Cache: oci://ghcr.io/telorun/cache@0.13.1#sha256-I7DgXjd5VlbhFuAmpOALY7Fbu9LvD7hBrMmE8jOWXbE
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.1#sha256-DIwBfYFt1lviymf0OxCZE2i3uL1hw99bmWxrZUKpElU

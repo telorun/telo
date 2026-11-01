@@ -10,7 +10,7 @@ metadata:
     throwaway server — the route is written once.
 imports:
   Cart: ../cart
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
+  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
 exports:
   resources:
     - cartApi

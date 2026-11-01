@@ -7,7 +7,7 @@ metadata:
     summary call's cap (`maxContextTokens / 8` output tokens) at least 1 — so a
     parent handing it 7 is refused before anything starts, naming the variable.
 imports:
-  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+  Assert: oci://ghcr.io/telorun/assert@0.22.0#sha256-72ysePrZIFbPDsX6TdpS4vCuzCnGCx_KVDUunxJ_0OU
 targets:
   - !ref refusesSmallContext
 ---

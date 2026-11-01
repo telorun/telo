@@ -18,7 +18,7 @@ variables:
     x-telo-type: { name: Telo.HostPath, entry: file }
     description: Path to the SQLite database file.
 imports:
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
+  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
 exports:
   resources:
     - connection

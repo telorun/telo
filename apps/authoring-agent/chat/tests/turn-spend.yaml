@@ -32,7 +32,7 @@ imports:
   App: oci://ghcr.io/telorun/app@0.5.0#sha256-gy9aUWi_lnazVkYQ3DEH19ASGtIRb7OTv21-yjK9D6U
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
-  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+  Assert: oci://ghcr.io/telorun/assert@0.22.0#sha256-72ysePrZIFbPDsX6TdpS4vCuzCnGCx_KVDUunxJ_0OU
 variables:
   scratch:
     env: CHAT_TEST_TURN_SPEND_SCRATCH

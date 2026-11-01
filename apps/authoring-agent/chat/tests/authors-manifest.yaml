@@ -66,7 +66,7 @@ imports:
   Shell: oci://ghcr.io/telorun/shell@0.13.1#sha256-EuLg0IyhQahI2u11cyY5gqPLbLxecA6zwofr2nRT8Ow
   Stream: ../../../../modules/stream
   Run: ../../../../modules/run
-  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+  Assert: oci://ghcr.io/telorun/assert@0.22.0#sha256-72ysePrZIFbPDsX6TdpS4vCuzCnGCx_KVDUunxJ_0OU
 targets:
   # Before ensureWorkspace, which creates the directory this removes.
   - !ref cleanWorkspace
