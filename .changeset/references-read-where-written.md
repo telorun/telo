@@ -1,7 +1,0 @@
----
-"@telorun/analyzer": minor
-"@telorun/kernel": minor
-"@telorun/sdk": minor
----
-
-A reference read from a declaration means what it means where it was written. Every reference to a named shape now carries the shape's canonical id (`$ref: "telo:<module>/<Type>"`) beside it, set in the module that wrote it and kept by every later reading, so a controller reading a model out of another module's declaration reads that module's shape; and `ctx.lookupSchema` reads a bare type name as the asking resource's module's shape before any same-named shape another module registered. Where two modules declared a shape of the same name, a collection whose filters or relations `telo check` accepted was refused at boot, or judged against the other module's shape. `ctx.resolveDeclaredManifest(name, alias, holder)` resolves a name read off `holder` — a declaration a lookup returned — in the scope of the module that declared it, its own imports' aliases included; a holder the runtime did not hand out is refused with `ERR_REF_UNRESOLVED`. The controller protocol's `Ref.Declaration` carries the same as additive members of `telo-7`: an answer's `declaration` handle and a request's `holder`. A rule's `resolve:` pointer continuing through a collection whose entries hold a reference (`/table/foreignKeys/*/references/table`) now reads the declaration each entry names, where it used to stop at the collection.

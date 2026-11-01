@@ -1,5 +1,0 @@
----
-"@telorun/analyzer": minor
----
-
-The subpath of `x-telo-context-ref-from` may now cross reference slots. `x-telo-context-ref-from: "source/collection/model"` beside a `source` slot types the binding as a record of the model the source's collection names: past a field the declaration's kind declares as a reference, the path continues inside the declaration that field names, resolved in the module that wrote it, and a type reference it ends on is read with its `extends` folded. Inside a map of such entries, each entry is typed from its own `source`, whether that names a declaration of the same module or an imported one (`source: !ref Lib.authorsSource`), and in a manifest whose choices vary what a hop names, each configuration is typed from what it reaches. A misspelled member read through such a binding (`row.nmae`) is now `CEL_UNKNOWN_FIELD` where it is written. A one-segment subpath reads exactly as before, and a walk that reaches no type falls back to the referenced kind's field, then to an open binding, as before.

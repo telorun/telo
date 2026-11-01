@@ -1,5 +1,16 @@
 # @telorun/runner-core
 
+## 0.24.0
+
+### Minor Changes
+
+- 9c17f98: `@telorun/runner-core/container` reads the container runners' session user: `loadSessionUserFromEnv` (`RUNNER_SESSION_USER`, `<uid>:<gid>`) and `loadSessionUserFromObject` (a configuration file's `{ uid, gid }` map) share one validation and the default `DEFAULT_SESSION_USER` (`1000:1000`) — numeric ids only, uid `0` refused, gid `0` allowed — each refusal naming the variable or the file key.
+
+### Patch Changes
+
+- Updated dependencies [9c17f98]
+  - @telorun/debug-wire@0.4.6
+
 ## 0.23.0
 
 ### Minor Changes

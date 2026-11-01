@@ -1,5 +1,11 @@
 # @telorun/debug-wire
 
+## 0.4.6
+
+### Patch Changes
+
+- 9c17f98: Comments naming the templated CRUD mount now use its current kind, `Crud.Api`.
+
 ## 0.4.5
 
 ### Patch Changes

@@ -1,5 +1,13 @@
 # @telorun/debug-ui
 
+## 0.6.8
+
+### Patch Changes
+
+- 9c17f98: Test fixtures and a comment that named the templated CRUD mount now use its current kind, `Crud.Api`.
+- Updated dependencies [9c17f98]
+  - @telorun/debug-wire@0.4.6
+
 ## 0.6.7
 
 ### Patch Changes

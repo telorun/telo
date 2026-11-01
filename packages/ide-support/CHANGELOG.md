@@ -1,5 +1,35 @@
 # @telorun/ide-support
 
+## 0.126.0
+
+### Minor Changes
+
+- 769b40d: The editor reads configurations and the new `!ref` and `!for-each` forms. A diagnostic that holds in some configurations of an application and not all carries `data.configurations` — the assignments it holds in, each `{ "<dimension path>": value }` — in the language server's `Diagnostic.data` (the published `TeloDiagnosticData` gains the optional field; the protocol generation is unchanged) and in `telo check -o json`, beside the labelled message. `telo/viewModel` takes an optional `configuration` and the view model gains `configurations` (`{ dimensions: [{ key, values, default }], selected }`, present when the module writes a choice): the module graph is drawn in the picked configuration, every dimension — a library's `resources.<input>` presence included — starting at its `default:` (a presence dimension at `absent`) and otherwise the first value of its domain. A declaration-position `!if` / `!switch` is one box identified by its name, carrying `choice` (`{ path, tag, alternatives, selected }`, an `!if` with no `else:` also offering `absent`) — picking changes the box's kind, never its id — a choice in a field is listed in the box's `choices`, a template body's `!for-each` at a declaration position is one box with a `family` marker and a `!for-each` in a list is one `repeat` row identified by its source and its ordinal, and a step a repeat emitted is a row named by its `emitted` identity. An indexed `!ref` draws as an edge to its family's box. Rename edits a family's name at its declaration and at the head of every indexed reference, and renames an `as:` together with every index and CEL read naming it; go-to-definition takes a family reference's head to the family and a binding to its `as:`; completion inside `!ref <family>[` offers the bindings of the loops around the reference that iterate the family's source, and after the dot the member that source keys its elements by (`[` now triggers completion). The editor protocol README documents the wire changes.
+
+### Patch Changes
+
+- 9c17f98: Comments naming the templated CRUD mount now use its current kind, `Crud.Api`.
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+  - @telorun/analyzer@0.126.0
+  - @telorun/editor-protocol@0.3.0
+  - @telorun/templating@0.126.0
+  - @telorun/cel@0.126.0
+
 ## 0.125.1
 
 ### Patch Changes
