@@ -3,10 +3,7 @@ metadata:
   name: HtmlJsonTreeTest
   version: 1.0.0
   description: Parsing to the node tree, serialization round trips, charset sniffing and the base URL rule.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref roundTrip
   - !ref treeConstruction
@@ -182,9 +179,7 @@ metadata: { name: fragmentParse }
 steps:
   - name: parse
     invoke: { kind: Html.JsonTree }
-    inputs:
-      html: <li>one</li><!-- note -->two
-      fragment: true
+    inputs: { html: <li>one</li><!-- note -->two, fragment: true }
   - name: assertNodes
     invoke: { kind: Assert.Equals }
     inputs:
@@ -213,9 +208,7 @@ steps:
     inputs: { html: <base href="https://example.com/docs/"> }
   - name: pageUrlOnly
     invoke: { kind: Html.JsonTree }
-    inputs:
-      html: <p>x</p>
-      baseUrl: https://example.com/a/page.html
+    inputs: { html: <p>x</p>, baseUrl: https://example.com/a/page.html }
   - name: assertBases
     invoke: { kind: Assert.Equals }
     inputs:

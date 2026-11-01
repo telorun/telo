@@ -11,8 +11,7 @@ metadata:
     replayed — assembled from a complete answer by `MessagesModel` and from the
     event stream by `MessagesModelStream`. Skips silently when
     ANTHROPIC_API_KEY is unset.
-secrets:
-  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" } }
 imports:
   Anthropic: ../../
   Http: ../../../http-client
@@ -42,16 +41,14 @@ metadata: { name: thinker }
 model: claude-haiku-4-5
 request: !ref anthropicRequest
 maxTokens: 4096
-options:
-  thinking: { type: enabled, budget_tokens: 1024 }
+options: { thinking: { type: enabled, budget_tokens: 1024 } }
 ---
 kind: Anthropic.MessagesModelStream
 metadata: { name: thinkerStream }
 model: claude-haiku-4-5
 request: !ref anthropicRequest
 maxTokens: 4096
-options:
-  thinking: { type: enabled, budget_tokens: 1024 }
+options: { thinking: { type: enabled, budget_tokens: 1024 } }
 ---
 # The product is offset so the answer cannot be produced without the tool.
 kind: Run.Value
@@ -61,9 +58,7 @@ inputType:
   schema:
     type: object
     required: [a, b]
-    properties:
-      a: { type: number }
-      b: { type: number }
+    properties: { a: { type: number }, b: { type: number } }
 value:
   result: !cel "inputs.a * inputs.b + 1000003"
 ---
@@ -77,9 +72,7 @@ tools:
       type: object
       additionalProperties: false
       required: [a, b]
-      properties:
-        a: { type: number }
-        b: { type: number }
+      properties: { a: { type: number }, b: { type: number } }
 ---
 kind: Ai.Agent
 metadata: { name: agent }
@@ -102,12 +95,10 @@ steps:
     if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: buffered
-        inputs:
-          prompt: What is the sealed product of 6 and 7?
+        inputs: { prompt: What is the sealed product of 6 and 7? }
         invoke: !ref agent
       - name: open
-        inputs:
-          prompt: What is the sealed product of 6 and 7?
+        inputs: { prompt: What is the sealed product of 6 and 7? }
         invoke: !ref agentStream
       - name: read
         inputs: { input: !cel "steps.open.result.output" }

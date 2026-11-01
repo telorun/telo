@@ -53,10 +53,7 @@ metadata: { name: awaitBoots }
 condition: !cel "resources.firstBoot.status.exitCode == null || resources.secondBoot.status.exitCode == null"
 maxIterations: 200
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 20ms
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -69,6 +66,4 @@ steps:
       actual:
         first: !cel "resources.firstBoot.status.exitCode"
         second: !cel "resources.secondBoot.status.exitCode"
-      expected:
-        first: 0
-        second: 0
+      expected: { first: 0, second: 0 }

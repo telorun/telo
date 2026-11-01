@@ -6,8 +6,7 @@ metadata:
     The layered graph suite on an in-memory SQLite database, over seven drafted
     stores used outside any draft: every behaviour the base level of the
     contract promises holds over the published state of a drafted layer.
-include:
-  - ./__fixtures__/suite-model.yaml
+include: [./__fixtures__/suite-model.yaml]
 imports:
   Suite:
     source: ../../graph-layers/tests/__fixtures__/layered-suite

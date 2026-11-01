@@ -6,8 +6,7 @@ metadata:
     What `telo check` says about the request body limit: its value is an integer
     of at least 1 wherever it is written, and its 413 is not a code any
     `catches:` entry can name.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref limitBelowOne
   - !ref catchNamesTheCode
@@ -17,8 +16,7 @@ metadata: { name: limitBelowOne }
 source: ./__fixtures__/max-body-bytes-below-one.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: /routes/0/maxBodyBytes must be >= 1
+    - { code: SCHEMA_VIOLATION, message: /routes/0/maxBodyBytes must be >= 1 }
     - code: SCHEMA_VIOLATION
       message: "Http.Server/server: /maxBodyBytes must be >= 1"
 ---
@@ -27,5 +25,4 @@ metadata: { name: catchNamesTheCode }
 source: ./__fixtures__/catch-names-body-too-large.yaml
 expect:
   errors:
-    - code: UNDECLARED_THROW_CODE
-      message: ERR_REQUEST_BODY_TOO_LARGE
+    - { code: UNDECLARED_THROW_CODE, message: ERR_REQUEST_BODY_TOO_LARGE }

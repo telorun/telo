@@ -3,9 +3,7 @@
 # for different inputs, and a position that is not numeric or names a page or
 # skip beyond the bounds Kagi serves.
 kind: Telo.Application
-metadata:
-  name: KagiCursorRefusalsTest
-  version: 1.0.0
+metadata: { name: KagiCursorRefusalsTest, version: 1.0.0 }
 imports:
   Kagi: ..
   WebSearch: ../../web-search

@@ -77,11 +77,7 @@ steps:
       isPng: !cel "steps.checkPng.result.isPng"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          isPng: { const: true }
-        required: [ isPng ]
+      schema: { type: object, properties: { isPng: { const: true } }, required: [isPng] }
   - name: drawWebp
     inputs:
       image: !cel "steps.fixture.result.image"
@@ -96,8 +92,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          mediaType: { const: image/webp }
+        properties: { mediaType: { const: image/webp } }
         required: [ mediaType ]
 ---
 kind: Run.Sequence
@@ -124,8 +119,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INPUT_INVALID }
+            properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -154,8 +148,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
 # A value that is not bytes is refused by the input contract, before the

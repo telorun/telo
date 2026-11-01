@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - mya
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [mya] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: mya, member: package/4.0.0_best_int/mya.traineddata.gz, sha256: a6ac329fbc61a902c05bb10ec7a863e9983e3da65dc558fe1db909b61af67ce4, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: mya
-  description: Burmese, Myanmar script
+metadata: { name: mya, description: "Burmese, Myanmar script" }
 code: mya
 data: !module-path ./tessdata/mya.traineddata.gz

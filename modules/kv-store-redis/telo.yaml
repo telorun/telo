@@ -15,11 +15,8 @@ requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
-imports:
-  KvStore: ../kv-store
-exports:
-  kinds:
-    - Store
+imports: { KvStore: ../kv-store }
+exports: { kinds: [Store] }
 ---
 kind: Telo.Definition
 metadata:
@@ -30,8 +27,7 @@ metadata:
     configured not to evict keys before their TTL.
 capability: Telo.Provider
 extends: KvStore.Store
-controllers:
-  - pkg:telo/local/js?path=./nodejs/kv-store-redis.mjs&local_path=./nodejs/src/index.ts#store
+controllers: [pkg:telo/local/js?path=./nodejs/kv-store-redis.mjs&local_path=./nodejs/src/index.ts#store]
 schema:
   type: object
   required: [url]

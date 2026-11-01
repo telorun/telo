@@ -24,36 +24,29 @@ targets:
   - !ref main
 ---
 kind: Ui.AbovePlacement
-metadata:
-  name: above
+metadata: { name: above }
 ---
 kind: Ui.AsidePlacement
-metadata:
-  name: beside
+metadata: { name: beside }
 side: end
 compact: !ref folded
 ---
 kind: Ui.AsidePlacement
-metadata:
-  name: besideBare
+metadata: { name: besideBare }
 ---
 kind: Ui.CollapsiblePlacement
-metadata:
-  name: folded
+metadata: { name: folded }
 open: true
 ---
 kind: Ui.OverlayPlacement
-metadata:
-  name: floating
+metadata: { name: floating }
 surface: { kind: Ui.Drawer, side: bottom, address: { name: filters } }
 ---
 kind: Ui.SessionStore
-metadata:
-  name: tab
+metadata: { name: tab }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
@@ -88,22 +81,18 @@ query:
   sort: []
 ---
 kind: Ui.Filters
-metadata:
-  name: plain
+metadata: { name: plain }
 presentation: !ref todos
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: declaredAbove
+metadata: { name: declaredAbove }
 presentation: !ref todos
-policy:
-  placement: { kind: Ui.AbovePlacement }
+policy: { placement: { kind: Ui.AbovePlacement } }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: written
+metadata: { name: written }
 presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
@@ -133,16 +122,13 @@ policy:
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: stored
+metadata: { name: stored }
 presentation: !ref todos
-policy:
-  state: { key: kept, store: { kind: Ui.LocalStore } }
+policy: { state: { key: kept, store: { kind: Ui.LocalStore } } }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: nullable
+metadata: { name: nullable }
 presentation: !ref todos
 fields:
   - { property: archived, operator: eq, control: toggle, default: true }
@@ -156,8 +142,7 @@ presets:
 content: { type: text, text: Todos }
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: above
     invoke: { kind: Probe.Read, source: !ref above }

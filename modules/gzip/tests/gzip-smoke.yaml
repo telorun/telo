@@ -39,8 +39,7 @@ targets:
 ---
 kind: Stream.Of
 metadata: { name: source }
-items:
-  - "hello telo"
+items: ["hello telo"]
 ---
 kind: PlainText.Encoder
 metadata: { name: toBytes }
@@ -58,6 +57,5 @@ kind: Assert.Schema
 metadata: { name: assertText }
 schema:
   type: object
-  properties:
-    text: { const: "hello telo" }
+  properties: { text: { const: "hello telo" } }
   required: [ text ]

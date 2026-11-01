@@ -6,15 +6,13 @@ metadata:
     A mount's `hostnames` route by the request's host, read from the address
     needs each names. Each fixture runs in a kernel of its own, with the
     addresses below in its environment.
-imports:
-  Test: ../../test
+imports: { Test: ../../test }
 targets:
   - !ref servesByHost
 ---
 kind: Test.Suite
 metadata: { name: servesByHost }
-include:
-  - "__fixtures__/host-routing/*.yaml"
+include: ["__fixtures__/host-routing/*.yaml"]
 # These fixtures ARE the test, so the default fixture exclusion is dropped.
 exclude: []
 env:

@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: TextPromptShorthandTest
-  version: 1.0.0
+metadata: { name: TextPromptShorthandTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -11,23 +9,19 @@ targets:
   - !ref testPromptShorthand
 ---
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
+metadata: { name: echo }
 ---
 kind: Ai.Text
-metadata:
-  name: summarize
+metadata: { name: summarize }
 model: !ref echo
 ---
 # `inputs.prompt` is shorthand for `messages: [{role: "user", content: prompt}]`.
 # Echo returns the content of the last message verbatim → result.text === prompt.
 kind: Run.Sequence
-metadata:
-  name: testPromptShorthand
+metadata: { name: testPromptShorthand }
 steps:
   - name: invoke
-    inputs:
-      prompt: "hello world"
+    inputs: { prompt: "hello world" }
     invoke: !ref summarize
   - name: assertText
     inputs:
@@ -36,10 +30,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text:
-            type: string
-            const: "hello world"
+        properties: { text: { type: string, const: "hello world" } }
         required: [ text ]
   - name: assertUsage
     inputs:
@@ -57,7 +48,5 @@ steps:
               completionTokens: { type: integer, const: 0 }
               totalTokens: { type: integer, const: 0 }
             required: [ promptTokens, completionTokens, totalTokens ]
-          finishReason:
-            type: string
-            const: stop
+          finishReason: { type: string, const: stop }
         required: [ usage, finishReason ]

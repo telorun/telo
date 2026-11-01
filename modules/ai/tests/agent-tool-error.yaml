@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AgentToolErrorTest
-  version: 1.0.0
+metadata: { name: AgentToolErrorTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -13,28 +11,19 @@ targets:
 # Echo requests a tool that doesn't exist. With the default onToolError "feedback",
 # the agent records the error and feeds it back to the model rather than aborting.
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
-emitToolCall:
-  name: ghost
-  arguments: {}
+metadata: { name: echo }
+emitToolCall: { name: ghost, arguments: {} }
 ---
 kind: Run.Value
-metadata:
-  name: multiplier
+metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      a: { type: number }
-      b: { type: number }
+  schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
 value:
   product: !cel "inputs.a * inputs.b"
 ---
 kind: Ai.Tools
-metadata:
-  name: localTools
+metadata: { name: localTools }
 tools:
   - tool: !ref multiplier
     name: multiply
@@ -43,25 +32,20 @@ tools:
       type: object
       additionalProperties: false
       required: [ a, b ]
-      properties:
-        a: { type: number }
-        b: { type: number }
+      properties: { a: { type: number }, b: { type: number } }
 ---
 kind: Ai.Agent
-metadata:
-  name: assistant
+metadata: { name: assistant }
 model: !ref echo
 onToolError: feedback
 toolProviders:
   - provider: !ref localTools
 ---
 kind: Run.Sequence
-metadata:
-  name: testToolError
+metadata: { name: testToolError }
 steps:
   - name: invoke
-    inputs:
-      prompt: "do something"
+    inputs: { prompt: "do something" }
     invoke: !ref assistant
   # The unknown-tool error is surfaced as the tool result (not swallowed), then echoed.
   - name: assertText
@@ -73,10 +57,6 @@ steps:
       schema:
         type: object
         properties:
-          text:
-            type: string
-            const: 'Error: no such tool "ghost".'
-          hadError:
-            type: boolean
-            const: true
+          text: { type: string, const: 'Error: no such tool "ghost".' }
+          hadError: { type: boolean, const: true }
         required: [ text, hadError ]

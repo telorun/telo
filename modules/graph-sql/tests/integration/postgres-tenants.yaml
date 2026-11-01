@@ -43,15 +43,12 @@ steps:
     invoke:
       kind: Sql.Command
       connection: !ref db
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_tenant_a, graph_tenant_b CASCADE
+    inputs: { sql: "DROP SCHEMA IF EXISTS graph_tenant_a, graph_tenant_b CASCADE" }
 ---
 kind: Postgres.Table
 metadata: { name: people }
 table: people
-columns:
-  id: { type: text, primaryKey: true }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, primaryKey: true }, name: { type: text, nullable: false } }
 ---
 kind: Postgres.Table
 metadata: { name: knowsTable }

@@ -15,11 +15,7 @@ kind: JS.Script
 metadata: { name: mcpStatefulProbe }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      url: { type: string }
-    required: [ url ]
+  schema: { type: object, properties: { url: { type: string } }, required: [url] }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -80,8 +76,7 @@ code: |
 ---
 kind: Run.Value
 metadata: { name: pingImpl }
-value:
-  pong: true
+value: { pong: true }
 ---
 kind: Mcp.Tools
 metadata: { name: PingTools }
@@ -93,8 +88,7 @@ entries:
     inputs: {}
     result:
       content:
-        - type: text
-          text: "pong"
+        - { type: text, text: "pong" }
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: mcpHttp }
@@ -107,16 +101,13 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8955
+    listen: { address: 127.0.0.1, port: 8955 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
   - name: probe
-    inputs:
-      url: http://127.0.0.1:8955/mcp
+    inputs: { url: http://127.0.0.1:8955/mcp }
     invoke: !ref mcpStatefulProbe
   - name: assertContract
     inputs:

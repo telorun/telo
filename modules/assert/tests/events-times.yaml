@@ -14,9 +14,7 @@ metadata:
     A counted entry reads the WHOLE capture and does not consume a position, so the
     number does not change when an unrelated expectation moves, and the two forms can
     be mixed in one list without either changing what the other means.
-imports:
-  Assert: ../
-  Run: ../../run
+imports: { Assert: ../, Run: ../../run }
 targets:
   - !ref emit
   - !ref counted
@@ -48,33 +46,29 @@ steps:
 kind: Assert.Events
 metadata: { name: counted }
 filter:
-  - type: "tick.Invoked"
-  - type: "once.Invoked"
+  - { type: "tick.Invoked" }
+  - { type: "once.Invoked" }
 expect:
-  - event: tick.Invoked
-    times: 3
-  - event: once.Invoked
-    times: 1
+  - { event: tick.Invoked, times: 3 }
+  - { event: once.Invoked, times: 1 }
 ---
 kind: Assert.Events
 metadata: { name: mixed }
 filter:
-  - type: "*.Invoked"
+  - { type: "*.Invoked" }
 expect:
   # An ordered entry and a counted one in one list. The counted entry does not
   # advance the ordered position, so the entry after it still matches from where
   # the ordered walk had reached rather than from the end of the stream.
-  - event: tick.Invoked
-  - event: tick.Invoked
-    times: 3
-  - event: once.Invoked
+  - { event: tick.Invoked }
+  - { event: tick.Invoked, times: 3 }
+  - { event: once.Invoked }
 ---
 kind: Assert.Events
 metadata: { name: negative }
 filter:
-  - type: "*.Invoked"
+  - { type: "*.Invoked" }
 expect:
   # `times: 0` is the assertion the ordered form structurally cannot express,
   # because absence is its FAILURE rather than its success.
-  - event: neverCalled.Invoked
-    times: 0
+  - { event: neverCalled.Invoked, times: 0 }

@@ -25,22 +25,7 @@ requires:
   # dispatch with ERR_SCHEMA_PROJECTION_UNRESOLVED.
   telo: ">=0.108.0"
 exports:
-  kinds:
-    - Store
-    - Node
-    - Relationship
-    - CreateNode
-    - MergeNode
-    - UpdateNode
-    - DeleteNode
-    - GetNode
-    - FindNodes
-    - CreateRelationship
-    - MergeRelationship
-    - UpdateRelationship
-    - DeleteRelationship
-    - FindRelationships
-    - Traverse
+  kinds: [Store, Node, Relationship, CreateNode, MergeNode, UpdateNode, DeleteNode, GetNode, FindNodes, CreateRelationship, MergeRelationship, UpdateRelationship, DeleteRelationship, FindRelationships, Traverse]
   # The entry point a backend's controller bundle resolves `@telorun/graph` to:
   # the store contract every backend implements, and the membership check every
   # backend's store runs at creation.
@@ -73,18 +58,12 @@ schema:
       description: The node types this graph holds.
       type: array
       minItems: 1
-      items:
-        x-telo-ref:
-          kind: Self.Node
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Node, use: dependency } }
     relationships:
       title: Relationships
       description: The relationship types this graph holds.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Relationship
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Relationship, use: dependency } }
 ---
 kind: Telo.Abstract
 metadata:
@@ -124,15 +103,11 @@ schema:
     source:
       title: Source
       description: The node type a relationship of this type starts at.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
     target:
       title: Target
       description: The node type a relationship of this type ends at. May be the source's type.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
   # A relationship joins node types, so a store listing it must list both of
   # them: otherwise a relationship could be written whose endpoints the graph
   # does not hold. The only referrer rule this kind declares, and backends
@@ -156,8 +131,7 @@ metadata:
     its properties, and returns it as stored. Refuses when an entity of that type
     already holds the key, so an existing one is never silently overwritten.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#CreateNode
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#CreateNode]
 throws:
   codes:
     GRAPH_NODE_EXISTS:
@@ -203,15 +177,11 @@ schema:
     store:
       title: Store
       description: The graph the node is written to.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     node:
       title: Node
       description: The node type written. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -226,10 +196,8 @@ metadata:
     under the caller's key, or updates the properties given on the one already
     there, leaving the rest unchanged. Returns the entity as stored.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#MergeNode
-throws:
-  codes: {}
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#MergeNode]
+throws: { codes: {} }
 inputType:
   type: object
   required: [key]
@@ -271,15 +239,11 @@ schema:
     store:
       title: Store
       description: The graph the node is written to.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     node:
       title: Node
       description: The node type written. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -294,12 +258,9 @@ metadata:
     key, leaving the properties not given unchanged, and returns it as stored.
     Refuses when no entity of that type holds the key.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#UpdateNode
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#UpdateNode]
 throws:
-  codes:
-    GRAPH_NODE_NOT_FOUND:
-      description: No node of this type holds the key.
+  codes: { GRAPH_NODE_NOT_FOUND: { description: No node of this type holds the key. } }
 inputType:
   type: object
   required: [key, properties]
@@ -340,15 +301,11 @@ schema:
     store:
       title: Store
       description: The graph holding the node.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     node:
       title: Node
       description: The node type updated. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -363,12 +320,9 @@ metadata:
     that starts or ends at it, and returns the entity as it was last stored.
     Refuses when no entity of that type holds the key.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#DeleteNode
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#DeleteNode]
 throws:
-  codes:
-    GRAPH_NODE_NOT_FOUND:
-      description: No node of this type holds the key.
+  codes: { GRAPH_NODE_NOT_FOUND: { description: No node of this type holds the key. } }
 inputType:
   type: object
   required: [key]
@@ -404,15 +358,11 @@ schema:
     store:
       title: Store
       description: The graph holding the node.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     node:
       title: Node
       description: The node type deleted from. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -427,12 +377,9 @@ metadata:
     properties. Refuses when no entity of that type holds the key, so a missing
     entity is an error the caller handles rather than an empty value.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#GetNode
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#GetNode]
 throws:
-  codes:
-    GRAPH_NODE_NOT_FOUND:
-      description: No node of this type holds the key.
+  codes: { GRAPH_NODE_NOT_FOUND: { description: No node of this type holds the key. } }
 inputType:
   type: object
   required: [key]
@@ -468,15 +415,11 @@ schema:
     store:
       title: Store
       description: The graph holding the node.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     node:
       title: Node
       description: The node type read. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -493,8 +436,7 @@ metadata:
     the cursor of the next until the listing ends. An empty filter lists every
     entity of the type.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindNodes
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindNodes]
 throws:
   codes:
     GRAPH_CURSOR_INVALID:
@@ -569,15 +511,11 @@ schema:
     store:
       title: Store
       description: The graph holding the nodes.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     node:
       title: Node
       description: The node type listed. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -593,8 +531,7 @@ metadata:
     pair is already linked by that type, or when either entity does not exist,
     naming which end is missing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#CreateRelationship
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#CreateRelationship]
 throws:
   codes:
     GRAPH_RELATIONSHIP_EXISTS:
@@ -606,8 +543,7 @@ throws:
       data:
         type: object
         required: [endpoint]
-        properties:
-          endpoint: { type: string, enum: [source, target] }
+        properties: { endpoint: { type: string, enum: [source, target] } }
 inputType:
   type: object
   required: [source, target]
@@ -652,15 +588,11 @@ schema:
     store:
       title: Store
       description: The graph the relationship is written to.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     relationship:
       title: Relationship
       description: The relationship type written. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Self.Relationship
-        use: dependency
+      x-telo-ref: { kind: Self.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -676,12 +608,10 @@ metadata:
     already there. Returns it as stored, and refuses when either entity does not
     exist.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#MergeRelationship
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#MergeRelationship]
 throws:
   codes:
-    GRAPH_NODE_NOT_FOUND:
-      description: The source or target node does not exist.
+    GRAPH_NODE_NOT_FOUND: { description: The source or target node does not exist. }
 inputType:
   type: object
   required: [source, target]
@@ -728,15 +658,11 @@ schema:
     store:
       title: Store
       description: The graph the relationship is written to.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     relationship:
       title: Relationship
       description: The relationship type written. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Self.Relationship
-        use: dependency
+      x-telo-ref: { kind: Self.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -751,12 +677,10 @@ metadata:
     graph, found by its source and target keys, leaving the properties not given
     unchanged, and returns it as stored. Refuses when no such link exists.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#UpdateRelationship
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#UpdateRelationship]
 throws:
   codes:
-    GRAPH_RELATIONSHIP_NOT_FOUND:
-      description: No relationship of this type joins the pair.
+    GRAPH_RELATIONSHIP_NOT_FOUND: { description: No relationship of this type joins the pair. }
 inputType:
   type: object
   required: [source, target, properties]
@@ -802,15 +726,11 @@ schema:
     store:
       title: Store
       description: The graph holding the relationship.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     relationship:
       title: Relationship
       description: The relationship type updated. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Self.Relationship
-        use: dependency
+      x-telo-ref: { kind: Self.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -825,12 +745,10 @@ metadata:
     and target keys, and returns it as it was last stored. The entities themselves
     stay. Refuses when no such link exists.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#DeleteRelationship
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#DeleteRelationship]
 throws:
   codes:
-    GRAPH_RELATIONSHIP_NOT_FOUND:
-      description: No relationship of this type joins the pair.
+    GRAPH_RELATIONSHIP_NOT_FOUND: { description: No relationship of this type joins the pair. }
 inputType:
   type: object
   required: [source, target]
@@ -871,15 +789,11 @@ schema:
     store:
       title: Store
       description: The graph holding the relationship.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     relationship:
       title: Relationship
       description: The relationship type deleted from. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Self.Relationship
-        use: dependency
+      x-telo-ref: { kind: Self.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -895,8 +809,7 @@ metadata:
     source then target, and read a bounded page at a time through an opaque
     cursor until the listing ends.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindRelationships
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#FindRelationships]
 throws:
   codes:
     GRAPH_CURSOR_INVALID:
@@ -980,15 +893,11 @@ schema:
     store:
       title: Store
       description: The graph holding the relationships.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     relationship:
       title: Relationship
       description: The relationship type listed. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Self.Relationship
-        use: dependency
+      x-telo-ref: { kind: Self.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -1009,12 +918,10 @@ metadata:
     friends, documents citing documents — filtered, ordered by key and read a
     bounded page at a time through an opaque cursor.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#Traverse
+controllers: [pkg:telo/local/js?path=./nodejs/graph.mjs&local_path=./nodejs/src/index.ts#Traverse]
 throws:
   codes:
-    GRAPH_NODE_NOT_FOUND:
-      description: The start node does not exist.
+    GRAPH_NODE_NOT_FOUND: { description: The start node does not exist. }
     GRAPH_CURSOR_INVALID:
       description: >-
         The cursor is malformed, of an envelope version this runtime does not
@@ -1092,21 +999,15 @@ schema:
     store:
       title: Store
       description: The graph traversed.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     from:
       title: From
       description: The node type the traversal starts at.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
     to:
       title: To
       description: The node type the traversal ends at; the result holds nodes of this type.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
     hops:
       title: Hops
       description: >-
@@ -1123,9 +1024,7 @@ schema:
           relationship:
             title: Relationship
             description: The relationship type this hop follows.
-            x-telo-ref:
-              kind: Self.Relationship
-              use: dependency
+            x-telo-ref: { kind: Self.Relationship, use: dependency }
           direction:
             title: Direction
             description: >-

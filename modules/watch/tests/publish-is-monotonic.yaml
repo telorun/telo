@@ -6,10 +6,7 @@ metadata:
     A topic's version only moves forward: publishing a lower or equal version
     after a higher one changes nothing, so a wait afterwards still sees the
     higher version.
-imports:
-  Watch: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Watch: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---

@@ -23,8 +23,7 @@ targets:
   - !ref main
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
@@ -71,20 +70,17 @@ relations:
     label: !cel "row.name"
 ---
 kind: Ui.Filters
-metadata:
-  name: derived
+metadata: { name: derived }
 presentation: !ref todosPresentation
 content: { type: text, text: Todos, when: false }
 ---
 kind: Ui.Filters
-metadata:
-  name: shown
+metadata: { name: shown }
 presentation: !ref todosPresentation
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: written
+metadata: { name: written }
 presentation: !ref todosPresentation
 fields:
   - { property: priority, operator: gte }
@@ -97,26 +93,22 @@ content:
       ref: { kind: Ui.Listing, model: !ref Todo, presentation: !ref todosPresentation, layout: { kind: Ui.TableLayout, columns: [{ value: !cel "row.text" }] } }
 ---
 kind: Ui.Form
-metadata:
-  name: form
+metadata: { name: form }
 model: !ref Todo
 presentation: !ref todosPresentation
 ---
 kind: Font.Family
-metadata:
-  name: inter
+metadata: { name: inter }
 family: Inter
 ---
 kind: Ui.DesignTokens
-metadata:
-  name: brand
+metadata: { name: brand }
 color.accent: "#1f8fff"
 radius.md: 6px
 font.body: !ref inter
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: derived
     invoke: { kind: Probe.Read, source: !ref derived }
@@ -190,6 +182,4 @@ steps:
             control: auto
           - { type: input, property: tags, label: { text: tags, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
           - { type: picker, property: ownerId, options: /api/people }
-        theme:
-          tokens: { color.accent: "#1f8fff", radius.md: 6px }
-          body: Inter
+        theme: { tokens: { color.accent: "#1f8fff", radius.md: 6px }, body: Inter }

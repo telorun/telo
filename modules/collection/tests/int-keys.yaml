@@ -7,10 +7,7 @@ metadata:
     CEL ints are BigInt, so the key-identity path must serialize them safely (no
     JSON.stringify crash) and a size()-derived BigInt must match the same value
     arriving as a plain JSON int. Self-contained: Collection + Run + Assert.
-imports:
-  Collection: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Collection: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testIntKeys
 ---
@@ -47,8 +44,7 @@ steps:
       expected:
         - { id: a, tags: [x] }
         - { id: b, tags: [x, y] }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   - name: join
     invoke: !ref joinByTagCount
     inputs:
@@ -64,5 +60,4 @@ steps:
       expected:
         - { id: a, label: one }
         - { id: b, label: two }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

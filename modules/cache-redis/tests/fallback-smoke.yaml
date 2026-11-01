@@ -38,13 +38,10 @@ metadata: { name: test }
 steps:
   - name: write
     invoke: !ref put
-    inputs:
-      key: "k"
-      value: { ok: true }
+    inputs: { key: "k", value: { ok: true } }
   - name: read
     invoke: !ref get
-    inputs:
-      key: "k"
+    inputs: { key: "k" }
   - name: assert
     inputs:
       state: !cel "steps.read.result.state"
@@ -54,6 +51,4 @@ steps:
       schema:
         type: object
         required: [state, ok]
-        properties:
-          state: { const: "fresh" }
-          ok: { const: true }
+        properties: { state: { const: "fresh" }, ok: { const: true } }

@@ -37,10 +37,7 @@ metadata: { name: awaitExit }
 condition: !cel "resources.stateful.status.exitCode == null"
 maxIterations: 200
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 20ms
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -56,8 +53,7 @@ steps:
     invoke:
       kind: Fs.File
       cwd: !cel "variables.fixturesDir"
-    inputs:
-      path: scratch-imported/marker.txt
+    inputs: { path: scratch-imported/marker.txt }
   - name: verifyMarker
     invoke: { kind: Assert.Equals }
     inputs:
@@ -67,6 +63,4 @@ steps:
     invoke:
       kind: Fs.FileRemoval
       cwd: !cel "variables.fixturesDir"
-    inputs:
-      path: scratch-imported
-      recursive: true
+    inputs: { path: scratch-imported, recursive: true }

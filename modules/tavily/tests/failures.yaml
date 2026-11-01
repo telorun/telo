@@ -5,9 +5,7 @@
 # is not Tavily's search response, and an unreachable API are ERR_SEARCH_FAILED.
 # A client with `throwOnHttpError` maps the same way.
 kind: Telo.Application
-metadata:
-  name: TavilyFailuresTest
-  version: 1.0.0
+metadata: { name: TavilyFailuresTest, version: 1.0.0 }
 imports:
   Tavily: ..
   Http: ../../http-client
@@ -55,8 +53,7 @@ with:
       - request:
           path: /search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref errors
         returns:
           - status: 401
@@ -103,18 +100,13 @@ with:
                 body: !cel "{'detail': {'error': result.broken}}"
           - status: 200
             when: !cel "request.body.query == 'html'"
-            content:
-              text/html:
-                body: "<html><body>results</body></html>"
+            content: { text/html: { body: "<html><body>results</body></html>" } }
           - status: 200
             content:
-              application/json:
-                schema: { type: object, additionalProperties: true }
-                body: { query: other }
+              application/json: { schema: { type: object, additionalProperties: true }, body: { query: other } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18862
+    listen: { port: 18862 }
     mounts:
       - path: /
         mount: !ref FakeTavily
@@ -178,8 +170,7 @@ steps:
           message: "The Tavily plan limit is reached: This request exceeds your plan's set usage limit."
         - code: ERR_SEARCH_QUOTA_EXCEEDED
           message: "The Tavily pay-as-you-go limit is reached: This request exceeds the pay-as-you-go limit."
-        - code: ERR_SEARCH_FAILED
-          message: "Tavily answered HTTP 400: Invalid topic."
+        - { code: ERR_SEARCH_FAILED, message: "Tavily answered HTTP 400: Invalid topic." }
         - code: ERR_SEARCH_FAILED
           message: "Tavily answered HTTP 422: Input should be less than or equal to 20"
         - code: ERR_SEARCH_FAILED
@@ -196,5 +187,4 @@ steps:
           message: "The Tavily plan limit is reached: This request exceeds your plan's set usage limit."
         - code: ERR_SEARCH_FAILED
           message: "Tavily answered HTTP 500: Internal server error."
-        - code: ERR_SEARCH_FAILED
-          message: "The request to Tavily failed: …"
+        - { code: ERR_SEARCH_FAILED, message: "The request to Tavily failed: …" }

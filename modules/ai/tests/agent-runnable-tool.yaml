@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AgentRunnableToolTest
-  version: 1.0.0
+metadata: { name: AgentRunnableToolTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -11,21 +9,14 @@ targets:
   - !ref testRunnableTool
 ---
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
-emitToolCall:
-  name: compute
-  arguments: { n: 21 }
+metadata: { name: echo }
+emitToolCall: { name: compute, arguments: { n: 21 } }
 ---
 kind: Run.Value
-metadata:
-  name: doubler
+metadata: { name: doubler }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      n: { type: integer }
+  schema: { type: object, properties: { n: { type: integer } } }
 value:
   doubled: !cel "double(inputs.n) * 2.0"
 ---
@@ -33,14 +24,10 @@ value:
 # the composite-tool case the widened Ai.Tools `tool` slot enables. The whole
 # pipeline is dispatched as a single tool the model can call.
 kind: Run.Sequence
-metadata:
-  name: computePipeline
+metadata: { name: computePipeline }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      n: { type: integer }
+  schema: { type: object, properties: { n: { type: integer } } }
 steps:
   - name: double
     invoke: !ref doubler
@@ -50,8 +37,7 @@ outputs:
   doubled: !cel "steps.double.result.doubled"
 ---
 kind: Ai.Tools
-metadata:
-  name: pipelineTools
+metadata: { name: pipelineTools }
 tools:
   - tool: !ref computePipeline
     name: compute
@@ -60,24 +46,20 @@ tools:
       type: object
       additionalProperties: false
       required: [n]
-      properties:
-        n: { type: integer }
+      properties: { n: { type: integer } }
     result: !cel "result.doubled"
 ---
 kind: Ai.Agent
-metadata:
-  name: pipelineAgent
+metadata: { name: pipelineAgent }
 model: !ref echo
 toolProviders:
   - provider: !ref pipelineTools
 ---
 kind: Run.Sequence
-metadata:
-  name: testRunnableTool
+metadata: { name: testRunnableTool }
 steps:
   - name: invoke
-    inputs:
-      prompt: "double 21"
+    inputs: { prompt: "double 21" }
     invoke: !ref pipelineAgent
   # Turn 1 → tool call compute(n:21) → ComputePipeline runs Doubler → {doubled:42},
   # the `result:` mapping yields 42 → tool message content "42". Turn 2 → Echo

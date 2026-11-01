@@ -9,8 +9,7 @@ metadata:
     stack take a change beneath it: it pins every upper layer to the head of
     the layers it is built on, bottom-up, one move per layer — the diamond's
     two sides in a single call.
-include:
-  - ./__fixtures__/suite-model.yaml
+include: [./__fixtures__/suite-model.yaml]
 imports:
   Suite:
     source: ../../graph-layers/tests/__fixtures__/layered-suite

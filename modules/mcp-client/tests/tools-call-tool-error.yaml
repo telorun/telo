@@ -16,10 +16,7 @@ kind: Run.Value
 metadata: { name: weatherImpl }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      city: { type: string }
+  schema: { type: object, properties: { city: { type: string } } }
 value:
   summary: !cel "'unreachable ' + inputs.city"
 ---
@@ -28,10 +25,7 @@ metadata: { name: BrokenTools }
 entries:
   - name: broken_weather
     description: Always returns isError true.
-    argumentsSchema:
-      type: object
-      properties: { city: { type: string } }
-      required: [ city ]
+    argumentsSchema: { type: object, properties: { city: { type: string } }, required: [city] }
     handler: !ref weatherImpl
     inputs:
       city: !cel "request.arguments.city"
@@ -60,9 +54,7 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8957
+    listen: { address: 127.0.0.1, port: 8957 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
@@ -70,9 +62,7 @@ steps:
   - name: wrap
     try:
       - name: brokenCall
-        inputs:
-          name: broken_weather
-          arguments: { city: Atlantis }
+        inputs: { name: broken_weather, arguments: { city: Atlantis } }
         invoke: !ref callBroken
     catch:
       - name: assertToolError
@@ -82,6 +72,5 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_MCP_TOOL_ERROR }
+            properties: { code: { const: ERR_MCP_TOOL_ERROR } }
             required: [ code ]

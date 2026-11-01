@@ -75,10 +75,7 @@ kind: Run.Value
 metadata: { name: weatherImpl }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      city: { type: string }
+  schema: { type: object, properties: { city: { type: string } } }
 value:
   summary: !cel "'Sunny in ' + inputs.city"
 ---
@@ -86,10 +83,7 @@ kind: Run.Value
 metadata: { name: dbImpl }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      table: { type: string }
+  schema: { type: object, properties: { table: { type: string } } }
 value:
   rows: !cel "inputs.table.size()"
 ---
@@ -98,10 +92,7 @@ metadata: { name: WeatherTools }
 entries:
   - name: get_weather
     description: Get weather for a city.
-    argumentsSchema:
-      type: object
-      properties: { city: { type: string } }
-      required: [ city ]
+    argumentsSchema: { type: object, properties: { city: { type: string } }, required: [city] }
     handler: !ref weatherImpl
     inputs: { city: !cel "request.arguments.city" }
     result:
@@ -114,10 +105,7 @@ metadata: { name: DatabaseTools }
 entries:
   - name: count_rows
     description: Count rows in a table.
-    argumentsSchema:
-      type: object
-      properties: { table: { type: string } }
-      required: [ table ]
+    argumentsSchema: { type: object, properties: { table: { type: string } }, required: [table] }
     handler: !ref dbImpl
     inputs: { table: !cel "request.arguments.table" }
     result:
@@ -135,17 +123,13 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8953
+    listen: { address: 127.0.0.1, port: 8953 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
   - name: listTools
-    inputs:
-      url: http://127.0.0.1:8953/mcp
-      method: tools/list
+    inputs: { url: http://127.0.0.1:8953/mcp, method: tools/list }
     invoke: !ref mcpFetch
   - name: assertListed
     inputs:
@@ -175,8 +159,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          contentText: { const: "Sunny in Mars" }
+        properties: { contentText: { const: "Sunny in Mars" } }
         required: [ contentText ]
 
   - name: callDb
@@ -192,6 +175,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          contentText: { const: "rows=5" }
+        properties: { contentText: { const: "rows=5" } }
         required: [ contentText ]

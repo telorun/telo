@@ -24,8 +24,8 @@ targets:
 kind: Assert.Events
 metadata: { name: bootedInOnePass }
 filter:
-  - type: Kernel.ResourceCreateCompleted
-  - type: Kernel.ResourceInitializationCompleted
+  - { type: Kernel.ResourceCreateCompleted }
+  - { type: Kernel.ResourceInitializationCompleted }
 expect:
   - event: Kernel.ResourceCreateCompleted
     payload: { outcome: skipped }
@@ -50,8 +50,7 @@ steps:
     invoke: !ref friends
     inputs: { key: a }
   - name: assertFriends
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "steps.friendsOfA.result.nodes.map(n, n.key)"
       expected: [b]
@@ -93,9 +92,7 @@ kind: SQLite.Schema
 metadata: { name: appSchema }
 connection: !ref db
 tables: [!ref people, !ref knowsTable]
-migrations:
-  seedPeople:
-    statement: "INSERT INTO people (id) VALUES ('a'), ('b')"
+migrations: { seedPeople: { statement: "INSERT INTO people (id) VALUES ('a'), ('b')" } }
 ---
 # Above the table whose foreign keys name it. Those keys are `use: schema`
 # references, which the kernel still injects, so a table declared above the one
@@ -104,8 +101,7 @@ migrations:
 kind: SQLite.Table
 metadata: { name: people }
 table: people
-columns:
-  id: { type: text, primaryKey: true }
+columns: { id: { type: text, primaryKey: true } }
 ---
 kind: SQLite.Table
 metadata: { name: knowsTable }

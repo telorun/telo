@@ -62,10 +62,7 @@ routes:
   - request: { path: /broken, method: GET }
     handler: !ref boom
     returns:
-      - status: 200
-        content:
-          application/json:
-            body: { ok: true }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
 kind: Http.Api
 metadata: { name: businessApi }
@@ -84,8 +81,7 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
     required: [text]
     additionalProperties: false
 outputType:
@@ -120,26 +116,20 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata:
-  name: testMountLevels
+metadata: { name: testMountLevels }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8912
+    listen: { address: 127.0.0.1, port: 8912 }
     mounts:
       - path: /health
         mount: !ref healthApi
         # Access records are `info`, so `warn` is how a mount goes quiet.
-        logging:
-          level: warn
+        logging: { level: warn }
       - path: /api
         mount: !ref businessApi
-  - kind: HttpClient.Request
-    metadata: { name: Call }
-  - kind: Fs.File
-    metadata: { name: ReadLog }
+  - { kind: HttpClient.Request, metadata: { name: Call } }
+  - { kind: Fs.File, metadata: { name: ReadLog } }
 targets:
   - !ref Server
 steps:

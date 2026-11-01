@@ -19,8 +19,7 @@ targets:
 kind: App.Instance
 metadata: { name: greeter }
 source: ./__fixtures__/greeter/telo.yaml
-variables:
-  who: the supervisor
+variables: { who: the supervisor }
 ---
 # Starting a child means its own targets have been dispatched, not that it has
 # finished: a one-shot child is done working but still tearing down, and a server
@@ -32,10 +31,7 @@ metadata: { name: awaitGreeterExit }
 condition: !cel "resources.greeter.status.exitCode == null"
 maxIterations: 200
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 20ms
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: test }

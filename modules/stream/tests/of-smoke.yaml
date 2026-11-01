@@ -7,10 +7,7 @@ metadata:
     no JavaScript. A flat targets pipeline runs the items through
     PlainText.Encoder (strings → bytes) → PlainText.Decoder (bytes → string)
     and asserts the concatenation.
-imports:
-  Stream: ../
-  PlainText: ../../plain-text-codec
-  Assert: ../../assert
+imports: { Stream: ../, PlainText: ../../plain-text-codec, Assert: ../../assert }
 targets:
   - name: source
     invoke: !ref source
@@ -29,9 +26,7 @@ targets:
 ---
 kind: Stream.Of
 metadata: { name: source }
-items:
-  - "hello "
-  - "telo"
+items: ["hello ", "telo"]
 ---
 kind: PlainText.Encoder
 metadata: { name: toBytes }
@@ -43,6 +38,5 @@ kind: Assert.Schema
 metadata: { name: assertText }
 schema:
   type: object
-  properties:
-    text: { const: "hello telo" }
+  properties: { text: { const: "hello telo" } }
   required: [ text ]

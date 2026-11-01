@@ -8,9 +8,7 @@ metadata:
     `expected:` literal comes out of YAML as. With a raw `!==` the two rendered
     identically in the failure report and compared unequal, which made every
     integer-valued expression in an event payload unassertable.
-imports:
-  Assert: ../
-  Run: ../../run
+imports: { Assert: ../, Run: ../../run }
 targets:
   - !ref emitIntegers
   - !ref expectIntegerPayload
@@ -29,11 +27,7 @@ steps:
       metadata: { name: Counter }
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            total: {}
-            next: {}
+        schema: { type: object, properties: { total: {}, next: {} } }
       value:
         total: !cel "inputs.total"
         next: !cel "inputs.next"
@@ -41,8 +35,6 @@ steps:
 kind: Assert.Events
 metadata: { name: expectIntegerPayload }
 filter:
-  - type: "*"
+  - { type: "*" }
 expect:
-  - event: "*.Invoked"
-    payload:
-      outputs: { total: 3, next: 4 }
+  - { event: "*.Invoked", payload: { outputs: { total: 3, next: 4 } } }

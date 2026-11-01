@@ -21,16 +21,12 @@ tools:
     entries:
       - name: echo_arguments
         description: Returns the arguments it received.
-        argumentsSchema:
-          type: object
-        handler:
-          kind: Run.Value
-          value: {}
+        argumentsSchema: { type: object }
+        handler: { kind: Run.Value, value: {} }
         inputs: {}
         result:
           content:
-            - type: text
-              text: echoed
+            - { type: text, text: echoed }
           structuredContent: !cel "request.arguments"
 ---
 kind: Run.Sequence
@@ -38,9 +34,7 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8964
+    listen: { address: 127.0.0.1, port: 8964 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
@@ -59,7 +53,5 @@ steps:
   - name: assertPlainArguments
     inputs:
       actual: !cel "steps.called.result.structuredContent"
-      expected:
-        wait: "5400s"
-    invoke:
-      kind: Assert.Equals
+      expected: { wait: "5400s" }
+    invoke: { kind: Assert.Equals }

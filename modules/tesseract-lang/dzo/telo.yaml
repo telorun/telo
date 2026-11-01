@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - dzo
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [dzo] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: dzo, member: package/4.0.0_best_int/dzo.traineddata.gz, sha256: 09fa9e9456821634a9fce435e31fd9bb9b102449d12b5b938c8ab12b855f415b, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: dzo
-  description: Dzongkha, Tibetan script
+metadata: { name: dzo, description: "Dzongkha, Tibetan script" }
 code: dzo
 data: !module-path ./tessdata/dzo.traineddata.gz

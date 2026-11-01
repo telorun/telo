@@ -16,12 +16,8 @@ requires:
   # 0.122.0 refuses the reader's `throws:` `displayMessage` as SCHEMA_VIOLATION
   # (verified by execution); 0.125.1 reads and runs this file.
   telo: ">=0.123.0"
-imports:
-  Http: ../http-server
-  Sql: ../sql
-  DataModel: ../data-model
-exports:
-  kinds: [Collection, Api]
+imports: { Http: ../http-server, Sql: ../sql, DataModel: ../data-model }
+exports: { kinds: [Collection, Api] }
 ---
 # The rules below are mirrored by `shapeProblems` and `tableProblems` in
 # `nodejs/src/collection-controller.ts`: keep the two alike. The filter, sort,
@@ -37,8 +33,7 @@ metadata:
     its column's foreign key contradicts.
 capability: Telo.Provider
 extends: DataModel.Collection
-controllers:
-  - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#CollectionController
+controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#CollectionController]
 schema:
   type: object
   required: [schemas, table]
@@ -357,9 +352,7 @@ resources:
                       items:
                         type: object
                         required: [value, count]
-                        properties:
-                          value: {}
-                          count: { type: integer }
+                        properties: { value: {}, count: { type: integer } }
                     next: { type: [string, "null"], description: "The cursor of the following page; null on the last one." }
 
       # Read one row by id.
@@ -388,10 +381,7 @@ resources:
               application/json:
                 body: !cel "result.rows[0]"
                 schema: !cel "self.collection.model.schema"
-          - status: 404
-            content:
-              application/json:
-                body: { error: not_found }
+          - { status: 404, content: { application/json: { body: { error: not_found } } } }
 
       # Create a row from the JSON body, validated against the create shape, and
       # answer with the record as stored.
@@ -439,10 +429,7 @@ resources:
               application/json:
                 body: !cel "result.row"
                 schema: !cel "self.collection.model.schema"
-          - status: 404
-            content:
-              application/json:
-                body: { error: not_found }
+          - { status: 404, content: { application/json: { body: { error: not_found } } } }
 
       # Delete a row by id.
       - operationId: !cel "'delete' + self.singular.substring(0,1).upperAscii() + self.singular.substring(1)"
@@ -464,10 +451,7 @@ resources:
         returns:
           - status: 204
             when: !cel "result.rowCount > 0"
-          - status: 404
-            content:
-              application/json:
-                body: { error: not_found }
+          - { status: 404, content: { application/json: { body: { error: not_found } } } }
 ---
 # Crud-internal handlers, not exported. They render through the connection's
 # dialect; the reader's contract names properties and operators, never
@@ -482,8 +466,7 @@ metadata:
     values, each with its count. Refuses a request using a filter, sort or
     facet it was not configured to accept.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#ReaderController
+controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#ReaderController]
 throws:
   codes:
     ERR_CRUD_QUERY_INVALID:
@@ -537,9 +520,7 @@ inputType:
           type: object
           additionalProperties: false
           required: [property]
-          properties:
-            property: { type: string }
-            direction: { enum: [asc, desc], default: asc }
+          properties: { property: { type: string }, direction: { enum: [asc, desc], default: asc } }
       # Names the property whose present values are asked for instead of rows.
       facet: { type: [string, "null"] }
       limit: { type: integer }
@@ -560,21 +541,17 @@ outputType:
         items:
           type: object
           required: [value, count]
-          properties:
-            value: {}
-            count: { type: integer }
+          properties: { value: {}, count: { type: integer } }
       next: { type: [string, "null"] }
 schema:
   type: object
   additionalProperties: false
   required: [connection, table, model, row, query]
   properties:
-    connection:
-      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
     table: { type: string }
     # The types of the values a request filters by.
-    model:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
     # What a request may filter, sort and facet by: nothing else is accepted.
     query:
       type: object
@@ -596,19 +573,16 @@ schema:
             type: object
             additionalProperties: false
             required: [property]
-            properties:
-              property: { type: string }
+            properties: { property: { type: string } }
         facets:
           type: array
           items:
             type: object
             additionalProperties: false
             required: [property]
-            properties:
-              property: { type: string }
+            properties: { property: { type: string } }
     # What a returned row holds.
-    row:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    row: { x-telo-ref: { kind: Telo.Type, use: schema } }
 ---
 kind: Telo.Definition
 metadata:
@@ -619,8 +593,7 @@ metadata:
     INSERT. Returns the stored record, with its key and every value the table
     filled in.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#CreatorController
+controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#CreatorController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -630,23 +603,18 @@ inputType:
     properties:
       # The record, by property name.
       data: { type: object }
-outputType:
-  kind: Telo.JsonSchema
-  schema: { type: object }
+outputType: { kind: Telo.JsonSchema, schema: { type: object } }
 schema:
   type: object
   additionalProperties: false
   required: [connection, table, model, record]
   properties:
-    connection:
-      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
     table: { type: string }
     # The columns a record may set.
-    model:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
     # What the stored record is answered as.
-    record:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    record: { x-telo-ref: { kind: Telo.Type, use: schema } }
 ---
 kind: Telo.Definition
 metadata:
@@ -658,8 +626,7 @@ metadata:
     item's id; no other column is touched. Returns the stored record and the
     number of rows replaced, zero when the id names no row.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#UpdaterController
+controllers: [pkg:telo/local/js?path=./nodejs/crud.mjs&local_path=./nodejs/src/index.ts#UpdaterController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -684,15 +651,12 @@ schema:
   additionalProperties: false
   required: [connection, table, model, record]
   properties:
-    connection:
-      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
     table: { type: string }
     # The columns a record replaces.
-    model:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    model: { x-telo-ref: { kind: Telo.Type, use: schema } }
     # What the stored record is answered as.
-    record:
-      x-telo-ref: { kind: Telo.Type, use: schema }
+    record: { x-telo-ref: { kind: Telo.Type, use: schema } }
 ---
 kind: Telo.Definition
 metadata:
@@ -705,8 +669,7 @@ schema:
   type: object
   required: [connection, table]
   properties:
-    connection:
-      x-telo-ref: { kind: Sql.Connection, use: dependency }
+    connection: { x-telo-ref: { kind: Sql.Connection, use: dependency } }
     table: { type: string }
 resources:
   - kind: Sql.Command

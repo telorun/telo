@@ -20,8 +20,7 @@ targets:
   - !ref main
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Account
+metadata: { name: Account }
 schema:
   type: object
   required: [authorized]
@@ -37,11 +36,9 @@ schema:
           url: { type: string, format: uri-reference, title: Link }
 ---
 kind: Ui.Data
-metadata:
-  name: account
+metadata: { name: account }
 model: !ref Account
-query:
-  signin: { type: string, enum: [denied, expired] }
+query: { signin: { type: string, enum: [denied, expired] } }
 source:
   path: /api/auth
   params:
@@ -72,24 +69,18 @@ failure:
   value: !cel "error.message"
 ---
 kind: Ui.Data
-metadata:
-  name: plain
-model:
-  kind: Telo.JsonSchema
-  schema: { type: object }
+metadata: { name: plain }
+model: { kind: Telo.JsonSchema, schema: { type: object } }
 source: { path: /api/plain }
 content: { type: text, text: Ready }
 ---
 kind: Ui.Form
-metadata:
-  name: note
+metadata: { name: note }
 model:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      title: { type: string }
-      detail: { type: string }
+    properties: { title: { type: string }, detail: { type: string } }
 presentation:
   kind: Ui.CollectionPresentation
   source:
@@ -106,14 +97,10 @@ fields:
     shown: { at: !cel "values.title", matches: { minLength: 1 } }
 ---
 kind: Ui.Action
-metadata:
-  name: send
+metadata: { name: send }
 inputModel:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      to: { type: string }
+  schema: { type: object, properties: { to: { type: string } } }
 source: { path: /api/send }
 label: Send
 enabled:
@@ -122,8 +109,7 @@ enabled:
   disabledText: Enter a recipient first.
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: account
     invoke: { kind: Probe.Read, source: !ref account }
@@ -148,11 +134,8 @@ steps:
                   url: { type: string, format: uri-reference, title: Link }
         source:
           path: /api/auth
-          params:
-            signin: { root: query, path: [signin] }
-            fixed: { value: 1 }
-        query:
-          signin: { type: string, enum: [denied, expired] }
+          params: { signin: { root: query, path: [signin] }, fixed: { value: 1 } }
+        query: { signin: { type: string, enum: [denied, expired] } }
         content:
           type: stack
           children:

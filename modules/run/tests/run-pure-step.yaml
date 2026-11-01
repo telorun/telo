@@ -7,9 +7,7 @@ metadata:
     intermediate from an earlier step's result and publishes it as
     `steps.<name>.result`, dispatching nothing. Covered in a Run.Sequence and in
     a Run.Projection body, which share the step grammar.
-imports:
-  Run: ../
-  Assert: ../../assert
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testSequencePureStep
   - !ref testProjectionPureStep
@@ -18,11 +16,7 @@ kind: Run.Value
 metadata: { name: loadCart }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [id]
-    properties:
-      id: { type: string }
+  schema: { type: object, required: [id], properties: { id: { type: string } } }
 value:
   customerId: !cel "'customer-' + inputs.id"
   lines:
@@ -49,8 +43,7 @@ steps:
         customer: !cel "steps.cart.result.customerId"
         total: !cel "steps.total.result"
       expected: { customer: customer-42, total: 14.0 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The same step form inside a per-element body, where it also sees `item`.
 kind: Run.Projection
@@ -78,5 +71,4 @@ steps:
       expected:
         - { id: a, kg: 1.5 }
         - { id: b, kg: 0.25 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

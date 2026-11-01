@@ -3,9 +3,7 @@
 # shows more remain. Nothing past the 100th result is reachable, and the cursor
 # stays valid under any `count`.
 kind: Telo.Application
-metadata:
-  name: ExaPagingTest
-  version: 1.0.0
+metadata: { name: ExaPagingTest, version: 1.0.0 }
 imports:
   Exa: ..
   WebSearch: ../../web-search
@@ -39,8 +37,7 @@ with:
       - request:
           path: /search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref canned
         returns:
           - status: 200
@@ -55,8 +52,7 @@ with:
                     : []}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18866
+    listen: { port: 18866 }
     mounts:
       - path: /
         mount: !ref FakeExa

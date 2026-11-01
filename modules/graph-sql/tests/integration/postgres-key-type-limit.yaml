@@ -63,29 +63,22 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_sql_key_limit CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_sql_key_limit CASCADE }
 ---
 kind: Postgres.Table
 metadata: { name: dayTable }
 table: by_day
-columns:
-  id: { type: date, primaryKey: true }
-  note: { type: text }
+columns: { id: { type: date, primaryKey: true }, note: { type: text } }
 ---
 kind: Postgres.Table
 metadata: { name: countTable }
 table: by_count
-columns:
-  id: { type: bigint, primaryKey: true }
-  note: { type: text }
+columns: { id: { type: bigint, primaryKey: true }, note: { type: text } }
 ---
 kind: Postgres.Table
 metadata: { name: priceTable }
 table: by_price
-columns:
-  id: { type: numeric, primaryKey: true }
-  note: { type: text }
+columns: { id: { type: numeric, primaryKey: true }, note: { type: text } }
 ---
 kind: Postgres.Schema
 metadata: { name: appSchema }
@@ -196,9 +189,7 @@ steps:
       actual:
         getNode: !cel "steps.getCode.result"
         findNodesAtAPageBoundary: !cel "steps.findCode.result"
-      expected:
-        getNode: ERR_OUTPUT_INVALID
-        findNodesAtAPageBoundary: ERR_OUTPUT_INVALID
+      expected: { getNode: ERR_OUTPUT_INVALID, findNodesAtAPageBoundary: ERR_OUTPUT_INVALID }
 ---
 # Rows are written beside the store, since no operation returns a `numeric` key.
 kind: Run.Sequence
@@ -238,6 +229,4 @@ steps:
       actual:
         getNode: !cel "steps.getCode.result"
         findNodesAtAPageBoundary: !cel "steps.findCode.result"
-      expected:
-        getNode: ERR_OUTPUT_INVALID
-        findNodesAtAPageBoundary: ERR_OUTPUT_INVALID
+      expected: { getNode: ERR_OUTPUT_INVALID, findNodesAtAPageBoundary: ERR_OUTPUT_INVALID }

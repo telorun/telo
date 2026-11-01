@@ -25,8 +25,7 @@ columns:
   id: { type: integer, primaryKey: true }
   email: { type: text, nullable: false, unique: true }
   plan: { type: text, nullable: false, default: free }
-indexes:
-  usersPlan: { columns: [plan] }
+indexes: { usersPlan: { columns: [plan] } }
 ---
 # A `references.table` is a `!ref` to another table RESOURCE, and it is read
 # while this one is being created — before Phase-5 injection would have replaced
@@ -78,8 +77,7 @@ connection: !ref db
 version: !cel "module.version"
 tables: [!ref users, !ref sessions, !ref memberships]
 migrations:
-  20260401_seed:
-    statement: "INSERT INTO users (id, email) VALUES (1, 'a@example.com')"
+  20260401_seed: { statement: "INSERT INTO users (id, email) VALUES (1, 'a@example.com')" }
 reclaim: { afterVersions: 3, afterDuration: 30d }
 ---
 kind: Run.Sequence
@@ -87,8 +85,7 @@ metadata: { name: test }
 steps:
   - name: read
     invoke: !ref readUsers
-    inputs:
-      sql: "SELECT id, email, plan FROM users ORDER BY id"
+    inputs: { sql: "SELECT id, email, plan FROM users ORDER BY id" }
   - name: assertRows
     invoke: !ref assertRows
     inputs:
@@ -114,10 +111,7 @@ steps:
         migrationsApplied: !cel "resources.appSchema.status.migrationsApplied"
         tombstoned: !cel "resources.appSchema.status.tombstoned"
         reclaimed: !cel "resources.appSchema.status.reclaimed"
-      expected:
-        migrationsApplied: ["20260401_seed"]
-        tombstoned: []
-        reclaimed: []
+      expected: { migrationsApplied: ["20260401_seed"], tombstoned: [], reclaimed: [] }
 ---
 kind: Sql.Query
 metadata: { name: readUsers }

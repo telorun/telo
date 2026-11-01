@@ -65,9 +65,7 @@ steps:
             # actually sitting on, which is what tells an author why their marker
             # is never coming.
             sawInstead: !cel "error.data.text"
-          expected:
-            code: ERR_CHANNEL_READ_TIMEOUT
-            sawInstead: "Colour: "
+          expected: { code: ERR_CHANNEL_READ_TIMEOUT, sawInstead: "Colour: " }
 
   # The program is still waiting for its second answer. Close its input so it
   # finishes; otherwise the application never goes idle and the run cannot end.

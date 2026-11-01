@@ -10,10 +10,7 @@ metadata:
     failure, because each means the picture would be wrong in a way nobody
     looking at it could see — which is the one outcome worth failing a render
     over.
-imports:
-  SvgChart: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { SvgChart: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testDegenerateData
 ---

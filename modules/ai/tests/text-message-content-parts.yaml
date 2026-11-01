@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: TextMessageContentPartsTest
-  version: 1.0.0
+metadata: { name: TextMessageContentPartsTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -11,17 +9,14 @@ targets:
   - !ref testContentParts
 ---
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
+metadata: { name: echo }
 ---
 kind: Ai.Text
-metadata:
-  name: texter
+metadata: { name: texter }
 model: !ref echo
 ---
 kind: Run.Sequence
-metadata:
-  name: testContentParts
+metadata: { name: testContentParts }
 steps:
   # A multimodal user message: a text part plus an image part (base64 bytes). The
   # widened `content` schema accepts the array; the echo flattens it to its text.
@@ -40,6 +35,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text: { type: string, const: describe this }
+        properties: { text: { type: string, const: describe this } }
         required: [text]

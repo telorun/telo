@@ -28,8 +28,7 @@ targets:
   - !ref main
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ReportRequest
+metadata: { name: ReportRequest }
 schema:
   type: object
   required: [month]
@@ -38,23 +37,16 @@ schema:
     copies: { type: integer }
     formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
     recipients: { type: [array, "null"], items: { type: string } }
-    options:
-      type: object
-      properties:
-        compact: { type: boolean }
+    options: { type: object, properties: { compact: { type: boolean } } }
     pages: { type: array, items: { type: object } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ReportAnswer
+metadata: { name: ReportAnswer }
 schema:
   type: object
   properties:
     location: { type: string }
-    summary:
-      type: object
-      properties:
-        total: { type: integer, title: Total }
+    summary: { type: object, properties: { total: { type: integer, title: Total } } }
     files:
       type: array
       items:
@@ -64,8 +56,7 @@ schema:
           url: { type: string, format: uri-reference }
 ---
 kind: Ui.Action
-metadata:
-  name: generate
+metadata: { name: generate }
 inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
 source: { path: /api/reports }
@@ -81,8 +72,7 @@ result:
         - header: Link
           value: !cel "row.url"
         - value: !cel "result.summary.total"
-        - header: Kind
-          value: report
+        - { header: Kind, value: report }
       rowActions:
         - action: !ref archiveFile
           inputs:
@@ -104,41 +94,32 @@ concurrency: serial
 clearAnswerOn: [month, formats]
 ---
 kind: Ui.Action
-metadata:
-  name: archiveFile
+metadata: { name: archiveFile }
 inputModel:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [name]
-    properties:
-      name: { type: string }
-      month: { type: string }
+    properties: { name: { type: string }, month: { type: string } }
 source: { path: /api/archive }
 label: Archive
-onSuccess:
-  navigate: /files
+onSuccess: { navigate: /files }
 ---
 kind: Ui.Action
-metadata:
-  name: chosen
+metadata: { name: chosen }
 inputModel: !ref ReportRequest
 source: { path: /api/reports }
 label: Send
 fields: [formats, month]
 ---
 kind: Ui.Action
-metadata:
-  name: refresh
-inputModel:
-  kind: Telo.JsonSchema
-  schema: { type: object, properties: {} }
+metadata: { name: refresh }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
 source: { path: /api/refresh }
 label: Refresh
 ---
 kind: Ui.Form
-metadata:
-  name: requestForm
+metadata: { name: requestForm }
 model: !ref ReportRequest
 presentation:
   kind: Ui.CollectionPresentation
@@ -151,26 +132,21 @@ presentation:
       query: { filters: [], sort: [] }
 ---
 kind: Ui.View
-metadata:
-  name: page
+metadata: { name: page }
 content:
   type: stack
   children:
     - { type: composite, ref: !ref generate, style: strong }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    name: { type: string }
+  properties: { id: { type: integer }, name: { type: string } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Archive
+metadata: { name: Archive }
 schema:
   type: object
   additionalProperties: false
@@ -181,15 +157,13 @@ schema:
     reason: { type: string, title: Reason }
 ---
 kind: Ui.Action
-metadata:
-  name: archive
+metadata: { name: archive }
 inputModel: !ref Archive
 source: { path: /api/todos/archive }
 label: Archive
 ---
 kind: Ui.Listing
-metadata:
-  name: todos
+metadata: { name: todos }
 model: !ref Todo
 presentation:
   kind: Ui.CollectionPresentation
@@ -200,8 +174,7 @@ presentation:
       kind: DataModel.Collection
       model: !ref Todo
       query: { filters: [], sort: [] }
-query:
-  status: { type: string }
+query: { status: { type: string } }
 rowActions:
   - action: !ref archive
     inputs:
@@ -215,11 +188,7 @@ rowActions:
       kind: Ui.Action
       inputModel:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [name]
-          properties:
-            name: { type: string }
+        schema: { type: object, required: [name], properties: { name: { type: string } } }
       source: { path: /api/todos/rename }
       label: Rename
     inputs:
@@ -232,8 +201,7 @@ rowActions:
     prompt: true
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: generate
     invoke: { kind: Probe.Read, source: !ref generate }
@@ -271,10 +239,7 @@ steps:
                 copies: { type: integer }
                 formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
                 recipients: { type: [array, "null"], items: { type: string } }
-                options:
-                  type: object
-                  properties:
-                    compact: { type: boolean }
+                options: { type: object, properties: { compact: { type: boolean } } }
                 pages: { type: array, items: { type: object } }
             path: /api/reports
             label: { text: Generate, context: null, lang: und, computed: false }
@@ -289,10 +254,7 @@ steps:
               type: object
               properties:
                 location: { type: string }
-                summary:
-                  type: object
-                  properties:
-                    total: { type: integer, title: Total }
+                summary: { type: object, properties: { total: { type: integer, title: Total } } }
                 files:
                   type: array
                   items:
@@ -317,9 +279,7 @@ steps:
                         schema:
                           type: object
                           required: [name]
-                          properties:
-                            name: { type: string }
-                            month: { type: string }
+                          properties: { name: { type: string }, month: { type: string } }
                         path: /api/archive
                         label: { text: Archive, context: null, lang: und, computed: false }
                         fields:
@@ -336,9 +296,7 @@ steps:
                         onSuccess: { navigate: { value: /files }, refreshes: [] }
                         concurrency: parallel
                         clearAnswerOn: []
-                      inputs:
-                        name: { root: row, path: [name] }
-                        month: { root: input, path: [month] }
+                      inputs: { name: { root: row, path: [name] }, month: { root: input, path: [month] } }
                       enabled:
                         at: { root: row, path: [url] }
                         matches: { type: string }
@@ -388,9 +346,7 @@ steps:
         rowActions:
           - path: /api/todos/archive
             label: { text: Archive, context: null, lang: und, computed: false }
-            inputs:
-              id: { root: row, path: [id] }
-              status: { root: query, path: [status] }
+            inputs: { id: { root: row, path: [id] }, status: { root: query, path: [status] } }
             confirm: null
             prompt: null
             enabled:
@@ -399,15 +355,13 @@ steps:
               disabledText: { text: Name it first., context: null, lang: und, computed: false }
           - path: /api/todos/rename
             label: { text: Rename, context: null, lang: und, computed: false }
-            inputs:
-              name: { root: row, path: [name] }
+            inputs: { name: { root: row, path: [name] } }
             confirm: { text: Rename it?, context: null, lang: und, computed: false }
             prompt: null
             enabled: null
           - path: /api/todos/archive
             label: { text: Archive, context: null, lang: und, computed: false }
-            inputs:
-              id: { root: row, path: [id] }
+            inputs: { id: { root: row, path: [id] } }
             confirm: null
             prompt:
               fields:

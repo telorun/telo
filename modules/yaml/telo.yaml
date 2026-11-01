@@ -10,9 +10,7 @@ metadata:
     front matter, API payloads. Multi-document files come back as a list of documents
     in source order, and invalid input fails with the parser's line and column rather
     than silently.
-exports:
-  kinds:
-    - Parse
+exports: { kinds: [Parse] }
 ---
 # Yaml.Parse — UTF-8 string → parsed YAML documents. Multi-doc-aware
 # (`yaml.parseAllDocuments`); even single-doc input always lands in `docs[0]`.
@@ -24,23 +22,17 @@ metadata:
     so multi-document files need no special handling. Invalid input raises with the
     parser's position.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/yaml.mjs&local_path=./nodejs/src/index.ts#Parse
+controllers: [pkg:telo/local/js?path=./nodejs/yaml.mjs&local_path=./nodejs/src/index.ts#Parse]
 throws:
   codes:
     ERR_PARSE_FAILED:
       description: Input was not valid YAML. The original parser error (with line/column when available) is preserved on `data`.
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      text:
-        type: string
-        description: UTF-8 YAML source to parse.
+    properties: { text: { type: string, description: UTF-8 YAML source to parse. } }
     required: [text]
     additionalProperties: false
 outputType:

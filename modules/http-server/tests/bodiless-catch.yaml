@@ -5,8 +5,7 @@ metadata:
   description: |
     A `catches:` entry may omit `body:` only under `application/problem+json`;
     `telo check` refuses one under any other key where it is written.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref refusedWhereWritten
 ---

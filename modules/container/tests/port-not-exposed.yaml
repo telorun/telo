@@ -6,8 +6,7 @@ metadata:
     A `Container.Port` naming a port its container does not publish is refused
     by `telo check` at the library declaring it, and at creation for an
     importer whose check is silent about that library's internals.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref refusedAtCheck
   - !ref refusedAtCreation

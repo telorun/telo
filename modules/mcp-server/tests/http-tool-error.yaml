@@ -82,30 +82,22 @@ code: |
 kind: Run.Sequence
 metadata: { name: throwsNotFoundImpl }
 throws:
-  - code: not_found
+  - { code: not_found }
 steps:
-  - name: bail
-    throw:
-      code: not_found
-      message: "city is unknown"
+  - { name: bail, throw: { code: not_found, message: "city is unknown" } }
 ---
 kind: Mcp.Tools
 metadata: { name: WeatherTools }
 entries:
   - name: get_weather
     description: Throws not_found for any city.
-    argumentsSchema:
-      type: object
-      properties:
-        city: { type: string }
-      required: [ city ]
+    argumentsSchema: { type: object, properties: { city: { type: string } }, required: [city] }
     handler: !ref throwsNotFoundImpl
     inputs:
       city: !cel "request.arguments.city"
     result:
       content:
-        - type: text
-          text: unreachable
+        - { type: text, text: unreachable }
     catches:
       - code: not_found
         error:
@@ -122,9 +114,7 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8952
+    listen: { address: 127.0.0.1, port: 8952 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]

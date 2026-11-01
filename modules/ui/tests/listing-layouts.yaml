@@ -30,9 +30,7 @@ metadata: { name: Person }
 schema:
   type: object
   required: [id, name]
-  properties:
-    id: { type: integer }
-    name: { type: string }
+  properties: { id: { type: integer }, name: { type: string } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Task }
@@ -51,9 +49,7 @@ schema:
   type: object
   additionalProperties: false
   required: [id, status]
-  properties:
-    id: { type: integer }
-    status: { enum: [open, doing, done] }
+  properties: { id: { type: integer }, status: { enum: [open, doing, done] } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Event }
@@ -185,10 +181,7 @@ metadata: { name: Booking }
 schema:
   type: object
   required: [id, roomId, guest]
-  properties:
-    id: { type: integer }
-    roomId: { type: integer }
-    guest: { type: string }
+  properties: { id: { type: integer }, roomId: { type: integer }, guest: { type: string } }
 ---
 kind: DataModel.Collection
 metadata: { name: bookings }
@@ -301,8 +294,7 @@ steps:
       expected:
         type: calendar
         period: week
-        reads:
-          span: { start: startsOn, end: endsOn, format: date }
+        reads: { span: { start: startsOn, end: endsOn, format: date } }
         content:
           type: stack
           children:

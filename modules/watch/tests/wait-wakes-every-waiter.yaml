@@ -31,9 +31,7 @@ steps:
     if: !cel "item == 'publish'"
     then:
       # Long enough that every waiter has opened before the publish lands.
-      - name: pause
-        inputs: { duration: 200ms }
-        invoke: { kind: Timer.Delay }
+      - { name: pause, inputs: { duration: 200ms }, invoke: { kind: Timer.Delay } }
       - name: publish
         inputs: { topic: plan, version: 1 }
         invoke:

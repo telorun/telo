@@ -7,8 +7,7 @@ metadata:
   name: GraphLayersStaticRefusals
   version: 1.0.0
   description: The layered graph's retract rules, refused statically and at creation.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref retractNodeTypeNotInStore
   - !ref retractNodeTypeNotInStoreAtRuntime
@@ -26,9 +25,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: retractNodeTypeNotInStoreAtRuntime }
 source: ./__fixtures__/rules/retract-node-type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: retractRelationshipTypeNotInStore }
@@ -41,6 +38,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: retractRelationshipTypeNotInStoreAtRuntime }
 source: ./__fixtures__/rules/retract-relationship-type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }

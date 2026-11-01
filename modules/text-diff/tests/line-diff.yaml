@@ -7,10 +7,7 @@ metadata:
     in ten is one hunk with three lines of context either side; equal texts have
     no hunks; a final line without its newline is marked; and a text over the
     instance's byte limit is not compared at all.
-imports:
-  TextDiff: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { TextDiff: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---

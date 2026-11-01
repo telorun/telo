@@ -10,9 +10,7 @@ metadata:
     value becomes the result, with optional typed inputs and outputs. An escape hatch
     for one-off glue and for reaching runtime APIs nothing else exposes — prefer a
     declarative resource wherever one exists.
-exports:
-  kinds:
-    - Script
+exports: { kinds: [Script] }
 ---
 kind: "Telo.Definition"
 metadata:
@@ -33,8 +31,7 @@ metadata:
       cannot be type-checked and it cannot be rendered in a visual editor. Move
       the logic into a resource kind.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/javascript.mjs&local_path=./nodejs/src/index.ts#Script
+controllers: [pkg:telo/local/js?path=./nodejs/javascript.mjs&local_path=./nodejs/src/index.ts#Script]
 schema:
   type: "object"
   properties:
@@ -47,15 +44,11 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for invocation outputs.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
   required: ["metadata", "code"]
   additionalProperties: false
   examples:
@@ -68,15 +61,13 @@ schema:
         "schema":
           "type": "object"
           "required": ["name"]
-          "properties":
-            "name": { "type": "string" }
+          "properties": { "name": { "type": "string" } }
       "outputType":
         "kind": "Telo.JsonSchema"
         "schema":
           "type": "object"
           "required": ["message"]
-          "properties":
-            "message": { "type": "string" }
+          "properties": { "message": { "type": "string" } }
       "code": |
         function main({ name }) {
           return { message: `Hello ${name}!` }

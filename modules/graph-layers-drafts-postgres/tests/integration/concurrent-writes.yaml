@@ -20,8 +20,7 @@ metadata:
     but an update of a node already deleted, and every delete holds.
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
-include:
-  - ./__fixtures__/write-race/model.yaml
+include: [./__fixtures__/write-race/model.yaml]
 imports:
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
@@ -29,8 +28,7 @@ imports:
     secrets: { engineToken: !cel "secrets.engineToken" }
   Race:
     source: ../../../graph-layers/tests/__fixtures__/write-race
-    variables:
-      value: parent
+    variables: { value: parent }
     resources:
       base: !ref base
       top: !ref top
@@ -91,8 +89,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_drafts_write_race CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_drafts_write_race CASCADE }
 ---
 kind: App.Instance
 metadata: { name: mergerLeft }
@@ -110,9 +107,7 @@ condition: !cel "resources.mergerLeft.status.exitCode == null"
 # 120s for a child kernel to boot, write 200 times and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: mergerRight }
@@ -130,9 +125,7 @@ condition: !cel "resources.mergerRight.status.exitCode == null"
 # 120s for a child kernel to boot, write 200 times and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: mergeRace }
@@ -164,9 +157,7 @@ condition: !cel "resources.deleter.status.exitCode == null"
 # 120s for a child kernel to boot, write 200 times and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: updater }
@@ -183,9 +174,7 @@ condition: !cel "resources.updater.status.exitCode == null"
 # 120s for a child kernel to boot, write 200 times and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: deleteRace }
@@ -217,9 +206,7 @@ condition: !cel "resources.sessionWriter.status.exitCode == null"
 # 120s for a child kernel to boot, write 400 times and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: outsideDeleter }
@@ -236,9 +223,7 @@ condition: !cel "resources.outsideDeleter.status.exitCode == null"
 # 120s for a child kernel to boot, write 400 times and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: sessionRace }

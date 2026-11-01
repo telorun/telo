@@ -11,11 +11,7 @@ metadata:
     payload back into its parts — either collected whole, or read incrementally so
     an upload larger than memory can be handled. Covers form uploads and the
     metadata-plus-content shape file APIs use. Part content may be text or bytes.
-exports:
-  kinds:
-    - Encoder
-    - Decoder
-    - Reader
+exports: { kinds: [Encoder, Decoder, Reader] }
 ---
 # Multipart.Encoder — N parts in, one framed byte stream out.
 #
@@ -40,8 +36,7 @@ metadata:
     send them under, because the generated boundary must appear in both. Text and
     byte parts are accepted, and a streamed part is never buffered.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#EncoderController
+controllers: [pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#EncoderController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -66,11 +61,9 @@ inputType:
                 as empty schemas matching anything, so under `oneOf` a plain string
                 would match several branches and fail.
               anyOf:
-                - type: string
-                - x-telo-type: Telo.Bytes
-                - x-telo-type:
-                    name: Telo.Stream
-                    of: Telo.Bytes
+                - { type: string }
+                - { x-telo-type: Telo.Bytes }
+                - { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
             contentType:
               type: string
               description: >-
@@ -113,9 +106,7 @@ outputType:
     required: [output, contentType, boundary]
     properties:
       output:
-        x-telo-type:
-          name: Telo.Stream
-          of: Telo.Bytes
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
         description: The framed payload, ready to send as a request body.
       contentType:
         type: string
@@ -126,9 +117,7 @@ outputType:
       boundary:
         type: string
         description: The boundary used, for a caller that must reproduce the header itself.
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Multipart.Decoder — a framed byte stream back into its parts.
 #
@@ -146,8 +135,7 @@ metadata:
     count and total bytes bound the upload, and a malformed or oversized payload
     fails with a distinct code.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#DecoderController
+controllers: [pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#DecoderController]
 throws:
   codes:
     ERR_MULTIPART_MALFORMED:
@@ -185,9 +173,7 @@ throws:
             type: string
             enum: [maxPartBytes, maxParts, maxTotalBytes]
             description: The input whose value was exceeded.
-          max:
-            type: integer
-            description: That input's value for this call.
+          max: { type: integer, description: That input's value for this call. }
           part:
             type: integer
             description: >-
@@ -206,9 +192,7 @@ inputType:
     required: [input, contentType]
     properties:
       input:
-        x-telo-type:
-          name: Telo.Stream
-          of: Telo.Bytes
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
         description: The received payload.
       contentType:
         type: string
@@ -254,9 +238,7 @@ outputType:
           additionalProperties: false
           required: [content, headers]
           properties:
-            content:
-              x-telo-type: Telo.Bytes
-              description: This part's payload, as raw bytes.
+            content: { x-telo-type: Telo.Bytes, description: "This part's payload, as raw bytes." }
             contentType:
               type: string
               description: The part's declared media type, when it carried one.
@@ -270,9 +252,7 @@ outputType:
               type: object
               additionalProperties: { type: string }
               description: Every header the part carried, with lowercase keys.
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Multipart.Reader — the incremental counterpart to Decoder.
 #
@@ -300,8 +280,7 @@ metadata:
     bound part size, part count and total bytes; a malformed or oversized payload
     fails the stream with a distinct code.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#ReaderController
+controllers: [pkg:telo/local/js?path=./nodejs/multipart.mjs&local_path=./nodejs/src/index.ts#ReaderController]
 throws:
   codes:
     ERR_MULTIPART_MALFORMED:
@@ -341,9 +320,7 @@ throws:
             type: string
             enum: [maxPartBytes, maxParts, maxTotalBytes]
             description: The input whose value was exceeded.
-          max:
-            type: integer
-            description: That input's value for this call.
+          max: { type: integer, description: That input's value for this call. }
           part:
             type: integer
             description: >-
@@ -362,9 +339,7 @@ inputType:
     required: [input, contentType]
     properties:
       input:
-        x-telo-type:
-          name: Telo.Stream
-          of: Telo.Bytes
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
         description: The received payload.
       contentType:
         type: string
@@ -409,9 +384,7 @@ outputType:
             required: [content, headers]
             properties:
               content:
-                x-telo-type:
-                  name: Telo.Stream
-                  of: Telo.Bytes
+                x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
                 description: This part's payload, read incrementally.
               contentType:
                 type: string
@@ -419,13 +392,9 @@ outputType:
               name:
                 type: string
                 description: The form field name from the part's Content-Disposition.
-              filename:
-                type: string
-                description: The file name, when present.
+              filename: { type: string, description: "The file name, when present." }
               headers:
                 type: object
                 additionalProperties: { type: string }
                 description: Every header the part carried, with lowercase keys.
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }

@@ -12,8 +12,7 @@ metadata:
     never dropped early, so they can carry locks, leases, at-most-once execution
     and idempotency records.
 exports:
-  kinds:
-    - Store
+  kinds: [Store]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/kv-store` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.

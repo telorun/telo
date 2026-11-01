@@ -1,10 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: RunInvalidCollection
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunInvalidCollection, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref verify
 ---
@@ -13,49 +9,27 @@ targets:
 # INVALID_COLLECTION. (A statically-typed non-array collection is a separate,
 # compile-time SCHEMA_VIOLATION — see analyzer coverage.)
 kind: Run.Iteration
-metadata:
-  name: badIteration
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      thing: {}
+metadata: { name: badIteration }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { thing: {} } } }
 collection: !cel "inputs.thing"
 steps:
-  - name: noop
-    invoke:
-      kind: Run.Value
-      value:
-        ok: true
+  - { name: noop, invoke: { kind: Run.Value, value: { ok: true } } }
 ---
 kind: Run.Projection
-metadata:
-  name: badProjection
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      thing: {}
+metadata: { name: badProjection }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { thing: {} } } }
 collection: !cel "inputs.thing"
 steps:
-  - name: noop
-    invoke:
-      kind: Run.Value
-      value:
-        ok: true
+  - { name: noop, invoke: { kind: Run.Value, value: { ok: true } } }
 ---
 kind: Run.Sequence
-metadata:
-  name: verify
+metadata: { name: verify }
 steps:
   - name: iterationFails
     try:
       - name: run
         invoke: !ref badIteration
-        inputs:
-          thing: 42
+        inputs: { thing: 42 }
     catch:
       - name: assertIteration
         inputs:
@@ -64,14 +38,12 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { type: string, const: INVALID_COLLECTION }
+            properties: { code: { type: string, const: INVALID_COLLECTION } }
   - name: projectionFails
     try:
       - name: run
         invoke: !ref badProjection
-        inputs:
-          thing: "not an array"
+        inputs: { thing: "not an array" }
     catch:
       - name: assertProjection
         inputs:
@@ -80,5 +52,4 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { type: string, const: INVALID_COLLECTION }
+            properties: { code: { type: string, const: INVALID_COLLECTION } }

@@ -9,12 +9,8 @@ metadata:
     Plain UTF-8 text on the wire: a stream of text pieces — including the delta
     records a model emits while streaming — becomes bytes, and a byte stream is
     collected back into one string. The simplest way to serve or read a text payload.
-imports:
-  Codec: ../codec
-exports:
-  kinds:
-    - Encoder
-    - Decoder
+imports: { Codec: ../codec }
+exports: { kinds: [Encoder, Decoder] }
 ---
 # Encoder: records → UTF-8 bytes. Accepts `{delta: string}`, bare strings,
 # and Uint8Array pass-through. Other shapes throw.
@@ -26,11 +22,8 @@ metadata:
     delta records, or bytes passed straight through.
 capability: Telo.Invocable
 extends: Codec.Encoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/plain-text-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/plain-text-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController]
+schema: { type: object, additionalProperties: false }
 ---
 # Decoder: byte stream → single UTF-8 string. Accepts `Uint8Array` chunks
 # (Buffer is a subtype) and bare strings as a pass-through convenience.
@@ -42,8 +35,7 @@ metadata:
     be held whole rather than consumed piece by piece.
 capability: Telo.Invocable
 extends: Codec.Decoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/plain-text-codec.mjs&local_path=./nodejs/src/index.ts#DecoderController
+controllers: [pkg:telo/local/js?path=./nodejs/plain-text-codec.mjs&local_path=./nodejs/src/index.ts#DecoderController]
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -54,6 +46,4 @@ outputType:
         description: UTF-8 string formed by concatenating every chunk in `input`.
     required: [ text ]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }

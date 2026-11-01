@@ -11,11 +11,7 @@ metadata:
     write entries directly, or wrap an expensive call in a read-through cache that
     serves the cached value and refreshes in the background or on demand.
 exports:
-  kinds:
-    - Store
-    - Lookup
-    - Entry
-    - View
+  kinds: [Store, Lookup, Entry, View]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/cache` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -50,18 +46,14 @@ metadata:
     Reads a cached key and reports the outcome as a miss, a fresh hit or a stale hit,
     along with the stored value and how long ago it was written.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#LookupController
+controllers: [pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#LookupController]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [key]
     additionalProperties: false
-    properties:
-      key:
-        type: string
-        description: Cache key to read.
+    properties: { key: { type: string, description: Cache key to read. } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -75,8 +67,7 @@ outputType:
         description: >-
           `miss` (absent / expired past the stale window), `fresh` (within the
           fresh window), or `stale` (past `ttl` but within `staleTtl`).
-      value:
-        description: The cached value, or null on `miss`.
+      value: { description: "The cached value, or null on `miss`." }
       age:
         type: [integer, "null"]
         description: Milliseconds since the entry was written, or null on `miss`.
@@ -88,9 +79,7 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -99,8 +88,7 @@ metadata:
     Writes a value into the cache under a key, setting how long it stays fresh and how
     long it may still be served as stale afterwards.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#EntryController
+controllers: [pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#EntryController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -108,19 +96,14 @@ inputType:
     required: [key, value]
     additionalProperties: false
     properties:
-      key:
-        type: string
-        description: Cache key to write.
-      value:
-        description: Value to store.
+      key: { type: string, description: Cache key to write. }
+      value: { description: Value to store. }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
-    properties:
-      key:
-        type: string
+    properties: { key: { type: string } }
 schema:
   type: object
   required: [store]
@@ -129,9 +112,7 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     ttl:
       title: TTL
       type: string
@@ -159,8 +140,7 @@ metadata:
     returning, or treats it as a miss. Falls back to the stale value when the refresh
     fails.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#ViewController
+controllers: [pkg:telo/local/js?path=./nodejs/cache.mjs&local_path=./nodejs/src/index.ts#ViewController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -197,9 +177,7 @@ schema:
     store:
       title: Store
       description: Reference to the backing cache store.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     invoke:
       title: Invoke
       description: The wrapped source of truth — an invocable or runnable resource — called on miss / revalidation.
@@ -212,10 +190,7 @@ schema:
         # would overstate the default and every graph consumer reads it.
         use:
           by: /revalidate
-          cases:
-            background: [call, detached]
-            sync: call
-            off: call
+          cases: { background: [call, detached], sync: call, off: call }
     ttl:
       title: TTL
       type: string

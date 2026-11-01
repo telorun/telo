@@ -31,5 +31,4 @@ steps:
         steps.check.result.problems.filter(p, p.check in
         ['controls-load-failed', 'vector-failed', 'scene-failed'])
       expected: []
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

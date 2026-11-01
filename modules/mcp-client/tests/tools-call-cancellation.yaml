@@ -6,17 +6,13 @@ metadata:
     A tools/call whose invocation is cancelled while the server is still working
     on it rejects as cancelled, and the server is told: it receives
     `notifications/cancelled` for that request and counts it.
-imports:
-  McpClient: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { McpClient: ../, Run: ../../run, Assert: ../../assert }
 targets: [ !ref testCancelledCall ]
 ---
 kind: McpClient.StdioClient
 metadata: { name: localMcp }
 command: node
-args:
-  - ./__fixtures__/stdio-server.mjs
+args: [./__fixtures__/stdio-server.mjs]
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall

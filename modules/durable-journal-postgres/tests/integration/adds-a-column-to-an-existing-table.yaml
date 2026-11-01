@@ -84,8 +84,7 @@ inputType:
     type: object
     required: [ticket]
     additionalProperties: false
-    properties:
-      ticket: { type: string }
+    properties: { ticket: { type: string } }
 steps:
   - name: start
     invoke: !ref onboard
@@ -107,9 +106,7 @@ steps:
   # deriving them from today's DDL would test nothing.
   - name: dropRuns
     invoke: !ref exec
-    inputs:
-      sql: "DROP TABLE IF EXISTS telo_durable_migration_test_runs"
-      bindings: []
+    inputs: { sql: "DROP TABLE IF EXISTS telo_durable_migration_test_runs", bindings: [] }
   - name: dropEntries
     invoke: !ref exec
     inputs:
@@ -141,8 +138,7 @@ steps:
   # Entering the scope is what boots the journal against that table.
   - name: ran
     invoke: !ref reconcileAndRun
-    inputs:
-      ticket: t1
+    inputs: { ticket: t1 }
 
   # A settlement that hit a missing column fails the whole run, so `completed` is
   # already most of the answer — but `replayed` is the field the new column

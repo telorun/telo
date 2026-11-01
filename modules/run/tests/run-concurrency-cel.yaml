@@ -1,12 +1,7 @@
 kind: Telo.Application
-metadata:
-  name: RunConcurrencyCel
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
-variables:
-  conc: { env: CONC, type: integer, default: 2 }
+metadata: { name: RunConcurrencyCel, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
+variables: { conc: { env: CONC, type: integer, default: 2 } }
 targets:
   - !ref verifyProjection
 ---
@@ -14,8 +9,7 @@ targets:
 # scheduler reads it. Reading it raw left a CompiledValue, zeroing the worker
 # pool and silently returning `[null, null, null]`.
 kind: Run.Projection
-metadata:
-  name: tagEach
+metadata: { name: tagEach }
 collection: !cel "['a', 'b', 'c']"
 concurrency: !cel "variables.conc"
 steps:
@@ -24,12 +18,7 @@ steps:
       x: !cel "item"
     invoke:
       kind: Run.Value
-      inputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            x: {}
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { x: {} } } }
       value:
         text: !cel "inputs.x"
 outputs:
@@ -37,8 +26,7 @@ outputs:
   at: !cel "index"
 ---
 kind: Run.Sequence
-metadata:
-  name: verifyProjection
+metadata: { name: verifyProjection }
 steps:
   - name: project
     invoke: !ref tagEach

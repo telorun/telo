@@ -28,24 +28,19 @@ reportUsage: true
 kind: AiEcho.EchoImageModel
 metadata: { name: totalRefuser }
 count: 2
-refuseOn:
-  prompt: BANNED
-  keep: 0
+refuseOn: { prompt: BANNED, keep: 0 }
 ---
 # Refuses only part of the batch: two asked for, one produced. Same finishReason as
 # a total refusal, which is why the array length is what tells them apart.
 kind: AiEcho.EchoImageModel
 metadata: { name: partialRefuser }
 count: 2
-refuseOn:
-  prompt: BANNED
-  keep: 1
+refuseOn: { prompt: BANNED, keep: 1 }
 ---
 kind: Ai.Image
 metadata: { name: draw }
 model: !ref echo
-options:
-  size: 1024x1024
+options: { size: 1024x1024 }
 ---
 # One image per call, so the edit assertions read against a single reference.
 kind: AiEcho.EchoImageModel
@@ -78,14 +73,10 @@ model: !ref partialRefuser
 # one entry per produced image with the provider's reported dimensions, and usage
 # arrives as the provider-neutral { unit, total } quantity.
 kind: Run.Sequence
-metadata:
-  name: testGeneration
+metadata: { name: testGeneration }
 steps:
   - name: generate
-    inputs:
-      prompt: a lighthouse
-      options:
-        quality: low
+    inputs: { prompt: a lighthouse, options: { quality: low } }
     invoke: !ref draw
   - name: assert
     inputs:
@@ -110,16 +101,14 @@ steps:
         height: 1024
         usageUnit: images
         usageTotal: 2
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # An intent is resource config; the reference images ride the call. Both must reach
 # the provider, and a mask must reach it too under an inpainting intent. The
 # references are real bytes produced by an earlier generation — the same round trip
 # a caller makes when it reworks a picture it just generated.
 kind: Run.Sequence
-metadata:
-  name: testEdit
+metadata: { name: testEdit }
 steps:
   - name: seed
     inputs: { prompt: a lighthouse }
@@ -149,15 +138,13 @@ steps:
       expected:
         edited: "prompt=add a storm|intent=edit|images=1|mask=0|options={}"
         inpainted: "prompt=repaint the sky|intent=inpaint|images=1|mask=1|options={}"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # A refusal is a RESULT, not an error: the run reports content-filter and hands back
 # whatever survived. Total and partial refusal share the reason and differ only in
 # how many images came back.
 kind: Run.Sequence
-metadata:
-  name: testRefusal
+metadata: { name: testRefusal }
 steps:
   - name: whole
     inputs: { prompt: BANNED }
@@ -184,16 +171,14 @@ steps:
         partlyCount: !cel "1"
         allowedReason: stop
         allowedCount: !cel "2"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The combinations a JSON Schema cannot state. The first three are structural, so
 # Ai.Image owns them; the mask requirement is the PROVIDER's, since it owns the
 # intent vocabulary — `inpaint` means nothing to the generic module, and a backend
 # whose repaint mode is called `outpaint` would silently lose the rule if it did.
 kind: Run.Sequence
-metadata:
-  name: testInputRules
+metadata: { name: testInputRules }
 steps:
   - name: seed
     inputs: { prompt: a lighthouse }
@@ -208,8 +193,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_INVALID_INPUT
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
   - name: imagesWithoutIntent
     try:
       - name: invoke
@@ -224,8 +208,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_INVALID_INPUT
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
   - name: intentWithoutImages
     try:
       - name: invoke
@@ -236,8 +219,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_INVALID_INPUT
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
   # Raised by the echo PROVIDER, not by Ai.Image — same code, different owner.
   - name: inpaintWithoutMask
     try:
@@ -253,5 +235,4 @@ steps:
         inputs:
           actual: !cel "error.code + '|' + string(error.message.contains('EchoImageModel'))"
           expected: ERR_INVALID_INPUT|true
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }

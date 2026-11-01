@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: TextSystemManifestAndRuntimeTest
-  version: 1.0.0
+metadata: { name: TextSystemManifestAndRuntimeTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -26,12 +24,10 @@ system: "manifest-system"
 # content, so if prepending shifts the user message to position 1 (not 0), the echoed
 # last message is still the user message → text equals the user content.
 kind: Run.Sequence
-metadata:
-  name: testManifestSystemPrepends
+metadata: { name: testManifestSystemPrepends }
 steps:
   - name: invoke
-    inputs:
-      prompt: "user-content"
+    inputs: { prompt: "user-content" }
     invoke: !ref withSystem
   - name: assertText
     inputs:
@@ -40,29 +36,21 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text: { const: "user-content" }
+        properties: { text: { const: "user-content" } }
         required: [ text ]
 ---
 # Case 2: runtime `inputs.system` wins over manifest `system`. Same echo behaviour
 # on the last message. This test just asserts the call succeeds with the override;
 # deeper observation of the system prompt requires a non-echo model.
 kind: Run.Sequence
-metadata:
-  name: testRuntimeSystemOverridesManifest
+metadata: { name: testRuntimeSystemOverridesManifest }
 steps:
   - name: invoke
-    inputs:
-      prompt: "u"
-      system: "runtime-system"
+    inputs: { prompt: "u", system: "runtime-system" }
     invoke: !ref withSystem
   - name: assert
     inputs:
       text: !cel "steps.invoke.result.text"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          text: { const: "u" }
-        required: [ text ]
+      schema: { type: object, properties: { text: { const: "u" } }, required: [text] }

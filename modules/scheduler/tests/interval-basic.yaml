@@ -33,14 +33,10 @@ store: !ref counters
 ---
 # The scheduled body: bump a counter so ticks are observable.
 kind: Run.Sequence
-metadata:
-  name: bump
+metadata: { name: bump }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      slot: { type: string }
+  schema: { type: object, properties: { slot: { type: string } } }
 steps:
   - name: read
     invoke: !ref get
@@ -53,15 +49,13 @@ steps:
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
 ---
 kind: Run.Sequence
-metadata:
-  name: testTicks
+metadata: { name: testTicks }
 with:
   - kind: Schedule.Interval
     metadata: { name: Ticker }
     every: "80ms"
     invoke: !ref bump
-    inputs:
-      slot: ticks
+    inputs: { slot: ticks }
   # Same schedule, gated shut — proves `when: false` skips the dispatch entirely
   # rather than firing and discarding the result.
   - kind: Schedule.Interval
@@ -69,17 +63,14 @@ with:
     every: "80ms"
     when: !cel "false"
     invoke: !ref bump
-    inputs:
-      slot: gated
+    inputs: { slot: gated }
 targets:
   - !ref Ticker
   - !ref GatedTicker
 steps:
   - name: wait
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "400ms"
-      value: {}
+    inputs: { duration: "400ms", value: {} }
   - name: readTicks
     invoke: !ref get
     inputs: { key: ticks }
@@ -92,9 +83,7 @@ steps:
     do:
       - name: pause
         invoke: { kind: Timer.Delay }
-        inputs:
-          duration: "50ms"
-          value: {}
+        inputs: { duration: "50ms", value: {} }
       - name: readTicks
         invoke: !ref get
         inputs: { key: ticks }

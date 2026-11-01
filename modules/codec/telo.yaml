@@ -10,10 +10,7 @@ metadata:
     stream of bytes ready for transport, decoding turns bytes back into values or
     records. Transport-neutral and format-agnostic — each wire format supplies its
     own implementation, and consumers pipe streams through whichever one they hold.
-exports:
-  kinds:
-    - Encoder
-    - Decoder
+exports: { kinds: [Encoder, Decoder] }
 ---
 # Encoder abstract — record/byte iterables to byte iterables.
 #

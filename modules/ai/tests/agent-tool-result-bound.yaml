@@ -19,10 +19,7 @@ targets:
 kind: Ai.Tools
 metadata: { name: noteTools }
 tools:
-  - tool:
-      kind: Run.Value
-      value:
-        note: "abcdéfgh"
+  - tool: { kind: Run.Value, value: { note: "abcdéfgh" } }
     name: readNote
     parameters: { type: object }
     result: !cel "result.note"
@@ -33,16 +30,13 @@ steps:
   - name: run
     invoke:
       kind: Ai.AgentStream
-      model:
-        kind: AiEcho.EchoModelStream
-        emitToolCall: { name: readNote }
+      model: { kind: AiEcho.EchoModelStream, emitToolCall: { name: readNote } }
       maxToolResultBytes: 5
       toolProviders:
         - provider: !ref noteTools
     inputs: { prompt: "read the note" }
   - name: parts
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
     inputs: { input: !cel "steps.run.result.output" }
   - name: check
     invoke: !ref Assert.equals

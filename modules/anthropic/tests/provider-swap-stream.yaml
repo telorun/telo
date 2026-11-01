@@ -68,20 +68,16 @@ with:
       - request:
           path: /messages
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 429
             when: !cel "json(request.body).contains('slow down')"
-            headers:
-              Retry-After: "7"
+            headers: { Retry-After: "7" }
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
-                body:
-                  type: error
-                  error: { type: rate_limit_error, message: slow down }
+                body: { type: error, error: { type: rate_limit_error, message: slow down } }
           - status: 200
             content:
               text/event-stream:
@@ -116,14 +112,12 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 429
             when: !cel "json(request.body).contains('slow down')"
-            headers:
-              Retry-After: "7"
+            headers: { Retry-After: "7" }
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
@@ -143,10 +137,8 @@ with:
                   data: [DONE]
   - kind: Server.Server
     metadata: { name: Vendors }
-    listen:
-      port: 8918
-    openapi:
-      info: { title: Fake vendor endpoints, version: 1.0.0 }
+    listen: { port: 8918 }
+    openapi: { info: { title: Fake vendor endpoints, version: 1.0.0 } }
     mounts:
       - path: /anthropic/v1
         mount: !ref AnthropicApi
@@ -155,17 +147,13 @@ with:
   - kind: App.Instance
     metadata: { name: anthropicApp }
     source: ./__fixtures__/swap-stream/anthropic-app.yaml
-    variables:
-      endpoint: http://localhost:8918/anthropic/v1
-    ports:
-      http: 8919
+    variables: { endpoint: http://localhost:8918/anthropic/v1 }
+    ports: { http: 8919 }
   - kind: App.Instance
     metadata: { name: openaiApp }
     source: ./__fixtures__/swap-stream/openai-app.yaml
-    variables:
-      endpoint: http://localhost:8918/openai/v1
-    ports:
-      http: 8920
+    variables: { endpoint: http://localhost:8918/openai/v1 }
+    ports: { http: 8920 }
 targets:
   - !ref Vendors
   - !ref anthropicApp

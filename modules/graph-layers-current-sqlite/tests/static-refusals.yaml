@@ -10,8 +10,7 @@ metadata:
   name: GraphLayersCurrentSqliteStaticRefusals
   version: 1.0.0
   description: The layered SQLite kinds' structural refusals, as `telo check` reports them.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref plainTable
   - !ref tableSeeds
@@ -51,24 +50,21 @@ metadata: { name: tableSeeds }
 source: ./__fixtures__/kinds/table-seeds.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "'seeds' is not allowed"
+    - { code: SCHEMA_VIOLATION, message: "'seeds' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableForeignKeys }
 source: ./__fixtures__/kinds/table-foreign-keys.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "'foreignKeys' is not allowed"
+    - { code: SCHEMA_VIOLATION, message: "'foreignKeys' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableInternalColumns }
 source: ./__fixtures__/kinds/table-internal-columns.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "'internalColumns' is not allowed"
+    - { code: SCHEMA_VIOLATION, message: "'internalColumns' is not allowed" }
 ---
 # The `graph_` prefix is the table kind's own, refused by its schema — at check,
 # and again at creation before `base:` maps anything onto the engine table.
@@ -79,15 +75,12 @@ expect:
   errors:
     - code: SCHEMA_VIOLATION
       message: "/columns matches a shape that is not allowed here"
-    - code: SCHEMA_VIOLATION
-      message: "/columns property name must be valid"
+    - { code: SCHEMA_VIOLATION, message: "/columns property name must be valid" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableReservedColumnAtRuntime }
 source: ./__fixtures__/tables/reserved-column-app.yaml
-expect:
-  errors: []
-  runFails: "/columns property name must be valid"
+expect: { errors: [], runFails: "/columns property name must be valid" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableReservedIndex }
@@ -96,15 +89,12 @@ expect:
   errors:
     - code: SCHEMA_VIOLATION
       message: "/indexes matches a shape that is not allowed here"
-    - code: SCHEMA_VIOLATION
-      message: "/indexes property name must be valid"
+    - { code: SCHEMA_VIOLATION, message: "/indexes property name must be valid" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableReservedIndexAtRuntime }
 source: ./__fixtures__/tables/reserved-index-app.yaml
-expect:
-  errors: []
-  runFails: "/indexes property name must be valid"
+expect: { errors: [], runFails: "/indexes property name must be valid" }
 ---
 # The engine table's own rules, restated on the table kinds under the engine's
 # codes (the code rides in `data.rule`), as `telo check` reports them. The
@@ -215,9 +205,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableColumnRenameFromSelfAtRuntime }
 source: ./__fixtures__/tables/column-rename-from-self-app.yaml
-expect:
-  errors: []
-  runFails: "column 'people.name' declares renamedFrom itself"
+expect: { errors: [], runFails: "column 'people.name' declares renamedFrom itself" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableColumnRenameSourceDeclaredAtRuntime }
@@ -236,6 +224,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableRenameFromSelfAtRuntime }
 source: ./__fixtures__/tables/table-rename-from-self-app.yaml
-expect:
-  errors: []
-  runFails: "table 'people' declares renamedFrom itself"
+expect: { errors: [], runFails: "table 'people' declares renamedFrom itself" }

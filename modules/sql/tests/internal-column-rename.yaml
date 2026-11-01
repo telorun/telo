@@ -2,11 +2,8 @@
 # `telo check` refuses the declaring library, and a consumer whose entry-scoped
 # check is silent fails when the table is created.
 kind: Telo.Application
-metadata:
-  name: InternalColumnRename
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: InternalColumnRename, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref fromSelfAtCheck
   - !ref fromSelfAtCreation
@@ -28,9 +25,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: fromSelfAtCreation }
 source: ./__fixtures__/internal-columns/rename-from-self-app.yaml
-expect:
-  errors: []
-  runFails: "column 'documents.layer' declares renamedFrom itself"
+expect: { errors: [], runFails: "column 'documents.layer' declares renamedFrom itself" }
 ---
 kind: Assert.Manifest
 metadata: { name: sourceDeclaredAtCheck }

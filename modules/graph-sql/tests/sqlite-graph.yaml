@@ -51,9 +51,7 @@ columns:
 kind: SQLite.Table
 metadata: { name: documents }
 table: documents
-columns:
-  id: { type: text, primaryKey: true }
-  title: { type: text }
+columns: { id: { type: text, primaryKey: true }, title: { type: text } }
 ---
 kind: SQLite.Table
 metadata: { name: knowsTable }

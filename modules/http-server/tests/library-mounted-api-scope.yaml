@@ -29,18 +29,12 @@ code: |
   }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      url: { type: string }
-    required: [ url ]
+  schema: { type: object, properties: { url: { type: string } }, required: [url] }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      status: { type: integer }
-      body: { type: string }
+    properties: { status: { type: integer }, body: { type: string } }
     required: [ status, body ]
 ---
 kind: Run.Sequence
@@ -48,9 +42,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8952
+    listen: { address: 127.0.0.1, port: 8952 }
     mounts:
       - path: /
         mount: !ref Lib.api
@@ -58,8 +50,7 @@ targets:
   - !ref Server
 steps:
   - name: hitInline
-    inputs:
-      url: http://127.0.0.1:8952/inline
+    inputs: { url: http://127.0.0.1:8952/inline }
     invoke: !ref fetch
   - name: assertInline
     inputs:
@@ -75,8 +66,7 @@ steps:
         required: [ status, body ]
 
   - name: hitRef
-    inputs:
-      url: http://127.0.0.1:8952/ref
+    inputs: { url: http://127.0.0.1:8952/ref }
     invoke: !ref fetch
   - name: assertRef
     inputs:

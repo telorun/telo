@@ -3,9 +3,7 @@
 # Brave's own codes (left out when Brave has none) and the recency hint as its
 # freshness code. The mock echoes the query parameters it received as the title.
 kind: Telo.Application
-metadata:
-  name: BraveRequestMappingTest
-  version: 1.0.0
+metadata: { name: BraveRequestMappingTest, version: 1.0.0 }
 imports:
   Brave: ..
   Http: ../../http-client
@@ -46,8 +44,7 @@ with:
       - request:
           path: /res/v1/web/search
           method: GET
-          schema:
-            query: { type: object, additionalProperties: true }
+          schema: { query: { type: object, additionalProperties: true } }
         handler: !ref echo
         returns:
           - status: 200
@@ -63,8 +60,7 @@ with:
                         description: echo
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18846
+    listen: { port: 18846 }
     mounts:
       - path: /
         mount: !ref FakeBrave

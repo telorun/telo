@@ -29,25 +29,19 @@ inputs:
 ---
 kind: Run.Value
 metadata: { name: readConfig }
-value:
-  text: "mode=test"
+value: { text: "mode=test" }
 ---
 kind: Run.Value
 metadata: { name: readForecast }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [city]
-    properties:
-      city: { type: string }
+  schema: { type: object, required: [city], properties: { city: { type: string } } }
 value:
   text: !cel "'Sunny in ' + inputs.city"
 ---
 kind: Run.Value
 metadata: { name: readFallback }
-value:
-  text: fallback
+value: { text: fallback }
 ---
 kind: Run.Value
 metadata: { name: readLogo }
@@ -57,12 +51,9 @@ value:
 kind: Run.Sequence
 metadata: { name: readLocked }
 throws:
-  - code: locked
+  - { code: locked }
 steps:
-  - name: bail
-    throw:
-      code: locked
-      message: "the vault is locked"
+  - { name: bail, throw: { code: locked, message: "the vault is locked" } }
 ---
 kind: Mcp.Resources
 metadata: { name: AppResources }
@@ -119,8 +110,7 @@ entries:
     name: Secret
     handler: !ref readLocked
     inputs: {}
-    result:
-      contents: []
+    result: { contents: [] }
     catches:
       - code: locked
         error:
@@ -137,9 +127,7 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8966
+    listen: { address: 127.0.0.1, port: 8966 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
@@ -163,8 +151,7 @@ steps:
 
   - name: list
     invoke: !ref rpc
-    inputs:
-      body: { jsonrpc: "2.0", id: 2, method: resources/list }
+    inputs: { body: { jsonrpc: "2.0", id: 2, method: resources/list } }
   - name: assertList
     invoke: { kind: Assert.Equals }
     inputs:
@@ -174,16 +161,12 @@ steps:
           name: App config
           description: Current configuration.
           mimeType: text/plain
-        - uri: asset://logo
-          name: Logo
-          mimeType: application/octet-stream
-        - uri: vault://secret
-          name: Secret
+        - { uri: asset://logo, name: Logo, mimeType: application/octet-stream }
+        - { uri: vault://secret, name: Secret }
 
   - name: listTemplates
     invoke: !ref rpc
-    inputs:
-      body: { jsonrpc: "2.0", id: 3, method: resources/templates/list }
+    inputs: { body: { jsonrpc: "2.0", id: 3, method: resources/templates/list } }
   - name: assertTemplates
     invoke: { kind: Assert.Equals }
     inputs:
@@ -192,10 +175,8 @@ steps:
         - uriTemplate: weather://{city}/forecast
           name: Forecast
           mimeType: text/plain
-        - uriTemplate: weather://{city}/{report}
-          name: Any report
-        - uriTemplate: config://{section}
-          name: Config section
+        - { uriTemplate: "weather://{city}/{report}", name: Any report }
+        - { uriTemplate: "config://{section}", name: Config section }
 
   - name: readFixed
     invoke: !ref rpc
@@ -206,9 +187,7 @@ steps:
     inputs:
       actual: !cel "parseJson(steps.readFixed.result.body.split('data: ')[1]).result.contents"
       expected:
-        - uri: config://app
-          mimeType: text/plain
-          text: mode=test
+        - { uri: config://app, mimeType: text/plain, text: mode=test }
 
   - name: readTemplated
     invoke: !ref rpc
@@ -219,8 +198,7 @@ steps:
     inputs:
       actual: !cel "parseJson(steps.readTemplated.result.body.split('data: ')[1]).result.contents"
       expected:
-        - uri: weather://Oslo/forecast
-          text: Sunny in Oslo
+        - { uri: weather://Oslo/forecast, text: Sunny in Oslo }
 
   - name: readSecondTemplate
     invoke: !ref rpc
@@ -258,9 +236,7 @@ steps:
       actual:
         isNotFound: !cel "parseJson(steps.readUnknown.result.body.split('data: ')[1]).error.code == -32002.0"
         message: !cel "parseJson(steps.readUnknown.result.body.split('data: ')[1]).error.message"
-      expected:
-        isNotFound: true
-        message: "Mcp: resource 'nowhere://x' not found"
+      expected: { isNotFound: true, message: "Mcp: resource 'nowhere://x' not found" }
 
   - name: readLocked
     invoke: !ref rpc
@@ -272,6 +248,4 @@ steps:
       actual:
         isMapped: !cel "parseJson(steps.readLocked.result.body.split('data: ')[1]).error.code == -32050.0"
         message: !cel "parseJson(steps.readLocked.result.body.split('data: ')[1]).error.message"
-      expected:
-        isMapped: true
-        message: the vault is locked
+      expected: { isMapped: true, message: the vault is locked }

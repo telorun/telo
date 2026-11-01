@@ -25,5 +25,4 @@ steps:
     inputs:
       actual: !cel "steps.check.result.problems"
       expected: []
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

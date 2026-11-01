@@ -7,8 +7,7 @@ metadata:
   name: GraphStaticRefusals
   version: 1.0.0
   description: The graph model rules, refused statically and at creation.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref endpointNotInStore
   - !ref endpointNotInStoreAtRuntime
@@ -32,9 +31,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointNotInStoreAtRuntime }
 source: ./__fixtures__/rules/endpoint-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: typeNotInStore }
@@ -47,9 +44,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: typeNotInStoreAtRuntime }
 source: ./__fixtures__/rules/type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: hopsDisconnected }
@@ -62,9 +57,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: hopsDisconnectedAtRuntime }
 source: ./__fixtures__/rules/hops-disconnected-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_HOPS_DISCONNECTED"
+expect: { errors: [], runFails: "GRAPH_HOPS_DISCONNECTED" }
 ---
 kind: Assert.Manifest
 metadata: { name: hopRepeatMixedTypes }
@@ -77,21 +70,16 @@ expect:
 kind: Assert.Manifest
 metadata: { name: hopRepeatMixedTypesAtRuntime }
 source: ./__fixtures__/rules/hop-repeat-mixed-types-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_HOP_REPEAT_MIXED_TYPES"
+expect: { errors: [], runFails: "GRAPH_HOP_REPEAT_MIXED_TYPES" }
 ---
 kind: Assert.Manifest
 metadata: { name: hopRangeInvalid }
 source: ./__fixtures__/rules/hop-range-invalid/telo.yaml
 expect:
   errors:
-    - code: RESOURCE_RULE_VIOLATED
-      message: "sets maxHops below minHops"
+    - { code: RESOURCE_RULE_VIOLATED, message: "sets maxHops below minHops" }
 ---
 kind: Assert.Manifest
 metadata: { name: hopRangeInvalidAtRuntime }
 source: ./__fixtures__/rules/hop-range-invalid-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_HOP_RANGE_INVALID"
+expect: { errors: [], runFails: "GRAPH_HOP_RANGE_INVALID" }

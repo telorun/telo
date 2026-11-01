@@ -13,8 +13,7 @@ metadata:
   name: GraphLayersRevisionsSqliteExportedTypes
   version: 1.0.0
   description: The layered rules, statically and at creation, over types another library exported.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref clean
   - !ref tableNotInSchema
@@ -29,9 +28,7 @@ targets:
 kind: Assert.Manifest
 metadata: { name: clean }
 source: ./__fixtures__/exported-types/clean-app.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }
 ---
 kind: Assert.Manifest
 metadata: { name: tableNotInSchema }
@@ -44,9 +41,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/exported-types/table-not-in-schema-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: typeNotInStore }
@@ -59,9 +54,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: typeNotInStoreAtRuntime }
 source: ./__fixtures__/exported-types/type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -74,9 +67,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/exported-types/schema-connection-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumn }
@@ -89,6 +80,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumnAtRuntime }
 source: ./__fixtures__/exported-types/node-key-unknown-column-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN"
+expect: { errors: [], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }

@@ -20,12 +20,8 @@ requires:
   # module. Verified by execution: the published 0.107.0 tarball exports none of
   # them.
   telo: ">=0.108.0"
-imports:
-  RecordStream: ../record-stream
-  Sql: ../sql
-exports:
-  kinds:
-    - JournalStore
+imports: { RecordStream: ../record-stream, Sql: ../sql }
+exports: { kinds: [JournalStore] }
 ---
 # RecordStreamSql.JournalStore — the journal store contract over any Sql.Connection.
 # `<table>_keys` holds one header per key (value, version, database-clock write
@@ -42,8 +38,7 @@ metadata:
     them, and polls for records another process appends.
 capability: Telo.Provider
 extends: RecordStream.JournalStore
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream-sql.mjs&local_path=./nodejs/src/index.ts#JournalStoreController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream-sql.mjs&local_path=./nodejs/src/index.ts#JournalStoreController]
 schema:
   type: object
   required: [connection]
@@ -52,9 +47,7 @@ schema:
     connection:
       title: Connection
       description: The database the journal lives in.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     table:
       title: Table
       type: string

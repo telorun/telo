@@ -3,10 +3,7 @@ metadata:
   name: HtmlMetadataTest
   version: 1.0.0
   description: Page metadata, including a malformed JSON-LD block.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref readsMetadata
 ---
@@ -37,9 +34,7 @@ steps:
         title: A post
         lang: fi
         baseUrl: https://example.com/post/1
-        meta:
-          description: [About it]
-          og:image: [/a.png, /b.png]
+        meta: { description: [About it], og:image: [/a.png, /b.png] }
         links:
           - { rel: [canonical], href: https://example.com/post/1 }
           - rel: [alternate, icon]
@@ -47,7 +42,7 @@ steps:
             type: image/x-icon
             sizes: 16x16
         jsonLd:
-          - value: { "@type": Article, wordCount: 3 }
+          - { value: { "@type": Article, wordCount: 3 } }
           - error: !cel "steps.metadata.result.jsonLd[1].error"
   - name: assertMalformedReported
     invoke: { kind: Assert.Matches }

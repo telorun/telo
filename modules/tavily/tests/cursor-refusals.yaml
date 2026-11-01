@@ -3,9 +3,7 @@
 # for different inputs, and a position that is not numeric or lies beyond the
 # 20 results Tavily returns.
 kind: Telo.Application
-metadata:
-  name: TavilyCursorRefusalsTest
-  version: 1.0.0
+metadata: { name: TavilyCursorRefusalsTest, version: 1.0.0 }
 imports:
   Tavily: ..
   WebSearch: ../../web-search

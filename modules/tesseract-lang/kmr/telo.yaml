@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - kmr
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [kmr] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: kmr, member: package/4.0.0_best_int/kmr.traineddata.gz, sha256: 6811f278103ceaedc4d860e1db5f74bbdc7ff0d5595fe7331a9bd9b4a0923b8c, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: kmr
-  description: Northern Kurdish, Latin script
+metadata: { name: kmr, description: "Northern Kurdish, Latin script" }
 code: kmr
 data: !module-path ./tessdata/kmr.traineddata.gz

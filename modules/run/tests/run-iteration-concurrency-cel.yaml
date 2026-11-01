@@ -1,12 +1,7 @@
 kind: Telo.Application
-metadata:
-  name: RunIterationConcurrencyCel
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
-variables:
-  conc: { env: CONC, type: integer, default: 2 }
+metadata: { name: RunIterationConcurrencyCel, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
+variables: { conc: { env: CONC, type: integer, default: 2 } }
 targets:
   - !ref iterateEach
   - !ref expectEvents
@@ -15,8 +10,7 @@ targets:
 # A `!cel` concurrency must resolve to an integer; reading it raw zeroed the
 # worker pool, so the body never ran (no events emitted).
 kind: Run.Iteration
-metadata:
-  name: iterateEach
+metadata: { name: iterateEach }
 collection: !cel "['x', 'y']"
 concurrency: !cel "variables.conc"
 steps:
@@ -25,26 +19,16 @@ steps:
       who: !cel "item"
     invoke:
       kind: Run.Value
-      inputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            who: {}
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { who: {} } } }
       value:
         notified: !cel "inputs.who"
 ---
 kind: Assert.Events
-metadata:
-  name: expectEvents
+metadata: { name: expectEvents }
 filter:
-  - type: "*"
+  - { type: "*" }
 expect:
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Run.Value }
-      outputs: { notified: x }
+    payload: { ref: { kind: Run.Value }, outputs: { notified: x } }
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Run.Value }
-      outputs: { notified: y }
+    payload: { ref: { kind: Run.Value }, outputs: { notified: y } }

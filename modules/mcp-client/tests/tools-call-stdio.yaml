@@ -1,9 +1,6 @@
 kind: Telo.Application
 metadata: { name: McpClientStdioToolCallTest, version: 1.0.0 }
-imports:
-  McpClient: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { McpClient: ../, Run: ../../run, Assert: ../../assert }
 targets: [ !ref testRun ]
 ---
 # Stdio MCP server child process: spawned at boot, handshake completes before
@@ -12,8 +9,7 @@ targets: [ !ref testRun ]
 kind: McpClient.StdioClient
 metadata: { name: localMcp }
 command: node
-args:
-  - ./__fixtures__/stdio-server.mjs
+args: [./__fixtures__/stdio-server.mjs]
 clientInfo: { name: telo-test, version: 1.0.0 }
 ---
 kind: McpClient.ToolsCall
@@ -24,10 +20,7 @@ kind: Run.Sequence
 metadata: { name: testRun }
 steps:
   - name: echo
-    inputs:
-      name: echo
-      arguments:
-        message: "hello stdio"
+    inputs: { name: echo, arguments: { message: "hello stdio" } }
     invoke: !ref echoCall
   - name: assertEcho
     inputs:
@@ -37,7 +30,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          contentType: { const: text }
-          contentText: { const: "hello stdio" }
+        properties: { contentType: { const: text }, contentText: { const: "hello stdio" } }
         required: [ contentType, contentText ]

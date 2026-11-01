@@ -31,8 +31,7 @@ metadata: { name: test }
 steps:
   - name: query
     invoke: !ref queryVector
-    inputs:
-      input: "telo"
+    inputs: { input: "telo" }
   - name: assertQuery
     inputs:
       dimensions: !cel "steps.query.result.dimensions"
@@ -49,15 +48,11 @@ steps:
             type: array
             minItems: 1
             maxItems: 1
-            items:
-              type: array
-              minItems: 8
-              maxItems: 8
+            items: { type: array, minItems: 8, maxItems: 8 }
           head: { const: 116 }
   - name: passage
     invoke: !ref passageVector
-    inputs:
-      input: ["telo", "run"]
+    inputs: { input: ["telo", "run"] }
   - name: assertPassage
     inputs:
       embeddings: !cel "steps.passage.result.embeddings"
@@ -67,9 +62,4 @@ steps:
       schema:
         type: object
         required: [embeddings, head]
-        properties:
-          embeddings:
-            type: array
-            minItems: 2
-            maxItems: 2
-          head: { const: 232 }
+        properties: { embeddings: { type: array, minItems: 2, maxItems: 2 }, head: { const: 232 } }

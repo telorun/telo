@@ -101,9 +101,7 @@ condition: !cel "resources.reader.status.exitCode == null"
 # 30s for a child kernel to boot, read and exit.
 maxIterations: 1500
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: replayInFreshProcess }

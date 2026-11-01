@@ -9,8 +9,7 @@ metadata:
     a .env.local in this directory; CI: secret on the workflow). NDJSON is
     the only format exercised live; format encoding is covered hermetically
     in the Layer 1 streaming-contract test.
-secrets:
-  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" } }
 imports:
   Ai: ../../../ai
   OpenAI: ../../
@@ -45,9 +44,7 @@ kind: OpenAI.ChatModelStream
 metadata: { name: live }
 model: gpt-4o-mini
 request: !ref openaiRequest
-options:
-  temperature: 0
-  maxTokens: 32
+options: { temperature: 0, maxTokens: 32 }
 ---
 kind: Ai.TextStream
 metadata: { name: chatStream }
@@ -94,8 +91,7 @@ steps:
     if: !cel "secrets.openaiApiKey != ''"
     then:
       - name: stream
-        inputs:
-          prompt: "Reply with exactly: hello"
+        inputs: { prompt: "Reply with exactly: hello" }
         invoke: !ref chatStream
       - name: encode
         inputs:

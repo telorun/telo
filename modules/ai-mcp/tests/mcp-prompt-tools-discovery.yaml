@@ -31,11 +31,8 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
-        handler:
-          kind: Run.Value
-          value: {}
+          schema: { body: { type: object, additionalProperties: true } }
+        handler: { kind: Run.Value, value: {} }
         returns:
           - status: 200
             content:
@@ -49,9 +46,7 @@ with:
                   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
   - kind: Server.Server
     metadata: { name: ModelServer }
-    listen:
-      address: 127.0.0.1
-      port: 8974
+    listen: { address: 127.0.0.1, port: 8974 }
     mounts:
       - path: /v1
         mount: !ref ModelApi
@@ -66,13 +61,9 @@ steps:
         model: gpt-test
         request:
           kind: Http.Request
-          client:
-            kind: Http.Client
-            baseUrl: http://127.0.0.1:8974/v1
+          client: { kind: Http.Client, baseUrl: http://127.0.0.1:8974/v1 }
       toolProviders:
-        - provider:
-            kind: AiMcp.PromptToolProvider
-            client: { kind: Stub.StubClient }
+        - provider: { kind: AiMcp.PromptToolProvider, client: { kind: Stub.StubClient } }
           prefix: guide_
     inputs: { prompt: "which guides are there?" }
   - name: assertTools

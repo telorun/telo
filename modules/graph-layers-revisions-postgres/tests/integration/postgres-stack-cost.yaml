@@ -276,8 +276,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_stack_cost CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_stack_cost CASCADE }
 ---
 # What this transaction has read from the three typed tables so far.
 kind: Run.Sequence
@@ -342,8 +341,7 @@ steps:
           JOIN graph_stack_cost.graph_layers l ON l.name = v.base
   - name: heads
     invoke: !ref write
-    inputs:
-      sql: UPDATE graph_stack_cost.graph_layers SET head_revision = 1
+    inputs: { sql: UPDATE graph_stack_cost.graph_layers SET head_revision = 1 }
   - name: hubs
     invoke: !ref write
     inputs:
@@ -364,9 +362,7 @@ inputType:
   schema:
     type: object
     required: [from, to]
-    properties:
-      from: { type: integer }
-      to: { type: integer }
+    properties: { from: { type: integer }, to: { type: integer } }
 steps:
   - name: people
     invoke: !ref write
@@ -423,9 +419,7 @@ inputType:
   schema:
     type: object
     required: [from, to]
-    properties:
-      from: { type: integer }
-      to: { type: integer }
+    properties: { from: { type: integer }, to: { type: integer } }
 steps:
   - name: middlePeople
     invoke: !ref write
@@ -556,9 +550,7 @@ inputType:
   schema:
     type: object
     required: [layer, count]
-    properties:
-      layer: { type: string }
-      count: { type: integer }
+    properties: { layer: { type: string }, count: { type: integer } }
 steps:
   - name: people
     invoke: !ref write
@@ -628,9 +620,7 @@ inputType:
   schema:
     type: object
     required: [from, to]
-    properties:
-      from: { type: integer }
-      to: { type: integer }
+    properties: { from: { type: integer }, to: { type: integer } }
 steps:
   - name: people
     invoke: !ref write
@@ -730,11 +720,7 @@ kind: Run.Sequence
 metadata: { name: addPageDraft }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [draft]
-    properties:
-      draft: { type: string }
+  schema: { type: object, required: [draft], properties: { draft: { type: string } } }
 steps:
   - name: people
     invoke: !ref write
@@ -774,11 +760,7 @@ kind: Run.Sequence
 metadata: { name: growPageDraft }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [draft]
-    properties:
-      draft: { type: string }
+  schema: { type: object, required: [draft], properties: { draft: { type: string } } }
 steps:
   - name: people
     invoke: !ref write
@@ -823,11 +805,7 @@ kind: Run.Sequence
 metadata: { name: addDraftOnlyKeys }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [draft]
-    properties:
-      draft: { type: string }
+  schema: { type: object, required: [draft], properties: { draft: { type: string } } }
 steps:
   - name: people
     invoke: !ref write
@@ -910,11 +888,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -939,11 +913,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -968,11 +938,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -1025,9 +991,7 @@ inputType:
   schema:
     type: object
     required: [draft, pages]
-    properties:
-      draft: { type: string }
-      pages: { type: integer }
+    properties: { draft: { type: string }, pages: { type: integer } }
 steps:
   - name: session
     inputs: { draft: !cel "inputs.draft", count: !cel "inputs.pages" }
@@ -1059,11 +1023,7 @@ steps:
               kind: Run.Sequence
               inputType:
                 kind: Telo.JsonSchema
-                schema:
-                  type: object
-                  required: [cursor]
-                  properties:
-                    cursor: { type: string }
+                schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
               steps:
                 - name: before
                   invoke: !ref readCounters
@@ -1105,11 +1065,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -1158,11 +1114,7 @@ kind: Run.Sequence
 metadata: { name: measureSessionWalk }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [draft]
-    properties:
-      draft: { type: string }
+  schema: { type: object, required: [draft], properties: { draft: { type: string } } }
 steps:
   - name: session
     inputs: { draft: !cel "inputs.draft" }
@@ -1356,11 +1308,7 @@ kind: Run.Sequence
 metadata: { name: measureConflicts }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [at]
-    properties:
-      at: { type: integer }
+  schema: { type: object, required: [at], properties: { at: { type: integer } } }
 steps:
   - name: j
     value: !cel "1"
@@ -1474,11 +1422,7 @@ steps:
         kind: Run.Sequence
         inputType:
           kind: Telo.JsonSchema
-          schema:
-            type: object
-            required: [draft]
-            properties:
-              draft: { type: string }
+          schema: { type: object, required: [draft], properties: { draft: { type: string } } }
         steps:
           - name: before
             invoke: !ref readCounters
@@ -1608,16 +1552,13 @@ steps:
     inputs: { draft: !cel "steps.registerBig.result.draft.id" }
   - name: noAutovacuumPeople
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_stack_cost.people SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_stack_cost.people SET (autovacuum_enabled = false) }
   - name: noAutovacuumKnows
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_stack_cost.knows SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_stack_cost.knows SET (autovacuum_enabled = false) }
   - name: noAutovacuumFollows
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_stack_cost.follows SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_stack_cost.follows SET (autovacuum_enabled = false) }
   - name: fixed
     invoke: !ref addFixed
   - name: populate

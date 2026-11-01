@@ -29,9 +29,7 @@ metadata:
     reason: >-
       Superseded by the kernel built-in `Telo.JsonSchema`, which is identical and
       needs no import. Write `kind: Telo.JsonSchema` and drop this dependency.
-exports:
-  kinds:
-    - JsonSchema
+exports: { kinds: [JsonSchema] }
 ---
 # DEPRECATED — use `kind: Telo.JsonSchema`, which is identical and built in.
 #

@@ -25,8 +25,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [items]
-    properties:
-      items: { type: array, items: { type: string } }
+    properties: { items: { type: array, items: { type: string } } }
 value:
   count: !cel "size(inputs.items)"
   first: !cel "inputs.items[0]"
@@ -39,8 +38,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [note]
-    properties:
-      note: { type: string }
+    properties: { note: { type: string } }
 value:
   note: !cel "inputs.note"
 ---
@@ -71,9 +69,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8992
+    listen: { address: 127.0.0.1, port: 8992 }
     mounts:
       - path: /
         mount: !ref api
@@ -97,24 +93,19 @@ steps:
       actual:
         items: !cel "steps.sendArray.result.body"
         note: !cel "steps.sendObject.result.body"
-      expected:
-        items: { count: 2, first: "a" }
-        note: { note: "kept" }
-    invoke:
-      kind: Assert.Equals
+      expected: { items: { count: 2, first: "a" }, note: { note: "kept" } }
+    invoke: { kind: Assert.Equals }
 ---
 kind: Assert.Manifest
 metadata: { name: testDeclaredBodyIsTyped }
 source: ./__fixtures__/request-body-declared-object.yaml
 expect:
   errors:
-    - code: CEL_TYPE_ERROR
-      message: "source is 'object', target expects 'array'"
+    - { code: CEL_TYPE_ERROR, message: "source is 'object', target expects 'array'" }
 ---
 kind: Assert.Manifest
 metadata: { name: testHeadersAreAMap }
 source: ./__fixtures__/request-headers-into-string.yaml
 expect:
   errors:
-    - code: CEL_TYPE_ERROR
-      message: "source is 'object', target expects 'string'"
+    - { code: CEL_TYPE_ERROR, message: "source is 'object', target expects 'string'" }

@@ -8,10 +8,7 @@ metadata:
     regional range answered by its language, malformed ranges, `*` and `q=0`
     skipped, and the default when nothing matches.
 lang: en
-imports:
-  I18n: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { I18n: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---

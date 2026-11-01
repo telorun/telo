@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - ori
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [ori] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: ori, member: package/4.0.0_best_int/ori.traineddata.gz, sha256: b42f60e0460daf814952ed1b239723f9a4c4c694a29ab016d772a02c68ef5ddc, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: ori
-  description: Odia, Odia script
+metadata: { name: ori, description: "Odia, Odia script" }
 code: ori
 data: !module-path ./tessdata/ori.traineddata.gz

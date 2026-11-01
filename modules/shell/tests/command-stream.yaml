@@ -17,12 +17,10 @@ targets:
   - !ref test
 ---
 kind: Shell.LocalHost
-metadata:
-  name: local
+metadata: { name: local }
 ---
 kind: RecordStream.ExtractText
-metadata:
-  name: stdout
+metadata: { name: stdout }
 discriminator: type
 records:
   stdout: { do: emit, field: chunk }
@@ -31,12 +29,10 @@ records:
   error: { do: throw, field: error }
 ---
 kind: PlainText.Decoder
-metadata:
-  name: collect
+metadata: { name: collect }
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 steps:
   - name: stream
     inputs:
@@ -60,5 +56,4 @@ steps:
     inputs:
       actual: !cel "steps.text.result.text"
       expected: hello-stream
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

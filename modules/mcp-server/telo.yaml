@@ -14,13 +14,7 @@ requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
-exports:
-  kinds:
-    - StdioServer
-    - HttpEndpoint
-    - Tools
-    - Resources
-    - Prompts
+exports: { kinds: [StdioServer, HttpEndpoint, Tools, Resources, Prompts] }
 ---
 # Mcp.Tools — passive bundle of tool entries. A transport (StdioServer or
 # HttpEndpoint) references one or more Mcp.Tools bundles via its `tools:` array
@@ -33,8 +27,7 @@ metadata:
     declares the arguments a model must supply, and points at the resource that runs
     when the tool is called.
 capability: Telo.Type
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#ToolsController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#ToolsController]
 schema:
   type: "object"
   additionalProperties: false
@@ -69,10 +62,7 @@ schema:
             description: Resource that implements the tool's behaviour — Invocable or Runnable. Receives the result of `inputs:` and returns a value rendered by `result:`.
             x-telo-topology-role: handler
             # Accept either capability so dual-mode kinds like Run.Sequence fit.
-            x-telo-ref:
-              kind: Telo.Executable
-              use: trigger.inbound
-              inputs: /inputs
+            x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
           inputs:
             title: Inputs
             description: CEL expressions mapping the MCP request scope onto the handler's input shape.
@@ -103,9 +93,7 @@ schema:
             additionalProperties: true
             required: [content]
             properties:
-              content:
-                title: Content
-                description: Array of MCP content blocks rendered by CEL.
+              content: { title: Content, description: Array of MCP content blocks rendered by CEL. }
               isError: {}
               structuredContent: {}
               _meta: {}
@@ -174,9 +162,7 @@ schema:
                       title: JSON-RPC Message
                       description: Error message surfaced to the MCP client.
                       type: "string"
-                    data:
-                      title: JSON-RPC Data
-                      description: Optional structured error data.
+                    data: { title: JSON-RPC Data, description: Optional structured error data. }
                   required: ["code", "message"]
               required: ["error"]
         required: ["name", "argumentsSchema", "handler", "inputs", "result"]
@@ -198,8 +184,7 @@ metadata:
     A bundle of readable resources an MCP server advertises: each entry names a URI a
     client can list and read, and points at the resource that produces its contents.
 capability: Telo.Type
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#ResourcesController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#ResourcesController]
 schema:
   type: "object"
   additionalProperties: false
@@ -227,10 +212,7 @@ schema:
             type: "string"
             # Every '{' closes and names a variable; twinned in the controller.
             pattern: "^([^{}]|\\{[^{}]+\\})+$"
-          name:
-            title: Name
-            description: Human-readable resource label.
-            type: "string"
+          name: { title: Name, description: Human-readable resource label., type: "string" }
           description:
             title: Description
             description: Summary surfaced to MCP clients.
@@ -243,10 +225,7 @@ schema:
             title: Handler
             description: Resource that produces contents on read — Invocable or Runnable.
             x-telo-topology-role: handler
-            x-telo-ref:
-              kind: Telo.Executable
-              use: trigger.inbound
-              inputs: /inputs
+            x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
           inputs:
             title: Inputs
             description: CEL expressions mapping the MCP request scope onto the handler's input shape.
@@ -287,9 +266,7 @@ schema:
                 request:
                   type: object
                   additionalProperties: false
-                  properties:
-                    uri: { type: string }
-                    params: { type: object, additionalProperties: true }
+                  properties: { uri: { type: string }, params: { type: object, additionalProperties: true } }
                 result:
                   x-telo-context-ref-from: "handler/outputType"
                   type: object
@@ -314,9 +291,7 @@ schema:
                 request:
                   type: object
                   additionalProperties: false
-                  properties:
-                    uri: { type: string }
-                    params: { type: object, additionalProperties: true }
+                  properties: { uri: { type: string }, params: { type: object, additionalProperties: true } }
             items:
               type: "object"
               additionalProperties: false
@@ -329,15 +304,13 @@ schema:
                   properties:
                     code: { type: "integer" }
                     message: { type: "string" }
-                    data:
-                      type: "object"
-                      additionalProperties: true
+                    data: { type: "object", additionalProperties: true }
                   required: ["code", "message"]
               required: ["error"]
         required: ["name", "handler", "inputs", "result"]
         oneOf:
-          - required: ["uri"]
-          - required: ["uriTemplate"]
+          - { required: ["uri"] }
+          - { required: ["uriTemplate"] }
   required: ["entries"]
   x-telo-resource-rules:
     - in: /entries
@@ -359,8 +332,7 @@ metadata:
     list and fetch with arguments, and points at the resource that renders its
     messages.
 capability: Telo.Type
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#PromptsController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#PromptsController]
 schema:
   type: "object"
   additionalProperties: false
@@ -382,9 +354,7 @@ schema:
             type: "string"
             minLength: 1
             x-telo-topology-role: matcher
-          description:
-            title: Description
-            type: "string"
+          description: { title: Description, type: "string" }
           arguments:
             title: Arguments
             description: Flat list of named prompt parameters. A prompts/get leaving out one marked `required` is refused before the handler runs.
@@ -401,10 +371,7 @@ schema:
             title: Handler
             description: Resource that produces the prompt message array on get — Invocable or Runnable.
             x-telo-topology-role: handler
-            x-telo-ref:
-              kind: Telo.Executable
-              use: trigger.inbound
-              inputs: /inputs
+            x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
           inputs:
             title: Inputs
             description: CEL expressions mapping the MCP request scope onto the handler's input shape.
@@ -487,9 +454,7 @@ schema:
                   properties:
                     code: { type: "integer" }
                     message: { type: "string" }
-                    data:
-                      type: "object"
-                      additionalProperties: true
+                    data: { type: "object", additionalProperties: true }
                   required: ["code", "message"]
               required: ["error"]
         required: ["name", "handler", "inputs", "result"]
@@ -514,8 +479,7 @@ metadata:
     standard input and output — the shape a desktop client or editor expects when it
     launches a server as a child process.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#StdioServerController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#StdioServerController]
 schema:
   type: "object"
   additionalProperties: false
@@ -529,12 +493,8 @@ schema:
       type: "object"
       additionalProperties: false
       properties:
-        name:
-          title: Name
-          type: "string"
-        version:
-          title: Version
-          type: "string"
+        name: { title: Name, type: "string" }
+        version: { title: Version, type: "string" }
       required: ["name", "version"]
     instructions:
       title: Instructions
@@ -548,26 +508,17 @@ schema:
       title: Tools
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
       type: "array"
-      items:
-        x-telo-ref:
-          kind: Self.Tools
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Tools, use: dependency } }
     resources:
       title: Resources
       description: Mcp.Resources bundles whose entries should be exposed by this transport.
       type: "array"
-      items:
-        x-telo-ref:
-          kind: Self.Resources
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Resources, use: dependency } }
     prompts:
       title: Prompts
       description: Mcp.Prompts bundles whose entries should be exposed by this transport.
       type: "array"
-      items:
-        x-telo-ref:
-          kind: Self.Prompts
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Prompts, use: dependency } }
   required: ["serverInfo"]
   # A client addresses an entry by its name or URI alone, so the bundles one
   # transport serves must not share one.
@@ -612,8 +563,7 @@ metadata:
     mounted alongside the rest of an application's routes, with optional per-session
     state for stateful clients.
 capability: Telo.Mount
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#HttpEndpointController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-server.mjs&local_path=./nodejs/src/index.ts#HttpEndpointController]
 schema:
   type: "object"
   additionalProperties: false
@@ -627,12 +577,8 @@ schema:
       type: "object"
       additionalProperties: false
       properties:
-        name:
-          title: Name
-          type: "string"
-        version:
-          title: Version
-          type: "string"
+        name: { title: Name, type: "string" }
+        version: { title: Version, type: "string" }
       required: ["name", "version"]
     instructions:
       title: Instructions
@@ -658,26 +604,17 @@ schema:
       title: Tools
       description: Mcp.Tools bundles whose entries should be exposed by this transport.
       type: "array"
-      items:
-        x-telo-ref:
-          kind: Self.Tools
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Tools, use: dependency } }
     resources:
       title: Resources
       description: Mcp.Resources bundles whose entries should be exposed by this transport.
       type: "array"
-      items:
-        x-telo-ref:
-          kind: Self.Resources
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Resources, use: dependency } }
     prompts:
       title: Prompts
       description: Mcp.Prompts bundles whose entries should be exposed by this transport.
       type: "array"
-      items:
-        x-telo-ref:
-          kind: Self.Prompts
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Prompts, use: dependency } }
   required: ["serverInfo"]
   # A client addresses an entry by its name or URI alone, so the bundles one
   # transport serves must not share one.

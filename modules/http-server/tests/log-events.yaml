@@ -59,8 +59,7 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
     required: [text]
     additionalProperties: false
 outputType:
@@ -74,13 +73,7 @@ outputType:
       durationLooksLikeSeconds: { type: boolean }
       startedAttributes: { type: array, items: { type: string } }
       completedAttributes: { type: array, items: { type: string } }
-    required:
-      - events
-      - matchedRoute
-      - unmatchedHasRoute
-      - durationLooksLikeSeconds
-      - startedAttributes
-      - completedAttributes
+    required: [events, matchedRoute, unmatchedHasRoute, durationLooksLikeSeconds, startedAttributes, completedAttributes]
     additionalProperties: false
 code: |
   function main({ text }) {
@@ -115,21 +108,16 @@ code: |
   }
 ---
 kind: Run.Sequence
-metadata:
-  name: testLogEvents
+metadata: { name: testLogEvents }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8913
+    listen: { address: 127.0.0.1, port: 8913 }
     mounts:
       - path: /api
         mount: !ref api
-  - kind: HttpClient.Request
-    metadata: { name: Call }
-  - kind: Fs.File
-    metadata: { name: ReadLog }
+  - { kind: HttpClient.Request, metadata: { name: Call } }
+  - { kind: Fs.File, metadata: { name: ReadLog } }
 targets:
   - !ref Server
 steps:
@@ -158,17 +146,9 @@ steps:
         # `http.server.stopped` is absent: teardown has not run while the sequence
         # that owns the server is still executing. That it does not appear here is
         # the start/stop pairing holding.
-        events:
-          - http.server.started
-          - http.server.request
-          - http.server.request
+        events: [http.server.started, http.server.request, http.server.request]
         matchedRoute: /api/things/:id
         unmatchedHasRoute: false
         durationLooksLikeSeconds: true
         startedAttributes: [server.address, server.port, url.scheme]
-        completedAttributes:
-          - http.request.method
-          - http.response.status_code
-          - http.route
-          - http.server.request.duration
-          - httpserver.request_id
+        completedAttributes: [http.request.method, http.response.status_code, http.route, http.server.request.duration, httpserver.request_id]

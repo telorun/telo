@@ -38,6 +38,4 @@ targets:
 ---
 kind: RecordStreamSql.JournalStore
 metadata: { name: store }
-connection:
-  kind: SQLite.Connection
-  file: ":memory:"
+connection: { kind: SQLite.Connection, file: ":memory:" }

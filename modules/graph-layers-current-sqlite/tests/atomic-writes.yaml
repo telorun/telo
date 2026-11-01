@@ -34,9 +34,7 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.RelationshipTable
 metadata: { name: knowsTable }
@@ -51,9 +49,7 @@ kind: Layers.NodeTable
 metadata: { name: guardedTable }
 table: guarded
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 # A removal keeps the values it hides, so this refuses hiding a row named Carol.
 checks:
   carolStays: { expression: "NOT (graph_effect = 'removed' AND name = 'Carol')" }

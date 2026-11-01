@@ -32,16 +32,14 @@ steps:
       parts:
         - contentType: application/json
           content: '{"name":"report.png","parents":["folder-1"]}'
-        - name: field
-          content: plain value
+        - { name: field, content: plain value }
         - name: file
           filename: report.png
           contentType: image/png
           # Bytes, not text: a byte part is the case the old string-only path
           # corrupted, and `bytesFromBase64` is how a manifest names bytes at all.
           content: !cel "bytesFromBase64('iVBORw0KGgo=')"
-    invoke:
-      kind: Multipart.Encoder
+    invoke: { kind: Multipart.Encoder }
 
   # The content type carries the generated boundary, so it is what the decoder is
   # given — proving the pair travels together rather than being reassembled.
@@ -49,8 +47,7 @@ steps:
     inputs:
       input: !cel "steps.encode.result.output"
       contentType: !cel "steps.encode.result.contentType"
-    invoke:
-      kind: Multipart.Decoder
+    invoke: { kind: Multipart.Decoder }
 
   - name: assertRoundTrip
     inputs:
@@ -79,8 +76,7 @@ steps:
         secondBody: plain value
         fileName: report.png
         fileBytes: iVBORw0KGgo=
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # A STREAMED part. This is the case CEL concatenation cannot express at all: the
 # content arrives in pieces and is written through as it is consumed, so a part
@@ -90,26 +86,21 @@ kind: Run.Sequence
 metadata: { name: streamedPart }
 steps:
   - name: source
-    invoke:
-      kind: Stream.Of
-    inputs:
-      items: ["chunk-one|", "chunk-two|", "chunk-three"]
+    invoke: { kind: Stream.Of }
+    inputs: { items: ["chunk-one|", "chunk-two|", "chunk-three"] }
   - name: encode
     inputs:
       parts:
-        - name: meta
-          content: "before"
+        - { name: meta, content: "before" }
         - name: payload
           filename: big.bin
           content: !cel "steps.source.result.output"
-    invoke:
-      kind: Multipart.Encoder
+    invoke: { kind: Multipart.Encoder }
   - name: decode
     inputs:
       input: !cel "steps.encode.result.output"
       contentType: !cel "steps.encode.result.contentType"
-    invoke:
-      kind: Multipart.Decoder
+    invoke: { kind: Multipart.Decoder }
   - name: assert
     inputs:
       actual:
@@ -125,8 +116,7 @@ steps:
         payload: "chunk-one|chunk-two|chunk-three"
         filename: big.bin
         formData: true
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # Multipart.Reader — the incremental path. Two things only this can show: a part's
 # body arrives as its own stream (never held whole), and SKIPPING a part is safe.
@@ -139,19 +129,14 @@ steps:
   - name: encode
     inputs:
       parts:
-        - name: skipped
-          content: "this body is never read"
-        - name: wanted
-          filename: wanted.txt
-          content: "this one is"
-    invoke:
-      kind: Multipart.Encoder
+        - { name: skipped, content: "this body is never read" }
+        - { name: wanted, filename: wanted.txt, content: "this one is" }
+    invoke: { kind: Multipart.Encoder }
   - name: read
     inputs:
       input: !cel "steps.encode.result.output"
       contentType: !cel "steps.encode.result.contentType"
-    invoke:
-      kind: Multipart.Reader
+    invoke: { kind: Multipart.Reader }
   - name: walk
     inputs:
       parts: !cel "steps.read.result.parts"
@@ -163,8 +148,7 @@ steps:
     inputs:
       actual: !cel "steps.seen.result.seen"
       expected: ["skipped:", "wanted:this one is"]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # Reads each part's NAME always, but its body only for the second part.
 kind: Run.Iteration
@@ -182,10 +166,7 @@ inputType:
             type: object
             properties:
               name: { type: string }
-              content:
-                x-telo-type:
-                  name: Telo.Stream
-                  of: Telo.Bytes
+              content: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
 collection: !cel "inputs.parts"
 concurrency: 1
 steps:
@@ -195,8 +176,7 @@ steps:
       - name: drain
         inputs:
           input: !cel "item.content"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       - name: noteWanted
         inputs:
           label: !cel "item.name"
@@ -216,16 +196,10 @@ inputType:
   schema:
     type: object
     required: [label, text]
-    properties:
-      label: { type: string }
-      text: { type: string }
+    properties: { label: { type: string }, text: { type: string } }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seen]
-    properties:
-      seen: { type: array }
+  schema: { type: object, required: [seen], properties: { seen: { type: array } } }
 code: |
   function main({ label, text }) {
     globalThis.__multipartSeen ??= [];
@@ -237,11 +211,7 @@ kind: JS.Script
 metadata: { name: readSeen }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seen]
-    properties:
-      seen: { type: array }
+  schema: { type: object, required: [seen], properties: { seen: { type: array } } }
 code: |
   function main() {
     return { seen: globalThis.__multipartSeen ?? [] };
@@ -263,18 +233,14 @@ steps:
   - name: encode
     inputs:
       parts:
-        - content: no headers at all
-        - filename: report.png
-          contentType: image/png
-          content: png bytes
-    invoke:
-      kind: Multipart.Encoder
+        - { content: no headers at all }
+        - { filename: report.png, contentType: image/png, content: png bytes }
+    invoke: { kind: Multipart.Encoder }
   - name: decode
     inputs:
       input: !cel "steps.encode.result.output"
       contentType: !cel "steps.encode.result.contentType"
-    invoke:
-      kind: Multipart.Decoder
+    invoke: { kind: Multipart.Decoder }
   - name: assert
     inputs:
       actual:
@@ -287,8 +253,7 @@ steps:
         bodies: [no headers at all, png bytes]
         names: ['<absent>', '<absent>']
         filenames: ['<absent>', report.png]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The reader's chunk boundaries must not eat content bytes.
 #
@@ -309,23 +274,19 @@ steps:
   - name: source
     inputs:
       items: ["abcde\n", f]
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: encode
     inputs:
       boundary: XY
       parts:
         - content: !cel "steps.source.result.output"
-        - name: after
-          content: tail
-    invoke:
-      kind: Multipart.Encoder
+        - { name: after, content: tail }
+    invoke: { kind: Multipart.Encoder }
   - name: read
     inputs:
       input: !cel "steps.encode.result.output"
       contentType: !cel "steps.encode.result.contentType"
-    invoke:
-      kind: Multipart.Reader
+    invoke: { kind: Multipart.Reader }
   - name: walk
     inputs:
       parts: !cel "steps.read.result.parts"
@@ -336,8 +297,7 @@ steps:
     inputs:
       actual: !cel "steps.seen.result.seen"
       expected: ["abcde\nf", tail]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Iteration
 metadata: { name: collectAll }
@@ -352,19 +312,14 @@ inputType:
           name: Telo.Stream
           of:
             type: object
-            properties:
-              content:
-                x-telo-type:
-                  name: Telo.Stream
-                  of: Telo.Bytes
+            properties: { content: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
 collection: !cel "inputs.parts"
 concurrency: 1
 steps:
   - name: drain
     inputs:
       input: !cel "item.content"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: record
     inputs:
       text: !cel "steps.drain.result.items.map(c, string(c)).join('')"
@@ -374,18 +329,10 @@ kind: JS.Script
 metadata: { name: collected }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [text]
-    properties:
-      text: { type: string }
+  schema: { type: object, required: [text], properties: { text: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seen]
-    properties:
-      seen: { type: array }
+  schema: { type: object, required: [seen], properties: { seen: { type: array } } }
 code: |
   function main({ text }) {
     globalThis.__multipartCollected ??= [];
@@ -397,11 +344,7 @@ kind: JS.Script
 metadata: { name: readCollected }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seen]
-    properties:
-      seen: { type: array }
+  schema: { type: object, required: [seen], properties: { seen: { type: array } } }
 code: |
   function main() {
     return { seen: globalThis.__multipartCollected ?? [] };

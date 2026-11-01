@@ -24,16 +24,12 @@ imports:
   # from ui-react's contract entry.
   Ui: ../ui
   UiReact: ../ui-react
-exports:
-  kinds:
-    - CheckTheme
-    - CheckControls
+exports: { kinds: [CheckTheme, CheckControls] }
 ---
 # One thing a check found wrong. The `check` names what is wrong, and the
 # `subject` is what it is wrong about.
 kind: Telo.JsonSchema
-metadata:
-  name: Problem
+metadata: { name: Problem }
 schema:
   type: object
   additionalProperties: false
@@ -43,16 +39,7 @@ schema:
       title: Check
       description: What is wrong.
       type: string
-      enum:
-        - part-unstyled
-        - unstyled-stale
-        - property-reserved
-        - token-default-missing
-        - token-unread
-        - stylesheet-unparseable
-        - vector-failed
-        - scene-failed
-        - controls-load-failed
+      enum: [part-unstyled, unstyled-stale, property-reserved, token-default-missing, token-unread, stylesheet-unparseable, vector-failed, scene-failed, controls-load-failed]
     subject:
       title: Subject
       description: >-
@@ -76,13 +63,8 @@ metadata:
     with the theme's controls, and each of its control sets behaves. Answers the
     problems found, none when it conforms.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui-react-conformance.mjs&local_path=./nodejs/src/index.ts#CheckThemeController
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/ui-react-conformance.mjs&local_path=./nodejs/src/index.ts#CheckThemeController]
+inputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -116,13 +98,8 @@ schema:
         additionalProperties: false
         required: [part, reason]
         properties:
-          part:
-            title: Part
-            type: string
-          reason:
-            title: Reason
-            type: string
-            minLength: 1
+          part: { title: Part, type: string }
+          reason: { title: Reason, type: string, minLength: 1 }
 ---
 kind: Telo.Definition
 metadata:
@@ -134,13 +111,8 @@ metadata:
     states it draws, focus trapping, dismissal reasons. Answers the problems
     found, none when it conforms.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui-react-conformance.mjs&local_path=./nodejs/src/index.ts#CheckControlsController
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/ui-react-conformance.mjs&local_path=./nodejs/src/index.ts#CheckControlsController]
+inputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -154,9 +126,8 @@ outputType:
         type: array
         items:
           allOf:
-            - $ref: "telo://Self/Problem"
-            - properties:
-                check: { enum: [vector-failed, controls-load-failed] }
+            - { $ref: "telo://Self/Problem" }
+            - { properties: { check: { enum: [vector-failed, controls-load-failed] } } }
 schema:
   type: object
   additionalProperties: false

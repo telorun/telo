@@ -19,8 +19,7 @@ metadata:
     nothing. A lifecycle listing's cursor is the graph's own envelope: one
     listing's cursor resumes no other, and an envelope version this runtime
     does not read is refused.
-include:
-  - ./__fixtures__/drafts-model.yaml
+include: [./__fixtures__/drafts-model.yaml]
 imports:
   Sql: ../../sql
   SQLite: ../../sqlite
@@ -716,15 +715,11 @@ steps:
         - name: third
           invoke: !ref teamCreatePerson
           inputs: { key: t3, properties: { name: Written first } }
-        - name: pauseOne
-          invoke: { kind: Timer.Delay }
-          inputs: { duration: 5ms }
+        - { name: pauseOne, invoke: { kind: Timer.Delay }, inputs: { duration: 5ms } }
         - name: first
           invoke: !ref teamCreatePerson
           inputs: { key: t1, properties: { name: Written second } }
-        - name: pauseTwo
-          invoke: { kind: Timer.Delay }
-          inputs: { duration: 5ms }
+        - { name: pauseTwo, invoke: { kind: Timer.Delay }, inputs: { duration: 5ms } }
         - name: second
           invoke: !ref teamCreatePerson
           inputs: { key: t2, properties: { name: Written third } }
@@ -784,11 +779,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [draft]
-      properties:
-        draft: { type: string }
+    schema: { type: object, required: [draft], properties: { draft: { type: string } } }
   steps:
     - name: publish
       invoke: !ref teamPublish

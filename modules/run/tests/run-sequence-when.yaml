@@ -1,51 +1,31 @@
 kind: Telo.Application
-metadata:
-  name: RunSequenceWhen
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunSequenceWhen, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testWhenGuard
 ---
 kind: Run.Sequence
-metadata:
-  name: testWhenGuard
+metadata: { name: testWhenGuard }
 steps:
   # Step with when:false is skipped. If it ran, its Assert.Schema would fail (const: 0 vs. 999).
   - name: shouldSkip
     when: !cel "false"
-    inputs:
-      x: 999
+    inputs: { x: 999 }
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          x:
-            type: number
-            const: 0
+      schema: { type: object, properties: { x: { type: number, const: 0 } } }
 
   # Step with when:true must run. If skipped, the outer assertion below would have no result.
   - name: shouldRun
     when: !cel "true"
-    inputs:
-      flag: "yes"
+    inputs: { flag: "yes" }
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          flag:
-            type: string
-            const: "yes"
+      schema: { type: object, properties: { flag: { type: string, const: "yes" } } }
 
   # Data-driven guard: step only runs when a prior result satisfies the condition.
   - name: compute
-    invoke:
-      kind: Run.Value
-      value:
-        ready: true
+    invoke: { kind: Run.Value, value: { ready: true } }
 
   - name: dataDrivenStep
     when: !cel "steps.compute.result.ready == true"
@@ -53,11 +33,7 @@ steps:
       ready: !cel "steps.compute.result.ready"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          ready:
-            const: true
+      schema: { type: object, properties: { ready: { const: true } } }
 
   # Verify ShouldRun actually ran by checking its result.
   - name: verifyRan
@@ -65,8 +41,4 @@ steps:
       result: !cel "steps.shouldRun.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }

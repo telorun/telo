@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - slv
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [slv] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: slv, member: package/4.0.0_best_int/slv.traineddata.gz, sha256: 23550808c5ae045a2c6cabcb8a03a52239ffeaf45571d1120135ddc632d021f1, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: slv
-  description: Slovenian, Latin script
+metadata: { name: slv, description: "Slovenian, Latin script" }
 code: slv
 data: !module-path ./tessdata/slv.traineddata.gz

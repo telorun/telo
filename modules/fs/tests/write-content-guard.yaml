@@ -8,10 +8,7 @@ metadata:
     runtime is a CEL expression, whose value the analyzer cannot know: this covers
     the contract rejecting a non-byte value there, and both string forms still
     working after the slot was widened.
-imports:
-  Fs: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Fs: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testContentGuard
 # The directory the test writes its scratch files into — one anchor, from which
@@ -75,9 +72,7 @@ steps:
       actual:
         utf8Bytes: !cel "steps.writesUtf8.result.bytesWritten"
         base64Bytes: !cel "steps.writesBase64.result.bytesWritten"
-      expected:
-        utf8Bytes: 6
-        base64Bytes: 6
+      expected: { utf8Bytes: 6, base64Bytes: 6 }
     invoke: !ref Assert.equals
 
   - name: cleanup

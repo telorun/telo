@@ -10,9 +10,7 @@ metadata:
     callable resource with typed inputs and outputs. Deterministic, with no I/O and no
     access to the host, so it suits pure data transformation and policy decisions
     rather than side effects.
-exports:
-  kinds:
-    - Script
+exports: { kinds: [Script] }
 ---
 kind: Telo.Definition
 metadata:
@@ -23,18 +21,11 @@ metadata:
     Sandboxed and deterministic — no I/O, no host access — for data transformation and
     policy logic.
 capability: Telo.Invocable
-controllers:
-  - pkg:npm/@telorun/starlark@0.13.1?local_path=./nodejs#script
-  - pkg:cargo/telorun-starlark?local_path=./rust
+controllers: [pkg:npm/@telorun/starlark@0.13.1?local_path=./nodejs#script, pkg:cargo/telorun-starlark?local_path=./rust]
 schema:
   type: object
   properties:
-    metadata:
-      type: object
-      properties:
-        name:
-          type: string
-      required: [name]
+    metadata: { type: object, properties: { name: { type: string } }, required: [name] }
     code:
       title: Code
       description: Starlark source code to execute.
@@ -43,13 +34,9 @@ schema:
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for script inputs.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for script outputs.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
   required: [metadata, code]

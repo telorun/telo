@@ -14,10 +14,7 @@ imports:
   # The response-encoder contract the Outcomes carrier's `content[mime].encoder`
   # slot pins. Naming it by alias is what makes the coupling a declared edge.
   Codec: ../codec
-exports:
-  kinds:
-    - Outcomes
-    - Request
+exports: { kinds: [Outcomes, Request] }
 ---
 # Pure schema carrier. Never instantiated as a resource. Publishes
 # $defs/Matcher — the canonical HTTP request matcher value-shape — as a single
@@ -39,10 +36,7 @@ schema:
       description: HTTP request matcher.
       type: object
       properties:
-        path:
-          title: Path
-          description: Route path pattern.
-          type: string
+        path: { title: Path, description: Route path pattern., type: string }
         method:
           title: Method
           description: HTTP method matched by the route.
@@ -60,8 +54,7 @@ schema:
           title: Headers
           description: Header schema for request matching. Values are matched as strings against the incoming header value.
           type: object
-          additionalProperties:
-            type: string
+          additionalProperties: { type: string }
         schema:
           title: Schema
           description: |
@@ -96,9 +89,7 @@ schema:
         `Telo.PublicUrl` need, matching its URL's host exactly, or to a
         `Telo.PublicHostPattern` need, matching every host its pattern matches.
         A domain name is never written here — the need's fulfilment holds it.
-      x-telo-ref:
-        kind: [Telo.PublicUrl, Telo.PublicHostPattern]
-        use: dependency
+      x-telo-ref: { kind: [Telo.PublicUrl, Telo.PublicHostPattern], use: dependency }
 ---
 # Pure schema carrier. Never instantiated as a resource. Its only job is to
 # publish $defs/Returns and $defs/Catches as a single source of truth that
@@ -147,8 +138,7 @@ schema:
             title: Headers
             description: Entry-level response headers; merged with per-MIME content[mime].headers (per-MIME wins). Content-Type is forbidden — the matched content map key is the only Content-Type source.
             type: object
-            additionalProperties:
-              type: string
+            additionalProperties: { type: string }
           content:
             title: Content
             description: Per-MIME response shape. Map key is the canonical Content-Type. Required when status carries a body; omit for 204/304-style empty responses.
@@ -159,16 +149,7 @@ schema:
             propertyNames:
               title: Content-Type
               type: string
-              examples:
-                - application/json
-                - application/problem+json
-                - text/plain
-                - text/html
-                - text/event-stream
-                - application/octet-stream
-                - application/xml
-                - application/x-ndjson
-                - text/csv
+              examples: [application/json, application/problem+json, text/plain, text/html, text/event-stream, application/octet-stream, application/xml, application/x-ndjson, text/csv]
             additionalProperties:
               type: object
               additionalProperties: false
@@ -197,22 +178,18 @@ schema:
                   title: Headers
                   description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
                   type: object
-                  additionalProperties:
-                    type: string
+                  additionalProperties: { type: string }
         required: ["status"]
         oneOf:
           - title: Buffer mode
             description: "mode: buffer (or omitted). Each content[mime] uses `body` (with optional `schema`); `encoder` is forbidden."
             anyOf:
-              - not: { required: ["mode"] }
-              - properties:
-                  mode: { const: "buffer" }
+              - { not: { required: ["mode"] } }
+              - { properties: { mode: { const: "buffer" } } }
             properties:
               content:
                 type: object
-                additionalProperties:
-                  type: object
-                  not: { required: ["encoder"] }
+                additionalProperties: { type: object, not: { required: ["encoder"] } }
           - title: Stream mode
             description: "mode: stream. Every content[mime] must declare `encoder`; `body` is forbidden. `content` map must be non-empty."
             properties:
@@ -220,10 +197,7 @@ schema:
               content:
                 type: object
                 minProperties: 1
-                additionalProperties:
-                  type: object
-                  required: ["encoder"]
-                  not: { required: ["body"] }
+                additionalProperties: { type: object, required: ["encoder"], not: { required: ["body"] } }
             required: ["mode", "content"]
     Catches:
       title: Catches
@@ -250,8 +224,7 @@ schema:
             title: Headers
             description: Entry-level response headers. Content-Type is forbidden — the matched content map key is the only Content-Type source.
             type: object
-            additionalProperties:
-              type: string
+            additionalProperties: { type: string }
           content:
             title: Content
             description: >-
@@ -264,11 +237,7 @@ schema:
             propertyNames:
               title: Content-Type
               type: string
-              examples:
-                - application/json
-                - application/problem+json
-                - text/plain
-                - text/html
+              examples: [application/json, application/problem+json, text/plain, text/html]
             # Two copies of one entry shape, differing only in `required`: a
             # `#/$defs` pointer would resolve against the consuming kind's schema,
             # into which `x-telo-schema-from` transplants this definition.
@@ -288,8 +257,7 @@ schema:
                     title: Headers
                     description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
                     type: object
-                    additionalProperties:
-                      type: string
+                    additionalProperties: { type: string }
             additionalProperties:
               type: object
               additionalProperties: false
@@ -306,6 +274,5 @@ schema:
                   title: Headers
                   description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
                   type: object
-                  additionalProperties:
-                    type: string
+                  additionalProperties: { type: string }
         required: ["status"]

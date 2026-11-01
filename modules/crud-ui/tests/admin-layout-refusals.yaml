@@ -8,8 +8,7 @@ metadata:
     filter by equality is refused by `telo check` at the admin that wrote it,
     and again when the listing is first read, from an application whose own
     check does not reach the admin.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref groupNotFilterable
   - !ref groupNotFilterableAtRuntime

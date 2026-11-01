@@ -3,9 +3,7 @@
 # resource — the feature the field exists for, previously unusable because the
 # schema spelled the slot `bindings:` while the controller read `inputs`.
 kind: Telo.Application
-metadata:
-  name: TransactionForwardsInputs
-  version: 1.0.0
+metadata: { name: TransactionForwardsInputs, version: 1.0.0 }
 imports:
   Sql: ../
   SQLite: ../../sqlite
@@ -15,13 +13,11 @@ targets:
   - !ref testTransactionForwardsInputs
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: Sql.Transaction
-metadata:
-  name: insertTx
+metadata: { name: insertTx }
 connection: !ref db
 steps: !ref insertUser
 inputs:
@@ -34,17 +30,14 @@ inputs:
 # invoked inside (a bound ref here would also cycle init order with the
 # transaction's own `steps:` ref back to this command).
 kind: Sql.Command
-metadata:
-  name: insertUser
+metadata: { name: insertUser }
 connection: !ref db
 ---
 kind: Run.Sequence
-metadata:
-  name: testTransactionForwardsInputs
+metadata: { name: testTransactionForwardsInputs }
 steps:
   - name: createTable
-    inputs:
-      sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)"
+    inputs: { sql: "CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT NOT NULL)" }
     invoke:
       kind: Sql.Command
       connection: !ref db
@@ -70,6 +63,5 @@ steps:
     inputs:
       actual: !cel "steps.selectBack.result.rows"
       expected:
-        - name: Ada
-    invoke:
-      kind: Assert.Equals
+        - { name: Ada }
+    invoke: { kind: Assert.Equals }

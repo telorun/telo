@@ -76,8 +76,7 @@ steps:
     invoke:
       kind: Sql.Command
       connection: !ref db
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_layers_suite CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_layers_suite CASCADE }
 ---
 kind: Layers.NodeTable
 metadata: { name: people }

@@ -65,19 +65,14 @@ outputType:
   schema:
     type: object
     required: [charged]
-    properties:
-      charged: { type: boolean }
+    properties: { charged: { type: boolean } }
 value: { charged: true }
 ---
 kind: Run.Value
 metadata: { name: sendMail }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [sent]
-    properties:
-      sent: { type: boolean }
+  schema: { type: object, required: [sent], properties: { sent: { type: boolean } } }
 value: { sent: true }
 ---
 kind: Local.Workflow
@@ -111,16 +106,14 @@ steps:
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "chargeCard.Invoked"
-  - type: "sendMail.Invoked"
+  - { type: "chargeCard.Invoked" }
+  - { type: "sendMail.Invoked" }
 expect:
   # Two distinct runs execute; the third submission replays. Without the journal
   # every one of these would be 3 — which is precisely what the counters this
   # replaced were approximating, from inside the work rather than outside it.
-  - event: chargeCard.Invoked
-    times: 2
-  - event: sendMail.Invoked
-    times: 2
+  - { event: chargeCard.Invoked, times: 2 }
+  - { event: sendMail.Invoked, times: 2 }
 ---
 # A start is DETACHED — it returns a run id, not an outcome — so the test asks
 # for the outcome the way any caller does. `wait:` is what makes that possible

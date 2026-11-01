@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: TextMessagesArrayTest
-  version: 1.0.0
+metadata: { name: TextMessagesArrayTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -20,18 +18,14 @@ model: !ref echo
 # Full `messages` array is passed through unchanged; Echo returns the last message's
 # content. Verifies multi-turn shape without relying on prompt shorthand.
 kind: Run.Sequence
-metadata:
-  name: testMessagesArray
+metadata: { name: testMessagesArray }
 steps:
   - name: invoke
     inputs:
       messages:
-        - role: user
-          content: "first"
-        - role: assistant
-          content: "ack"
-        - role: user
-          content: "second"
+        - { role: user, content: "first" }
+        - { role: assistant, content: "ack" }
+        - { role: user, content: "second" }
     invoke: !ref c
   - name: assert
     inputs:
@@ -40,6 +34,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text: { type: string, const: "second" }
+        properties: { text: { type: string, const: "second" } }
         required: [ text ]

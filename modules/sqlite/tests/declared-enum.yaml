@@ -40,9 +40,7 @@ columns:
   balanceCents: { type: integer, nullable: false, default: 0 }
 # A named predicate, emitted at create time — which is the only place SQLite has
 # for one, exactly as with its foreign keys.
-checks:
-  balance_non_negative:
-    expression: "balanceCents >= 0"
+checks: { balance_non_negative: { expression: "balanceCents >= 0" } }
 ---
 kind: SQLite.Schema
 metadata: { name: appSchema }
@@ -69,18 +67,15 @@ steps:
       expected: true
   - name: insertAllowed
     invoke: !ref command
-    inputs:
-      sql: "INSERT INTO messages (id, role, body) VALUES (1, 'user', 'hi')"
+    inputs: { sql: "INSERT INTO messages (id, role, body) VALUES (1, 'user', 'hi')" }
   # The named check is enforced by the engine too, from the same CREATE TABLE.
   - name: checkRejected
     try:
       - name: attemptCheck
         invoke: !ref command
-        inputs:
-          sql: "INSERT INTO messages (id, role, balanceCents) VALUES (3, 'user', -1)"
+        inputs: { sql: "INSERT INTO messages (id, role, balanceCents) VALUES (3, 'user', -1)" }
     catch:
-      - name: checkFailed
-        value: true
+      - { name: checkFailed, value: true }
   - name: assertCheckRejected
     invoke: !ref assertCheckRejected
     inputs:
@@ -92,11 +87,9 @@ steps:
     try:
       - name: attempt
         invoke: !ref command
-        inputs:
-          sql: "INSERT INTO messages (id, role) VALUES (2, 'moderator')"
+        inputs: { sql: "INSERT INTO messages (id, role) VALUES (2, 'moderator')" }
     catch:
-      - name: rejected
-        value: true
+      - { name: rejected, value: true }
   - name: assertRejected
     invoke: !ref assertRejected
     inputs:
@@ -104,8 +97,7 @@ steps:
       expected: true
   - name: readRows
     invoke: !ref query
-    inputs:
-      sql: "SELECT id, role FROM messages ORDER BY id"
+    inputs: { sql: "SELECT id, role FROM messages ORDER BY id" }
   - name: assertRows
     invoke: !ref assertRows
     inputs:

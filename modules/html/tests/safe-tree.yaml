@@ -3,10 +3,7 @@ metadata:
   name: HtmlSafeTreeTest
   version: 1.0.0
   description: The sanitize presets, a custom policy, and an XSS corpus.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref presets
   - !ref customPolicy
@@ -74,16 +71,10 @@ steps:
       kind: Html.SafeTree
       elements: [div, span, a]
       attributes:
-        "*":
-          class: { values: [note] }
-          dir: { values: [ltr, rtl] }
-        div:
-          class: { prefixes: [note] }
-        a:
-          href: { protocols: [https] }
-          target: {}
-      setAttributes:
-        a: { target: _blank, rel: noopener }
+        "*": { class: { values: [note] }, dir: { values: [ltr, rtl] } }
+        div: { class: { prefixes: [note] } }
+        a: { href: { protocols: [https] }, target: {} }
+      setAttributes: { a: { target: _blank, rel: noopener } }
       dropContent: [aside]
       comments: true
     inputs: { document: !cel "steps.parse.result" }
@@ -117,11 +108,8 @@ steps:
       kind: Html.SafeTree
       elements: [p, a, img]
       attributes:
-        a:
-          href: { protocols: [https] }
-        img:
-          src: { protocols: [https] }
-          srcset: { protocols: [https] }
+        a: { href: { protocols: [https] } }
+        img: { src: { protocols: [https] }, srcset: { protocols: [https] } }
     inputs: { document: !cel "steps.parse.result" }
   - name: markup
     invoke: { kind: Html.Markup }
@@ -171,12 +159,8 @@ steps:
     invoke:
       kind: Html.SafeTree
       elements: [label, input, p]
-      attributes:
-        "*": { id: {} }
-        label: { for: {} }
-        input: { aria-describedby: {} }
-      setAttributes:
-        input: { form: signup }
+      attributes: { "*": { id: {} }, label: { for: {} }, input: { aria-describedby: {} } }
+      setAttributes: { input: { form: signup } }
       idPrefix: u-
     inputs: { document: !cel "steps.form.result" }
   - name: formMarkup
@@ -201,10 +185,7 @@ kind: Run.Sequence
 metadata: { name: assembledTree }
 steps:
   - name: clean
-    invoke:
-      kind: Html.SafeTree
-      elements: [p, b, img, title]
-      comments: true
+    invoke: { kind: Html.SafeTree, elements: [p, b, img, title], comments: true }
     inputs:
       document:
         nodes:
@@ -237,17 +218,13 @@ steps:
     invoke: { kind: Html.JsonTree }
     inputs: { html: <a><table><a>, fragment: true }
   - name: anchors
-    invoke:
-      kind: Html.SafeTree
-      elements: [a, table]
+    invoke: { kind: Html.SafeTree, elements: [a, table] }
     inputs: { document: !cel "steps.parse.result" }
   - name: anchorsMarkup
     invoke: { kind: Html.Markup }
     inputs: { document: !cel "steps.anchors.result" }
   - name: table
-    invoke:
-      kind: Html.SafeTree
-      elements: [table, tr, td]
+    invoke: { kind: Html.SafeTree, elements: [table, tr, td] }
     inputs:
       document: !cel >-
         {'nodes': [{'type': 'element', 'tag': 'table', 'attrs': {}, 'children': [

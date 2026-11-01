@@ -8,8 +8,7 @@ metadata:
     in the other kind's slot, a model listed twice, two models sharing a code, a
     language coded `osd`, and a
     recognition time limit outside 1ms to 24h.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref orientationNeedsModel
   - !ref languageSlotTakesLanguages
@@ -51,16 +50,14 @@ metadata: { name: languageListedOnce }
 source: ./__fixtures__/duplicate-language.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "/languages must NOT have duplicate items"
+    - { code: SCHEMA_VIOLATION, message: "/languages must NOT have duplicate items" }
 ---
 kind: Assert.Manifest
 metadata: { name: osdIsNotALanguage }
 source: ./__fixtures__/osd-coded-language.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "/code must match pattern"
+    - { code: SCHEMA_VIOLATION, message: "/code must match pattern" }
 ---
 kind: Assert.Manifest
 metadata: { name: recognitionTimeAboveZero }
@@ -98,8 +95,7 @@ expect:
 # recognizer references (a resource rule's `resolve:`), and the recognizer
 # refuses the same pair when it starts.
 kind: Assert.Manifest
-metadata:
-  name: languageCodeDuplicate
+metadata: { name: languageCodeDuplicate }
 source: ./__fixtures__/language-code-duplicate/telo.yaml
 expect:
   errors:

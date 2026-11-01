@@ -7,16 +7,14 @@ metadata:
     its source lacks is refused where it is written, and refused again when the
     catalog is created; a catalog key whose shape title was renamed is reported
     as translating nothing.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref placeholderRefused
   - !ref placeholderRefusedAtRuntime
   - !ref renamedTitleUnused
 ---
 kind: Assert.Manifest
-metadata:
-  name: placeholderRefused
+metadata: { name: placeholderRefused }
 source: ./__fixtures__/catalog-placeholder/lib/telo.yaml
 expect:
   errors:
@@ -24,16 +22,14 @@ expect:
       message: "I18n.Catalog/polish: the text catalog entry at 'texts[0].translation' is refused: x is not a placeholder of the source text"
 ---
 kind: Assert.Manifest
-metadata:
-  name: placeholderRefusedAtRuntime
+metadata: { name: placeholderRefusedAtRuntime }
 source: ./__fixtures__/catalog-placeholder/telo.yaml
 expect:
   runFails: "I18n.Catalog/polish: the text catalog entry at 'texts[0].translation' is refused: x is not a placeholder of the source text"
 ---
 # The shape's title reads `Bill`; the catalog still translates `Invoice`.
 kind: Assert.Manifest
-metadata:
-  name: renamedTitleUnused
+metadata: { name: renamedTitleUnused }
 source: ./__fixtures__/renamed-title/telo.yaml
 expect:
   errors: []

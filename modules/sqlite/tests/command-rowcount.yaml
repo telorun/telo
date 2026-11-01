@@ -16,17 +16,14 @@ targets:
   - !ref test
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 steps:
   - name: create
-    inputs:
-      sql: "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)"
+    inputs: { sql: "CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT)" }
     invoke:
       kind: Sql.Command
       connection: !ref db
@@ -48,8 +45,7 @@ steps:
       connection: !ref db
 
   - name: updateAll
-    inputs:
-      sql: "UPDATE t SET v = 'x'"
+    inputs: { sql: "UPDATE t SET v = 'x'" }
     invoke:
       kind: Sql.Command
       connection: !ref db

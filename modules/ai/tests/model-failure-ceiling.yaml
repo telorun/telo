@@ -10,8 +10,7 @@ metadata:
     by kind, so no provider is in sight — covers exactly those codes with no
     catch-all; there, a vendor's own code is undeclared, and a
     misspelled member of a code's declared data is an unknown field.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref outsideTheCeiling
   - !ref outsideTheCeilingAtRuntime
@@ -42,8 +41,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: kindOnlyRouteCovered }
 source: ./__fixtures__/model-catches/telo.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: staleCodeAndMisspelledData }

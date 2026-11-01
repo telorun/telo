@@ -22,18 +22,12 @@ prompts:
       - name: greet
         description: Greets someone.
         arguments:
-          - name: who
-            description: Who to greet.
-            required: true
+          - { name: who, description: Who to greet., required: true }
         handler:
           kind: Run.Value
           inputType:
             kind: Telo.JsonSchema
-            schema:
-              type: object
-              required: [who]
-              properties:
-                who: { type: string }
+            schema: { type: object, required: [who], properties: { who: { type: string } } }
           value:
             text: !cel "'Say hello to ' + inputs.who + '.'"
         inputs:
@@ -56,9 +50,7 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8975
+    listen: { address: 127.0.0.1, port: 8975 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
@@ -74,14 +66,10 @@ steps:
         - name: greet
           description: Greets someone.
           arguments:
-            - name: who
-              description: Who to greet.
-              required: true
+            - { name: who, description: Who to greet., required: true }
   - name: get
     invoke: !ref clientUnderTest
-    inputs:
-      method: prompts/get
-      params: { name: greet, arguments: { who: Ada } }
+    inputs: { method: prompts/get, params: { name: greet, arguments: { who: Ada } } }
   - name: assertGet
     invoke: { kind: Assert.Equals }
     inputs:
@@ -89,5 +77,4 @@ steps:
       expected:
         description: A greeting
         messages:
-          - role: user
-            content: { type: text, text: Say hello to Ada. }
+          - { role: user, content: { type: text, text: Say hello to Ada. } }

@@ -49,10 +49,7 @@ kind: Run.Iteration
 metadata: { name: eachItem }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      items: { type: array }
+  schema: { type: object, properties: { items: { type: array } } }
 collection: !cel "inputs.items"
 steps:
   - name: handle
@@ -67,16 +64,14 @@ inputs:
 steps:
   - name: all
     invoke: !ref eachItem
-    inputs:
-      items: [a, b, c]
+    inputs: { items: [a, b, c] }
 ---
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "handleItem.Invoked"
+  - { type: "handleItem.Invoked" }
 expect:
-  - event: handleItem.Invoked
-    times: 3
+  - { event: handleItem.Invoked, times: 3 }
 ---
 kind: Run.Sequence
 metadata: { name: test }

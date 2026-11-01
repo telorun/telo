@@ -7,10 +7,7 @@ metadata:
     declare or no control can enter, a required property left unentered, an
     unknown clearing property, row inputs that make no record — statically and
     again when first read.
-imports:
-  Assert: ../../assert
-  Probe: ./__fixtures__/probe
-  Run: ../../run
+imports: { Assert: ../../assert, Probe: ./__fixtures__/probe, Run: ../../run }
 targets:
   - !ref actions
   - !ref actionFieldUnknownAtRuntime
@@ -23,8 +20,7 @@ targets:
 ---
 # `eachItsOwn`, two row actions over different models, reports nothing.
 kind: Assert.Manifest
-metadata:
-  name: actions
+metadata: { name: actions }
 source: ./__fixtures__/invalid/actions/telo.yaml
 expect:
   errors:
@@ -70,24 +66,21 @@ expect:
       message: "Ui.Listing/confirmEmpty: /rowActions/0/confirm must NOT have fewer than 1 characters"
 ---
 kind: Assert.Manifest
-metadata:
-  name: actionFieldUnknownAtRuntime
+metadata: { name: actionFieldUnknownAtRuntime }
 source: ./__fixtures__/invalid/action-field-unknown/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Action 'actionFieldUnknown': 'fields[1]' lists a field for a property the input model does not declare ('year')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: actionFieldUnsupportedAtRuntime
+metadata: { name: actionFieldUnsupportedAtRuntime }
 source: ./__fixtures__/invalid/action-field-unsupported/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Action 'actionFieldUnsupported': 'fields[1]' lists a property no control can enter ('options')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: actionRequiredNotEnteredAtRuntime
+metadata: { name: actionRequiredNotEnteredAtRuntime }
 source: ./__fixtures__/invalid/action-required-not-entered/telo.yaml
 expect:
   errors: []
@@ -96,8 +89,7 @@ expect:
 # A table and a list each offer a row an action that draws an answer, bound
 # from the row: nothing is reported, and no rule is skipped.
 kind: Run.Sequence
-metadata:
-  name: rowActionAnswers
+metadata: { name: rowActionAnswers }
 steps:
   - name: check
     invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/row-actions/telo.yaml }
@@ -107,29 +99,24 @@ steps:
       actual:
         reported: !cel "steps.check.result.reported"
         skipped: !cel "(steps.check.result.reported + steps.check.result.noted).filter(n, n.contains('_RULE_SKIPPED'))"
-      expected:
-        reported: []
-        skipped: []
+      expected: { reported: [], skipped: [] }
 ---
 kind: Assert.Manifest
-metadata:
-  name: actionClearUnknownAtRuntime
+metadata: { name: actionClearUnknownAtRuntime }
 source: ./__fixtures__/invalid/action-clear-unknown/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Action 'actionClearUnknown': 'clearAnswerOn[1]' clears its answer on a property the input model does not declare ('total'), which never changes."
 ---
 kind: Assert.Manifest
-metadata:
-  name: rowActionInputsAtRuntime
+metadata: { name: rowActionInputsAtRuntime }
 source: ./__fixtures__/invalid/row-action-inputs/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'rowActionInputs': 'rowActions[0].inputs' cannot make a record of the action's input model: 'total' is not a property of the action's input model; 'note' holds a value its property refuses (Invalid value passed: 5. Error: / must be string); required input 'count' is not bound."
 ---
 kind: Assert.Manifest
-metadata:
-  name: listRowActionInputsAtRuntime
+metadata: { name: listRowActionInputsAtRuntime }
 source: ./__fixtures__/invalid/list-row-action-inputs/telo.yaml
 expect:
   errors: []

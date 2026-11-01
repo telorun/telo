@@ -6,8 +6,7 @@ metadata:
     What a table declaration contradicts is decidable from the YAML, so `telo
     check` reports it and no database is needed: a primary key projects
     non-null, so a seed row holding NULL there is refused on its own line.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref nullKeySeed
 ---
@@ -16,5 +15,4 @@ metadata: { name: nullKeySeed }
 source: ./__fixtures__/schema-contract/null-key-seed.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "/seeds/rows/0/id must be string"
+    - { code: SCHEMA_VIOLATION, message: "/seeds/rows/0/id must be string" }

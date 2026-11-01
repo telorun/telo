@@ -12,8 +12,7 @@ metadata:
 
     A computed bag whose keys the expression writes literally is refused by
     `telo check` too, at the expression.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref refused
   - !ref computedRefused

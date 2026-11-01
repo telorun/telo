@@ -10,11 +10,8 @@ metadata:
     JSON document per line, the usual shape for line-oriented log and event feeds that
     a consumer can read incrementally. Encoding only for now; decoding is not yet
     implemented.
-imports:
-  Codec: ../codec
-exports:
-  kinds:
-    - Encoder
+imports: { Codec: ../codec }
+exports: { kinds: [Encoder] }
 ---
 # Encoder: any JSON-serializable record → NDJSON line bytes. If the upstream
 # iterable throws, emits a final `{"type":"error","error":{"message":...}}` line
@@ -29,8 +26,5 @@ metadata:
     line-delimited stream.
 capability: Telo.Invocable
 extends: Codec.Encoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ndjson-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/ndjson-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController]
+schema: { type: object, additionalProperties: false }

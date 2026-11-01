@@ -44,8 +44,4 @@ steps:
       text: !cel "steps.decode.result.text"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          text: { const: "hi" }
-        required: [ text ]
+      schema: { type: object, properties: { text: { const: "hi" } }, required: [text] }

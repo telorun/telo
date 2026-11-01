@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - mkd
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [mkd] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: mkd, member: package/4.0.0_best_int/mkd.traineddata.gz, sha256: 043ca096871a4b58bb1b3bca34c6793187e060a12f3d1384ab4e6d8d77e8b802, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: mkd
-  description: Macedonian, Cyrillic script
+metadata: { name: mkd, description: "Macedonian, Cyrillic script" }
 code: mkd
 data: !module-path ./tessdata/mkd.traineddata.gz

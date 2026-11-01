@@ -8,8 +8,7 @@ metadata:
     One image at the cheapest quality — this call bills real money per run, so the
     assertions are structural rather than exhaustive; the byte path itself is
     covered hermetically in modules/ai/tests/image-to-file.yaml.
-secrets:
-  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" } }
 imports:
   OpenAI: ../../
   Ai: ../../../ai
@@ -40,25 +39,20 @@ kind: OpenAI.ImageModel
 metadata: { name: live }
 model: gpt-image-1
 request: !ref openaiRequest
-options:
-  size: 1024x1024
-  quality: low
-  n: 1
+options: { size: 1024x1024, quality: low, n: 1 }
 ---
 kind: Ai.Image
 metadata: { name: draw }
 model: !ref live
 ---
 kind: Run.Sequence
-metadata:
-  name: liveImage
+metadata: { name: liveImage }
 steps:
   - name: guardEnv
     if: !cel "secrets.openaiApiKey != ''"
     then:
       - name: invoke
-        inputs:
-          prompt: A single small red circle centered on a white background.
+        inputs: { prompt: A single small red circle centered on a white background. }
         invoke: !ref draw
       - name: assert
         inputs:

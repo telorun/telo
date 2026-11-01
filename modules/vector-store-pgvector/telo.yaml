@@ -10,12 +10,8 @@ metadata:
     dot-product or euclidean distance. It lives in its own table inside a database the
     application already uses and provisions the extension, table and approximate
     nearest-neighbour index on start-up.
-imports:
-  VectorStore: ../vector-store
-  Sql: ../sql
-exports:
-  kinds:
-    - Store
+imports: { VectorStore: ../vector-store, Sql: ../sql }
+exports: { kinds: [Store] }
 ---
 kind: Telo.Definition
 metadata:
@@ -26,8 +22,7 @@ metadata:
     on start-up. Shares the database the rest of the application already uses.
 capability: Telo.Provider
 extends: VectorStore.Store
-controllers:
-  - pkg:telo/local/js?path=./nodejs/vector-store-pgvector.mjs&local_path=./nodejs/src/index.ts#Store
+controllers: [pkg:telo/local/js?path=./nodejs/vector-store-pgvector.mjs&local_path=./nodejs/src/index.ts#Store]
 schema:
   type: object
   required: [connection, dimensions]
@@ -36,9 +31,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the Postgres Sql.Connection the vectors table lives in.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     dimensions:
       title: Dimensions
       type: integer

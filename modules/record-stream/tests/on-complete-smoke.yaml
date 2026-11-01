@@ -71,11 +71,7 @@ kind: Run.Sequence
 metadata: { name: persistTurn }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      records: {}
-      context: {}
+  schema: { type: object, properties: { records: {}, context: {} } }
 steps:
   - name: insert
     inputs:
@@ -110,13 +106,9 @@ steps:
       count: !cel "steps.drain.result.count"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { count: { const: 3 } }
-        required: [ count ]
+      schema: { type: object, properties: { count: { const: 3 } }, required: [count] }
   - name: query
-    inputs:
-      sql: "SELECT tag, content FROM turns WHERE tag = 't1'"
+    inputs: { sql: "SELECT tag, content FROM turns WHERE tag = 't1'" }
     invoke:
       kind: Sql.Query
       connection: !ref db
@@ -128,9 +120,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          tag: { const: "t1" }
-          content: { const: "hello" }
+        properties: { tag: { const: "t1" }, content: { const: "hello" } }
         required: [ tag, content ]
 ---
 # The consumer breaks after two items — completion never happens, so the handler
@@ -150,8 +140,7 @@ steps:
       input: !cel "steps.tap.result.output"
     invoke: !ref takeTwo
   - name: query
-    inputs:
-      sql: "SELECT tag FROM turns WHERE tag = 't2'"
+    inputs: { sql: "SELECT tag FROM turns WHERE tag = 't2'" }
     invoke:
       kind: Sql.Query
       connection: !ref db
@@ -162,6 +151,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          rows: { type: array, maxItems: 0 }
+        properties: { rows: { type: array, maxItems: 0 } }
         required: [ rows ]

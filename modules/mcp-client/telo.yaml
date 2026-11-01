@@ -16,13 +16,7 @@ requires:
   # not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
 exports:
-  kinds:
-    - Client
-    - SessionProvider
-    - HttpClient
-    - StdioClient
-    - ToolsCall
-    - ToolsList
+  kinds: [Client, SessionProvider, HttpClient, StdioClient, ToolsCall, ToolsList]
 ---
 # Mcp.Client — generic JSON-RPC request contract every transport satisfies.
 # Callers pass {method, params}; the concrete transport handles framing,
@@ -52,14 +46,8 @@ inputType:
         # on whether sessionProvider: is set. Widen this enum in the same
         # change that adds the corresponding transport dispatch.
         type: string
-        enum:
-          - tools/call
-          - tools/list
-          - prompts/list
-          - prompts/get
-      params:
-        type: object
-        additionalProperties: true
+        enum: [tools/call, tools/list, prompts/list, prompts/get]
+      params: { type: object, additionalProperties: true }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -93,8 +81,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [sessionId]
-    properties:
-      sessionId: { type: string }
+    properties: { sessionId: { type: string } }
 ---
 # Mcp.HttpClient — Streamable HTTP transport for MCP.
 #
@@ -116,8 +103,7 @@ metadata:
     Where sessions are issued elsewhere, it forwards a supplied one instead.
 capability: Telo.Invocable
 extends: Self.Client
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#HttpClientController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#HttpClientController]
 schema:
   type: object
   additionalProperties: false
@@ -151,9 +137,7 @@ schema:
       description: Identity advertised to MCP servers during initialize. Used in self-handshake mode only.
       type: object
       additionalProperties: false
-      properties:
-        name: { type: string }
-        version: { type: string }
+      properties: { name: { type: string }, version: { type: string } }
       required: [name, version]
     protocolVersion:
       title: Protocol Version
@@ -181,8 +165,7 @@ metadata:
     gracefully on teardown.
 capability: Telo.Invocable
 extends: Self.Client
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#StdioClientController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#StdioClientController]
 schema:
   type: object
   additionalProperties: false
@@ -210,9 +193,7 @@ schema:
       description: Identity advertised to MCP servers during initialize.
       type: object
       additionalProperties: false
-      properties:
-        name: { type: string }
-        version: { type: string }
+      properties: { name: { type: string }, version: { type: string } }
       required: [name, version]
     shutdownGraceMs:
       title: Shutdown grace period
@@ -238,8 +219,7 @@ metadata:
     its content blocks — text, images, audio, or linked and embedded resources. A tool
     that reports failure raises instead of returning.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#ToolsCallController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#ToolsCallController]
 schema:
   type: object
   additionalProperties: false
@@ -248,9 +228,7 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation (Mcp.HttpClient, Mcp.StdioClient, …).
-      x-telo-ref:
-        kind: Self.Client
-        use: dependency
+      x-telo-ref: { kind: Self.Client, use: dependency }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -283,9 +261,7 @@ outputType:
             - type: object
               additionalProperties: false
               required: [type, text]
-              properties:
-                type: { const: text }
-                text: { type: string }
+              properties: { type: { const: text }, text: { type: string } }
             - type: object
               additionalProperties: false
               required: [type, data, mimeType]
@@ -341,8 +317,7 @@ metadata:
     Lists the tools a connected MCP server advertises, each with its name, description
     and the JSON Schema of the arguments it accepts.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#ToolsListController
+controllers: [pkg:telo/local/js?path=./nodejs/mcp-client.mjs&local_path=./nodejs/src/index.ts#ToolsListController]
 schema:
   type: object
   additionalProperties: false
@@ -351,15 +326,10 @@ schema:
     client:
       title: Client
       description: Reference to any Mcp.Client implementation.
-      x-telo-ref:
-        kind: Self.Client
-        use: dependency
+      x-telo-ref: { kind: Self.Client, use: dependency }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
-    properties: {}
+  schema: { type: object, additionalProperties: false, properties: {} }
 outputType:
   kind: Telo.JsonSchema
   schema:

@@ -6,9 +6,7 @@
 # response, and an unreachable API are ERR_SEARCH_FAILED. A client with
 # `throwOnHttpError` maps the same way.
 kind: Telo.Application
-metadata:
-  name: ExaFailuresTest
-  version: 1.0.0
+metadata: { name: ExaFailuresTest, version: 1.0.0 }
 imports:
   Exa: ..
   Http: ../../http-client
@@ -57,8 +55,7 @@ with:
       - request:
           path: /search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref errors
         returns:
           - status: 401
@@ -99,18 +96,13 @@ with:
                 body: !cel "{'requestId': 'r', 'error': result.overloaded.error, 'tag': result.overloaded.tag}"
           - status: 200
             when: !cel "request.body.query == 'html'"
-            content:
-              text/html:
-                body: "<html><body>results</body></html>"
+            content: { text/html: { body: "<html><body>results</body></html>" } }
           - status: 200
             content:
-              application/json:
-                schema: { type: object, additionalProperties: true }
-                body: { requestId: r }
+              application/json: { schema: { type: object, additionalProperties: true }, body: { requestId: r } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18868
+    listen: { port: 18868 }
     mounts:
       - path: /
         mount: !ref FakeExa
@@ -192,5 +184,4 @@ steps:
           message: "Exa asks the caller to slow down: Too many requests."
         - code: ERR_SEARCH_FAILED
           message: "Exa answered HTTP 403 PROHIBITED_CONTENT: The query was blocked by content moderation."
-        - code: ERR_SEARCH_FAILED
-          message: "The request to Exa failed: …"
+        - { code: ERR_SEARCH_FAILED, message: "The request to Exa failed: …" }

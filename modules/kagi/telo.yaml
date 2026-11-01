@@ -10,13 +10,8 @@ metadata:
     results with title, URL, snippet and date for a query, with region, recency and
     safe-search settings, paging with an opaque cursor. Authenticated with an API
     token on a configurable HTTP client.
-imports:
-  WebSearch: ../web-search
-  Http: ../http-client
-  Run: ../run
-exports:
-  kinds:
-    - WebSearchEngine
+imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
+exports: { kinds: [WebSearchEngine] }
 ---
 # A templated engine over `POST /api/v1/search`. Kagi serves pages 1–10 of a size
 # it decides; the engine never sends `limit`. A position is `<page>-<skip>`: a
@@ -64,9 +59,7 @@ schema:
         The HTTP request Kagi is reached through. Its client's `baseUrl` is
         `https://kagi.com`, and its credential an `Http.BearerToken` holding the API
         token.
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     safeSearch:
       title: Safe search
       description: Kagi's explicit-content filter, sent as `safe_search`.
@@ -74,8 +67,7 @@ schema:
       default: false
 resources:
   - kind: Run.Sequence
-    metadata:
-      name: search
+    metadata: { name: search }
     inputType: !ref WebSearch.Query
     outputType: !ref WebSearch.Results
     steps:
@@ -143,24 +135,21 @@ resources:
   # One page of results, mapped onto the contract's result shape; every failure
   # is raised here as a contract code.
   - kind: Run.Sequence
-    metadata:
-      name: page
+    metadata: { name: page }
     inputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [body]
         additionalProperties: false
-        properties:
-          body: { type: object }
+        properties: { body: { type: object } }
     outputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [results]
         additionalProperties: false
-        properties:
-          results: { type: array }
+        properties: { results: { type: array } }
     steps:
       - name: fetch
         try:

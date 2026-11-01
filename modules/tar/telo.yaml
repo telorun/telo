@@ -10,10 +10,7 @@ metadata:
     and contents, or pull a single named file out of an existing archive. Combined
     with gzip compression this reads and writes `.tar.gz` payloads — the packaging
     format registries and container images ship in.
-exports:
-  kinds:
-    - Extract
-    - Pack
+exports: { kinds: [Extract, Pack] }
 ---
 # Build a tar archive from an ordered list of `{ path, contents }` entries and
 # emit it as a byte stream. Contents are UTF-8 text. Pipe through `Gzip.Encoder`
@@ -25,8 +22,7 @@ metadata:
     Builds a tar archive from an ordered list of files, each a path inside the archive
     and its text contents, and emits it as a byte stream ready to compress or write.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/tar.mjs&local_path=./nodejs/src/index.ts#PackController
+controllers: [pkg:telo/local/js?path=./nodejs/tar.mjs&local_path=./nodejs/src/index.ts#PackController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -38,12 +34,8 @@ inputType:
         items:
           type: object
           properties:
-            path:
-              type: string
-              description: Entry path inside the archive.
-            contents:
-              type: string
-              description: UTF-8 text content of the entry.
+            path: { type: string, description: Entry path inside the archive. }
+            contents: { type: string, description: UTF-8 text content of the entry. }
           required: [ path, contents ]
           additionalProperties: false
     required: [ entries ]
@@ -52,15 +44,10 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      output:
-        x-telo-type: Telo.Stream
-        description: Tar archive byte stream.
+    properties: { output: { x-telo-type: Telo.Stream, description: Tar archive byte stream. } }
     required: [ output ]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Extract one named entry from a tar byte stream.
 #
@@ -75,22 +62,17 @@ metadata:
     Pulls one named file out of a tar archive and emits its contents as a byte stream
     that pipes into any decoder. A path the archive does not contain raises.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/tar.mjs&local_path=./nodejs/src/index.ts#ExtractController
+controllers: [pkg:telo/local/js?path=./nodejs/tar.mjs&local_path=./nodejs/src/index.ts#ExtractController]
 throws:
   codes:
-    ERR_NOT_FOUND:
-      description: No entry at the requested path exists in the archive.
-    ERR_INVALID_INPUT:
-      description: input is not a byte stream, or path is missing/empty.
+    ERR_NOT_FOUND: { description: No entry at the requested path exists in the archive. }
+    ERR_INVALID_INPUT: { description: "input is not a byte stream, or path is missing/empty." }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     properties:
-      input:
-        x-telo-type: Telo.Stream
-        description: Tar archive byte stream.
+      input: { x-telo-type: Telo.Stream, description: Tar archive byte stream. }
       path:
         type: string
         description: Entry path to extract from the archive (leading "./" is ignored).
@@ -106,6 +88,4 @@ outputType:
         description: Byte stream of the extracted entry's contents.
     required: [ output ]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }

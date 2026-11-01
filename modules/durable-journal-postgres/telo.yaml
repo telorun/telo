@@ -21,9 +21,7 @@ imports:
   # is declared here too — that is what makes the library one module scope
   # across every consumer rather than a copy inlined into this bundle.
   Sql: ../sql
-exports:
-  kinds:
-    - Journal
+exports: { kinds: [Journal] }
 ---
 # A journal whose two hard operations are the database's own.
 #
@@ -51,8 +49,7 @@ metadata:
     recovers runs.
 capability: Telo.Provider
 extends: DurableLocal.Journal
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-journal-postgres.mjs&local_path=./nodejs/src/index.ts#journal
+controllers: [pkg:telo/local/js?path=./nodejs/durable-journal-postgres.mjs&local_path=./nodejs/src/index.ts#journal]
 schema:
   type: object
   required: [connection]
@@ -69,9 +66,7 @@ schema:
         an application's own writes use is what makes exactly-once reachable: the
         journal's record then lands inside the same transaction as the effect it
         describes.
-      x-telo-ref:
-        kind: Postgres.Connection
-        use: dependency
+      x-telo-ref: { kind: Postgres.Connection, use: dependency }
     table:
       title: Table Prefix
       description: >-

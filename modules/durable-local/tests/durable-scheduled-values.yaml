@@ -79,8 +79,4 @@ steps:
       actual:
         status: !cel "steps.finished.result.status"
         check: !cel "steps.finished.result.result.steps.check.result"
-      expected:
-        status: completed
-        check:
-          shifted: true
-          intExact: true
+      expected: { status: completed, check: { shifted: true, intExact: true } }

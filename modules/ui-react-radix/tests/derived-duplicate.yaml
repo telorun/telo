@@ -6,16 +6,13 @@ metadata:
     A theme over the Radix controls cannot add layer controls of its own: one
     listing a set that draws the dialog beside them is refused where it is
     declared and by the theme itself.
-imports:
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Assert: ../../assert }
 targets:
   - !ref refusedWhereDeclared
   - !ref refusedAtRuntime
 ---
 kind: Assert.Manifest
-metadata:
-  name: refusedWhereDeclared
+metadata: { name: refusedWhereDeclared }
 source: ./__fixtures__/derived-duplicate/lib/telo.yaml
 expect:
   errors:
@@ -25,8 +22,7 @@ expect:
       message: "UiReact.Theme/theme at 'controls[1]': implements a control another entry of controls implements too"
 ---
 kind: Assert.Manifest
-metadata:
-  name: refusedAtRuntime
+metadata: { name: refusedAtRuntime }
 source: ./__fixtures__/derived-duplicate/telo.yaml
 expect:
   errors: []

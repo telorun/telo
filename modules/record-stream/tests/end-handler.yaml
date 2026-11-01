@@ -59,10 +59,7 @@ inputType:
     required: [records, context, outcome]
     properties:
       records: { type: array, items: { type: string } }
-      context:
-        type: object
-        required: [tag]
-        properties: { tag: { type: string } }
+      context: { type: object, required: [tag], properties: { tag: { type: string } } }
       outcome: !ref RecordStream.StreamOutcome
 steps:
   - name: insert
@@ -173,8 +170,7 @@ steps:
           invoke:
             kind: Run.Sequence
             steps:
-              - name: boom
-                throw: { code: ERR_TEST_BOOM, message: the producer failed }
+              - { name: boom, throw: { code: ERR_TEST_BOOM, message: the producer failed } }
         inputs: { input: !cel "steps.source.result.output" }
       - name: observed
         invoke: !ref ending
@@ -246,11 +242,7 @@ kind: Run.Sequence
 metadata: { name: recordContext }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [context]
-    properties:
-      context: { type: object }
+  schema: { type: object, required: [context], properties: { context: { type: object } } }
 steps:
   - name: insert
     invoke: { kind: Sql.Command, connection: !ref db }

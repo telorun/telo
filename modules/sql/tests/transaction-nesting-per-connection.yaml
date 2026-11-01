@@ -9,9 +9,7 @@
 # the nesting check always read empty and every nested transaction opened its
 # own, on whatever connection happened to be ambient.
 kind: Telo.Application
-metadata:
-  name: TransactionNestingPerConnection
-  version: 1.0.0
+metadata: { name: TransactionNestingPerConnection, version: 1.0.0 }
 imports:
   Sql: ../
   SQLite: ../../sqlite
@@ -21,33 +19,28 @@ targets:
   - !ref testNesting
 ---
 kind: SQLite.Connection
-metadata:
-  name: dbA
+metadata: { name: dbA }
 file: ":memory:"
 ---
 kind: SQLite.Connection
-metadata:
-  name: dbB
+metadata: { name: dbB }
 file: ":memory:"
 ---
 # Outer transaction on DbA whose body opens another transaction on DbA (joined,
 # so it shares the outer commit) and one on DbB (its own).
 kind: Sql.Transaction
-metadata:
-  name: outerTx
+metadata: { name: outerTx }
 connection: !ref dbA
 steps: !ref outerBody
 ---
 kind: Run.Sequence
-metadata:
-  name: outerBody
+metadata: { name: outerBody }
 steps:
   - name: writeA
     invoke:
       kind: Sql.Command
       connection: !ref dbA
-    inputs:
-      sql: "INSERT INTO a (v) VALUES ('outer')"
+    inputs: { sql: "INSERT INTO a (v) VALUES ('outer')" }
   - name: nestedSameConnection
     invoke: !ref innerTxA
   - name: nestedOtherConnection
@@ -59,67 +52,56 @@ steps:
     invoke:
       kind: Sql.Command
       connection: !ref dbA
-    inputs:
-      sql: "INSERT INTO missing_table (v) VALUES ('boom')"
+    inputs: { sql: "INSERT INTO missing_table (v) VALUES ('boom')" }
 ---
 kind: Sql.Transaction
-metadata:
-  name: innerTxA
+metadata: { name: innerTxA }
 connection: !ref dbA
 steps: !ref innerBodyA
 ---
 kind: Run.Sequence
-metadata:
-  name: innerBodyA
+metadata: { name: innerBodyA }
 steps:
   - name: writeNestedA
     invoke:
       kind: Sql.Command
       connection: !ref dbA
-    inputs:
-      sql: "INSERT INTO a (v) VALUES ('inner-same')"
+    inputs: { sql: "INSERT INTO a (v) VALUES ('inner-same')" }
 ---
 kind: Sql.Transaction
-metadata:
-  name: innerTxB
+metadata: { name: innerTxB }
 connection: !ref dbB
 steps: !ref innerBodyB
 ---
 kind: Run.Sequence
-metadata:
-  name: innerBodyB
+metadata: { name: innerBodyB }
 steps:
   - name: writeNestedB
     invoke:
       kind: Sql.Command
       connection: !ref dbB
-    inputs:
-      sql: "INSERT INTO b (v) VALUES ('inner-other')"
+    inputs: { sql: "INSERT INTO b (v) VALUES ('inner-other')" }
 ---
 kind: Run.Sequence
-metadata:
-  name: testNesting
+metadata: { name: testNesting }
 steps:
   - name: createA
     invoke:
       kind: Sql.Command
       connection: !ref dbA
-    inputs:
-      sql: "CREATE TABLE a (v TEXT NOT NULL)"
+    inputs: { sql: "CREATE TABLE a (v TEXT NOT NULL)" }
   - name: createB
     invoke:
       kind: Sql.Command
       connection: !ref dbB
-    inputs:
-      sql: "CREATE TABLE b (v TEXT NOT NULL)"
+    inputs: { sql: "CREATE TABLE b (v TEXT NOT NULL)" }
 
   - name: runOuter
     try:
       - name: call
         invoke: !ref outerTx
     catch:
-      - name: expected
-        value: outer-failed
+      - { name: expected, value: outer-failed }
 
   # Joined nesting: the inner DbA transaction shared the outer commit, so its
   # write rolled back with it. Two separate transactions would have left
@@ -128,26 +110,22 @@ steps:
     invoke:
       kind: Sql.Query
       connection: !ref dbA
-    inputs:
-      sql: "SELECT v FROM a"
+    inputs: { sql: "SELECT v FROM a" }
   - name: assertARolledBack
     inputs:
       actual: !cel "steps.selectA.result.rows"
       expected: []
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # Separate connection: its own transaction, committed independently.
   - name: selectB
     invoke:
       kind: Sql.Query
       connection: !ref dbB
-    inputs:
-      sql: "SELECT v FROM b"
+    inputs: { sql: "SELECT v FROM b" }
   - name: assertBCommitted
     inputs:
       actual: !cel "steps.selectB.result.rows"
       expected:
-        - v: inner-other
-    invoke:
-      kind: Assert.Equals
+        - { v: inner-other }
+    invoke: { kind: Assert.Equals }

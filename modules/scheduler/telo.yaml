@@ -14,10 +14,7 @@ requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
-exports:
-  kinds:
-    - Interval
-    - Cron
+exports: { kinds: [Interval, Cron] }
 ---
 # Schedule.Interval — fire the body every `every`. The first tick lands one
 # interval after the schedule starts, not immediately.
@@ -29,8 +26,7 @@ metadata:
     run one interval in. A tick can be skipped by a condition, and a failing run is
     logged without stopping the schedule.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/scheduler.mjs&local_path=./nodejs/src/index.ts#interval
+controllers: [pkg:telo/local/js?path=./nodejs/scheduler.mjs&local_path=./nodejs/src/index.ts#interval]
 schema:
   type: object
   required: [every, invoke]
@@ -47,18 +43,13 @@ schema:
       title: Invoke
       description: The body fired on each tick.
       type: object
-      x-telo-ref:
-        kind: Telo.Executable
-        use: trigger.inbound
-        inputs: /inputs
+      x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
     inputs:
       title: Inputs
       type: object
       additionalProperties: true
       description: Inputs forwarded to the body on each fire, re-evaluated per tick.
-      x-telo-context:
-        type: object
-        properties: {}
+      x-telo-context: { type: object, properties: {} }
     when:
       title: When
       type: boolean
@@ -68,9 +59,7 @@ schema:
         event — and the timer re-arms as normal. It is a skip, not an error.
         Complements the schedule: the period says when to consider firing,
         `when` says whether the current state warrants it.
-      x-telo-context:
-        type: object
-        properties: {}
+      x-telo-context: { type: object, properties: {} }
 ---
 # Schedule.Cron — fire the body on a cron expression, in `timezone` (UTC by
 # default). Standard 5-field cron, with optional leading seconds.
@@ -82,8 +71,7 @@ metadata:
     means the same thing on every host. A tick can be skipped by a condition, and a
     failing run is logged without stopping the schedule.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/scheduler.mjs&local_path=./nodejs/src/index.ts#cron
+controllers: [pkg:telo/local/js?path=./nodejs/scheduler.mjs&local_path=./nodejs/src/index.ts#cron]
 schema:
   type: object
   required: [cron, invoke]
@@ -111,18 +99,13 @@ schema:
       title: Invoke
       description: The body fired on each tick.
       type: object
-      x-telo-ref:
-        kind: Telo.Executable
-        use: trigger.inbound
-        inputs: /inputs
+      x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
     inputs:
       title: Inputs
       type: object
       additionalProperties: true
       description: Inputs forwarded to the body on each fire, re-evaluated per tick.
-      x-telo-context:
-        type: object
-        properties: {}
+      x-telo-context: { type: object, properties: {} }
     when:
       title: When
       type: boolean
@@ -130,6 +113,4 @@ schema:
         Optional CEL boolean evaluated before each fire. A false gate SKIPS the
         tick entirely and the schedule re-arms. Cron expresses the calendar;
         `when` gates on state the calendar cannot see.
-      x-telo-context:
-        type: object
-        properties: {}
+      x-telo-context: { type: object, properties: {} }

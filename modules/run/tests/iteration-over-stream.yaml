@@ -21,10 +21,7 @@ targets:
 ---
 kind: Stream.Of
 metadata: { name: source }
-items:
-  - "he"
-  - "llo world!"
-  - "s!"
+items: ["he", "llo world!", "s!"]
 ---
 # Collects each chunk's offset as a side effect, which is the only way an
 # iteration (no result) can be observed.
@@ -41,11 +38,7 @@ inputType:
       last: { type: boolean }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seen]
-    properties:
-      seen: { type: array }
+  schema: { type: object, required: [seen], properties: { seen: { type: array } } }
 code: |
   function main({ offset, length, last }) {
     globalThis.__seen ??= [];
@@ -62,8 +55,7 @@ steps:
     inputs:
       input: !cel "steps.src.result.output"
       size: 5
-    invoke:
-      kind: Stream.Chunk
+    invoke: { kind: Stream.Chunk }
   - name: walk
     inputs:
       chunks: !cel "steps.chunks.result.output"
@@ -108,5 +100,4 @@ steps:
         inputs:
           actual: !cel "steps.note.result.seen"
           expected: ["0:5:false", "5:5:false", "10:4:true"]
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }

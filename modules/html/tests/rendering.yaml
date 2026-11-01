@@ -5,10 +5,7 @@ metadata:
   description: >-
     Plain text and Markdown renderings of a parsed page, and markup serialization
     that refuses a tree that would not read back as itself.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref plainText
   - !ref markdown

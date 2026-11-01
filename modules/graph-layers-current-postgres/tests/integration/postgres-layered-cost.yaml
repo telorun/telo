@@ -88,9 +88,7 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.RelationshipTable
 metadata: { name: knowsTable }
@@ -205,9 +203,7 @@ inputType:
   schema:
     type: object
     required: [before, after]
-    properties:
-      before: { type: array }
-      after: { type: array }
+    properties: { before: { type: array }, after: { type: array } }
 steps: []
 outputs:
   knows:
@@ -225,8 +221,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_layers_cost CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_layers_cost CASCADE }
 ---
 # The walked neighbourhood, written straight into the layered tables: a000
 # knows a001…a005 in `base`; each of those knows six more — the links of a001
@@ -238,12 +233,10 @@ metadata: { name: populate }
 steps:
   - name: noAutovacuumOnPeople
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_layers_cost.people SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_layers_cost.people SET (autovacuum_enabled = false) }
   - name: noAutovacuumOnKnows
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_layers_cost.knows SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_layers_cost.knows SET (autovacuum_enabled = false) }
   - name: walkedPeople
     invoke: !ref write
     inputs:
@@ -325,12 +318,10 @@ steps:
       bindings: [!cel "inputs.linksFrom", !cel "inputs.linksTo"]
   - name: analyzePeople
     invoke: !ref write
-    inputs:
-      sql: ANALYZE graph_layers_cost.people
+    inputs: { sql: ANALYZE graph_layers_cost.people }
   - name: analyzeKnows
     invoke: !ref write
-    inputs:
-      sql: ANALYZE graph_layers_cost.knows
+    inputs: { sql: ANALYZE graph_layers_cost.knows }
 ---
 kind: Sql.Transaction
 metadata: { name: findPage }
@@ -339,11 +330,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -370,11 +357,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -448,11 +431,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -501,11 +480,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters

@@ -85,13 +85,8 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8971
-    openapi:
-      info:
-        title: Todos API
-        version: 1.0.0
+    listen: { address: 127.0.0.1, port: 8971 }
+    openapi: { info: { title: Todos API, version: 1.0.0 } }
     mounts:
       - path: /todos
         mount: !ref todosApi

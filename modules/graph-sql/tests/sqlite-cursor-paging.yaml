@@ -33,15 +33,12 @@ file: ":memory:"
 kind: SQLite.Table
 metadata: { name: people }
 table: people
-columns:
-  id: { type: text, primaryKey: true }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, primaryKey: true }, name: { type: text, nullable: false } }
 ---
 kind: SQLite.Table
 metadata: { name: teams }
 table: teams
-columns:
-  id: { type: text, primaryKey: true }
+columns: { id: { type: text, primaryKey: true } }
 ---
 kind: SQLite.Table
 metadata: { name: knowsTable }
@@ -153,11 +150,7 @@ kind: Run.Value
 metadata: { name: gathered }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [items]
-    properties:
-      items: { type: array }
+  schema: { type: object, required: [items], properties: { items: { type: array } } }
 value:
   items: !cel "inputs.items"
 ---
@@ -172,8 +165,7 @@ steps:
         INSERT INTO people (id, name) SELECT printf('p%05d', i), 'Person ' || i FROM n
   - name: knows
     invoke: !ref write
-    inputs:
-      sql: "INSERT INTO knows (source, target) SELECT 'p00001', id FROM people"
+    inputs: { sql: "INSERT INTO knows (source, target) SELECT 'p00001', id FROM people" }
 ---
 kind: Run.Sequence
 metadata: { name: drainNodes }
@@ -197,8 +189,7 @@ steps:
           items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)"
   - name: stored
     invoke: !ref read
-    inputs:
-      sql: "SELECT id FROM people ORDER BY id"
+    inputs: { sql: "SELECT id FROM people ORDER BY id" }
   - name: assertEveryKeyOnceInOrder
     invoke: !ref check
     inputs:
@@ -232,8 +223,7 @@ steps:
           items: !cel "steps.seen.result.items + steps.page.result.relationships.map(r, [r.source, r.target])"
   - name: stored
     invoke: !ref read
-    inputs:
-      sql: "SELECT source, target FROM knows ORDER BY source, target"
+    inputs: { sql: "SELECT source, target FROM knows ORDER BY source, target" }
   - name: assertEveryPairOnceInOrder
     invoke: !ref check
     inputs:
@@ -276,8 +266,7 @@ steps:
           items: !cel "steps.seen.result.items + steps.page.result.nodes.map(n, n.key)"
   - name: stored
     invoke: !ref read
-    inputs:
-      sql: "SELECT target FROM knows WHERE source = 'p00001' ORDER BY target"
+    inputs: { sql: "SELECT target FROM knows WHERE source = 'p00001' ORDER BY target" }
   - name: assertEveryEndNodeOnceInOrder
     invoke: !ref check
     inputs:

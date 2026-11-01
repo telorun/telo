@@ -4,9 +4,7 @@
 # when the next page holds anything. Page 10 has no successor, so it is never
 # followed. The cursor stays valid under any `count`, and `limit` is never sent.
 kind: Telo.Application
-metadata:
-  name: KagiPagingTest
-  version: 1.0.0
+metadata: { name: KagiPagingTest, version: 1.0.0 }
 imports:
   Kagi: ..
   WebSearch: ../../web-search
@@ -42,8 +40,7 @@ with:
       - request:
           path: /api/v1/search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref canned
         returns:
           - status: 200
@@ -58,8 +55,7 @@ with:
                       : []}}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18854
+    listen: { port: 18854 }
     mounts:
       - path: /
         mount: !ref FakeKagi

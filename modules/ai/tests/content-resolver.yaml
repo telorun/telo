@@ -29,11 +29,7 @@ kind: Run.Value
 metadata: { name: fetchUpload }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [id]
-    properties:
-      id: { type: string }
+  schema: { type: object, required: [id], properties: { id: { type: string } } }
 value:
   body: !cel "'contents of ' + inputs.id"
 ---
@@ -42,8 +38,7 @@ metadata: { name: UploadContext }
 schema:
   type: object
   required: [conversationId]
-  properties:
-    conversationId: { type: string }
+  properties: { conversationId: { type: string } }
 ---
 kind: AiEcho.EchoModel
 metadata: { name: echo }
@@ -56,8 +51,7 @@ kind: AiEcho.EchoModel
 metadata: { name: toolEcho }
 echoConversation: true
 echoMedia: true
-emitToolCall:
-  name: attach
+emitToolCall: { name: attach }
 ---
 kind: Ai.Tools
 metadata: { name: attachTools }
@@ -98,8 +92,7 @@ steps:
     inputs:
       actual: !cel "steps.call.result.text"
       expected: "user=read contents of c1/UPLOAD:a and image(https://example.com/a.png)"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # Two model calls: the first carries `upload:a` twice, the second the tool's
 # result too, naming `upload:a` again and `upload:b`. Each uri is resolved once,
@@ -129,8 +122,7 @@ steps:
         - role: user
           content:
             - { type: file, mediaType: text/plain, uri: "upload:a" }
-        - role: assistant
-          content: ok
+        - { role: assistant, content: ok }
         - role: user
           content:
             - { type: file, mediaType: text/plain, uri: "upload:a" }
@@ -138,8 +130,7 @@ steps:
     inputs:
       actual: !cel "steps.call.result.text"
       expected: "user=contents of c2/upload:a | assistant=ok | user=contents of c2/upload:a | assistant= | tool[echo-call-1]=contents of c2/upload:acontents of c2/upload:b"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   - name: assertKept
     inputs:
       actual:
@@ -152,8 +143,7 @@ steps:
         appended:
           - { type: file, mediaType: text/plain, uri: "upload:a" }
           - { type: file, mediaType: text/plain, uri: "upload:b" }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The streaming agent sends the model the same resolved conversation.
 kind: Run.Sequence
@@ -162,10 +152,7 @@ steps:
   - name: run
     invoke:
       kind: Ai.AgentStream
-      model:
-        kind: AiEcho.EchoModelStream
-        echoConversation: true
-        echoMedia: true
+      model: { kind: AiEcho.EchoModelStream, echoConversation: true, echoMedia: true }
       resolver:
         schemes: [upload]
         contextType: !ref UploadContext
@@ -180,26 +167,23 @@ steps:
           content:
             - { type: file, mediaType: text/plain, uri: "upload:a" }
   - name: drain
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
     inputs:
       input: !cel "steps.run.result.output"
   - name: assertSent
     inputs:
       actual: !cel "steps.drain.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
       expected: "user=contents of c3/upload:a"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The Ai.Text call reaches the resolver once, the agent run twice — `upload:a`
 # and `upload:b`, once each — and the streaming agent run once.
 kind: Assert.Events
 metadata: { name: fetchesCounted }
 filter:
-  - type: "fetchUpload.Invoked"
+  - { type: "fetchUpload.Invoked" }
 expect:
-  - event: fetchUpload.Invoked
-    times: 4
+  - { event: fetchUpload.Invoked, times: 4 }
 ---
 # An answer that is again a reference by a scheme the resolver lists.
 kind: Run.Sequence
@@ -213,9 +197,7 @@ steps:
           model: !ref echo
           resolver:
             schemes: [upload]
-            invoke:
-              kind: Run.Value
-              value: { next: "upload:again" }
+            invoke: { kind: Run.Value, value: { next: "upload:again" } }
             inputs: {}
             result: !cel "{'type': 'file', 'mediaType': 'text/plain', 'uri': result.next}"
         inputs:
@@ -224,20 +206,15 @@ steps:
               content:
                 - { type: file, mediaType: text/plain, uri: "upload:a" }
       - name: unexpected
-        throw:
-          code: ERR_TEST_NOT_REFUSED
-          message: the answer was accepted
+        throw: { code: ERR_TEST_NOT_REFUSED, message: the answer was accepted }
     catch:
       - name: assertRefused
         inputs:
           actual:
             code: !cel "error.code"
             data: !cel "error.data"
-          expected:
-            code: ERR_CONTENT_RESOLUTION_INVALID
-            data: { uri: "upload:a" }
-        invoke:
-          kind: Assert.Equals
+          expected: { code: ERR_CONTENT_RESOLUTION_INVALID, data: { uri: "upload:a" } }
+        invoke: { kind: Assert.Equals }
 ---
 # Called without the `context` its resolver's `contextType` requires: refused
 # where the call is written, and — from a consumer whose check is silent — by

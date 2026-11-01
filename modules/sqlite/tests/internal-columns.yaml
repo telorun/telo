@@ -36,18 +36,13 @@ file: ":memory:"
 kind: SQLite.Table
 metadata: { name: documents }
 table: documents
-columns:
-  slug: { type: text, nullable: false }
-  title: { type: text }
+columns: { slug: { type: text, nullable: false }, title: { type: text } }
 internalColumns:
   row_id: { type: text, primaryKey: true, defaultExpression: "lower(hex(randomblob(16)))" }
   layer: { type: text, nullable: false, default: base }
   retired_at: { type: text }
 indexes:
-  documents_layer_slug:
-    columns: [layer, slug]
-    unique: true
-    where: "retired_at IS NULL"
+  documents_layer_slug: { columns: [layer, slug], unique: true, where: "retired_at IS NULL" }
 ---
 kind: SQLite.Schema
 metadata: { name: appSchema }
@@ -71,8 +66,7 @@ metadata: { name: created }
 steps:
   - name: columns
     invoke: !ref read
-    inputs:
-      sql: "SELECT name, pk FROM pragma_table_info('documents') ORDER BY name"
+    inputs: { sql: "SELECT name, pk FROM pragma_table_info('documents') ORDER BY name" }
   - name: assertColumns
     invoke: !ref check
     inputs:
@@ -107,12 +101,10 @@ steps:
   # default.
   - name: insert
     invoke: !ref insertDocument
-    inputs:
-      data: { slug: intro, title: Introduction }
+    inputs: { data: { slug: intro, title: Introduction } }
   - name: stored
     invoke: !ref read
-    inputs:
-      sql: "SELECT slug, title, layer FROM documents"
+    inputs: { sql: "SELECT slug, title, layer FROM documents" }
   - name: assertStored
     invoke: !ref check
     inputs:
@@ -124,24 +116,21 @@ metadata: { name: repositoryContract }
 source: ./__fixtures__/internal-columns/repository-names-internal.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "layer"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "layer" }
 ---
 kind: Assert.Manifest
 metadata: { name: seedRowContract }
 source: ./__fixtures__/internal-columns/seed-sets-internal.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "'layer' is not allowed"
+    - { code: SCHEMA_VIOLATION, message: "'layer' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: emptyRowContract }
 source: ./__fixtures__/internal-only/repository-names-column.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'head_revision' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'head_revision' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: seedsWithoutRowContract }
@@ -170,6 +159,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: noColumnsAtCreation }
 source: ./__fixtures__/internal-only/no-columns-app.yaml
-expect:
-  errors: []
-  runFails: "/columns must NOT have fewer than 1 properties"
+expect: { errors: [], runFails: "/columns must NOT have fewer than 1 properties" }

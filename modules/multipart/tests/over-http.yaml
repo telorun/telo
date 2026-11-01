@@ -45,10 +45,7 @@ with:
             # type-argument check exists for, and an omitted `of` is *any* in both
             # directions, so leaving it off would demonstrate the annotation
             # without exercising it.
-            body:
-              x-telo-type:
-                name: Telo.Stream
-                of: Telo.Bytes
+            body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
         inputs:
           input: !cel "request.body"
           contentType: !cel "request.headers['content-type']"
@@ -83,14 +80,12 @@ with:
                 body: { limit: !cel "error.data.limit" }
   - kind: Server.Server
     metadata: { name: TestServer }
-    listen:
-      port: 8873
+    listen: { port: 8873 }
     # No `contentTypeParsers` entry: the server accepts a multipart body out of
     # the box, as raw bytes. Declaring one would still work and would take
     # precedence — this test exercises the default precisely because a 415 here is
     # what every author used to hit first.
-    openapi:
-      info: { title: Multipart Over HTTP, version: 1.0.0 }
+    openapi: { info: { title: Multipart Over HTTP, version: 1.0.0 } }
     mounts:
       - path: /api
         mount: !ref TestApi
@@ -101,14 +96,12 @@ steps:
     inputs:
       subtype: related
       parts:
-        - contentType: application/json
-          content: '{"name":"note.txt"}'
+        - { contentType: application/json, content: '{"name":"note.txt"}' }
         - contentType: text/plain
           filename: note.txt
           name: file
           content: hello from a part
-    invoke:
-      kind: Multipart.Encoder
+    invoke: { kind: Multipart.Encoder }
 
   # The encoder's contentType goes on the request verbatim. Writing
   # `multipart/related` by hand here would omit the boundary and the server would
@@ -121,8 +114,7 @@ steps:
       headers:
         content-type: !cel "steps.encode.result.contentType"
       body: !cel "steps.encode.result.output"
-    invoke:
-      kind: Http.Request
+    invoke: { kind: Http.Request }
 
   - name: assert
     inputs:
@@ -134,5 +126,4 @@ steps:
         count: 2
         names: [unnamed, note.txt]
         texts: ['{"name":"note.txt"}', hello from a part]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

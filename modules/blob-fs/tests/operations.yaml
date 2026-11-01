@@ -55,19 +55,14 @@ kind: Run.Sequence
 metadata: { name: load }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [key]
-    properties:
-      key: { type: string }
+  schema: { type: object, required: [key], properties: { key: { type: string } } }
 steps:
   - name: found
     inputs: { key: !cel "inputs.key" }
     invoke: !ref get
   - name: drained
     inputs: { input: !cel "steps.found.result.output" }
-    invoke:
-      kind: Octet.Decoder
+    invoke: { kind: Octet.Decoder }
 outputs:
   text: !cel "string(steps.drained.result.bytes)"
   size: !cel "steps.found.result.size"
@@ -93,8 +88,7 @@ steps:
   - name: source
     inputs:
       items: !cel "[bytes('hello '), bytes('world')]"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: stored
     inputs:
       key: docs/hello.txt
@@ -187,8 +181,7 @@ steps:
   - name: oversized
     inputs:
       items: !cel "[bytes('0123456789'), bytes('0123456789'), bytes('0123456789')]"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: putTooLarge
     try:
       - name: putOver

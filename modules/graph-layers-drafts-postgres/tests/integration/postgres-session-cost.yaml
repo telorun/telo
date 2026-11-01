@@ -70,9 +70,7 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.LayersTable
 metadata: { name: graphLayers }
@@ -140,8 +138,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_drafts_cost CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_drafts_cost CASCADE }
 ---
 # What this transaction has read from the node table so far.
 kind: Run.Sequence
@@ -168,9 +165,7 @@ inputType:
   schema:
     type: object
     required: [from, to]
-    properties:
-      from: { type: integer }
-      to: { type: integer }
+    properties: { from: { type: integer }, to: { type: integer } }
 steps:
   - name: published
     invoke: !ref write
@@ -199,8 +194,7 @@ steps:
       bindings: [!cel "inputs.from", !cel "inputs.to"]
   - name: analyze
     invoke: !ref write
-    inputs:
-      sql: ANALYZE graph_drafts_cost.people
+    inputs: { sql: ANALYZE graph_drafts_cost.people }
 ---
 # Inside one session: ten pages of 1,000 reach 10,000 keys into the listing,
 # then the page of 100 after them is read in a transaction with the counters
@@ -209,11 +203,7 @@ kind: Run.Sequence
 metadata: { name: measure }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [draft]
-    properties:
-      draft: { type: string }
+  schema: { type: object, required: [draft], properties: { draft: { type: string } } }
 steps:
   - name: session
     inputs: { draft: !cel "inputs.draft" }
@@ -245,11 +235,7 @@ steps:
               kind: Run.Sequence
               inputType:
                 kind: Telo.JsonSchema
-                schema:
-                  type: object
-                  required: [cursor]
-                  properties:
-                    cursor: { type: string }
+                schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
               steps:
                 - name: before
                   invoke: !ref readCounters
@@ -287,8 +273,7 @@ steps:
     inputs: {}
   - name: noAutovacuum
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_drafts_cost.people SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_drafts_cost.people SET (autovacuum_enabled = false) }
   - name: populate
     invoke: !ref addPeople
     inputs: { from: 1, to: 60000 }

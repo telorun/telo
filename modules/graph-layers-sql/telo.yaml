@@ -13,17 +13,9 @@ metadata:
     atomically with conflict detection, retained revision history with three-way
     merge, layers pinned to revisions of others, keyset paging and cross-layer
     traversal.
-imports:
-  Graph: ../graph
-  GraphLayers: ../graph-layers
-  Sql: ../sql
+imports: { Graph: ../graph, GraphLayers: ../graph-layers, Sql: ../sql }
 exports:
-  kinds:
-    - Node
-    - Relationship
-    - CurrentStore
-    - DraftedStore
-    - RevisionedStore
+  kinds: [Node, Relationship, CurrentStore, DraftedStore, RevisionedStore]
   # The controllers every SQL strategy module names: an engine module's own
   # bundle re-exports them, so the implementation is one module scope across
   # engines.
@@ -55,9 +47,7 @@ schema:
         The layered table holding the nodes. Declared with the strategy module's
         node table kind and listed in the engine schema, which creates and
         migrates it.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
     key:
       title: Key
       description: >-
@@ -127,21 +117,15 @@ schema:
       description: >-
         The layered table holding the relationships. Declared with the strategy
         module's relationship table kind and listed in the engine schema.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
     source:
       title: Source
       description: The node type a relationship starts at.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
     target:
       title: Target
       description: The node type a relationship ends at. May be the source's type.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
     sourceColumn:
       title: Source Column
       description: >-
@@ -221,17 +205,13 @@ schema:
     connection:
       title: Connection
       description: The connection every statement runs on.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The engine schema that declares every table this graph uses, on the same
         connection. It creates and migrates them; the graph issues no DDL.
-      x-telo-ref:
-        kind: Sql.Schema
-        use: dependency
+      x-telo-ref: { kind: Sql.Schema, use: dependency }
     layer:
       title: Layer
       description: >-
@@ -247,27 +227,18 @@ schema:
         layer two bases share has one place, the lowest. The first statement
         found for a key wins.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.CurrentStore
-          use: dependency
+      items: { x-telo-ref: { kind: Self.CurrentStore, use: dependency } }
     nodes:
       title: Nodes
       description: The node types this graph holds.
       type: array
       minItems: 1
-      items:
-        x-telo-ref:
-          kind: Self.Node
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Node, use: dependency } }
     relationships:
       title: Relationships
       description: The relationship types this graph holds.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Relationship
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Relationship, use: dependency } }
   x-telo-resource-rules:
     - resolve: [/schema, /nodes, /relationships]
       condition: !cel >-
@@ -331,17 +302,13 @@ schema:
     connection:
       title: Connection
       description: The connection every statement runs on.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The engine schema that declares every table this graph uses, on the same
         connection. It creates and migrates them; the graph issues no DDL.
-      x-telo-ref:
-        kind: Sql.Schema
-        use: dependency
+      x-telo-ref: { kind: Sql.Schema, use: dependency }
     layer:
       title: Layer
       description: >-
@@ -357,45 +324,32 @@ schema:
         layer two bases share has one place, the lowest. The first statement
         found for a key wins.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.DraftedStore
-          use: dependency
+      items: { x-telo-ref: { kind: Self.DraftedStore, use: dependency } }
     nodes:
       title: Nodes
       description: The node types this graph holds.
       type: array
       minItems: 1
-      items:
-        x-telo-ref:
-          kind: Self.Node
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Node, use: dependency } }
     relationships:
       title: Relationships
       description: The relationship types this graph holds.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Relationship
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Relationship, use: dependency } }
     layers:
       title: Layers
       description: >-
         The bookkeeping table registering every layer with its revision counter.
         Declared with the strategy module's layers table kind and listed in the
         schema; a layer and its bases share it.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
     drafts:
       title: Drafts
       description: >-
         The bookkeeping table recording every draft: what it was opened on, by
         whom, and how it ended. Declared with the strategy module's drafts table
         kind and listed in the schema; a layer and its bases share it.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
   x-telo-resource-rules:
     - resolve: [/schema, /nodes, /relationships]
       condition: !cel >-
@@ -472,17 +426,13 @@ schema:
     connection:
       title: Connection
       description: The connection every statement runs on.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The engine schema that declares every table this graph uses, on the same
         connection. It creates and migrates them; the graph issues no DDL.
-      x-telo-ref:
-        kind: Sql.Schema
-        use: dependency
+      x-telo-ref: { kind: Sql.Schema, use: dependency }
     layer:
       title: Layer
       description: >-
@@ -495,27 +445,19 @@ schema:
       description: The node types this graph holds.
       type: array
       minItems: 1
-      items:
-        x-telo-ref:
-          kind: Self.Node
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Node, use: dependency } }
     relationships:
       title: Relationships
       description: The relationship types this graph holds.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Relationship
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Relationship, use: dependency } }
     layers:
       title: Layers
       description: >-
         The bookkeeping table registering every layer with its head revision.
         Declared with the strategy module's layers table kind and listed in the
         schema.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
     changesetBases:
       title: Changeset Bases
       description: >-
@@ -523,9 +465,7 @@ schema:
         built on, each at the revision it is pinned to, stored once per change.
         Declared with the strategy module's changeset-bases table kind and
         listed in the schema.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
     changesets:
       title: Changesets
       description: >-
@@ -533,9 +473,7 @@ schema:
         revision of its layer once published: what it was opened on, by whom,
         and how it ended. Declared with the strategy module's changesets table
         kind and listed in the schema.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
   # `changesetBases` is guarded where it is read: a store written before the
   # slot existed is refused once, for the missing slot, and not again by a rule
   # that could not read it.

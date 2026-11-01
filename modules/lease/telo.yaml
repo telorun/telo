@@ -17,11 +17,8 @@ requires:
   # blame its author. Declaring the floor turns that into one message naming the
   # cause. Forward-declared: 0.79.0 is the release that carries the form.
   telo: ">=0.79.0"
-imports:
-  KvStore: ../kv-store
-exports:
-  kinds:
-    - Critical
+imports: { KvStore: ../kv-store }
+exports: { kinds: [Critical] }
 ---
 # Lease.Critical — run a body under a keyed lease, auto-managing acquire/
 # release. Two modes:
@@ -46,8 +43,7 @@ metadata:
     work can run inline or detached with the lease held across it, and a detached run
     can be cancelled by key.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/lease.mjs&local_path=./nodejs/src/index.ts#CriticalController
+controllers: [pkg:telo/local/js?path=./nodejs/lease.mjs&local_path=./nodejs/src/index.ts#CriticalController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -112,9 +108,7 @@ schema:
         Reference to the KvStore.Store backing the lease. Use
         kv-store-sql or kv-store-redis for cross-instance exclusion;
         kv-store-memory is single-process only.
-      x-telo-ref:
-        kind: KvStore.Store
-        use: dependency
+      x-telo-ref: { kind: KvStore.Store, use: dependency }
     ttl:
       title: TTL
       type: string
@@ -137,9 +131,7 @@ schema:
       type: object
       x-telo-ref:
         kind: Telo.Executable
-        use:
-          by: /detach
-          cases: { false: call, true: detached }
+        use: { by: /detach, cases: { false: call, true: detached } }
       # "You are inside my body" is exactly the relation zones express, and a
       # lease is one — held for the body's duration and released at its terminal.
       # Uncorrelated: what the lease holds is a key it minted, not a resource a

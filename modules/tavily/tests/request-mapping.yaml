@@ -5,9 +5,7 @@
 # country as Tavily's country name and the recency hint as `time_range`. A hint
 # Tavily has no form for is left out. The mock echoes the body as the title.
 kind: Telo.Application
-metadata:
-  name: TavilyRequestMappingTest
-  version: 1.0.0
+metadata: { name: TavilyRequestMappingTest, version: 1.0.0 }
 imports:
   Tavily: ..
   Http: ../../http-client
@@ -43,8 +41,7 @@ with:
       - request:
           path: /search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref echo
         returns:
           - status: 200
@@ -58,8 +55,7 @@ with:
                       content: echo
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18858
+    listen: { port: 18858 }
     mounts:
       - path: /
         mount: !ref FakeTavily

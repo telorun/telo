@@ -65,9 +65,7 @@ access:
 kind: Postgres.Table
 metadata: { name: people }
 table: people
-columns:
-  id: { type: text, primaryKey: true }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, primaryKey: true }, name: { type: text, nullable: false } }
 ---
 # The pair index leads with the source, which is what an outgoing hop and a
 # listing by (source, target) read; the second index serves an incoming hop.
@@ -169,9 +167,7 @@ inputType:
   schema:
     type: object
     required: [before, after]
-    properties:
-      before: { type: array }
-      after: { type: array }
+    properties: { before: { type: array }, after: { type: array } }
 steps: []
 outputs:
   knows:
@@ -189,8 +185,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_paging CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_paging CASCADE }
 ---
 # 10,000 people. p00001 knows five, each of whom knows six others — thirty end
 # nodes two hops out — and 20,000 relationships among people it never reaches.
@@ -199,12 +194,10 @@ metadata: { name: populate }
 steps:
   - name: noAutovacuumOnPeople
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_paging.people SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_paging.people SET (autovacuum_enabled = false) }
   - name: noAutovacuumOnKnows
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_paging.knows SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_paging.knows SET (autovacuum_enabled = false) }
   - name: people
     invoke: !ref write
     inputs:
@@ -236,9 +229,7 @@ inputType:
   schema:
     type: object
     required: [from, to]
-    properties:
-      from: { type: integer }
-      to: { type: integer }
+    properties: { from: { type: integer }, to: { type: integer } }
 steps:
   - name: insert
     invoke: !ref write
@@ -251,12 +242,10 @@ steps:
       bindings: [!cel "inputs.from", !cel "inputs.to"]
   - name: analyzePeople
     invoke: !ref write
-    inputs:
-      sql: ANALYZE graph_paging.people
+    inputs: { sql: ANALYZE graph_paging.people }
   - name: analyzeKnows
     invoke: !ref write
-    inputs:
-      sql: ANALYZE graph_paging.knows
+    inputs: { sql: ANALYZE graph_paging.knows }
 ---
 kind: Run.Sequence
 metadata: { name: findCost }
@@ -279,11 +268,7 @@ steps:
         kind: Run.Sequence
         inputType:
           kind: Telo.JsonSchema
-          schema:
-            type: object
-            required: [cursor]
-            properties:
-              cursor: { type: string }
+          schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
         steps:
           - name: before
             invoke: !ref readCounters
@@ -345,11 +330,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -398,11 +379,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -530,8 +507,7 @@ steps:
     inputs: { from: 20001, to: 200000 }
   - name: relationships
     invoke: { kind: Sql.Query, connection: !ref db }
-    inputs:
-      sql: SELECT count(*)::int AS n FROM graph_paging.knows
+    inputs: { sql: SELECT count(*)::int AS n FROM graph_paging.knows }
   - name: assertGrown
     invoke: !ref check
     inputs:

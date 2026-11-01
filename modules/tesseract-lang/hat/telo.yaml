@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - hat
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [hat] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: hat, member: package/4.0.0_best_int/hat.traineddata.gz, sha256: e8e31b94b546c840739d69e9066633cd336c939ad5ffdaf81acac5e40ff6a2e2, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: hat
-  description: Haitian Creole, Latin script
+metadata: { name: hat, description: "Haitian Creole, Latin script" }
 code: hat
 data: !module-path ./tessdata/hat.traineddata.gz

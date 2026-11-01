@@ -38,9 +38,5 @@ steps:
         theme: !cel "steps.theme.result.problems"
         controls: !cel "steps.controls.result.problems"
         derived: !cel "steps.derived.result.problems"
-      expected:
-        theme: []
-        controls: []
-        derived: []
-    invoke:
-      kind: Assert.Equals
+      expected: { theme: [], controls: [], derived: [] }
+    invoke: { kind: Assert.Equals }

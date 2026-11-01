@@ -3,10 +3,7 @@ metadata:
   name: HtmlMainContentTest
   version: 1.0.0
   description: Main content detection, its failure, and the input tree left untouched.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref findsArticle
   - !ref noContent
@@ -32,9 +29,7 @@ steps:
     invoke: { kind: Html.Markup }
     inputs: { document: !cel "steps.parse.result" }
   - name: main
-    invoke:
-      kind: Html.MainContent
-      charThreshold: 100
+    invoke: { kind: Html.MainContent, charThreshold: 100 }
     inputs: { document: !cel "steps.parse.result" }
   - name: after
     invoke: { kind: Html.Markup }

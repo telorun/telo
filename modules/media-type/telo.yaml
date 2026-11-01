@@ -14,9 +14,7 @@ metadata:
 requires:
   # The release this module was first checked against; nothing older has read it.
   telo: ">=0.114.0"
-exports:
-  kinds:
-    - Detector
+exports: { kinds: [Detector] }
 ---
 # MediaType.Detector — what the bytes are, against what they were declared to be.
 #
@@ -47,8 +45,7 @@ metadata:
     never fails the call: it is reported as generic binary, or under the
     declared type when nothing contradicts it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/media-type.mjs&local_path=./nodejs/src/index.ts#Detector
+controllers: [pkg:telo/local/js?path=./nodejs/media-type.mjs&local_path=./nodejs/src/index.ts#Detector]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -69,10 +66,8 @@ inputType:
         # branch as an empty schema matching everything, so under oneOf one value
         # would match both branches and fail.
         anyOf:
-          - x-telo-type: Telo.Bytes
-          - x-telo-type:
-              name: Telo.Stream
-              of: Telo.Bytes
+          - { x-telo-type: Telo.Bytes }
+          - { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
       declared:
         title: Declared
         description: >-
@@ -108,9 +103,5 @@ outputType:
         description: >-
           Every byte of `input`, unchanged and in order, the inspected leading
           bytes first. Pass it on in place of `input`, which has been read from.
-        x-telo-type:
-          name: Telo.Stream
-          of: Telo.Bytes
-schema:
-  type: object
-  additionalProperties: false
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+schema: { type: object, additionalProperties: false }

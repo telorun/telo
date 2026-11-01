@@ -48,9 +48,7 @@ with:
       - request:
           path: /small
           method: POST
-          schema:
-            body:
-              x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+          schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
         inputs:
           input: !cel "request.body"
           contentType: !cel "request.headers['content-type']"
@@ -64,9 +62,7 @@ with:
       - request:
           path: /large
           method: POST
-          schema:
-            body:
-              x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+          schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
         maxBodyBytes: 12582912
         inputs:
           input: !cel "request.body"
@@ -83,8 +79,7 @@ with:
                   bytes: !cel "size(result.parts[0].content)"
   - kind: Server.Server
     metadata: { name: UploadServer }
-    listen:
-      port: 8884
+    listen: { port: 8884 }
     mounts:
       - path: /api
         mount: !ref UploadApi
@@ -95,11 +90,9 @@ steps:
     inputs:
       url: http://localhost:8884/api/small
       method: POST
-      headers:
-        content-type: multipart/form-data; boundary=b
+      headers: { content-type: multipart/form-data; boundary=b }
       body: "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhel"
-    invoke:
-      kind: Http.Request
+    invoke: { kind: Http.Request }
   - name: assertTruncated
     inputs:
       actual: { status: !cel "steps.truncated.result.status", body: !cel "steps.truncated.result.body" }
@@ -112,11 +105,9 @@ steps:
     inputs:
       url: http://localhost:8884/api/small
       method: POST
-      headers:
-        content-type: multipart/form-data; boundary=b
+      headers: { content-type: multipart/form-data; boundary=b }
       body: "--b\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nhello\r\n--b\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n0123456789\r\n--b--\r\n"
-    invoke:
-      kind: Http.Request
+    invoke: { kind: Http.Request }
   - name: assertOversizedPart
     inputs:
       actual: { status: !cel "steps.oversizedPart.result.status", body: !cel "steps.oversizedPart.result.body" }
@@ -133,15 +124,11 @@ steps:
     inputs:
       url: http://localhost:8884/api/large
       method: POST
-      headers:
-        content-type: multipart/form-data; boundary=b
+      headers: { content-type: multipart/form-data; boundary=b }
       body: !cel "'--b\\r\\nContent-Disposition: form-data; name=\"file\"\\r\\n\\r\\n' + range(9216).map(i, steps.kilobyte.result).join('') + '\\r\\n--b--\\r\\n'"
-    invoke:
-      kind: Http.Request
+    invoke: { kind: Http.Request }
   - name: assertLarge
     inputs:
       actual: { status: !cel "steps.large.result.status", body: !cel "steps.large.result.body" }
-      expected:
-        status: 200
-        body: { count: 1, bytes: 9216000 }
+      expected: { status: 200, body: { count: 1, bytes: 9216000 } }
     invoke: !ref Assert.equals

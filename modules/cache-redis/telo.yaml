@@ -14,11 +14,8 @@ requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
-imports:
-  Cache: ../cache
-exports:
-  kinds:
-    - Store
+imports: { Cache: ../cache }
+exports: { kinds: [Store] }
 ---
 kind: Telo.Definition
 metadata:
@@ -29,8 +26,7 @@ metadata:
     emits degraded and recovered events, and reconnects on its own.
 capability: Telo.Provider
 extends: Cache.Store
-controllers:
-  - pkg:telo/local/js?path=./nodejs/cache-redis.mjs&local_path=./nodejs/src/index.ts#StoreController
+controllers: [pkg:telo/local/js?path=./nodejs/cache-redis.mjs&local_path=./nodejs/src/index.ts#StoreController]
 schema:
   type: object
   required: [url]
@@ -46,9 +42,7 @@ schema:
         Optional Cache.Store served when Redis is unreachable (degraded mode).
         Cache failover is safe — a miss just recomputes; the degradation is
         logged and surfaced as a `cache.degraded` / `cache.recovered` event.
-      x-telo-ref:
-        kind: Cache.Store
-        use: dependency
+      x-telo-ref: { kind: Cache.Store, use: dependency }
     connectTimeout:
       title: Connect Timeout
       type: string

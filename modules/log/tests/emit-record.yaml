@@ -28,8 +28,7 @@ targets:
 kind: Run.Sequence
 metadata: { name: test }
 with:
-  - kind: Fs.File
-    metadata: { name: readLog }
+  - { kind: Fs.File, metadata: { name: readLog } }
 steps:
   - name: marker
     value: !cel "'emit-' + uuidv4()"

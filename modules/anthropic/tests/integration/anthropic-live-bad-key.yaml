@@ -8,8 +8,7 @@ metadata:
     under `Anthropic.MessagesModel` and by the read under
     `Anthropic.MessagesModelStream`. Sends no valid key, and still skips when
     ANTHROPIC_API_KEY is unset, so a checkout with no key makes no vendor call.
-secrets:
-  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" } }
 imports:
   Anthropic: ../../
   Http: ../../../http-client
@@ -25,10 +24,7 @@ client:
   kind: Http.Client
   baseUrl: https://api.anthropic.com/v1
   timeout: 60000
-  credential:
-    kind: Http.ApiKeyHeader
-    header: x-api-key
-    key: sk-ant-not-a-key
+  credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: sk-ant-not-a-key }
 ---
 kind: Anthropic.MessagesModel
 metadata: { name: refused }

@@ -7,8 +7,7 @@ metadata:
     at dispatch — a misspelled property, a key of the wrong type, a value outside
     a column's enum — and what an operation returns carries the author's columns
     and the origin layer, never a bookkeeping column.
-include:
-  - ./__fixtures__/layered-model.yaml
+include: [./__fixtures__/layered-model.yaml]
 imports:
   SQLite: ../../sqlite
   Graph: ../../graph

@@ -94,7 +94,5 @@ steps:
       actual:
         one: !cel "steps.outcome.result.result.steps.one.result.from"
         two: !cel "steps.outcome.result.result.steps.two.result.from"
-      expected:
-        one: alpha
-        two: beta
+      expected: { one: alpha, two: beta }
     invoke: { kind: Assert.Equals }

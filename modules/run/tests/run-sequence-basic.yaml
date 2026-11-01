@@ -1,30 +1,19 @@
 kind: Telo.Application
-metadata:
-  name: RunSequenceBasic
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunSequenceBasic, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testInvokeStep
 ---
 kind: Run.Sequence
-metadata:
-  name: testInvokeStep
+metadata: { name: testInvokeStep }
 steps:
   - name: addNumbers
-    inputs:
-      a: 5
-      b: 3
+    inputs: { a: 5, b: 3 }
     invoke:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            a: { type: number }
-            b: { type: number }
+        schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
       value:
         sum: !cel "inputs.a + inputs.b"
   - name: verifySum
@@ -32,25 +21,13 @@ steps:
       sum: !cel "steps.addNumbers.result.sum"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          sum:
-            type: number
-            const: 8
+      schema: { type: object, properties: { sum: { type: number, const: 8 } } }
 ---
 kind: Assert.Events
-metadata:
-  name: expectEvents
+metadata: { name: expectEvents }
 filter:
-  - type: "*"
+  - { type: "*" }
 expect:
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Run.Value }
-      outputs:
-        sum: 8
-  - event: "*.Invoked"
-    payload:
-      ref: { kind: Assert.Schema }
-      outputs: true
+    payload: { ref: { kind: Run.Value }, outputs: { sum: 8 } }
+  - { event: "*.Invoked", payload: { ref: { kind: Assert.Schema }, outputs: true } }

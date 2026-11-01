@@ -24,14 +24,12 @@ targets:
   - !ref test
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: fixture }
     source: ./__fixtures__/app/telo.yaml
-    ports:
-      http: 19311
+    ports: { http: 19311 }
 targets:
   - !ref fixture
 steps:

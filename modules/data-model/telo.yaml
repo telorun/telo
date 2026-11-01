@@ -19,8 +19,7 @@ requires:
   # the declaration read.
   telo: ">=0.126.0"
 exports:
-  kinds:
-    - Collection
+  kinds: [Collection]
   # The entry point a kind extending `Collection` resolves `@telorun/data-model`
   # to, so it runs this module's guards beside its own.
   code:
@@ -42,8 +41,7 @@ metadata:
     records. Publishes what it declares; refuses a filter, sort, facet or
     relation that contradicts the record shape.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/data-model.mjs&local_path=./nodejs/src/index.ts#CollectionController
+controllers: [pkg:telo/local/js?path=./nodejs/data-model.mjs&local_path=./nodejs/src/index.ts#CollectionController]
 schema:
   type: object
   required: [model, query]
@@ -97,8 +95,7 @@ schema:
             type: object
             additionalProperties: false
             required: [property]
-            properties:
-              property: { type: string }
+            properties: { property: { type: string } }
         facets:
           title: Facets
           description: >-
@@ -109,8 +106,7 @@ schema:
             type: object
             additionalProperties: false
             required: [property]
-            properties:
-              property: { type: string }
+            properties: { property: { type: string } }
     relations:
       title: Relations
       description: >-

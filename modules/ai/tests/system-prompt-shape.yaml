@@ -11,8 +11,7 @@ metadata:
     misspelled `cacheBreakpoint` are each refused; so is a breakpoint on a part a
     model produces. A string, a marked list of text parts and marked text, image,
     audio, video and file parts check clean.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref malformedRefused
   - !ref wellFormedAccepted
@@ -79,5 +78,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: wellFormedAccepted }
 source: ./__fixtures__/system-prompt-accepted.yaml
-expect:
-  errors: []
+expect: { errors: [] }

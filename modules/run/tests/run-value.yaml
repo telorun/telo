@@ -1,10 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: RunValueTest
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunValueTest, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testObject
   - !ref testConstant
@@ -12,43 +8,33 @@ targets:
 ---
 # Object result shaped from inputs — the value-binding case (concat + arithmetic).
 kind: Run.Value
-metadata:
-  name: shape
+metadata: { name: shape }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      name: { type: string }
-      a: { type: number }
-      b: { type: number }
+    properties: { name: { type: string }, a: { type: number }, b: { type: number } }
 value:
   greeting: !cel "'Hello, ' + inputs.name + '!'"
   product: !cel "inputs.a * inputs.b"
 ---
 # Constant result with no inputs — a plain literal array, any shape.
 kind: Run.Value
-metadata:
-  name: parts
+metadata: { name: parts }
 value:
   - { type: text, text: page rendered }
   - { type: image, data: aGVsbG8=, mediaType: image/png }
 ---
 # Scalar result — `value` need not be an object.
 kind: Run.Value
-metadata:
-  name: answer
+metadata: { name: answer }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      n: { type: integer }
+  schema: { type: object, properties: { n: { type: integer } } }
 value: !cel "double(inputs.n) * 2.0"
 ---
 kind: Run.Sequence
-metadata:
-  name: testObject
+metadata: { name: testObject }
 steps:
   - name: shape
     invoke: !ref shape
@@ -61,14 +47,11 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          greeting: { const: "Hello, telo!" }
-          product: { const: 42 }
+        properties: { greeting: { const: "Hello, telo!" }, product: { const: 42 } }
         required: [ greeting, product ]
 ---
 kind: Run.Sequence
-metadata:
-  name: testConstant
+metadata: { name: testConstant }
 steps:
   - name: parts
     invoke: !ref parts
@@ -81,15 +64,11 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          type0: { const: text }
-          type1: { const: image }
-          media: { const: image/png }
+        properties: { type0: { const: text }, type1: { const: image }, media: { const: image/png } }
         required: [ type0, type1, media ]
 ---
 kind: Run.Sequence
-metadata:
-  name: testScalar
+metadata: { name: testScalar }
 steps:
   - name: answer
     invoke: !ref answer
@@ -99,8 +78,4 @@ steps:
       doubled: !cel "steps.answer.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          doubled: { const: 42 }
-        required: [ doubled ]
+      schema: { type: object, properties: { doubled: { const: 42 } }, required: [doubled] }

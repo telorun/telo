@@ -37,8 +37,7 @@ code: |
 ---
 kind: Stream.Of
 metadata: { name: badSource }
-items:
-  - 42
+items: [42]
 ---
 kind: Console.WriteStream
 metadata: { name: stdout }
@@ -53,14 +52,10 @@ steps:
       input: !cel "steps.stringSrc.result.output"
     invoke: !ref stdout
   - name: assertStringReached
-    inputs:
-      reached: true
+    inputs: { reached: true }
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { reached: { const: true } }
-        required: [ reached ]
+      schema: { type: object, properties: { reached: { const: true } }, required: [reached] }
 ---
 kind: Run.Sequence
 metadata: { name: testBytesStream }
@@ -72,14 +67,10 @@ steps:
       input: !cel "steps.bytesSrc.result.output"
     invoke: !ref stdout
   - name: assertBytesReached
-    inputs:
-      reached: true
+    inputs: { reached: true }
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { reached: { const: true } }
-        required: [ reached ]
+      schema: { type: object, properties: { reached: { const: true } }, required: [reached] }
 ---
 kind: Run.Sequence
 metadata: { name: testInvalidInput }

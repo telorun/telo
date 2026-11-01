@@ -58,8 +58,7 @@ steps:
             invoke: !ref lookup
             inputs: { id: "42", mode: own }
         catch:
-          - name: reraise
-            rethrow: {}
+          - { name: reraise, rethrow: {} }
     catch:
       - name: assertNearest
         invoke: { kind: Assert.Equals }
@@ -90,6 +89,4 @@ steps:
           actual:
             code: !cel "error.code"
             original: !cel "error.data.code"
-          expected:
-            code: ERR_OUTPUT_INVALID
-            original: ITEM_MISSING
+          expected: { code: ERR_OUTPUT_INVALID, original: ITEM_MISSING }

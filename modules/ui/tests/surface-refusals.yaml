@@ -6,8 +6,7 @@ metadata:
     What the node vocabulary, surfaces, navigation placements, conditions and
     texts refuse before anything runs, and what a compact surface refuses when
     it is first read.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref shapes
   - !ref surfaces
@@ -18,8 +17,7 @@ targets:
   - !ref texts
 ---
 kind: Assert.Manifest
-metadata:
-  name: shapes
+metadata: { name: shapes }
 source: ./__fixtures__/invalid/shapes/telo.yaml
 expect:
   errors:
@@ -39,8 +37,7 @@ expect:
       message: "Ui.Listing/both: !cel: 'row.txt' is not defined (available: id, text, isDone)"
 ---
 kind: Assert.Manifest
-metadata:
-  name: surfaces
+metadata: { name: surfaces }
 source: ./__fixtures__/invalid/surfaces/telo.yaml
 expect:
   errors:
@@ -72,8 +69,7 @@ expect:
       message: "Ui.Listing/bareCreate: /create must NOT have additional properties ('name' is not allowed)"
 ---
 kind: Assert.Manifest
-metadata:
-  name: navigationPlacements
+metadata: { name: navigationPlacements }
 source: ./__fixtures__/invalid/navigation/telo.yaml
 expect:
   errors:
@@ -87,16 +83,14 @@ expect:
       message: "Ui.HeaderNavigation/sidebarAsCompact: reference at 'compact' → 'Ui.SidebarNavigation' does not implement 'Ui.CompactNavigationPlacement'"
 ---
 kind: Assert.Manifest
-metadata:
-  name: compactAddressedAtRuntime
+metadata: { name: compactAddressedAtRuntime }
 source: ./__fixtures__/invalid/compact-addressed/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Panel 'compactAddressed': names a compact surface that declares an address"
 ---
 kind: Assert.Manifest
-metadata:
-  name: compactNestedAtRuntime
+metadata: { name: compactNestedAtRuntime }
 source: ./__fixtures__/invalid/compact-nested/telo.yaml
 expect:
   errors: []
@@ -108,8 +102,7 @@ expect:
 # `query` by a reader, `values` by a form — and only by a value that is named,
 # never by an expression the server evaluates.
 kind: Assert.Manifest
-metadata:
-  name: conditions
+metadata: { name: conditions }
 source: ./__fixtures__/invalid/conditions/telo.yaml
 expect:
   errors:
@@ -133,8 +126,7 @@ expect:
 # A node text is formatted with no values unless it is written as a text with
 # values, and then with exactly the values it binds.
 kind: Assert.Manifest
-metadata:
-  name: texts
+metadata: { name: texts }
 source: ./__fixtures__/invalid/texts/telo.yaml
 expect:
   errors:

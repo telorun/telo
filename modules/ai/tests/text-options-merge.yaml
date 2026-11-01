@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: TextOptionsMergeTest
-  version: 1.0.0
+metadata: { name: TextOptionsMergeTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -22,20 +20,13 @@ suffix: ""
 kind: Ai.Text
 metadata: { name: c }
 model: !ref echo
-options:
-  temperature: 0.2
-  maxTokens: 100
+options: { temperature: 0.2, maxTokens: 100 }
 ---
 kind: Run.Sequence
-metadata:
-  name: testOptionsMergeReachesModel
+metadata: { name: testOptionsMergeReachesModel }
 steps:
   - name: invoke
-    inputs:
-      prompt: "merge"
-      options:
-        temperature: 0.9
-        topP: 0.5
+    inputs: { prompt: "merge", options: { temperature: 0.9, topP: 0.5 } }
     invoke: !ref c
   - name: assert
     inputs:
@@ -45,7 +36,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text: { const: "merge" }
-          finishReason: { const: stop }
+        properties: { text: { const: "merge" }, finishReason: { const: stop } }
         required: [ text, finishReason ]

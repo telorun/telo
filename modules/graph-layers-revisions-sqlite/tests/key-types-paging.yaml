@@ -34,33 +34,25 @@ kind: Layers.NodeTable
 metadata: { name: countedTable }
 table: counted
 key: id
-columns:
-  id: { type: integer, nullable: false }
-  note: { type: text }
+columns: { id: { type: integer, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: measuredTable }
 table: measured
 key: id
-columns:
-  id: { type: real, nullable: false }
-  note: { type: text }
+columns: { id: { type: real, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: namedTable }
 table: named
 key: id
-columns:
-  id: { type: text, nullable: false }
-  note: { type: text }
+columns: { id: { type: text, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: packedTable }
 table: packed
 key: id
-columns:
-  id: { type: blob, nullable: false }
-  note: { type: text }
+columns: { id: { type: blob, nullable: false }, note: { type: text } }
 ---
 kind: Layers.RelationshipTable
 metadata: { name: joinsTable }
@@ -135,11 +127,7 @@ kind: Run.Value
 metadata: { name: gathered }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [items]
-    properties:
-      items: { type: array }
+  schema: { type: object, required: [items], properties: { items: { type: array } } }
 value:
   items: !cel "inputs.items"
 ---
@@ -182,49 +170,31 @@ metadata: { name: populate }
 steps:
   - name: counted0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref counted }
-    inputs:
-      key: 2
-      properties: { note: n0 }
+    inputs: { key: 2, properties: { note: n0 } }
   - name: counted1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref counted }
-    inputs:
-      key: 10
-      properties: { note: n1 }
+    inputs: { key: 10, properties: { note: n1 } }
   - name: counted2
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref counted }
-    inputs:
-      key: -1
-      properties: { note: n2 }
+    inputs: { key: -1, properties: { note: n2 } }
   - name: measured0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
-    inputs:
-      key: 1.5
-      properties: { note: n0 }
+    inputs: { key: 1.5, properties: { note: n0 } }
   - name: measured1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
-    inputs:
-      key: -0.25
-      properties: { note: n1 }
+    inputs: { key: -0.25, properties: { note: n1 } }
   - name: measured2
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
-    inputs:
-      key: 10.75
-      properties: { note: n2 }
+    inputs: { key: 10.75, properties: { note: n2 } }
   - name: named0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref named }
-    inputs:
-      key: b
-      properties: { note: n0 }
+    inputs: { key: b, properties: { note: n0 } }
   - name: named1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref named }
-    inputs:
-      key: a
-      properties: { note: n1 }
+    inputs: { key: a, properties: { note: n1 } }
   - name: named2
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref named }
-    inputs:
-      key: c
-      properties: { note: n2 }
+    inputs: { key: c, properties: { note: n2 } }
   - name: packed0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref packed }
     inputs:

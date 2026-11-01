@@ -3,9 +3,7 @@
 # table (exact, then primary subtag, else left out) and the recency hint as
 # `time_range`. The mock echoes the query parameters it received as the title.
 kind: Telo.Application
-metadata:
-  name: SearxngRequestMappingTest
-  version: 1.0.0
+metadata: { name: SearxngRequestMappingTest, version: 1.0.0 }
 imports:
   SearXNG: ..
   Http: ../../http-client
@@ -46,8 +44,7 @@ with:
       - request:
           path: /search
           method: GET
-          schema:
-            query: { type: object, additionalProperties: true }
+          schema: { query: { type: object, additionalProperties: true } }
         handler: !ref echo
         returns:
           - status: 200
@@ -62,13 +59,10 @@ with:
                       content: echo
           - status: 200
             content:
-              application/json:
-                schema: { type: object, additionalProperties: true }
-                body: { results: [] }
+              application/json: { schema: { type: object, additionalProperties: true }, body: { results: [] } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18840
+    listen: { port: 18840 }
     mounts:
       - path: /
         mount: !ref FakeSearxng

@@ -36,8 +36,7 @@ kind: Run.Sequence
 metadata: { name: testNdjson }
 steps:
   - name: textStream
-    inputs:
-      prompt: "hi"
+    inputs: { prompt: "hi" }
     invoke: !ref chatStream
   - name: encode
     inputs:

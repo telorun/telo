@@ -31,9 +31,7 @@ metadata: { name: Person }
 schema:
   type: object
   required: [id, name]
-  properties:
-    id: { type: integer }
-    name: { type: string }
+  properties: { id: { type: integer }, name: { type: string } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Todo }
@@ -46,10 +44,7 @@ schema:
     isDone: { type: boolean }
     dueOn: { type: [string, "null"], format: date }
     ownerId: { type: integer }
-    owner:
-      type: object
-      properties:
-        name: { type: string }
+    owner: { type: object, properties: { name: { type: string } } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: TodoInput }
@@ -236,9 +231,7 @@ steps:
           - header: { text: Owner, context: null, lang: und, computed: false }
             value: { root: row, path: [owner, name] }
             present: { type: string }
-            style:
-              by: { root: row, path: [owner, name] }
-              cases: { ada: [accent, strong] }
+            style: { by: { root: row, path: [owner, name] }, cases: { ada: [accent, strong] } }
             labels: []
           - { header: { text: Fixed, context: null, lang: und, computed: false }, value: { value: always }, labels: [] }
           - header: { text: Status, context: null, lang: und, computed: false }
@@ -249,16 +242,11 @@ steps:
               external: [react]
               entry: badges.js
               stylesheets: [badges.css]
-              props:
-                done: { root: row, path: [isDone] }
-                label: { value: Done }
+              props: { done: { root: row, path: [isDone] }, label: { value: Done } }
         filters: { isDone: { value: false } }
         pageSize: 10
         paging: more
-        rowStyle:
-          by: { root: row, path: [isDone] }
-          cases: { "true": muted }
-          default: strong
+        rowStyle: { by: { root: row, path: [isDone] }, cases: { "true": muted }, default: strong }
         empty: { type: text, text: { text: Nothing to do, context: null, lang: und, computed: false } }
         create:
           - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }

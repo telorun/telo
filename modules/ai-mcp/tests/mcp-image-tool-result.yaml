@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AiMcpImageToolResultTest
-  version: 1.0.0
+metadata: { name: AiMcpImageToolResultTest, version: 1.0.0 }
 imports:
   Ai: ../../ai
   AiMcp: ../
@@ -13,37 +11,29 @@ targets:
   - !ref testMcpImage
 ---
 kind: Stub.StubClient
-metadata:
-  name: mcpServer
+metadata: { name: mcpServer }
 ---
 kind: AiMcp.ToolProvider
-metadata:
-  name: serverTools
+metadata: { name: serverTools }
 client: !ref mcpServer
 ---
 # Echo requests the image tool on the first turn, then echoes whatever text the tool
 # result carried on the second (its image part is ignored by the text echo).
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
-emitToolCall:
-  name: snapshot_image
-  arguments: {}
+metadata: { name: echo }
+emitToolCall: { name: snapshot_image, arguments: {} }
 ---
 kind: Ai.Agent
-metadata:
-  name: assistant
+metadata: { name: assistant }
 model: !ref echo
 toolProviders:
   - provider: !ref serverTools
 ---
 kind: Run.Sequence
-metadata:
-  name: testMcpImage
+metadata: { name: testMcpImage }
 steps:
   - name: invoke
-    inputs:
-      prompt: "snapshot the page"
+    inputs: { prompt: "snapshot the page" }
     invoke: !ref assistant
   # tools/call returns an MCP image block ({ type: image, data, mimeType }). The
   # provider normalizes mimeType → mediaType so it reaches the model as an image part

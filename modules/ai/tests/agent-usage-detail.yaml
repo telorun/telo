@@ -43,8 +43,7 @@ steps:
         - provider: !ref localTools
     inputs: { prompt: go }
   - name: parts
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
     inputs: { input: !cel "steps.run.result.output" }
   - name: check
     invoke: !ref Assert.equals

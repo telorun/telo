@@ -1,15 +1,10 @@
 kind: Telo.Application
-metadata:
-  name: TypeJsonSchemaTest
-  version: 1.0.0
+metadata: { name: TypeJsonSchemaTest, version: 1.0.0 }
 # Inputs that break a contract reach their calls from variables, whose declared
 # type (an open object) is all `telo check` knows of them, so each violation
 # meets the RUNTIME contract boundary the test is about.
 variables:
-  withoutId:
-    env: TEST_TYPE_WITHOUT_ID
-    type: object
-    default: { name: Bob }
+  withoutId: { env: TEST_TYPE_WITHOUT_ID, type: object, default: { name: Bob } }
   withoutTimestamp:
     env: TEST_TYPE_WITHOUT_TIMESTAMP
     type: object
@@ -32,48 +27,29 @@ targets:
 # ─── Type definitions ──────────────────────────────────────────────────────────
 
 kind: Type.JsonSchema
-metadata:
-  name: AdditionInput
+metadata: { name: AdditionInput }
 schema:
   type: object
   required: [ a, b ]
-  properties:
-    a: { type: number }
-    b: { type: number }
+  properties: { a: { type: number }, b: { type: number } }
 ---
 kind: Type.JsonSchema
-metadata:
-  name: AdditionOutput
-schema:
-  type: object
-  required: [ sum ]
-  properties:
-    sum: { type: number }
+metadata: { name: AdditionOutput }
+schema: { type: object, required: [sum], properties: { sum: { type: number } } }
 ---
 kind: Type.JsonSchema
-metadata:
-  name: Entity
-schema:
-  type: object
-  required: [ id ]
-  properties:
-    id: { type: string }
+metadata: { name: Entity }
+schema: { type: object, required: [id], properties: { id: { type: string } } }
 ---
 kind: Type.JsonSchema
-metadata:
-  name: NamedEntity
+metadata: { name: NamedEntity }
 extends: Entity
-schema:
-  type: object
-  required: [ name ]
-  properties:
-    name: { type: string }
+schema: { type: object, required: [name], properties: { name: { type: string } } }
 ---
 # ─── Scripts ──────────────────────────────────────────────────────────────────
 
 kind: JavaScript.Script
-metadata:
-  name: addNumbers
+metadata: { name: addNumbers }
 inputType: !ref AdditionInput
 outputType: !ref AdditionOutput
 code: |
@@ -82,8 +58,7 @@ code: |
   }
 ---
 kind: JavaScript.Script
-metadata:
-  name: identity
+metadata: { name: identity }
 inputType: !ref NamedEntity
 code: |
   function main(input) {
@@ -91,21 +66,15 @@ code: |
   }
 ---
 kind: Type.JsonSchema
-metadata:
-  name: PositiveAmount
-schema:
-  type: object
-  required: [ amount ]
-  properties:
-    amount: { type: number }
+metadata: { name: PositiveAmount }
+schema: { type: object, required: [amount], properties: { amount: { type: number } } }
 rules:
   - condition: "this.amount > 0"
     code: "ERR_NON_POSITIVE"
     message: "Amount must be positive"
 ---
 kind: JavaScript.Script
-metadata:
-  name: processAmount
+metadata: { name: processAmount }
 inputType: !ref PositiveAmount
 code: |
   function main({ amount }) {
@@ -115,31 +84,22 @@ code: |
 # ─── Test 1: valid input passes through ───────────────────────────────────────
 
 kind: Run.Sequence
-metadata:
-  name: testTypeValidation
+metadata: { name: testTypeValidation }
 steps:
   - name: add
-    inputs:
-      a: 10
-      b: 20
+    inputs: { a: 10, b: 20 }
     invoke: !ref addNumbers
   - name: verifySum
     inputs:
       sum: !cel "steps.add.result.sum"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          sum:
-            type: number
-            const: 30
+      schema: { type: object, properties: { sum: { type: number, const: 30 } } }
 ---
 # ─── Test 2: invalid input is rejected ────────────────────────────────────────
 
 kind: Run.Sequence
-metadata:
-  name: testTypeRejection
+metadata: { name: testTypeRejection }
 steps:
   - name: badInput
     try:
@@ -157,23 +117,16 @@ steps:
           msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              msg:
-                type: string
+          schema: { type: object, properties: { msg: { type: string } } }
 ---
 # ─── Test 3: type inheritance via extends ─────────────────────────────────────
 
 kind: Run.Sequence
-metadata:
-  name: testTypeInheritance
+metadata: { name: testTypeInheritance }
 steps:
   # NamedEntity extends Entity — requires both id and name
   - name: validInherited
-    inputs:
-      id: "abc-123"
-      name: "Alice"
+    inputs: { id: "abc-123", name: "Alice" }
     invoke: !ref identity
   - name: verifyPassthrough
     inputs:
@@ -184,12 +137,8 @@ steps:
       schema:
         type: object
         properties:
-          id:
-            type: string
-            const: "abc-123"
-          name:
-            type: string
-            const: "Alice"
+          id: { type: string, const: "abc-123" }
+          name: { type: string, const: "Alice" }
   # Missing required 'id' from parent Entity should fail
   - name: missingParentField
     try:
@@ -205,40 +154,28 @@ steps:
           msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              msg:
-                type: string
+          schema: { type: object, properties: { msg: { type: string } } }
 ---
 # ─── Test 4: CEL rules ───────────────────────────────────────────────────────
 
 kind: Run.Sequence
-metadata:
-  name: testCelRules
+metadata: { name: testCelRules }
 steps:
   # Valid: positive amount passes both schema and rule
   - name: validAmount
-    inputs:
-      amount: 42
+    inputs: { amount: 42 }
     invoke: !ref processAmount
   - name: verifyDoubled
     inputs:
       doubled: !cel "steps.validAmount.result.doubled"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          doubled:
-            type: number
-            const: 84
+      schema: { type: object, properties: { doubled: { type: number, const: 84 } } }
   # Invalid: zero fails the "amount > 0" CEL rule
   - name: zeroAmount
     try:
       - name: callWithZero
-        inputs:
-          amount: 0
+        inputs: { amount: 0 }
         invoke: !ref processAmount
     catch:
       - name: verifyRuleError
@@ -248,21 +185,13 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              msg:
-                type: string
-                pattern: "Amount must be positive$"
+            properties: { msg: { type: string, pattern: "Amount must be positive$" } }
 ---
 # ─── Additional type definitions ──────────────────────────────────────────────
 
 kind: Type.JsonSchema
-metadata:
-  name: NonNegativeAmount
-schema:
-  type: object
-  required: [ amount ]
-  properties:
-    amount: { type: number }
+metadata: { name: NonNegativeAmount }
+schema: { type: object, required: [amount], properties: { amount: { type: number } } }
 rules:
   - condition: "this.amount >= 0"
     code: "ERR_NEGATIVE"
@@ -272,8 +201,7 @@ rules:
     message: "Amount exceeds limit of 1000"
 ---
 kind: JavaScript.Script
-metadata:
-  name: processNonNegative
+metadata: { name: processNonNegative }
 inputType: !ref NonNegativeAmount
 code: |
   function main({ amount }) {
@@ -281,29 +209,19 @@ code: |
   }
 ---
 kind: Type.JsonSchema
-metadata:
-  name: Timestamped
+metadata: { name: Timestamped }
 schema:
   type: object
   required: [ updatedAt ]
-  properties:
-    updatedAt: { type: string }
+  properties: { updatedAt: { type: string } }
 ---
 kind: Type.JsonSchema
-metadata:
-  name: FullEntity
-extends:
-  - Entity
-  - Timestamped
-schema:
-  type: object
-  required: [ label ]
-  properties:
-    label: { type: string }
+metadata: { name: FullEntity }
+extends: [Entity, Timestamped]
+schema: { type: object, required: [label], properties: { label: { type: string } } }
 ---
 kind: JavaScript.Script
-metadata:
-  name: fullIdentity
+metadata: { name: fullIdentity }
 inputType: !ref FullEntity
 code: |
   function main(input) {
@@ -311,8 +229,7 @@ code: |
   }
 ---
 kind: JavaScript.Script
-metadata:
-  name: badOutput
+metadata: { name: badOutput }
 outputType: !ref AdditionOutput
 code: |
   function main() {
@@ -322,8 +239,7 @@ code: |
 # ─── Test 5: outputType validation — wrong return shape ──────────────────────
 
 kind: Run.Sequence
-metadata:
-  name: testOutputTypeRejection
+metadata: { name: testOutputTypeRejection }
 steps:
   - name: badReturn
     try:
@@ -335,40 +251,28 @@ steps:
           msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              msg:
-                type: string
+          schema: { type: object, properties: { msg: { type: string } } }
 ---
 # ─── Test 6: multiple CEL rules — first passes, second fails ─────────────────
 
 kind: Run.Sequence
-metadata:
-  name: testMultipleRules
+metadata: { name: testMultipleRules }
 steps:
   # Valid: 500 passes both rules (>= 0 and <= 1000)
   - name: validMid
-    inputs:
-      amount: 500
+    inputs: { amount: 500 }
     invoke: !ref processNonNegative
   - name: verifyMid
     inputs:
       result: !cel "steps.validMid.result.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            type: number
-            const: 500
+      schema: { type: object, properties: { result: { type: number, const: 500 } } }
   # Invalid: -1 fails the first rule
   - name: negativeAmount
     try:
       - name: callNegative
-        inputs:
-          amount: -1
+        inputs: { amount: -1 }
         invoke: !ref processNonNegative
     catch:
       - name: verifyNegativeError
@@ -378,16 +282,12 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              msg:
-                type: string
-                pattern: "Amount must not be negative$"
+            properties: { msg: { type: string, pattern: "Amount must not be negative$" } }
   # Invalid: 2000 passes first rule but fails second
   - name: overLimit
     try:
       - name: callOverLimit
-        inputs:
-          amount: 2000
+        inputs: { amount: 2000 }
         invoke: !ref processNonNegative
     catch:
       - name: verifyLimitError
@@ -397,23 +297,16 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              msg:
-                type: string
-                pattern: "Amount exceeds limit of 1000$"
+            properties: { msg: { type: string, pattern: "Amount exceeds limit of 1000$" } }
 ---
 # ─── Test 7: multiple extends ────────────────────────────────────────────────
 
 kind: Run.Sequence
-metadata:
-  name: testMultipleExtends
+metadata: { name: testMultipleExtends }
 steps:
   # FullEntity extends [Entity, Timestamped] — requires id, updatedAt, label
   - name: validFull
-    inputs:
-      id: "x-1"
-      updatedAt: "2026-01-01"
-      label: "Test"
+    inputs: { id: "x-1", updatedAt: "2026-01-01", label: "Test" }
     invoke: !ref fullIdentity
   - name: verifyFull
     inputs:
@@ -423,13 +316,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          id:
-            type: string
-            const: "x-1"
-          label:
-            type: string
-            const: "Test"
+        properties: { id: { type: string, const: "x-1" }, label: { type: string, const: "Test" } }
   # Missing updatedAt from Timestamped parent
   - name: missingTimestamp
     try:
@@ -444,56 +331,41 @@ steps:
           msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              msg:
-                type: string
+          schema: { type: object, properties: { msg: { type: string } } }
 ---
 # ─── Test 8: extends preserves composition keywords (allOf) ───────────────────
 
 kind: Type.JsonSchema
-metadata:
-  name: Scored
+metadata: { name: Scored }
 extends: Entity
 schema:
   type: object
   required: [ score ]
-  properties:
-    score: { type: integer }
+  properties: { score: { type: integer } }
   # A constraint that the merged object shape alone does not capture — it must
   # survive `extends`, not be dropped.
   allOf:
-    - properties:
-        score: { minimum: 10 }
+    - { properties: { score: { minimum: 10 } } }
 ---
 kind: JavaScript.Script
-metadata:
-  name: useScored
+metadata: { name: useScored }
 inputType: !ref Scored
 code: |
   function main(input) { return input }
 ---
 kind: Run.Sequence
-metadata:
-  name: testExtendsComposition
+metadata: { name: testExtendsComposition }
 steps:
   # Valid: id (inherited) present, score satisfies the allOf minimum.
   - name: validScore
-    inputs:
-      id: "x"
-      score: 15
+    inputs: { id: "x", score: 15 }
     invoke: !ref useScored
   - name: verifyValid
     inputs:
       score: !cel "steps.validScore.result.score"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          score: { const: 15 }
-        required: [ score ]
+      schema: { type: object, properties: { score: { const: 15 } }, required: [score] }
   # Invalid: score 5 passes the merged object shape but violates the inherited
   # allOf minimum — must be rejected (regression: extends used to drop allOf).
   - name: lowScore
@@ -511,9 +383,4 @@ steps:
           msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              msg:
-                type: string
-            required: [ msg ]
+          schema: { type: object, properties: { msg: { type: string } }, required: [msg] }

@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - amh
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [amh] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: amh, member: package/4.0.0_best_int/amh.traineddata.gz, sha256: f1644849fd6afb587f7b2fea19b02a5c0a2a2f138cb04ff7cf0272ce66e28b80, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: amh
-  description: Amharic, Ethiopic script
+metadata: { name: amh, description: "Amharic, Ethiopic script" }
 code: amh
 data: !module-path ./tessdata/amh.traineddata.gz

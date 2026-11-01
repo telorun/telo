@@ -59,8 +59,7 @@ outputType:
     type: object
     required: [ok]
     additionalProperties: false
-    properties:
-      ok: { type: boolean }
+    properties: { ok: { type: boolean } }
 ---
 kind: Local.Workflow
 metadata: { name: record }
@@ -160,8 +159,7 @@ steps:
   # pass whether or not the value was journaled.
   - name: gap
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 400ms
+    inputs: { duration: 400ms }
 
   - name: deliver
     invoke:
@@ -169,8 +167,7 @@ steps:
       journal: !ref journal
       await: !ref approval
       token: !cel "'values:' + inputs.ticket"
-      payload:
-        ok: true
+      payload: { ok: true }
     inputs:
       ticket: !cel "steps.ticket.result"
 
@@ -192,9 +189,7 @@ steps:
       actual:
         status: !cel "steps.finished.result.status"
         replayed: !cel "steps.finished.result.replayed"
-      expected:
-        status: completed
-        replayed: true
+      expected: { status: completed, replayed: true }
     invoke: { kind: Assert.Equals }
 
   # Asserted from outside the body, against what the resumed execution computed
@@ -224,7 +219,5 @@ steps:
       actual:
         instant: !cel "steps.finished.result.result.steps.t.result == timestamp('2026-01-15T09:30:00.250Z')"
         intExact: !cel "steps.finished.result.result.steps.i.result == 9007199254740993"
-      expected:
-        instant: true
-        intExact: true
+      expected: { instant: true, intExact: true }
     invoke: { kind: Assert.Equals }

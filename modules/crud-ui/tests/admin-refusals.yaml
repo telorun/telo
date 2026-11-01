@@ -8,8 +8,7 @@ metadata:
     outside what that opener takes — `again` on `edit` among them — a resource
     at `surface` that is no surface, and a `paging` the listing does not take
     are each reported against the application's own `CrudUi.Admin`.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref refused
 ---

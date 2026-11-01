@@ -7,8 +7,7 @@ metadata:
     event stream read through `Ai.TextStream` — text deltas that join to the
     answer, then the one `finish` carrying usage. Skips silently when
     ANTHROPIC_API_KEY is unset.
-secrets:
-  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" } }
 imports:
   Anthropic: ../../
   Http: ../../../http-client
@@ -38,8 +37,7 @@ metadata: { name: live }
 model: claude-haiku-4-5
 request: !ref anthropicRequest
 maxTokens: 64
-options:
-  temperature: 0
+options: { temperature: 0 }
 ---
 kind: Ai.TextStream
 metadata: { name: textStream }
@@ -52,8 +50,7 @@ steps:
     if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: open
-        inputs:
-          prompt: "Reply with the single word: pong"
+        inputs: { prompt: "Reply with the single word: pong" }
         invoke: !ref textStream
       - name: read
         inputs: { input: !cel "steps.open.result.output" }

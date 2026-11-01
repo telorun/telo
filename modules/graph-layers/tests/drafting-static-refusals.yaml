@@ -17,8 +17,7 @@ metadata:
   name: GraphLayersDraftingStaticRefusals
   version: 1.0.0
   description: The drafting kinds' refusals, statically and at creation or dispatch.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref overCurrentStore
   - !ref nodeConflictsTypeNotInStore
@@ -72,9 +71,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeConflictsTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/node-conflicts-type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: resolveNodeConflictTypeNotInStore }
@@ -87,9 +84,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: resolveNodeConflictTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/resolve-node-conflict-type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: relationshipConflictsTypeNotInStore }
@@ -102,9 +97,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationshipConflictsTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/relationship-conflicts-type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: resolveRelationshipConflictTypeNotInStore }
@@ -117,9 +110,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: resolveRelationshipConflictTypeNotInStoreAtRuntime }
 source: ./__fixtures__/drafting/resolve-relationship-conflict-type-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TYPE_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_TYPE_NOT_IN_STORE" }
 ---
 kind: Assert.Manifest
 metadata: { name: outsideSession }
@@ -156,14 +147,11 @@ expect:
 kind: Assert.Manifest
 metadata: { name: outsideSessionAtRuntime }
 source: ./__fixtures__/drafting/conflicts-outside-session-app.yaml
-expect:
-  errors: []
-  runFails: "no GraphLayers.DraftSession zone open on"
+expect: { errors: [], runFails: "no GraphLayers.DraftSession zone open on" }
 ---
 kind: Assert.Manifest
 metadata: { name: setUnknownProperty }
 source: ./__fixtures__/drafting/set-unknown-property.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'nmae' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'nmae' is not allowed" }

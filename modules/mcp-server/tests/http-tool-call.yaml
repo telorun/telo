@@ -12,10 +12,7 @@ kind: Run.Value
 metadata: { name: getWeatherImpl }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      city: { type: string }
+  schema: { type: object, properties: { city: { type: string } } }
 value:
   summary: !cel "'Sunny in ' + inputs.city"
 ---
@@ -24,11 +21,7 @@ metadata: { name: WeatherTools }
 entries:
   - name: get_weather
     description: Get current weather for a city.
-    argumentsSchema:
-      type: object
-      properties:
-        city: { type: string }
-      required: [ city ]
+    argumentsSchema: { type: object, properties: { city: { type: string } }, required: [city] }
     handler: !ref getWeatherImpl
     inputs:
       city: !cel "request.arguments.city"
@@ -60,17 +53,13 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8951
+    listen: { address: 127.0.0.1, port: 8951 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
 steps:
   - name: callGetWeather
-    inputs:
-      name: get_weather
-      arguments: { city: Atlantis }
+    inputs: { name: get_weather, arguments: { city: Atlantis } }
     invoke: !ref callGetWeather
   - name: assertResponse
     inputs:
@@ -79,6 +68,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          contentText: { const: "Sunny in Atlantis" }
+        properties: { contentText: { const: "Sunny in Atlantis" } }
         required: [ contentText ]

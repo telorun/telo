@@ -7,8 +7,7 @@ metadata:
     reference, whatever another module declares under the same name: its own
     model, and the model of each relation's target — a local target's and an
     imported one's alike. Each fixture passes `telo check` and boots.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref model
   - !ref relation

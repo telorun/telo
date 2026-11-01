@@ -76,8 +76,7 @@ steps:
     invoke:
       kind: Sql.Command
       connection: !ref db
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_suite CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_suite CASCADE }
 ---
 kind: Postgres.Table
 metadata: { name: people }
@@ -90,9 +89,7 @@ columns:
 kind: Postgres.Table
 metadata: { name: documents }
 table: graph_suite_documents
-columns:
-  id: { type: text, primaryKey: true }
-  title: { type: text }
+columns: { id: { type: text, primaryKey: true }, title: { type: text } }
 ---
 kind: Postgres.Table
 metadata: { name: knowsTable }

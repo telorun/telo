@@ -64,8 +64,7 @@ with:
       - request:
           path: /responses
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           # A run the endpoint accepts and then reports as failed. `Ai.FinishReason`
@@ -76,10 +75,7 @@ with:
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
-                body:
-                  status: failed
-                  error: { message: the model caught fire }
-                  output: []
+                body: { status: failed, error: { message: the model caught fire }, output: [] }
           - status: 200
             content:
               application/json:
@@ -94,10 +90,8 @@ with:
                   usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
     metadata: { name: EchoServer }
-    listen:
-      port: 8877
-    openapi:
-      info: { title: Fake Responses API, version: 1.0.0 }
+    listen: { port: 8877 }
+    openapi: { info: { title: Fake Responses API, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref EchoApi
@@ -114,20 +108,14 @@ steps:
         - role: assistant
           content: [{ type: text, text: Let me check. }]
           toolCalls:
-            - id: call_abc
-              name: get_weather
-              arguments: { city: Paris }
+            - { id: call_abc, name: get_weather, arguments: { city: Paris } }
         - role: tool
           toolCallId: call_abc
           content: [{ type: text, text: "18C" }]
       tools:
         - name: get_weather
           description: Get the weather for a city.
-          parameters:
-            type: object
-            properties:
-              city: { type: string }
-            required: [ city ]
+          parameters: { type: object, properties: { city: { type: string } }, required: [city] }
       providerState:
         api: responses
         model: gpt-test
@@ -156,22 +144,15 @@ steps:
             call_id: call_abc
             name: get_weather
             arguments: '{"city":"Paris"}'
-          - type: function_call_output
-            call_id: call_abc
-            output: "18C"
+          - { type: function_call_output, call_id: call_abc, output: "18C" }
         tools:
           # Flat — the completions dialect nests these under `function`.
           - type: function
             name: get_weather
             description: Get the weather for a city.
-            parameters:
-              type: object
-              properties:
-                city: { type: string }
-              required: [ city ]
+            parameters: { type: object, properties: { city: { type: string } }, required: [city] }
         reasoning: { effort: low }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # The reading of the answer, from the same call: usage renamed off
   # `input_tokens`/`output_tokens`, and a turn that asked for nothing ends `stop`.
@@ -185,8 +166,7 @@ steps:
         usage: { promptTokens: 7, completionTokens: 3, totalTokens: 10 }
         finishReason: stop
         hasState: false
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # `responseFormat` is ONE contract value with two incompatible wire shapes: flat
   # here, nested on the chat kinds, and each API refuses the other's. Given the
@@ -204,8 +184,7 @@ steps:
           strict: true
           schema:
             type: object
-            properties:
-              city: { type: string }
+            properties: { city: { type: string } }
             required: [ city ]
             additionalProperties: false
     invoke: !ref model
@@ -220,12 +199,10 @@ steps:
           strict: true
           schema:
             type: object
-            properties:
-              city: { type: string }
+            properties: { city: { type: string } }
             required: [ city ]
             additionalProperties: false
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # The previous run ended in plain text and the user has answered since: its
   # reasoning precedes that text, never the messages that came after it.
@@ -257,8 +234,7 @@ steps:
           content: [{ type: output_text, text: Which store? }]
         - role: user
           content: [{ type: input_text, text: SQLite }]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # The state belongs to the NEWEST assistant message, not to an older one that
   # happened to call a tool.
@@ -270,9 +246,7 @@ steps:
         - role: assistant
           content: [{ type: text, text: Let me check. }]
           toolCalls:
-            - id: call_abc
-              name: get_weather
-              arguments: { city: Paris }
+            - { id: call_abc, name: get_weather, arguments: { city: Paris } }
         - role: tool
           toolCallId: call_abc
           content: [{ type: text, text: "18C" }]
@@ -283,11 +257,7 @@ steps:
       tools:
         - name: get_weather
           description: Get the weather for a city.
-          parameters:
-            type: object
-            properties:
-              city: { type: string }
-            required: [ city ]
+          parameters: { type: object, properties: { city: { type: string } }, required: [city] }
       providerState:
         api: responses
         model: gpt-test
@@ -308,16 +278,13 @@ steps:
           call_id: call_abc
           name: get_weather
           arguments: '{"city":"Paris"}'
-        - type: function_call_output
-          call_id: call_abc
-          output: "18C"
+        - { type: function_call_output, call_id: call_abc, output: "18C" }
         - { id: rs_3, type: reasoning, encrypted_content: OPAQUE, summary: [] }
         - role: assistant
           content: [{ type: output_text, text: It is 18C. }]
         - role: user
           content: [{ type: input_text, text: and tomorrow? }]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # With no assistant output to precede, the state is dropped rather than left
   # as the last item.
@@ -340,8 +307,7 @@ steps:
       expected:
         - role: user
           content: [{ type: input_text, text: hello }]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A state minted by another model is DROPPED, not replayed: the item is opaque
   # and an endpoint answers a foreign one wrongly or refuses it.
@@ -379,8 +345,7 @@ steps:
       expected:
         - role: user
           content: [{ type: input_text, text: hello }]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: assertForeignStateDropped
     inputs:
@@ -388,8 +353,7 @@ steps:
       expected:
         - role: user
           content: [{ type: input_text, text: hello }]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A failed run RAISES, carrying the endpoint's own words, classified by the
   # error it names — one that names nothing is `ERR_MODEL_UNAVAILABLE`, as the
@@ -411,5 +375,4 @@ steps:
             code: !cel "error.code"
             carriesMessage: !cel "error.message.contains('caught fire')"
           expected: { code: ERR_MODEL_UNAVAILABLE, carriesMessage: true }
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }

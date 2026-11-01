@@ -66,7 +66,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text: { const: "hi!" }
-          length: { const: 3 }
+        properties: { text: { const: "hi!" }, length: { const: 3 } }
         required: [ text, length ]

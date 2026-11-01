@@ -14,11 +14,7 @@ metadata:
 # The bad format reaches the call from a variable, whose declared type (a
 # string) is all `telo check` knows of it, so the value meets the RUNTIME
 # contract boundary this test is about.
-variables:
-  badFormat:
-    env: TEST_IMAGE_BAD_FORMAT
-    type: string
-    default: tiff
+variables: { badFormat: { env: TEST_IMAGE_BAD_FORMAT, type: string, default: tiff } }
 imports:
   Image: ../
   JS: ../../javascript
@@ -91,9 +87,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          mediaType: { const: image/jpeg }
-          magic: { const: jpeg }
+        properties: { mediaType: { const: image/jpeg }, magic: { const: jpeg } }
         required: [ mediaType, magic ]
 ---
 # A `!cel` integer is a 64-bit integer, not the number a YAML literal is.
@@ -132,8 +126,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INPUT_INVALID }
+            properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -152,8 +145,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -176,8 +168,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INPUT_INVALID }
+            properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -201,6 +192,5 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INPUT_INVALID }
+            properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]

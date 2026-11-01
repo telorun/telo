@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - sqi
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [sqi] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: sqi, member: package/4.0.0_best_int/sqi.traineddata.gz, sha256: a84023c64e1c0910f8fddc25d13f2dbe1157ce2f478abb48adc8013de9b108f1, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: sqi
-  description: Albanian, Latin script
+metadata: { name: sqi, description: "Albanian, Latin script" }
 code: sqi
 data: !module-path ./tessdata/sqi.traineddata.gz

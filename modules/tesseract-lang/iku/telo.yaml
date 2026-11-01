@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - iku
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [iku] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: iku, member: package/4.0.0_best_int/iku.traineddata.gz, sha256: 46c5076e11b759dbda26f561716531675cb12bb12a0182551829db87809d8081, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: iku
-  description: Inuktitut, Canadian Syllabics script
+metadata: { name: iku, description: "Inuktitut, Canadian Syllabics script" }
 code: iku
 data: !module-path ./tessdata/iku.traineddata.gz

@@ -44,8 +44,7 @@ metadata: { name: get }
 store: !ref counters
 ---
 kind: Run.Sequence
-metadata:
-  name: body
+metadata: { name: body }
 steps:
   - name: read
     invoke: !ref get
@@ -63,33 +62,26 @@ outputs:
   attempt: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
 ---
 kind: Idempotency.Once
-metadata:
-  name: onceSql
+metadata: { name: onceSql }
 store: !ref store
 claimTtl: "30s"
 ttl: "60s"
 invoke: !ref body
 ---
 kind: Run.Sequence
-metadata:
-  name: alwaysFails
+metadata: { name: alwaysFails }
 steps:
-  - name: boom
-    throw:
-      code: ERR_UPSTREAM
-      message: upstream refused
+  - { name: boom, throw: { code: ERR_UPSTREAM, message: upstream refused } }
 ---
 kind: Idempotency.Once
-metadata:
-  name: failingOnceSql
+metadata: { name: failingOnceSql }
 store: !ref store
 claimTtl: "30s"
 ttl: "60s"
 invoke: !ref alwaysFails
 ---
 kind: Run.Sequence
-metadata:
-  name: testReplay
+metadata: { name: testReplay }
 steps:
   - name: first
     invoke: !ref onceSql
@@ -126,8 +118,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
-metadata:
-  name: testFailureReleases
+metadata: { name: testFailureReleases }
 steps:
   - name: attempt
     try:

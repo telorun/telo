@@ -82,19 +82,13 @@ steps:
       count: !cel "steps.seqDrainA.result.count"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { count: { const: 3 } }
-        required: [ count ]
+      schema: { type: object, properties: { count: { const: 3 } }, required: [count] }
   - name: seqAssertB
     inputs:
       count: !cel "steps.seqDrainB.result.count"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { count: { const: 3 } }
-        required: [ count ]
+      schema: { type: object, properties: { count: { const: 3 } }, required: [count] }
 ---
 # Source throws after the first item. Consumer A drains the buffered first
 # item then sees the error. (Consumer B's behaviour after A's error is also
@@ -150,16 +144,10 @@ steps:
       count: !cel "steps.earlyTakeTwo.result.count"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { count: { const: 2 } }
-        required: [ count ]
+      schema: { type: object, properties: { count: { const: 2 } }, required: [count] }
   - name: assertEarlyB
     inputs:
       count: !cel "steps.earlyDrainAll.result.count"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties: { count: { const: 5 } }
-        required: [ count ]
+      schema: { type: object, properties: { count: { const: 5 } }, required: [count] }

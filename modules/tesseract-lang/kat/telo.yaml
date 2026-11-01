@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - kat
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [kat] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: kat, member: package/4.0.0_best_int/kat.traineddata.gz, sha256: 74505e238b208fc30471654b9f694bda08e521cdc7c8a5e0846d1340ed585899, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: kat
-  description: Georgian, Georgian script
+metadata: { name: kat, description: "Georgian, Georgian script" }
 code: kat
 data: !module-path ./tessdata/kat.traineddata.gz

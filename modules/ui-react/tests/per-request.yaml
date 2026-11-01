@@ -24,14 +24,12 @@ targets:
   - !ref test
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: fixture }
     source: ./__fixtures__/app/telo.yaml
-    ports:
-      http: 19312
+    ports: { http: 19312 }
 targets:
   - !ref fixture
 steps:
@@ -41,8 +39,7 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/variants" }
   - name: staff
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/variants" }
-    inputs:
-      headers: { x-role: staff }
+    inputs: { headers: { x-role: staff } }
   - name: verifyVariants
     invoke: { kind: Assert.Equals }
     inputs:
@@ -63,8 +60,7 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/app" }
   - name: red
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/app" }
-    inputs:
-      headers: { x-tenant: red }
+    inputs: { headers: { x-tenant: red } }
   - name: blueCss
     invoke: { kind: HttpClient.Request, responseType: text }
     inputs:
@@ -124,21 +120,16 @@ steps:
           }\n"
         redFace: true
         oneFace: true
-        face:
-          status: 200
-          type: font/ttf
-          cache: public, max-age=31536000, immutable
+        face: { status: 200, type: font/ttf, cache: "public, max-age=31536000, immutable" }
 
   - name: gallery
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
   - name: redirected
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
-    inputs:
-      headers: { x-next: "javascript:alert(1)" }
+    inputs: { headers: { x-next: "javascript:alert(1)" } }
   - name: offsite
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/gallery" }
-    inputs:
-      headers: { x-next: "//evil.example" }
+    inputs: { headers: { x-next: "//evil.example" } }
   - name: components
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19312/admin/_telo/ui/page?path=/components" }
   - name: layouts

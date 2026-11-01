@@ -3,10 +3,7 @@ metadata:
   name: HtmlCharacterReferencesTest
   version: 1.0.0
   description: Escaping and unescaping text from CEL.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref roundTrip
 ---

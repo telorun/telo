@@ -23,8 +23,7 @@ with:
   - kind: App.Instance
     metadata: { name: echoApi }
     source: ./__fixtures__/echo-api/telo.yaml
-    ports:
-      http: 8931
+    ports: { http: 8931 }
 targets:
   - !ref echoApi
 steps:
@@ -39,7 +38,4 @@ steps:
       actual:
         status: !cel "steps.call.result.status"
         body: !cel "steps.call.result.body"
-      expected:
-        status: 200
-        body:
-          said: hello
+      expected: { status: 200, body: { said: hello } }

@@ -23,8 +23,7 @@ targets:
 ---
 kind: Run.Value
 metadata: { name: counter }
-value:
-  counted: true
+value: { counted: true }
 ---
 kind: Ai.Tools
 metadata: { name: tools }
@@ -106,8 +105,7 @@ metadata: { name: concludes }
 steps:
   - name: run
     invoke: !ref concluding
-    inputs:
-      prompt: "go"
+    inputs: { prompt: "go" }
   - name: assertResult
     inputs:
       actual: !cel "steps.run.result"
@@ -121,8 +119,7 @@ steps:
             toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
           - text: ""
             toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
-          - text: "Wrap up. [tools: count] [toolChoice: none]"
-            toolCalls: []
+          - { text: "Wrap up. [tools: count] [toolChoice: none]", toolCalls: [] }
         toolResults:
           - { toolCallId: echo-call-1, name: count, content: '{"counted":true}' }
           - { toolCallId: echo-call-1, name: count, content: '{"counted":true}' }
@@ -138,8 +135,7 @@ steps:
             toolCalls: [{ id: echo-call-1, name: count, arguments: {} }]
           - { role: tool, content: '{"counted":true}', toolCallId: echo-call-1 }
           - { role: assistant, content: "Wrap up. [tools: count] [toolChoice: none]" }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # The same run as a stream: the concluding call's text is emitted, its tool call
 # is not, and the terminal finish carries the limit and every call's usage.
@@ -148,13 +144,11 @@ metadata: { name: streamConcludes }
 steps:
   - name: run
     invoke: !ref concludingStream
-    inputs:
-      prompt: "go"
+    inputs: { prompt: "go" }
   - name: parts
     inputs:
       input: !cel "steps.run.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertParts
     inputs:
       actual:
@@ -162,37 +156,21 @@ steps:
         text: !cel "steps.parts.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
         finish: !cel "steps.parts.result.items[size(steps.parts.result.items) - 1]"
       expected:
-        types:
-          - tool-call
-          - step-finish
-          - message
-          - tool-result
-          - message
-          - tool-call
-          - step-finish
-          - message
-          - tool-result
-          - message
-          - text-delta
-          - step-finish
-          - message
-          - finish
+        types: [tool-call, step-finish, message, tool-result, message, tool-call, step-finish, message, tool-result, message, text-delta, step-finish, message, finish]
         text: "Wrap up. [tools: count] [toolChoice: none]"
         finish:
           type: finish
           usage: { promptTokens: 3, completionTokens: 3, totalTokens: 6, unit: tokens, total: 6 }
           finishReason: tool-calls
           limit: max-steps
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: returnsLastTurn }
 steps:
   - name: run
     invoke: !ref returning
-    inputs:
-      prompt: "go"
+    inputs: { prompt: "go" }
   - name: assertResult
     inputs:
       actual:
@@ -205,21 +183,18 @@ steps:
         finishReason: tool-calls
         modelCalls: !cel "2"
         totalTokens: !cel "4"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: streamReturnsLastTurn }
 steps:
   - name: run
     invoke: !ref returningStream
-    inputs:
-      prompt: "go"
+    inputs: { prompt: "go" }
   - name: parts
     inputs:
       input: !cel "steps.run.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertFinish
     inputs:
       actual: !cel "steps.parts.result.items[size(steps.parts.result.items) - 1]"
@@ -228,22 +203,19 @@ steps:
         usage: { promptTokens: 2, completionTokens: 2, totalTokens: 4, unit: tokens, total: 4 }
         finishReason: tool-calls
         limit: max-steps
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: convergedRunHasNoLimit }
 steps:
   - name: run
     invoke: !ref converging
-    inputs:
-      prompt: "go"
+    inputs: { prompt: "go" }
   - name: assertNoLimit
     inputs:
       actual: !cel "has(steps.run.result.limit)"
       expected: false
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: throwsByDefault }
@@ -252,16 +224,12 @@ steps:
     try:
       - name: run
         invoke: !ref throwing
-        inputs:
-          prompt: "go"
+        inputs: { prompt: "go" }
       - name: returned
-        throw:
-          code: AGENT_RETURNED
-          message: the agent returned instead of throwing
+        throw: { code: AGENT_RETURNED, message: the agent returned instead of throwing }
     catch:
       - name: assertCode
         inputs:
           actual: !cel "error.code"
           expected: ERR_AGENT_MAX_STEPS
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }

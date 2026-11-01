@@ -8,10 +8,7 @@ metadata:
     statically, so they must also evaluate as the stream is drained. Bound as a
     floating-point number, each passed `telo check` and failed at dispatch with
     "no such overload".
-imports:
-  Stream: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Stream: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref mapIndex
   - !ref scanIndex
@@ -20,10 +17,7 @@ targets:
 kind: Run.Sequence
 metadata: { name: mapIndex }
 steps:
-  - name: source
-    invoke:
-      kind: Stream.Of
-      items: [a, b, c, d]
+  - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }
   - name: mapped
     inputs:
       input: !cel "steps.source.result.output"
@@ -49,10 +43,7 @@ steps:
 kind: Run.Sequence
 metadata: { name: scanIndex }
 steps:
-  - name: source
-    invoke:
-      kind: Stream.Of
-      items: [a, b, c, d]
+  - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }
   - name: scanned
     inputs:
       input: !cel "steps.source.result.output"
@@ -75,10 +66,7 @@ steps:
 kind: Run.Sequence
 metadata: { name: flatMapIndex }
 steps:
-  - name: source
-    invoke:
-      kind: Stream.Of
-      items: [a, b, c, d]
+  - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }
   - name: expanded
     inputs:
       input: !cel "steps.source.result.output"

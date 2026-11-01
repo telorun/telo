@@ -50,11 +50,8 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text }
-indexes:
-  people_by_name: { columns: [name] }
+columns: { id: { type: text, nullable: false }, name: { type: text } }
+indexes: { people_by_name: { columns: [name] } }
 ---
 kind: Layers.RelationshipTable
 metadata: { name: knowsTable }
@@ -119,8 +116,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_drafts_storage CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_drafts_storage CASCADE }
 ---
 kind: Run.Sequence
 metadata: { name: test }

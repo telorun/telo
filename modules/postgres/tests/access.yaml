@@ -8,8 +8,7 @@ metadata:
     library declaring them, and by the kernel when they are created for a
     consumer whose own check is silent. An address nothing listens on fails as a
     connection error, never as an unmet need.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref refusedAtCheck
   - !ref connectionStringRefusedAtCreation
@@ -38,9 +37,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: accessRequiredAtCreation }
 source: ./__fixtures__/access/legacy-app.yaml
-expect:
-  errors: []
-  runFails: "/ is missing required property 'access'"
+expect: { errors: [], runFails: "/ is missing required property 'access'" }
 ---
 kind: Assert.Manifest
 metadata: { name: unreachable }

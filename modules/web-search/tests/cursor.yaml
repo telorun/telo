@@ -2,19 +2,13 @@
 # engine's own position. The digest is pinned to fixed values, so a change to its
 # encoding — which would invalidate every cursor in flight — fails here.
 kind: Telo.Application
-metadata:
-  name: WebSearchCursorTest
-  version: 1.0.0
-imports:
-  WebSearch: ..
-  Run: ../../run
-  Assert: ../../assert
+metadata: { name: WebSearchCursorTest, version: 1.0.0 }
+imports: { WebSearch: .., Run: ../../run, Assert: ../../assert }
 targets:
   - !ref cursor
 ---
 kind: Run.Sequence
-metadata:
-  name: cursor
+metadata: { name: cursor }
 steps:
   - name: sealed
     invoke: { kind: Assert.Equals }
@@ -24,10 +18,7 @@ steps:
         # Lowercased language, and neither `count` nor `cursor` enters the digest.
         - !cel "WebSearch.sealCursor('searxng', {'query': 'rust async', 'language': 'EN-us', 'country': 'FI', 'freshness': 'week', 'count': 5, 'cursor': 'x'}, '3-7')"
         - !cel "WebSearch.sealCursor('brave', {'query': 'rust async'}, '0-0')"
-      expected:
-        - searxng.dd83f99303d83c5a.3-7
-        - searxng.dd83f99303d83c5a.3-7
-        - brave.b0e09fb373f8cd1a.0-0
+      expected: [searxng.dd83f99303d83c5a.3-7, searxng.dd83f99303d83c5a.3-7, brave.b0e09fb373f8cd1a.0-0]
   - name: opened
     invoke: { kind: Assert.Equals }
     inputs:

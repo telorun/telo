@@ -17,17 +17,13 @@ targets:
   - !ref test
 ---
 kind: Stub.StubClient
-metadata:
-  name: mcpServer
+metadata: { name: mcpServer }
 ---
 kind: Ai.Agent
-metadata:
-  name: assistant
+metadata: { name: assistant }
 model:
   kind: AiEcho.EchoModel
-  emitToolCall:
-    name: review
-    arguments: { language: Rust }
+  emitToolCall: { name: review, arguments: { language: Rust } }
 toolProviders:
   - provider:
       kind: AiMcp.PromptToolProvider

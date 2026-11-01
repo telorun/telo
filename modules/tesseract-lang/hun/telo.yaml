@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - hun
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [hun] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: hun, member: package/4.0.0_best_int/hun.traineddata.gz, sha256: 99feb1ac618ddd39942d646f1df792e5bd4504df45e1ef68e47df51db476a2ed, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: hun
-  description: Hungarian, Latin script
+metadata: { name: hun, description: "Hungarian, Latin script" }
 code: hun
 data: !module-path ./tessdata/hun.traineddata.gz

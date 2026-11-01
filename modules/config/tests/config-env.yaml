@@ -1,35 +1,22 @@
 kind: Telo.Application
-metadata:
-  name: ConfigEnvTest
-imports:
-  Config: ../../config
-  Run: ../../run
-  Assert: ../../assert
+metadata: { name: ConfigEnvTest }
+imports: { Config: ../../config, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testConfigEnv
 ---
 kind: Config.Env
-metadata:
-  name: appConfig
+metadata: { name: appConfig }
 variables:
-  port:
-    env: PORT
-    type: integer
-    minimum: 1024
+  port: { env: PORT, type: integer, minimum: 1024 }
   logLevel:
     env: LOG_LEVEL
     type: string
     default: info
     enum: [ debug, info, warn, error ]
-secrets:
-  apiKey:
-    env: API_KEY
-    type: string
-    default: test-key
+secrets: { apiKey: { env: API_KEY, type: string, default: test-key } }
 ---
 kind: Run.Sequence
-metadata:
-  name: testConfigEnv
+metadata: { name: testConfigEnv }
 steps:
   - name: assertPort
     inputs:
@@ -38,10 +25,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          port:
-            type: integer
-            const: 1234
+        properties: { port: { type: integer, const: 1234 } }
         required: [ port ]
 
   - name: assertLogLevel
@@ -51,10 +35,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          logLevel:
-            type: string
-            const: info
+        properties: { logLevel: { type: string, const: info } }
         required: [ logLevel ]
 
   - name: assertApiKey
@@ -64,8 +45,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          apiKey:
-            type: string
-            const: test-key
+        properties: { apiKey: { type: string, const: test-key } }
         required: [ apiKey ]

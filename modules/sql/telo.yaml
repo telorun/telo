@@ -27,15 +27,7 @@ requires:
   # (INHERIT_WITHOUT_STEP_CONTEXT). Verified by execution against 0.89.0.
   telo: ">=0.90.0"
 exports:
-  kinds:
-    - Connection
-    - Query
-    - Command
-    - Transaction
-    - Selection
-    - Table
-    - Enum
-    - Schema
+  kinds: [Connection, Query, Command, Transaction, Selection, Table, Enum, Schema]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/sql` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -71,8 +63,7 @@ metadata:
     the text, so queries stay injection-safe, and the query can join an open
     transaction.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlQueryController
+controllers: [pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlQueryController]
 schema:
   type: object
   description: >-
@@ -83,15 +74,11 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Self.Connection
-        use: dependency
+      x-telo-ref: { kind: Self.Connection, use: dependency }
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref:
-        kind: Self.Transaction
-        use: dependency
+      x-telo-ref: { kind: Self.Transaction, use: dependency }
       x-telo-requires-zone:
         zone: Self.Transaction
         key: [/connection, /transaction/connection]
@@ -152,8 +139,7 @@ metadata:
     parameters instead of being spliced into the text, and the statement can join an
     open transaction.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlCommandController
+controllers: [pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlCommandController]
 schema:
   type: object
   description: >-
@@ -165,15 +151,11 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Self.Connection
-        use: dependency
+      x-telo-ref: { kind: Self.Connection, use: dependency }
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref:
-        kind: Self.Transaction
-        use: dependency
+      x-telo-ref: { kind: Self.Transaction, use: dependency }
       x-telo-requires-zone:
         zone: Self.Transaction
         key: [/connection, /transaction/connection]
@@ -235,12 +217,10 @@ metadata:
     commits on success or rolls back if it fails. Queries and statements join it by
     reference, so a group of writes becomes all-or-nothing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlTransactionController
+controllers: [pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlTransactionController]
 # A throw from the body rolls the transaction back and propagates unchanged, so
 # what the transaction can throw is what its body can.
-throws:
-  inherit: true
+throws: { inherit: true }
 schema:
   type: object
   required: [connection, steps]
@@ -248,9 +228,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Self.Connection
-        use: dependency
+      x-telo-ref: { kind: Self.Connection, use: dependency }
     steps:
       title: Steps
       description: Resource executed inside the transaction.
@@ -281,10 +259,7 @@ schema:
         Inputs forwarded to the steps resource at invoke time. CEL here reads the
         caller's invocation input as `inputs.<field>` — the same variable a
         Run.Sequence step's inputs read.
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 kind: Telo.Definition
 metadata:
@@ -295,8 +270,7 @@ metadata:
     and paging come from the call's inputs and bind as parameters, so the query stays
     visually editable and injection-safe.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlSelectionController
+controllers: [pkg:telo/local/js?path=./nodejs/sql.mjs&local_path=./nodejs/src/index.ts#SqlSelectionController]
 schema:
   type: object
   required: [from]
@@ -313,15 +287,11 @@ schema:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Self.Connection
-        use: dependency
+      x-telo-ref: { kind: Self.Connection, use: dependency }
     transaction:
       title: Transaction
       description: Reference to the SQL transaction resource.
-      x-telo-ref:
-        kind: Self.Transaction
-        use: dependency
+      x-telo-ref: { kind: Self.Transaction, use: dependency }
       x-telo-requires-zone:
         zone: Self.Transaction
         key: [/connection, /transaction/connection]
@@ -354,14 +324,8 @@ schema:
       title: Where
       description: Structured where clauses.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
-      items:
-        title: Where Clause
-        description: Single where clause object.
-        type: object
+      x-telo-context: { type: object, properties: { inputs: {} } }
+      items: { title: Where Clause, description: Single where clause object., type: object }
     groupBy:
       title: Group By
       description: Columns used for grouping.
@@ -375,10 +339,7 @@ schema:
       title: Having
       description: Structured having clauses.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
       items:
         title: Having Clause
         description: Single having clause object.
@@ -393,10 +354,7 @@ schema:
         description: Single ordering rule.
         type: object
         properties:
-          column:
-            title: Column
-            description: Column name to order by.
-            type: string
+          column: { title: Column, description: Column name to order by., type: string }
           direction:
             title: Direction
             description: Sort direction.
@@ -405,29 +363,19 @@ schema:
     limit:
       title: Limit
       description: Maximum number of rows returned.
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     offset:
       title: Offset
       description: Number of rows skipped before returning results.
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     inputType:
       title: Input Type
       description: Named type reference or inline type definition for invocation inputs.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: Named type reference or inline type definition for invocation outputs.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
 ---
 # Sql.Table — a declared table. The abstract carries no column vocabulary,
 # deliberately: a neutral type language is a lowest-common-denominator one,
@@ -536,10 +484,7 @@ capability: Telo.Provider
 schema:
   type: object
   properties:
-    table:
-      title: Table
-      description: The physical table name.
-      type: string
+    table: { title: Table, description: The physical table name., type: string }
     columns:
       title: Columns
       description: >-
@@ -616,9 +561,7 @@ schema:
         are named here because the rules below iterate them, and a rule may only
         point at a collection the kind it is declared on declares.
       type: object
-      properties:
-        key: { type: array }
-        rows: { type: array }
+      properties: { key: { type: array }, rows: { type: array } }
   # `condition` is TRUE when the rule holds; `this` is the element `in:` iterates
   # and `key` its map key, `self` the whole table. Each is decidable by reading
   # the YAML, and otherwise only at boot — several of them after
@@ -796,9 +739,7 @@ schema:
         The connection the schema lives in. Structural, as `tables:` is: each
         engine restates it as a reference to its own connection kind, and a
         consumer holding a schema reads it to know where the tables are.
-      x-telo-ref:
-        kind: Self.Connection
-        use: dependency
+      x-telo-ref: { kind: Self.Connection, use: dependency }
     version:
       title: Version
       description: >-
@@ -881,8 +822,7 @@ schema:
           pattern: "^\\s*\\d+(\\.\\d+)?\\s*(ms|s|m|h|d)\\s*$"
   # The version is the reclamation clock and nothing else reads it, so an
   # implementation must require it exactly when a policy is declared.
-  dependencies:
-    reclaim: [version]
+  dependencies: { reclaim: [version] }
   # `0ms` is legal — the tests need it, and an author may genuinely want
   # `afterVersions` alone gating the drop — but it switches off the backstop that
   # exists because several releases can land in an afternoon. Said out loud
@@ -966,12 +906,8 @@ status:
       items:
         type: object
         properties:
-          object:
-            title: Object
-            type: string
-          missingSinceVersion:
-            title: Missing Since Version
-            type: string
+          object: { title: Object, type: string }
+          missingSinceVersion: { title: Missing Since Version, type: string }
           versionsRemaining:
             title: Versions Remaining
             description: Null when no policy is declared — nothing is ever dropped, so there is no budget.
@@ -980,9 +916,7 @@ status:
             title: Ms Remaining
             description: Null when no policy is declared.
             type: [integer, "null"]
-          eligible:
-            title: Eligible
-            type: boolean
+          eligible: { title: Eligible, type: boolean }
           unreclaimable:
             title: Unreclaimable
             description: >-

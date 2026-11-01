@@ -7,8 +7,7 @@ metadata:
   name: GraphSqlUnaddressedSchema
   version: 1.0.0
   description: A store over a schema instance without table addressing fails creation.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref refused
 ---

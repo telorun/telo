@@ -15,27 +15,10 @@ metadata:
 # `nested:` (0.100.0 reports SCHEMA_PROJECTION_INVALID here), evaluates the
 # `x-telo-eval` inside it, and checks `format: css-selector` (0.100.0 ignores
 # it). Verified by running 0.100.0.
-requires:
-  telo: ">=0.101.0"
+requires: { telo: ">=0.101.0" }
 exports:
-  kinds:
-    - JsonTree
-    - Selection
-    - Extraction
-    - SafeTree
-    - Markup
-    - PlainText
-    - Markdown
-    - Metadata
-    - MainContent
-  resources:
-    - Node
-    - Parsed
-    - escape
-    - unescape
-    - stripAll
-    - basicFormatting
-    - richContent
+  kinds: [JsonTree, Selection, Extraction, SafeTree, Markup, PlainText, Markdown, Metadata, MainContent]
+  resources: [Node, Parsed, escape, unescape, stripAll, basicFormatting, richContent]
 ---
 # One node of a parsed page. Flat and closed, with no root-level union: a union
 # at the root reads as `dyn` to CEL, and then nothing below it is typed. Which
@@ -78,19 +61,14 @@ schema:
         A name holds no whitespace, `/` or `>`, and no `=` after its first character;
         it is lowercase unless it is a case-adjusted foreign name (`viewBox`).
       type: object
-      propertyNames:
-        pattern: "^[^\\t\\n\\f\\r />][^\\t\\n\\f\\r />=]*$"
+      propertyNames: { pattern: "^[^\\t\\n\\f\\r />][^\\t\\n\\f\\r />=]*$" }
       additionalProperties: { type: string }
     children:
       description: An element's children in document order. A `<template>`'s children are its contents.
       type: array
       items: { $ref: "#" }
-    text:
-      description: The text of a text or comment node.
-      type: string
-    name:
-      description: A doctype's name.
-      type: string
+    text: { description: The text of a text or comment node., type: string }
+    name: { description: A doctype's name., type: string }
     publicId:
       description: A doctype's public identifier, `""` when absent.
       type: string
@@ -104,9 +82,7 @@ schema:
     - if: { required: [tag], not: { required: [namespace] } }
       then:
         properties:
-          tag:
-            pattern: "^[^A-Z]*$"
-            not: { enum: [svg, math, image] }
+          tag: { pattern: "^[^A-Z]*$", not: { enum: [svg, math, image] } }
           attrs: { propertyNames: { pattern: "^[^A-Z]*$" } }
     - if: { required: [namespace], properties: { namespace: { const: mathml } } }
       then:
@@ -115,8 +91,8 @@ schema:
           attrs:
             propertyNames:
               anyOf:
-                - pattern: "^[^A-Z]*$"
-                - const: definitionURL
+                - { pattern: "^[^A-Z]*$" }
+                - { const: definitionURL }
     - if: { required: [namespace], properties: { namespace: { const: svg } } }
       then:
         properties:
@@ -147,7 +123,7 @@ schema:
           attrs:
             propertyNames:
               anyOf:
-                - pattern: "^[^A-Z]*$"
+                - { pattern: "^[^A-Z]*$" }
                 - enum: [
                     attributeName, attributeType, baseFrequency, baseProfile, calcMode,
                     clipPathUnits, diffuseConstant, edgeMode, filterUnits, glyphRef,
@@ -163,8 +139,7 @@ schema:
                     textLength, viewBox, viewTarget, xChannelSelector, yChannelSelector,
                     zoomAndPan
                   ]
-  if:
-    properties: { type: { const: element } }
+  if: { properties: { type: { const: element } } }
   then:
     required: [tag, attrs, children]
     properties:
@@ -173,8 +148,7 @@ schema:
       publicId: false
       systemId: false
   else:
-    if:
-      properties: { type: { enum: [text, comment] } }
+    if: { properties: { type: { enum: [text, comment] } } }
     then:
       required: [text]
       properties:
@@ -228,13 +202,9 @@ metadata:
     declared charset or a meta tag. Parses whole documents or fragments, records
     the base URL, and never fails on malformed markup.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#JsonTree
-throws:
-  codes: {}
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#JsonTree]
+throws: { codes: {} }
+schema: { type: object, additionalProperties: false }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -248,14 +218,12 @@ inputType:
           by a byte order mark, then `charset`, then a `<meta>` in the first 1024
           bytes, then UTF-8; undecodable bytes become U+FFFD.
         anyOf:
-          - type: string
+          - { type: string }
           - type: object
             additionalProperties: false
             required: [bytes]
             properties:
-              bytes:
-                description: The encoded page.
-                x-telo-type: Telo.Bytes
+              bytes: { description: The encoded page., x-telo-type: Telo.Bytes }
               charset:
                 description: >-
                   The charset the transport declared (a `Content-Type` parameter), as a
@@ -322,10 +290,8 @@ metadata:
     base URL. Use it to cut a page down to the region worth processing before
     extracting, converting or sanitizing it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Selection
-throws:
-  codes: {}
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Selection]
+throws: { codes: {} }
 schema:
   type: object
   additionalProperties: false
@@ -345,8 +311,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType: !ref Parsed
 ---
 # The output is typed from each declaration's own `fields:` — a projection of
@@ -362,8 +327,7 @@ metadata:
     required, and nested records for lists of cards or rows. The result is typed
     from the declared fields, so a misspelled field is caught before running.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Extraction
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Extraction]
 throws:
   codes:
     ERR_HTML_FIELD_MISSING:
@@ -391,16 +355,14 @@ inputType:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [fields]
-    properties:
-      fields: { x-telo-schema-projection-from: "" }
+    properties: { fields: { x-telo-schema-projection-from: "" } }
 schema:
   type: object
   additionalProperties: false
@@ -478,8 +440,7 @@ metadata:
     dangerous links while keeping the text of anything unlisted. Prevents
     cross-site scripting when displaying user content, comments or emails.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#SafeTree
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#SafeTree]
 throws:
   codes:
     ERR_HTML_NOT_SERIALIZABLE:
@@ -493,8 +454,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType: !ref Parsed
 schema:
   type: object
@@ -510,21 +470,12 @@ schema:
       type: object
       additionalProperties: false
       properties:
-        values:
-          type: array
-          items: { type: string }
-        prefixes:
-          type: array
-          items: { type: string }
-        protocols:
-          type: array
-          items:
-            type: string
-            pattern: "^[a-z][a-z0-9+.-]*$"
+        values: { type: array, items: { type: string } }
+        prefixes: { type: array, items: { type: string } }
+        protocols: { type: array, items: { type: string, pattern: "^[a-z][a-z0-9+.-]*$" } }
     AttributeMap:
       type: object
-      propertyNames:
-        pattern: "^[a-z][a-z0-9:_.-]*$"
+      propertyNames: { pattern: "^[a-z][a-z0-9:_.-]*$" }
       additionalProperties: { $ref: "#/$defs/Constraint" }
   properties:
     elements:
@@ -537,9 +488,7 @@ schema:
         nor can `svg`, `math` or `image`, which markup never writes as HTML elements.
       type: array
       uniqueItems: true
-      items:
-        type: string
-        pattern: "^[a-z][a-z0-9-]*$"
+      items: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
     attributes:
       title: Attributes
       description: >-
@@ -549,8 +498,8 @@ schema:
       type: object
       propertyNames:
         anyOf:
-          - const: "*"
-          - pattern: "^[a-z][a-z0-9-]*$"
+          - { const: "*" }
+          - { pattern: "^[a-z][a-z0-9-]*$" }
       additionalProperties: { $ref: "#/$defs/AttributeMap" }
     setAttributes:
       title: Set attributes
@@ -559,12 +508,10 @@ schema:
         event handler (a name starting with `on`) cannot be forced —
         `HTML_SANITIZE_EVENT_HANDLER_FORCED`.
       type: object
-      propertyNames:
-        pattern: "^[a-z][a-z0-9-]*$"
+      propertyNames: { pattern: "^[a-z][a-z0-9-]*$" }
       additionalProperties:
         type: object
-        propertyNames:
-          pattern: "^[a-z][a-z0-9:_.-]*$"
+        propertyNames: { pattern: "^[a-z][a-z0-9:_.-]*$" }
         additionalProperties: { type: string }
     dropContent:
       title: Drop content
@@ -573,9 +520,7 @@ schema:
         namespace. Defaults to `script` and `style`.
       type: array
       uniqueItems: true
-      items:
-        type: string
-        pattern: "^[a-z][a-z0-9-]*$"
+      items: { type: string, pattern: "^[a-z][a-z0-9-]*$" }
       default: [script, style]
     comments:
       title: Comments
@@ -664,33 +609,28 @@ metadata:
     result by parsing it again, refusing a tree whose markup would read back as a
     different tree. Use it to emit sanitized or edited markup.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Markup
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Markup]
 throws:
   codes:
     ERR_HTML_NOT_SERIALIZABLE:
       description: >-
         The markup would not read back as this tree. The message names the first
         differing node's path and what it reads back as.
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [html]
-    properties:
-      html: { type: string }
+    properties: { html: { type: string } }
 ---
 kind: Telo.Definition
 metadata:
@@ -701,29 +641,23 @@ metadata:
     such as scripts and styles left out. For search indexing, summaries and text
     analysis.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#PlainText
-throws:
-  codes: {}
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#PlainText]
+throws: { codes: {} }
+schema: { type: object, additionalProperties: false }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [text]
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
 ---
 kind: Telo.Definition
 metadata:
@@ -734,10 +668,8 @@ metadata:
     styles, and relative links made absolute against the page URL. Feeds language
     models, documentation and note-taking tools.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Markdown
-throws:
-  codes: {}
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Markdown]
+throws: { codes: {} }
 schema:
   type: object
   additionalProperties: false
@@ -791,16 +723,14 @@ inputType:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [markdown]
-    properties:
-      markdown: { type: string }
+    properties: { markdown: { type: string } }
 ---
 kind: Telo.Definition
 metadata:
@@ -811,21 +741,16 @@ metadata:
     alternate, feeds, icons), and each JSON-LD structured data block, reporting a
     malformed block rather than dropping it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Metadata
-throws:
-  codes: {}
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Metadata]
+throws: { codes: {} }
+schema: { type: object, additionalProperties: false }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -833,24 +758,15 @@ outputType:
     additionalProperties: false
     required: [meta, links, jsonLd]
     properties:
-      title:
-        description: The first `<title>`, with whitespace collapsed.
-        type: string
-      lang:
-        description: The root element's `lang`.
-        type: string
-      baseUrl:
-        description: The page's base URL.
-        type: string
-        format: uri
+      title: { description: "The first `<title>`, with whitespace collapsed.", type: string }
+      lang: { description: The root element's `lang`., type: string }
+      baseUrl: { description: The page's base URL., type: string, format: uri }
       meta:
         description: >-
           Each `<meta>` `name` and `property` value, mapped to the `content` values
           carrying it in document order.
         type: object
-        additionalProperties:
-          type: array
-          items: { type: string }
+        additionalProperties: { type: array, items: { type: string } }
       links:
         description: Every `<link>` with an `href`, in document order.
         type: array
@@ -880,11 +796,8 @@ outputType:
           type: object
           additionalProperties: false
           properties:
-            value:
-              description: The parsed JSON-LD.
-            error:
-              description: Why the block is not valid JSON.
-              type: string
+            value: { description: The parsed JSON-LD. }
+            error: { description: Why the block is not valid JSON., type: string }
           if: { required: [value] }
           then: { not: { required: [error] } }
           else: { required: [error] }
@@ -898,12 +811,10 @@ metadata:
     title, author, excerpt, site name, language, direction and publication time.
     Clean input for reading views, summarization and archiving.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#MainContent
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#MainContent]
 throws:
   codes:
-    ERR_HTML_NO_MAIN_CONTENT:
-      description: No part of the page scored as main content.
+    ERR_HTML_NO_MAIN_CONTENT: { description: No part of the page scored as main content. }
 schema:
   type: object
   additionalProperties: false
@@ -960,8 +871,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [document]
-    properties:
-      document: { $ref: "telo://Self/Parsed" }
+    properties: { document: { $ref: "telo://Self/Parsed" } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -990,15 +900,10 @@ metadata:
 capability: Telo.Callable
 deterministic: true
 params:
-  - name: text
-    schema: { type: string }
-returns:
-  schema: { type: string }
-schema:
-  type: object
-  additionalProperties: false
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Escape
+  - { name: text, schema: { type: string } }
+returns: { schema: { type: string } }
+schema: { type: object, additionalProperties: false }
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Escape]
 ---
 kind: Telo.Definition
 metadata:
@@ -1010,15 +915,10 @@ metadata:
 capability: Telo.Callable
 deterministic: true
 params:
-  - name: text
-    schema: { type: string }
-returns:
-  schema: { type: string }
-schema:
-  type: object
-  additionalProperties: false
-controllers:
-  - pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Unescape
+  - { name: text, schema: { type: string } }
+returns: { schema: { type: string } }
+schema: { type: object, additionalProperties: false }
+controllers: [pkg:telo/local/js?path=./nodejs/html.mjs&local_path=./nodejs/src/index.ts#Unescape]
 ---
 kind: Self.Escape
 metadata:
@@ -1045,9 +945,7 @@ metadata:
     Sanitizes HTML to paragraphs, line breaks, emphasis, inline code, lists,
     quotes and http, https and mailto links.
 elements: [p, br, a, em, strong, code, ul, ol, li, blockquote]
-attributes:
-  a:
-    href: { protocols: [http, https, mailto] }
+attributes: { a: { href: { protocols: [http, https, mailto] } } }
 ---
 kind: Self.SafeTree
 metadata:
@@ -1060,21 +958,14 @@ metadata:
 elements:
   [p, br, a, em, strong, code, ul, ol, li, blockquote, h1, h2, h3, h4, h5, h6, table, thead, tbody, tr, th, td, pre, img, hr, del, details, summary, input]
 attributes:
-  "*":
-    id: {}
-    name: {}
-  a:
-    href: { protocols: [http, https, mailto] }
+  "*": { id: {}, name: {} }
+  a: { href: { protocols: [http, https, mailto] } }
   img:
     src: { protocols: [http, https] }
     alt: {}
     title: {}
     width: {}
     height: {}
-  code:
-    class: { prefixes: [language-] }
-setAttributes:
-  input:
-    type: checkbox
-    disabled: ""
+  code: { class: { prefixes: [language-] } }
+setAttributes: { input: { type: checkbox, disabled: "" } }
 idPrefix: user-content-

@@ -29,33 +29,10 @@ requires:
   # drafting suite fails on 0.105.0, 0.106.0 and 0.107.0 and passes whole on
   # 0.108.0, 0.109.0, 0.111.0 and 0.113.0.
   telo: ">=0.108.0"
-imports:
-  Graph: ../graph
+imports: { Graph: ../graph }
 exports:
-  kinds:
-    - Store
-    - RetractNode
-    - RetractRelationship
-    - DraftedStore
-    - OpenDraft
-    - DraftSession
-    - Publish
-    - DiscardDraft
-    - RebaseDraft
-    - ListDrafts
-    - NodeConflicts
-    - RelationshipConflicts
-    - ResolveNodeConflict
-    - ResolveRelationshipConflict
-    - RevisionedStore
-    - ListRevisions
-    - PinBase
-    - UnpinBase
-    - ListBases
-    - LabelRevision
-  resources:
-    - Actor
-    - PinnedBase
+  kinds: [Store, RetractNode, RetractRelationship, DraftedStore, OpenDraft, DraftSession, Publish, DiscardDraft, RebaseDraft, ListDrafts, NodeConflicts, RelationshipConflicts, ResolveNodeConflict, ResolveRelationshipConflict, RevisionedStore, ListRevisions, PinBase, UnpinBase, ListBases, LabelRevision]
+  resources: [Actor, PinnedBase]
   # The store contract of each level, which a strategy module's store
   # implements, and the guards the lifecycle kinds resolve their `store` slot
   # with.
@@ -96,8 +73,7 @@ metadata:
     again. Returns the entity now visible for the key, or nothing when no layer
     beneath holds it. Refuses when the layer says nothing about the key.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RetractNode
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RetractNode]
 throws:
   codes:
     GRAPH_NODE_NOT_STATED:
@@ -140,15 +116,11 @@ schema:
     store:
       title: Store
       description: The layer whose statement is withdrawn.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     node:
       title: Node
       description: The node type. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Graph.Node
-        use: dependency
+      x-telo-ref: { kind: Graph.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -164,8 +136,7 @@ metadata:
     under it shows again. Returns the link now visible for the pair, or nothing
     when no layer beneath holds it. Refuses when the layer says nothing about it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RetractRelationship
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RetractRelationship]
 throws:
   codes:
     GRAPH_RELATIONSHIP_NOT_STATED:
@@ -213,15 +184,11 @@ schema:
     store:
       title: Store
       description: The layer whose statement is withdrawn.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     relationship:
       title: Relationship
       description: The relationship type. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Graph.Relationship
-        use: dependency
+      x-telo-ref: { kind: Graph.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -247,8 +214,7 @@ extends: Self.Store
 # One value is the contract's own: what a store does on nobody's behalf is
 # recorded as type `store` with the store's declared name as its id.
 kind: Telo.JsonSchema
-metadata:
-  name: Actor
+metadata: { name: Actor }
 schema:
   type: object
   required: [type, id]
@@ -278,16 +244,12 @@ metadata:
     the revision it starts from. Where a layer keeps a single draft, an already
     open one is returned instead of a second.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#OpenDraft
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#OpenDraft]
 inputType:
   type: object
   additionalProperties: false
   properties:
-    message:
-      title: Message
-      description: A note on what the draft is for.
-      type: string
+    message: { title: Message, description: A note on what the draft is for., type: string }
     actor:
       title: Actor
       description: Who opens the draft. Omitted, the store resource itself is recorded.
@@ -327,9 +289,7 @@ schema:
     store:
       title: Store
       description: The layer a draft is opened on.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
 ---
 # GraphLayers.DraftSession — the region in which a store's operations read and
 # write one draft. A zone on its body, correlated on the store: the conflict
@@ -344,20 +304,17 @@ metadata:
     runs, the session ends at once and nothing further is staged.
 capability: Telo.Invocable
 topology: Sequence
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#DraftSession
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#DraftSession]
 throws:
   inherit: true
   codes:
-    GRAPH_DRAFT_NOT_FOUND:
-      description: The store's layer has no draft of that id.
+    GRAPH_DRAFT_NOT_FOUND: { description: The store's layer has no draft of that id. }
     GRAPH_DRAFT_CLOSED:
       description: >-
         The draft is no longer open: it was published or discarded before the
         session began, or while its body ran. `data` carries `draft`, `closedAs`
         (`published` or `discarded`) and, for a published draft, `revision`.
-    GRAPH_DRAFT_FOREIGN:
-      description: The draft belongs to another layer than this store's.
+    GRAPH_DRAFT_FOREIGN: { description: The draft belongs to another layer than this store's. }
 inputType:
   type: object
   required: [draft]
@@ -368,9 +325,7 @@ inputType:
       description: The id of the draft the body reads and writes.
       type: string
       minLength: 1
-outputType:
-  type: object
-  additionalProperties: true
+outputType: { type: object, additionalProperties: true }
 schema:
   type: object
   required: [store, steps]
@@ -379,9 +334,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft the body works in.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
     steps:
       title: Steps
       description: >-
@@ -389,13 +342,9 @@ schema:
         reads and writes the draft.
       x-telo-topology-role: steps
       type: array
-      items:
-        $ref: "telo://manifest#/$defs/Step"
+      items: { $ref: "telo://manifest#/$defs/Step" }
       x-telo-provides-zone: /store
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     inputs:
       title: Inputs
       type: object
@@ -403,10 +352,7 @@ schema:
       description: >-
         Values forwarded into the body, read there as `inputs.<field>`. CEL here
         reads the caller's invocation input the same way.
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 kind: Telo.Definition
 metadata:
@@ -417,14 +363,11 @@ metadata:
     when the layer has moved since the draft was opened or rebased, and while
     any conflict is left undecided. Publishing twice returns the same revision.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#Publish
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#Publish]
 throws:
   codes:
-    GRAPH_DRAFT_NOT_FOUND:
-      description: The store's layer has no draft of that id.
-    GRAPH_DRAFT_DISCARDED:
-      description: The draft was discarded, so it holds nothing to publish.
+    GRAPH_DRAFT_NOT_FOUND: { description: The store's layer has no draft of that id. }
+    GRAPH_DRAFT_DISCARDED: { description: "The draft was discarded, so it holds nothing to publish." }
     GRAPH_DRAFT_STALE:
       description: >-
         The layer is no longer at the revision the draft stands on. Rebase the
@@ -487,9 +430,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft is published.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -499,14 +440,11 @@ metadata:
     dropped and the published state is left as it was. Discarding a draft that
     was already discarded is a no-op; a published draft cannot be discarded.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#DiscardDraft
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#DiscardDraft]
 throws:
   codes:
-    GRAPH_DRAFT_NOT_FOUND:
-      description: The store's layer has no draft of that id.
-    GRAPH_DRAFT_PUBLISHED:
-      description: The draft was published, so there is nothing left to discard.
+    GRAPH_DRAFT_NOT_FOUND: { description: The store's layer has no draft of that id. }
+    GRAPH_DRAFT_PUBLISHED: { description: "The draft was published, so there is nothing left to discard." }
 inputType:
   type: object
   required: [draft]
@@ -521,9 +459,7 @@ inputType:
       title: Actor
       description: Who discards. Omitted, the store resource itself is recorded.
       $ref: "telo://Self/Actor"
-outputType:
-  type: object
-  additionalProperties: false
+outputType: { type: object, additionalProperties: false }
 schema:
   type: object
   required: [store]
@@ -532,9 +468,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft is discarded.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -545,12 +479,10 @@ metadata:
     and those that collide are left as conflicts to list and decide. Returns the
     new starting revision with how many changes merged and how many conflict.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RebaseDraft
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RebaseDraft]
 throws:
   codes:
-    GRAPH_DRAFT_NOT_FOUND:
-      description: The store's layer has no draft of that id.
+    GRAPH_DRAFT_NOT_FOUND: { description: The store's layer has no draft of that id. }
     GRAPH_DRAFT_CLOSED:
       description: >-
         The draft was published or discarded. `data` carries `draft`, `closedAs`
@@ -602,9 +534,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft is rebased.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -614,8 +544,7 @@ metadata:
     the revision it starts from, who opened it and when, and whether the layer
     has since moved past it so that it must be rebased before publishing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ListDrafts
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ListDrafts]
 throws:
   codes:
     GRAPH_CURSOR_INVALID:
@@ -676,9 +605,7 @@ schema:
     store:
       title: Store
       description: The layer whose drafts are listed.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -690,8 +617,7 @@ metadata:
     rebased onto, or the layers beneath after a base was upgraded. Used inside a
     draft session to review and resolve conflicts before publishing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#NodeConflicts
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#NodeConflicts]
 throws:
   codes:
     GRAPH_CURSOR_INVALID:
@@ -787,9 +713,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft is examined; the operation runs inside a session on it.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
       x-telo-requires-zone:
         zone: Self.DraftSession
         key: /store
@@ -797,9 +721,7 @@ schema:
     node:
       title: Node
       description: The node type. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Graph.Node
-        use: dependency
+      x-telo-ref: { kind: Graph.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -816,8 +738,7 @@ metadata:
     side now states: the layer the draft was rebased onto, or the layers beneath
     after a base was upgraded. Used inside a draft session before publishing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RelationshipConflicts
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#RelationshipConflicts]
 throws:
   codes:
     GRAPH_CURSOR_INVALID:
@@ -917,9 +838,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft is examined; the operation runs inside a session on it.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
       x-telo-requires-zone:
         zone: Self.DraftSession
         key: /store
@@ -927,9 +846,7 @@ schema:
     relationship:
       title: Relationship
       description: The relationship type. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Graph.Relationship
-        use: dependency
+      x-telo-ref: { kind: Graph.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -945,8 +862,7 @@ metadata:
     set on top. Of two callers deciding the same conflict exactly one applies.
     Returns the entity as the draft now shows it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ResolveNodeConflict
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ResolveNodeConflict]
 throws:
   codes:
     GRAPH_CONFLICT_NOT_FOUND:
@@ -1016,9 +932,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft is decided; the operation runs inside a session on it.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
       x-telo-requires-zone:
         zone: Self.DraftSession
         key: /store
@@ -1026,9 +940,7 @@ schema:
     node:
       title: Node
       description: The node type. The store must list it in 'nodes:'.
-      x-telo-ref:
-        kind: Graph.Node
-        use: dependency
+      x-telo-ref: { kind: Graph.Node, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.nodes.exists(n, n.name == self.node.name)"
@@ -1045,8 +957,7 @@ metadata:
     the same conflict exactly one applies. Returns the link as the draft now
     shows it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ResolveRelationshipConflict
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ResolveRelationshipConflict]
 throws:
   codes:
     GRAPH_CONFLICT_NOT_FOUND:
@@ -1122,9 +1033,7 @@ schema:
     store:
       title: Store
       description: The layer whose draft is decided; the operation runs inside a session on it.
-      x-telo-ref:
-        kind: Self.DraftedStore
-        use: dependency
+      x-telo-ref: { kind: Self.DraftedStore, use: dependency }
       x-telo-requires-zone:
         zone: Self.DraftSession
         key: /store
@@ -1132,9 +1041,7 @@ schema:
     relationship:
       title: Relationship
       description: The relationship type. The store must list it in 'relationships:'.
-      x-telo-ref:
-        kind: Graph.Relationship
-        use: dependency
+      x-telo-ref: { kind: Graph.Relationship, use: dependency }
   x-telo-resource-rules:
     - resolve: [/store]
       condition: !cel "self.store.?relationships.orValue([]).exists(r, r.name == self.relationship.name)"
@@ -1167,8 +1074,7 @@ metadata:
     Asked for the revisions after a known number it is a change feed, where a
     missing number shows a gap that time could not.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ListRevisions
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ListRevisions]
 throws:
   codes:
     GRAPH_CURSOR_INVALID:
@@ -1260,8 +1166,7 @@ outputType:
               The layers this revision is built on, in position order, each at
               the revision it is pinned to. Empty for a layer built on no other.
             type: array
-            items:
-              $ref: "telo://Self/PinnedBase"
+            items: { $ref: "telo://Self/PinnedBase" }
     next:
       title: Next
       description: >-
@@ -1276,24 +1181,18 @@ schema:
     store:
       title: Store
       description: The store whose tables hold the layer; its own layer is listed unless `layer` names another.
-      x-telo-ref:
-        kind: Self.RevisionedStore
-        use: dependency
+      x-telo-ref: { kind: Self.RevisionedStore, use: dependency }
 ---
 # GraphLayers.PinnedBase — one layer another is built on, at the revision it is
 # pinned to. The same shape wherever a base list is returned.
 kind: Telo.JsonSchema
-metadata:
-  name: PinnedBase
+metadata: { name: PinnedBase }
 schema:
   type: object
   required: [layer, revision, position]
   additionalProperties: false
   properties:
-    layer:
-      title: Layer
-      description: The name of the layer beneath.
-      type: string
+    layer: { title: Layer, description: The name of the layer beneath., type: string }
     revision:
       title: Revision
       description: The revision of that layer the pin holds. 0 is the layer before its first revision.
@@ -1317,8 +1216,7 @@ metadata:
     merged property by property with what changed beneath, and what collides is
     left as conflicts to resolve before publishing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#PinBase
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#PinBase]
 throws:
   codes:
     GRAPH_LAYER_NOT_FOUND:
@@ -1380,8 +1278,7 @@ inputType:
               revision); a string is a label. Omitted, the layer's newest
               revision at the moment of the call.
             anyOf:
-              - type: integer
-                minimum: 0
+              - { type: integer, minimum: 0 }
               - type: string
                 minLength: 1
                 maxLength: 128
@@ -1402,8 +1299,7 @@ outputType:
       title: Bases
       description: The layer's direct bases after the move, in position order.
       type: array
-      items:
-        $ref: "telo://Self/PinnedBase"
+      items: { $ref: "telo://Self/PinnedBase" }
     merged:
       title: Merged
       description: How many of the layer's statements were merged with a change beneath them.
@@ -1422,9 +1318,7 @@ schema:
       description: >-
         The layer whose bases are pinned. Inside a draft session on it the move
         is staged in that draft; outside one it is published at once.
-      x-telo-ref:
-        kind: Self.RevisionedStore
-        use: dependency
+      x-telo-ref: { kind: Self.RevisionedStore, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -1435,8 +1329,7 @@ metadata:
     view, and what the upper layer states over it is merged or left as
     conflicts, exactly as when a pin moves.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#UnpinBase
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#UnpinBase]
 throws:
   codes:
     GRAPH_BASE_NOT_PINNED:
@@ -1466,8 +1359,7 @@ outputType:
       title: Bases
       description: The layer's direct bases after the removal, in position order.
       type: array
-      items:
-        $ref: "telo://Self/PinnedBase"
+      items: { $ref: "telo://Self/PinnedBase" }
     merged:
       title: Merged
       description: How many of the layer's statements were merged with the change beneath them.
@@ -1486,9 +1378,7 @@ schema:
       description: >-
         The layer a pin is removed from. Inside a draft session on it the
         removal is staged in that draft; outside one it is published at once.
-      x-telo-ref:
-        kind: Self.RevisionedStore
-        use: dependency
+      x-telo-ref: { kind: Self.RevisionedStore, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -1499,11 +1389,8 @@ metadata:
     label. Inside a draft session it answers for the draft, outside one for the
     layer's newest revision.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ListBases
-inputType:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#ListBases]
+inputType: { type: object, additionalProperties: false }
 outputType:
   type: object
   required: [bases]
@@ -1513,8 +1400,7 @@ outputType:
       title: Bases
       description: Every direct base, in position order. A stack is bounded, so the list is whole.
       type: array
-      items:
-        $ref: "telo://Self/PinnedBase"
+      items: { $ref: "telo://Self/PinnedBase" }
 schema:
   type: object
   required: [store]
@@ -1523,9 +1409,7 @@ schema:
     store:
       title: Store
       description: The layer whose bases are listed.
-      x-telo-ref:
-        kind: Self.RevisionedStore
-        use: dependency
+      x-telo-ref: { kind: Self.RevisionedStore, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -1536,8 +1420,7 @@ metadata:
     number. A label is never moved or removed and a revision carries at most
     one; labelling the same revision with the same label again changes nothing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#LabelRevision
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers.mjs&local_path=./nodejs/src/index.ts#LabelRevision]
 throws:
   codes:
     GRAPH_REVISION_NOT_FOUND:
@@ -1586,12 +1469,8 @@ outputType:
       required: [number, label]
       additionalProperties: false
       properties:
-        number:
-          title: Number
-          type: integer
-        label:
-          title: Label
-          type: string
+        number: { title: Number, type: integer }
+        label: { title: Label, type: string }
 schema:
   type: object
   required: [store]
@@ -1602,6 +1481,4 @@ schema:
       description: >-
         The layer whose revision is labelled. A label names a published
         revision, so the call acts the same inside a draft session as outside.
-      x-telo-ref:
-        kind: Self.RevisionedStore
-        use: dependency
+      x-telo-ref: { kind: Self.RevisionedStore, use: dependency }

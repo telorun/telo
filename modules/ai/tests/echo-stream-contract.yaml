@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: EchoStreamContractTest
-  version: 1.0.0
+metadata: { name: EchoStreamContractTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -21,12 +19,10 @@ metadata: { name: collector }
 model: !ref echo
 ---
 kind: Run.Sequence
-metadata:
-  name: testEchoStreamContract
+metadata: { name: testEchoStreamContract }
 steps:
   - name: collect
-    inputs:
-      prompt: "hi"
+    inputs: { prompt: "hi" }
     invoke: !ref collector
   - name: assert
     inputs:

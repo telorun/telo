@@ -3,10 +3,7 @@ metadata:
   name: HtmlSelectionTest
   version: 1.0.0
   description: Selecting elements, and the base URL carried from the parse through a selection.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref matchesInOrder
   - !ref staticMatching
@@ -21,9 +18,7 @@ steps:
       html: <ul><li class="x">a</li><li>b<ul><li class="x">c</li></ul></li></ul>
       fragment: true
   - name: select
-    invoke:
-      kind: Html.Selection
-      selector: li.x
+    invoke: { kind: Html.Selection, selector: li.x }
     inputs: { document: !cel "steps.parse.result" }
   - name: assertMatches
     invoke: { kind: Assert.Equals }
@@ -43,19 +38,13 @@ steps:
     invoke: { kind: Html.JsonTree }
     inputs: { html: <p class="Card">a</p><a href="/x">b</a> }
   - name: caseSensitive
-    invoke:
-      kind: Html.Selection
-      selector: .card
+    invoke: { kind: Html.Selection, selector: .card }
     inputs: { document: !cel "steps.parse.result" }
   - name: hovered
-    invoke:
-      kind: Html.Selection
-      selector: "a:hover, :where(p):focus"
+    invoke: { kind: Html.Selection, selector: "a:hover, :where(p):focus" }
     inputs: { document: !cel "steps.parse.result" }
   - name: links
-    invoke:
-      kind: Html.Selection
-      selector: ":is(p, a):not(:hover)"
+    invoke: { kind: Html.Selection, selector: ":is(p, a):not(:hover)" }
     inputs: { document: !cel "steps.parse.result" }
   - name: assertCounts
     invoke: { kind: Assert.Equals }
@@ -84,22 +73,16 @@ steps:
         has enough text to be confident that this is the content a reader came for.</p>
         <p><img src="photo.jpg" alt="A photo"></p></article></body></html>
   - name: select
-    invoke:
-      kind: Html.Selection
-      selector: head, article
+    invoke: { kind: Html.Selection, selector: "head, article" }
     inputs: { document: !cel "steps.parse.result" }
   - name: metadata
     invoke: { kind: Html.Metadata }
     inputs: { document: !cel "steps.select.result" }
   - name: main
-    invoke:
-      kind: Html.MainContent
-      charThreshold: 100
+    invoke: { kind: Html.MainContent, charThreshold: 100 }
     inputs: { document: !cel "steps.select.result" }
   - name: links
-    invoke:
-      kind: Html.Selection
-      selector: a, img
+    invoke: { kind: Html.Selection, selector: "a, img" }
     inputs: { document: !cel "steps.main.result.content" }
   - name: assertCarried
     invoke: { kind: Assert.Equals }

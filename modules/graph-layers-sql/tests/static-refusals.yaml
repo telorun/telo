@@ -10,8 +10,7 @@ metadata:
   name: GraphLayersSqlStaticRefusals
   version: 1.0.0
   description: The layered SQL graph's structural rules, refused statically and at creation.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref nodeKeyUnknownColumn
   - !ref nodeKeyUnknownColumnAtRuntime
@@ -58,9 +57,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/node-key-unknown-column-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN"
+expect: { errors: [], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyMismatch }
@@ -73,9 +70,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyMismatchAtRuntime }
 source: ./__fixtures__/rules/node-key-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_NODE_KEY_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_NODE_KEY_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyNotLayerable }
@@ -88,9 +83,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyNotLayerableAtRuntime }
 source: ./__fixtures__/rules/node-key-not-layerable-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_NODE_KEY_NOT_LAYERABLE"
+expect: { errors: [], runFails: "GRAPH_NODE_KEY_NOT_LAYERABLE" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeTableUnique }
@@ -103,9 +96,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeTableUniqueAtRuntime }
 source: ./__fixtures__/rules/node-table-unique-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_UNIQUE_DECLARED"
+expect: { errors: [], runFails: "GRAPH_TABLE_UNIQUE_DECLARED" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumn }
@@ -118,9 +109,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/endpoint-unknown-column-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointMismatch }
@@ -133,9 +122,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointMismatchAtRuntime }
 source: ./__fixtures__/rules/endpoint-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointNullable }
@@ -148,9 +135,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointNullableAtRuntime }
 source: ./__fixtures__/rules/endpoint-nullable-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_NULLABLE"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_NULLABLE" }
 ---
 kind: Assert.Manifest
 metadata: { name: relationshipTableUnique }
@@ -163,9 +148,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationshipTableUniqueAtRuntime }
 source: ./__fixtures__/rules/relationship-table-unique-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_UNIQUE_DECLARED"
+expect: { errors: [], runFails: "GRAPH_TABLE_UNIQUE_DECLARED" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableNotInSchema }
@@ -178,9 +161,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/rules/table-not-in-schema-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -193,9 +174,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/rules/schema-connection-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableShared }
@@ -208,9 +187,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableSharedAtRuntime }
 source: ./__fixtures__/rules/table-shared-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_SHARED"
+expect: { errors: [], runFails: "GRAPH_TABLE_SHARED" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseStoreMismatch }
@@ -223,9 +200,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseStoreMismatchAtRuntime }
 source: ./__fixtures__/rules/base-store-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_BASE_STORE_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_BASE_STORE_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseLayerDuplicate }
@@ -238,9 +213,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseLayerDuplicateAtRuntime }
 source: ./__fixtures__/rules/base-layer-duplicate-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_BASE_LAYER_DUPLICATE"
+expect: { errors: [], runFails: "GRAPH_BASE_LAYER_DUPLICATE" }
 ---
 # Creation only, and the known gap: the store's own layer reached beneath a
 # base of a base is a cycle among layer NAMES through two store resources, and
@@ -249,15 +222,12 @@ expect:
 kind: Assert.Manifest
 metadata: { name: baseOwnLayerBeneath }
 source: ./__fixtures__/rules/base-own-layer-beneath/telo.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: baseOwnLayerBeneathAtRuntime }
 source: ./__fixtures__/rules/base-own-layer-beneath-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_BASE_LAYER_DUPLICATE"
+expect: { errors: [], runFails: "GRAPH_BASE_LAYER_DUPLICATE" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointNotInStore }
@@ -270,24 +240,19 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointNotInStoreAtRuntime }
 source: ./__fixtures__/rules/endpoint-not-in-store-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_NOT_IN_STORE"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_NOT_IN_STORE" }
 ---
 # Creation only: a rule reads one reference deep, and comparing an endpoint
 # column with the endpoint node's key needs the node's table, two away.
 kind: Assert.Manifest
 metadata: { name: endpointTypeMismatch }
 source: ./__fixtures__/rules/endpoint-type-mismatch/telo.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointTypeMismatchAtRuntime }
 source: ./__fixtures__/rules/endpoint-type-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_TYPE_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_TYPE_MISMATCH" }
 ---
 # The analyzer's own refusal, which the `bases:` slot leans on: a base is a
 # dependency, so two stores built on each other are a cycle.
@@ -296,5 +261,4 @@ metadata: { name: baseCycle }
 source: ./__fixtures__/rules/base-cycle/telo.yaml
 expect:
   errors:
-    - code: DEPENDENCY_CYCLE
-      message: "second"
+    - { code: DEPENDENCY_CYCLE, message: "second" }

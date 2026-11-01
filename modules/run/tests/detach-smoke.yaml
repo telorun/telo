@@ -36,9 +36,7 @@ metadata: { name: test }
 steps:
   - name: detach
     invoke: !ref putDetached
-    inputs:
-      key: "bg"
-      value: { hello: "detached" }
+    inputs: { key: "bg", value: { hello: "detached" } }
   - name: assertDetached
     inputs:
       detached: !cel "steps.detach.result.detached"
@@ -47,17 +45,13 @@ steps:
       schema:
         type: object
         required: [detached]
-        properties:
-          detached: { const: true }
+        properties: { detached: { const: true } }
   - name: wait
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "100ms"
-      value: {}
+    inputs: { duration: "100ms", value: {} }
   - name: read
     invoke: !ref get
-    inputs:
-      key: "bg"
+    inputs: { key: "bg" }
   - name: assertWritten
     inputs:
       state: !cel "steps.read.result.state"
@@ -67,6 +61,4 @@ steps:
       schema:
         type: object
         required: [state, hello]
-        properties:
-          state: { const: "fresh" }
-          hello: { const: "detached" }
+        properties: { state: { const: "fresh" }, hello: { const: "detached" } }

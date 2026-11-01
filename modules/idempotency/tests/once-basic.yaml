@@ -40,14 +40,10 @@ metadata: { name: getCount }
 store: !ref counters
 ---
 kind: Run.Sequence
-metadata:
-  name: charge
+metadata: { name: charge }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      amount: { type: integer }
+  schema: { type: object, properties: { amount: { type: integer } } }
 steps:
   - name: read
     invoke: !ref getCount
@@ -61,8 +57,7 @@ outputs:
   charged: !cel "inputs.amount"
 ---
 kind: Idempotency.Once
-metadata:
-  name: chargeOnce
+metadata: { name: chargeOnce }
 store: !ref store
 claimTtl: "30s"
 ttl: "60s"
@@ -70,51 +65,35 @@ invoke: !ref charge
 ---
 # A body that always fails, to prove a failure releases the key.
 kind: Run.Sequence
-metadata:
-  name: alwaysFails
+metadata: { name: alwaysFails }
 steps:
-  - name: boom
-    throw:
-      code: ERR_PAYMENT_DECLINED
-      message: declined
+  - { name: boom, throw: { code: ERR_PAYMENT_DECLINED, message: declined } }
 ---
 kind: Idempotency.Once
-metadata:
-  name: failingOnce
+metadata: { name: failingOnce }
 store: !ref store
 claimTtl: "30s"
 ttl: "60s"
 invoke: !ref alwaysFails
 ---
 kind: Run.Sequence
-metadata:
-  name: testFreshThenReplay
+metadata: { name: testFreshThenReplay }
 steps:
   - name: first
     invoke: !ref chargeOnce
-    inputs:
-      key: "order-1"
-      inputs: { amount: 500 }
+    inputs: { key: "order-1", inputs: { amount: 500 } }
   - name: verifyFirst
     inputs:
       actual: !cel "steps.first.result"
-      expected:
-        executed: true
-        state: fresh
-        result: { charged: 500 }
+      expected: { executed: true, state: fresh, result: { charged: 500 } }
     invoke: { kind: Assert.Equals }
   - name: second
     invoke: !ref chargeOnce
-    inputs:
-      key: "order-1"
-      inputs: { amount: 500 }
+    inputs: { key: "order-1", inputs: { amount: 500 } }
   - name: verifySecond
     inputs:
       actual: !cel "steps.second.result"
-      expected:
-        executed: false
-        state: replayed
-        result: { charged: 500 }
+      expected: { executed: false, state: replayed, result: { charged: 500 } }
     invoke: { kind: Assert.Equals }
   # The decisive assertion: the body ran exactly once across both calls.
   - name: count
@@ -129,14 +108,11 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
-metadata:
-  name: testDistinctKey
+metadata: { name: testDistinctKey }
 steps:
   - name: other
     invoke: !ref chargeOnce
-    inputs:
-      key: "order-2"
-      inputs: { amount: 900 }
+    inputs: { key: "order-2", inputs: { amount: 900 } }
   - name: verify
     inputs:
       actual: !cel "steps.other.result.state"
@@ -144,8 +120,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
-metadata:
-  name: testFailureIsRetryable
+metadata: { name: testFailureIsRetryable }
 steps:
   - name: firstAttempt
     try:

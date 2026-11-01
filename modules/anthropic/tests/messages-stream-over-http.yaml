@@ -48,10 +48,7 @@ metadata: { name: wrongKeyRequest }
 client:
   kind: Http.Client
   baseUrl: http://localhost:8921/v1
-  credential:
-    kind: Http.ApiKeyHeader
-    header: x-api-key
-    key: wrong-key
+  credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: wrong-key }
 ---
 kind: Http.Request
 metadata: { name: nobodyRequest }
@@ -107,9 +104,7 @@ with:
             body: { type: object, additionalProperties: true }
             headers:
               type: object
-              properties:
-                x-api-key: { type: string }
-                anthropic-version: { type: string }
+              properties: { x-api-key: { type: string }, anthropic-version: { type: string } }
         handler: !ref noop
         returns:
           # The account and the dialect are checked where an endpoint checks them.
@@ -206,10 +201,8 @@ with:
                   data: {"type":"message_stop"}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 8921
-    openapi:
-      info: { title: Fake Messages API event streams, version: 1.0.0 }
+    listen: { port: 8921 }
+    openapi: { info: { title: Fake Messages API event streams, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref MessagesApi

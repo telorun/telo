@@ -62,9 +62,7 @@ with:
   - kind: Server.Api
     metadata: { name: FakeChatApi }
     routes:
-      - request:
-          path: /chat/completions
-          method: POST
+      - request: { path: /chat/completions, method: POST }
         handler: !ref refusal
         returns:
           - status: 400
@@ -76,10 +74,8 @@ with:
                 body: !cel "result"
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 8875
-    openapi:
-      info: { title: Fake Chat API, version: 1.0.0 }
+    listen: { port: 8875 }
+    openapi: { info: { title: Fake Chat API, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref FakeChatApi
@@ -99,8 +95,7 @@ steps:
       - name: drain
         inputs:
           input: !cel "steps.streamCall.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       - name: streamUnreachable
         throw: { code: TEST_FAILED, message: the streamed call did not raise }
     catch:
@@ -111,8 +106,7 @@ steps:
             carriesMessage: !cel "error.message.contains('does not exist')"
             data: !cel "error.data"
           expected: { code: ERR_MODEL_REQUEST_REJECTED, carriesMessage: true, data: { status: 400 } }
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
   - name: throwing
     try:
       - name: bufferedCall
@@ -131,5 +125,4 @@ steps:
             carriesMessage: !cel "error.message.contains('does not exist')"
             data: !cel "error.data"
           expected: { code: ERR_MODEL_REQUEST_REJECTED, carriesMessage: true, data: { status: 400 } }
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }

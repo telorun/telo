@@ -17,10 +17,7 @@ requires:
   # the cause. (The log sink alone needed
   # `>=0.82.0`, for `ctx.effect`.)
   telo: ">=0.104.0"
-exports:
-  kinds:
-    - Sink
-    - TraceSink
+exports: { kinds: [Sink, TraceSink] }
 ---
 kind: Telo.Definition
 metadata:
@@ -32,8 +29,7 @@ metadata:
     synchronously and records held only here may be lost if the process dies at once.
 capability: Telo.Sink
 extends: Telo.LogSink
-controllers:
-  - pkg:telo/local/js?path=./nodejs/otlp.mjs&local_path=./nodejs/src/index.ts#OtlpSinkController
+controllers: [pkg:telo/local/js?path=./nodejs/otlp.mjs&local_path=./nodejs/src/index.ts#OtlpSinkController]
 schema:
   type: object
   properties:
@@ -48,8 +44,7 @@ schema:
         Extra request headers, typically carrying credentials. Read these from
         `secrets:` so their values are redacted from Telo's own log records.
       type: object
-      additionalProperties:
-        type: string
+      additionalProperties: { type: string }
       x-telo-eval: compile
     resourceAttributes:
       title: Resource attributes
@@ -105,8 +100,7 @@ metadata:
     may be lost if the process dies at once.
 capability: Telo.Sink
 extends: Telo.TraceSink
-controllers:
-  - pkg:telo/local/js?path=./nodejs/otlp.mjs&local_path=./nodejs/src/index.ts#OtlpTraceSinkController
+controllers: [pkg:telo/local/js?path=./nodejs/otlp.mjs&local_path=./nodejs/src/index.ts#OtlpTraceSinkController]
 schema:
   type: object
   properties:
@@ -121,8 +115,7 @@ schema:
         Extra request headers, typically carrying credentials. Read these from
         `secrets:` so their values are redacted from Telo's own log records.
       type: object
-      additionalProperties:
-        type: string
+      additionalProperties: { type: string }
       x-telo-eval: compile
     resourceAttributes:
       title: Resource attributes

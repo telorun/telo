@@ -113,8 +113,7 @@ inputType:
     type: object
     required: [svg]
     additionalProperties: false
-    properties:
-      svg: { type: string }
+    properties: { svg: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -122,11 +121,7 @@ outputType:
     required: [rects, paths, circles, gridlines, tickLabels, markLabels]
     additionalProperties: false
     properties:
-      rects:
-        type: array
-        items:
-          type: object
-          additionalProperties: true
+      rects: { type: array, items: { type: object, additionalProperties: true } }
       paths: { type: array, items: { type: string } }
       circles: { type: array, items: { type: number } }
       gridlines: { type: integer }
@@ -216,9 +211,7 @@ steps:
         points: !cel "size(steps.readLine.result.circles)"
         gridlines: !cel "steps.readLine.result.gridlines"
       expected:
-        paths:
-          - "M62.6,140.86L388,114.72"
-          - "M62.6,62.44L388,88.58"
+        paths: ["M62.6,140.86L388,114.72", "M62.6,62.44L388,88.58"]
         points: 4
         # Ticks are chosen from the canvas height before the plot rect exists —
         # a 200px canvas asks for three, and a 0–100 domain gives 0, 50, 100.

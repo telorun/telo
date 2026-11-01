@@ -24,11 +24,8 @@ file: ":memory:"
 kind: SQLite.Table
 metadata: { name: people }
 table: people
-columns:
-  id: { type: text, primaryKey: true }
-  name: { type: text }
-internalColumns:
-  layer: { type: text, nullable: false, default: base }
+columns: { id: { type: text, primaryKey: true }, name: { type: text } }
+internalColumns: { layer: { type: text, nullable: false, default: base } }
 ---
 kind: SQLite.Schema
 metadata: { name: appSchema }
@@ -69,8 +66,7 @@ steps:
       expected: { nodes: [{ key: a, properties: { name: Alice } }] }
   - name: stored
     invoke: { kind: Sql.Query, connection: !ref db }
-    inputs:
-      sql: "SELECT id, layer FROM people"
+    inputs: { sql: "SELECT id, layer FROM people" }
   - name: assertStored
     invoke: !ref check
     inputs:

@@ -14,8 +14,7 @@ metadata:
     writes over a base records the row beneath it. And labelling joins the
     caller's transaction: a publish and a label in one transaction leave
     neither when the label is refused.
-include:
-  - ./__fixtures__/revisions-model.yaml
+include: [./__fixtures__/revisions-model.yaml]
 imports:
   Sql: ../../sql
   SQLite: ../../sqlite
@@ -161,11 +160,7 @@ kind: Run.Sequence
 metadata: { name: versionsOf }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [key]
-    properties:
-      key: { type: string }
+  schema: { type: object, required: [key], properties: { key: { type: string } } }
 steps:
   # By revision, a draft's row last: row ids written in one millisecond do not
   # order by when they were written.
@@ -281,9 +276,7 @@ steps:
     schema:
       type: object
       required: [draft, label]
-      properties:
-        draft: { type: string }
-        label: { type: string }
+      properties: { draft: { type: string }, label: { type: string } }
   steps:
     - name: publish
       invoke: !ref teamPublish

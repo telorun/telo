@@ -21,13 +21,8 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8939
-    openapi:
-      info:
-        title: Undeclared properties
-        version: 1.0.0
+    listen: { address: 127.0.0.1, port: 8939 }
+    openapi: { info: { title: Undeclared properties, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref api
@@ -35,26 +30,14 @@ targets:
   - !ref server
 steps:
   - name: declaredOnly
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8939/v1/closed
-      method: POST
-    inputs:
-      body: { text: hello }
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8939/v1/closed, method: POST }
+    inputs: { body: { text: hello } }
   - name: withUndeclared
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8939/v1/closed
-      method: POST
-    inputs:
-      body: { text: hello, colour: blue }
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8939/v1/closed, method: POST }
+    inputs: { body: { text: hello, colour: blue } }
   - name: openBody
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8939/v1/open
-      method: POST
-    inputs:
-      body: { text: hello, colour: blue }
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8939/v1/open, method: POST }
+    inputs: { body: { text: hello, colour: blue } }
 
   - name: verify
     invoke: { kind: Assert.Equals }
@@ -83,8 +66,7 @@ routes:
           type: object
           additionalProperties: false
           required: [text]
-          properties:
-            text: { type: string }
+          properties: { text: { type: string } }
     handler: !ref echo
     inputs:
       received: !cel "request.body"
@@ -98,11 +80,7 @@ routes:
       path: /open
       method: POST
       schema:
-        body:
-          type: object
-          required: [text]
-          properties:
-            text: { type: string }
+        body: { type: object, required: [text], properties: { text: { type: string } } }
     handler: !ref echo
     inputs:
       received: !cel "request.body"
@@ -118,7 +96,6 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      received: { type: object, additionalProperties: true }
+    properties: { received: { type: object, additionalProperties: true } }
 value:
   received: !cel "inputs.received"

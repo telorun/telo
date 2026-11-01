@@ -115,9 +115,7 @@ routes:
     returns:
       - status: 200
         mode: stream
-        content:
-          application/x-ndjson:
-            encoder: { kind: Ndjson.Encoder }
+        content: { application/x-ndjson: { encoder: { kind: Ndjson.Encoder } } }
     catches:
       - when: !cel "error.code == 'ERR_MODEL_CONTENT_UNSUPPORTED'"
         status: 422
@@ -159,9 +157,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8881
+    listen: { address: 127.0.0.1, port: 8881 }
     mounts:
       - mount: !ref api
 targets:

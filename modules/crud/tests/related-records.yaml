@@ -65,8 +65,7 @@ connection: !ref db
 version: !cel "module.version"
 tables: [!ref authorsTable, !ref postsTable, !ref employeesTable]
 migrations:
-  0001_authors:
-    statement: "INSERT INTO authors (name) VALUES ('Ada'), ('Bob'), ('Cyd')"
+  0001_authors: { statement: "INSERT INTO authors (name) VALUES ('Ada'), ('Bob'), ('Cyd')" }
   0002_posts:
     statement: |
       INSERT INTO posts (title, author_id) VALUES

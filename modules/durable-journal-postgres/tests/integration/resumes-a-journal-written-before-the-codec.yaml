@@ -89,12 +89,11 @@ wait: 20s
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "charge.Invoked"
+  - { type: "charge.Invoked" }
 expect:
   # NEVER. The step's entry was in the journal before this process started, so a
   # single dispatch would mean the resume re-executed what was already recorded.
-  - event: charge.Invoked
-    times: 0
+  - { event: charge.Invoked, times: 0 }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -140,9 +139,7 @@ steps:
       actual:
         status: !cel "steps.finished.result.status"
         exact: !cel "steps.finished.result.result.steps.check.result.exact"
-      expected:
-        status: completed
-        exact: true
+      expected: { status: completed, exact: true }
 
   # A run SETTLED before the codec: its result column is plain JSON with no codec
   # version, `$bigint` included, and `Local.Result` reads it the way this store read
@@ -166,6 +163,4 @@ steps:
       actual:
         status: !cel "steps.settled.result.status"
         exact: !cel "steps.settled.result.result.steps.charged.result == 9007199254740993"
-      expected:
-        status: completed
-        exact: true
+      expected: { status: completed, exact: true }

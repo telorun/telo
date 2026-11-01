@@ -7,10 +7,7 @@ metadata:
     to its handler BEFORE delivering it. What a handler observed is read off the
     kernel's own dispatch record (`<name>.Invoked`, whose payload carries the call's
     inputs), never off state kept inside the work.
-imports:
-  Stream: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Stream: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref passesThrough
   - !ref gated
@@ -32,9 +29,7 @@ steps:
   - name: tapped
     inputs:
       input: !cel "steps.source.result.output"
-    invoke:
-      kind: Stream.Tap
-      invoke: { kind: Run.Value, value: true }
+    invoke: { kind: Stream.Tap, invoke: { kind: Run.Value, value: true } }
   - name: collected
     inputs:
       input: !cel "steps.tapped.result.output"
@@ -54,10 +49,7 @@ value: true
 kind: Run.Sequence
 metadata: { name: gated }
 steps:
-  - name: source
-    invoke:
-      kind: Stream.Of
-      items: [a, b, c, d]
+  - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d] } }
   - name: tapped
     inputs:
       input: !cel "steps.source.result.output"
@@ -81,14 +73,11 @@ steps:
 kind: Assert.Events
 metadata: { name: gatedDispatches }
 filter:
-  - type: observeGated.Invoked
+  - { type: observeGated.Invoked }
 expect:
-  - event: observeGated.Invoked
-    payload: { inputs: { item: a, index: 0 } }
-  - event: observeGated.Invoked
-    payload: { inputs: { item: c, index: 2 } }
-  - event: observeGated.Invoked
-    times: 2
+  - { event: observeGated.Invoked, payload: { inputs: { item: a, index: 0 } } }
+  - { event: observeGated.Invoked, payload: { inputs: { item: c, index: 2 } } }
+  - { event: observeGated.Invoked, times: 2 }
 ---
 # The handler refuses `c`. The drain rejects with the handler's own code, the tap
 # downstream saw `a` and `b` and never `c`, and nothing after `c` was dispatched.
@@ -101,8 +90,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [item]
-    properties:
-      item: { type: string }
+    properties: { item: { type: string } }
 steps:
   - name: refuse
     when: !cel "inputs.item == 'c'"
@@ -110,9 +98,7 @@ steps:
       kind: Run.Sequence
       steps:
         - name: refuse
-          throw:
-            code: TAP_HANDLER_FAILED
-            message: the handler refused this value
+          throw: { code: TAP_HANDLER_FAILED, message: the handler refused this value }
 ---
 kind: Run.Value
 metadata: { name: observeAfterFailure }
@@ -123,10 +109,7 @@ metadata: { name: handlerFails }
 steps:
   - name: attempt
     try:
-      - name: source
-        invoke:
-          kind: Stream.Of
-          items: [a, b, c, d, e]
+      - { name: source, invoke: { kind: Stream.Of, items: [a, b, c, d, e] } }
       - name: refusing
         inputs:
           input: !cel "steps.source.result.output"
@@ -161,24 +144,17 @@ steps:
 kind: Assert.Events
 metadata: { name: handlerFailureDispatches }
 filter:
-  - type: refuseC.Invoked
-  - type: refuseC.InvokeRejected
-  - type: observeAfterFailure.Invoked
+  - { type: refuseC.Invoked }
+  - { type: refuseC.InvokeRejected }
+  - { type: observeAfterFailure.Invoked }
 expect:
-  - event: refuseC.Invoked
-    payload: { inputs: { item: a } }
-  - event: observeAfterFailure.Invoked
-    payload: { inputs: { item: a } }
-  - event: refuseC.Invoked
-    payload: { inputs: { item: b } }
-  - event: observeAfterFailure.Invoked
-    payload: { inputs: { item: b } }
-  - event: refuseC.InvokeRejected
-    payload: { inputs: { item: c } }
-  - event: refuseC.Invoked
-    times: 2
-  - event: observeAfterFailure.Invoked
-    times: 2
+  - { event: refuseC.Invoked, payload: { inputs: { item: a } } }
+  - { event: observeAfterFailure.Invoked, payload: { inputs: { item: a } } }
+  - { event: refuseC.Invoked, payload: { inputs: { item: b } } }
+  - { event: observeAfterFailure.Invoked, payload: { inputs: { item: b } } }
+  - { event: refuseC.InvokeRejected, payload: { inputs: { item: c } } }
+  - { event: refuseC.Invoked, times: 2 }
+  - { event: observeAfterFailure.Invoked, times: 2 }
 ---
 # A failure BELOW the tap stops its dispatching: the value the downstream stage
 # refused (the third) had already been dispatched, and nothing after it was.
@@ -233,10 +209,7 @@ metadata: { name: whenNotBoolean }
 steps:
   - name: attempt
     try:
-      - name: source
-        invoke:
-          kind: Stream.Of
-          items: [a]
+      - { name: source, invoke: { kind: Stream.Of, items: [a] } }
       - name: tapped
         inputs:
           input: !cel "steps.source.result.output"
@@ -262,7 +235,6 @@ steps:
 kind: Assert.Events
 metadata: { name: downstreamFailureDispatches }
 filter:
-  - type: observeBeforeFlatMap.Invoked
+  - { type: observeBeforeFlatMap.Invoked }
 expect:
-  - event: observeBeforeFlatMap.Invoked
-    times: 3
+  - { event: observeBeforeFlatMap.Invoked, times: 3 }

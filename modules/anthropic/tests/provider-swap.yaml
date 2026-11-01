@@ -67,20 +67,16 @@ with:
       - request:
           path: /messages
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 429
             when: !cel "json(request.body).contains('slow down')"
-            headers:
-              Retry-After: "7"
+            headers: { Retry-After: "7" }
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
-                body:
-                  type: error
-                  error: { type: rate_limit_error, message: slow down }
+                body: { type: error, error: { type: rate_limit_error, message: slow down } }
           - status: 200
             content:
               application/json:
@@ -97,14 +93,12 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 429
             when: !cel "json(request.body).contains('slow down')"
-            headers:
-              Retry-After: "7"
+            headers: { Retry-After: "7" }
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
@@ -116,15 +110,12 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body:
                   choices:
-                    - message: { content: pong }
-                      finish_reason: stop
+                    - { message: { content: pong }, finish_reason: stop }
                   usage: { prompt_tokens: 7, completion_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
     metadata: { name: Vendors }
-    listen:
-      port: 8915
-    openapi:
-      info: { title: Fake vendor endpoints, version: 1.0.0 }
+    listen: { port: 8915 }
+    openapi: { info: { title: Fake vendor endpoints, version: 1.0.0 } }
     mounts:
       - path: /anthropic/v1
         mount: !ref AnthropicApi
@@ -133,17 +124,13 @@ with:
   - kind: App.Instance
     metadata: { name: anthropicApp }
     source: ./__fixtures__/swap/anthropic-app.yaml
-    variables:
-      endpoint: http://localhost:8915/anthropic/v1
-    ports:
-      http: 8916
+    variables: { endpoint: http://localhost:8915/anthropic/v1 }
+    ports: { http: 8916 }
   - kind: App.Instance
     metadata: { name: openaiApp }
     source: ./__fixtures__/swap/openai-app.yaml
-    variables:
-      endpoint: http://localhost:8915/openai/v1
-    ports:
-      http: 8917
+    variables: { endpoint: http://localhost:8915/openai/v1 }
+    ports: { http: 8917 }
 targets:
   - !ref Vendors
   - !ref anthropicApp

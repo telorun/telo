@@ -27,106 +27,11 @@ requires:
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, and what a listing's read plan requests.
-files:
-  - conformance/match.json
-  - conformance/control-fits.json
-  - conformance/listing-reads.json
-imports:
-  Font: ../font
-  DataModel: ../data-model
+files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json]
+imports: { Font: ../font, DataModel: ../data-model }
 exports:
-  kinds:
-    - Words
-    - Composite
-    - Surface
-    - Overlay
-    - ViewportOverlay
-    - Dialog
-    - Drawer
-    - Popover
-    - InlineSurface
-    - Panel
-    - PageSurface
-    - FilterPlacement
-    - FoldingFilterPlacement
-    - AbovePlacement
-    - AsidePlacement
-    - CollapsiblePlacement
-    - OverlayPlacement
-    - StateStore
-    - LocalStore
-    - SessionStore
-    - NavigationPlacement
-    - CompactNavigationPlacement
-    - HeaderNavigation
-    - SidebarNavigation
-    - OverlayNavigation
-    - TabBarNavigation
-    - Icon
-    - FileIcon
-    - Page
-    - View
-    - CollectionSource
-    - CollectionPresentation
-    - Listing
-    - ListingLayout
-    - TableLayout
-    - ListLayout
-    - CardLayout
-    - BoardLayout
-    - CalendarLayout
-    - TimelineLayout
-    - TreeLayout
-    - ComponentLayout
-    - Form
-    - Action
-    - Filters
-    - Component
-    - ComponentExport
-    - DesignTokens
-    - Data
-    - Field
-    - InputField
-    - ChoiceField
-    - PickerField
-    - DateRangeField
-    - OptionSource
-    - CollectionOptions
-  resources:
-    - words
-    - BoundText
-    - Match
-    - Condition
-    - Enablement
-    - RequestError
-    - AppRelativeReference
-    - QueryParameters
-    - Control
-    - FieldGroup
-    - StateRecord
-    - FieldAnswer
-    - OptionSourceSpec
-    - Relations
-    - ListingLayoutSpec
-    - ListingLayoutAnswer
-    - controlFits
-    - RowAction
-    - Grouping
-    - Span
-    - Node
-    - SpecNode
-    - OverlaySpec
-    - SurfaceSpec
-    - AfterCreate
-    - AfterEdit
-    - UnsavedInput
-    - FilterPolicy
-    - FilterPlacementSpec
-    - StateStoreSpec
-    - Navigation
-    - NavigationItem
-    - NavigationPlacementSpec
-    - PageWidth
+  kinds: [Words, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, Page, View, CollectionSource, CollectionPresentation, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [words, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -140,12 +45,10 @@ exports:
 # each value a path into a root the place it is written binds, or a fixed one —
 # so a heading over an answer ("3 unpaid items") is composed where it is drawn.
 kind: Telo.JsonSchema
-metadata:
-  name: BoundText
+metadata: { name: BoundText }
 schema:
   anyOf:
-    - $ref: "telo://manifest#/$defs/Text"
-      x-telo-text-values: {}
+    - { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
     - type: object
       additionalProperties: false
       required: [text, values]
@@ -161,22 +64,20 @@ schema:
             name: a path into a root in scope, or a fixed value.
           type: object
           x-telo-text-values-for: /text
-          additionalProperties:
-            x-telo-eval: accessor
+          additionalProperties: { x-telo-eval: accessor }
 ---
 # A condition's schema: one closed keyword set — the interpreted profile — that
 # a renderer interprets as data for conditions and for live validation alike.
 # What each keyword means is pinned by the rows in `conformance/match.json`.
 kind: Telo.JsonSchema
-metadata:
-  name: Match
+metadata: { name: Match }
 schema:
   type: object
   additionalProperties: false
   properties:
     type:
       anyOf:
-        - $ref: "#/$defs/TypeName"
+        - { $ref: "#/$defs/TypeName" }
         - type: array
           minItems: 1
           uniqueItems: true
@@ -187,9 +88,7 @@ schema:
     allOf: { type: array, minItems: 1, items: { $ref: "#" } }
     anyOf: { type: array, minItems: 1, items: { $ref: "#" } }
     required: { type: array, uniqueItems: true, items: { type: string } }
-    properties:
-      type: object
-      additionalProperties: { $ref: "#" }
+    properties: { type: object, additionalProperties: { $ref: "#" } }
     items: { $ref: "#" }
     minItems: { type: integer, minimum: 0 }
     maxItems: { type: integer, minimum: 0 }
@@ -203,15 +102,13 @@ schema:
     exclusiveMaximum: { type: number }
     multipleOf: { type: number, exclusiveMinimum: 0 }
   $defs:
-    TypeName:
-      enum: ["null", boolean, object, array, number, integer, string]
+    TypeName: { enum: ["null", boolean, object, array, number, integer, string] }
 ---
 # Whether something is drawn: it holds when the value `at` names validates
 # against `matches`. A missing value never satisfies a condition, even under
 # `not`; `null` is a present value.
 kind: Telo.JsonSchema
-metadata:
-  name: Condition
+metadata: { name: Condition }
 schema:
   type: object
   additionalProperties: false
@@ -230,8 +127,7 @@ schema:
 # Whether something can be pressed: a condition plus the reason shown while it
 # does not hold.
 kind: Telo.JsonSchema
-metadata:
-  name: Enablement
+metadata: { name: Enablement }
 schema:
   type: object
   additionalProperties: false
@@ -250,15 +146,14 @@ schema:
       title: Disabled text
       description: Why the control cannot be pressed, shown while the condition does not hold.
       allOf:
-        - $ref: "telo:Ui/BoundText"
-        - minLength: 1
+        - { $ref: "telo:Ui/BoundText" }
+        - { minLength: 1 }
 ---
 # What a request that did not succeed reads as: `status` absent when nothing
 # answered; `code` the problem body's `code`, else the renderer's own code for
 # the status; `message` the problem's `detail`, else the renderer's own word.
 kind: Telo.JsonSchema
-metadata:
-  name: RequestError
+metadata: { name: RequestError }
 schema:
   type: object
   additionalProperties: false
@@ -271,8 +166,7 @@ schema:
 # or `\`, holding no control character. Every place a manifest writes one names
 # this shape, alone or beside the absolute addresses it also takes.
 kind: Telo.JsonSchema
-metadata:
-  name: AppRelativeReference
+metadata: { name: AppRelativeReference }
 schema:
   type: string
   pattern: "^/([^/\\\\\\u0000-\\u001f\\u007f][^\\u0000-\\u001f\\u007f]*)?$"
@@ -281,8 +175,7 @@ schema:
 # of strings for a key given more than once. A name is a Telo name that does not
 # begin `_telo`, which the renderer keeps for its own keys.
 kind: Telo.JsonSchema
-metadata:
-  name: QueryParameters
+metadata: { name: QueryParameters }
 schema:
   type: object
   additionalProperties: false
@@ -290,34 +183,26 @@ schema:
     "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
       anyOf:
         - allOf:
-            - $ref: "telo:Ui/Match"
-            - required: [type]
-              properties:
-                type: { const: string }
+            - { $ref: "telo:Ui/Match" }
+            - { required: [type], properties: { type: { const: string } } }
         - allOf:
-            - $ref: "telo:Ui/Match"
+            - { $ref: "telo:Ui/Match" }
             - required: [type, items]
               properties:
                 type: { const: array }
-                items:
-                  required: [type]
-                  properties:
-                    type: { const: string }
+                items: { required: [type], properties: { type: { const: string } } }
 ---
 # How a value is entered: derived from what the model says it is (`auto`), a
 # `select` list, `options` side by side, a `toggle`, a `slider`, or typed
 # `tags`. One vocabulary for form fields and filters, judged by `controlFits`.
 kind: Telo.JsonSchema
-metadata:
-  name: Control
-schema:
-  enum: [auto, select, options, toggle, slider, tags]
+metadata: { name: Control }
+schema: { enum: [auto, select, options, toggle, slider, tags] }
 ---
 # A labelled section of a form. Its fields name it by `group` and are listed
 # one after another, so the list's order is the order they are drawn in.
 kind: Telo.JsonSchema
-metadata:
-  name: FieldGroup
+metadata: { name: FieldGroup }
 schema:
   type: object
   additionalProperties: false
@@ -338,17 +223,14 @@ schema:
 # Where the values a form, an action or a filter bar holds are kept between
 # visits: the page's address, a store, or both — the address winning at start.
 kind: Telo.JsonSchema
-metadata:
-  name: StateRecord
+metadata: { name: StateRecord }
 schema:
   type: object
   additionalProperties: false
   required: [key]
   anyOf:
-    - required: [store]
-    - required: [address]
-      properties:
-        address: { const: true }
+    - { required: [store] }
+    - { required: [address], properties: { address: { const: true } } }
   properties:
     key:
       title: Key
@@ -377,8 +259,7 @@ schema:
 # enters, why it cannot be entered there, and — when it can — what a renderer
 # draws for it.
 kind: Telo.JsonSchema
-metadata:
-  name: FieldAnswer
+metadata: { name: FieldAnswer }
 schema:
   type: object
   additionalProperties: false
@@ -400,8 +281,7 @@ schema:
 # Where a field's options come from, as a renderer receives it. Tagged on
 # `type`, one branch per kind of source.
 kind: Telo.JsonSchema
-metadata:
-  name: OptionSourceSpec
+metadata: { name: OptionSourceSpec }
 schema:
   type: object
   oneOf:
@@ -417,9 +297,7 @@ schema:
         hint: { $ref: "#/$defs/Binding" }
         href: { $ref: "#/$defs/Binding" }
         basePath: { type: string }
-        filters:
-          type: object
-          additionalProperties: { $ref: "#/$defs/Binding" }
+        filters: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         # Sent as `limit` on every request, a label lookup's batches included.
         pageSize: { type: integer }
         search:
@@ -435,14 +313,11 @@ schema:
         - type: object
           additionalProperties: false
           required: [root, path]
-          properties:
-            root: { type: string }
-            path: { type: array, items: { type: string } }
+          properties: { root: { type: string }, path: { type: array, items: { type: string } } }
         - type: object
           additionalProperties: false
           required: [value]
-          properties:
-            value: {}
+          properties: { value: {} }
 ---
 # How one set of screens shows the records a collection's properties point at,
 # keyed by property. Presentation only: which records are related, and the
@@ -451,8 +326,7 @@ schema:
 # written out in `CollectionPresentation.relations` too, since a rule's
 # `resolve:` does not follow `$ref`, and a unit test holds the two equal.
 kind: Telo.JsonSchema
-metadata:
-  name: Relations
+metadata: { name: Relations }
 schema:
   type: object
   additionalProperties:
@@ -515,8 +389,7 @@ schema:
 # How a layout groups records: one read per value of a property, each adding
 # `<property>=<value>`.
 kind: Telo.JsonSchema
-metadata:
-  name: Grouping
+metadata: { name: Grouping }
 schema:
   type: object
   additionalProperties: false
@@ -538,8 +411,7 @@ schema:
 # Where a record sits in time: a start, and optionally an end, each a date or
 # date-time property of the model.
 kind: Telo.JsonSchema
-metadata:
-  name: Span
+metadata: { name: Span }
 schema:
   type: object
   additionalProperties: false
@@ -561,8 +433,7 @@ schema:
 # — one read per group value, per shown period, or per tree level, each paged —
 # so a renderer executes it and never chooses a query itself.
 kind: Telo.JsonSchema
-metadata:
-  name: ListingLayoutSpec
+metadata: { name: ListingLayoutSpec }
 schema:
   type: object
   oneOf:
@@ -570,9 +441,7 @@ schema:
       required: [type, columns, reads]
       properties:
         type: { const: table }
-        columns:
-          type: array
-          items: { $ref: "#/$defs/Column" }
+        columns: { type: array, items: { $ref: "#/$defs/Column" } }
         reads: { $ref: "#/$defs/Reads" }
     # A record per item of one column, `content` drawn for each.
     - additionalProperties: false
@@ -659,9 +528,7 @@ schema:
             values: { enum: [all, present] }
             # With `all`, the values the property can hold: its `enum`, `null`
             # aside, or a boolean's `[true, false]`.
-            enum:
-              type: array
-              items: { type: [string, number, integer, boolean] }
+            enum: { type: array, items: { type: [string, number, integer, boolean] } }
             # Present where the presentation presents the property's relation:
             # the key of the listing's `relations` a value is labelled through.
             relation: { type: string }
@@ -707,8 +574,7 @@ schema:
 # that listing's records, and — when it can — the layout spec and the files a
 # browser loads for it.
 kind: Telo.JsonSchema
-metadata:
-  name: ListingLayoutAnswer
+metadata: { name: ListingLayoutAnswer }
 schema:
   type: object
   additionalProperties: false
@@ -751,14 +617,10 @@ metadata:
     tags, over a filter's operator or a form field's property. A filter on
     whether a property is absent is entered with a toggle.
 params:
-  - name: control
-    schema: { type: string }
-  - name: property
-    schema: { type: object }
-  - name: operator
-    schema: { type: [string, "null"] }
-returns:
-  schema: { type: boolean }
+  - { name: control, schema: { type: string } }
+  - { name: property, schema: { type: object } }
+  - { name: operator, schema: { type: [string, "null"] } }
+returns: { schema: { type: boolean } }
 body: !cel >-
   operator == 'absent' ? control in ['auto', 'toggle', 'none'] :
   cel.bind(declared, !('type' in property) ? [] : (type(property.type) == type([]) ? property.type : [property.type]).filter(t, t != 'null'),
@@ -780,8 +642,7 @@ body: !cel >-
 # how a press is asked and allowed. Shared by a listing's records and a list node's;
 # `row` and the other roots its accessors read are bound where it is used.
 kind: Telo.JsonSchema
-metadata:
-  name: RowAction
+metadata: { name: RowAction }
 schema:
   type: object
   additionalProperties: false
@@ -802,16 +663,15 @@ schema:
         requires is bound. Read when the row's button is pressed.
       type: object
       minProperties: 1
-      additionalProperties:
-        x-telo-eval: accessor
+      additionalProperties: { x-telo-eval: accessor }
     confirm:
       title: Confirm
       description: >-
         A question asked before the operation runs. Omitted, a press runs it at
         once, unless `prompt` opens a dialog.
       allOf:
-        - $ref: "telo:Ui/BoundText"
-        - minLength: 1
+        - { $ref: "telo:Ui/BoundText" }
+        - { minLength: 1 }
     prompt:
       title: Prompt
       description: >-
@@ -837,8 +697,7 @@ schema:
 # whether a delivered node is drawn, a condition the renderer reads over the
 # roots the place it is written binds.
 kind: Telo.JsonSchema
-metadata:
-  name: Node
+metadata: { name: Node }
 schema:
   type: object
   # One closed branch per `type`, each pinning it.
@@ -882,8 +741,8 @@ schema:
           minItems: 1
           items:
             allOf:
-              - $ref: "#"
-              - properties: { type: { const: link } }
+              - { $ref: "#" }
+              - { properties: { type: { const: link } } }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
@@ -909,8 +768,7 @@ schema:
           type: object
           additionalProperties: false
           required: [name]
-          properties:
-            name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
+          properties: { name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" } }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
     - additionalProperties: false
@@ -949,9 +807,7 @@ schema:
       properties:
         type: { const: list }
         heading: { $ref: "telo:Ui/BoundText" }
-        rows:
-          type: array
-          x-telo-eval: accessor
+        rows: { type: array, x-telo-eval: accessor }
         columns:
           type: array
           minItems: 1
@@ -966,9 +822,7 @@ schema:
                 x-telo-context:
                   type: object
                   properties:
-                    row:
-                      x-telo-context-element-from-item: "2/rows"
-                      x-telo-context-eval: accessor
+                    row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
               # Reads the roots the list is drawn under, never `row`.
               shown: { $ref: "telo:Ui/Condition" }
         # Operations each row offers, over `row` and the roots the list is
@@ -979,9 +833,7 @@ schema:
           x-telo-context:
             type: object
             properties:
-              row:
-                x-telo-context-element-from-item: "0/rows"
-                x-telo-context-eval: accessor
+              row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
           items: { $ref: "telo:Ui/RowAction" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
@@ -990,26 +842,22 @@ schema:
       required: [type, ref]
       properties:
         type: { const: composite }
-        ref:
-          x-telo-ref: { kind: Self.Composite, use: dependency }
+        ref: { x-telo-ref: { kind: Self.Composite, use: dependency } }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
   $defs:
-    StyleName:
-      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+    StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
       anyOf:
-        - $ref: "#/$defs/StyleName"
-        - type: array
-          items: { $ref: "#/$defs/StyleName" }
+        - { $ref: "#/$defs/StyleName" }
+        - { type: array, items: { $ref: "#/$defs/StyleName" } }
 ---
 # What a renderer receives: the same structural nodes with every condition
 # decided and every composite replaced by what it provides. Carries no resource
 # name — a renderer needs nothing but this document.
 kind: Telo.JsonSchema
-metadata:
-  name: SpecNode
+metadata: { name: SpecNode }
 schema:
   type: object
   oneOf:
@@ -1027,17 +875,14 @@ schema:
         text: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
-    - $ref: "#/$defs/Link"
+    - { $ref: "#/$defs/Link" }
     # Its items as delivered for the request, never empty.
     - additionalProperties: false
       required: [type, text, items]
       properties:
         type: { const: menu }
         text: { $ref: "#/$defs/NodeText" }
-        items:
-          type: array
-          minItems: 1
-          items: { $ref: "#/$defs/Link" }
+        items: { type: array, minItems: 1, items: { $ref: "#/$defs/Link" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     # Its tabs as delivered for the request, never none, each keyed by the
@@ -1091,9 +936,7 @@ schema:
         query: { type: object }
         # Equalities sent with every request, each a fixed value or a path
         # into a root in scope; while one holds nothing, nothing is read.
-        filters:
-          type: object
-          additionalProperties: { $ref: "#/$defs/Binding" }
+        filters: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         pageSize: { type: integer }
         paging: { enum: [pages, more, scroll] }
         # The properties the viewer may sort by, sent as `sort`.
@@ -1120,14 +963,10 @@ schema:
         delete: { type: boolean }
         # What each record offers beyond edit and delete, in order: an
         # operation run with values of the record.
-        rowActions:
-          type: array
-          items: { $ref: "#/$defs/RowAction" }
+        rowActions: { type: array, items: { $ref: "#/$defs/RowAction" } }
         # The related records each property with a relation is labelled from,
         # by property: read with its key under `in`, one batch per page.
-        relations:
-          type: object
-          additionalProperties: { $ref: "telo:Ui/OptionSourceSpec" }
+        relations: { type: object, additionalProperties: { $ref: "telo:Ui/OptionSourceSpec" } }
         # Drawn where the records would be when the reads answer none.
         empty: { $ref: "#" }
         layout: { $ref: "telo:Ui/ListingLayoutSpec" }
@@ -1140,16 +979,12 @@ schema:
         type: { const: form }
         schema: { type: object }
         basePath: { type: string }
-        fields:
-          type: array
-          items: { $ref: "#/$defs/Field" }
-        groups:
-          type: array
-          items: { $ref: "#/$defs/Group" }
+        fields: { type: array, items: { $ref: "#/$defs/Field" } }
+        groups: { type: array, items: { $ref: "#/$defs/Group" } }
         state: { $ref: "#/$defs/State" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
-    - $ref: "#/$defs/Action"
+    - { $ref: "#/$defs/Action" }
     - additionalProperties: false
       required: [type, basePath, fields, content, show, placement, controls, apply, summary, state, presets]
       properties:
@@ -1179,9 +1014,7 @@ schema:
               # or the field's own option source.
               options: { $ref: "telo:Ui/OptionSourceSpec" }
               # What the filter holds until the user changes it: always a list.
-              default:
-                type: array
-                items: { type: [string, number, boolean] }
+              default: { type: array, items: { type: [string, number, boolean] } }
         content: { $ref: "#" }
         show: { enum: [all, chosen] }
         placement: { $ref: "telo:Ui/FilterPlacementSpec" }
@@ -1206,9 +1039,7 @@ schema:
                   properties:
                     property: { type: string }
                     operator: { enum: [eq, contains, gt, gte, lt, lte, in, absent] }
-                    value:
-                      type: array
-                      items: { type: [string, number, boolean] }
+                    value: { type: array, items: { type: [string, number, boolean] } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
@@ -1220,9 +1051,7 @@ schema:
         abi: { type: string }
         external: { type: array, items: { type: string } }
         stylesheets: { type: array, items: { $ref: "#/$defs/AssetRef" } }
-        props:
-          type: object
-          additionalProperties: { $ref: "#/$defs/Binding" }
+        props: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     # One value of a data scope, with what its schema says about it.
@@ -1256,9 +1085,7 @@ schema:
               # The model's own description of the value.
               present: { type: object }
               shown: { $ref: "#/$defs/Shown" }
-        rowActions:
-          type: array
-          items: { $ref: "#/$defs/RowAction" }
+        rowActions: { type: array, items: { $ref: "#/$defs/RowAction" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     # Data read when it is drawn, under the record contract: `content` drawn
@@ -1275,17 +1102,13 @@ schema:
           required: [path, params]
           properties:
             path: { type: string }
-            params:
-              type: object
-              additionalProperties: { $ref: "#/$defs/Binding" }
+            params: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         # The declared query parameters, by name; empty when none is.
         query: { type: object }
         content: { $ref: "#" }
         loading: { $ref: "#" }
         failure: { $ref: "#" }
-        reloadOn:
-          type: array
-          items: { enum: [focus, unauthorized] }
+        reloadOn: { type: array, items: { enum: [focus, unauthorized] } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     - additionalProperties: false
@@ -1312,22 +1135,20 @@ schema:
     # words by id.
     Text:
       anyOf:
-        - $ref: "telo://manifest#/$defs/TextRecord"
-        - $ref: "#/$defs/Word"
+        - { $ref: "telo://manifest#/$defs/TextRecord" }
+        - { $ref: "#/$defs/Word" }
     # A text of a node: a text, or a text with the values it is formatted with.
     NodeText:
       anyOf:
-        - $ref: "#/$defs/Text"
-        - $ref: "#/$defs/BoundText"
+        - { $ref: "#/$defs/Text" }
+        - { $ref: "#/$defs/BoundText" }
     BoundText:
       type: object
       additionalProperties: false
       required: [text, values]
       properties:
         text: { $ref: "telo://manifest#/$defs/TextRecord" }
-        values:
-          type: object
-          additionalProperties: { $ref: "#/$defs/Binding" }
+        values: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
     # One of the words a renderer shows of its own, every one a property of
     # `Ui.Words`.
     Word:
@@ -1339,8 +1160,8 @@ schema:
     # A text, or none.
     Description:
       anyOf:
-        - $ref: "#/$defs/Text"
-        - type: "null"
+        - { $ref: "#/$defs/Text" }
+        - { type: "null" }
     # What each value of an enumeration is shown as: a titled `const` branch's
     # title, else the string value itself. The value sent back is the value.
     Labels:
@@ -1349,9 +1170,7 @@ schema:
         type: object
         additionalProperties: false
         required: [value, label]
-        properties:
-          value: {}
-          label: { $ref: "#/$defs/Text" }
+        properties: { value: {}, label: { $ref: "#/$defs/Text" } }
     # An operation run from a page: its form, and what it draws of the answer
     # — `result` over `result`, `input` and `values`, `failure` over `error`,
     # `input` and `values`.
@@ -1364,12 +1183,8 @@ schema:
         schema: { type: object }
         path: { type: string }
         label: { $ref: "#/$defs/Text" }
-        fields:
-          type: array
-          items: { $ref: "#/$defs/Field" }
-        groups:
-          type: array
-          items: { $ref: "#/$defs/Group" }
+        fields: { type: array, items: { $ref: "#/$defs/Field" } }
+        groups: { type: array, items: { $ref: "#/$defs/Group" } }
         state: { $ref: "#/$defs/State" }
         # Present when the button is enabled by a condition over the values.
         enabled: { $ref: "#/$defs/Enablement" }
@@ -1397,9 +1212,7 @@ schema:
       required: [action, inputs]
       properties:
         action: { $ref: "#/$defs/Action" }
-        inputs:
-          type: object
-          additionalProperties: { $ref: "#/$defs/Binding" }
+        inputs: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         # Present when the press asks first.
         confirm: { $ref: "#/$defs/NodeText" }
         # Present when the press opens a dialog that enters these fields of the
@@ -1408,10 +1221,7 @@ schema:
           type: object
           additionalProperties: false
           required: [fields]
-          properties:
-            fields:
-              type: array
-              items: { $ref: "#/$defs/Field" }
+          properties: { fields: { type: array, items: { $ref: "#/$defs/Field" } } }
         enabled: { $ref: "#/$defs/Enablement" }
     # A condition deciding whether a button can be pressed, and why not.
     Enablement:
@@ -1427,10 +1237,10 @@ schema:
     Field:
       type: object
       oneOf:
-        - $ref: "#/$defs/InputField"
-        - $ref: "#/$defs/ChoiceField"
-        - $ref: "#/$defs/PickerField"
-        - $ref: "#/$defs/DateRangeField"
+        - { $ref: "#/$defs/InputField" }
+        - { $ref: "#/$defs/ChoiceField" }
+        - { $ref: "#/$defs/PickerField" }
+        - { $ref: "#/$defs/DateRangeField" }
     # Entered with a control: derived from the property (`auto`) or the one named.
     InputField:
       type: object
@@ -1504,9 +1314,7 @@ schema:
           type: object
           additionalProperties: false
           required: [unit, count]
-          properties:
-            unit: { enum: [day, week, month, quarter, year] }
-            count: { type: integer }
+          properties: { unit: { enum: [day, week, month, quarter, year] }, count: { type: integer } }
         group: { type: string }
         shown: { $ref: "#/$defs/Shown" }
     # A labelled section of a form, drawn while `shown` holds.
@@ -1537,54 +1345,42 @@ schema:
       type: object
       additionalProperties: false
       required: [at, matches]
-      properties:
-        at: { $ref: "#/$defs/Binding" }
-        matches: { $ref: "telo:Ui/Match" }
-    StyleName:
-      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+      properties: { at: { $ref: "#/$defs/Binding" }, matches: { $ref: "telo:Ui/Match" } }
+    StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
       anyOf:
-        - $ref: "#/$defs/StyleName"
-        - type: array
-          items: { $ref: "#/$defs/StyleName" }
+        - { $ref: "#/$defs/StyleName" }
+        - { type: array, items: { $ref: "#/$defs/StyleName" } }
     # A row-bound value: a path from a named root, or a fixed value.
     Binding:
       oneOf:
         - type: object
           additionalProperties: false
           required: [root, path]
-          properties:
-            root: { type: string }
-            path: { type: array, items: { type: string } }
+          properties: { root: { type: string }, path: { type: array, items: { type: string } } }
         - type: object
           additionalProperties: false
           required: [value]
-          properties:
-            value: {}
+          properties: { value: {} }
     StyleRule:
       type: object
       additionalProperties: false
       required: [by, cases]
       properties:
         by: { $ref: "#/$defs/Binding" }
-        cases:
-          type: object
-          additionalProperties: { $ref: "#/$defs/Style" }
+        cases: { type: object, additionalProperties: { $ref: "#/$defs/Style" } }
         default: { $ref: "#/$defs/Style" }
     AssetRef:
       type: object
       additionalProperties: false
       required: [digest, name]
-      properties:
-        digest: { type: string }
-        name: { type: string }
+      properties: { digest: { type: string }, name: { type: string } }
 ---
 # Where a piece of interface floats over the page, as a renderer receives it.
 # Tagged on `type`, one branch per kind; every member a branch names is present,
 # so a renderer reads no default of its own.
 kind: Telo.JsonSchema
-metadata:
-  name: OverlaySpec
+metadata: { name: OverlaySpec }
 schema:
   type: object
   oneOf:
@@ -1617,17 +1413,14 @@ schema:
           type: object
           additionalProperties: false
           required: [escape, outside]
-          properties:
-            escape: { type: boolean }
-            outside: { type: boolean }
+          properties: { escape: { type: boolean }, outside: { type: boolean } }
         compact: { $ref: "#/$defs/Compact" }
   $defs:
     Address:
       type: object
       additionalProperties: false
       required: [name]
-      properties:
-        name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
+      properties: { name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" } }
     OverlayDismiss:
       type: object
       additionalProperties: false
@@ -1660,12 +1453,11 @@ schema:
 # Where a piece of interface appears, as a renderer receives it: an overlay, or
 # a place in the page itself.
 kind: Telo.JsonSchema
-metadata:
-  name: SurfaceSpec
+metadata: { name: SurfaceSpec }
 schema:
   type: object
   oneOf:
-    - $ref: "telo:Ui/OverlaySpec"
+    - { $ref: "telo:Ui/OverlaySpec" }
     - additionalProperties: false
       required: [type]
       properties:
@@ -1681,9 +1473,7 @@ schema:
           type: object
           additionalProperties: false
           required: [escape, closeButton]
-          properties:
-            escape: { type: boolean }
-            closeButton: { type: boolean }
+          properties: { escape: { type: boolean }, closeButton: { type: boolean } }
         address: { $ref: "telo:Ui/OverlaySpec#/$defs/Address" }
         compact: { $ref: "telo:Ui/OverlaySpec#/$defs/Compact" }
     - additionalProperties: false
@@ -1694,35 +1484,25 @@ schema:
 ---
 # What a create form does once its record is saved.
 kind: Telo.JsonSchema
-metadata:
-  name: AfterCreate
-schema:
-  enum: [close, again, keep]
-  default: close
+metadata: { name: AfterCreate }
+schema: { enum: [close, again, keep], default: close }
 ---
 # What an edit form does once its record is saved.
 kind: Telo.JsonSchema
-metadata:
-  name: AfterEdit
-schema:
-  enum: [close, keep]
-  default: close
+metadata: { name: AfterEdit }
+schema: { enum: [close, keep], default: close }
 ---
 # What happens to input a form holds unsaved when something would close it.
 kind: Telo.JsonSchema
-metadata:
-  name: UnsavedInput
-schema:
-  enum: [confirm, discard]
-  default: confirm
+metadata: { name: UnsavedInput }
+schema: { enum: [confirm, discard], default: confirm }
 ---
 # What a filter bar is told about itself beyond its fields: which filters are
 # on show, where its controls sit, how each is entered, when a change applies,
 # what summarises it and where its state is kept. A record: no member of it
 # decides which other members may be written.
 kind: Telo.JsonSchema
-metadata:
-  name: FilterPolicy
+metadata: { name: FilterPolicy }
 schema:
   type: object
   additionalProperties: false
@@ -1770,16 +1550,13 @@ schema:
 # Where a filter bar's controls sit, as a renderer receives it. Tagged on
 # `type`, one branch per kind.
 kind: Telo.JsonSchema
-metadata:
-  name: FilterPlacementSpec
+metadata: { name: FilterPlacementSpec }
 schema:
   type: object
   oneOf:
     - additionalProperties: false
       required: [type]
-      properties:
-        type: { const: above }
-        compact: { $ref: "#/$defs/Compact" }
+      properties: { type: { const: above }, compact: { $ref: "#/$defs/Compact" } }
     - additionalProperties: false
       required: [type, side, compact]
       properties:
@@ -1788,14 +1565,10 @@ schema:
         compact: { $ref: "#/$defs/Compact" }
     - additionalProperties: false
       required: [type, open]
-      properties:
-        type: { const: collapsible }
-        open: { type: boolean }
+      properties: { type: { const: collapsible }, open: { type: boolean } }
     - additionalProperties: false
       required: [type, surface]
-      properties:
-        type: { const: overlay }
-        surface: { $ref: "telo:Ui/OverlaySpec" }
+      properties: { type: { const: overlay }, surface: { $ref: "telo:Ui/OverlaySpec" } }
   $defs:
     # The placement used instead below the breakpoint: one that folds.
     Compact:
@@ -1803,33 +1576,26 @@ schema:
       oneOf:
         - additionalProperties: false
           required: [type, open]
-          properties:
-            type: { const: collapsible }
-            open: { type: boolean }
+          properties: { type: { const: collapsible }, open: { type: boolean } }
         - additionalProperties: false
           required: [type, surface]
-          properties:
-            type: { const: overlay }
-            surface: { $ref: "telo:Ui/OverlaySpec" }
+          properties: { type: { const: overlay }, surface: { $ref: "telo:Ui/OverlaySpec" } }
 ---
 # Where a piece of interface keeps its state, as a renderer receives it.
 # `memory` is what a bar with no store carries; no kind provides it.
 kind: Telo.JsonSchema
-metadata:
-  name: StateStoreSpec
+metadata: { name: StateStoreSpec }
 schema:
   type: object
   additionalProperties: false
   required: [type]
-  properties:
-    type: { enum: [memory, local, session] }
+  properties: { type: { enum: [memory, local, session] } }
 ---
 # An application's navigation: the tree of entries a renderer draws, and how it
 # is drawn. A page is named by reference, never by path, so a path changes in
 # one place and a library's pages are put in the tree like the application's own.
 kind: Telo.JsonSchema
-metadata:
-  name: Navigation
+metadata: { name: Navigation }
 schema:
   type: object
   additionalProperties: false
@@ -1849,9 +1615,7 @@ schema:
             x-telo-context-eval: runtime
             type: object
             properties:
-              headers:
-                type: object
-                additionalProperties: { type: string }
+              headers: { type: object, additionalProperties: { type: string } }
               ip: { type: string }
     placement:
       title: Placement
@@ -1863,8 +1627,7 @@ schema:
 # One entry of a navigation tree, tagged on `type`: a page the application
 # serves, a link to any address, or a group of entries nested to any depth.
 kind: Telo.JsonSchema
-metadata:
-  name: NavigationItem
+metadata: { name: NavigationItem }
 schema:
   type: object
   oneOf:
@@ -1941,16 +1704,13 @@ schema:
 # How a navigation tree is drawn, as a renderer receives it. Tagged on `type`,
 # one branch per kind; every member a branch names is present.
 kind: Telo.JsonSchema
-metadata:
-  name: NavigationPlacementSpec
+metadata: { name: NavigationPlacementSpec }
 schema:
   type: object
   oneOf:
     - additionalProperties: false
       required: [type, compact]
-      properties:
-        type: { const: header }
-        compact: { $ref: "#/$defs/Compact" }
+      properties: { type: { const: header }, compact: { $ref: "#/$defs/Compact" } }
     # A column beside the page. `rail` is present when it collapses to one,
     # and says whether it starts collapsed; `store` keeps its open groups and
     # whether it is collapsed.
@@ -1963,21 +1723,18 @@ schema:
           type: object
           additionalProperties: false
           required: [collapsed]
-          properties:
-            collapsed: { type: boolean }
+          properties: { collapsed: { type: boolean } }
         store: { $ref: "telo:Ui/StateStoreSpec" }
         compact: { $ref: "#/$defs/Compact" }
-    - $ref: "#/$defs/Overlay"
-    - $ref: "#/$defs/TabBar"
+    - { $ref: "#/$defs/Overlay" }
+    - { $ref: "#/$defs/TabBar" }
   $defs:
     # The whole tree behind a menu button, in a surface the button opens.
     Overlay:
       type: object
       additionalProperties: false
       required: [type, surface]
-      properties:
-        type: { const: overlay }
-        surface: { $ref: "telo:Ui/OverlaySpec" }
+      properties: { type: { const: overlay }, surface: { $ref: "telo:Ui/OverlaySpec" } }
     # The top-level entries as tabs along the bottom edge, at most `visible`
     # of them; a group, or More holding the rest, opens in `surface`.
     TabBar:
@@ -1992,8 +1749,8 @@ schema:
     Compact:
       type: object
       oneOf:
-        - $ref: "#/$defs/Overlay"
-        - $ref: "#/$defs/TabBar"
+        - { $ref: "#/$defs/Overlay" }
+        - { $ref: "#/$defs/TabBar" }
 ---
 kind: Telo.Abstract
 metadata:
@@ -2075,8 +1832,7 @@ metadata:
     so an open form is linkable, and a replacement for narrow viewports.
 capability: Telo.Provider
 extends: Self.ViewportOverlay
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DialogController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DialogController]
 schema:
   type: object
   additionalProperties: false
@@ -2147,8 +1903,7 @@ metadata:
     viewports.
 capability: Telo.Provider
 extends: Self.ViewportOverlay
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DrawerController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DrawerController]
 schema:
   type: object
   additionalProperties: false
@@ -2223,8 +1978,7 @@ metadata:
     narrow viewports, where an anchored card does not fit.
 capability: Telo.Provider
 extends: Self.Overlay
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PopoverController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PopoverController]
 schema:
   type: object
   additionalProperties: false
@@ -2279,8 +2033,7 @@ metadata:
     viewports.
 capability: Telo.Provider
 extends: Self.Surface
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#InlineSurfaceController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#InlineSurfaceController]
 schema:
   type: object
   additionalProperties: false
@@ -2318,8 +2071,7 @@ metadata:
     viewports.
 capability: Telo.Provider
 extends: Self.Surface
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PanelController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PanelController]
 schema:
   type: object
   additionalProperties: false
@@ -2388,8 +2140,7 @@ metadata:
     closes.
 capability: Telo.Provider
 extends: Self.Surface
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageSurfaceController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageSurfaceController]
 schema:
   type: object
   additionalProperties: false
@@ -2446,8 +2197,7 @@ metadata:
     controls would push the content off the screen.
 capability: Telo.Provider
 extends: Self.FilterPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#AbovePlacementController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#AbovePlacementController]
 schema:
   type: object
   additionalProperties: false
@@ -2483,8 +2233,7 @@ metadata:
     placement it names.
 capability: Telo.Provider
 extends: Self.FilterPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#AsidePlacementController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#AsidePlacementController]
 schema:
   type: object
   additionalProperties: false
@@ -2512,8 +2261,7 @@ metadata:
     the viewer last chose where the bar keeps its state.
 capability: Telo.Provider
 extends: Self.FoldingFilterPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollapsiblePlacementController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollapsiblePlacementController]
 schema:
   type: object
   additionalProperties: false
@@ -2534,8 +2282,7 @@ metadata:
     viewports and screens with many filters.
 capability: Telo.Provider
 extends: Self.FoldingFilterPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#OverlayPlacementController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#OverlayPlacementController]
 schema:
   type: object
   additionalProperties: false
@@ -2569,11 +2316,8 @@ metadata:
     server.
 capability: Telo.Provider
 extends: Self.StateStore
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#LocalStoreController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#LocalStoreController]
+schema: { type: object, additionalProperties: false }
 ---
 kind: Telo.Definition
 metadata:
@@ -2584,11 +2328,8 @@ metadata:
     when the tab is closed. Nothing is sent to the server.
 capability: Telo.Provider
 extends: Self.StateStore
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SessionStoreController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SessionStoreController]
+schema: { type: object, additionalProperties: false }
 ---
 # How an application's navigation tree is drawn. Each way of drawing it is a
 # kind of its own.
@@ -2626,8 +2367,7 @@ metadata:
     navigation, a menu button with a drawer unless another is named.
 capability: Telo.Provider
 extends: Self.NavigationPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#HeaderNavigationController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#HeaderNavigationController]
 schema:
   type: object
   additionalProperties: false
@@ -2650,8 +2390,7 @@ metadata:
     compact navigation, a drawer from the same side unless another is named.
 capability: Telo.Provider
 extends: Self.NavigationPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SidebarNavigationController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SidebarNavigationController]
 schema:
   type: object
   additionalProperties: false
@@ -2699,8 +2438,7 @@ metadata:
     unless another surface is named.
 capability: Telo.Provider
 extends: Self.CompactNavigationPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#OverlayNavigationController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#OverlayNavigationController]
 schema:
   type: object
   additionalProperties: false
@@ -2722,8 +2460,7 @@ metadata:
     applications with a few main sections on any screen.
 capability: Telo.Provider
 extends: Self.CompactNavigationPlacement
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TabBarNavigationController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TabBarNavigationController]
 schema:
   type: object
   additionalProperties: false
@@ -2780,8 +2517,7 @@ metadata:
     the colour of the text beside it.
 capability: Telo.Provider
 extends: Self.Icon
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FileIconController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FileIconController]
 schema:
   type: object
   additionalProperties: false
@@ -2799,8 +2535,7 @@ schema:
 # the room it has. The one definition of the values; every place an author
 # writes a width names it.
 kind: Telo.JsonSchema
-metadata:
-  name: PageWidth
+metadata: { name: PageWidth }
 schema:
   title: Page width
   description: >-
@@ -2821,8 +2556,7 @@ metadata:
     shown per request by a header such as a role or a tenant. Listed by an
     application to route to it and named in its navigation menu.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PageController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -2835,9 +2569,7 @@ inputType:
         additionalProperties: false
         required: [headers]
         properties:
-          headers:
-            type: object
-            additionalProperties: { type: string }
+          headers: { type: object, additionalProperties: { type: string } }
           ip: { type: string }
       # The application's width, used when the page declares none.
       pageWidth: { $ref: "telo://Self/PageWidth" }
@@ -2855,9 +2587,7 @@ outputType:
       width: { $ref: "telo://Self/PageWidth" }
       # Each a `Ui.SpecNode`, judged by the page: one that is not valid is
       # replaced by an error node.
-      children:
-        type: array
-        items: { type: object, required: [type] }
+      children: { type: array, items: { type: object, required: [type] } }
 schema:
   type: object
   additionalProperties: false
@@ -2905,9 +2635,7 @@ schema:
             x-telo-context-eval: runtime
             type: object
             properties:
-              headers:
-                type: object
-                additionalProperties: { type: string }
+              headers: { type: object, additionalProperties: { type: string } }
               ip: { type: string }
           query:
             x-telo-context-eval: accessor
@@ -2926,8 +2654,7 @@ metadata:
     interface sections that an application drops into its own pages.
 capability: Telo.Provider
 extends: Self.Composite
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ViewController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ViewController]
 schema:
   type: object
   additionalProperties: false
@@ -2949,8 +2676,7 @@ metadata:
     passes declared page query parameters to the read.
 capability: Telo.Provider
 extends: Self.Composite
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DataController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DataController]
 schema:
   type: object
   additionalProperties: false
@@ -2961,9 +2687,7 @@ schema:
         schema:
           type: object
           required: [authorized]
-          properties:
-            authorized: { type: boolean }
-            email: { type: string }
+          properties: { authorized: { type: boolean }, email: { type: string } }
       source: { path: /api/auth }
       reloadOn: [focus, unauthorized]
       content:
@@ -3007,9 +2731,7 @@ schema:
             type: object
             properties:
               query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-          additionalProperties:
-            type: [string, number, integer, boolean]
-            x-telo-eval: accessor
+          additionalProperties: { type: [string, number, integer, boolean], x-telo-eval: accessor }
     content:
       title: Content
       description: What is drawn once an answer is in, over `data` and `query`.
@@ -3017,9 +2739,7 @@ schema:
       x-telo-context:
         type: object
         properties:
-          data:
-            x-telo-context-from-root: "model"
-            x-telo-context-eval: accessor
+          data: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
     loading:
       title: Loading
@@ -3038,9 +2758,7 @@ schema:
       x-telo-context:
         type: object
         properties:
-          error:
-            x-telo-context-eval: accessor
-            $ref: "telo://Self/RequestError"
+          error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
     reloadOn:
       title: Reload on
@@ -3064,8 +2782,7 @@ metadata:
     facets — and the app-relative URL of its list endpoint. Written once and
     used by every screen, filter and picker reading those records.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionSourceController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionSourceController]
 schema:
   type: object
   additionalProperties: false
@@ -3096,8 +2813,7 @@ metadata:
     are read, how one is labelled, hinted, linked and searched. Listings show
     the related record's name, filters and forms offer related records to pick.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionPresentationController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionPresentationController]
 schema:
   type: object
   additionalProperties: false
@@ -3213,8 +2929,7 @@ metadata:
     unless another is chosen, with another below a breakpoint.
 capability: Telo.Provider
 extends: Self.Composite
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListingController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListingController]
 schema:
   type: object
   additionalProperties: false
@@ -3282,8 +2997,7 @@ schema:
           x-telo-eval: accessor
           x-telo-context:
             type: object
-            properties:
-              row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+            properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
         cases:
           title: Cases
           description: Styles keyed by the plain text of the value.
@@ -3392,13 +3106,11 @@ schema:
           row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
   $defs:
-    StyleName:
-      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+    StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
       anyOf:
-        - $ref: "#/$defs/StyleName"
-        - type: array
-          items: { $ref: "#/$defs/StyleName" }
+        - { $ref: "#/$defs/StyleName" }
+        - { type: array, items: { $ref: "#/$defs/StyleName" } }
   x-telo-resource-rules:
     - resolve: [/model]
       in: /filters
@@ -3451,8 +3163,7 @@ inputType:
         description: The related records the listing labels, by property.
         type: object
 outputType: !ref ListingLayoutAnswer
-schema:
-  type: object
+schema: { type: object }
 ---
 kind: Telo.Definition
 metadata:
@@ -3465,8 +3176,7 @@ metadata:
     and a renamed one is caught before deploy.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TableLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TableLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -3490,8 +3200,7 @@ schema:
             x-telo-eval: accessor
             x-telo-context:
               type: object
-              properties:
-                row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+              properties: { row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor } }
           cell:
             title: Cell
             description: A component drawn in place of a value.
@@ -3508,8 +3217,7 @@ schema:
                 x-telo-eval: accessor
                 x-telo-context:
                   type: object
-                  properties:
-                    row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+                  properties: { row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor } }
               cases:
                 title: Cases
                 description: Styles keyed by the plain text of the value.
@@ -3518,16 +3226,14 @@ schema:
               default: { $ref: "#/$defs/Style" }
         # Exactly one of the two.
         oneOf:
-          - required: [value]
-          - required: [cell]
+          - { required: [value] }
+          - { required: [cell] }
   $defs:
-    StyleName:
-      enum: [heading, subheading, muted, strong, accent, danger, warning, success]
+    StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
       anyOf:
-        - $ref: "#/$defs/StyleName"
-        - type: array
-          items: { $ref: "#/$defs/StyleName" }
+        - { $ref: "#/$defs/StyleName" }
+        - { type: array, items: { $ref: "#/$defs/StyleName" } }
 ---
 kind: Telo.Definition
 metadata:
@@ -3538,8 +3244,7 @@ metadata:
     image — paged with a pager, a "load more" control or infinite scroll.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -3565,8 +3270,7 @@ metadata:
     large size, paged with a pager, a "load more" control or infinite scroll.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CardLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CardLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -3599,8 +3303,7 @@ metadata:
     deploy.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#BoardLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#BoardLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -3710,8 +3413,7 @@ metadata:
     keyboard. Dates the API cannot filter by are caught before deploy.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CalendarLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CalendarLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -3802,8 +3504,7 @@ metadata:
     period; a bar is moved or resized by dragging or from the keyboard.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TimelineLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TimelineLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -3952,8 +3653,7 @@ metadata:
     record by dragging or from the keyboard.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TreeLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TreeLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -4036,8 +3736,7 @@ metadata:
     renderer runs paging, filters, labels, openers and moves.
 capability: Telo.Invocable
 extends: Self.ListingLayout
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentLayoutController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentLayoutController]
 schema:
   type: object
   additionalProperties: false
@@ -4059,8 +3758,7 @@ schema:
         properties:
           row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
           query: { x-telo-context-from-referrer: query, x-telo-context-eval: accessor }
-      additionalProperties:
-        x-telo-eval: accessor
+      additionalProperties: { x-telo-eval: accessor }
     groups:
       title: Groups
       description: >-
@@ -4222,8 +3920,7 @@ metadata:
     one a listing opens.
 capability: Telo.Provider
 extends: Self.Composite
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FormController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FormController]
 schema:
   type: object
   additionalProperties: false
@@ -4270,10 +3967,7 @@ schema:
       type: array
       x-telo-context:
         type: object
-        properties:
-          values:
-            x-telo-context-from-root: "model"
-            x-telo-context-eval: accessor
+        properties: { values: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
       items: { $ref: "telo://Self/FieldGroup" }
     state:
       title: State
@@ -4378,12 +4072,9 @@ metadata:
     offer one on every row.
 capability: Telo.Provider
 extends: Self.Composite
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ActionController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ActionController]
 # What a call site naming an action hands it: a record of its input model.
-inputType:
-  type: object
-  x-telo-value-schema-from: inputModel
+inputType: { type: object, x-telo-value-schema-from: inputModel }
 schema:
   type: object
   additionalProperties: false
@@ -4396,10 +4087,7 @@ schema:
           required: [month]
           properties:
             month: { type: string, title: Month, pattern: "^[0-9]{4}-[0-9]{2}$" }
-            formats:
-              type: array
-              title: Formats
-              items: { enum: [pdf, csv] }
+            formats: { type: array, title: Formats, items: { enum: [pdf, csv] } }
       outputModel:
         kind: Telo.JsonSchema
         schema:
@@ -4422,8 +4110,7 @@ schema:
         columns:
           - value: !cel "row.name"
           - value: !cel "row.url"
-      onSuccess:
-        refreshes: [/api/reports]
+      onSuccess: { refreshes: [/api/reports] }
   properties:
     inputModel:
       title: Input model
@@ -4484,9 +4171,7 @@ schema:
       x-telo-context:
         type: object
         properties:
-          values:
-            x-telo-context-from-root: "inputModel"
-            x-telo-context-eval: accessor
+          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
       items: { $ref: "telo://Self/FieldGroup" }
     state:
       title: State
@@ -4503,9 +4188,7 @@ schema:
       x-telo-context:
         type: object
         properties:
-          values:
-            x-telo-context-from-root: "inputModel"
-            x-telo-context-eval: accessor
+          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
     result:
       title: Result
       description: >-
@@ -4522,12 +4205,8 @@ schema:
             type: object
             properties: {}
             additionalProperties: false
-          input:
-            x-telo-context-from-root: "inputModel"
-            x-telo-context-eval: accessor
-          values:
-            x-telo-context-from-root: "inputModel"
-            x-telo-context-eval: accessor
+          input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
+          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
     failure:
       title: Failure
       description: >-
@@ -4538,15 +4217,9 @@ schema:
       x-telo-context:
         type: object
         properties:
-          error:
-            x-telo-context-eval: accessor
-            $ref: "telo://Self/RequestError"
-          input:
-            x-telo-context-from-root: "inputModel"
-            x-telo-context-eval: accessor
-          values:
-            x-telo-context-from-root: "inputModel"
-            x-telo-context-eval: accessor
+          error: { x-telo-context-eval: accessor, $ref: "telo://Self/RequestError" }
+          input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
+          values: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
     onSuccess:
       title: On success
       description: What happens once the operation succeeds, besides drawing `result`.
@@ -4696,8 +4369,7 @@ metadata:
     Chosen values are kept between visits and shareable in the page address.
 capability: Telo.Provider
 extends: Self.Composite
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FiltersController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#FiltersController]
 schema:
   type: object
   additionalProperties: false
@@ -4722,9 +4394,7 @@ schema:
         required: [property, operator]
         properties:
           property: { title: Property, type: string }
-          operator:
-            title: Operator
-            enum: [eq, contains, gt, gte, lt, lte, in, absent]
+          operator: { title: Operator, enum: [eq, contains, gt, gte, lt, lte, in, absent] }
           pinned:
             title: Pinned
             description: >-
@@ -4740,8 +4410,8 @@ schema:
               typed `tags`, or `none` — drawn nowhere, set by a preset or a
               default only. `absent` is entered with a toggle.
             anyOf:
-              - $ref: "telo://Self/Control"
-              - const: none
+              - { $ref: "telo://Self/Control" }
+              - { const: none }
             default: auto
           values:
             title: Values
@@ -4764,9 +4434,8 @@ schema:
               What the filter holds until the viewer changes it: one value, or a
               list of them under `in`.
             anyOf:
-              - type: [string, number, boolean]
-              - type: array
-                items: { type: [string, number, boolean] }
+              - { type: [string, number, boolean] }
+              - { type: array, items: { type: [string, number, boolean] } }
     presets:
       title: Presets
       description: >-
@@ -4788,15 +4457,12 @@ schema:
               required: [property, operator, value]
               properties:
                 property: { title: Property, type: string }
-                operator:
-                  title: Operator
-                  enum: [eq, contains, gt, gte, lt, lte, in, absent]
+                operator: { title: Operator, enum: [eq, contains, gt, gte, lt, lte, in, absent] }
                 value:
                   title: Value
                   anyOf:
-                    - type: [string, number, boolean]
-                    - type: array
-                      items: { type: [string, number, boolean] }
+                    - { type: [string, number, boolean] }
+                    - { type: array, items: { type: [string, number, boolean] } }
     policy:
       title: Policy
       description: >-
@@ -5023,8 +4689,7 @@ metadata:
     caught before the page is ever served.
 capability: Telo.Invocable
 extends: Self.Field
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#InputFieldController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#InputFieldController]
 schema:
   type: object
   additionalProperties: false
@@ -5073,8 +4738,7 @@ metadata:
     property is caught before deploy.
 capability: Telo.Invocable
 extends: Self.Field
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ChoiceFieldController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ChoiceFieldController]
 schema:
   type: object
   additionalProperties: false
@@ -5173,8 +4837,7 @@ metadata:
     keys, assignees and anything too long for a select list.
 capability: Telo.Invocable
 extends: Self.Field
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PickerFieldController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#PickerFieldController]
 schema:
   type: object
   additionalProperties: false
@@ -5246,8 +4909,7 @@ metadata:
     longer than a limit. A start after the end blocks submission.
 capability: Telo.Invocable
 extends: Self.Field
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DateRangeFieldController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DateRangeFieldController]
 schema:
   type: object
   additionalProperties: false
@@ -5377,8 +5039,7 @@ schema:
       x-telo-eval: accessor
       x-telo-context:
         type: object
-        properties:
-          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+        properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
     label:
       title: Label
       description: How the option is shown, as a path into the record or a fixed text.
@@ -5386,8 +5047,7 @@ schema:
       x-telo-eval: accessor
       x-telo-context:
         type: object
-        properties:
-          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+        properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
     hint:
       title: Hint
       description: Text shown beside the label.
@@ -5395,8 +5055,7 @@ schema:
       x-telo-eval: accessor
       x-telo-context:
         type: object
-        properties:
-          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+        properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
     href:
       title: Link
       description: Where the chosen option links to, as a path into the record.
@@ -5404,8 +5063,7 @@ schema:
       x-telo-eval: accessor
       x-telo-context:
         type: object
-        properties:
-          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
+        properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
 ---
 kind: Telo.Definition
 metadata:
@@ -5418,8 +5076,7 @@ metadata:
     collection would refuse is caught before deploy.
 capability: Telo.Provider
 extends: Self.OptionSource
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionOptionsController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#CollectionOptionsController]
 schema:
   type: object
   additionalProperties: false
@@ -5516,8 +5173,7 @@ metadata:
     so a missing or mistyped one is caught before the page is ever loaded.
 capability: Telo.Provider
 extends: Self.Composite
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentController]
 schema:
   type: object
   additionalProperties: false
@@ -5538,10 +5194,8 @@ schema:
       x-telo-value-schema-from: "/component/props"
       x-telo-context:
         type: object
-        properties:
-          row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
-      additionalProperties:
-        x-telo-eval: accessor
+        properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
+      additionalProperties: { x-telo-eval: accessor }
 ---
 kind: Telo.Definition
 metadata:
@@ -5552,8 +5206,7 @@ metadata:
     properties it accepts. Declared beside the code, which lets every use be
     checked against the declared properties.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentExportController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ComponentExportController]
 schema:
   type: object
   additionalProperties: false
@@ -5584,8 +5237,7 @@ metadata:
     names, so a misspelled token is an error rather than a style that silently
     does nothing; any look reads the same names.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DesignTokensController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DesignTokensController]
 schema:
   type: object
   additionalProperties: false
@@ -5619,12 +5271,9 @@ schema:
       pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem)$"
     shadow.sm: { type: string }
     shadow.md: { type: string }
-    font.body:
-      x-telo-ref: { kind: Font.Family, use: dependency }
-    font.heading:
-      x-telo-ref: { kind: Font.Family, use: dependency }
-    font.mono:
-      x-telo-ref: { kind: Font.Family, use: dependency }
+    font.body: { x-telo-ref: { kind: Font.Family, use: dependency } }
+    font.heading: { x-telo-ref: { kind: Font.Family, use: dependency } }
+    font.mono: { x-telo-ref: { kind: Font.Family, use: dependency } }
     font-size.sm: { type: string }
     font-size.md: { type: string }
     font-size.lg: { type: string }
@@ -5653,8 +5302,7 @@ metadata:
     validation messages and date range warnings, each with the values it is
     formatted with, translated like any other text of the screen.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#WordsController
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#WordsController]
 schema:
   type: object
   additionalProperties: false
@@ -5756,8 +5404,7 @@ schema:
     propertyNames: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"propertyName": {"type": "string"}} }
 ---
 kind: Self.Words
-metadata:
-  name: words
+metadata: { name: words }
 loading: "Loading…"
 noRows: "No rows."
 nothingFound: "Nothing found."

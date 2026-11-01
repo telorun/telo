@@ -31,12 +31,10 @@ steps:
               - [{ text: Tall, rowSpan: !cel "2" }, r2b]
               - ["", r3b]
               - [r4a, r4b]
-          layout:
-            fillColor: "#FFFFFF"
-            oddRowFillColor: "#EEEEEE"
+          layout: { fillColor: "#FFFFFF", oddRowFillColor: "#EEEEEE" }
         - ol:
-            - text: third
-            - text: fourth
+            - { text: third }
+            - { text: fourth }
           start: !cel "3"
     inputs: {}
   - name: read

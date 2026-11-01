@@ -63,9 +63,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          width: { const: 600 }
-          pageCount: { const: 2 }
+        properties: { width: { const: 600 }, pageCount: { const: 2 } }
         required: [ width, pageCount ]
   - name: tryDuplicate
     try:
@@ -83,8 +81,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -109,8 +106,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -135,8 +131,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INPUT_INVALID }
+            properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -160,8 +155,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
 # A value that is not bytes is refused by the input contract, before the

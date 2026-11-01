@@ -84,11 +84,8 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: RelativeServer }
-    listen:
-      address: 127.0.0.1
-      port: 8961
-    openapi:
-      info: { title: RelativeServer, version: 1.0.0 }
+    listen: { address: 127.0.0.1, port: 8961 }
+    openapi: { info: { title: RelativeServer, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref apiRelative
@@ -96,12 +93,9 @@ with:
         mount: !ref docs
   - kind: Http.Server
     metadata: { name: ForwardedServer }
-    listen:
-      address: 127.0.0.1
-      port: 8962
+    listen: { address: 127.0.0.1, port: 8962 }
     trustForwardedHeaders: true
-    openapi:
-      info: { title: ForwardedServer, version: 1.0.0 }
+    openapi: { info: { title: ForwardedServer, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref apiForwarded
@@ -112,8 +106,7 @@ targets:
   - !ref ForwardedServer
 steps:
   - name: hitRelative
-    inputs:
-      url: http://127.0.0.1:8961/reference/openapi.json
+    inputs: { url: http://127.0.0.1:8961/reference/openapi.json }
     invoke: !ref fetchServerUrl
   - name: assertRelative
     inputs:
@@ -123,16 +116,12 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          serverUrl: { const: "/" }
-          path: { const: "/v1/ping" }
+        properties: { serverUrl: { const: "/" }, path: { const: "/v1/ping" } }
         required: [ serverUrl, path ]
   - name: hitForwarded
     inputs:
       url: http://127.0.0.1:8962/reference/openapi.json
-      headers:
-        X-Forwarded-Host: api.example.com
-        X-Forwarded-Proto: https
+      headers: { X-Forwarded-Host: api.example.com, X-Forwarded-Proto: https }
     invoke: !ref fetchServerUrl
   - name: assertForwarded
     inputs:
@@ -142,7 +131,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          serverUrl: { const: "https://api.example.com" }
-          path: { const: "/v1/ping" }
+        properties: { serverUrl: { const: "https://api.example.com" }, path: { const: "/v1/ping" } }
         required: [ serverUrl, path ]

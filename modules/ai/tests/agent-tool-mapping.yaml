@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AgentToolMappingTest
-  version: 1.0.0
+metadata: { name: AgentToolMappingTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -11,29 +9,21 @@ targets:
   - !ref testMapping
 ---
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
-emitToolCall:
-  name: greet
-  arguments: { who: "world" }
+metadata: { name: echo }
+emitToolCall: { name: greet, arguments: { who: "world" } }
 ---
 # Greeter's input shape ({ target }) diverges from the model-facing parameters
 # ({ who }); the tool entry's `inputs:`/`result:` mappings bridge the gap.
 kind: Run.Value
-metadata:
-  name: greeter
+metadata: { name: greeter }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      target: { type: string }
+  schema: { type: object, properties: { target: { type: string } } }
 value:
   greeting: !cel "'Hello, ' + inputs.target + '!'"
 ---
 kind: Ai.Tools
-metadata:
-  name: greetTools
+metadata: { name: greetTools }
 tools:
   - tool: !ref greeter
     name: greet
@@ -42,26 +32,22 @@ tools:
       type: object
       additionalProperties: false
       required: [ who ]
-      properties:
-        who: { type: string }
+      properties: { who: { type: string } }
     inputs:
       target: !cel "arguments.who"
     result: !cel "result.greeting"
 ---
 kind: Ai.Agent
-metadata:
-  name: greetAgent
+metadata: { name: greetAgent }
 model: !ref echo
 toolProviders:
   - provider: !ref greetTools
 ---
 kind: Run.Sequence
-metadata:
-  name: testMapping
+metadata: { name: testMapping }
 steps:
   - name: invoke
-    inputs:
-      prompt: "greet the world"
+    inputs: { prompt: "greet the world" }
     invoke: !ref greetAgent
   # arguments.who="world" → inputs maps to {target:"world"} → Greeter →
   # {greeting:"Hello, world!"} → result maps to the bare string → fed back → echoed.
@@ -72,8 +58,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text:
-            type: string
-            const: "Hello, world!"
+        properties: { text: { type: string, const: "Hello, world!" } }
         required: [ text ]

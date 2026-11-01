@@ -38,9 +38,7 @@ model: !ref folded
 # turn to read `toolCalls` off — so the fold has to carry them, not just text.
 kind: AiEcho.EchoModelStream
 metadata: { name: streamingWithTool }
-emitToolCall:
-  name: multiply
-  arguments: { a: 6, b: 7 }
+emitToolCall: { name: multiply, arguments: { a: 6, b: 7 } }
 # Its arguments arrive as deltas first; the fold reads only the whole call.
 emitToolCallDeltas: true
 ---
@@ -52,11 +50,7 @@ kind: Run.Value
 metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      a: { type: number }
-      b: { type: number }
+  schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
 value:
   product: !cel "inputs.a * inputs.b"
 ---
@@ -70,9 +64,7 @@ tools:
       type: object
       additionalProperties: false
       required: [a, b]
-      properties:
-        a: { type: number }
-        b: { type: number }
+      properties: { a: { type: number }, b: { type: number } }
 ---
 kind: Ai.Agent
 metadata: { name: assistant }
@@ -84,8 +76,7 @@ kind: Run.Sequence
 metadata: { name: test }
 steps:
   - name: ask
-    inputs:
-      prompt: hello
+    inputs: { prompt: hello }
     invoke: !ref chat
   # The echo streams one delta per code point; folding them back must produce
   # exactly what a buffered echo would have returned.
@@ -108,8 +99,7 @@ steps:
   # The loop runs to completion over a stream-only provider: the fold surfaced
   # the tool call, the agent dispatched it, and the second turn saw its result.
   - name: toolLoop
-    inputs:
-      prompt: "multiply please"
+    inputs: { prompt: "multiply please" }
     invoke: !ref assistant
   - name: assertToolResult
     inputs:
@@ -121,11 +111,9 @@ steps:
   - name: directWithTool
     inputs:
       messages:
-        - role: user
-          content: multiply please
+        - { role: user, content: multiply please }
       tools:
-        - name: multiply
-          parameters: { type: object }
+        - { name: multiply, parameters: { type: object } }
     invoke: !ref foldedWithTool
   - name: assertFoldedCall
     inputs:
@@ -147,8 +135,7 @@ steps:
   - name: direct
     inputs:
       messages:
-        - role: user
-          content: hello
+        - { role: user, content: hello }
     invoke: !ref folded
   - name: assertProviderState
     inputs:

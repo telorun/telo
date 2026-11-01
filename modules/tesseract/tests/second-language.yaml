@@ -26,8 +26,7 @@ steps:
     invoke:
       kind: PdfMake.Document
       content:
-        - text: Größere Übungen für schöne Straßen
-          fontSize: 20
+        - { text: Größere Übungen für schöne Straßen, fontSize: 20 }
   - name: rasterize
     invoke: { kind: Pdf.Rasterizer, scale: 2 }
     inputs:

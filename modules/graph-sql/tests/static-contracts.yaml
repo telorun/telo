@@ -9,8 +9,7 @@ metadata:
     declares is covered. `offset` is no paging input, and an internal column of
     the table is no property. (The computed forms are refused at dispatch — see the
     suite's `computedInputs` and `integer-key.yaml`.)
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref misspelledProperty
   - !ref wrongKeyType
@@ -24,16 +23,14 @@ metadata: { name: misspelledProperty }
 source: ./__fixtures__/contracts/misspelled-property.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'nmae' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'nmae' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: wrongKeyType }
 source: ./__fixtures__/contracts/wrong-key-type.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "/key must be string"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/key must be string" }
 ---
 # A primary key projects non-null, so a null key is refused rather than left to
 # SQLite, which would generate one for an INTEGER PRIMARY KEY.
@@ -42,31 +39,25 @@ metadata: { name: nullKey }
 source: ./__fixtures__/contracts/null-key.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "/key must be integer"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "/key must be integer" }
 ---
 kind: Assert.Manifest
 metadata: { name: catchesNodeNotFound }
 source: ./__fixtures__/contracts/catches-node-not-found.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: offsetInput }
 source: ./__fixtures__/contracts/offset-input.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'offset' is not allowed"
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'offset' is not allowed"
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'offset' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'offset' is not allowed" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'offset' is not allowed" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'offset' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: internalColumnProperty }
 source: ./__fixtures__/contracts/internal-column-property.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'layer' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'layer' is not allowed" }

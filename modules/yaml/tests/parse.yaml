@@ -3,10 +3,7 @@ metadata:
   name: YamlParseTest
   version: 1.0.0
   description: Coverage for Yaml.Parse — single-doc, multi-doc, empty, malformed.
-imports:
-  Yaml: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Yaml: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref singleDoc
   - !ref multiDoc
@@ -85,10 +82,7 @@ steps:
 kind: Run.Sequence
 metadata: { name: emptyInput }
 steps:
-  - name: parse
-    invoke: { kind: Yaml.Parse }
-    inputs:
-      text: ""
+  - { name: parse, invoke: { kind: Yaml.Parse }, inputs: { text: "" } }
   - name: assertCount
     invoke: { kind: Assert.Equals }
     inputs:
@@ -116,12 +110,9 @@ steps:
     try:
       - name: doParse
         invoke: { kind: Yaml.Parse }
-        inputs:
-          text: "kind: [unclosed"
+        inputs: { text: "kind: [unclosed" }
       - name: failIfReached
-        throw:
-          code: TEST_FAILED
-          message: Expected ERR_PARSE_FAILED but parse succeeded.
+        throw: { code: TEST_FAILED, message: Expected ERR_PARSE_FAILED but parse succeeded. }
     catch:
       - name: assertErrorCode
         invoke: { kind: Assert.Equals }

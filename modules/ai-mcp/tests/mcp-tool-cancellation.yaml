@@ -17,16 +17,11 @@ targets:
   - !ref testCancelledToolCall
 ---
 kind: Stub.StubClient
-metadata:
-  name: mcpServer
+metadata: { name: mcpServer }
 ---
 kind: Ai.Agent
-metadata:
-  name: assistant
-model:
-  kind: AiEcho.EchoModel
-  emitToolCall:
-    name: wait_for_cancel
+metadata: { name: assistant }
+model: { kind: AiEcho.EchoModel, emitToolCall: { name: wait_for_cancel } }
 toolProviders:
   - provider:
       kind: AiMcp.ToolProvider
@@ -36,8 +31,7 @@ toolProviders:
 # the default `onToolError: feedback` the cancellation still propagates — it is
 # not a tool failure — so the step fails as timed out rather than completing.
 kind: Run.Sequence
-metadata:
-  name: testCancelledToolCall
+metadata: { name: testCancelledToolCall }
 steps:
   - name: bounded
     try:

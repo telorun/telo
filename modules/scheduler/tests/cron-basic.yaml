@@ -30,8 +30,7 @@ metadata: { name: get }
 store: !ref counters
 ---
 kind: Run.Sequence
-metadata:
-  name: bump
+metadata: { name: bump }
 steps:
   - name: read
     invoke: !ref get
@@ -43,8 +42,7 @@ steps:
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
 ---
 kind: Run.Sequence
-metadata:
-  name: testCron
+metadata: { name: testCron }
 with:
   - kind: Schedule.Cron
     metadata: { name: EverySecond }
@@ -56,9 +54,7 @@ targets:
 steps:
   - name: wait
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "2500ms"
-      value: {}
+    inputs: { duration: "2500ms", value: {} }
   - name: read
     invoke: !ref get
     inputs: { key: cron }

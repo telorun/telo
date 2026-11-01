@@ -5,8 +5,7 @@ metadata:
   description: |
     What `telo check` refuses about the socket a server binds and the hosts its
     mounts answer — each pinned where the kernel has a twin, by running it too.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref listenMoved
   - !ref listenMovedBeside
@@ -25,34 +24,28 @@ metadata: { name: listenMoved }
 source: ./__fixtures__/host-routing-checks/listen-moved.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "is missing required property 'listen'"
-    - code: RESOURCE_RULE_VIOLATED
-      message: "`port` is now `listen.port`"
+    - { code: SCHEMA_VIOLATION, message: "is missing required property 'listen'" }
+    - { code: RESOURCE_RULE_VIOLATED, message: "`port` is now `listen.port`" }
 ---
 kind: Assert.Manifest
 metadata: { name: listenMovedBeside }
 source: ./__fixtures__/host-routing-checks/listen-moved-lib/telo.yaml
 expect:
   errors:
-    - code: RESOURCE_RULE_VIOLATED
-      message: "`host` is now `listen.address`"
+    - { code: RESOURCE_RULE_VIOLATED, message: "`host` is now `listen.address`" }
 ---
 # The controller's twin, reached through a consumer whose own check is silent.
 kind: Assert.Manifest
 metadata: { name: listenMovedBesideAtRuntime }
 source: ./__fixtures__/host-routing-checks/listen-moved-consumer.yaml
-expect:
-  errors: []
-  runFails: "ERR_HTTP_SERVER_LISTEN_MOVED"
+expect: { errors: [], runFails: "ERR_HTTP_SERVER_LISTEN_MOVED" }
 ---
 kind: Assert.Manifest
 metadata: { name: baseUrlRemoved }
 source: ./__fixtures__/host-routing-checks/base-url.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "'baseUrl' is not allowed"
+    - { code: SCHEMA_VIOLATION, message: "'baseUrl' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: unknownHostsWithoutHostnames }
@@ -65,9 +58,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: unknownHostsWithoutHostnamesAtRuntime }
 source: ./__fixtures__/host-routing-checks/unknown-hosts-consumer.yaml
-expect:
-  errors: []
-  runFails: "ERR_HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES"
+expect: { errors: [], runFails: "ERR_HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES" }
 ---
 # A hostname is never written in a manifest: an entry is a reference to an
 # address need, required and supplied only by whoever runs the application.

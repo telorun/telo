@@ -17,14 +17,12 @@ targets:
   - !ref test
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: fixture }
     source: ./__fixtures__/data/telo.yaml
-    ports:
-      http: 8121
+    ports: { http: 8121 }
 targets:
   - !ref fixture
 steps:
@@ -32,8 +30,7 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/_telo/ui/page?path=/" }
   - name: staff
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8121/_telo/ui/page?path=/" }
-    inputs:
-      headers: { x-role: staff }
+    inputs: { headers: { x-role: staff } }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -42,21 +39,16 @@ steps:
         visitor: !cel "steps.visitor.result.body.children"
         staff: !cel "steps.staff.result.body.children.map(c, c.type == 'text' ? c.text : c.type)"
       expected:
-        query:
-          signin: { type: string, enum: [denied, expired] }
+        query: { signin: { type: string, enum: [denied, expired] } }
         visitor:
           - type: text
             text: { lang: und, message: [Your sign-in was refused.] }
-            shown:
-              at: { root: query, path: [signin] }
-              matches: { const: denied }
+            shown: { at: { root: query, path: [signin] }, matches: { const: denied } }
           - type: data
             schema:
               type: object
               required: [authorized]
-              properties:
-                authorized: { type: boolean }
-                email: { type: string, title: Email }
+              properties: { authorized: { type: boolean }, email: { type: string, title: Email } }
             source: { path: /api/auth, params: {} }
             query: {}
             content:
@@ -65,15 +57,11 @@ steps:
                 - type: value
                   value: { root: data, path: [email] }
                   present: { type: string }
-                  shown:
-                    at: { root: data, path: [authorized] }
-                    matches: { const: true }
+                  shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
                   labels: []
                 - type: text
                   text: { lang: und, message: [Sign in first.] }
-                  shown:
-                    at: { root: data, path: [authorized] }
-                    matches: { const: false }
+                  shown: { at: { root: data, path: [authorized] }, matches: { const: false } }
             loading: { type: text, text: { word: loading }, style: muted }
             failure:
               type: stack

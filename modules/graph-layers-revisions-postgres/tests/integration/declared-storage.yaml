@@ -28,8 +28,7 @@ targets:
 ---
 kind: Test.Suite
 metadata: { name: boots }
-include:
-  - "__fixtures__/storage-boots/*.yaml"
+include: ["__fixtures__/storage-boots/*.yaml"]
 exclude: []
 concurrency: 1
 # Every boot connects to the one server this test started.
