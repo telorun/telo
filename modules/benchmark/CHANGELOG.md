@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 - 2026-11-01
+### Fixed
+* The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
+
 ## 0.11.0 - 2026-10-07
 ### Added
 * Released under the MIT License from this version: the manifest declares license MIT, and the published artifact carries the MIT license text in a LICENSE file at the module root. Versions already published keep the license they shipped with.

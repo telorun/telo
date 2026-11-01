@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.0 - 2026-11-01
+### Fixed
+* Foreign keys are documented: the foreignKeys entry of Postgres.Table, and how a key is added, matched and dropped.
+
 ## 0.9.2 - 2026-10-23
 ### Fixed
 * Postgres.Connection accepts computed CEL integers for every 'pool' setting (min, max, idleTimeoutMs, connectionTimeoutMs, maxLifetimeMs, healthCheckMs) and configures the pool and its liveness sweep exactly as the same literals do; before, the connection failed to start or its timers threw. A value no JS number holds exactly is refused at creation, naming the connection and the field.

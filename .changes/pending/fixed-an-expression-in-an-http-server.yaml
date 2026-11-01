@@ -1,6 +1,0 @@
-modules:
-  modules/http-server: Fixed
-body: An expression in an `Http.Server` `notFoundHandler.returns` entry is now typed
-  against `request` (`method`, `path`, `host`, `params`, `query`, `headers`, `body`) and
-  `result` (the `invoke:` target's `outputType`), as the server evaluates it — before,
-  `telo check` and the load refused every such expression as `CEL_IN_NON_EVAL_FIELD`.

@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ui-react-conformance-build",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "license": "MIT",
   "private": true,
   "description": "Build-only package for the std/ui-react-conformance module's bundled controller. Never published — the controller ships inside the module artifact. This package exists to declare the dependencies esbuild inlines (the DOM the checks run in and the CSS parser) and to TYPE-CHECK the source, which esbuild does not do.",

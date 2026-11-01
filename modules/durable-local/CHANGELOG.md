@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.2 - 2026-11-01
+### Fixed
+* DurableLocal.Deliver reads the shape of the wait it names from that wait's declaration, so the payload is still checked now that a 'use: schema' reference is never replaced by an instance.
+
 ## 0.5.1 - 2026-10-11
 ### Fixed
 * A run is recorded already claimed by the process that starts it. Before, a resumer polling while a run was being started could take it first and execute it without its inputs, which left the run stuck as running and refused every later delivery to it.

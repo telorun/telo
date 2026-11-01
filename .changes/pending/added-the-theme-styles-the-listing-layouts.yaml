@@ -1,6 +1,0 @@
-modules:
-  modules/ui-react-radix: Added
-body: "The theme styles the listing layouts: the sort control, list items, cards, board
-  columns and cards, the calendar's header, days and events, the timeline's axis, lanes
-  and bars, the tree's items and levels, a record's Move to and create buttons and its
-  inline form's place."

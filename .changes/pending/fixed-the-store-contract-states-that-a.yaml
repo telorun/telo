@@ -1,4 +1,0 @@
-modules:
-  modules/graph: Fixed
-body: The store contract states that a relationship kind's rules are added to its
-  parent's, never replacing one.

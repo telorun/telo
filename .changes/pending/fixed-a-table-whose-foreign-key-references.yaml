@@ -1,4 +1,0 @@
-modules:
-  modules/sqlite: Fixed
-body: A table whose foreign key references itself boots, and the slot's schema comment
-  says why.

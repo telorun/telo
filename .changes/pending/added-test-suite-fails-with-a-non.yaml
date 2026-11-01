@@ -1,5 +1,0 @@
-modules:
-  modules/test: Added
-body: "Test.Suite fails with a non-zero exit when it discovers no tests, so a mistyped
-  include or filter cannot pass as green; set allowEmpty: true to accept an empty run.
-  The repository's own test suites take --allow-empty."

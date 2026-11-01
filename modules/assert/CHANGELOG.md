@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.0 - 2026-11-01
+### Added
+* A failed Assert.Equals lists each difference on its own line with its path (a changed value, a missing or unexpected key, a list's length with only its surplus or missing items), up to ten lines with long values cut and keys in sorted order, instead of printing both values whole; TELO_TEST_VERBOSE prints them whole as well. Assert.Equals, Assert.Contains and Assert.Matches failures also say which of their inputs the failure is about.
+### Fixed
+* The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
+
 ## 0.21.1 - 2026-10-18
 ### Fixed
 * The expect.loadError documentation says when it fires — only when a manifest cannot be loaded at all, an unreadable entry or a refused partial — and that a failed import is the coded diagnostic telo check reports at the imports: entry, matched with expect.errors.

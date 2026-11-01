@@ -1,7 +1,0 @@
-modules:
-  modules/ui: Added
-body: "The app-relative address rule is one exported shape, AppRelativeReference, named
-  by every address field: a link's and a navigation entry's href, an image's src, a
-  page's path, a reader's and an action's source.path, onSuccess.navigate and refreshes,
-  and a collection source's basePath. A refused link or navigation address now quotes
-  the branch it failed."

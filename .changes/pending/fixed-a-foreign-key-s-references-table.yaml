@@ -1,5 +1,0 @@
-modules:
-  modules/sql: Fixed
-body: A foreign key's 'references.table' and a column's enum 'type:' are read from the
-  referenced declaration alone, so a table referencing itself or a pair referencing each
-  other boots; the docs no longer list it as a limitation.

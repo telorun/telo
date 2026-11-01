@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.32.0 - 2026-11-01
+### Fixed
+* The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
+
 ## 0.30.0 - 2026-10-23
 ### Added
 * `Ai.Message` is exported, so a consumer types a conversation it builds with `items: !ref Ai.Message`.
