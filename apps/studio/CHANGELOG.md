@@ -1,5 +1,42 @@
 # @telorun/studio
 
+## 0.34.0
+
+### Minor Changes
+
+- 769b40d: A diagnostic that holds in some configurations of an application now carries `data.configurations` (and `telo check -o json` `configurations`) as partial assignments: one entry per block of the irredundant cover its message label is read off, each naming only the dimensions it narrows, so a finding in one flag's configurations no longer lists every assignment of the others. A dimension an entry leaves out holds every value; the finding holds in a configuration when some entry agrees with it on every key it names. The entries denote the same configurations as before, and the label is unchanged. The editor protocol generation is now 2 (`TELO_EDITOR_PROTOCOL`, `teloEditorProtocol`), because a host reading entries as complete assignments would misread them; a host speaks both generations, since a complete assignment reads correctly as a partial one, so every published engine is still offered. An application input's `requiredWhen` is evaluated the same way at the running configuration, and a reported dimension of a member carries its `member` (`telo module manifest --json`, `telo needs report`).
+- 769b40d: The topology view gains a configuration picker for a module that writes `!if` / `!switch` choices: one select per dimension the choices read — a library's `resources.<input>` presence included — each starting at its default, and the module graph is redrawn in the picked configuration. A declaration-position choice stays one box as the picker changes its kind and shows the alternative it takes; a template body's family is drawn as one box marked with the collection it repeats over and a `!for-each` in a list as one row. Saving a module keeps every `!if` / `!switch` / `!for-each` tag, its mapping, key order and `...` keys as written.
+
+### Patch Changes
+
+- 9c17f98: Test fixtures and a comment that named the templated CRUD mount now use its current kind, `Crud.Api`.
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+- Updated dependencies [769b40d]
+- Updated dependencies [9c17f98]
+  - @telorun/analyzer@0.126.0
+  - @telorun/ide-support@0.126.0
+  - @telorun/debug-wire@0.4.6
+  - @telorun/editor-protocol@0.3.0
+  - @telorun/templating@0.126.0
+  - @telorun/sdk@0.126.0
+  - @telorun/language-host@0.4.0
+  - @telorun/debug-ui@0.6.8
+
 ## 0.33.2
 
 ### Patch Changes
