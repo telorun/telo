@@ -60,6 +60,12 @@ schema:
       description: >
         Maximum number of tests to run in parallel. Defaults to 3. Set to 1
         to force sequential execution.
+    allowEmpty:
+      type: boolean
+      x-telo-eval: compile
+      description: >
+        Accept a run that discovers no tests. Defaults to false: a suite that
+        finds nothing fails, so a mistyped include or filter cannot pass as green.
     env:
       type: object
       additionalProperties:

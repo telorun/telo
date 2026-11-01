@@ -1,0 +1,20 @@
+kind: Telo.Library
+metadata: { name: RuleReferenceModel }
+exports:
+  kinds: [Collection]
+---
+kind: Telo.Definition
+metadata: { name: Collection }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./collection.mjs#Collection]
+schema:
+  type: object
+  properties:
+    origin: { type: string }
+    related:
+      x-telo-ref: { kind: Self.Collection, use: schema }
+  x-telo-resource-rules:
+    - resolve: [/related/related]
+      condition: !cel "!has(self.related) || !has(self.related.related) || self.related.related.origin == 'lib'"
+      code: RELATED_FROM_LIB
+      message: relates to a collection of another module.

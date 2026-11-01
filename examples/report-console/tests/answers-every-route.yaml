@@ -322,7 +322,7 @@ steps:
           - { type: about:blank, title: Bad Request, status: 400, detail: "The period must not start after it ends.", code: PERIOD_REVERSED }
         noColumns: [ 400, [ /body/columns ] ]
 
-  # A result row's two actions, and the projects table's.
+  # A result row's two actions, and the projects listing's.
   - name: draft
     invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/draft, method: POST }
     inputs:

@@ -175,6 +175,13 @@ export function possibleUses(slot: RefSlot): RefUse[] {
   return [...out];
 }
 
+/** True when every use the slot can take, across every case of a case map, is
+ *  `schema`: the slot names a declaration to be read, never an instance. */
+export function isSchemaOnlySlot(slot: RefSlot): boolean {
+  const uses = possibleUses(slot);
+  return uses.length > 0 && uses.every((use) => use === "schema");
+}
+
 /** True when the slot states what the declaring resource does with the target.
  *  False only for the legacy bare-string form. */
 export function hasDeclaredUse(slot: RefSlot): boolean {

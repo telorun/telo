@@ -1,0 +1,136 @@
+kind: Telo.Application
+metadata:
+  name: UiActionRefusalsTest
+  version: 1.0.0
+  description: |
+    What an action and a row action refuse — fields its input model does not
+    declare or no control can enter, a required property left unentered, an
+    unknown clearing property, row inputs that make no record — statically and
+    again when first read.
+imports:
+  Assert: ../../assert
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+targets:
+  - !ref actions
+  - !ref actionFieldUnknownAtRuntime
+  - !ref actionFieldUnsupportedAtRuntime
+  - !ref actionRequiredNotEnteredAtRuntime
+  - !ref rowActionAnswers
+  - !ref actionClearUnknownAtRuntime
+  - !ref rowActionInputsAtRuntime
+  - !ref listRowActionInputsAtRuntime
+---
+# `eachItsOwn`, two row actions over different models, reports nothing.
+kind: Assert.Manifest
+metadata:
+  name: actions
+source: ./__fixtures__/invalid/actions/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Action/strayKey: / must NOT have additional properties ('method' is not allowed)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Action/rowTypo: !cel: 'row.nmae' is not defined (available: name)"
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Action/rowsNotAList: CEL at 'result.rows' reads 'result.kind', whose declared shape does not fit what the field expects: /: type mismatch — source is 'string', target expects 'array'"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Ui.Action/rowsComputed: 'result.rows: !cel \"size(result.files)\"' is not a plain chain"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Action/noAnswerModel: !cel: 'result.files' is not defined"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Action/listsRemoved: / must NOT have additional properties ('lists' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Action/navigateOff: /onSuccess/navigate must match pattern"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Action/navigateOff: /onSuccess/refreshes/0 must match pattern"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Listing/queryTypo: !cel: 'query.statuss' is not defined (available: status)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Data/listRowActions: inputs at 'content.rowActions[1].inputs' do not satisfy archive's declared inputType: / is missing required property 'id'"
+    - code: CEL_UNKNOWN_IDENTIFIER
+      message: "Ui.Data/listRowActions: !cel: unknown identifier 'values'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Data/listRowActions: !cel: 'values' is not defined"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Listing/rowMemberUnknown: !cel: 'row.missing' is not defined (available: id, name)"
+    - code: CEL_TYPE_ERROR
+      message: "Ui.Listing/chainMistyped: CEL at 'rowActions[0].inputs.id' reads 'row.name', whose declared shape does not fit what archive's declared inputType expects: /: type mismatch — source is 'string', target expects 'integer'"
+    - code: ACCESSOR_NOT_PLAIN_CHAIN
+      message: "Ui.Listing/inputComputed: 'rowActions[0].inputs.id: !cel \"row.id + 1\"' is not a plain chain"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/inputsAbsent: /rowActions/0 is missing required property 'inputs'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/inputsEmpty: /rowActions/0/inputs must NOT have fewer than 1 properties"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Listing/inputsEmpty: inputs at 'rowActions[0].inputs' do not satisfy rename's declared inputType: / is missing required property 'name'"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/confirmFlag: /rowActions/0/confirm must match a schema in anyOf"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Listing/confirmEmpty: /rowActions/0/confirm must NOT have fewer than 1 characters"
+---
+kind: Assert.Manifest
+metadata:
+  name: actionFieldUnknownAtRuntime
+source: ./__fixtures__/invalid/action-field-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionFieldUnknown': 'fields[1]' lists a field for a property the input model does not declare ('year')"
+---
+kind: Assert.Manifest
+metadata:
+  name: actionFieldUnsupportedAtRuntime
+source: ./__fixtures__/invalid/action-field-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionFieldUnsupported': 'fields[1]' lists a property no control can enter ('options')"
+---
+kind: Assert.Manifest
+metadata:
+  name: actionRequiredNotEnteredAtRuntime
+source: ./__fixtures__/invalid/action-required-not-entered/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionRequiredNotEntered': leaves a property the input model requires with no field ('month')"
+---
+# A table and a list each offer a row an action that draws an answer, bound
+# from the row: nothing is reported, and no rule is skipped.
+kind: Run.Sequence
+metadata:
+  name: rowActionAnswers
+steps:
+  - name: check
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/row-actions/telo.yaml }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        reported: !cel "steps.check.result.reported"
+        skipped: !cel "(steps.check.result.reported + steps.check.result.noted).filter(n, n.contains('_RULE_SKIPPED'))"
+      expected:
+        reported: []
+        skipped: []
+---
+kind: Assert.Manifest
+metadata:
+  name: actionClearUnknownAtRuntime
+source: ./__fixtures__/invalid/action-clear-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionClearUnknown': 'clearAnswerOn[1]' clears its answer on a property the input model does not declare ('total'), which never changes."
+---
+kind: Assert.Manifest
+metadata:
+  name: rowActionInputsAtRuntime
+source: ./__fixtures__/invalid/row-action-inputs/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'rowActionInputs': 'rowActions[0].inputs' cannot make a record of the action's input model: 'total' is not a property of the action's input model; 'note' holds a value its property refuses (Invalid value passed: 5. Error: / must be string); required input 'count' is not bound."
+---
+kind: Assert.Manifest
+metadata:
+  name: listRowActionInputsAtRuntime
+source: ./__fixtures__/invalid/list-row-action-inputs/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Data 'listRowActionInputs' content: 'rowActions[0].inputs' cannot make a record of the action's input model: 'total' is not a property of the action's input model; 'note' holds a value its property refuses (Invalid value passed: 5. Error: / must be string); required input 'count' is not bound."

@@ -52,6 +52,7 @@ import {
   effectiveContractField,
   inheritedCapability,
   inheritedRequiredFields,
+  resolveParent,
 } from "./extends-resolution.js";
 import {
   analyzerContractScope,
@@ -144,8 +145,9 @@ import {
   type ResourceRuleDiagnostic,
   type ResourceRuleIssue,
 } from "./validate-resource-rules.js";
-import { pointerToPath, readResourceRules, resourceRuleReads, type ResourceRule } from "./resource-rule.js";
-import { readReferrerRules, type ReferrerRule } from "./referrer-rule.js";
+import { declaredResourceRules, pointerToPath, readResourceRules, resourceRuleReads, type ResourceRule } from "./resource-rule.js";
+import { declaredReferrerRules, readReferrerRules, type ReferrerRule } from "./referrer-rule.js";
+import { REFERRER_RULES_ANNOTATION, ruleIdentity } from "./rule-inheritance.js";
 import {
   evaluateReferrerRules,
   referrerRuleCallIssues,
@@ -381,6 +383,7 @@ import {
 import {
   buildForwardViews,
   buildTemplateForwardViews,
+  bodyExpressionAt,
   formatPath,
   nestedCandidatesOf,
   nestedConsumerManifest,
@@ -389,6 +392,7 @@ import {
   placedViews,
   withoutForwardedDuplicates,
   type BuiltView,
+  type ConsumerBody,
 } from "./template-forward.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { declareInScope, declaringScopeOf } from "./scope-members.js";
@@ -469,6 +473,7 @@ import { TypedEnvironments } from "./typed-environments.js";
 import { ConditionedNameIndex } from "./conditioned-name-index.js";
 import { declarationOf, listResolution, namesResolution } from "./reference-resolution.js";
 import { listRequests, type DeclarationRequests } from "./declaration-requests.js";
+import { namedShapeReading } from "./named-shape-reading.js";
 import {
   declaredDefinitionOf,
   importersByModuleOf,
@@ -493,7 +498,7 @@ import {
   type TemplateDefinitions,
 } from "./template-definition-check.js";
 import { emittedInlineName, parseKeys, pathText, TEMPLATE_BODY_FIELDS } from "./template-expansion.js";
-import { readTemplateConsumers } from "./template-consumers.js";
+import { readTemplateConsumers, type ConsumerExpansion } from "./template-consumers.js";
 import {
   ABSENT,
   assignmentKey,
@@ -663,6 +668,11 @@ export const CEL_SITE_MARKER = "CEL_SITE_MARKER";
 /** Whether a forward view's place, at union keys, holds a value its upstream
  *  evaluated before forwarding it: no expression of the view there. */
 type ViewEvaluation = (view: ConditionedView, unionKeys: readonly (string | number)[]) => boolean;
+
+/** A consumer's expanded body, as the view builder reads it. */
+function consumerBody(expansion: ConsumerExpansion | undefined): ConsumerBody | undefined {
+  return expansion && { definition: expansion.expansion.definition, refused: expansion.refused };
+}
 
 /** What every key's environment reads, built once per analysis: the
  *  registries the registration run filled, the union, name resolution over it,
@@ -1659,12 +1669,14 @@ function contractInstanceReads(
   return { places: whole ? [[], ...found.places] : found.places, targets: found.targets };
 }
 
-/** The resource rules a declaration's kind declares, when it declares any. */
+/** The resource rules a declaration's kind is judged by — its own and those it
+ *  inherits, each with the kind declaring it — when there are any. */
 function ruleSetOf(identity: DeclarationIdentity, scope: Pick<RelationReaderScope, "declared" | "defs" | "aliases">) {
   const declared = scope.declared(identity);
   if (declared.status !== "ok") return undefined;
-  const rules = readResourceRules(authorSchemaOf(declared.definition, scope));
-  return rules.length > 0 ? rules : undefined;
+  const { defs, aliases } = scope;
+  const groups = declaredResourceRules(declared.definition, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k));
+  return groups.length > 0 ? groups : undefined;
 }
 
 
@@ -1993,27 +2005,30 @@ const RELATION_READERS: RelationReaderTable = {
   // places its rules reach and, by name, what each `resolve:` pointer reaches.
   resourceRules: {
     instances: (region, scope) => {
-      const rules = ruleSetOf(region.identity, scope);
-      if (!rules) return [];
-      const anchor = ruleAnchorOf(rules, region);
+      const groups = ruleSetOf(region.identity, scope);
+      if (!groups) return [];
+      const anchor = ruleAnchorOf(groups.flatMap((group) => group.rules), region);
       return isAtOrAbove(region.at, anchor) ? [{ anchor }] : [];
     },
     reads: (_instance, region, scope) => {
-      const rules = ruleSetOf(region.identity, scope);
-      if (!rules) return { places: [] };
-      const declared = scope.declared(region.identity);
-      const definition = declared.status === "ok" ? declared.definition : undefined;
-      const read = resourceRuleReads(
-        rules,
-        definition ? scope.moduleNames({ identityOnly: true, kind: definition.kind, metadata: (definition.metadata ?? {}) as Record<string, unknown> }) : undefined,
+      const groups = ruleSetOf(region.identity, scope);
+      if (!groups) return { places: [] };
+      // Each declarer's conditions call through that kind's module names.
+      const reads = groups.map(({ declarer, rules }) =>
+        resourceRuleReads(
+          rules,
+          scope.moduleNames({ identityOnly: true, kind: declarer.kind, metadata: (declarer.metadata ?? {}) as Record<string, unknown> }),
+        ),
       );
       return {
-        places: read.places,
-        calls: read.calls,
-        targets: read.targets.map((target) => ({ at: target.at, hop: "named" as const, reads: target.reads, transitive: true })),
+        places: reads.flatMap((read) => read.places),
+        calls: reads.flatMap((read) => read.calls),
+        targets: reads.flatMap((read) =>
+          read.targets.map((target) => ({ at: target.at, hop: "named" as const, reads: target.reads, transitive: true })),
+        ),
       };
     },
-    judge: (_instance, { identity, door }) => resourceRuleFindings(identity, door, (definition) => authorSchemaOf(definition, door)),
+    judge: (_instance, { identity, door }) => resourceRuleFindings(identity, door),
   },
   // A template definition's entry points against the contracts they meet.
   templateTargets: {
@@ -5042,11 +5057,12 @@ export class StaticAnalyzer {
           return found.has(formatPath(keys));
         },
         targets: (value, holder) => targetsOf(value, holder, declaringScopeOf(holder)),
+        read: namedShapeReading(listRequests(manifests)),
       },
       registry: defs,
       aliases,
       scopes: { aliasesByModule, rootModules },
-      bodyOf: (consumer) => consumers.expansions.get(consumer)?.expansion.definition,
+      bodyOf: (consumer) => consumerBody(consumers.expansions.get(consumer)),
       taken: new Set(
         [...manifests, ...nested.map((d) => d.manifest)].flatMap((m) => (typeof m.metadata?.name === "string" ? [m.metadata.name] : [])),
       ),
@@ -5102,6 +5118,7 @@ export class StaticAnalyzer {
         entryKind: view.entryKind,
         entryName: view.entryName,
         crossed: view.crossed.map(heldCrossing),
+        body: view.body,
         ...(view.root.unreachable ? { unreachable: true as const } : {}),
       };
       held.set(view.manifest, conditioned);
@@ -5113,6 +5130,8 @@ export class StaticAnalyzer {
     // any template further out.
     const evaluatedBefore = (view: ConditionedView, unionKeys: readonly (string | number)[]): boolean => {
       const path = formatPath(unionKeys);
+      // An expression the body wrote is typed by the definition's own check.
+      if (bodyExpressionAt(view.body, path)) return true;
       const link = linksOf.get(view)?.links.find((l) => l.at === path || path.startsWith(`${l.at}.`) || path.startsWith(`${l.at}[`));
       if (!link) return false;
       const upstreamPath = link.from + path.slice(link.at.length);
@@ -5422,15 +5441,16 @@ export class StaticAnalyzer {
         : buildTemplateForwardViews(
             over,
             doorResolution(before, scope),
+            listRequests(over as unknown as ResourceManifest[]),
             defs,
             aliases,
             { aliasesByModule, rootModules },
-            (consumer) => consumers?.expansions.get(consumer)?.expansion.definition,
+            (consumer) => consumerBody(consumers?.expansions.get(consumer)),
           );
     const allManifests = [...own];
     const moduleDocuments = whole ? own.filter((m) => isModuleKind(m.kind)) : setup.moduleBases(witness);
     if (forwardViews && forwardViews.analyzed.length > 0) {
-      resolveSchemaTypeRefs(forwardViews.analyzed, aliases, aliasesByModule);
+      resolveSchemaTypeRefs(forwardViews.analyzed, aliases, aliasesByModule, defs);
       rankForwardViews(forwardViews.analyzed);
       allManifests.push(...forwardViews.analyzed);
       groupManifests.push(...forwardViews.analyzed);
@@ -5478,6 +5498,7 @@ export class StaticAnalyzer {
         ...(reportedAs ? { reportedAs } : {}),
         places: setup.union.project(view.manifest, witness.assignment, witness.forcing).places,
         rootPlaces,
+        ...(view.body ? { body: view.body } : {}),
         // Where the consumer's root is written, as a run places its own.
         rootOrigin: JSON.stringify([
           reported.kind,
@@ -7260,6 +7281,29 @@ export class StaticAnalyzer {
     const kindSchemas = analyzerKindSchemas(defs);
     const ruleShapes = (ref: string, module: string | undefined) =>
       defs.namedShapeAt(ref, module, moduleAliasScope({ module }, aliases, aliasesByModule));
+    // A merge-form child's rules join its ancestors', so a code it inherits is
+    // one it may not declare again: the inherited rules, read off the
+    // registered parent, whose `extends` is canonical.
+    const inheritedRules = (declarer: ResourceManifest) => {
+      const resource = new Map<string, string>();
+      const referrer = new Map<string, string>();
+      if (!(declarer as { extends?: unknown }).extends || (declarer as { base?: unknown }).base) {
+        return { resource, referrer };
+      }
+      const module = (declarer.metadata as { module?: string } | undefined)?.module;
+      const registered = module ? defs.resolve(`${module}.${declarer.metadata?.name as string}`) : undefined;
+      const parent = registered ? resolveParent(registered, (k) => defs.resolve(k)) : undefined;
+      if (!parent) return { resource, referrer };
+      const kindOf = (d: ResourceDefinition) =>
+        d.metadata?.module ? `${d.metadata.module}.${d.metadata.name}` : d.metadata?.name;
+      for (const { declarer: ancestor, rules } of declaredResourceRules(parent, (k) => defs.resolve(k))) {
+        for (const rule of rules) resource.set(rule.code, kindOf(ancestor));
+      }
+      for (const { declarer: ancestor, rules } of declaredReferrerRules(parent, (k) => defs.resolve(k))) {
+        for (const rule of rules) referrer.set(ruleIdentity(REFERRER_RULES_ANNOTATION, rule)!, kindOf(ancestor));
+      }
+      return { resource, referrer };
+    };
     for (const declarer of ownRuleDeclarers) {
       resourceRuleIssues.push(
         ...validateResourceRuleDeclarations(
@@ -7268,6 +7312,7 @@ export class StaticAnalyzer {
           moduleCallNamesOf(moduleCallNames, declarer),
           kindSchemas,
           ruleShapes,
+          inheritedRules(declarer).resource,
         ),
       );
     }
@@ -7307,6 +7352,7 @@ export class StaticAnalyzer {
                 kindSchemas,
               ),
             moduleNames: moduleCallNamesOf(moduleCallNames, declarer),
+            inherited: inheritedRules(declarer).referrer,
           }),
         );
       }
@@ -7605,11 +7651,11 @@ export class StaticAnalyzer {
       : buildTemplateForwardViews(
           allManifests,
           namesResolution(allManifests),
+          listRequests(allManifests as unknown as ResourceManifest[]),
           defs,
           aliases,
           { aliasesByModule, rootModules },
-          (consumer) =>
-          consumers?.expansions.get(consumer)?.expansion.definition,
+          (consumer) => consumerBody(consumers?.expansions.get(consumer)),
         );
     if (forwardViews) allManifests.push(...forwardViews.analyzed);
     // A forward view, and what was extracted from one, exists for this analysis
@@ -7826,6 +7872,7 @@ export class StaticAnalyzer {
           aliasesByModule,
           rootModules,
           configuration?.passes !== undefined,
+          (m) => analysisOnlyDocs.has(m),
         ),
       );
       // Module-artifact surface: bundled-controller selector qualifiers and the
@@ -7901,7 +7948,7 @@ export class StaticAnalyzer {
         ),
       );
     }
-    resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule);
+    resolveSchemaTypeRefs(allManifests, aliases, aliasesByModule, defs);
     // ...and over the manifests the DEFINITION REGISTRY holds, which are not
     // these. `normalizeInlineResources` deep-clones — that clone is the
     // analyzer's immutability boundary — while `defs.register` ran before it, on
@@ -7914,7 +7961,7 @@ export class StaticAnalyzer {
     // over both is the whole repair. The shapes a kind's contract or signature
     // names are resolved there first, for the same reason.
     resolveShapeRefs(manifests, aliases, aliasesByModule, listResolution(manifests));
-    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule);
+    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule, defs);
 
     // Trusted-input fast path: when the caller has already attested that
     // this exact manifest set passes analysis (e.g. via the kernel's
@@ -7982,6 +8029,9 @@ export class StaticAnalyzer {
       if (!declared) return libraries.declaration(module, name);
       return ofInstance(declared, instance)[0];
     };
+    // A kind a dependency's declaration writes, read in that module's scope.
+    const forwardedKind = (kind: string, owner: string): string | undefined =>
+      kind.startsWith("Self.") ? `${owner}.${kind.slice("Self.".length)}` : aliasesByModule.get(owner)?.resolveKind(kind);
     const forwardedReference: ForwardedReference = (target, module, writer) => {
       const local = target.alias === undefined || target.alias === "Self";
       const owner = local ? module : aliasesByModule.get(module)?.moduleForAlias(target.alias!);
@@ -7991,9 +8041,7 @@ export class StaticAnalyzer {
       const declaration = owner === undefined ? undefined : declaredIn(owner, target.name, instance);
       if (!owner || !declaration || typeof declaration.kind !== "string") return undefined;
       // The kind is written through the declaring module's aliases.
-      const kind = declaration.kind.startsWith("Self.")
-        ? `${owner}.${declaration.kind.slice("Self.".length)}`
-        : (aliasesByModule.get(owner)?.resolveKind(declaration.kind) ?? declaration.kind);
+      const kind = forwardedKind(declaration.kind, owner) ?? declaration.kind;
       return resolvedReference(kind, target.name, local ? undefined : target.alias);
     };
     const ruleViews = new RuleDeclarationViews((declaration, module) => {
@@ -8010,7 +8058,7 @@ export class StaticAnalyzer {
         ruleSites.set(definition, governedCelEvalSites(definition, ruleDef, defs.shapeLookup));
       }
       return { sites: ruleSites.get(definition), bodyEntry: bodyEntry !== undefined };
-    }, forwardedReference);
+    }, forwardedReference, forwardedKind, (module) => !rootModules.has(module));
     const referrerRuleContext: ReferrerRuleContext = {
       peerBinder: analyzerPeerBinder(
         defs,
@@ -8024,6 +8072,11 @@ export class StaticAnalyzer {
         (slotKinds, declarationKind) =>
           slotKinds.some((target) => kindSatisfies(declarationKind, target, defs)),
         (declaration) => ruleViews.of(declaration),
+        {
+          isDependency: (module) => !rootModules.has(module),
+          moduleForAlias: (module, alias) => aliasesByModule.get(module)?.moduleForAlias(alias),
+          declaredIn,
+        },
       ),
     };
 
@@ -8768,13 +8821,8 @@ export class StaticAnalyzer {
 
       // Resource rules — relationships between this resource's own fields that
       // JSON Schema cannot state, declared by the kind as CEL over `self` and
-      // `this`. Read off the AUTHOR-FACING schema, so an `extends` child without
-      // `base:` inherits its parent's rules and one that declares its own
-      // replaces them, exactly as the rest of the config contract merges.
-      // The finding→diagnostic mapping lives with the finding vocabulary in
-      // `validate-resource-rules.ts`, the shape every neighbouring pass uses:
-      // issues out, one emit here.
-      const ruleDeclarer = (definition.metadata as { module?: string } | undefined)?.module;
+      // `this`. A merge-form `extends` child is judged by its ancestors' rules
+      // and its own (`declaredResourceRules`), each as its declarer's.
       relationGroupFindings("resourceRules", m);
 
       // Referrer rules — what must be true of whoever REFERENCES this resource,
@@ -8782,68 +8830,70 @@ export class StaticAnalyzer {
       // that must satisfy it. The subject is chosen by the EDGE, so no kind
       // literal appears on the referring side, where the spelling would be the
       // consumer's import alias rather than anything the rule's author controls.
-      // A consumer of the shared call graph, never a second traversal.
-      const referrerRules = readReferrerRules(schema);
-      if (referrerRules.length > 0) {
+      // A consumer of the shared call graph, never a second traversal. Inherited
+      // like resource rules, each judged as the rules of the kind declaring it.
+      const referrerRuleGroups = declaredReferrerRules(
+        definition,
+        (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k),
+      );
+      if (referrerRuleGroups.length > 0) {
         const referrers = referrersOf(m as unknown as ResourceManifest, getCallGraph());
         reportRuleEvaluation("referrerRules", configuration?.own !== undefined);
-        // The shared binder, plus the DECLARING kind's call names — the binder
-        // is one per run because it caches, the names are per declaration
-        // because a condition is its author's expression.
-        const declaringRuleContext: ReferrerRuleContext = {
-          ...referrerRuleContext,
-          moduleNames: moduleCallNamesOf(
-            moduleCallNames,
-            definition as unknown as ResourceManifest,
-          ),
-          functions: bodyEvaluators.dispatchFor(definition as unknown as ResourceManifest),
-        };
-        for (const report of reportReferrerRules(
-          m as unknown as ResourceManifest,
-          definition as unknown as ResourceManifest,
-          evaluateReferrerRules(
+        for (const { declarer, rules: referrerRules } of referrerRuleGroups) {
+          const ruleDeclarer = (declarer.metadata as { module?: string } | undefined)?.module;
+          const exerciseKey = (code: string) => `${ruleDeclarer}.${declarer.metadata?.name}#${code}`;
+          // The shared binder, plus the DECLARING kind's call names — the binder
+          // is one per run because it caches, the names are per declaration
+          // because a condition is its author's expression.
+          const declaringRuleContext: ReferrerRuleContext = {
+            ...referrerRuleContext,
+            moduleNames: moduleCallNamesOf(moduleCallNames, declarer as unknown as ResourceManifest),
+            functions: bodyEvaluators.dispatchFor(declarer as unknown as ResourceManifest),
+          };
+          for (const report of reportReferrerRules(
             m as unknown as ResourceManifest,
-            schema,
-            referrers,
-            kindMatches,
-            declaringRuleContext,
-          ),
-          !ruleDeclarer || rootModules.has(ruleDeclarer),
-        )) {
-          // A VIOLATION is the referrer's data, so it is reported only when that
-          // manifest is the entry's own — the same direction a resource-rule
-          // violation takes, one hop further out.
-          const owner = (report.manifest.metadata as { module?: string } | undefined)?.module;
-          if (report.code === "REFERRER_RULE_VIOLATED" && owner && !rootModules.has(owner)) {
-            continue;
+            declarer as unknown as ResourceManifest,
+            evaluateReferrerRules(
+              m as unknown as ResourceManifest,
+              referrerRules,
+              referrers,
+              kindMatches,
+              declaringRuleContext,
+            ),
+            !ruleDeclarer || rootModules.has(ruleDeclarer),
+          )) {
+            // A VIOLATION is the referrer's data, so it is reported only when that
+            // manifest is the entry's own — the same direction a resource-rule
+            // violation takes, one hop further out.
+            const owner = (report.manifest.metadata as { module?: string } | undefined)?.module;
+            if (report.code === "REFERRER_RULE_VIOLATED" && owner && !rootModules.has(owner)) {
+              continue;
+            }
+            if (report.evaluationFailure) {
+              const declaringKind = `referrer\u0000${ruleDeclarer ?? ""}.${declarer.metadata?.name ?? ""}`;
+              if (!ruleFailureLedger.first(declaringKind, report.rule)) continue;
+              diagnostics.push(
+                ruleFailureDiagnostic(report, ruleDeclarer, referrerRuleDiagnostic(report)),
+              );
+              continue;
+            }
+            diagnostics.push(referrerRuleDiagnostic(report));
+            // A rule that VIOLATED plainly ran, whatever its peer set held. The
+            // unexercised report exists to catch silence — a `peers:` naming
+            // nothing makes every `!peers.exists(…)` pass vacuously — so a finding
+            // is exactly the evidence it asks for.
+            if (report.code === "REFERRER_RULE_VIOLATED") {
+              const violated = referrerRuleExercise.get(exerciseKey(report.rule));
+              if (violated) violated.exercised = true;
+            }
           }
-          if (report.evaluationFailure) {
-            const declaringKind = `referrer\u0000${ruleDeclarer ?? ""}.${definition.metadata?.name ?? ""}`;
-            if (!ruleFailureLedger.first(declaringKind, report.rule)) continue;
-            diagnostics.push(
-              ruleFailureDiagnostic(report, ruleDeclarer, referrerRuleDiagnostic(report)),
-            );
-            continue;
-          }
-          diagnostics.push(referrerRuleDiagnostic(report));
-          // A rule that VIOLATED plainly ran, whatever its peer set held. The
-          // unexercised report exists to catch silence — a `peers:` naming
-          // nothing makes every `!peers.exists(…)` pass vacuously — so a finding
-          // is exactly the evidence it asks for.
-          if (report.code === "REFERRER_RULE_VIOLATED") {
-            const violated = referrerRuleExercise.get(
-              `${definition.metadata?.module}.${definition.metadata?.name}#${report.rule}`,
-            );
-            if (violated) violated.exercised = true;
-          }
-        }
-        for (const rule of referrerRules) {
-          const key = `${definition.metadata?.module}.${definition.metadata?.name}#${rule.code}`;
-          const tracked = referrerRuleExercise.get(key);
-          if (!tracked) continue;
-          tracked.seen = true;
-          if (referrerRuleExercised(rule, referrers, kindMatches, declaringRuleContext)) {
-            tracked.exercised = true;
+          for (const rule of referrerRules) {
+            const tracked = referrerRuleExercise.get(exerciseKey(rule.code));
+            if (!tracked) continue;
+            tracked.seen = true;
+            if (referrerRuleExercised(rule, referrers, kindMatches, declaringRuleContext)) {
+              tracked.exercised = true;
+            }
           }
         }
       }
@@ -9180,6 +9230,7 @@ export class StaticAnalyzer {
         rootModules,
         libraryManifests,
         catchLadder(),
+        forwardViews ? (manifest, path) => forwardViews.bodyWroteWhole(manifest, path) : undefined,
       ),
     );
 
@@ -9505,6 +9556,12 @@ export class StaticAnalyzer {
           return produced ? schemaValueKind(produced) : undefined;
         },
         producedSchemaAt: (manifest, path) => celSourceSchemaByPath.get(manifest)?.get(path),
+        ...(forwardViews
+          ? {
+              writerAt: (manifest, path) => forwardViews.bodyWriterAt(manifest, path),
+              bodyWroteWhole: (manifest, path) => forwardViews.bodyWroteWhole(manifest, path),
+            }
+          : {}),
       }),
     );
 
@@ -9600,7 +9657,7 @@ export class StaticAnalyzer {
     // Canonicalize import-scoped schema `$ref`s (`telo://Self|Alias/Type`) so the
     // kernel that executes this output compiles inputs/outputs against the same
     // ids the type controllers register their schemas under.
-    resolveSchemaTypeRefs(normalized, ctx.aliases, ctx.aliasesByModule);
+    resolveSchemaTypeRefs(normalized, ctx.aliases, ctx.aliasesByModule, ctx.definitions);
     return normalized;
   }
 

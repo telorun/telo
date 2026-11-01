@@ -385,6 +385,54 @@
       },
       "operator": "eq",
       "fits": true
+    },
+    {
+      "name": "auto enters absent over an object",
+      "control": "auto",
+      "property": {
+        "type": "object"
+      },
+      "operator": "absent",
+      "fits": true
+    },
+    {
+      "name": "toggle enters absent over a string",
+      "control": "toggle",
+      "property": {
+        "type": "string"
+      },
+      "operator": "absent",
+      "fits": true
+    },
+    {
+      "name": "none sets absent by a preset or a default",
+      "control": "none",
+      "property": {
+        "type": "integer"
+      },
+      "operator": "absent",
+      "fits": true
+    },
+    {
+      "name": "select does not enter absent over an enum",
+      "control": "select",
+      "property": {
+        "enum": [
+          "a",
+          "b"
+        ]
+      },
+      "operator": "absent",
+      "fits": false
+    },
+    {
+      "name": "tags does not enter absent",
+      "control": "tags",
+      "property": {
+        "type": "string"
+      },
+      "operator": "absent",
+      "fits": false
     }
   ]
 }

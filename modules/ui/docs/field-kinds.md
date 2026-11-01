@@ -116,13 +116,13 @@ warning and does not block.
 `Ui.OptionSource` is the abstract every source of options extends: `model` (the
 shape of one option's record) and accessors over `row`, a record of `model` —
 `value` (what choosing it yields), `label`, `hint?` and `href?`.
-`Ui.CollectionOptions` reads them from a [collection](collection-contract.md):
+`Ui.CollectionOptions` reads them from a
+[collection](../../data-model/docs/collection-contract.md):
 
 | Key | | |
 | --- | --- | --- |
-| `collection` | required | the `Ui.Collection` the list request is held to |
-| `source.basePath` | required | the collection's URL |
-| `source.filters` | none | property → a fixed value or a path into `values`: equalities sent with every request, each a filter the collection accepts with `eq` and typed against its model property |
+| `source` | required | the [`Ui.CollectionSource`](collection-source.md) read: its collection is what the list request is held to, its `basePath` the URL |
+| `filters` | none | property → a fixed value or a path into `values`: equalities sent with every request, each a filter the collection accepts with `eq` and typed against its model property |
 | `search` | none | `{ property, operator }`: the filter what the viewer types is sent as |
 | `pageSize` | `25` | options per request, sent as `limit` |
 
@@ -133,12 +133,14 @@ model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
 hint: !cel "row.team"
-collection: !ref peopleCollection
-source:
-  basePath: /api/people
-  filters: { team: !cel "values.team" }
+source: !ref peopleSource
+filters: { team: !cel "values.team" }
 search: { property: name, operator: contains }
 ```
+
+A form field over a property with a relation needs no option source of its
+own: the [presentation's relation](collection-presentation.md#relations) is
+one, and a picker over it is derived ([`Ui.Form`](form.md#related-records)).
 
 - Options are read page by page by `next` as the list scrolls, at most one page
   per scroll.
@@ -195,9 +197,9 @@ field's place in `fields`:
 | `UI_DATE_RANGE_DEFAULT_CONFLICT` | date range | `initialPreset` beside a model `default` on the property |
 | `UI_DATE_RANGE_PRESET_UNKNOWN` | date range | `initialPreset` names no declared preset |
 | `UI_DATE_RANGE_PRESET_LABEL_DUPLICATE` | date range | two presets share a label |
-| `UI_OPTION_SEARCH_NOT_ACCEPTED` | collection options | `search` is not a filter pair the collection declares |
+| `UI_OPTION_SEARCH_NOT_ACCEPTED` | collection options | `search` is not a filter pair the source's collection declares |
 | `UI_OPTION_VALUE_NOT_FILTERABLE` | collection options | `value` is not `row.<property>` for a property the collection declares with `in` |
-| `UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `UI_SOURCE_FILTER_NOT_ACCEPTED` | collection options | a source filter names a property the model does not declare, or one the collection does not accept with `eq` |
+| `UI_SOURCE_FILTER_UNKNOWN_PROPERTY`, `UI_SOURCE_FILTER_NOT_ACCEPTED` | collection options | a `filters` key names a property the model does not declare, or one the collection does not accept with `eq` |
 
 The form and action rules are listed on [`Ui.Form`](form.md#refused). Each has
 its `ERR_` twin, raised when the form, the action or the option source is first

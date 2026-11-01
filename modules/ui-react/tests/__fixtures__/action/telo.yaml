@@ -1,4 +1,4 @@
-# An application whose page runs an operation, whose table offers one on
+# An application whose page runs an operation, whose listing offers one on
 # every row and whose list of the months the address names offers the first on
 # each, over routes that name the same shapes. Start it with
 #   pnpm run telo ./modules/ui-react/tests/__fixtures__/action/telo.yaml
@@ -10,6 +10,7 @@ metadata:
 imports:
   Http: ../../../../http-server
   Ui: ../../../../ui
+  DataModel: ../../../../data-model
   UiReact: ../../../
   Api: ../collection-api
   Operations: ../operation-api
@@ -62,7 +63,7 @@ metadata:
   name: Todo
 schema:
   type: object
-  required: [text]
+  required: [id, text]
   properties:
     id: { type: integer }
     text: { type: string, title: Task }
@@ -129,14 +130,20 @@ source: { path: /api/archive }
 label: Archive
 result: { type: value, value: !cel "result.archived" }
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: todos
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/todos
+    collection: { kind: DataModel.Collection, model: !ref Todo, query: { filters: [], sort: [] } }
 model: !ref Todo
-collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
-source: { basePath: /api/todos }
-columns:
-  - value: !cel "row.text"
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
 rowActions:
   - action: !ref archive
     inputs:

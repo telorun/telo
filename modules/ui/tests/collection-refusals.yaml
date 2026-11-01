@@ -1,0 +1,237 @@
+kind: Telo.Application
+metadata:
+  name: UiCollectionRefusalsTest
+  version: 1.0.0
+  description: |
+    What a listing, a form and a filter bar refuse about the collection they
+    read — a property the model does not declare, a filter or operator the
+    collection does not accept, values it does not facet — and what a
+    presentation refuses about a relation it labels, checked statically and
+    again when the resource is first read.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref rules
+  - !ref sourceFilterAtRuntime
+  - !ref formFieldAtRuntime
+  - !ref formFieldUnsupportedAtRuntime
+  - !ref sourceFilterNotAcceptedAtRuntime
+  - !ref filterNotAcceptedAtRuntime
+  - !ref filterValuesNotFacetedAtRuntime
+  - !ref filterOptionValueMismatchAtRuntime
+  - !ref relationUndeclared
+  - !ref relationUndeclaredAtRuntime
+  - !ref relationTargetMismatch
+  - !ref relationTargetMismatchAtRuntime
+  - !ref relationTargetAcrossModules
+  - !ref relationTargetAcrossModulesAtRuntime
+  - !ref relationSearchNotAccepted
+  - !ref relationSearchNotAcceptedAtRuntime
+  - !ref relationRowUnknown
+---
+kind: Assert.Manifest
+metadata:
+  name: rules
+source: ./__fixtures__/invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Listing/sourceFilter at 'filters.done': filters its source by a property the row model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/formField at 'fields[2]': lists a field for a property the model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/formFieldUnsupported at 'fields[1]': lists a property no control can enter"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/formFieldUnsupported at 'fields[2]': lists a property no control can enter"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Listing/sourceFilterNotAccepted at 'filters.isDone': filters its source by a property the collection does not accept an equality on"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterNotAccepted at 'fields[1]': filters by a property and operator the collection does not accept"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterValuesNotFaceted at 'fields[0]': offers only the values present for a property the collection does not facet"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterOptionValueMismatch at 'fields[0]': offers options whose value is of another type than the property holds"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Panel/compactAddressed: names a compact surface that declares an address"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Dialog/compactNested: names a compact surface that declares a compact surface of its own"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterDuplicate at 'fields[1]': lists a property and operator another field already has"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterDefaultInvalid at 'fields[0]': declares a default its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filterControlUnsupported at 'fields[0]': asks for a control its filter cannot be entered with"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetUnknownFilter at 'presets[0]': sets a property and operator the bar does not show"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetValueInvalid at 'presets[0]': sets a value its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/presetLabelDuplicate at 'presets[1]': has the label of another preset"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/toggleOverText at 'fields[0]': asks for a control its filter cannot be entered with"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/toggleUntyped at 'fields[0]': asks for a control its filter cannot be entered with"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/toggleDefaultOff at 'fields[0]': declares a default its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/togglePresetOff at 'presets[0]': sets a value its filter cannot hold"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionFieldUnknown at 'fields[1]': lists a field for a property the input model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionFieldUnsupported at 'fields[1]': lists a property no control can enter"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionFieldUnsupported at 'fields[2]': lists a property no control can enter"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionRequiredNotEntered: leaves a property the input model requires with no field"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionRequiredNotEnterable: leaves a property the input model requires with no field"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Action/actionClearUnknown at 'clearAnswerOn[1]': clears its answer on a property the input model does not declare"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Listing/rowActionInputs: inputs at 'rowActions[0].inputs' do not satisfy remove's declared inputType: / must NOT have additional properties ('total' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Listing/rowActionInputs: inputs at 'rowActions[0].inputs' do not satisfy remove's declared inputType: / is missing required property 'count'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Listing/rowActionInputs: inputs at 'rowActions[0].inputs.note' do not satisfy remove's declared inputType: /note must be string"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Data/listRowActionInputs: inputs at 'content.rowActions[0].inputs' do not satisfy remove's declared inputType: / must NOT have additional properties ('total' is not allowed)"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Data/listRowActionInputs: inputs at 'content.rowActions[0].inputs' do not satisfy remove's declared inputType: / is missing required property 'count'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Data/listRowActionInputs: inputs at 'content.rowActions[0].inputs.note' do not satisfy remove's declared inputType: /note must be string"
+---
+kind: Assert.Manifest
+metadata:
+  name: sourceFilterAtRuntime
+source: ./__fixtures__/invalid/source-filter/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'sourceFilter': 'filters.done' filters its source by a property the row model does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: formFieldAtRuntime
+source: ./__fixtures__/invalid/form-field/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'formField': 'fields[2]' lists a field for a property the model does not declare ('title')"
+---
+kind: Assert.Manifest
+metadata:
+  name: formFieldUnsupportedAtRuntime
+source: ./__fixtures__/invalid/form-field-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'formFieldUnsupported': 'fields[1]' lists a property no control can enter ('options')"
+---
+kind: Assert.Manifest
+metadata:
+  name: sourceFilterNotAcceptedAtRuntime
+source: ./__fixtures__/invalid/source-filter-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'sourceFilterNotAccepted': 'filters.isDone' filters its source by a property the collection does not accept an equality on"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterNotAcceptedAtRuntime
+source: ./__fixtures__/invalid/filter-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterNotAccepted': 'fields[1]' filters by a property and operator the collection does not accept ('eq' on 'text')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterValuesNotFacetedAtRuntime
+source: ./__fixtures__/invalid/filter-values-not-faceted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterValuesNotFaceted': 'fields[0]' offers only the values present for a property the collection does not facet ('isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: filterOptionValueMismatchAtRuntime
+source: ./__fixtures__/invalid/filter-option-value-mismatch/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filterOptionValueMismatch': 'fields[0]' offers options whose value is of another type than the property holds ('count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationUndeclared
+source: ./__fixtures__/invalid/relation-undeclared/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.CollectionPresentation/posts at 'relations.title': presents a relation the collection does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationUndeclaredAtRuntime
+source: ./__fixtures__/invalid/relation-undeclared/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.CollectionPresentation 'posts': 'relations.title' presents a relation the collection does not declare"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationTargetMismatch
+source: ./__fixtures__/invalid/relation-target-mismatch/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.CollectionPresentation/posts at 'relations.authorId': reads related records from a source whose collection is not the relation's target"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationTargetMismatchAtRuntime
+source: ./__fixtures__/invalid/relation-target-mismatch/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.CollectionPresentation 'posts': 'relations.authorId' reads related records from a source whose collection ('postCollection') is not the relation's target ('authors')"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationTargetAcrossModules
+source: ./__fixtures__/invalid/relation-target-across-modules/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.CollectionPresentation/postsPresentation at 'relations.editorId': reads related records from a source whose collection is not the relation's target"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationTargetAcrossModulesAtRuntime
+source: ./__fixtures__/invalid/relation-target-across-modules/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.CollectionPresentation 'postsPresentation': 'relations.editorId' reads related records from a source whose collection ('posts') is not the relation's target ('authors')"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationSearchNotAccepted
+source: ./__fixtures__/invalid/relation-search-not-accepted/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.CollectionPresentation/posts at 'relations.authorId': searches related records with a property and operator their collection does not accept"
+---
+kind: Assert.Manifest
+metadata:
+  name: relationSearchNotAcceptedAtRuntime
+source: ./__fixtures__/invalid/relation-search-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.CollectionPresentation 'posts': 'relations.authorId' searches related records with a property and operator their collection does not accept ('eq' on 'name')"
+---
+# Each entry's `row` is a record of its own source's collection.
+kind: Assert.Manifest
+metadata:
+  name: relationRowUnknown
+source: ./__fixtures__/invalid/relation-row-unknown/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.CollectionPresentation/posts: !cel: 'row.handle' is not defined (available: id, name)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.CollectionPresentation/posts: !cel: 'row.name' is not defined (available: id, handle)"

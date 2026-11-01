@@ -1,4 +1,7 @@
 import type { ResourceManifest } from "@telorun/sdk";
+import { RuntimeError } from "@telorun/sdk";
+import { isNeedFulfilment } from "./need-fulfilment.js";
+import { handleOfInstance } from "./resource-handle.js";
 
 /**
  * Instance → the manifest it was DECLARED with, recorded at `create()` — the
@@ -49,4 +52,27 @@ export function recordOutermostDeclaration(instance: object, manifest: ResourceM
  *  instance's own kind declared it. */
 export function outermostDeclarationOf(instance: unknown): ResourceManifest | undefined {
   return instance && typeof instance === "object" ? outermost.get(instance as object) : undefined;
+}
+
+/**
+ * The declaration a read past a live instance continues in: its OUTERMOST, the
+ * one its author wrote — for a `base:` child its own, not the mapping its parent
+ * was built from. Undefined for a value that is no live instance. Every instance
+ * is minted and has its declaration recorded at `create()`, so one with a handle
+ * and no declaration is an invariant failure — except a fulfilment an import or
+ * the environment built, which no `create()` produced.
+ */
+export function instanceDeclaration(value: unknown): ResourceManifest | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const handle = handleOfInstance(value);
+  if (!handle) return undefined;
+  const declaration = outermostDeclarationOf(value);
+  if (!declaration && !isNeedFulfilment(value)) {
+    throw new RuntimeError(
+      "ERR_FATAL",
+      `Resource instance '${handle.ref.kind}/${handle.ref.name}' has no recorded declaration; ` +
+        `every instance records the declaration it was created for.`,
+    );
+  }
+  return declaration;
 }

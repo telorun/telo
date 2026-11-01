@@ -1,0 +1,170 @@
+kind: Telo.Application
+metadata:
+  name: UiLayoutRefusalsTest
+  version: 1.0.0
+  description: |
+    What a listing's layout is refused for before anything runs, and again when
+    the listing is first read: reading records by a property the listing's
+    model does not declare; a grouping by a property holding no plain value,
+    one the collection cannot filter by equality, only its present values when
+    the collection does not facet it, or every value when none can be listed; a
+    span over bounds that are no dates of one format, or that the collection
+    cannot filter by; a tree whose parent is no relation of the collection to
+    itself, or cannot be filtered to roots and children; and a move whose
+    inputs make no record of its action's input model or read what the moved
+    record does not have. A layout written inline at a kind that forwards it to
+    the listing its body generates is judged against that listing's
+    collection, and a layout of another module, extending the component
+    layout, is judged by its own rules and refused by ui's when it is read.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref layoutRules
+  - !ref propertyUnknownAtRuntime
+  - !ref groupUnsupportedAtRuntime
+  - !ref groupNotFilterableAtRuntime
+  - !ref groupsNotFacetedAtRuntime
+  - !ref groupsNotEnumerableAtRuntime
+  - !ref spanNotDateAtRuntime
+  - !ref spanNotFilterableAtRuntime
+  - !ref parentNotSelfRelationAtRuntime
+  - !ref parentNotFilterableAtRuntime
+  - !ref moveInputsAtRuntime
+  - !ref layoutForwarded
+  - !ref layoutExtension
+  - !ref layoutExtensionAtRuntime
+---
+kind: Assert.Manifest
+metadata:
+  name: layoutRules
+source: ./__fixtures__/invalid/layouts/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/propertyUnknown at 'layout': required by Ui.BoardLayout — names a property the listing's model does not declare in `groups.property`"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/groupUnsupported at 'layout': required by Ui.BoardLayout — groups records by a property that does not hold one plain value"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/groupNotFilterable at 'layout': required by Ui.BoardLayout — groups records by a property the collection does not accept an equality on"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/groupsNotFaceted at 'layout': required by Ui.BoardLayout — draws only the groups present for a property the collection does not facet"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/groupsNotEnumerable at 'layout': required by Ui.BoardLayout — draws every group of a property whose values cannot be listed"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/spanNotDate at 'layout': required by Ui.CalendarLayout — spans records by a property that is not a `date` or `date-time` string"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/spanNotFilterable at 'layout': required by Ui.CalendarLayout — spans records by bounds the collection does not accept"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/parentNotSelfRelation at 'layout': required by Ui.TreeLayout — nests records under a property with no relation to the listing's own collection"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/parentNotFilterable at 'layout': required by Ui.TreeLayout — nests records under a property the collection cannot read roots and children by"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "Ui.Listing/moveInputsUnbound: inputs at 'layout.move.inputs' do not satisfy moveTask's declared inputType: / is missing required property 'status'"
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Listing/moveReadsUnknown: !cel: 'to.state' is not defined"
+---
+kind: Assert.Manifest
+metadata:
+  name: propertyUnknownAtRuntime
+source: ./__fixtures__/invalid/layout-property-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'propertyUnknown': 'layout' names a property the listing's model does not declare in 'groups.property' ('assigneeId')"
+---
+kind: Assert.Manifest
+metadata:
+  name: groupUnsupportedAtRuntime
+source: ./__fixtures__/invalid/layout-group-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'groupUnsupported': 'layout' groups records by a property that does not hold one plain value ('status')"
+---
+kind: Assert.Manifest
+metadata:
+  name: groupNotFilterableAtRuntime
+source: ./__fixtures__/invalid/layout-group-not-filterable/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'groupNotFilterable': 'layout' groups records by a property the collection does not accept an equality on ('priority')"
+---
+kind: Assert.Manifest
+metadata:
+  name: groupsNotFacetedAtRuntime
+source: ./__fixtures__/invalid/layout-groups-not-faceted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'groupsNotFaceted': 'layout' draws only the groups present for a property the collection does not facet ('category')"
+---
+kind: Assert.Manifest
+metadata:
+  name: groupsNotEnumerableAtRuntime
+source: ./__fixtures__/invalid/layout-groups-not-enumerable/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'groupsNotEnumerable': 'layout' draws every group of a property whose values cannot be listed ('title')"
+---
+kind: Assert.Manifest
+metadata:
+  name: spanNotDateAtRuntime
+source: ./__fixtures__/invalid/layout-span-not-date/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'spanNotDate': 'layout' spans records by a property that is not a 'date' or 'date-time' string, or by a start and an end of different formats ('title')"
+---
+kind: Assert.Manifest
+metadata:
+  name: spanNotFilterableAtRuntime
+source: ./__fixtures__/invalid/layout-span-not-filterable/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'spanNotFilterable': 'layout' spans records by bounds the collection does not accept"
+---
+kind: Assert.Manifest
+metadata:
+  name: parentNotSelfRelationAtRuntime
+source: ./__fixtures__/invalid/layout-parent-not-self-relation/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'parentNotSelfRelation': 'layout' nests records under a property with no relation to the listing's own collection ('assigneeId')"
+---
+kind: Assert.Manifest
+metadata:
+  name: parentNotFilterableAtRuntime
+source: ./__fixtures__/invalid/layout-parent-not-filterable/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'parentNotFilterable': 'layout' nests records under a property the collection cannot read roots and children by ('managerId')"
+---
+kind: Assert.Manifest
+metadata:
+  name: moveInputsAtRuntime
+source: ./__fixtures__/invalid/layout-move-inputs-unbound/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.BoardLayout 'moveInputsUnbound_layout': 'move.inputs' cannot make a record of the action's input model: required input 'status' is not bound"
+---
+kind: Assert.Manifest
+metadata:
+  name: layoutForwarded
+source: ./__fixtures__/invalid/layout-forwarded/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Admin.Admin/byPriority: 'layout' is forwarded into the Ui.Listing entry 'listing' as 'layout', which checks it as its own field — the Ui.Listing entry 'listing' at 'layout': required by Ui.BoardLayout — groups records by a property the collection does not accept an equality on"
+---
+kind: Assert.Manifest
+metadata:
+  name: layoutExtension
+source: ./__fixtures__/invalid/layout-extension/lib/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Listing/plan at 'layout': required by Rooms.RoomPlan — lays bookings out by a room property the collection does not accept an equality on"
+---
+kind: Assert.Manifest
+metadata:
+  name: layoutExtensionAtRuntime
+source: ./__fixtures__/invalid/layout-extension/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'plan': 'layout' groups records by a property the collection does not accept an equality on ('roomId')"

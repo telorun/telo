@@ -47,6 +47,7 @@ import {
 import { declarationOfInstance } from "../../instance-declaration.js";
 import type { ModuleContext } from "../../module-context.js";
 import { declaringContextOf } from "./declaring-context.js";
+import { forwardedValue } from "./reference-crossing.js";
 import {
   closedBindingsOf,
   expandTemplateInstance,
@@ -129,18 +130,6 @@ interface NestedKindReading {
 
 const UNKNOWN_NESTED_KIND: NestedKindReading = { sites: NO_CEL_EVAL_SITES, schema: undefined };
 
-/**
- * One step of a forwarded `self.<path>`. A path that continues past a reference
- * reads what the referenced resource was DECLARED with — its manifest, whose own
- * reference slots hold live instances by now — wherever the instance itself has
- * no such member, so a body can hand on a value a resource it references holds.
- */
-function memberOf(holder: any, key: string): unknown {
-  const own = holder?.[key];
-  if (own !== undefined) return own;
-  return (declarationOfInstance(holder) as Record<string, unknown> | undefined)?.[key];
-}
-
 /** True when `schema` declares a `default:` anywhere {@link withSchemaDefaults}
  *  would fill one. */
 function declaresDefaults(schema: unknown): boolean {
@@ -189,6 +178,9 @@ export interface TemplateHost {
   referenceSitesOf(resource: ResourceManifest): ReachSite[];
   /** The definitions and alias tables the expansion reads kinds through. */
   analysisContext(): InstanceExpansionInputs["analysis"];
+  /** A declaration as a read past a reference sees it: a named shape with its
+   *  `extends` folded. */
+  readAcrossReference(declaration: ResourceManifest): ResourceManifest;
 }
 
 /** Reports the resources: entries available to dispatch against, by EXPANDED
@@ -389,6 +381,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
           analysis: refPositions.analysisContext(),
           definingContext,
           consumerContext: ctx.moduleContext as unknown as ModuleContext,
+          instanceScope: ctx,
           referenceSitesOf: (entry) => refPositions.referenceSitesOf(entry),
           stampDeclaringModule,
         });
@@ -497,9 +490,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
             const self = getSelf();
             const keys = selfPath[1]!.split(".").slice(1);
             provenance?.graft(segments, provenanceAlong(self, selfProvenance(), keys));
-            let cur: any = self;
-            for (const key of keys) cur = memberOf(cur, key);
-            return cur;
+            return forwardedValue(self, keys, ctx, (declaration) => refPositions.readAcrossReference(declaration));
           }
           provenance?.markComputed(segments);
           // CEL cannot read a member off a live instance, and a ref slot holds

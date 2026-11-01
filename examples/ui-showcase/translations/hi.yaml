@@ -487,9 +487,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: "जनरेट की गई एडमिन स्क्रीन" }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "कार्य मॉडल पर एक घोषणा, जिससे API सर्व होता है: एक फ़िल्टर बार, सॉर्ट होने वाली और पेजों में बँटी तालिका, कार्य जोड़ने का एक फ़ॉर्म और उसे बदलने का एक फ़ॉर्म, और हर पंक्ति पर पुष्टि के साथ हटाना। कॉलम, फ़ील्ड और फ़िल्टर सभी मॉडल से निकाले जाते हैं, इसलिए स्क्रीन ठीक वही देती है जो API स्वीकार करता है।" }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "कार्य मॉडल पर एक घोषणा, जिससे API सर्व होता है: एक फ़िल्टर बार, सॉर्ट होने वाली और पेजों में बँटी तालिका, कार्य जोड़ने का एक फ़ॉर्म और उसे बदलने का एक फ़ॉर्म, और हर पंक्ति पर पुष्टि के साथ हटाना। कॉलम, फ़ील्ड और फ़िल्टर सभी मॉडल से निकाले जाते हैं, इसलिए स्क्रीन ठीक वही देती है जो API स्वीकार करता है।" }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "बार अंतिम किनारे पर तालिका के बगल में रहता है और केवल आपके चुने फ़िल्टर दिखाता है, हर एक ऐसी चिप के रूप में जो उसका कंट्रोल खोलती है। यह अपना चुनाव इस ब्राउज़र में aside कुंजी के तहत रखता है — फ़िल्टर पेज पर तालिका के बगल वाले बार की कुंजी, इसलिए किसी भी पेज पर चुना गया फ़िल्टर दोनों पर चुना रहता है।" }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "नया कार्य अंतिम किनारे से आने वाले ड्रॉअर में खुलता है और अगले कार्य के लिए खाली होकर खुला रहता है। कार्य सूची के बगल वाले पैनल में बदला जाता है, जो पते का हिस्सा है, और बिना सहेजे इनपुट के साथ उसे छोड़ने पर पहले पूछा जाता है।" }
+
+  # Related records.
+  - { text: "Related records", translation: "संबंधित रिकॉर्ड" }
+  - { text: "Posts and their authors", translation: "पोस्ट और उनके लेखक" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "हर पोस्ट अपने लेखक को उसकी कुंजी से बताती है। लेखक स्तंभ इसके बजाय लेखक का नाम दिखाता है, जो पेज के सभी लेखकों के लिए एक ही अनुरोध में पढ़ा जाता है, और बार का लेखक फ़िल्टर हर लेखक को नाम से पेश करता है। बनाने और बदलने के फ़ॉर्म लेखक को लेखकों की एक सूची से चुनते हैं, जिसे नाम से खोजा जाता है।" }
+  - { text: "Only the authors with posts", translation: "केवल पोस्ट वाले लेखक" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "ये फ़िल्टर केवल वे लेखक और स्थितियाँ पेश करते हैं जो बाकी फ़िल्टरों के बाद बची पोस्टों में मौजूद हैं, हर एक के साथ उसकी पोस्टों की संख्या। पोस्ट कार्ड के रूप में बनती हैं, और ब्रेकपॉइंट से नीचे एक सूची के रूप में, जो अंत तक पहुँचने पर और लोड करती है।" }
+  - { text: "On a board by status", translation: "स्थिति के अनुसार एक बोर्ड पर" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "हर स्थिति के लिए एक स्तंभ, हर एक अलग से पढ़ा और गिना जाता है। स्थिति बदलने के लिए किसी कार्ड को दूसरे स्तंभ में खींचें, या उसके मेनू से ले जाएँ; पेज की पोस्टों की हर सूची फिर से पढ़ी जाती है।" }
+  - { text: "On a calendar", translation: "एक कैलेंडर पर" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "पोस्ट उस दिन पर जिस दिन हर एक प्रकाशित होती है, एक बार में एक महीना; दिखाया गया महीना उसमें तारीख वाली हर पोस्ट पढ़ता है। बिना तारीख की पोस्ट कैलेंडर पर नहीं होती।" }
+  - { text: "The authors", translation: "लेखक" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "लेखकों की अपनी स्क्रीन, उनके संग्रह से बनी। यह वही पता पढ़ती है जो पोस्टों का लेखक फ़िल्टर और चयनकर्ता पढ़ते हैं, इसलिए यहाँ जोड़ा गया लेखक वहाँ तुरंत पेश होता है।" }
+  - { text: "Reporting lines as a tree", translation: "रिपोर्टिंग रेखाएँ एक पेड़ के रूप में" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "हर व्यक्ति बताता है कि वह किसे रिपोर्ट करता है, लोगों का खुद से संबंध। पेड़ पहले उन लोगों को पढ़ता है जो किसी को रिपोर्ट नहीं करते, और किसी व्यक्ति को खोलने पर उसके अधीनस्थों को। फ़ॉर्म प्रबंधक को उन्हीं लोगों में से चुनता है।" }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "लेखक" }
+  - { text: "Draft", translation: "मसौदा" }
+  - { text: "Published", translation: "प्रकाशित" }
+  - { text: "Published on", translation: "प्रकाशन तिथि" }
+  - { text: "Reports to", translation: "किसे रिपोर्ट करता है" }
+  - { text: "Post", translation: "पोस्ट" }
 
   # Themes.
   - { text: Four mounts of one design, translation: "एक डिज़ाइन के चार माउंट" }
@@ -609,3 +631,8 @@ texts:
   - text: "Must have at most {$limit} items"
     translation: { plural: limit, cases: { one: "अधिकतम {$limit} आइटम हो सकता है", other: "अधिकतम {$limit} आइटम हो सकते हैं" } }
   - { text: Must not repeat an item, translation: "कोई आइटम दोहराया नहीं जाना चाहिए" }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "और लोड करें" }
+  - { text: "Move to", translation: "यहाँ ले जाएँ" }
+  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
+  - { text: "not set", translation: "सेट नहीं" }

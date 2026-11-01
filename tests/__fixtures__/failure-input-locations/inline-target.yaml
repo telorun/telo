@@ -1,0 +1,17 @@
+# A failing step whose target is declared inline: the failure is located at the
+# first difference inside the step's own `inputs:` — line 17, column 63.
+kind: Telo.Application
+metadata: { name: FailureInlineTarget }
+imports:
+  Assert: ../../../modules/assert
+  Run: ../../../modules/run
+targets: [!ref compare]
+---
+kind: Run.Sequence
+metadata: { name: compare }
+steps:
+  - name: counted
+    value: 2
+  - name: matches
+    invoke: { kind: Assert.Equals }
+    inputs: { actual: { rows: [1, 2] }, expected: { rows: [1, 3] } }

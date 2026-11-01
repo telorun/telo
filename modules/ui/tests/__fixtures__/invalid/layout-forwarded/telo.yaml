@@ -1,0 +1,42 @@
+# A layout written inline at a screen kind that forwards it to the listing its
+# body generates is judged against that listing's collection.
+kind: Telo.Application
+metadata:
+  name: UiInvalidLayoutForwardedApp
+  version: 1.0.0
+imports:
+  Ui: ../../../../
+  DataModel: ../../../../../data-model
+  Admin: ../../admin
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [id, status]
+  properties:
+    id: { type: integer }
+    status: { enum: [open, done] }
+    priority: { enum: [low, high] }
+---
+kind: DataModel.Collection
+metadata: { name: tasks }
+model: !ref Task
+query: { filters: [{ property: status, operator: eq }], sort: [] }
+---
+kind: Ui.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+kind: Admin.Admin
+metadata: { name: byStatus }
+source: !ref tasksSource
+model: !ref Task
+layout: { kind: Ui.BoardLayout, groups: { property: status } }
+---
+kind: Admin.Admin
+metadata: { name: byPriority }
+source: !ref tasksSource
+model: !ref Task
+layout: { kind: Ui.BoardLayout, groups: { property: priority } }

@@ -2,8 +2,7 @@
 # list, style rules, texts and composites. Every application places this view
 # on its `/` page; the `/` application adds the nodes evaluated per request.
 kind: Ui.View
-metadata:
-  name: overviewPage
+metadata: { name: overviewPage }
 content:
   type: stack
   children:
@@ -172,19 +171,20 @@ content:
       text: A row's style and a cell's are chosen by a value of the row. The featured project is strong, each status has its colour, and a status no case names takes the default. Two columns are headed by the same word, Open, told apart by the context each header is written with.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: { kind: Ui.CollectionPresentation, source: !ref projectsSource }
         model: !ref Project
-        collection: !ref projectModel
-        source: { basePath: /api/projects }
-        columns:
-          - value: !cel "row.code"
-          - value: !cel "row.name"
-          - value: !cel "row.status"
-            style: { by: !cel "row.status", cases: { active: success, paused: warning }, default: muted }
-          - value: !cel "row.budget"
-          - { header: { text: Open, context: state }, value: !cel "row.open" }
-          - { header: { text: Open, context: verb }, value: !cel "row.brief" }
-          - value: !cel "row.startedOn"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.code"
+            - value: !cel "row.name"
+            - value: !cel "row.status"
+              style: { by: !cel "row.status", cases: { active: success, paused: warning }, default: muted }
+            - value: !cel "row.budget"
+            - { header: { text: Open, context: state }, value: !cel "row.open" }
+            - { header: { text: Open, context: verb }, value: !cel "row.brief" }
+            - value: !cel "row.startedOn"
         rowStyle: { by: !cel "row.featured", cases: { "true": strong } }
     - type: text
       style: muted
@@ -231,8 +231,7 @@ content:
 ---
 # The page every application lists at /, placing the view.
 kind: Ui.Page
-metadata:
-  name: overviewScreen
+metadata: { name: overviewScreen }
 path: /
 title: Overview
 children:

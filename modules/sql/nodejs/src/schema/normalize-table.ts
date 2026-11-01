@@ -151,10 +151,9 @@ function normalizeColumn(
  * Turns whatever sits at a `references.table` slot into the referenced table's
  * physical name.
  *
- * REQUIRED rather than optional: a `!ref` is not resolved when a controller is
- * constructed — Phase-5 injection runs after `create()` returns — so a caller
- * that omitted one would read the sentinel and reproduce, silently, the exact
- * defect this parameter exists to fix. `tableReferenceResolver` is the one every
+ * REQUIRED rather than optional: the slot is a declaration read, so it always
+ * holds the reference as written, and a caller that omitted the resolver would
+ * read the reference as a name. `tableReferenceResolver` is the one every
  * backend uses.
  */
 export type TableReferenceResolver = (value: unknown, fk: string) => string;

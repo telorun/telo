@@ -1,7 +1,8 @@
 import type { ResourceManifest } from "@telorun/sdk";
-import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
+import { canonicalTypeSchemaId, parseCanonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
-import { moduleAliasScope } from "./module-alias-scope.js";
+import { isTaggedSentinel } from "@telorun/templating";
+import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import { isResolvedReference, RESOLVED_REFERENCE_MARKER } from "./resolved-reference.js";
 
@@ -51,6 +52,9 @@ export function resolveSchemaTypeRefs(
   resources: ResourceManifest[],
   aliases?: AliasResolver,
   aliasesByModule?: Map<string, AliasResolver>,
+  /** The definitions a reference's kind resolves to. With them every other field's
+   *  references to a named shape get the canonical id stamped beside them too. */
+  defs?: ShapeKindSource,
 ): void {
   for (const r of resources) {
     const ownModule = (r.metadata as { module?: string } | undefined)?.module;
@@ -63,7 +67,53 @@ export function resolveSchemaTypeRefs(
     for (const field of SIGNATURE_FIELDS) {
       canonicalizeInPlace((r as Record<string, unknown>)[field], resolveAuthority, ownModule, false);
     }
+    if (!defs) continue;
+    const namesShape = (kind: string): boolean =>
+      definitionInScope(defs, kind, r.metadata, aliases, aliasesByModule)?.capability === "Telo.Type";
+    for (const [field, value] of Object.entries(r)) {
+      if (field === "kind" || field === "metadata" || SCHEMA_FIELDS.includes(field) || SIGNATURE_FIELDS.includes(field)) {
+        continue;
+      }
+      stampShapeReferences(value, resolveAuthority, ownModule, namesShape);
+    }
   }
+}
+
+/** The slice of the definition registry that tells a named shape's kind. */
+export interface ShapeKindSource {
+  resolve(kind: string): { capability?: unknown } | undefined;
+}
+
+/**
+ * Stamps `$ref: "telo:<module>/<Type>"` beside every reference to a named shape,
+ * the module being the one the WRITER's scope resolves it to. The reference stays
+ * a reference; the id travels with it, so a reader holding it — a controller
+ * reading another module's declaration included — resolves the shape its writer
+ * meant rather than whichever shape of that name a registry happens to hold.
+ */
+function stampShapeReferences(
+  value: unknown,
+  resolveAuthority: (authority: string) => string | undefined,
+  ownModule: string | undefined,
+  namesShape: (kind: string) => boolean,
+): void {
+  if (value === null || typeof value !== "object") return;
+  if (isTaggedSentinel(value) || (value as { __compiled?: unknown }).__compiled) return;
+  if (Array.isArray(value)) {
+    for (const item of value) stampShapeReferences(item, resolveAuthority, ownModule, namesShape);
+    return;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return;
+  if (isResolvedReference(value)) {
+    if ((Array.isArray(value.indexes) && value.indexes.length > 0) || !namesShape(value.kind)) return;
+    // Stamped already, in its writer's scope: the id travels with the reference.
+    if (parseCanonicalTypeSchemaId((value as { $ref?: unknown }).$ref)) return;
+    const module = value.alias === undefined || value.alias === "Self" ? ownModule : resolveAuthority(value.alias);
+    if (module) (value as unknown as Record<string, unknown>).$ref = canonicalTypeSchemaId(module, value.name);
+    return;
+  }
+  for (const child of Object.values(value)) stampShapeReferences(child, resolveAuthority, ownModule, namesShape);
 }
 
 /**

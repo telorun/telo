@@ -66,12 +66,12 @@ created, and reads none of them.
 - `focus` — when the window regains focus, and when the page is restored from
   the browser's back/forward cache.
 - `unauthorized` — when a request made by anything drawn inside its `content`
-  answers 401: a table's page, a form's save, an action, a custom component's
+  answers 401: a listing's page, a form's save, an action, a custom component's
   `fetch`, at any depth, across composite placements. Its own read never
   counts, so a refused read cannot loop; a 401 or 403 to its own read draws
   `failure`.
 - When an operation it shares a path with changes it — the path-keyed
-  invalidation tables use.
+  invalidation listings use.
 
 At most one read is in flight; any number of triggers during it cause exactly
 one more read after it, and an answer to an address the reader no longer reads

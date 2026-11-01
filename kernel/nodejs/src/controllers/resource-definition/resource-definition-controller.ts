@@ -23,6 +23,7 @@ import {
 import type { ModuleArtifact } from "../../bundle/module-artifact.js";
 import type { NativeFileModule } from "../../module-file-resolution.js";
 import type { SiblingLibraryMap } from "../../controller-loaders/sibling-libraries.js";
+import type { BundlePreparations } from "../../controller-loaders/bundle-preparations.js";
 import { ControllerLoader } from "../../controller-loader.js";
 import { refuseInvalidCallable, type DefinitionScopeHost } from "./callable-guard.js";
 import { refuseThrowsOutsideCeiling } from "./throws-ceiling-guard.js";
@@ -299,6 +300,7 @@ class ResourceDefinition implements ResourceInstance {
       entryUrl: ctx.getEntryUrl(),
       installRoot: ctx.getInstallRoot(),
       cacheRoot: host.getCacheRoot?.(),
+      bundlePreparations: host.getBundlePreparations?.(),
       log: ctx.log,
       // What resolution reports on its own: the work branches it enters, and
       // the candidates it skipped. Routed through `ctx.emit` so they carry the
@@ -384,6 +386,7 @@ interface KernelResourceContext {
   getSiblingLibraries?(source: string | undefined): SiblingLibraryMap | undefined;
   getDeclaringModule?(source: string | undefined): NativeFileModule | undefined;
   getCacheRoot?(): string | undefined;
+  getBundlePreparations?(): BundlePreparations;
   registerLazyController(
     moduleName: string,
     kindName: string,

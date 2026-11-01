@@ -24,14 +24,14 @@ Model Context Protocol (MCP) server resource kinds for Telo: stdio and Streamabl
 
 ```yaml
 kind: Telo.Application
-metadata: { name: my-stdio-mcp, version: 1.0.0 }
+metadata: { name: MyStdioMcp, version: 1.0.0 }
 imports:
   Mcp: oci://ghcr.io/telorun/mcp-server@0.9.0
-  JS: oci://ghcr.io/telorun/javascript@0.7.0
-targets: [ !ref Server ]
+  Run: oci://ghcr.io/telorun/run@0.13.0
+targets: [ !ref server ]
 ---
 kind: Mcp.StdioServer
-metadata: { name: Server }
+metadata: { name: server }
 serverInfo: { name: my-stdio-mcp, version: 1.0.0 }
 tools: [ !ref WeatherTools ]
 ---
@@ -45,7 +45,7 @@ entries:
       properties:
         city: { type: string }
       required: [ city ]
-    handler: !ref GetWeatherImpl
+    handler: !ref getWeatherImpl
     inputs:
       city: !cel "request.arguments.city"
     result:
@@ -53,12 +53,16 @@ entries:
         - type: text
           text: !cel "result.summary"
 ---
-kind: JS.Script
-metadata: { name: GetWeatherImpl }
-code: |
-  export function main(input) {
-    return { summary: `Sunny in ${input.city}` }
-  }
+kind: Run.Value
+metadata: { name: getWeatherImpl }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [city]
+    properties: { city: { type: string } }
+value:
+  summary: !interpolate "Sunny in ${{ inputs.city }}"
 ```
 
 ## Reference

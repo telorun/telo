@@ -45,7 +45,10 @@ Two annotations work together:
 - `x-telo-eval: accessor` says the field is named, not evaluated.
 - `x-telo-context` declares the **bindings** a chain may start at, and types
   each one. Here `row` is typed from the shape the resource's own `model` names,
-  whether the author gave it inline or by `!ref`.
+  whether the author gave it inline or by `!ref`. The path after the reference
+  may continue past further references: `x-telo-context-ref-from:
+  "source/collection/model"` types `row` from the model of the collection the
+  sibling `source` reads, each entry of a map from its own `source`.
 
 It is the third value of `x-telo-eval`, beside `compile` and `runtime`, and it
 wins over a provider's implicit compile-eval: the field is left out of what the

@@ -1,0 +1,20 @@
+# The failing step sits in a sequence declared inline in another's step.
+kind: Telo.Application
+metadata: { name: FailureNested }
+imports:
+  Assert: ../../../../../modules/assert
+  Run: ../../../../../modules/run
+targets: [!ref outer]
+---
+kind: Run.Sequence
+metadata: { name: outer }
+steps:
+  - name: inner
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - name: counted
+          value: 2
+        - name: matches
+          invoke: { kind: Assert.Equals }
+          inputs: { actual: 2, expected: 3 }

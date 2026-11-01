@@ -16,6 +16,12 @@
 # it from this ARG and injects it into the tag matrix.
 #
 # Bump RUST_VERSION when a controller dependency requires it.
+#
+# Every target runs as the base image's `node` user (uid/gid 1000, HOME
+# /home/node) and owns /workspace, so a manifest, its `.telo` cache and a
+# `TELO_HOST_STATE_DIR` volume need no root. A derived image that must install
+# packages switches with `USER root` and back with `USER node`. There is no
+# HEALTHCHECK: the image cannot know an application's route.
 
 ARG RUST_VERSION=1.95.0
 
@@ -43,7 +49,10 @@ COPY --from=build /deploy/ /opt/telo/
 COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
 RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
  && chmod +x /usr/local/bin/telo-entrypoint.sh
+# Created and chowned before USER so a volume mounted here inherits the owner.
+RUN mkdir -p /workspace && chown node:node /workspace
 WORKDIR /workspace
+USER node
 # Smart entrypoint (mirrors node's docker-entrypoint.sh): a bare manifest path or
 # flag is routed to `telo`, while `bash`/`node`/`telo …` run verbatim. A derived
 # image can write `CMD ["telo", "--watch", "."]` or the terse `CMD ["./telo.yaml"]`.
@@ -56,7 +65,10 @@ COPY --from=build /deploy/ /opt/telo/
 COPY cli/nodejs/docker-entrypoint.sh /usr/local/bin/telo-entrypoint.sh
 RUN ln -s /opt/telo/bin/telo.mjs /usr/local/bin/telo \
  && chmod +x /usr/local/bin/telo-entrypoint.sh
+# Created and chowned before USER so a volume mounted here inherits the owner.
+RUN mkdir -p /workspace && chown node:node /workspace
 WORKDIR /workspace
+USER node
 ENTRYPOINT ["telo-entrypoint.sh"]
 CMD ["telo"]
 
@@ -86,6 +98,7 @@ CMD ["telo"]
 
 FROM lean-slim AS rust-slim
 ARG RUST_VERSION
+USER root
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     CARGO_TARGET_DIR=/tmp/cargo-target \
@@ -101,3 +114,7 @@ RUN apt-get update \
   && rm -rf ${RUSTUP_HOME}/toolchains/*/share \
             ${RUSTUP_HOME}/downloads ${RUSTUP_HOME}/tmp \
   && chmod -R 0777 ${RUSTUP_HOME} ${CARGO_HOME}
+
+# Back to the unprivileged user; the toolchain stays world-writable so a
+# `pkg:cargo` build works under any uid a runtime assigns.
+USER node

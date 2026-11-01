@@ -474,9 +474,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: "생성된 관리 화면" }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "API를 제공하는 작업 모델에 대한 선언 하나로 필터 바, 정렬과 페이지 나누기가 되는 테이블, 작업 추가 폼과 변경 폼, 모든 행의 확인을 거치는 삭제가 만들어집니다. 열, 필드, 필터는 모두 모델에서 파생되므로 화면은 API가 받는 것을 정확히 제공합니다." }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "API를 제공하는 작업 모델에 대한 선언 하나로 필터 바, 정렬과 페이지 나누기가 되는 테이블, 작업 추가 폼과 변경 폼, 모든 행의 확인을 거치는 삭제가 만들어집니다. 열, 필드, 필터는 모두 모델에서 파생되므로 화면은 API가 받는 것을 정확히 제공합니다." }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "필터 바는 끝 가장자리에서 테이블 옆에 놓이며 선택한 필터만 보여 주고, 각 필터는 컨트롤을 여는 칩입니다. 선택은 이 브라우저에 aside 키로 유지됩니다. 이 키는 필터 페이지에서 테이블 옆에 있는 필터 바의 키이므로, 어느 페이지에서 고른 필터든 두 페이지 모두에 선택됩니다." }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "새 작업은 끝 가장자리에서 나오는 드로어에서 열리며, 비워진 채로 다음 작업을 위해 열려 있습니다. 작업은 목록 옆의 패널에서 변경하며, 이 패널은 주소의 일부이고 저장하지 않은 입력이 있을 때 벗어나려 하면 먼저 묻습니다." }
+
+  # Related records.
+  - { text: "Related records", translation: "관련 레코드" }
+  - { text: "Posts and their authors", translation: "게시물과 작성자" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "각 게시물은 작성자를 키로 가리킵니다. 작성자 열은 대신 작성자의 이름을 보여 주며, 페이지의 모든 작성자를 한 번의 요청으로 읽습니다. 막대의 작성자 필터는 모든 작성자를 이름으로 제시합니다. 만들기와 편집 양식은 이름으로 검색하는 작성자 목록에서 작성자를 고릅니다." }
+  - { text: "Only the authors with posts", translation: "게시물이 있는 작성자만" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "이 필터는 다른 필터가 남긴 게시물에 있는 작성자와 상태만 각각의 게시물 수와 함께 제시합니다. 게시물은 카드로 그려지고, 중단점 아래에서는 끝에 다다르면 더 불러오는 목록으로 그려집니다." }
+  - { text: "On a board by status", translation: "상태별 보드" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "상태마다 한 열이며, 각 열은 따로 읽고 셉니다. 상태를 바꾸려면 카드를 다른 열로 끌거나 메뉴에서 옮기세요. 페이지의 모든 게시물 목록을 다시 읽습니다." }
+  - { text: "On a calendar", translation: "달력에서" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "게시물은 각각 게시되는 날에, 한 번에 한 달씩 표시됩니다. 표시된 달은 그 달에 날짜가 있는 모든 게시물을 읽습니다. 날짜가 없는 게시물은 달력에 없습니다." }
+  - { text: "The authors", translation: "작성자" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "작성자 자신의 화면으로, 그 컬렉션에서 생성됩니다. 게시물의 작성자 필터와 선택기가 읽는 같은 주소를 읽으므로, 여기서 추가한 작성자는 그곳에서 바로 제시됩니다." }
+  - { text: "Reporting lines as a tree", translation: "트리로 본 보고 체계" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "각 사람은 자신이 보고하는 사람을 가리킵니다. 사람들이 자기 자신과 맺는 관계입니다. 트리는 먼저 아무에게도 보고하지 않는 사람을 읽고, 사람을 펼치면 그 부하 직원을 읽습니다. 양식은 같은 사람들 중에서 관리자를 고릅니다." }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "작성자" }
+  - { text: "Draft", translation: "초안" }
+  - { text: "Published", translation: "게시됨" }
+  - { text: "Published on", translation: "게시일" }
+  - { text: "Reports to", translation: "상급자" }
+  - { text: "Post", translation: "게시물" }
 
   # Themes.
   - { text: Four mounts of one design, translation: "하나의 디자인, 네 개의 마운트" }
@@ -596,3 +618,8 @@ texts:
   - text: "Must have at most {$limit} items"
     translation: "항목이 {$limit}개 이하여야 합니다"
   - { text: Must not repeat an item, translation: "항목이 중복되면 안 됩니다" }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "더 불러오기" }
+  - { text: "Move to", translation: "이동" }
+  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
+  - { text: "not set", translation: "설정 안 됨" }

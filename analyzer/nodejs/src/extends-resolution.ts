@@ -1,5 +1,6 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 import { mergeTypeSchemas } from "@telorun/sdk";
+import { joinInheritedRules, RULE_ANNOTATIONS } from "./rule-inheritance.js";
 
 /** Resolves a kind string (canonical or alias form, depending on the caller's
  *  registry) to its `Telo.Definition` / `Telo.Abstract`, or undefined.
@@ -129,7 +130,9 @@ export function inheritedCapability(
  *    fields are internal, set solely through `base:`).
  *  - without `base:` but with `extends` → `merge(parent-effective, own)` (a pure
  *    additive extension; child overrides on key conflicts), reusing the same
- *    `mergeTypeSchemas` that `Type.JsonSchema.extends` uses.
+ *    `mergeTypeSchemas` that `Type.JsonSchema.extends` uses — except the two
+ *    rule annotations, which join the parent's rules and the child's
+ *    (`rule-inheritance.ts`).
  *  - no `extends` → the own schema unchanged. */
 export function effectiveAuthorSchema(
   def: ResourceDefinition | undefined,
@@ -140,7 +143,35 @@ export function effectiveAuthorSchema(
   if (!parent) return own;
   if (body(def).base) return own;
   const parentSchema = effectiveAuthorSchema(parent, resolve);
-  return mergeTypeSchemas([parentSchema, own]) as Record<string, any>;
+  const merged = mergeTypeSchemas([parentSchema, own]) as Record<string, any>;
+  for (const annotation of RULE_ANNOTATIONS) {
+    const joined = joinInheritedRules(annotation, parentSchema[annotation], own[annotation]);
+    if (joined !== undefined) merged[annotation] = joined;
+  }
+  return merged;
+}
+
+/**
+ * The definitions whose own schemas {@link effectiveAuthorSchema} folds into
+ * `def`'s, the root-most first and `def` last: the `extends` chain up to and
+ * including the first with `base:`, whose author schema is its own.
+ */
+export function authorSchemaChain(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+): ResourceDefinition[] {
+  if (!def) return [];
+  const chain: ResourceDefinition[] = [def];
+  const seen = new Set<ResourceDefinition>(chain);
+  let cur = def;
+  while (!body(cur).base) {
+    const parent = resolveParent(cur, resolve);
+    if (!parent || seen.has(parent)) break;
+    seen.add(parent);
+    chain.push(parent);
+    cur = parent;
+  }
+  return chain.reverse();
 }
 
 /**

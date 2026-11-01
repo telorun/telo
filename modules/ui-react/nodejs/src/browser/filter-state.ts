@@ -1,5 +1,6 @@
 import { filterParam, type Operator, type Param } from "./collection.js";
 import { FILTER_KEYS } from "./open-address.js";
+import type { OptionSourceSpec } from "./option-source.js";
 import type { ValueLabel, WireText } from "./texts.js";
 import { plainTypes, type JsonSchema } from "./validation.js";
 
@@ -17,6 +18,10 @@ export interface FilterField {
   /** Kept outside whatever the bar folds into, and never removable. */
   pinned: boolean;
   control: Control;
+  /** Every value the choices offer, or only those present under the bar's other filters. */
+  values: "all" | "present";
+  /** Where the choices are records: the property's relation, or the field's own source. */
+  options?: OptionSourceSpec;
   default?: Scalar[];
 }
 
@@ -39,6 +44,8 @@ export const filterKey = (filter: { property: string; operator: Operator }): str
 /** Whether a filter can hold a value, by its property's type and listed values. */
 function holds(field: FilterField, value: string): boolean {
   if (value === "") return false;
+  // Whether a property is absent is asked for, or nothing is.
+  if (field.operator === "absent") return value === "true";
   // A switch is on or holds nothing.
   if (field.control === "toggle" && value === "false") return false;
   const listed = Array.isArray(field.schema.enum) && (field.operator === "eq" || field.operator === "in");

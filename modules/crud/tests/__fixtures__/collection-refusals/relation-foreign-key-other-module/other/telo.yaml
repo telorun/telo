@@ -1,0 +1,16 @@
+# Its table is named like the authors' table resource, and stores another table.
+kind: Telo.Library
+metadata:
+  name: CrudRelationForeignKeyOtherModuleOther
+  version: 1.0.0
+  description: Test fixture exporting a table resource named like another module's, stored in the table `other_authors`.
+imports:
+  SQLite: ../../../../../../sqlite
+exports:
+  resources: [authorsTable]
+---
+kind: SQLite.Table
+metadata: { name: authorsTable }
+table: other_authors
+columns:
+  id: { type: integer, primaryKey: true }

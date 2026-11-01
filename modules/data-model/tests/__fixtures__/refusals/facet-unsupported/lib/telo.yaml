@@ -1,0 +1,32 @@
+# A collection `telo check` refuses where it is declared; a consumer's check
+# sees nothing, so there the collection refuses itself when it is created.
+kind: Telo.Library
+metadata:
+  name: DataModelFacetUnsupported
+  version: 1.0.0
+  description: Test fixture exporting a collection refused as DATA_MODEL_FACET_UNSUPPORTED.
+imports:
+  DataModel: ../../../../../
+exports:
+  resources: [collection]
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id, title, done]
+  properties:
+    id: { type: integer }
+    title: { type: string }
+    done: { type: boolean }
+    tags: { type: array, items: { type: string } }
+    note: { type: [string, "null"] }
+    summary: { type: string }
+---
+kind: DataModel.Collection
+metadata: { name: collection }
+model: !ref Post
+query:
+  filters: []
+  sort: []
+  facets: [{ property: done }, { property: tags }]

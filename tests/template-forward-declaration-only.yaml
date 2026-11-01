@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: TemplateForwardDeclarationOnlyTest
+  version: 1.0.0
+  description: |
+    A template body, a repeat's binding or a `base:` mapping forwarding a path past a reference
+    reads what the resource was declared with, never a member of its instance —
+    a method or a value of the same name included — and past a `base:` child,
+    the child's own fields.
+imports:
+  Lib: ./__fixtures__/template-forward-declaration-only
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verifyDeclarationOnly
+---
+kind: Lib.Source
+metadata: { name: source }
+label: declared label
+collection: { name: declared }
+---
+kind: Lib.Labeled
+metadata: { name: labeled }
+title: declared title
+---
+kind: Run.Sequence
+metadata: { name: verifyDeclarationOnly }
+steps:
+  - name: read
+    invoke: { kind: Lib.Reader, source: !ref source }
+  - name: checkRead
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.read.result"
+      expected: { collection: declared, label: declared label }
+  - name: title
+    invoke: { kind: Lib.TitleReader, source: !ref labeled }
+  - name: checkTitle
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.title.result"
+      expected: declared title
+  - name: echo
+    invoke: { kind: Lib.CollectionEcho, source: !ref source }
+  - name: checkEcho
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.echo.result"
+      expected: { collection: declared, label: declared label }
+  - name: list
+    invoke: { kind: Lib.Lister, sources: [!ref source] }
+  - name: checkList
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.list.result"
+      expected: [{ collection: declared, label: declared label }]

@@ -1,27 +1,8 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and publishes module artifacts to an OCI registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and lists the built-in vocabulary with `telo builtins`, selects the files a change reaches with `telo changed`, plans module version bumps with `telo release`, and publishes module artifacts to an OCI registry with `telo publish`.
 
-## Installation
-
-```bash
-npm install -g @telorun/cli
-# or
-pnpm add -g @telorun/cli
-```
-
-## Quick Start
-
-```bash
-# Run a local manifest
-telo ./examples/hello-api
-
-# Run from a remote URL
-telo https://raw.githubusercontent.com/telorun/telo/main/examples/hello-api/telo.yaml
-
-# Watch mode - auto-restart on file changes
-telo --watch ./manifest.yaml
-```
+For installation and a first run, see the [getting started guide](/learn/getting-started).
 
 ## Global options
 
@@ -48,11 +29,320 @@ A monorepo therefore keeps its cache at the workspace root, which matters when y
 
 - `0` — the command did its work.
 - `1` — the work failed: a manifest that does not load or that `telo check` refuses, an application argument the manifest does not declare, a name `telo builtins` does not know.
-- `2` — the invocation was refused before any work began, with the reason on stderr and nothing on stdout: an unknown flag, a missing argument or subcommand, a value outside an option's choices (`-o yaml`), `TELO_APP_CLI` set to anything but `1` or empty, a packaged application started with `TELO_APP_INFO`, a `telo runner` bind, port or state directory it refuses.
+- `2` — the invocation was refused before any work began, with the reason on stderr and nothing on stdout: an unknown flag, a missing argument or subcommand, a value outside an option's choices (`-o yaml`), `TELO_APP_CLI` set to anything but `1` or empty, a packaged application started with `TELO_APP_INFO`, a `telo runner` bind, port, state directory or container-runner setting (`RUNNER_SESSION_USER`) it refuses.
 
 `telo run` and a packaged application exit with the application's own status; `2` there still means the CLI refused its own options before the manifest path. A first word that names no command is a manifest path, so `telo frobnicate` is a run of `./frobnicate`, and fails with `1`.
 
 ## Commands
+
+### `telo run <path>` (default)
+
+Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.yaml` and `telo run ./manifest.yaml` are the same thing.
+
+**Arguments:**
+
+- `path` - Path to a YAML manifest file, a directory containing `telo.yaml`, an HTTP(S) URL, or a published application's OCI ref. A pinned ref — `oci://<host>/<repo>@<version>#sha256-<pin>` — is verified against its pin before anything runs, and a mismatch names the ref, the expected pin and the actual one; an unpinned ref runs unverified. See [Distributing an application](/learn/distributing-an-application).
+
+**Options:**
+
+- `--watch, -w` - Watch manifest file(s) for changes and restart automatically. Each generation runs as a plain run would: an application that finishes is torn down and its exit code reported (with `--debug` / `--inspect`, as `Kernel.Stopped` with its `exitCode`), and the session waits for the next change; a server keeps serving until a change restarts it.
+- `--debug` - Write every kernel event, in order, to `.telo.debug.jsonl` next to the manifest. No network, no UI — the file is the machine-readable record of a run. `telo run` is exempt from `-o json` (the app owns stdout/stderr), so this is the machine surface for a run.
+- `--inspect[=[host:]port]` - Start the live inspection endpoint (default `127.0.0.1:9230`), serve the inspection UI and open it in a browser. Holds the app open even when it would otherwise exit. The endpoint streams event payloads — inputs and outputs of every call — so binding a non-loopback host is warned about; mark credentials with [`x-telo-sensitive`](/extend/sensitive-contract-fields) so they ride the wire as `[redacted]`.
+- `--no-open` - With `--inspect`, do not open the browser.
+- `--no-input` - Never ask for an input nothing supplies. Without it, a run whose stdin and stderr are both a terminal asks for each missing `variables:` / `secrets:` / `ports:` value and required need field (a secret without echo), then offers to save the answers to `.env` / `.env.local`; with it, or with no terminal, the load is refused naming them. Every runner passes it. See [Being asked for what is missing](/learn/configuration#being-asked-for-what-is-missing).
+- `--no-cache-write` - Validate in-memory and read the existing `.telo` cache, but never persist new derived entries (compiled validators, analysis stamp). For ephemeral, read-only runs (e.g. a prebuilt container whose deps are baked at `TELO_CACHE_DIR`); the cache is still used, only writes are suppressed.
+- `--` - Ends `telo`'s own options. Every token after the manifest path is the application's own whether or not `--` appears: it is read against the `arg:` bindings of the root Application's `variables:` / `ports:` entries, and a token it does not declare is refused before boot. `telo run <path> --help` prints the application's usage. No controller reads the command line (spec: `kernel/specs/application-arguments.md`).
+
+See [Global options](#global-options) for `--verbose`, `-o` and the cache root.
+
+
+---
+
+### `telo check <paths..>`
+
+Statically validates one or more manifests without running them. Uses the Telo analyzer to check schema correctness, `x-telo-ref` references, CEL expression types, and resource scope visibility. Exits with code 1 if any errors are found.
+
+```bash
+telo check ./manifest.yaml
+telo check ./modules/my-module/telo.yaml
+telo check https://example.com/manifest.yaml
+```
+
+Accepts local paths, directories containing a `telo.yaml`, packaged executables (`telo package`), or HTTP(S) URLs.
+
+Imports resolve through the same `.telo/manifests/` cache `telo run` reads, and `check` writes through to it after a successful load (disable with `--no-cache-write`). Freshness depends on how the import addresses its target:
+
+- **Pinned** (`…@1.2.3#sha256-…`, or an `@sha256:` reference) — verified against the hash on read, so a repeat check of a fully pinned manifest needs no network at all.
+- **Mutable OCI tag** — revalidated with one `HEAD` per reference against the digest recorded in `.telo/manifests/.origins.json`. If the tag has moved, that entry is dropped and refetched.
+- **HTTP(S) URL** — never read from the cache by `check`, since its key carries no version segment and a hit would be served indefinitely. Always re-fetched (one request, the same cost revalidating would have).
+
+One loader serves every path in a single invocation, so `telo check a b c` resolves a module shared between them once.
+
+**Example output:**
+
+```
+manifest.yaml:14:5  error    No Telo.Definition found for kind "Http.Srver".  UNDEFINED_KIND
+manifest.yaml:22:7  warning  variables.port is declared but never referenced in any CEL expression.  UNUSED_DECLARATION
+
+1 error, 1 warning
+```
+
+Every code is listed in the [diagnostics reference](/reference/diagnostics),
+along with what triggers it and how to fix it.
+
+On success:
+
+```
+✓  No issues found
+```
+
+
+---
+
+### `telo describe <manifest>`
+
+Prints what an application or library does, read from its manifest with nothing booted: its inputs — every `variables:` / `secrets:` / `ports:` / `needs:` entry with its environment variable and command-line argument, and the resource fields whose expressions read it — what it starts at boot, and the tree of what each started resource reaches. Every entry point (a route, a schedule, a consumer) is labelled by what selects it (`routes path=/orders method=POST`), with what its handler can throw and, per code, which `catches:` entry renders it on each rung of the ladder — the route's own list, its router's, each server mounting it — or that nothing does. Resources declared and reached by nothing are listed last.
+
+```bash
+telo describe ./orders
+telo describe -o json ./orders
+```
+
+Every value is shown as written: an expression with its tag (`!cel "variables.sweepEvery"`) and its type where the analyzer has one, a reference as `!ref <name>`, a literal mapping as `{k: v}`, and a string inside a list or a mapping quoted, so a literal string never reads as an expression or a mapping; nothing is evaluated. Under `-o json` an expression or reference is `{ "tag", "source", "type"? }` and a literal mapping `{ "map": { … } }`, so a literal never reads as an expression. A secret appears by name and binding, never by value or default. A resource is shown by its kind, what it throws and its deprecation — never its configuration — and a resource reached a second time is named rather than expanded again.
+
+Under `-o json` it writes the outline document (`outlineVersion: 1`; later versions only add to it): `module`, `inputs`, `boot`, `roots`, `entryPoints`, `resources` and `unreached`, every item identified by the id the editor's module graph gives the same manifest path. It reads a manifest as `telo check` reads one — a file, a directory holding `telo.yaml`, a packaged executable, or an HTTP(S) URL — a library included. A packaged executable describes byte for byte as its own manifest does. A manifest `telo check` refuses has no outline: its errors are printed on stderr, nothing on stdout, and the command exits 1.
+
+
+---
+
+### `telo install <paths..>`
+
+Pre-downloads every controller declared by a manifest and its transitive imports into the on-disk cache, and persists every imported manifest's YAML alongside it. At runtime the kernel finds each controller already installed AND resolves every import from disk — boot does zero network I/O.
+
+Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. **For a platform you NAME, a module layer that did not materialize is also a failure** — a fetch that could not complete, or a layer constraining an axis the target leaves undetermined (pass `--abi <family>-<version>` beside `--platform os/arch[/libc]`). The tree such an install produces is the only cache its consumer has — a baked image, a packaged application — so a skipped layer would otherwise surface as a boot failure on another machine. Without `--platform` the target is this machine, whose ABI is used automatically, and a gap is a warning: `telo run` here still fetches what it needs. Subsequent runs are idempotent — already-cached packages are skipped, and manifest cache files are overwritten with freshly fetched bytes.
+
+```bash
+telo install ./apps/my-app/telo.yaml
+telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
+```
+
+**Environment:**
+
+- `TELO_PKG_MANAGER` — Override the package manager invoked for controller installs. Defaults to `npm`. Set to `pnpm` (or any compatible CLI) when the runtime environment ships a different manager.
+
+The cache lives under the **cache root** — `.telo/` beside the manifest, or beside `telo-workspace.yaml` when one sits above it (see [Global options](#global-options)):
+
+- `.telo/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
+- `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
+- `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry by tag; a digest reference is cached under `…/sha256-<hex>/telo.yaml` (`:` cannot be written on Windows), and a library shipped inside an artifact at its path in the manifest layer below it (`…/sha256-<hex>/chat/telo.yaml`, `…/sha256-<hex>/ordering.yaml`). A tag spelled `sha256-<64 hex>` is refused.
+- `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
+- `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference, and a run reads it to identify the libraries shipped inside a cached artifact; a pinned import needs no entry for `check`, since its bytes are verified against the ref's own hash.
+
+Every manifest entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
+discovery hub uses for its cached manifests.
+
+The whole `.telo/` tree is portable: `COPY` the directory that holds it into your image and both caches travel with it. Without a workspace marker that is the manifest's own directory; with one it is the marker's — copy that, or pin the location with `TELO_CACHE_DIR` in both build and production stages.
+
+**Example output:**
+
+```
+Installing 20 controllers for apps/my-app/telo.yaml
+  ✓  pkg:telo/local/js?path=./nodejs/server.mjs
+  ✓  pkg:telo/local/js?path=./nodejs/request.mjs
+  ...
+
+✓  20 installed in 3.2s
+```
+
+A bundled controller (`pkg:telo/local/js`) ships inside its module's own artifact, so
+"installing" it is materializing that artifact's controller layer — nothing is fetched
+from npm. A `pkg:npm` candidate still resolves through the npm cache above.
+
+**Typical Dockerfile usage:**
+
+```dockerfile
+FROM telorun/node:latest-slim as build
+WORKDIR /workspace
+COPY --chown=node:node apps/my-app/ apps/my-app/
+COPY --chown=node:node modules/ modules/
+RUN telo install apps/my-app/telo.yaml
+
+FROM telorun/node:latest-slim as production
+WORKDIR /workspace
+COPY --from=build --chown=node:node /workspace /workspace
+CMD ["telo", "apps/my-app/telo.yaml"]
+```
+
+Available image variants:
+
+- `telorun/node:<version>` — debian base, no rust toolchain.
+- `telorun/node:<version>-slim` — debian-slim base, no rust toolchain (smallest footprint; recommended for production).
+- `telorun/node:<version>-rust-<rust-version>` — slim + rust toolchain (controllers that compile native deps at install time).
+- `telorun/node:<version>-rust-<rust-version>-slim` — the same image, under its historical name.
+
+Every variant runs as the unprivileged `node` user (uid 1000) in `/workspace`, which it owns; copy files in with `--chown=node:node`.
+
+Pin to an exact CLI version for reproducible builds; `latest`, `<major>`, and `<major>.<minor>` are rolling tags.
+
+The build stage materializes `.telo/npm/` and `.telo/manifests/` under the cache root; the production stage is a single `COPY` and does no network I/O at boot.
+
+
+---
+
+### `telo upgrade <paths..>`
+
+Scans one or more manifests for remote `imports:` entries — an OCI ref (`oci://host/repo@tag`) — asks each ref's transport for the latest published version, and rewrites the source in place when a newer version is available. Both the scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`) are handled. Version enumeration, ref reconstruction, and integrity hashing are all delegated to the transport that owns the ref's scheme, so every backend Telo can resolve is also upgradeable — the command never special-cases a scheme. The rewrite operates at the byte level: only the version characters of changed source values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the source value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
+
+Accepts the same path shapes as `check` / `install`: a manifest file, a directory containing a `telo.yaml`, or several of those mixed. By default only the imports declared in the files you pass are inspected; pass `--recursive` / `-r` to also follow relative (local) imports into their sibling manifests and upgrade those too.
+
+```bash
+telo upgrade ./apps/my-app/telo.yaml
+telo upgrade ./apps/my-app                       # directory → ./apps/my-app/telo.yaml
+telo upgrade ./apps/a ./apps/b --dry-run
+telo upgrade ./apps/my-app --recursive           # follow ./relative imports too
+telo upgrade ./manifest.yaml --include-prerelease
+telo upgrade ./examples/todo-app --pin-local     # relative import of a released module → its pin
+```
+
+**Options:**
+
+- `--include-prerelease` — Consider versions with a SemVer prerelease segment (e.g. `1.0.0-beta.1`) when picking the latest. Off by default — prereleases are ignored unless the flag is set.
+- `--dry-run` — Show the proposed rewrites without touching any files.
+- `--recursive`, `-r` — Follow relative (local) imports and upgrade their manifests too. Cycle-safe, and each file is upgraded at most once even when reached from several manifests. Remote refs (OCI / HTTP) are always upgraded in place; recursion only descends into on-disk siblings.
+- `--pin-local` — Rewrite a relative import of a released module to its published pin (`../../modules/sql` → `oci://host/org/sql@0.27.0#sha256-…`). It is for a repository that holds both modules and their consumers: a consumer imports a module by relative path while a change to it is unreleased, and this turns the import back once the change has shipped. An import is rewritten only when all of these hold: its target is a module of a [release workspace](https://telo.run/extend/releasing-modules); the release plan (`telo release status`) has no pending bump for it, so the published artifact is what the working copy holds; and that version exists at the registry. Otherwise the import stays relative and the reason is printed — `kept local — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`. A relative import of anything else (an application's own `./database` library) is left exactly as without the flag, and so is a manifest that sits inside the module it imports. Applies only to the manifests named on the command line, never to one reached through `--recursive`: a released module's own relative imports are what its release is planned along. Building the plan builds every module of the workspace, once per invocation.
+- `--registry <oci://host/org>` — With `--pin-local`: the publish destination base for modules whose workspace entry declares none, as for `telo release`.
+
+**Behavior per import:**
+
+| Pinned version state | Action | Log marker |
+| --- | --- | --- |
+| Equal to the latest published | leave unchanged | `=  already at <ver>` |
+| Lower than the latest, and itself published | rewrite to latest | `↑  <old> → <new>` |
+| Not present in the origin's version list | rewrite to latest (repair) — flagged with `(pinned version not published)`. Direction can be downward if the broken pin is higher than anything published. | `↑` or `↓` |
+| Module not found (404) / no eligible versions after filtering | leave unchanged, report | `!  no published versions` |
+| Remote ref with no comparable version — a bare `https://` URL, an OCI digest pin (`@sha256:…`), or a moving tag like `latest` | leave unchanged | `·  skipped (not version-pinned)` / `!  unparseable current version` |
+| `source` is a relative / absolute local path | leave unchanged (or follow under `--recursive`) | `·  skipped (local import — use --recursive to follow)` |
+| `source` is not a remote ref at all | leave unchanged | `·  skipped (not a remote ref)` |
+
+A non-existent pin is always treated as broken and repaired against the origin — leaving an unbootable pin in place would defeat the point of the command — but the rewrite is annotated so the action is visible. Network or non-404 errors are surfaced per import and produce a non-zero exit code; other imports in the same file still get processed.
+
+**Example output:**
+
+```text
+Upgrading apps/my-app/telo.yaml
+  ↑  oci://ghcr.io/telorun/run  0.2.4 → 0.2.7
+  ↑  oci://ghcr.io/telorun/http-server  0.19.1 → 0.20.0
+  =  acme/lib  already at 2.0.0
+  ↓  oci://ghcr.io/telorun/foo  9.9.9 → 0.4.1  (pinned version not published)
+  !  oci://ghcr.io/telorun/does-not-exist  no published versions
+  ·  ../sibling  skipped (local import — use --recursive to follow)
+
+3 upgraded, 1 already current, 2 skipped
+```
+
+
+---
+
+### `telo migrate <paths..>`
+
+Rewrites legacy spellings in a manifest to their current form.
+
+Telo occasionally renames something a manifest can say — a schema annotation, a keyword, a value grammar. Because published artifacts carry the old spelling and cannot be edited, the loader rewrites every legacy spelling **in memory** on the way in: the old form and the new one behave identically, on every kernel. `telo migrate` applies the same rewrites to your file, so the source says what the runtime already reads.
+
+**Running it is never a prerequisite for your manifest to work.** It is a repair of the text, offered because `telo check` reports each legacy spelling as a deprecation warning and a warning you cannot act on is not actionable.
+
+```bash
+telo migrate ./manifest.yaml
+telo migrate ./apps/my-app                  # directory → ./apps/my-app/telo.yaml
+telo migrate ./apps/a ./apps/b
+```
+
+The rewrite operates at the byte level, exactly as `telo upgrade`'s does: comments, indentation, folded block scalars (`>-` / `|`), quote style and every byte outside the rewritten ranges are preserved. A file with nothing to migrate is not touched.
+
+**Scope.** Only the manifest you name and its `include:` partials are rewritten. Imported modules are left alone — a published dependency is not yours to fix, and its author is the only person who can. That is the same rule that decides which deprecation warnings `telo check` shows you.
+
+**Example output:**
+
+```text
+ref-slot-scalar-type  modules/mine/telo.yaml  3 rewrites
+
+3 rewrites in 1 file. Imported modules were not touched.
+```
+
+A rewrite the loader applies in memory can still be unwritable in place — a flow-style sequence has no item line to extend, a block scalar's span covers the newline that ended its mapping entry, and two rewrites whose byte spans overlap cannot both be spliced. Those locations are reported on stderr rather than skipped silently, since the diagnostic that sent you here says to run this command; each needs a hand edit:
+
+```text
+!  ref-slot-scalar-type  modules/mine/telo.yaml  targets  could not be rewritten in place (the YAML there cannot carry the edit) — fix it by hand
+```
+
+Under `-o json` the payload is `{ ok, rewrites, unwritable, files: [{ file, rewrites: [{ migration, count }], unwritable: [{ migration, path }] }] }`.
+
+
+---
+
+### `telo builtins [names..]`
+
+Print the built-in vocabulary of this telo — every kind, fragment, value type, zone attribute and format a manifest uses without an import — as the `Telo.Builtins` archive the CLI was built with. With names, print only those entries, joined by `---` in argument order.
+
+```bash
+telo builtins                  # the whole archive
+telo builtins Application Step # a kind (with or without `Telo.`) and a fragment
+telo builtins Telo.Url atomic  # a value type and a zone attribute
+```
+
+**Arguments:**
+
+- `names` - Entries to print: a kind or need type (`Application` or `Telo.Application`), a fragment (`Step`), a value type (`Telo.Url`), a zone attribute (`atomic`) or a format (`css-selector`). A name that selects nothing writes the names there are to stderr and exits `1`.
+
+Under `-o json` the output is one JSON string. Another release's vocabulary is `telo module manifest oci://ghcr.io/telorun/telo@<X>`, where `X` is that release's version.
+
+---
+
+### `telo changed <globs..>`
+
+List the files matching the globs that a change since a git ref reaches — what CI uses to run only the manifest tests a pull request can break.
+
+```bash
+telo changed 'modules/*/tests/*.yaml' --base origin/main
+```
+
+**Arguments:**
+
+- `globs` - Telo-glob patterns resolved against the working directory; a leading `!` excludes. A `telo.yaml` is affected through its directory and its relative imports, any other Telo manifest through itself, its `__fixtures__/` and its relative imports, and any other file through itself.
+
+**Options:**
+
+- `--base <ref>` - Git ref the diff is taken against (a three-dot diff: `base...HEAD`). Default `origin/main`.
+
+Output is one file per line, or `{ base, diffed, affected, unaffected }` under `-o json`. The exit code carries only failure: `0` is an answer, empty or not. When the diff cannot be taken (no merge base, base ref not fetched), every matched file is reported affected, with a warning on stderr. Outside a git repository the command fails.
+
+---
+
+### `telo release <subcommand>`
+
+Plan and apply module version bumps across a workspace. Full guide: [Releasing modules](/extend/releasing-modules).
+
+| Subcommand | What it does |
+| --- | --- |
+| `add` | Write a pending fragment (`.changes/pending/*.yaml`) describing a change: `--module <path>` (repeatable, required), `--body <changelog line>` (required), `--kind Added\|Changed\|Deprecated\|Removed\|Fixed\|Security` (default `Fixed`) |
+| `status` | Show what would bump and why |
+| `order` | List the workspace's modules in publish order, a dependency before its dependents |
+| `check` | Fail when no consistent release plan can be formed |
+| `apply` | Write versions, changelogs and the ledger, and consume the fragments; `--date YYYY-MM-DD` sets the changelog date (default today) |
+| `verify` | Reconcile the ledger against the registry; `--write` re-records the ledger from what the registry serves |
+| `stage` | Fetch and verify the files each module's `sources:` block declares; `--module <path>` (repeatable) limits it, `--pin` writes their pins into `telo.yaml` |
+
+**Options (every subcommand):**
+
+- `--registry <oci://host/org>` - Publish destination base for modules whose workspace entry declares none. Outranked by an authored `release.registry`; falls back to `TELO_OCI_REGISTRY`, then each module's own recorded base.
+- `--base <ref>` - Git ref the changed-files reading diffs against (default `origin/main`). It decides only whether a changelog entry is requested.
+
+```bash
+telo release add --module modules/sql --kind Fixed --body "Closes the pool on shutdown"
+telo release status
+```
+
+---
 
 ### `telo publish <paths..>`
 
@@ -132,220 +422,6 @@ image for an architecture other than the build machine's.
 A version that is already published can be pushed again only when it produces an identical `telo.yaml`; a changed one is refused, because a published version's pin never moves.
 
 
----
-
-### `telo check <paths..>`
-
-Statically validates one or more manifests without running them. Uses the Telo analyzer to check schema correctness, `x-telo-ref` references, CEL expression types, and resource scope visibility. Exits with code 1 if any errors are found.
-
-```bash
-telo check ./manifest.yaml
-telo check ./modules/my-module/telo.yaml
-telo check https://example.com/manifest.yaml
-```
-
-Accepts local paths, directories containing a `telo.yaml`, packaged executables (`telo package`), or HTTP(S) URLs.
-
-Imports resolve through the same `.telo/manifests/` cache `telo run` reads, and `check` writes through to it after a successful load (disable with `--no-cache-write`). Freshness depends on how the import addresses its target:
-
-- **Pinned** (`…@1.2.3#sha256-…`, or an `@sha256:` reference) — verified against the hash on read, so a repeat check of a fully pinned manifest needs no network at all.
-- **Mutable OCI tag** — revalidated with one `HEAD` per reference against the digest recorded in `.telo/manifests/.origins.json`. If the tag has moved, that entry is dropped and refetched.
-- **HTTP(S) URL** — never read from the cache by `check`, since its key carries no version segment and a hit would be served indefinitely. Always re-fetched (one request, the same cost revalidating would have).
-
-One loader serves every path in a single invocation, so `telo check a b c` resolves a module shared between them once.
-
-**Example output:**
-
-```
-manifest.yaml:14:5  error    No Telo.Definition found for kind "Http.Srver".  UNDEFINED_KIND
-manifest.yaml:22:7  warning  variables.port is declared but never referenced in any CEL expression.  UNUSED_DECLARATION
-
-1 error, 1 warning
-```
-
-Every code is listed in the [diagnostics reference](/reference/diagnostics),
-along with what triggers it and how to fix it.
-
-On success:
-
-```
-✓  No issues found
-```
-
----
-
-### `telo describe <manifest>`
-
-Prints what an application or library does, read from its manifest with nothing booted: its inputs — every `variables:` / `secrets:` / `ports:` / `needs:` entry with its environment variable and command-line argument, and the resource fields whose expressions read it — what it starts at boot, and the tree of what each started resource reaches. Every entry point (a route, a schedule, a consumer) is labelled by what selects it (`routes path=/orders method=POST`), with what its handler can throw and, per code, which `catches:` entry renders it on each rung of the ladder — the route's own list, its router's, each server mounting it — or that nothing does. Resources declared and reached by nothing are listed last.
-
-```bash
-telo describe ./orders
-telo describe -o json ./orders
-```
-
-Every value is shown as written: an expression with its tag (`!cel "variables.sweepEvery"`) and its type where the analyzer has one, a reference as `!ref <name>`, a literal mapping as `{k: v}`, and a string inside a list or a mapping quoted, so a literal string never reads as an expression or a mapping; nothing is evaluated. Under `-o json` an expression or reference is `{ "tag", "source", "type"? }` and a literal mapping `{ "map": { … } }`, so a literal never reads as an expression. A secret appears by name and binding, never by value or default. A resource is shown by its kind, what it throws and its deprecation — never its configuration — and a resource reached a second time is named rather than expanded again.
-
-Under `-o json` it writes the outline document (`outlineVersion: 1`; later versions only add to it): `module`, `inputs`, `boot`, `roots`, `entryPoints`, `resources` and `unreached`, every item identified by the id the editor's module graph gives the same manifest path. It reads a manifest as `telo check` reads one — a file, a directory holding `telo.yaml`, a packaged executable, or an HTTP(S) URL — a library included. A packaged executable describes byte for byte as its own manifest does. A manifest `telo check` refuses has no outline: its errors are printed on stderr, nothing on stdout, and the command exits 1.
-
----
-
-### `telo install <paths..>`
-
-Pre-downloads every controller declared by a manifest and its transitive imports into the on-disk cache, and persists every imported manifest's YAML alongside it. At runtime the kernel finds each controller already installed AND resolves every import from disk — boot does zero network I/O.
-
-Installs run in parallel; failures are reported per controller and the command exits non-zero if any failed. **For a platform you NAME, a module layer that did not materialize is also a failure** — a fetch that could not complete, or a layer constraining an axis the target leaves undetermined (pass `--abi <family>-<version>` beside `--platform os/arch[/libc]`). The tree such an install produces is the only cache its consumer has — a baked image, a packaged application — so a skipped layer would otherwise surface as a boot failure on another machine. Without `--platform` the target is this machine, whose ABI is used automatically, and a gap is a warning: `telo run` here still fetches what it needs. Subsequent runs are idempotent — already-cached packages are skipped, and manifest cache files are overwritten with freshly fetched bytes.
-
-```bash
-telo install ./apps/my-app/telo.yaml
-telo install ./apps/a/telo.yaml ./apps/b/telo.yaml
-```
-
-**Environment:**
-
-- `TELO_PKG_MANAGER` — Override the package manager invoked for controller installs. Defaults to `npm`. Set to `pnpm` (or any compatible CLI) when the runtime environment ships a different manager.
-
-The cache lives under the **cache root** — `.telo/` beside the manifest, or beside `telo-workspace.yaml` when one sits above it (see [Global options](#global-options)):
-
-- `.telo/npm/` — controller node_modules tree (one realm per manifest), for the modules that still deliver their controller from npm.
-- `.telo/controller-src/` — bundles built from a **local** module's controller sources. Only ever written for a module that is a working copy on disk: a published module ships a prebuilt bundle in its artifact and never reaches this path. Each entry is named by a digest of every input the build read, so an edit anywhere in the source graph yields a new entry rather than invalidating one.
-- `.telo/manifests/oci/<host>/<repo…>/<tag>/telo.yaml` — manifests imported from an OCI registry by tag; a digest reference is cached under `…/sha256-<hex>/telo.yaml` (`:` cannot be written on Windows), and a library shipped inside an artifact at its path in the manifest layer below it (`…/sha256-<hex>/chat/telo.yaml`, `…/sha256-<hex>/ordering.yaml`). A tag spelled `sha256-<64 hex>` is refused.
-- `.telo/manifests/url/<host>/<pathname>` — manifests imported via raw HTTP URLs.
-- `.telo/manifests/.origins.json` — for each cached import named by a **mutable tag**, the OCI manifest digest that produced the copy. `telo check` revalidates against it with one `HEAD` per reference, and a run reads it to identify the libraries shipped inside a cached artifact; a pinned import needs no entry for `check`, since its bytes are verified against the ref's own hash.
-
-Every manifest entry is keyed `<transport>/<host>/<path…>/<version>/<file>`, the same grammar the
-discovery hub uses for its cached manifests.
-
-The whole `.telo/` tree is portable: `COPY` the directory that holds it into your image and both caches travel with it. Without a workspace marker that is the manifest's own directory; with one it is the marker's — copy that, or pin the location with `TELO_CACHE_DIR` in both build and production stages.
-
-**Example output:**
-
-```
-Installing 20 controllers for apps/my-app/telo.yaml
-  ✓  pkg:telo/local/js?path=./nodejs/server.mjs
-  ✓  pkg:telo/local/js?path=./nodejs/request.mjs
-  ...
-
-✓  20 installed in 3.2s
-```
-
-A bundled controller (`pkg:telo/local/js`) ships inside its module's own artifact, so
-"installing" it is materializing that artifact's controller layer — nothing is fetched
-from npm. A `pkg:npm` candidate still resolves through the npm cache above.
-
-**Typical Dockerfile usage:**
-
-```dockerfile
-FROM telorun/node:latest-slim as build
-WORKDIR /srv
-COPY apps/my-app/ apps/my-app/
-COPY modules/ modules/
-RUN telo install apps/my-app/telo.yaml
-
-FROM telorun/node:latest-slim as production
-WORKDIR /srv
-COPY --from=build /srv /srv
-CMD ["telo", "apps/my-app/telo.yaml"]
-```
-
-Available image variants:
-
-- `telorun/node:<version>` — debian base, no rust toolchain.
-- `telorun/node:<version>-slim` — debian-slim base, no rust toolchain (smallest footprint; recommended for production).
-- `telorun/node:<version>-rust-<rust-version>` — slim + rust toolchain (controllers that compile native deps at install time).
-- `telorun/node:<version>-rust-<rust-version>-slim` — the same image, under its historical name.
-
-Pin to an exact CLI version for reproducible builds; `latest`, `<major>`, and `<major>.<minor>` are rolling tags.
-
-The build stage materializes `.telo/npm/` and `.telo/manifests/` under the cache root; the production stage is a single `COPY` and does no network I/O at boot.
-
----
-
-### `telo upgrade <paths..>`
-
-Scans one or more manifests for remote `imports:` entries — an OCI ref (`oci://host/repo@tag`) — asks each ref's transport for the latest published version, and rewrites the source in place when a newer version is available. Both the scalar shorthand (`Alias: <src>`) and the object form (`Alias: { source: <src>, … }`) are handled. Version enumeration, ref reconstruction, and integrity hashing are all delegated to the transport that owns the ref's scheme, so every backend Telo can resolve is also upgradeable — the command never special-cases a scheme. The rewrite operates at the byte level: only the version characters of changed source values are spliced into the original file. Comments, indentation, folded block scalars (`>-` / `|`), quote style on the source value, and every other byte outside the rewritten ranges are preserved exactly. The on-disk YAML is mutated only when at least one import in the file changes.
-
-Accepts the same path shapes as `check` / `install`: a manifest file, a directory containing a `telo.yaml`, or several of those mixed. By default only the imports declared in the files you pass are inspected; pass `--recursive` / `-r` to also follow relative (local) imports into their sibling manifests and upgrade those too.
-
-```bash
-telo upgrade ./apps/my-app/telo.yaml
-telo upgrade ./apps/my-app                       # directory → ./apps/my-app/telo.yaml
-telo upgrade ./apps/a ./apps/b --dry-run
-telo upgrade ./apps/my-app --recursive           # follow ./relative imports too
-telo upgrade ./manifest.yaml --include-prerelease
-telo upgrade ./examples/todo-app --pin-local     # relative import of a released module → its pin
-```
-
-**Options:**
-
-- `--include-prerelease` — Consider versions with a SemVer prerelease segment (e.g. `1.0.0-beta.1`) when picking the latest. Off by default — prereleases are ignored unless the flag is set.
-- `--dry-run` — Show the proposed rewrites without touching any files.
-- `--recursive`, `-r` — Follow relative (local) imports and upgrade their manifests too. Cycle-safe, and each file is upgraded at most once even when reached from several manifests. Remote refs (OCI / HTTP) are always upgraded in place; recursion only descends into on-disk siblings.
-- `--pin-local` — Rewrite a relative import of a released module to its published pin (`../../modules/sql` → `oci://host/org/sql@0.27.0#sha256-…`). It is for a repository that holds both modules and their consumers: a consumer imports a module by relative path while a change to it is unreleased, and this turns the import back once the change has shipped. An import is rewritten only when all of these hold: its target is a module of a [release workspace](https://telo.run/extend/releasing-modules); the release plan (`telo release status`) has no pending bump for it, so the published artifact is what the working copy holds; and that version exists at the registry. Otherwise the import stays relative and the reason is printed — `kept local — modules/sql has an unreleased change (0.27.0 → 0.27.1: declared)`. A relative import of anything else (an application's own `./database` library) is left exactly as without the flag, and so is a manifest that sits inside the module it imports. Applies only to the manifests named on the command line, never to one reached through `--recursive`: a released module's own relative imports are what its release is planned along. Building the plan builds every module of the workspace, once per invocation.
-- `--registry <oci://host/org>` — With `--pin-local`: the publish destination base for modules whose workspace entry declares none, as for `telo release`.
-
-**Behavior per import:**
-
-| Pinned version state | Action | Log marker |
-| --- | --- | --- |
-| Equal to the latest published | leave unchanged | `=  already at <ver>` |
-| Lower than the latest, and itself published | rewrite to latest | `↑  <old> → <new>` |
-| Not present in the origin's version list | rewrite to latest (repair) — flagged with `(pinned version not published)`. Direction can be downward if the broken pin is higher than anything published. | `↑` or `↓` |
-| Module not found (404) / no eligible versions after filtering | leave unchanged, report | `!  no published versions` |
-| Remote ref with no comparable version — a bare `https://` URL, an OCI digest pin (`@sha256:…`), or a moving tag like `latest` | leave unchanged | `·  skipped (not version-pinned)` / `!  unparseable current version` |
-| `source` is a relative / absolute local path | leave unchanged (or follow under `--recursive`) | `·  skipped (local import — use --recursive to follow)` |
-| `source` is not a remote ref at all | leave unchanged | `·  skipped (not a remote ref)` |
-
-A non-existent pin is always treated as broken and repaired against the origin — leaving an unbootable pin in place would defeat the point of the command — but the rewrite is annotated so the action is visible. Network or non-404 errors are surfaced per import and produce a non-zero exit code; other imports in the same file still get processed.
-
-**Example output:**
-
-```text
-Upgrading apps/my-app/telo.yaml
-  ↑  oci://ghcr.io/telorun/run  0.2.4 → 0.2.7
-  ↑  oci://ghcr.io/telorun/http-server  0.19.1 → 0.20.0
-  =  acme/lib  already at 2.0.0
-  ↓  oci://ghcr.io/telorun/foo  9.9.9 → 0.4.1  (pinned version not published)
-  !  oci://ghcr.io/telorun/does-not-exist  no published versions
-  ·  ../sibling  skipped (local import — use --recursive to follow)
-
-3 upgraded, 1 already current, 2 skipped
-```
-
----
-
-### `telo migrate <paths..>`
-
-Rewrites legacy spellings in a manifest to their current form.
-
-Telo occasionally renames something a manifest can say — a schema annotation, a keyword, a value grammar. Because published artifacts carry the old spelling and cannot be edited, the loader rewrites every legacy spelling **in memory** on the way in: the old form and the new one behave identically, on every kernel. `telo migrate` applies the same rewrites to your file, so the source says what the runtime already reads.
-
-**Running it is never a prerequisite for your manifest to work.** It is a repair of the text, offered because `telo check` reports each legacy spelling as a deprecation warning and a warning you cannot act on is not actionable.
-
-```bash
-telo migrate ./manifest.yaml
-telo migrate ./apps/my-app                  # directory → ./apps/my-app/telo.yaml
-telo migrate ./apps/a ./apps/b
-```
-
-The rewrite operates at the byte level, exactly as `telo upgrade`'s does: comments, indentation, folded block scalars (`>-` / `|`), quote style and every byte outside the rewritten ranges are preserved. A file with nothing to migrate is not touched.
-
-**Scope.** Only the manifest you name and its `include:` partials are rewritten. Imported modules are left alone — a published dependency is not yours to fix, and its author is the only person who can. That is the same rule that decides which deprecation warnings `telo check` shows you.
-
-**Example output:**
-
-```text
-ref-slot-scalar-type  modules/mine/telo.yaml  3 rewrites
-
-3 rewrites in 1 file. Imported modules were not touched.
-```
-
-A rewrite the loader applies in memory can still be unwritable in place — a flow-style sequence has no item line to extend, a block scalar's span covers the newline that ended its mapping entry, and two rewrites whose byte spans overlap cannot both be spliced. Those locations are reported on stderr rather than skipped silently, since the diagnostic that sent you here says to run this command; each needs a hand edit:
-
-```text
-!  ref-slot-scalar-type  modules/mine/telo.yaml  targets  could not be rewritten in place (the YAML there cannot carry the edit) — fix it by hand
-```
-
-Under `-o json` the payload is `{ ok, rewrites, unwritable, files: [{ file, rewrites: [{ migration, count }], unwritable: [{ migration, path }] }] }`.
 
 ---
 
@@ -372,29 +448,8 @@ A packaged binary is a manifest source: `telo describe ./orders`, `telo check ./
 
 **`TELO_APP_CLI=1` makes the binary the telo it carries** for one start, so it can be described, checked, inspected or run with every telo option where it is deployed: `TELO_APP_CLI=1 ./orders describe ./orders`, `TELO_APP_CLI=1 ./orders package inspect ./orders`, `TELO_APP_CLI=1 ./orders run --inspect --debug ./orders <app args>`. `./orders <args>` is exactly `TELO_APP_CLI=1 ./orders run ./orders <args>`, the `--debug` log included, written to the working directory. Unset or empty means the application; any other value is refused before anything starts, with exit status 2; every telo removes the variable from its own environment at start, so no application or child process sees it. `TELO_APP_INFO` is retired — a binary started with it refuses (exit status 2) and names `TELO_APP_CLI=1 <binary> package inspect <binary>`. The contract is `kernel/specs/packaged-application.md`.
 
-Full guide: [Packaging an application](/guides/packaging-an-app).
+Full guide: [Packaging an application](/learn/packaging-an-app).
 
----
-
-### `telo run <path>` (default)
-
-Load and run a Telo manifest. `run` is the default command, so `telo ./manifest.yaml` and `telo run ./manifest.yaml` are the same thing.
-
-**Arguments:**
-
-- `path` - Path to a YAML manifest file, a directory containing `telo.yaml`, an HTTP(S) URL, or a published application's OCI ref. A pinned ref — `oci://<host>/<repo>@<version>#sha256-<pin>` — is verified against its pin before anything runs, and a mismatch names the ref, the expected pin and the actual one; an unpinned ref runs unverified. See [Distributing an application](/guides/distributing-an-application).
-
-**Options:**
-
-- `--watch, -w` - Watch manifest file(s) for changes and restart automatically. Each generation runs as a plain run would: an application that finishes is torn down and its exit code reported (with `--debug` / `--inspect`, as `Kernel.Stopped` with its `exitCode`), and the session waits for the next change; a server keeps serving until a change restarts it.
-- `--debug` - Write every kernel event, in order, to `.telo.debug.jsonl` next to the manifest. No network, no UI — the file is the machine-readable record of a run. `telo run` is exempt from `-o json` (the app owns stdout/stderr), so this is the machine surface for a run.
-- `--inspect[=[host:]port]` - Start the live inspection endpoint (default `127.0.0.1:9230`), serve the inspection UI and open it in a browser. Holds the app open even when it would otherwise exit. The endpoint streams event payloads — inputs and outputs of every call — so binding a non-loopback host is warned about; mark credentials with [`x-telo-sensitive`](/extend/sensitive-contract-fields) so they ride the wire as `[redacted]`.
-- `--no-open` - With `--inspect`, do not open the browser.
-- `--no-input` - Never ask for an input nothing supplies. Without it, a run whose stdin and stderr are both a terminal asks for each missing `variables:` / `secrets:` / `ports:` value and required need field (a secret without echo), then offers to save the answers to `.env` / `.env.local`; with it, or with no terminal, the load is refused naming them. Every runner passes it. See [Being asked for what is missing](/guides/configuration#being-asked-for-what-is-missing).
-- `--no-cache-write` - Validate in-memory and read the existing `.telo` cache, but never persist new derived entries (compiled validators, analysis stamp). For ephemeral, read-only runs (e.g. a prebuilt container whose deps are baked at `TELO_CACHE_DIR`); the cache is still used, only writes are suppressed.
-- `--` - Everything after it is handed to the kernel as the application's own arguments, for controllers that read them.
-
-See [Global options](#global-options) for `--verbose`, `-o` and the cache root.
 
 ---
 
@@ -411,6 +466,9 @@ Serve the `/v1` runner API over local processes on this machine, so an editor (o
 - `--state-dir <dir>` - The runner's state directory: the session store (`sessions.sqlite`) and every session's directory (`sessions/<id>/workspace`, `sessions/<id>/agent`), kept across suspends, runner restarts and reboots.
 
 The state directory is `--state-dir`, else `RUNNER_STATE_DIR`, else the per-user default for application state: `$XDG_STATE_HOME/telo/runner` (`~/.local/state/telo/runner` when `XDG_STATE_HOME` is unset) on Linux, `~/Library/Application Support/telo/runner` on macOS, `%LOCALAPPDATA%\telo\state\runner` on Windows. It is never the temp directory or the CLI cache. When none can be resolved (no `HOME`) or the directory cannot be created and written, the runner refuses to start (exit `2`), naming `--state-dir` and `RUNNER_STATE_DIR`. Under `-o json` the command's result is `{ url, host, port, stateDir }`, `stateDir` being the directory in use.
+
+Every session runs as the user who started the runner, so `RUNNER_SESSION_USER` — the container runners' session user — refuses the start (exit `2`), naming it.
+
 
 ---
 
@@ -442,6 +500,7 @@ oci://ghcr.io/telorun/cache@<version>  —  Caching of computed or fetched value
 
 Each hit prints the exact ref to paste into your `imports:` map, and the kinds that ref makes available.
 
+
 ---
 
 ### `telo module <subcommand> <ref>`
@@ -461,6 +520,7 @@ telo module versions oci://ghcr.io/telorun/console
 telo module kinds oci://ghcr.io/telorun/console@<version>
 ```
 
+
 ---
 
 ### `telo needs report <manifest>`
@@ -473,6 +533,7 @@ telo needs report -o json ./shop
 ```
 
 Under `-o json` it writes a versioned document (`reportVersion: 1`, a `dimensions` list of `{ key, values, env, member? }` — every dimension the application's configurations are decided over, with the environment variables its value is read from — and a `needs` list of `path`, `declaredBy`, `type: { module, name }`, `version` (the range the need states, or `null`), `features` (the features it asks for, `[]` when none), `parameters`, `optional`, `required`, `requiredWhen` (the configurations needing it, keyed by dimension, absent when every configuration or none does) and `fields`, each field `{ env, envSource, required, sensitive }`). An application the kernel would refuse has no report: the refusals are printed on stderr, nothing on stdout, and the command exits 1. See [Providing needs](/learn/providing-needs).
+
 
 ---
 
@@ -500,6 +561,7 @@ Nothing is uncommented: an empty `NAME=` would set the variable to the empty str
 - `--write` — Add to those files beside the manifest the variables they do not already mention (set or commented out), as one block at the end, creating a file that is missing; a line already there is never changed. Warns when a sensitive file it wrote is not ignored by git.
 
 Under `-o json` without `--write` it writes `{ files: [{ name, text }] }`; with `--write`, the envelope `{ ok, files: [{ path, created, added }] }`. An application the kernel would refuse gets no template, as for `telo needs report`.
+
 
 ---
 

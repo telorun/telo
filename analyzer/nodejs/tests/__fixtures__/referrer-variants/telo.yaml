@@ -1,0 +1,62 @@
+# One layout referenced by two listers, each typing its `row` differently; the
+# layout's `row` and `to` are both typed from its referrer's `row`.
+kind: Telo.Application
+metadata: { name: ReferrerVariants }
+---
+kind: Telo.JsonSchema
+metadata: { name: Alpha }
+schema: { type: object, properties: { a: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Beta }
+schema: { type: object, properties: { b: { type: string } } }
+---
+kind: Telo.Definition
+metadata: { name: Lister }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./lister.mjs#Lister]
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, layout]
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    layout:
+      x-telo-ref: { kind: Self.Layout, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-root: model, x-telo-context-eval: accessor }
+---
+kind: Telo.Definition
+metadata: { name: Layout }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./layout.mjs#Layout]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    inputs:
+      type: object
+      additionalProperties: { x-telo-eval: accessor }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+          to: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor }
+---
+kind: Self.Layout
+metadata: { name: layout }
+inputs:
+  shown: !cel "to.a"
+---
+kind: Self.Lister
+metadata: { name: alphas }
+model: !ref Alpha
+layout: !ref layout
+---
+kind: Self.Lister
+metadata: { name: betas }
+model: !ref Beta
+layout: !ref layout

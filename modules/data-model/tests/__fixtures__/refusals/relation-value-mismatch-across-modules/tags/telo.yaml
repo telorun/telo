@@ -1,0 +1,25 @@
+# Exports the collection only; its model stays the library's own.
+kind: Telo.Library
+metadata:
+  name: DataModelRelationValueMismatchTags
+  version: 1.0.0
+  description: Test fixture exporting a collection keyed by a string.
+imports:
+  Model: ../../../../../
+exports:
+  resources: [tags]
+---
+kind: Telo.JsonSchema
+metadata: { name: Tag }
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: string }
+---
+kind: Model.Collection
+metadata: { name: tags }
+model: !ref Tag
+query:
+  filters: [{ property: id, operator: in }]
+  sort: []

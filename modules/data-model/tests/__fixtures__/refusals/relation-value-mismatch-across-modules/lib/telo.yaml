@@ -1,0 +1,28 @@
+# A collection `telo check` refuses where it is declared; a consumer's check
+# sees nothing, so there the collection refuses itself when it is created.
+kind: Telo.Library
+metadata:
+  name: DataModelRelationValueMismatchAcrossModules
+  version: 1.0.0
+  description: Test fixture exporting a collection whose list relation into another module's collection holds another type than its key.
+imports:
+  DataModel: ../../../../../
+  Tags: ../tags
+exports:
+  resources: [collection]
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    tagIds: { type: array, items: { type: integer } }
+---
+kind: DataModel.Collection
+metadata: { name: collection }
+model: !ref Post
+query: { filters: [], sort: [] }
+relations:
+  tagIds: { collection: !ref Tags.tags }

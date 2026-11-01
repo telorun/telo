@@ -3,16 +3,14 @@
 # sessions the sign-in gate opens. Every table declares the rows it starts with
 # (`seeds`), so each page is populated on a fresh database; a row edited
 # through the screens stays edited, and a seeded column is restored on the next
-# start. Every collection a screen lists is one `Crud.Model` served by one
-# `Crud.Resource`, so its list pages, sorts, filters and writes for real.
+# start. Every collection a screen lists is one `Crud.Collection` served by one
+# `Crud.Api`, so its list pages, sorts, filters and writes for real.
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: !cel "variables.dbFile"
 ---
 kind: SQLite.Schema
-metadata:
-  name: migrate
+metadata: { name: migrate }
 connection: !ref db
 tables:
   - !ref teamTable
@@ -25,11 +23,13 @@ tables:
   - !ref bookingsTable
   - !ref commentsTable
   - !ref sessionsTable
+  - !ref authorsTable
+  - !ref postsTable
+  - !ref employeesTable
 ---
 # The studio itself: one row, read by the overview.
 kind: SQLite.Table
-metadata:
-  name: teamTable
+metadata: { name: teamTable }
 table: team
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -62,8 +62,7 @@ seeds:
 # The studio's people. `contact` is the address a chosen person links to in a
 # picker.
 kind: SQLite.Table
-metadata:
-  name: peopleTable
+metadata: { name: peopleTable }
 table: people
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -87,8 +86,7 @@ seeds:
 # A project's `note` is null when it has none, and its `codename` is left out
 # of its summary when it has none: the conditions page tells the two apart.
 kind: SQLite.Table
-metadata:
-  name: projectsTable
+metadata: { name: projectsTable }
 table: projects
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -115,8 +113,7 @@ seeds:
     - { code: OPS-9, name: Data warehouse, status: done, lead_email: tomas@northwind.example, budget: 54000, velocity: 2, open: 0, brief: "/data?project=OPS-9", started_on: "2025-07-07", codename: Silo }
 ---
 kind: SQLite.Table
-metadata:
-  name: projectMembersTable
+metadata: { name: projectMembersTable }
 table: project_members
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -143,8 +140,7 @@ seeds:
     - { project_code: OPS-9, person_email: tomas@northwind.example, role: Lead }
 ---
 kind: SQLite.Table
-metadata:
-  name: projectTagsTable
+metadata: { name: projectTagsTable }
 table: project_tags
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -165,8 +161,7 @@ seeds:
 # filter bar has something to narrow. `seed_key` names a seeded row and is no
 # part of the API, so a task created through the screens leaves it empty.
 kind: SQLite.Table
-metadata:
-  name: tasksTable
+metadata: { name: tasksTable }
 table: tasks
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -219,8 +214,7 @@ seeds:
 # Work asked of the studio, sent by the forms page. A list it holds is kept as
 # JSON text; the site access code is stored and never read back.
 kind: SQLite.Table
-metadata:
-  name: requestsTable
+metadata: { name: requestsTable }
 table: requests
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -245,8 +239,7 @@ seeds:
 ---
 # Who works on a project and when, booked by the forms page.
 kind: SQLite.Table
-metadata:
-  name: bookingsTable
+metadata: { name: bookingsTable }
 table: bookings
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -269,8 +262,7 @@ seeds:
 ---
 # What people say about a task. A pinned comment is listed first.
 kind: SQLite.Table
-metadata:
-  name: commentsTable
+metadata: { name: commentsTable }
 table: comments
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -289,8 +281,7 @@ seeds:
 # One row per open session: signing in writes it, signing out deletes it, and
 # the guard on `/api/private` reads the cookie's token against it.
 kind: SQLite.Table
-metadata:
-  name: sessionsTable
+metadata: { name: sessionsTable }
 table: sessions
 columns:
   id: { type: integer, primaryKey: true, identity: always }
@@ -301,8 +292,7 @@ columns:
 # ---- The projects collection, served by crud ----
 # What creates a project. The table fills in what it leaves out.
 kind: Telo.JsonSchema
-metadata:
-  name: ProjectDraft
+metadata: { name: ProjectDraft }
 schema:
   type: object
   additionalProperties: false
@@ -329,8 +319,7 @@ schema:
 # What replaces a project. A replace writes every property it declares, so the
 # columns that may not be null are required here.
 kind: Telo.JsonSchema
-metadata:
-  name: ProjectEdit
+metadata: { name: ProjectEdit }
 extends: ProjectDraft
 schema:
   type: object
@@ -338,8 +327,7 @@ schema:
 ---
 # What is read back: the key, and every column the table always fills in.
 kind: Telo.JsonSchema
-metadata:
-  name: Project
+metadata: { name: Project }
 extends: ProjectEdit
 schema:
   type: object
@@ -347,14 +335,11 @@ schema:
   properties:
     id: { type: integer }
 ---
-kind: Crud.Model
-metadata:
-  name: projectModel
-schemas:
-  read: !ref Project
-  list: !ref Project
-  create: !ref ProjectDraft
-  update: !ref ProjectEdit
+kind: Crud.Collection
+metadata: { name: projects }
+model: !ref Project
+table: !ref projectsTable
+schemas: { list: !ref Project, create: !ref ProjectDraft, update: !ref ProjectEdit }
 query:
   filters:
     - { property: code, operator: eq }
@@ -369,18 +354,20 @@ query:
     - { property: budget, operator: lte }
     - { property: startedOn, operator: gte }
     - { property: startedOn, operator: lte }
-  sort:
-    - { property: code }
-    - { property: name }
-    - { property: budget }
-    - { property: startedOn }
+  sort: [{ property: code }, { property: name }, { property: budget }, { property: startedOn }]
+---
+# Where the browser reads the projects: the tables, the choices and the pickers
+# over them name this one source.
+kind: Ui.CollectionSource
+metadata: { name: projectsSource }
+collection: !ref projects
+basePath: /api/projects
 ---
 # ---- The tasks collection, served by crud ----
 # What creates a task. The table fills in what it leaves out, and a form starts
 # from the defaults.
 kind: Telo.JsonSchema
-metadata:
-  name: TaskDraft
+metadata: { name: TaskDraft }
 schema:
   type: object
   additionalProperties: false
@@ -415,16 +402,14 @@ schema:
 ---
 # What replaces a task: the columns that may not be null are required.
 kind: Telo.JsonSchema
-metadata:
-  name: TaskEdit
+metadata: { name: TaskEdit }
 extends: TaskDraft
 schema:
   type: object
   required: [ status, priority, blocked ]
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Task
+metadata: { name: Task }
 extends: TaskEdit
 schema:
   type: object
@@ -436,14 +421,11 @@ schema:
 # contains, an equality on each enumerated, boolean and key property, a range
 # of dates, numbers compared both ways, and `in` over status, label and
 # assignee.
-kind: Crud.Model
-metadata:
-  name: taskModel
-schemas:
-  read: !ref Task
-  list: !ref Task
-  create: !ref TaskDraft
-  update: !ref TaskEdit
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref Task
+table: !ref tasksTable
+schemas: { list: !ref Task, create: !ref TaskDraft, update: !ref TaskEdit }
 query:
   filters:
     - { property: title, operator: contains }
@@ -461,19 +443,25 @@ query:
     - { property: label, operator: eq }
     - { property: label, operator: in }
     - { property: blocked, operator: eq }
-  sort:
-    - { property: title }
-    - { property: status }
-    - { property: priority }
-    - { property: estimate }
-    - { property: dueOn }
+  sort: [{ property: title }, { property: status }, { property: priority }, { property: estimate }, { property: dueOn }]
+---
+# Where the browser reads the tasks, and how every screen over them shows them:
+# each listing, filter bar and form of tasks names this presentation, and the
+# generated admin screen this source.
+kind: CrudUi.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasksPresentation }
+source: !ref tasksSource
 ---
 # ---- The people collection, served by crud ----
 # What adds a person. The pickers read it to offer the team, search it by name
 # and label a chosen e-mail with one `email.in` lookup.
 kind: Telo.JsonSchema
-metadata:
-  name: PersonDraft
+metadata: { name: PersonDraft }
 schema:
   type: object
   additionalProperties: false
@@ -488,16 +476,14 @@ schema:
     contact: { type: string, title: Contact, format: uri }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: PersonEdit
+metadata: { name: PersonEdit }
 extends: PersonDraft
 schema:
   type: object
   required: [ active ]
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Person
+metadata: { name: Person }
 extends: PersonEdit
 schema:
   type: object
@@ -505,14 +491,11 @@ schema:
   properties:
     id: { type: integer }
 ---
-kind: Crud.Model
-metadata:
-  name: peopleModel
-schemas:
-  read: !ref Person
-  list: !ref Person
-  create: !ref PersonDraft
-  update: !ref PersonEdit
+kind: Crud.Collection
+metadata: { name: people }
+model: !ref Person
+table: !ref peopleTable
+schemas: { list: !ref Person, create: !ref PersonDraft, update: !ref PersonEdit }
 query:
   filters:
     - { property: email, operator: eq }
@@ -520,5 +503,211 @@ query:
     - { property: name, operator: contains }
     - { property: role, operator: eq }
     - { property: active, operator: eq }
-  sort:
-    - { property: name }
+  sort: [{ property: name }]
+---
+kind: Ui.CollectionSource
+metadata: { name: peopleSource }
+collection: !ref people
+basePath: /api/people
+---
+# ---- Related records: authors, their posts, and the people they report to ----
+# The writers of the studio's blog. Seeded with their keys, so the posts seeded
+# below name them on every start.
+kind: SQLite.Table
+metadata: { name: authorsTable }
+table: authors
+columns:
+  id: { type: integer, primaryKey: true }
+  name: { type: text, nullable: false }
+  email: { type: text, nullable: false, unique: true }
+seeds:
+  key: [id]
+  rows:
+    - { id: 1, name: Sofia Rossi, email: sofia@northwind.example }
+    - { id: 2, name: Maya Harris, email: maya@northwind.example }
+    - { id: 3, name: James Walker, email: james@northwind.example }
+    - { id: 4, name: Grace Okafor, email: grace@northwind.example }
+---
+# A post names its author by key. The foreign key is what `posts.authorId`'s
+# relation is checked against; deleting an author leaves their posts unsigned.
+kind: SQLite.Table
+metadata: { name: postsTable }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  seed_key: { type: text, unique: true }
+  title: { type: text, nullable: false }
+  author_id: { type: integer }
+  status: { type: text, nullable: false, default: draft }
+  published_on: { type: text }
+foreignKeys:
+  posts_author: { columns: [author_id], references: { table: !ref authorsTable, columns: [id] }, onDelete: set null }
+seeds:
+  key: [seed_key]
+  rows:
+    - { seed_key: P01, title: How we plan a sprint, author_id: 1, status: published, published_on: "2026-10-05" }
+    - { seed_key: P02, title: Designing for small screens, author_id: 2, status: published, published_on: "2026-10-12" }
+    - { seed_key: P03, title: "Our handbook, rewritten", author_id: 1, status: published, published_on: "2026-10-19" }
+    - { seed_key: P04, title: Offline sync without tears, author_id: 3, status: review, published_on: "2026-11-02" }
+    - { seed_key: P05, title: A palette that passes contrast, author_id: 2, status: review, published_on: "2026-11-09" }
+    - { seed_key: P06, title: Writing release notes people read, author_id: 1, status: draft }
+    - { seed_key: P07, title: The case for boring tools, author_id: 3, status: draft }
+---
+# The studio's reporting lines: each person names the one they report to, so
+# the people form a tree whose roots report to nobody.
+kind: SQLite.Table
+metadata: { name: employeesTable }
+table: employees
+columns:
+  id: { type: integer, primaryKey: true }
+  name: { type: text, nullable: false }
+  title: { type: text, nullable: false }
+  manager_id: { type: integer }
+foreignKeys:
+  employees_manager: { columns: [manager_id], references: { table: !ref employeesTable, columns: [id] }, onDelete: set null }
+seeds:
+  key: [id]
+  rows:
+    - { id: 1, name: Ada Brooks, title: Managing director }
+    - { id: 2, name: Liam Carter, title: Head of engineering, manager_id: 1 }
+    - { id: 3, name: Maya Harris, title: Lead designer, manager_id: 1 }
+    - { id: 4, name: James Walker, title: Engineer, manager_id: 2 }
+    - { id: 5, name: Tomás Ortega, title: Data engineer, manager_id: 2 }
+    - { id: 6, name: Sofia Rossi, title: Writer, manager_id: 3 }
+    - { id: 7, name: Grace Okafor, title: Studio manager }
+---
+kind: Telo.JsonSchema
+metadata: { name: AuthorDraft }
+schema:
+  type: object
+  additionalProperties: false
+  required: [name, email]
+  properties:
+    name: { type: string, title: Name, minLength: 1 }
+    email: { type: string, title: E-mail, minLength: 3 }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+extends: AuthorDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+# The authors, looked up by key in one `id.in` request when a post names them,
+# and searched by name when one is picked.
+kind: Crud.Collection
+metadata: { name: authors }
+model: !ref Author
+table: !ref authorsTable
+schemas: { list: !ref Author, create: !ref AuthorDraft, update: !ref AuthorDraft }
+query:
+  filters: [{ property: id, operator: in }, { property: name, operator: contains }]
+  sort: [{ property: name }]
+---
+# One authors URL, written once: the authors screen and every picker of an
+# author read it.
+kind: CrudUi.CollectionSource
+metadata: { name: authorsSource }
+collection: !ref authors
+basePath: /api/authors
+---
+# What writes a post. A post with no author is unsigned, and one with no date
+# is not scheduled.
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  additionalProperties: false
+  required: [title, status]
+  properties:
+    title: { type: string, title: Title, minLength: 1 }
+    authorId: { type: integer, title: Author }
+    status:
+      type: string
+      title: Status
+      enum: [draft, review, published]
+      oneOf:
+        - { const: draft, title: Draft }
+        - { const: review, title: In review }
+        - { const: published, title: Published }
+      default: draft
+    publishedOn: { type: string, title: Published on, format: date }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+extends: PostDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+# The posts. `authorId` holds an author's key, which the relation declares and
+# the table's foreign key agrees with; its present values and counts, and the
+# statuses', are what a facet request answers.
+kind: Crud.Collection
+metadata: { name: posts }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query:
+  filters:
+    - { property: title, operator: contains }
+    - { property: authorId, operator: eq }
+    - { property: status, operator: eq }
+    - { property: publishedOn, operator: gte }
+    - { property: publishedOn, operator: lte }
+  sort: [{ property: title }, { property: publishedOn }]
+  facets: [{ property: authorId }, { property: status }]
+relations:
+  authorId: { collection: !ref authors }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: postsSource }
+collection: !ref posts
+basePath: /api/posts
+---
+# How every screen over posts shows the author: by name, with the e-mail as a
+# hint, searched by name. Listings, filter bars and forms over posts name it.
+kind: Ui.CollectionPresentation
+metadata: { name: postsPresentation }
+source: !ref postsSource
+relations:
+  authorId:
+    source: !ref authorsSource
+    label: !cel "row.name"
+    hint: !cel "row.email"
+    search: { property: name, operator: contains }
+---
+kind: Telo.JsonSchema
+metadata: { name: EmployeeDraft }
+schema:
+  type: object
+  additionalProperties: false
+  required: [name, title]
+  properties:
+    name: { type: string, title: Name, minLength: 1 }
+    title: { type: string, title: Title, minLength: 1 }
+    managerId: { type: integer, title: Reports to }
+---
+kind: Telo.JsonSchema
+metadata: { name: Employee }
+extends: EmployeeDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+# The reporting lines: `managerId` holds another employee's key, a relation of
+# the collection to itself. A tree reads the roots with `managerId.absent=true`
+# and a person's reports with `managerId=<id>`.
+kind: Crud.Collection
+metadata: { name: employees }
+model: !ref Employee
+table: !ref employeesTable
+schemas: { list: !ref Employee, create: !ref EmployeeDraft, update: !ref EmployeeDraft }
+query:
+  filters:
+    - { property: id, operator: in }
+    - { property: name, operator: contains }
+    - { property: managerId, operator: eq }
+    - { property: managerId, operator: absent }
+  sort: [{ property: name }]
+relations:
+  managerId: { collection: !ref employees }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: employeesSource }
+collection: !ref employees
+basePath: /api/employees

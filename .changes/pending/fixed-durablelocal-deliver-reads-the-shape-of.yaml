@@ -1,0 +1,5 @@
+modules:
+  modules/durable-local: Fixed
+body: "DurableLocal.Deliver reads the shape of the wait it names from that wait's
+  declaration, so the payload is still checked now that a 'use: schema' reference is
+  never replaced by an instance."

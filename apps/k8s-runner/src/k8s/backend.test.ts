@@ -56,9 +56,9 @@ function recorder() {
 }
 
 /** A pod an earlier runner process created, as it reads back from the API. */
-function earlierPod(sessionId: string, agent = true): V1Pod {
+function earlierPod(sessionId: string, agent = true, sessionUser = config.sessionUser): V1Pod {
   return buildSessionPod({
-    config,
+    config: { ...config, sessionUser },
     sessionId,
     podName: `telo-session-${sessionId}-old`,
     appSlots: { web: 0, worker: 1 },
@@ -266,7 +266,7 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
     await expect.poll(() => r.states.at(-1)).toMatchObject({ app: "web", state: "ready" });
   });
 
-  it("removes a pod whose supervisors speak another generation, or whose agent is not the stored one, and suspends", async () => {
+  it("removes a pod whose supervisors speak another generation, whose agent is not the stored one, or that runs as another user, and suspends", async () => {
     const backend = boot();
     cluster.generation = 2;
     await cluster.start(earlierPod("s1"));
@@ -276,6 +276,10 @@ describe.skipIf(NO_LOOPBACK_ALIASES)("adoption at boot", () => {
     cluster.generation = 1;
     await cluster.start(earlierPod("s2", false));
     expect(await backend.adopt!(spec("s2", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
+    expect(cluster.pods.size).toBe(0);
+
+    await cluster.start(earlierPod("s3", true, { uid: 2000, gid: 2000 }));
+    expect(await backend.adopt!(spec("s3", { agent: AGENT }), recorder().callbacks)).toBeUndefined();
     expect(cluster.pods.size).toBe(0);
     expect(cluster.deletedClaims).toEqual([]);
   });

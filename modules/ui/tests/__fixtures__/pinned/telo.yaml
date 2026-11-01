@@ -6,28 +6,35 @@ metadata:
   version: 1.0.0
 imports:
   Ui: ../../../
+  DataModel: ../../../../data-model
 ---
 kind: Telo.JsonSchema
 metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string }
 ---
-kind: Ui.Collection
-metadata:
-  name: todos
-query:
-  filters:
-    - { property: text, operator: contains }
-  sort: []
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query:
+      filters:
+        - { property: text, operator: contains }
+      sort: []
 ---
 kind: Ui.Filters
 metadata:
   name: omitted
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 content: { type: text, text: Todos }
@@ -35,8 +42,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: above
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -46,8 +52,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: aside
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -57,8 +62,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: collapsible
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -68,8 +72,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: overlay
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -79,8 +82,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: aboveCompact
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -90,8 +92,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: asideCompact
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -103,8 +104,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: omittedChosen
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -114,8 +114,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: aboveChosen
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
 policy:
@@ -126,8 +125,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: aboveUnpinned
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains }
 policy:

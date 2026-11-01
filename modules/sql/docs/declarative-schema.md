@@ -33,6 +33,33 @@ missing parent row is refused, and deleting a parent runs the key's `onDelete`
 action — `cascade` removes the children, `set null` clears the column, and with no
 action declared the delete is refused while a row still references it.
 
+## Foreign keys
+
+`foreignKeys:` is a map keyed by constraint name — the key's durable identity.
+Every engine's `Table` takes the same entry:
+
+| Key | | |
+| --- | --- | --- |
+| `columns` | required | this table's columns, in the order they map |
+| `references.table` | required | the referenced table, a `!ref` to a declared `Table` (it may be this one) |
+| `references.columns` | required | the referenced table's columns, one for one |
+| `onDelete` | none | `cascade`, `restrict`, `set null`, `set default` or `no action` |
+| `onUpdate` | none | the same actions, for a changed referenced key |
+
+```yaml
+foreignKeys:
+  posts_author: { columns: [author_id], references: { table: !ref authors, columns: [id] }, onDelete: cascade }
+```
+
+Each side names columns the table declares, in `columns` or `internalColumns`
+(`SQL_FOREIGN_KEY_UNKNOWN_COLUMN`), and both lists have the same length
+(`SQL_FOREIGN_KEY_ARITY_MISMATCH`). Because `references.table` is typed as a
+table of any engine, something reading `foreignKeys` through a `Sql.Table`
+reference — `Crud.Collection` checking a relation against its table — needs no
+knowledge of the backend. The engine pages describe what each one emits:
+[PostgreSQL](../../postgres/docs/foreign-keys.md) and
+[SQLite](../../sqlite/docs/foreign-keys.md).
+
 ## Domains — a type refinement, always declared
 
 A column's `type:` holds a storage class **or a reference to a declared enum**.
@@ -419,12 +446,10 @@ ordering edge, and declaration order never matters. On an engine with
 `ADD CONSTRAINT` the key is created in a later phase than the tables, so a key
 may name a table declared below it.
 
-**Known limitation: a key may not point at a table that cannot be constructed
-before it.** A table that references ITSELF (a `parent_id` tree) and a mutually
-referencing pair are both refused at boot, because the kernel resolves a `!ref`
-before the resource that holds it is created and neither can satisfy that. Both
-are otherwise ordinary and both are creatable on PostgreSQL. Declare such a key
-in a `prepare:` entry until this is lifted.
+**A key may point at its own table, or at a table that points back.** The
+`references.table` slot is `use: schema`, a declaration read: the kernel never
+injects the target there and never waits for it, so a table that references
+ITSELF (a `parent_id` tree) and a mutually referencing pair both boot.
 
 **Where the engine cannot name a key, the key is matched by structure.** SQLite
 emits a foreign key only as part of `CREATE TABLE` and reports it back unnamed,

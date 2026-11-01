@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
 import { Surface } from "../src/browser/surface.js";
 import { loadFixtureComponents, render, type Page, type Rendered } from "./harness.js";
-import { component, dialogSurface, opener, tableNode, todos } from "./spec-nodes.js";
+import { component, dialogSurface, opener, listingNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -33,7 +33,7 @@ const show = (
         title: "Todos",
         children: [
           ...(options.more ?? []),
-          tableNode({ create: opener({ surface, ...options.opens }), edit: opener({ surface, ...options.opens }), ...options.table }),
+          listingNode({ create: opener({ surface, ...options.opens }), edit: opener({ surface, ...options.opens }), ...options.table }),
         ],
       },
       "/done": { title: "Done", children: [{ type: "text", text: "The done page" }] },
@@ -58,7 +58,7 @@ const twoPanels = () =>
     pages: {
       "/": {
         title: "Todos",
-        children: ["a", "b"].map((name) => tableNode({ create: opener({ surface: named(panel(), name) }), edit: opener({ surface: named(panel(), name) }) })),
+        children: ["a", "b"].map((name) => listingNode({ create: opener({ surface: named(panel(), name) }), edit: opener({ surface: named(panel(), name) }) })),
       },
     },
   });
@@ -67,7 +67,7 @@ const tasks = (r: Rendered) => r.parts("surface").map((part) => (part.querySelec
 describe("a dialog", () => {
   it("is named by its title, holds the focus, and closes on Escape, its close button or Cancel with nothing sent", async () => {
     rendered = await show(dialogSurface);
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     const dialog = surface(rendered)!;
     expect(["data-surface", "data-size", "data-modal", "role"].map((name) => dialog.getAttribute(name))).toEqual(["dialog", "medium", "true", "dialog"]);
     expect(document.getElementById(dialog.getAttribute("aria-labelledby") as string)?.textContent).toBe("New");
@@ -79,7 +79,7 @@ describe("a dialog", () => {
     expect(rendered.part("surface-title").textContent).toBe("Edit");
     await rendered.click(rendered.part("surface-close"));
     expect(surface(rendered)).toBeUndefined();
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.click(within(rendered, "cancel"));
     expect(surface(rendered)).toBeUndefined();
     expect([...sent(rendered, "POST"), ...sent(rendered, "PUT")]).toEqual([]);
@@ -87,7 +87,7 @@ describe("a dialog", () => {
 
   it("stays open through each way of dismissing that is switched off, and has no close button", async () => {
     rendered = await show({ ...dialogSurface, size: "full", dismiss: { escape: false, outside: false, closeButton: false } });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect(surface(rendered)!.getAttribute("data-size")).toBe("full");
     expect(rendered.parts("surface-close")).toEqual([]);
     await rendered.escape();
@@ -99,7 +99,7 @@ describe("a dialog", () => {
 
   it("leaves the page uncovered when it is not modal, and closes on a press outside it", async () => {
     rendered = await show({ ...dialogSurface, modal: false }, { opens: { unsaved: "discard" } });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect(surface(rendered)!.getAttribute("data-modal")).toBe("false");
     expect(rendered.parts("surface-overlay")).toEqual([]);
     expect(rendered.container.getAttribute("aria-hidden")).toBeNull();
@@ -114,7 +114,7 @@ describe("a dialog", () => {
   it("cannot be dismissed while its form is being sent", async () => {
     rendered = await show(dialogSurface);
     let respond: (response: Response) => void = () => {};
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "A slow task");
     rendered.answer("/api/todos", () => new Promise<Response>((resolve) => (respond = resolve)));
     await rendered.click(within(rendered, "submit"));
@@ -131,7 +131,7 @@ describe("a dialog", () => {
 describe("a drawer", () => {
   it.each(["start", "end", "top", "bottom"])("slides in from the %s edge, and closes once its form is saved", async (side) => {
     rendered = await show(drawer(side));
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     const sheet = surface(rendered)!;
     expect(["data-surface", "data-side", "data-size", "data-modal"].map((name) => sheet.getAttribute(name))).toEqual(["drawer", side, "large", "true"]);
     await rendered.enter(task(rendered), "From a drawer");
@@ -155,12 +155,12 @@ describe("a popover", () => {
     await rendered.click(within(rendered, "submit"));
     expect(surface(rendered)).toBeUndefined();
     expect(sent(rendered, "PUT")).toEqual(["PUT /api/todos/2"]);
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.escape();
     expect(surface(rendered)).toBeUndefined();
     rendered.unmount();
     rendered = await show({ ...popover, dismiss: { escape: false, outside: false } });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.escape();
     await rendered.pointerDown(rendered.part("page-title"));
     expect(surface(rendered)).toBeDefined();
@@ -211,9 +211,9 @@ describe("what a surface holds", () => {
 describe("an inline surface", () => {
   it("draws the create form above the grid and the edit form under its row", async () => {
     rendered = await show({ type: "inline" });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect(surface(rendered)!.getAttribute("data-surface")).toBe("inline");
-    expect(surface(rendered)!.nextElementSibling).toBe(rendered.part("table-main"));
+    expect(surface(rendered)!.nextElementSibling).toBe(rendered.part("listing-main"));
     await rendered.click(within(rendered, "cancel"));
     expect(surface(rendered)).toBeUndefined();
     await rendered.click(rendered.parts("row-edit")[1]);
@@ -234,8 +234,8 @@ describe("a panel", () => {
     await rendered.click(rendered.parts("row-edit")[0]);
     const aside = surface(rendered)!;
     expect(["data-surface", "data-side", "data-size"].map((name) => aside.getAttribute(name))).toEqual(["panel", side, "small"]);
-    expect(aside.parentElement).toBe(rendered.part("table"));
-    expect(rendered.part("table-main").parentElement).toBe(rendered.part("table"));
+    expect(aside.parentElement).toBe(rendered.part("listing"));
+    expect(rendered.part("listing-main").parentElement).toBe(rendered.part("listing"));
     expect(rendered.parts("surface-overlay")).toEqual([]);
     // Another row opens in the same panel.
     await rendered.click(rendered.parts("row-edit")[1]);
@@ -243,14 +243,14 @@ describe("a panel", () => {
     await rendered.focus(task(rendered));
     await rendered.escape();
     expect(surface(rendered)).toBeUndefined();
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.click(rendered.part("surface-close"));
     expect(surface(rendered)).toBeUndefined();
   });
 
   it("stays open on Escape, with no close button, when both are switched off", async () => {
     rendered = await show({ ...panel(), dismiss: { escape: false, closeButton: false } });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.focus(task(rendered));
     await rendered.escape();
     expect(surface(rendered)).toBeDefined();
@@ -262,7 +262,7 @@ describe("a page surface", () => {
   it("replaces the page's content under its address, and gives it back when it closes", async () => {
     rendered = await show({ type: "page", address: { name: "todo" } }, { more: [{ type: "text", text: "Above the table" }] });
     const content = rendered.part("text").parentElement as HTMLElement;
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect(window.location.search).toBe("?_telo.open.todo=");
     expect(surface(rendered)!.getAttribute("data-surface")).toBe("page");
     expect(rendered.part("page").contains(surface(rendered)!)).toBe(true);
@@ -280,7 +280,7 @@ describe("a page surface", () => {
 describe("what a form does once it is saved", () => {
   it("stays open and empty for another record under `again`, the list reloaded", async () => {
     rendered = await show(panel(), { opens: { afterSubmit: "again" } });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "The first of two");
     await rendered.click(within(rendered, "submit"));
     expect(task(rendered).value).toBe("");
@@ -309,7 +309,7 @@ describe("what a form does once it is saved", () => {
 describe("unsaved input", () => {
   it("holds a component's navigation until the user answers, and drops it when they stay", async () => {
     rendered = await show(panel(), { more: [probe] });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "Half written");
     await rendered.click(rendered.fixture("page"));
     expect(window.location.pathname).toBe("/");
@@ -327,7 +327,7 @@ describe("unsaved input", () => {
 
   it("asks nothing for a move within the page that keeps the form open", async () => {
     rendered = await show(panel(), { more: [probe] });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "Half written");
     await rendered.click(rendered.fixture("query"));
     expect(window.location.search).toBe("?c=2");
@@ -337,7 +337,7 @@ describe("unsaved input", () => {
 
   it("undoes a step back while it asks, and replays the step the user confirms", async () => {
     rendered = await show(named(dialogSurface), { more: [probe] });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     const open = position();
     // A page further on, then back to the open form: there is a forward entry.
     await rendered.click(rendered.fixture("page"));
@@ -364,7 +364,7 @@ describe("unsaved input", () => {
       window.dispatchEvent(event);
       return event.defaultPrevented;
     };
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect(leaving()).toBe(false);
     await rendered.enter(task(rendered), "Half written");
     expect(leaving()).toBe(true);
@@ -374,7 +374,7 @@ describe("unsaved input", () => {
 
   it("asks before the surface itself closes, and closes it once the input is dropped", async () => {
     rendered = await show(dialogSurface);
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "Half written");
     await rendered.click(within(rendered, "cancel"));
     expect(question(rendered)).toBeDefined();
@@ -388,11 +388,11 @@ describe("unsaved input", () => {
 
   it("is dropped without a question anywhere under `discard`", async () => {
     rendered = await show(panel(), { more: [probe], opens: { unsaved: "discard" } });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "Half written");
     await rendered.click(rendered.part("surface-close"));
     expect(rendered.parts("surface")).toEqual([]);
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "Half written");
     await rendered.click(rendered.fixture("page"));
     expect(window.location.pathname).toBe("/done");
@@ -405,13 +405,13 @@ describe("an addressed surface", () => {
     rendered = await show(named(panel()));
     const start = position();
     const entries = window.history.length;
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect([window.location.search, position()]).toEqual(["?_telo.open.todo=", start + 1]);
     expect(rendered.part("surface-title").textContent).toBe("New");
     await rendered.traverse(-1);
     expect([window.location.search, position(), surface(rendered)]).toEqual(["", start, undefined]);
     // One name for both forms: opening the edit form closes the create form.
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.click(rendered.parts("row-edit")[1]);
     expect([window.location.search, position()]).toEqual(["?_telo.open.todo=2", start + 1]);
     expect(rendered.part("surface-title").textContent).toBe("Edit");
@@ -482,18 +482,18 @@ describe("an addressed surface", () => {
   });
 
   it("adds an entry on a page reached by replacing the entry of an open surface", async () => {
-    const table = tableNode({ create: opener({ surface: named(panel()) }) });
+    const table = listingNode({ create: opener({ surface: named(panel()) }) });
     rendered = await render({
       path: "/",
       loadModule: loadFixtureComponents,
       collections: { "/api/todos": todos },
       pages: { "/": { title: "Todos", children: [probe, table] }, "/done": { title: "Done", children: [table] } },
     });
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect([window.location.pathname, ...where()]).toEqual(["/", "?_telo.open.todo=", 1]);
     await rendered.click(rendered.fixture("replace-page"));
     expect([window.location.pathname, ...where(), surface(rendered)]).toEqual(["/done", "", 1, undefined]);
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect([window.location.pathname, ...where()]).toEqual(["/done", "?_telo.open.todo=", 2]);
     await rendered.click(rendered.part("surface-close"));
     expect([window.location.pathname, ...where(), surface(rendered)]).toEqual(["/done", "", 1, undefined]);
@@ -505,7 +505,7 @@ describe("an addressed surface", () => {
   });
 
   it("keeps a row with an empty key open in memory, never as the create form", async () => {
-    rendered = await show(named(dialogSurface), { rows: [{ code: "", text: "Has no key" }], table: { rowKey: "code" } });
+    rendered = await show(named(dialogSurface), { rows: [{ code: "", text: "Has no key" }], table: { key: "code" } });
     const [start, entries] = [position(), window.history.length];
     await rendered.click(rendered.part("row-edit"));
     expect(rendered.part("surface-title").textContent).toBe("Edit");
@@ -519,13 +519,13 @@ describe("a compact surface", () => {
     rendered = await show(declared, { narrow: true });
     expect(rendered.mediaQueries).toEqual(["(width < 40rem)"]);
     expect(rendered.part("app").getAttribute("data-compact")).toBe("true");
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect([surface(rendered)!.getAttribute("data-surface"), surface(rendered)!.getAttribute("data-side")]).toEqual(["drawer", "bottom"]);
     expect(window.location.search).toBe("?_telo.open.todo=");
     rendered.unmount();
     rendered = await show(declared);
     expect(rendered.part("app").getAttribute("data-compact")).toBeNull();
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     expect(surface(rendered)!.getAttribute("data-surface")).toBe("panel");
   });
 
@@ -562,7 +562,7 @@ describe("a compact surface", () => {
   it("lets a form being sent finish across the swap, and do what follows its save", async () => {
     rendered = await show({ ...panel(), compact: dialogSurface });
     let respond: (response: Response) => void = () => {};
-    await rendered.click(rendered.part("table-create"));
+    await rendered.click(rendered.part("listing-create"));
     await rendered.enter(task(rendered), "A slow task");
     rendered.answer("/api/todos", () => new Promise<Response>((resolve) => (respond = resolve)));
     await rendered.click(within(rendered, "submit"));

@@ -1,0 +1,255 @@
+kind: Telo.Application
+metadata:
+  name: CrudCollectionRefusalsTest
+  version: 1.0.0
+  description: |
+    What a collection refuses about its operation shapes against `model` — a
+    list shape without the key, a write shape with it or left open, a property
+    a read does not return or types differently, an update requiring what a
+    read may leave out — and about its table: a property with no snake_case
+    column, a primary key that is not `id`, and a relation the foreign key on
+    its column contradicts, by table or, in a composite key, by position —
+    tables compared by the physical table they store, so a foreign key naming
+    another module's table resource of the same name is refused, and one naming
+    another table resource storing the target's table is accepted. A composite
+    key whose column sits at the target key's position is accepted.
+    The rules a collection inherits from the data model run too. Each refusal
+    is reported by `telo check` where the collection is declared, and refused
+    by the collection itself when a manifest reaches it without that check.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref keyUndeclared
+  - !ref keyUndeclaredAtRuntime
+  - !ref keyWritable
+  - !ref keyWritableAtRuntime
+  - !ref writeShapeOpen
+  - !ref writeShapeOpenAtRuntime
+  - !ref propertyNotReadable
+  - !ref propertyNotReadableAtRuntime
+  - !ref propertyTypeDiffers
+  - !ref propertyTypeDiffersAtRuntime
+  - !ref updateRequiresOptional
+  - !ref updateRequiresOptionalAtRuntime
+  - !ref propertyUnknownColumn
+  - !ref propertyUnknownColumnAtRuntime
+  - !ref tableKeyNotPrimary
+  - !ref tableKeyNotPrimaryAtRuntime
+  - !ref relationForeignKeyMismatch
+  - !ref relationForeignKeyMismatchAtRuntime
+  - !ref relationForeignKeyPosition
+  - !ref relationForeignKeyPositionAtRuntime
+  - !ref relationForeignKeyOtherModule
+  - !ref relationForeignKeyOtherModuleAtRuntime
+  - !ref relationForeignKeySameTable
+  - !ref relationForeignKeySameTableAtRuntime
+  - !ref inheritedRule
+  - !ref inheritedRuleAtRuntime
+  - !ref relationForeignKeyComposite
+  - !ref relationForeignKeyCompositeAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: keyUndeclared }
+source: ./__fixtures__/collection-refusals/key-undeclared/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'schemas.list': does not declare a required `id`"
+---
+kind: Assert.Manifest
+metadata: { name: keyUndeclaredAtRuntime }
+source: ./__fixtures__/collection-refusals/key-undeclared/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_KEY_UNDECLARED] RuntimeError: Crud.Collection 'collection': 'schemas.list' does not declare a required 'id'"
+---
+kind: Assert.Manifest
+metadata: { name: keyWritable }
+source: ./__fixtures__/collection-refusals/key-writable/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'schemas.create': declares `id`"
+---
+kind: Assert.Manifest
+metadata: { name: keyWritableAtRuntime }
+source: ./__fixtures__/collection-refusals/key-writable/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_KEY_WRITABLE] RuntimeError: Crud.Collection 'collection': 'schemas.create' declares 'id'"
+---
+kind: Assert.Manifest
+metadata: { name: writeShapeOpen }
+source: ./__fixtures__/collection-refusals/write-shape-open/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'schemas.create': accepts properties it does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: writeShapeOpenAtRuntime }
+source: ./__fixtures__/collection-refusals/write-shape-open/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_WRITE_SHAPE_OPEN] RuntimeError: Crud.Collection 'collection': 'schemas.create' accepts properties it does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: propertyNotReadable }
+source: ./__fixtures__/collection-refusals/property-not-readable/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'schemas.update': declares a property `model` does not"
+---
+kind: Assert.Manifest
+metadata: { name: propertyNotReadableAtRuntime }
+source: ./__fixtures__/collection-refusals/property-not-readable/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_PROPERTY_NOT_READABLE] RuntimeError: Crud.Collection 'collection': 'schemas.update' declares 'secret', which 'model' does not"
+---
+kind: Assert.Manifest
+metadata: { name: propertyTypeDiffers }
+source: ./__fixtures__/collection-refusals/property-type-differs/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'schemas.update': types a property differently from `model`"
+---
+kind: Assert.Manifest
+metadata: { name: propertyTypeDiffersAtRuntime }
+source: ./__fixtures__/collection-refusals/property-type-differs/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_PROPERTY_TYPE_DIFFERS] RuntimeError: Crud.Collection 'collection': 'schemas.update' types 'text' as integer, and 'model' as string"
+---
+kind: Assert.Manifest
+metadata: { name: updateRequiresOptional }
+source: ./__fixtures__/collection-refusals/update-requires-optional/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection: requires in `schemas.update` a property `model` leaves optional"
+---
+kind: Assert.Manifest
+metadata: { name: updateRequiresOptionalAtRuntime }
+source: ./__fixtures__/collection-refusals/update-requires-optional/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_UPDATE_REQUIRES_OPTIONAL] RuntimeError: Crud.Collection 'collection': 'schemas.update' requires 'note', which 'model' leaves optional"
+---
+kind: Assert.Manifest
+metadata: { name: propertyUnknownColumn }
+source: ./__fixtures__/collection-refusals/property-unknown-column/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection: declares a `model` property `table` has no column for"
+---
+kind: Assert.Manifest
+metadata: { name: propertyUnknownColumnAtRuntime }
+source: ./__fixtures__/collection-refusals/property-unknown-column/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_PROPERTY_UNKNOWN_COLUMN] RuntimeError: Crud.Collection 'collection': 'model' declares 'dueOn', and table 'notes' has no column 'due_on'"
+---
+kind: Assert.Manifest
+metadata: { name: tableKeyNotPrimary }
+source: ./__fixtures__/collection-refusals/table-key-not-primary/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection: stores its records in a table whose primary key is not `id`"
+---
+kind: Assert.Manifest
+metadata: { name: tableKeyNotPrimaryAtRuntime }
+source: ./__fixtures__/collection-refusals/table-key-not-primary/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_TABLE_KEY_NOT_PRIMARY] RuntimeError: Crud.Collection 'collection': table 'notes' does not have 'id' as its primary key"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyMismatch }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-mismatch/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'relations.authorId': contradicts the foreign key on its column"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyMismatchAtRuntime }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-mismatch/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH] RuntimeError: Crud.Collection 'collection': 'relations.authorId' points at 'id' of table 'authors', and foreign key 'author' maps column 'author_id' to 'id' of table 'editors'"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyPosition }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-position/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'relations.authorId': contradicts the foreign key on its column"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyPositionAtRuntime }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-position/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH] RuntimeError: Crud.Collection 'collection': 'relations.authorId' points at 'id' of table 'authors', and foreign key 'author' maps column 'author_id' to 'tenant_id' of table 'authors'"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyOtherModule }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-other-module/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'relations.authorId': contradicts the foreign key on its column"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyOtherModuleAtRuntime }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-other-module/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH] RuntimeError: Crud.Collection 'collection': 'relations.authorId' points at 'id' of table 'authors', and foreign key 'author' maps column 'author_id' to 'id' of table 'other_authors'"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeySameTable }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-same-table/lib/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeySameTableAtRuntime }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-same-table/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+kind: Assert.Manifest
+metadata: { name: inheritedRule }
+source: ./__fixtures__/collection-refusals/inherited-rule/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Crud.Collection/collection at 'query.filters[0]': filters by a property `model` does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: inheritedRuleAtRuntime }
+source: ./__fixtures__/collection-refusals/inherited-rule/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_FILTER_UNKNOWN_PROPERTY] RuntimeError: Crud.Collection 'collection': 'query.filters[0]' filters by 'status', which 'model' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyComposite }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-composite/lib/telo.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata: { name: relationForeignKeyCompositeAtRuntime }
+source: ./__fixtures__/collection-refusals/relation-foreign-key-composite/telo.yaml
+expect:
+  errors: []
+  runs: true

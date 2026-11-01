@@ -25,8 +25,8 @@ resources:
   - kind: JS.Script
     metadata:
       name: echo
-    inputType: { type: object, additionalProperties: true }
-    outputType: { type: object, additionalProperties: true }
+    inputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
+    outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
     code: |
       function main(input) { return { greeting: input.text }; }
 invoke: !ref echo

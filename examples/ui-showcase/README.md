@@ -5,8 +5,8 @@ declared, not programmed: the only browser code is four small components the
 Components and Themes pages place. Each page covers one area, and every
 demonstration carries a muted line saying what it shows. The data is a small
 studio — its team, people, projects, tasks, the requests and bookings its
-forms send, and comments on tasks — in SQLite, served by `crud` and routes of
-its own, with real sessions behind a sign-in gate. Every text is written in
+forms send, comments on tasks, the authors of its blog with their posts, and
+its reporting lines — in SQLite, served by `crud` and routes of its own, with real sessions behind a sign-in gate. Every text is written in
 English and translated into fourteen languages: German, Spanish, French,
 Italian, Dutch, Polish, Portuguese, Turkish, Russian, Ukrainian, Hindi,
 Japanese, Korean and Chinese (Simplified).
@@ -24,9 +24,9 @@ file, `./showcase.db` in the working directory by default; a fresh file is
 created and seeded on the first start, and a seeded row edited by hand is
 restored on the next.
 
-The UI modules (`ui-lucide` included), `crud`, `font`, `http-server`, `sql` and
-`sqlite` are imported from this workspace by relative path, so the example runs
-from a checkout.
+The UI modules (`ui-lucide` included), `data-model`, `crud`, `crud-ui`, `font`,
+`i18n`, `http-server`, `sql` and `sqlite` are imported from this workspace by
+relative path, so the example runs from a checkout.
 
 ## Four mounts of one design
 
@@ -51,7 +51,7 @@ the root application reaches the others.
 Every application draws one navigation tree (`UiReact.App.navigation`), naming
 its pages by reference: Overview, a **Building blocks** group holding
 Conditions, Data, Tables, Filters and an **Input** group inside it (Forms,
-Actions), then Components, CRUD and Themes. Every entry and group carries an
+Actions), then Components, CRUD, Related records and Themes. Every entry and group carries an
 icon, declared once in `telo.yaml` and shared by the four applications: a
 Lucide glyph (`UiLucide.Icon`), and for Overview the example's own mark
 (`Ui.FileIcon` over `icons/mark.svg`) — each drawn in the colour of its entry's
@@ -92,10 +92,10 @@ names are written in their own language and left untranslated. The language
 and brand cookies last a year. None of the example's cookies is `Secure`,
 because it is served over plain http locally; a deployment behind TLS adds it.
 
-The pages' request paths are app-relative too: a reader, a table, a form, an
+The pages' request paths are app-relative too: a reader, a listing, a form, an
 option source, an action and the task desk component read and write `/api/tasks`
 under the mount they are drawn in. So
-the server serves the API — the guarded `/api/private` routes, the three
+the server serves the API — the guarded `/api/private` routes, the six
 collections and the other routes — under `/`, `/radix`, `/brand` and `/sidebar` alike,
 every guarded mount behind the one session check, and the files under each
 mount the same way — the language switch, `/api/lang`, included. Only the
@@ -106,11 +106,11 @@ brand switch, `/api/brand`, is the root's alone.
 | File | Holds |
 | --- | --- |
 | `telo.yaml` | the application, the four `UiReact.App` mounts with their header and navigation, the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
-| `data.yaml` | the SQLite connection, schema, tables with their seed rows, and the projects, tasks and people `Crud.Model`s |
+| `data.yaml` | the SQLite connection, schema, tables with their seed rows (the posts' and the reporting lines' with foreign keys), the projects, tasks, people, authors, posts and employees `Crud.Collection`s, the sources the browser reads them from, and the tasks' and posts' presentations |
 | `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, the language rule the applications share (`chosenLanguage`), and the request origin and redirect target rules (`origin`, `sameOriginTarget`) |
 | `translator.yaml` | the translator, listing one catalog per language |
 | `translations/` | one `I18n.Catalog` per language, each file named by its language tag (`pl.yaml`, `ja.yaml`, …) |
-| `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task table, the forms page's team and project option sources, the actions page's assign action) |
+| `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task listing, the forms page's team and project option sources and the requests' presentation, the actions page's assign action, the related-records page's post and employee forms and the reporting lines' presentation) |
 | `showcase.css` | the `/` and `/sidebar` applications' stylesheet |
 | `components/` | a library of the example's own: four browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet` and `typefaceSamples`. Its `nodejs/package.json` exists only to type-check the sources |
 | `brand/` | a library of the example's own exporting the `/brand` theme: `brand.css`, which styles every part of the styling contract, the token values, and Radix's controls |
@@ -125,24 +125,46 @@ brand switch, `/api/brand`, is the root's alone.
 | `/` Overview | every node type and style, links of each address form, images and SVG; values presented by their schema, a list, texts with plurals and values over the team record; style rules on the projects table, one word told apart by context in two column headers and in two nodes' own texts; an inline view and the example's own composite kind; tabs whose chosen tab is in the page's address; on `/`, nodes evaluated per request and an error node |
 | `/conditions` | `when` against `shown`, a placement's condition around a composite's own, every keyword of a condition over a project's summary, missing against null, query parameters set by links, and a button enabled by its form's values |
 | `/data` | a reader whose parameter follows the address, with loading and failure trees and a nested reader; readers that fail three ways; a reader read again on focus; a sign-in gate over real sessions |
-| `/tables` | columns derived from the model and written by hand, sorting, style rules on rows and cells, members nested behind references, the pager, a filter from the page address and a fixed one, and create, edit and delete opening on every kind of surface — dialogs of each size, drawers from each edge, popovers, in line, panels and a page of its own — with addresses, compact replacements, `afterSubmit` and `unsaved` |
+| `/tables` | listings drawn as tables: columns derived from the model and written by hand, sorting, style rules on rows and cells, members nested behind references, the pager, a filter from the page address and a fixed one, and create, edit and delete opening on every kind of surface — dialogs of each size, drawers from each edge, popovers, in line, panels and a page of its own — with addresses, compact replacements, `afterSubmit` and `unsaved` |
 | `/filters` | nine filter bars over the tasks: every placement (above, aside at either edge, folded open and closed, an overlay in a dialog, a drawer and a popover), every value of `show`, `controls`, `apply` and `summary`, every control a filter is entered with, presets, pinned filters and defaults, and state kept in the address, in local storage, in session storage and in both |
 | `/forms` | a form deriving a control for every type of property, with a write-only one never kept and its values kept in the address and local storage; the same record with every input control chosen by hand, kept in session storage; a booking form choosing from the projects and the team — a select list and options side by side with hints and More, pickers in a dialog, a drawer and a popover with search and links, a source narrowed by another field and a default labelled by `in` — with a date range, groups, a group and a field shown on a condition; live validation, and the server's refusals landing on a field; lists of what each form wrote |
 | `/actions` | a bare button; an estimate with grouped fields kept in the address, its answer drawn as sentences, a date and a list; a failure tree of an action's own, and an answer its output model refuses; successes moving to a page by a fixed address and by the answer, to an https address, loading a served file, and going nowhere for an address the rule refuses; a move reading a reader and a table again; comments sent one after another, enabled by the form and clearing their answer; a manager-only action refused with 401 and 403, and one whose route never answers; row actions — plain, confirmed, prompting, enabled per row, and a plain confirmation whose inputs come from the row and the table's query — on tables of tasks and a list of comments |
 | `/components` | a component of the example's own using every field of the host — where the page is, a panel kept in the address, `navigate` and an anchor from `href`, an https address refused, `fetch` reading counts and adding a task, `notifyChanged` reloading the table below, `onChanged` counting every change, a toast in a layer of its own — and a component drawing a table's priority cell; their stylesheet in the `telo.component` layer |
-| `/crud` | a `Crud.Ui` over the tasks collection: a filter bar beside the table showing chosen filters as chips and sharing its state key with a bar on `/filters`, create in a drawer kept open for the next record, edit in an addressed panel asking before unsaved input is dropped |
+| `/crud` | a `CrudUi.Admin` over the tasks collection: a filter bar beside the listing showing chosen filters as chips and sharing its state key with a bar on `/filters`, create in a drawer kept open for the next record, edit in an addressed panel asking before unsaved input is dropped |
+| `/records` | posts naming their author by key, the author shown by name: a table with a bar offering every author and a post form picking one; cards, a list on a narrow screen loading more at the end, with filters offering only the authors and statuses present, with counts; a board by status whose cards move by drag or menu; a calendar by publication day; the authors' generated screen; and the reporting lines as a tree |
 | `/themes` | what the four mounts are; every design token as the mount's theme and brand give it, read live with a sample; the body and heading typefaces in each face, with the faces the application serves — Inter's four on `/brand`; on `/`, links to the other two mounts and the brand switch |
+
+## Related records
+
+A post's `authorId` holds an author's key. The `posts` collection says so once,
+under `relations`, and the posts table's foreign key on `author_id` agrees —
+`telo check` refuses a relation that contradicts its foreign key. How an author
+is shown is said once too, by `postsPresentation`: by name, with the e-mail as
+a hint, searched by name, read from `authorsSource`, the one authors URL the
+authors screen also reads. From those two declarations every listing of posts
+shows the author's name in any layout, every filter field over `authorId`
+offers the authors — all of them, or with `values: present` only those with
+posts, each with its count from the collection's facet request — and the post
+form picks the author from a list. The reporting lines relate the employees to
+themselves (`managerId`), which a tree layout reads as its `parent`: the roots
+with `managerId.absent=true`, a person's reports with `managerId=<id>`.
 
 ## Routes
 
 | Method | Path | Answers |
 | --- | --- | --- |
-| `GET` | `/api/projects` | the projects collection (`Crud.Resource`): paged, sorted, filtered by what the model declares, `code.in` included |
+| `GET` | `/api/projects` | the projects collection (`Crud.Api`): paged, sorted, filtered by what the collection declares, `code.in` included |
 | `GET` `POST` `PUT` `DELETE` | `/api/projects/{id}` | one project; a refused body is the 400 validation problem |
-| `GET` | `/api/tasks` | the tasks collection (`Crud.Resource`): paged, sorted by title, status, priority, estimate or due date, and filtered by every operator — `contains`, equality, `gt` / `lt`, `gte` / `lte`, and `in` over status, label and assignee |
+| `GET` | `/api/tasks` | the tasks collection (`Crud.Api`): paged, sorted by title, status, priority, estimate or due date, and filtered by every operator — `contains`, equality, `gt` / `lt`, `gte` / `lte`, and `in` over status, label and assignee |
 | `GET` `POST` `PUT` `DELETE` | `/api/tasks/{id}` | one task; a refused body is the 400 validation problem |
-| `GET` | `/api/people` | the people collection (`Crud.Resource`): searched by `name.contains`, narrowed by `role` and `active`, chosen values labelled by `email.in` |
+| `GET` | `/api/people` | the people collection (`Crud.Api`): searched by `name.contains`, narrowed by `role` and `active`, chosen values labelled by `email.in` |
 | `GET` `POST` `PUT` `DELETE` | `/api/people/{id}` | one person |
+| `GET` | `/api/authors` | the authors collection (`Crud.Api`): searched by `name.contains`, labelled by `id.in` |
+| `GET` `POST` `PUT` `DELETE` | `/api/authors/{id}` | one author; deleting one leaves their posts with no author |
+| `GET` | `/api/posts` | the posts collection (`Crud.Api`): filtered by `title.contains`, `authorId`, `status` and a range of `publishedOn`; `facet=authorId` or `facet=status` answers the values present under the other filters, with counts |
+| `GET` `POST` `PUT` `DELETE` | `/api/posts/{id}` | one post; an `authorId` naming no author is refused by the foreign key |
+| `GET` | `/api/employees` | the reporting lines (`Crud.Api`): `managerId.absent=true` the people reporting to nobody, `managerId=<id>` someone's reports |
+| `GET` `POST` `PUT` `DELETE` | `/api/employees/{id}` | one person of the reporting lines |
 | `GET` | `/api/task-board` | every task with its assignee and project nested in it, paged under the collection contract with an offset cursor; no filter or sort |
 | `GET` | `/api/team` | the team record and its projects under way, each as the projects collection reads it |
 | `GET` | `/api/project-summary?code=` | one project's lead, member count, tags, note and codename; 404 for an unknown code |
@@ -162,6 +184,7 @@ brand switch, `/api/brand`, is the root's alone.
 | `POST` | `/api/estimate` | a project's open hours by label, in weeks at a pace and the date they end; 404 for an unknown project |
 | `POST` | `/api/assign` | gives a task to a member: 400 on `assigneeEmail` for nobody or a stranger, 404 for an unknown task, 409 for a former member |
 | `POST` | `/api/task-status` | moves a task to a status; 404 for an unknown task, 409 when it is already there |
+| `POST` | `/api/post-status` | moves a post to a status, as the posts board does; 404 for an unknown post |
 | `GET` | `/api/task-counts?code=` | how one project's tasks stand, TEL-42 by default |
 | `POST` | `/api/project-page` | the page listing a project's tasks; 404 for an unknown project |
 | `POST` | `/api/homepage` | the team's homepage |
@@ -178,11 +201,12 @@ Each test that runs the application gives it a database file of its own under
 
 | Test | Port | Asserts |
 | --- | --- | --- |
-| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s placement with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
+| `tests/serves-the-showcase.yaml` | 8151 | the application documents of all four mounts — `/sidebar`'s placement with every default filled — in English and Polish and with the brand cookie, the derived theme's tokens and the brand's Inter faces, and every page document — the overview's nodes, conditions, readers, the tables' columns and every surface spec, every filter bar's policy and fields, every form's fields, option sources, groups and state, every action's fields, answer trees, `onSuccess` and row actions, the components with their module and stylesheet served, the admin screen's bar, forms and surfaces, the related-records page's title and navigation entry, and the themes page with the root's links and brand badge — `/radix`, `/brand` and `/sidebar` placing the same views |
 | `tests/answers-every-route.yaml` | 8152 | the project, record, tag, session and brand routes against the real database: paging, sorting, `in`, a create / read / replace / delete round trip, the 400 validation problem, a 401, the session and the brand switch; and under `/radix`, `/brand` and `/sidebar`, a reader's route, a collection listing, an action's route, the guard's 401 and no brand switch |
 | `tests/tables-and-filters.yaml` | 8153 | the routes the tables and filter bars call: the tasks a page at a time by cursor, sorted both ways, every filter operator the bars send with `in` repeated, a refused sort and filter, a create / read / replace / delete round trip with refused bodies, and the task board's nested rows and cursor |
 | `tests/forms-and-actions.yaml` | 8154 | the routes the forms and actions call: both forms' writes with the server's refusals, the option sources paged, narrowed by a field, searched and labelling by `in`, every action's success, 400 validation problem and other problems, the answer the days action refuses, and each row action's route |
 | `tests/brand-theme.yaml` | none — it starts no application | the `/brand` theme meets the renderer's contract (`UiReactConformance.CheckTheme`): every part styled, no reserved property set, every token given a value and read, every scene drawn with its controls |
+| `tests/related-records.yaml` | 8157 | the related-records page: the author relation behind the table's column, the bar's field and the form's picker, the layouts and their read plans — present values, cards with a compact list, the board's columns and move, the calendar's span, the tree's parent — and the routes they call: the facet request with counts, the batched label lookup, the tree's roots and children, a board move, and a post the foreign key refuses |
 | `tests/components-crud-themes.yaml` | 8156 | the routes the last pages added: the handbook and mirror addresses, the route that never answers, and pausing a project — 401 without a session, 403 with no body for a member who is no manager, the pause, a 404, and a 409 in English and in Polish with `Content-Language` |
 
 The application itself defaults to port 8150.
@@ -214,7 +238,7 @@ why it is not shown.
 | A6 | `stylesheets` | `/`, `/sidebar` (`showcase.css`) |
 | A7 | `compactBelow` | every mount |
 | A8, A9 | `translator`, `lang` negotiated from `Accept-Language`, `Vary` | every mount |
-| A10 | ten pages, one nav link each | every mount; the path refusals are out of scope |
+| A10 | eleven pages, one nav link each | every mount; the path refusals are out of scope |
 | A11 | `pages[].query` | `/conditions` on `/` |
 | A12 | `when` and text per request; an error node for an invalid computed `href` | Overview and Themes on `/`; `REF_SLOT_COMPUTED` is out of scope |
 | A13 | mounts at `/radix`, `/brand` and `/sidebar`; files and the API served under each mount, where each application's `source` paths are read; `fetch` paths from the origin | `telo.yaml`, `/components` |
@@ -243,12 +267,12 @@ why it is not shown.
 | D47 | `Ui.Enablement` with `disabledText`, on an action and on row actions | `/conditions`, `/actions` |
 | E48–E50 | `Ui.View`, a view providing no node, the `Callout` composite kind, nodes carrying their assets | Overview, `/conditions`, `/components`, `/themes` |
 | F51–F55 | readers: params from `query`, `loading`, `failure`, `reloadOn` focus and unauthorized, a refresh by an action, 404 / 401 / refused answers, a sign-in gate, nesting | `/data`, `/actions` |
-| G56–G60 | the collection contract: declared query with every operator, paging, sorting, `in`, the 400 validation problem, item routes; a `Crud.Model` at every `collection` slot | `/api/projects`, `/api/tasks`, `/api/people`, `/api/task-board` |
+| G56–G60 | the collection contract: declared query with every operator, paging, sorting, `in`, the 400 validation problem, item routes; a `Crud.Collection` at every `collection` slot | `/api/projects`, `/api/tasks`, `/api/people`, `/api/task-board` |
 | G61 | labelling chosen values by `in` | `/forms` |
-| H62–H64, H66–H70 | tables: derived and written columns, headers, presentation by type, sorting, members behind references, `rowStyle` and cell style rules, `pageSize` and the pager, `source.filters` from `query` and fixed, `create` / `edit` / `delete` | Overview, `/tables`, `/filters`, `/crud` |
+| H62–H64, H66–H70 | tables: derived and written columns, headers, presentation by type, sorting, members behind references, `rowStyle` and cell style rules, `pageSize` and the pager, `filters` from `query` and fixed, `create` / `edit` / `delete` | Overview, `/tables`, `/filters`, `/crud` |
 | H65 | columns, a component as a `cell` | `/tables`, `/components` |
-| H71 | a table's `query`, read by `source.filters` and by a row action; `rowActions` | `/tables`, `/actions` |
-| H72 | every table over a `basePath` reloading after a write | `/tables`, `/components`, `/crud` |
+| H71 | a listing's `query`, read by `filters` and by a row action; `rowActions` | `/tables`, `/actions` |
+| H72 | every listing over a `basePath` reloading after a write | `/tables`, `/components`, `/crud`, `/records` |
 | I73–I78, I81–I84 | every surface kind with every key, compact replacements, `afterSubmit`, `unsaved`, surface attributes | `/tables`, `/crud` |
 | I79 | surfaces named by `!ref` and written inline | `/tables`. A surface kind of the example's own is not shown: it is an extension, and none of the pages needs one; the refusals are out of scope |
 | I80 | addressed surfaces, opened cold from a link | `/tables`, `/crud`. A row with an empty key is not shown: every key here is a database id |
@@ -273,8 +297,8 @@ why it is not shown.
 | P149, P150 | the styling contract and `UiReactConformance.CheckTheme` | `brand/brand.css`, `tests/brand-theme.yaml` |
 | Q151–Q153 | fourteen catalogs with plurals, the translator, the negotiator | `translations/`, `translator.yaml`, `telo.yaml`, every mount |
 | Q152, Q154 | the translator in an API route, answering in the caller's language | `/api/private/pause` (from `/actions`) |
-| R155, R156 | `Crud.Model`, `Crud.Resource` | `data.yaml`, `/api/projects`, `/api/tasks`, `/api/people`; the rules are out of scope |
-| R157 | `Crud.Ui` with a filter policy and `create` / `edit` surfaces | `/crud`; its expansion, written by hand, on `/tables` and `/filters` |
+| R155, R156 | `Crud.Collection`, `Crud.Api` | `data.yaml`, `/api/projects`, `/api/tasks`, `/api/people`, `/api/authors`, `/api/posts`, `/api/employees`; the rules are out of scope |
+| R157 | `CrudUi.Admin` with a filter policy and `create` / `edit` surfaces | `/crud`, and over the authors on `/records`; its expansion, written by hand, on `/tables` and `/filters` |
 | S158, S159 | the shell, the application and page documents | every mount |
 | S160 | the event stream | every mount |
 | S161 | the `_telo` address and storage keys | `/tables` (surfaces), `/filters` (bars), `/forms` and `/actions` (kept values) |

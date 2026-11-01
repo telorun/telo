@@ -429,11 +429,15 @@ export function contractViolation(
 
   const side = direction === "inputType" ? "inputs" : "result";
   const detail = cause instanceof Error ? cause.message : String(cause);
+  // The input the refusal is about, for the dispatch exit to locate.
+  const issues = (cause as { issues?: unknown } | null)?.issues;
+  const first = Array.isArray(issues) ? (issues[0] as { pointer?: unknown } | undefined)?.pointer : undefined;
+  const inputPointer = direction === "inputType" && typeof first === "string" ? first : undefined;
   return new InvokeError(
     CONTRACT_ERROR[direction],
     `${describeTarget()}: ${side} do not satisfy the declared ${direction}: ${detail}`,
     undefined,
-    { cause },
+    { cause, ...(inputPointer !== undefined ? { inputPointer } : {}) },
   );
 }
 

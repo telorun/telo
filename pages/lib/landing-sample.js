@@ -183,6 +183,137 @@ $ curl localhost:8080/v1/notes
 `,
   },
   {
+    id: "ui",
+    label: "UI",
+    blurb:
+      "An admin screen and its REST API from one collection, with no frontend code. Rename a property and telo check refuses every place that still uses the old name.",
+    files: [
+      {
+        name: "telo.yaml",
+        body: `kind: Telo.Application
+metadata:
+  name: TodoAdmin
+lang: en
+imports:
+  Http: oci://ghcr.io/telorun/http-server@<version>
+  Crud: oci://ghcr.io/telorun/crud@<version>
+  CrudUi: oci://ghcr.io/telorun/crud-ui@<version>
+  SQLite: oci://ghcr.io/telorun/sqlite@<version>
+  Ui: oci://ghcr.io/telorun/ui@<version>
+  UiReact: oci://ghcr.io/telorun/ui-react@<version>
+targets:
+  - !ref Migrate
+  - !ref Server
+ports:
+  http: { env: PORT, protocol: tcp, default: 8080 }
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: file }
+    default: todos.db
+---
+# One shape per operation: the table fills in the id, so no request can set it.
+kind: Telo.JsonSchema
+metadata: { name: NewTodo }
+schema:
+  type: object
+  required: [text]
+  additionalProperties: false
+  properties:
+    text: { type: string, title: Task, minLength: 1 }
+---
+kind: Telo.JsonSchema
+metadata: { name: TodoEdit }
+extends: NewTodo
+schema:
+  type: object
+  required: [isDone]
+  properties:
+    isDone: { type: boolean, title: Done }
+---
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+extends: TodoEdit
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+# The API and the UI both read this: what can be filtered and sorted.
+kind: Crud.Collection
+metadata: { name: Todos }
+model: !ref Todo
+table: !ref TodosTable
+schemas: { list: !ref Todo, create: !ref NewTodo, update: !ref TodoEdit }
+query:
+  filters:
+    - { property: text, operator: contains }
+    - { property: isDone, operator: eq }
+  sort: [{ property: text }]
+---
+kind: CrudUi.CollectionSource
+metadata: { name: TodosSource }
+collection: !ref Todos
+basePath: /api/todos
+---
+kind: SQLite.Connection
+metadata: { name: Db }
+file: !cel "variables.dbFile"
+---
+kind: SQLite.Table
+metadata: { name: TodosTable }
+table: todos
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  text: { type: text, nullable: false }
+  is_done: { type: integer, nullable: false, default: 0 }
+---
+kind: SQLite.Schema
+metadata: { name: Migrate }
+connection: !ref Db
+tables: [!ref TodosTable]
+---
+# The whole frontend: listing, filters, create and edit forms.
+kind: UiReact.App
+metadata: { name: Frontend }
+title: Todos
+words: !ref Ui.words
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Todos
+    children:
+      - type: composite
+        ref: { kind: CrudUi.Admin, source: !ref TodosSource }
+---
+kind: Http.Server
+metadata: { name: Server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - path: /api/todos
+    mount: { kind: Crud.Api, connection: !ref Db, plural: todos, singular: todo, collection: !ref Todos }
+  - { path: /, mount: !ref Frontend }
+`,
+      },
+    ],
+    output: `$ telo ./telo.yaml
+Schema reconciled: table todos
+Listening on http://localhost:8080
+
+$ curl -X POST localhost:8080/api/todos -d '{"text":"write the docs"}'
+{"text":"write the docs","isDone":false,"id":1}
+
+$ curl localhost:8080/api/todos
+{"next":null,"rows":[{"text":"write the docs","isDone":false,"id":1}],"total":1}
+
+# The admin screen — listing, filters, create and edit forms — is at
+# http://localhost:8080/
+`,
+  },
+  {
     id: "batch",
     label: "Batch",
     blurb: "No server at all — a one-shot task that reads, aggregates, reports, and exits.",

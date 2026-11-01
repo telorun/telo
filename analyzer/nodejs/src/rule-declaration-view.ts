@@ -17,13 +17,16 @@
  * the inline's kind, resolved in the holder's module scope. The bindings are
  * written by the accessor reader's one writer, which the kernel delivers with.
  *
- * A declaration another module exported is read with its references in the form
- * a local declaration's have. The pass that rewrites a `!ref` into `{ kind,
+ * A declaration another module wrote — exported, or one it keeps to itself that
+ * a rule reached through it — is read with its references in the form a local
+ * declaration's have. The pass that rewrites a `!ref` into `{ kind,
  * name, alias? }` does not walk a dependency's declaration — its names belong to
  * its own module — so a rule reading a member of such a reference met the tag
  * and failed to evaluate, where the identical rule over a local declaration ran.
  * Each reference a forwarded declaration writes is resolved here in the scope of
  * the module that declared it; one that resolves to nothing is left as written.
+ * Its kind is read there too, so a library's `kind: Self.<Kind>` names the
+ * library's kind, whatever the reading module calls its own.
  *
  * One instance per analysis: a view is built once per declaration, and a
  * declaration with nothing to replace is returned by identity.
@@ -53,6 +56,10 @@ export type DeclarationEvalSites = (
   module: unknown,
 ) => DeclarationReading | undefined;
 
+/** `kind` as `module` writes it, in canonical form; undefined when that scope
+ *  resolves no such kind. */
+export type ForwardedKind = (kind: string, module: string) => string | undefined;
+
 /** What a reference written in `module` — in `writer`, the dependency's
  *  declaration holding it, whose module instance it is read in — names, in the
  *  form a resolved local reference takes; or nothing, when that scope holds no
@@ -78,12 +85,22 @@ export class RuleDeclarationViews {
     /** Resolves a reference a dependency's declaration writes. Without it such a
      *  reference is read as written. */
     private readonly forwardedReference?: ForwardedReference,
+    /** Canonicalizes a kind a dependency's declaration writes. Without it the
+     *  kind is read as written. */
+    private readonly forwardedKind?: ForwardedKind,
+    /** Whether `module` is a dependency's: its declarations the analysis holds
+     *  without the forwarding stamps — what a library keeps to itself — are
+     *  read in its scope too. Without it only stamped ones are. */
+    private readonly isDependency?: (module: string) => boolean,
   ) {}
 
   of<T extends ResourceManifest>(declaration: T): T {
     const module = (declaration.metadata as { module?: unknown } | undefined)?.module;
     const record = declaration as unknown as Record<string, unknown>;
-    return this.view(record, module, isForwardedDeclaration(declaration) ? record : undefined) as unknown as T;
+    const dependency =
+      isForwardedDeclaration(declaration) ||
+      (typeof module === "string" && this.isDependency?.(module) === true);
+    return this.view(record, module, dependency ? record : undefined) as unknown as T;
   }
 
   /** `writer`: the dependency's top-level declaration this one is, or is an
@@ -128,7 +145,11 @@ export class RuleDeclarationViews {
       }
       return copy ?? node;
     };
-    const view = walk(bound, "") as Record<string, unknown>;
+    let view = walk(bound, "") as Record<string, unknown>;
+    if (writer && typeof module === "string" && typeof view.kind === "string" && this.forwardedKind) {
+      const kind = this.forwardedKind(view.kind, module);
+      if (kind && kind !== view.kind) view = { ...view, kind };
+    }
     this.views.set(declaration, view);
     return view;
   }

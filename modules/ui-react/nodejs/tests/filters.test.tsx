@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
-import { dialogSurface, filterField, filtersNode, opener, tableNode, todos, todoSchema } from "./spec-nodes.js";
+import { dialogSurface, filterField, filtersNode, opener, listingNode, todos, todoSchema } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 beforeEach(() => {
@@ -24,7 +24,7 @@ const show = (
     narrow: options.narrow,
     loadModule: loadFixtureComponents,
     collections: { "/api/todos": todos },
-    pages: { "/": { title: "Todos", children: Array.from({ length: options.bars ?? 1 }, () => filtersNode(tableNode(options.table), bar)) } },
+    pages: { "/": { title: "Todos", children: Array.from({ length: options.bars ?? 1 }, () => filtersNode(listingNode(options.table), bar)) } },
   });
 
 /** The query the list was last asked with, the page size aside. */
@@ -111,7 +111,7 @@ describe("a filter bar", () => {
     expect([bar.getAttribute("data-placement"), bar.getAttribute("data-side")]).toEqual([placement.type, side]);
     expect([...bar.children].map((child) => child.getAttribute("data-telo-part"))).toEqual(["filters-bar", "filters-content"]);
     expect(rendered.part("filters-bar").contains(rendered.part("filter"))).toBe(true);
-    expect(rendered.part("filters-content").contains(rendered.part("table"))).toBe(true);
+    expect(rendered.part("filters-content").contains(rendered.part("listing"))).toBe(true);
     expect(rendered.parts("filters-toggle")).toEqual([]);
   });
 

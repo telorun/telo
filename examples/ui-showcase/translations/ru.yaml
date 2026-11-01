@@ -499,9 +499,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: Сгенерированный экран администрирования }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "Одно объявление над моделью задач, по которой работает API: панель фильтров, сортируемая таблица с разбиением на страницы, форма добавления задачи и форма её изменения, а также удаление с подтверждением в каждой строке. Столбцы, поля и фильтры выводятся из модели, поэтому экран предлагает ровно то, что принимает API." }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "Одно объявление над моделью задач, по которой работает API: панель фильтров, сортируемая таблица с разбиением на страницы, форма добавления задачи и форма её изменения, а также удаление с подтверждением в каждой строке. Столбцы, поля и фильтры выводятся из модели, поэтому экран предлагает ровно то, что принимает API." }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "Панель фильтров стоит рядом с таблицей у конечного края и показывает только выбранные вами фильтры, каждый — чипом, открывающим его элемент управления. Свой выбор она хранит в этом браузере под ключом aside — тем же, что у панели фильтров рядом с таблицей на странице фильтров, поэтому фильтр, выбранный на одной странице, выбран на обеих." }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "Новая задача открывается в шторке от конечного края, которая остаётся открытой и очищается для следующей. Задача изменяется в панели рядом со списком, которая входит в адрес, а при уходе из неё с несохранёнными данными сначала задаётся вопрос." }
+
+  # Related records.
+  - { text: "Related records", translation: "Связанные записи" }
+  - { text: "Posts and their authors", translation: "Публикации и их авторы" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "Каждая публикация указывает своего автора по ключу. Столбец автора показывает вместо этого имя автора, прочитанное одним запросом для всех авторов на странице, а фильтр автора на панели предлагает каждого автора по имени. Формы создания и изменения выбирают автора из списка авторов с поиском по имени." }
+  - { text: "Only the authors with posts", translation: "Только авторы с публикациями" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "Эти фильтры предлагают только тех авторов и те статусы, что встречаются среди публикаций, оставленных другими фильтрами, каждый с числом его публикаций. Публикации рисуются карточками, а ниже точки перелома — списком, который подгружает ещё, когда вы доходите до конца." }
+  - { text: "On a board by status", translation: "На доске по статусу" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "Один столбец на статус, каждый читается и считается отдельно. Перетащите карточку в другой столбец или переместите её через её меню, чтобы изменить статус; каждый список публикаций на странице читается заново." }
+  - { text: "On a calendar", translation: "В календаре" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "Публикации в день выхода каждой, по месяцу за раз; показанный месяц читает каждую публикацию, датированную в нём. Публикация без даты в календарь не попадает." }
+  - { text: "The authors", translation: "Авторы" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "Собственный экран авторов, созданный из их коллекции. Он читает тот же адрес, что фильтр и выбор автора публикаций, поэтому добавленный здесь автор сразу предлагается там." }
+  - { text: "Reporting lines as a tree", translation: "Подчинённость в виде дерева" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "Каждый человек указывает, кому он подчиняется, — отношение людей к самим себе. Дерево сначала читает тех, кто никому не подчиняется, а подчинённых человека — когда его раскрывают. Форма выбирает руководителя среди тех же людей." }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "Автор" }
+  - { text: "Draft", translation: "Черновик" }
+  - { text: "Published", translation: "Опубликовано" }
+  - { text: "Published on", translation: "Дата публикации" }
+  - { text: "Reports to", translation: "Руководитель" }
+  - { text: "Post", translation: "Публикация" }
 
   # Themes.
   - { text: Four mounts of one design, translation: Четыре точки монтирования одного дизайна }
@@ -621,3 +643,8 @@ texts:
   - text: "Must have at most {$limit} items"
     translation: { plural: limit, cases: { one: "Не более {$limit} элемента", few: "Не более {$limit} элементов", many: "Не более {$limit} элементов", other: "Не более {$limit} элемента" } }
   - { text: Must not repeat an item, translation: Элементы не должны повторяться }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "Загрузить ещё" }
+  - { text: "Move to", translation: "Переместить в" }
+  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
+  - { text: "not set", translation: "не задано" }

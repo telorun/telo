@@ -14,6 +14,7 @@ imports:
   Http: ../../../../http-server
   Font: ../../../../font
   Ui: ../../../../ui
+  DataModel: ../../../../data-model
   UiReact: ../../../
   Widgets: ../components
   Views: ../views
@@ -28,7 +29,7 @@ metadata:
   name: Todo
 schema:
   type: object
-  required: [text]
+  required: [id, text]
   properties:
     id: { type: integer }
     text: { type: string, title: Task, minLength: 1, maxLength: 80 }
@@ -37,6 +38,31 @@ schema:
     status: { title: Status, enum: [open, blocked, done] }
     dueOn: { type: string, title: Due, format: date }
     notes: { type: string, title: Notes, contentMediaType: text/plain }
+---
+# What a todo is written as: everything but its key.
+kind: Telo.JsonSchema
+metadata:
+  name: TodoInput
+schema:
+  type: object
+  required: [text]
+  properties:
+    text: { type: string, title: Task, minLength: 1, maxLength: 80 }
+    isDone: { type: boolean, title: Done }
+    priority: { type: integer, title: Priority, minimum: 1, maximum: 5 }
+    status: { title: Status, enum: [open, blocked, done] }
+    dueOn: { type: string, title: Due, format: date }
+    notes: { type: string, title: Notes, contentMediaType: text/plain }
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Note
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    text: { type: string, title: Text }
 ---
 kind: Api.Collection
 metadata:
@@ -61,9 +87,10 @@ metadata:
 root: !module-path ./public
 ---
 # What the todos collection's list accepts.
-kind: Ui.Collection
+kind: DataModel.Collection
 metadata:
   name: todoCollection
+model: !ref Todo
 query:
   filters:
     - { property: text, operator: contains }
@@ -78,37 +105,43 @@ query:
     - { property: dueOn }
     - { property: notes }
 ---
+kind: Ui.CollectionPresentation
+metadata:
+  name: todoPresentation
+source: { kind: Ui.CollectionSource, collection: !ref todoCollection, basePath: /api/todos }
+---
 kind: Ui.Form
 metadata:
   name: todoForm
-model: !ref Todo
-source: { basePath: /api/todos }
+model: !ref TodoInput
+presentation: !ref todoPresentation
 fields: [text, isDone, priority, status, dueOn, notes]
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: todos
+presentation: !ref todoPresentation
 model: !ref Todo
-collection: !ref todoCollection
-source: { basePath: /api/todos }
 pageSize: 2
 rowStyle:
   by: !cel "row.isDone"
   cases: { "true": muted }
-columns:
-  - value: !cel "row.text"
-  - value: !cel "row.priority"
-    style:
-      by: !cel "row.priority"
-      cases: { "1": danger, "2": warning }
-  - value: !cel "row.dueOn"
-  - header: State
-    cell:
-      kind: Ui.Component
-      component: !ref Widgets.statusPill
-      model: !ref Todo
-      props:
-        done: !cel "row.isDone"
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
+    - value: !cel "row.priority"
+      style:
+        by: !cel "row.priority"
+        cases: { "1": danger, "2": warning }
+    - value: !cel "row.dueOn"
+    - header: State
+      cell:
+        kind: Ui.Component
+        component: !ref Widgets.statusPill
+        model: !ref Todo
+        props:
+          done: !cel "row.isDone"
 create: { form: !ref todoForm }
 edit: { form: !ref todoForm }
 delete: true
@@ -116,41 +149,41 @@ delete: true
 kind: Ui.Filters
 metadata:
   name: todoFilters
-model: !ref Todo
-collection: !ref todoCollection
+presentation: !ref todoPresentation
 content:
   type: composite
   ref: !ref todos
 ---
 # The whole row model, with nothing listed.
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: allColumns
+presentation: !ref todoPresentation
 model: !ref Todo
-collection: !ref todoCollection
-source: { basePath: /api/todos }
 ---
 # The same table, one column shorter.
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: publicColumns
+presentation: !ref todoPresentation
 model: !ref Todo
-collection: !ref todoCollection
-source: { basePath: /api/todos }
-columns:
-  - value: !cel "row.text"
-  - value: !cel "row.dueOn"
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
+    - value: !cel "row.dueOn"
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: internalColumns
+presentation: !ref todoPresentation
 model: !ref Todo
-collection: !ref todoCollection
-source: { basePath: /api/todos }
-columns:
-  - value: !cel "row.text"
-  - value: !cel "row.dueOn"
-  - value: !cel "row.priority"
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.text"
+    - value: !cel "row.dueOn"
+    - value: !cel "row.priority"
 ---
 kind: Font.Family
 metadata:
@@ -204,13 +237,15 @@ pages:
       - { type: text, text: Finished work, style: heading }
       - type: composite
         ref:
-          kind: Ui.Table
+          kind: Ui.Listing
+          presentation: !ref todoPresentation
           model: !ref Todo
-          collection: !ref todoCollection
-          source: { basePath: /api/todos, filters: { isDone: true } }
-          columns:
-            - value: !cel "row.text"
-            - value: !cel "row.dueOn"
+          filters: { isDone: true }
+          layout:
+            kind: Ui.TableLayout
+            columns:
+              - value: !cel "row.text"
+              - value: !cel "row.dueOn"
   - kind: Ui.Page
     path: /all
     title: All columns
@@ -248,17 +283,44 @@ pages:
         ref: { kind: Ui.Component, component: !ref Widgets.unsupplied }
       - type: composite
         ref:
-          kind: Ui.Table
+          kind: Ui.Listing
+          presentation:
+            kind: Ui.CollectionPresentation
+            source:
+              kind: Ui.CollectionSource
+              basePath: /api/notes
+              collection:
+                kind: DataModel.Collection
+                model: !ref Note
+                query: { filters: [], sort: [{ property: text }] }
+          model: !ref Note
+          layout:
+            kind: Ui.TableLayout
+            columns:
+              - value: !cel "row.text"
+  - kind: Ui.Page
+    path: /layouts
+    title: Layouts
+    children:
+      - type: composite
+        ref: { kind: Ui.Listing, presentation: !ref todoPresentation, model: !ref Todo, layout: { kind: Widgets.RecordStrip, title: Todos } }
+      - type: composite
+        ref:
+          kind: Ui.Listing
+          presentation: !ref todoPresentation
           model: !ref Todo
-          collection:
-            kind: Ui.Collection
-            query:
-              filters: []
-              sort:
-                - { property: text }
-          source: { basePath: /api/notes }
-          columns:
-            - value: !cel "row.text"
+          layout:
+            kind: Ui.ComponentLayout
+            component: !ref Widgets.recordStrip
+            props:
+              title: Tasks
+              text: !cel "row.text"
+      - type: composite
+        ref:
+          kind: Ui.Listing
+          presentation: !ref todoPresentation
+          model: !ref Todo
+          layout: { kind: Ui.ComponentLayout, component: !ref Widgets.misbuiltStrip }
   - kind: Ui.Page
     path: /gallery
     title: Gallery

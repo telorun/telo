@@ -86,6 +86,13 @@ describe("partial unwind — reconciliation's half of teardown", () => {
     await kernel.teardown();
   });
 
+  it("counts a declaration read as a read of its target, so the reader is rebuilt with it", async () => {
+    const { kernel, ctx } = await running();
+    const { impacted } = ctx.impactedBy(["readTarget"]);
+    expect([...impacted].sort()).toEqual(["readTarget", "reader"]);
+    await kernel.teardown();
+  });
+
   it("skips a name with no live instance rather than failing", async () => {
     const { kernel, ctx, inverses } = await running();
     await ctx.unwindResources(new Set(["localConsumer", "neverDeclared"]));
@@ -124,5 +131,12 @@ describe("teardown order — a consumer unwinds before what it holds", () => {
     // guarantee: it holds for an edge that never passes through Phase-5
     // injection, where insertion order says nothing.
     expect(entries.indexOf("~localConsumer")).toBeLessThan(entries.indexOf("~localProvider"));
+  });
+
+  it("orders nothing on a declaration read", () => {
+    // `reader` was created first and holds nothing of `readTarget`, so reverse
+    // creation order stands; an edge would have unwound `reader` first.
+    expect(entries.indexOf("~reader")).toBeGreaterThan(-1);
+    expect(entries.indexOf("~readTarget")).toBeLessThan(entries.indexOf("~reader"));
   });
 });

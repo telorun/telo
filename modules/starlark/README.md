@@ -45,7 +45,7 @@ The script must define a `run(input)` function. The controller calls it with the
 
 The returned value must be a dict (object) or list; other values are returned as raw strings.
 
-If you trust the authored code and want full JavaScript power, use [`JavaScript.Script`](../javascript/README.md) instead.
+`JavaScript.Script` is deprecated and is not an alternative. Value shaping, branching and iteration belong in the `run` module's step grammar with CEL; reaching an API nothing else exposes is what a new resource kind is for.
 
 ## Typed inputs and outputs
 

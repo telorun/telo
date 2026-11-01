@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "license": "MIT",
   "private": true,
-  "description": "Test fixture: a component library written against the ui_react-1 ABI, and a control set written against ui_react_controls-2. In the workspace so its sources type-check against each generation's own type declaration.",
+  "description": "Test fixture: a component library written against the ui_react-1 ABI, a listing layout written against ui_react_layouts-1, and a control set written against ui_react_controls-2. In the workspace so its sources type-check against each generation's own type declaration.",
   "type": "module",
   "scripts": {
     "build": "tsc -p tsconfig.json"

@@ -4,6 +4,7 @@ import {
   assembleGraphDiagnostics,
   collectApplicationSources,
   collectModuleDocuments,
+  describeModuleSource,
   diagnosticFix,
   flattenForAnalyzer,
   locateDiagnostic,
@@ -23,7 +24,9 @@ import {
   type RuntimeRunOptions,
   type RuntimeSeam,
 } from "@telorun/sdk";
+import * as path from "path";
 import { PassThrough, Writable } from "stream";
+import { fileURLToPath } from "url";
 import { nodeHostVersions } from "./host-versions.js";
 import { nodeCelHandlers } from "./cel-handlers.js";
 import type { Kernel } from "./kernel.js";
@@ -183,15 +186,30 @@ function toCheckDiagnostic(diagnostic: AnalysisDiagnostic, graph: LoadedGraph): 
  * the failure's own message, then one `  [<CODE>] <message>` line per
  * diagnostic it carries — `details` and further message lines beneath it, a
  * nested context's `children` one level further in, `derived` entries left out
- * as `telo run` leaves them out. No location: the located form is `check()`'s.
+ * as `telo run` leaves them out.
+ *
+ * A failure that left a dispatch is written at the place it was caused,
+ * `<file>:<line>:<col>  ` before its line, when `located` (the kernel's
+ * `failureDiagnostics`) placed it and `position` resolves the place; a static
+ * diagnostic's location stays `check()`'s.
  */
-export function refusedRunText(err: unknown): string {
-  const lines = [err instanceof Error ? err.message : String(err)];
-  const write = (diagnostics: RuntimeDiagnostic[], indent: string): void => {
+export function refusedRunText(
+  err: unknown,
+  located?: readonly RuntimeDiagnostic[],
+  position?: (d: RuntimeDiagnostic) => string | undefined,
+): string {
+  const carried = (err as { diagnostics?: RuntimeDiagnostic[] } | null)?.diagnostics;
+  const at = (d: RuntimeDiagnostic | undefined): string => {
+    const place = d?.location && d.origin ? position?.(d) : undefined;
+    return place ? `${place}  ` : "";
+  };
+  const headline = err instanceof Error ? err.message : String(err);
+  const lines = [Array.isArray(carried) ? headline : `${at(located?.[0])}${headline}`];
+  const write = (diagnostics: readonly RuntimeDiagnostic[], indent: string): void => {
     for (const d of diagnostics) {
       if (!d.derived) {
         const [first, ...rest] = d.message.split("\n");
-        lines.push(`${indent}${d.code ? `[${d.code}] ` : ""}${first}`);
+        lines.push(`${indent}${at(d)}${d.code ? `[${d.code}] ` : ""}${first}`);
         const beneath = [...rest, ...(d.details ? d.details.split("\n") : [])];
         lines.push(...beneath.map((line) => `${indent}  ${line}`));
       }
@@ -199,9 +217,32 @@ export function refusedRunText(err: unknown): string {
       if (d.children?.length) write(d.children, `${indent}  `);
     }
   };
-  const carried = (err as { diagnostics?: RuntimeDiagnostic[] } | null)?.diagnostics;
-  if (Array.isArray(carried)) write(carried, "  ");
+  if (Array.isArray(carried)) write(located ?? carried, "  ");
   return `${lines.join("\n")}\n`;
+}
+
+/** `file:line:col` of a located diagnostic, its file shown as `telo run` shows
+ *  it: relative to the working directory, a module nested in an artifact by its
+ *  parent as written. */
+function positionIn(graph: LoadedGraph, d: RuntimeDiagnostic): string | undefined {
+  const located = locateDiagnostic(graph, { message: d.message, data: d.origin });
+  if (!located) return undefined;
+  const source = located.file ?? d.origin?.filePath;
+  if (source === undefined) return undefined;
+  const described = describeModuleSource(graph, source);
+  const file = described !== source ? described : displayedSource(source);
+  return `${file}:${located.range.start.line + 1}:${located.range.start.character + 1}`;
+}
+
+function displayedSource(source: string): string {
+  if (!source.startsWith("file://")) return source;
+  // A file URL naming no path on this host is shown as the URL, as `telo run`
+  // shows it, rather than replacing the failure with the conversion's.
+  try {
+    return path.relative(process.cwd(), fileURLToPath(source));
+  } catch {
+    return source;
+  }
 }
 
 /**
@@ -258,6 +299,8 @@ export class KernelRuntimeSeam implements RuntimeSeam {
     // asked to run a manifest and the answer is "it exited non-zero, here is
     // why", which keeps both failure modes on one path. `start()` tears the
     // child down in its own `finally`, so this only has to close the channels.
+    // Captured after load: `start()`'s teardown drops the child's own.
+    let graph: LoadedGraph | undefined;
     const exitCode = (async () => {
       try {
         // The child runs a manifest in the SAME workspace as its parent, so it
@@ -269,10 +312,18 @@ export class KernelRuntimeSeam implements RuntimeSeam {
         // `undefined` means "resolve one yourself" and `null` means "no cache" —
         // a parent with no local anchor must yield the first, not the second.
         await child.load(source, { cacheDir: this.kernel.getCacheRoot() ?? undefined });
+        graph = child.getLoadedGraph();
         await child.start();
         return child.exitCode;
       } catch (err) {
-        stderr.writable.write(refusedRunText(err));
+        const loaded = graph ?? child.getLoadedGraph();
+        stderr.writable.write(
+          refusedRunText(
+            err,
+            child.failureDiagnostics(err),
+            loaded ? (d) => positionIn(loaded, d) : undefined,
+          ),
+        );
         return child.exitCode === 0 ? 1 : child.exitCode;
       } finally {
         stdout.end();

@@ -46,8 +46,9 @@ Worth knowing so you calibrate what "no issues found" means:
 
 - **Wrong logic that type-checks.** `!cel "inputs.a - inputs.b"` when you meant
   `+` is a perfectly valid expression.
-- **Anything inside a script.** `JavaScript.Script` bodies are opaque — one more
-  reason to prefer composition over scripting.
+- **Anything inside a script.** `JavaScript.Script` bodies are opaque to every
+  check, which is why the kind is deprecated and warned about wherever it is
+  declared; use the step grammar or a resource kind instead.
 - **The outside world.** Whether your database is reachable, your credentials
   work, or an upstream returns the shape it promised.
 - **Runtime data.** The contract is enforced at dispatch, so a violation is a
@@ -126,9 +127,10 @@ manifest.yaml:14:5  error  No Telo.Definition found for kind "Http.Srver".  UNDE
 [diagnostics reference](/reference/diagnostics) for the **code** — the message
 contains your resource names, the code is stable.
 
-Errors fail the command; warnings do not. There are only four warnings, and each
-one flags something suspicious rather than broken — an unused declaration, a
-deprecated ref form, a version hoist, a capability that shadows an abstract.
+Errors fail the command; warnings do not. A warning flags something suspicious
+rather than broken — an unused declaration, a deprecated kind or spelling, a
+name that breaks the casing convention. The
+[diagnostics reference](/reference/diagnostics) marks each warning with ⚠️.
 
 ## When a CEL expression will not type-check
 
@@ -168,7 +170,7 @@ parent.
 
 ## See also
 
-- [Diagnostics reference](/reference/diagnostics) — every code, with what
+- [Diagnostics reference](/reference/diagnostics) — the codes, with what
   triggers it and how to fix it.
 - [`!ref` and `!cel`](/learn/refs-and-cel) — the scope table question 2 refers to.
 - [Testing your manifests](/build/testing) — for the errors no analyzer can find.

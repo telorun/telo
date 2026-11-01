@@ -23,6 +23,8 @@ WORKDIR /telo
 
 ENV TELO_COMMAND='["/telo/node_modules/.bin/bun","/telo/cli/nodejs/bin/telo.ts"]'
 
+# The base image runs as `node`; enabling corepack writes /usr/local/bin.
+USER root
 RUN corepack enable
 
 # The module cache, OUTSIDE the bind-mounted repo — `TELO_CACHE_DIR` points
@@ -48,6 +50,10 @@ CMD ["pnpm", "run", "--silent", "telo", "--watch", "apps/hub/telo.yaml"]
 
 FROM telorun/node:${TELO_NODE_VERSION}-slim as build
 
+# WORKDIR creates a missing directory root-owned, so it is made first.
+USER root
+RUN mkdir -p /srv && chown node:node /srv
+USER node
 WORKDIR /srv
 
 # The entry manifest AND the six libraries it imports by relative path. The
@@ -55,10 +61,10 @@ WORKDIR /srv
 # a missing library is a build failure here rather than a runtime one — but only
 # because the entry imports them, which is exactly the property a hand-listed
 # set would lose the next time one is added.
-COPY ./*.yaml ./
+COPY --chown=node:node ./*.yaml ./
 # The authoring guides the MCP prompts embed with `!include-text`; a missing one
 # fails the load with INCLUDE_FILE_NOT_FOUND.
-COPY ./guides ./guides
+COPY --chown=node:node ./guides ./guides
 
 # Pre-fetch every controller declared in the manifest graph so boot does
 # no network I/O. Cache writes to $TELO_CACHE_DIR (/srv/.telo-cache).
@@ -71,8 +77,13 @@ RUN telo install telo.yaml
 
 FROM telorun/node:${TELO_NODE_VERSION}-slim as production
 
+# WORKDIR creates a missing directory root-owned, so it is made first.
+USER root
+RUN mkdir -p /srv && chown node:node /srv
+USER node
 WORKDIR /srv
-COPY --from=build /srv /srv
+# Owned by `node`: the kernel writes derived cache entries into the baked cache.
+COPY --from=build --chown=node:node /srv /srv
 
 # The tracker fetches registered (eventually attacker-suppliable) refs through
 # the telo CLI — refuse egress to private / loopback / link-local hosts. A

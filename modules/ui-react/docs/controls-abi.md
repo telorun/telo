@@ -769,7 +769,9 @@ this module, beside the interpreter that runs it:
   touches nothing else: a host draws the control, or mounts the renderer;
 - `tokenProperty` — how a design token is spelled as the custom property the
   page sets (`color.accent` → `--telo-color-accent`), the one projection the
-  application's token stylesheet uses.
+  application's token stylesheet uses;
+- `layouts`, `layoutVectors` and `runLayoutVector` — the
+  [layout contract](layouts-abi.md), its vectors and their runner.
 
 A step is one of `click`, `press` (a pointer pressed down, `mouse` or
 `touch`), `hover` (a mouse pointer moved onto the element), `key` (with

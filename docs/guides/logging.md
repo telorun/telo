@@ -16,7 +16,10 @@ Logging is configured entirely from the manifest.
 
 An app with no `logging:` block still logs. The runtime behaves exactly as if a
 single console sink were declared: pretty output on a terminal, JSON when piped
-or redirected.
+or redirected. The console sink writes to **standard error** unless it sets
+`destination: stdout`, and the choice follows that stream, so a container without
+a TTY emits JSON lines on stderr while `Console.writeLine` output stays on
+stdout.
 
 ```
 12:34:56.789 INFO  Http.Server.api  listening  net.host.port=8080
@@ -27,7 +30,7 @@ or redirected.
 ```yaml
 kind: Telo.Application
 metadata:
-  name: my-app
+  name: MyApp
 logging:
   level: debug
 ```
@@ -230,7 +233,7 @@ logging:
     tick: 1s
 ```
 
-Records at `error` and above are never sampled by default. Sampled records are
+Records at `error` and above are never sampled by default. Operating guidance (level from an env var, OTLP) is in [Running in production](/deploy/production#logs-and-traces). Sampled records are
 counted like any other drop.
 
 ## Emitting from a controller
@@ -314,7 +317,7 @@ The `telo.*` namespace is reserved for the runtime.
 ### Naming an event
 
 A record's **message is prose and nothing should ever match on it** — it is the
-one field that differs between a Node, Rust or Go implementation of the same
+one field that differs between a Node or Rust implementation of the same
 kind, because it usually comes from whatever library is underneath.
 
 When a record represents a *class* of event rather than a one-off line, name it

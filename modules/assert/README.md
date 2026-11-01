@@ -48,29 +48,27 @@ The config-bearing kinds (`Schema`, `Manifest`, `Events`, `ModuleContext`) carry
 
 ```yaml
 kind: Telo.Application
-metadata: { name: assert-app, version: 1.0.0 }
+metadata: { name: AssertApp, version: 1.0.0 }
 imports:
   Assert: oci://ghcr.io/telorun/assert@0.10.5
   Run: oci://ghcr.io/telorun/run@0.13.0
-  JS: oci://ghcr.io/telorun/javascript@0.7.0
-targets: [ !ref Check ]
+targets: [ !ref check ]
 ---
-kind: JS.Script
-metadata: { name: AddNumbers }
-code: |
-  export function main() { return { total: 42 } }
+kind: Run.Value
+metadata: { name: addNumbers }
+value: { total: 42 }
 ---
 # `actual` / `expected` are invoke inputs, not resource fields — the matchers
 # themselves are config-free.
 kind: Run.Sequence
-metadata: { name: Check }
+metadata: { name: check }
 steps:
-  - name: Add
-    invoke: !ref AddNumbers
-  - name: Total
+  - name: add
+    invoke: !ref addNumbers
+  - name: total
     invoke: !ref Assert.equals
     inputs:
-      actual: !cel "steps.Add.result.total"
+      actual: !cel "steps.add.result.total"
       expected: 42
 ```
 
@@ -81,6 +79,8 @@ Deep equality over the JSON-shaped values a Telo step passes around: primitives,
 An integer compares by value across its representation. A CEL integer is int64 while an `expected:` literal comes out of YAML as a plain number, and YAML has no way to write the other — so `!cel "size(items)"` equals `3`. The match is exact in both directions: the literal must be integral and round-trip to the same int64, so neither `3.5` nor a magnitude a double cannot represent will match.
 
 `Assert.Events` compares its `payload:` leaves the same way. It is a **subset** match — only the keys the expectation names are compared, recursively — but each leaf it does compare uses the rule above, so an integer-valued expression in an event payload is assertable against a plain YAML number.
+
+A failure lists each difference on its own line with its path — `server.port: expected 8080, got 80`, a missing or unexpected key, a list's length with only its surplus or missing items — rather than printing both values; set `TELO_TEST_VERBOSE` to print them whole as well. See [what a failure reports](docs/equals.md#what-a-failure-reports).
 
 ## Asserting *that* something happened, and *how many times*
 
@@ -116,4 +116,5 @@ Narrow `filter:` alongside a count when the pattern is a wildcard: the filter de
 
 ## Reference
 
+- [`Assert.Equals`](docs/equals.md)
 - [`Assert.Manifest`](docs/manifest.md)

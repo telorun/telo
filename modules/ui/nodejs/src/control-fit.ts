@@ -1,4 +1,4 @@
-import type { Operator } from "./collection-controller.js";
+import type { Operator } from "./collection-source.js";
 import { plainTypes, type JsonSchema } from "./model-schema.js";
 
 /** How a value is entered: `Ui.Control`, plus a filter bar's `none`. */
@@ -15,8 +15,10 @@ const isNode = (value: unknown): value is JsonSchema => value !== null && typeof
  * `operator` is a filter's, or `null` for a form field, whose value is a list
  * when the property is an `array` and is entered by its `items` then. A field's
  * property holds one plain value or a list of them, whatever its control.
+ * `absent` holds whether the property is missing, entered with a toggle.
  */
 export function controlFits(control: Control, property: JsonSchema, operator: Operator | null): boolean {
+  if (operator === "absent") return control === "auto" || control === "toggle" || control === "none";
   const listed = operator === null && plainTypes(property).join() === "array";
   const element = !listed ? property : isNode(property.items) ? property.items : {};
   const types = plainTypes(element);

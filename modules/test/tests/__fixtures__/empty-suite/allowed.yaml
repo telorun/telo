@@ -1,0 +1,11 @@
+kind: Telo.Application
+metadata: { name: EmptySuiteAllowed }
+imports:
+  Test: ../../..
+targets: [!ref suite]
+---
+kind: Test.Suite
+metadata: { name: suite }
+include: ["nothing-matches-this/*.yaml"]
+exclude: []
+allowEmpty: true

@@ -4,12 +4,25 @@ const sidebars: SidebarsConfig = {
   docs: [
     {
       type: "category",
+      label: "Start here",
+      collapsed: false,
+      items: [
+        { type: "doc", id: "docs/guides/getting-started", label: "What Telo is & Getting Started" },
+        { type: "doc", id: "docs/guides/vs-low-code", label: "Compared to low-code platforms" },
+        { type: "doc", id: "docs/guides/coming-from", label: "Coming from somewhere else" },
+        { type: "doc", id: "docs/guides/what-you-get", label: "What you get for free" },
+        { type: "doc", id: "docs/guides/licensing", label: "Licensing" },
+        { type: "doc", id: "examples/INDEX", label: "Examples" },
+      ],
+    },
+    {
+      type: "category",
       label: "Learn",
       collapsed: false,
       items: [
-        { type: "doc", id: "docs/guides/getting-started", label: "Getting Started" },
         { type: "doc", id: "docs/guides/first-http-api", label: "Your first HTTP API" },
         { type: "doc", id: "docs/guides/how-telo-works", label: "How Telo works" },
+        { type: "doc", id: "docs/guides/glossary", label: "Glossary" },
         { type: "doc", id: "docs/guides/refs-and-cel", label: "!ref and !cel" },
         { type: "doc", id: "docs/guides/embedding-files", label: "Embedding files" },
         { type: "doc", id: "docs/guides/static-analysis", label: "Catching errors early" },
@@ -24,14 +37,10 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/providing-needs", label: "Providing needs" },
         { type: "doc", id: "docs/guides/workspaces", label: "Workspaces" },
         { type: "doc", id: "docs/guides/editor-telo-version", label: "Editing against a telo version" },
-        { type: "doc", id: "cli/README", label: "Installation & CLI" },
+        { type: "doc", id: "cli/README", label: "Telo CLI" },
         { type: "doc", id: "docs/guides/packaging-an-app", label: "Packaging an application" },
         { type: "doc", id: "docs/guides/distributing-an-application", label: "Distributing an application" },
-        { type: "doc", id: "docs/guides/coming-from", label: "Coming from somewhere else" },
-        { type: "doc", id: "docs/guides/vs-low-code", label: "Compared to low-code platforms" },
-        { type: "doc", id: "docs/guides/what-you-get", label: "What you get for free" },
         { type: "doc", id: "docs/guides/style-guide", label: "Style Guide" },
-        { type: "doc", id: "docs/guides/glossary", label: "Glossary" },
       ],
     },
     {
@@ -128,6 +137,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/reference/standard-library", label: "Standard library" },
         { type: "doc", id: "docs/cel-reference", label: "CEL Functions" },
         { type: "doc", id: "docs/reference/diagnostics", label: "Diagnostics reference" },
+        { type: "doc", id: "docs/reference/environment-variables", label: "Environment variables" },
         {
           type: "category",
           label: "Kernel",
@@ -225,7 +235,6 @@ const sidebars: SidebarsConfig = {
         },
       ],
     },
-    { type: "doc", id: "examples/INDEX", label: "Examples" },
   ],
 };
 

@@ -96,7 +96,7 @@ export interface WireRef {
 
 /**
  * The owning resource of a spawned child — the parent in the resource topology.
- * A child is spawned by a templated resource (e.g. a `Crud.Resource` expanding
+ * A child is spawned by a templated resource (e.g. a `Crud.Api` expanding
  * into its SQL handlers + HTTP API); the producer stamps this so a consumer can
  * nest the child under its parent and keep two instances of the same templated
  * kind from colliding. `id` is the owner's full hierarchical id.

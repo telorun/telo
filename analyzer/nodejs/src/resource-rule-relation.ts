@@ -20,12 +20,12 @@ import { reportRuleEvaluation } from "./cel-site-judgements.js";
 import { governedCelEvalSites, type CelEvalSites } from "./eval-paths.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { definitionInScope } from "./module-alias-scope.js";
-import { analyzerPeerBinder, type PeerBinder } from "./peer-binding.js";
+import { analyzerPeerBinder, analyzerWritingModules, type PeerBinder } from "./peer-binding.js";
 import { withQuotedPath } from "./quoted-place.js";
 import { RuleFailureLedger } from "./rule-condition.js";
 import { RuleDeclarationViews, type ForwardedReference } from "./rule-declaration-view.js";
 import { resolvedReference } from "./resolved-reference.js";
-import { RESOURCE_RULES_ANNOTATION, readResourceRules } from "./resource-rule.js";
+import { RESOURCE_RULES_ANNOTATION, declaredResourceRules, readResourceRules } from "./resource-rule.js";
 import type { RelationDoor, RelationFinding, DeclarationIdentity } from "./relation-sites.js";
 import { importPathOf, importPathThrough } from "./scoped-name-resolver.js";
 import {
@@ -74,42 +74,45 @@ type RuleDoor = Pick<
   "defs" | "aliases" | "aliasesByModule" | "rootModules" | "libraries" | "requests" | "declared" | "moduleNames" | "subject" | "functions"
 >;
 
-/** A kind's author schema, inheritance folded. */
-type AuthorSchemaOf = (definition: ResourceDefinition) => Record<string, any>;
-
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 /** The binder a rule resolves its references through, over the door's requests. */
 function binderOf(door: RuleDoor): PeerBinder {
-  const { defs, aliases, aliasesByModule, requests, libraries } = door;
+  const { defs, aliases, aliasesByModule, requests, libraries, rootModules } = door;
   const ruleDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
   const sites = new WeakMap<object, CelEvalSites | undefined>();
+  const writing = analyzerWritingModules(rootModules, aliasesByModule, requests.names, libraries);
+  const forwardedKind = (kind: string, owner: string): string | undefined =>
+    kind.startsWith("Self.") ? `${owner}.${kind.slice("Self.".length)}` : aliasesByModule.get(owner)?.resolveKind(kind);
   const forwardedReference: ForwardedReference = (target, module, writer) => {
     const local = target.alias === undefined || target.alias === "Self";
-    const owner = local ? module : aliasesByModule.get(module)?.moduleForAlias(target.alias!);
+    const owner = local ? module : writing.moduleForAlias(module, target.alias!);
     const instance = local ? importPathOf(writer) : importPathThrough(writer, target.alias!);
-    const declaration =
-      owner === undefined ? undefined : (requests.names.inModule(target.name, owner, instance) ?? libraries?.declaration(owner, target.name));
+    const declaration = owner === undefined ? undefined : writing.declaredIn(owner, target.name, instance);
     if (!owner || !declaration || typeof declaration.kind !== "string") return undefined;
-    const kind = declaration.kind.startsWith("Self.")
-      ? `${owner}.${declaration.kind.slice("Self.".length)}`
-      : (aliasesByModule.get(owner)?.resolveKind(declaration.kind) ?? declaration.kind);
+    const kind = forwardedKind(declaration.kind, owner) ?? declaration.kind;
     return resolvedReference(kind, target.name, local ? undefined : target.alias);
   };
-  const views = new RuleDeclarationViews((declaration, module) => {
-    const definition = definitionInScope(defs, declaration.kind, { module }, aliases, aliasesByModule) as unknown as ResourceDefinition | undefined;
-    if (!definition) return undefined;
-    if (!sites.has(definition)) sites.set(definition, governedCelEvalSites(definition, ruleDef, defs.shapeLookup));
-    return { sites: sites.get(definition) };
-  }, forwardedReference);
+  const views = new RuleDeclarationViews(
+    (declaration, module) => {
+      const definition = definitionInScope(defs, declaration.kind, { module }, aliases, aliasesByModule) as unknown as ResourceDefinition | undefined;
+      if (!definition) return undefined;
+      if (!sites.has(definition)) sites.set(definition, governedCelEvalSites(definition, ruleDef, defs.shapeLookup));
+      return { sites: sites.get(definition) };
+    },
+    forwardedReference,
+    forwardedKind,
+    writing.isDependency,
+  );
   return analyzerPeerBinder(
     defs,
     aliases,
     requests,
     (slotKinds, declarationKind) => slotKinds.some((target) => kindSatisfies(declarationKind, target, defs)),
     (declaration) => views.of(declaration),
+    writing,
   );
 }
 
@@ -143,45 +146,64 @@ function ruleDiagnostic(report: ResourceRuleDiagnostic): AnalysisDiagnostic {
   return report.path === undefined ? diagnostic : withQuotedPath(diagnostic, report.path);
 }
 
+/** A rule report as a carrier holds it, reported at `owner`. */
+function describedAt(owner: ResourceManifest, report: ResourceRuleDiagnostic): RuleReport["report"] {
+  return {
+    code: report.code,
+    severity: report.severity,
+    message: report.message,
+    definition: { kind: owner.kind, name: owner.metadata?.name as string, source: (owner.metadata as { source?: string } | undefined)?.source },
+    path: report.path,
+  };
+}
+
 /** The reports a declaration's kind makes of it: each violation and skip, and
  *  the carriers of a rule's failure and of whether each rule the entry
- *  declares met anything to iterate. */
-export function resourceRuleFindings(identity: DeclarationIdentity, door: RuleDoor, authorSchemaOf: AuthorSchemaOf): RelationFinding[] {
+ *  declares met anything to iterate. Each rule is judged as its DECLARER's —
+ *  the kind along `extends` that wrote it: its conditions call that kind's
+ *  module, and a defect in it is that kind's. */
+export function resourceRuleFindings(identity: DeclarationIdentity, door: RuleDoor): RelationFinding[] {
   const declared = door.declared(identity);
   if (declared.status !== "ok") return [];
-  const schema = authorSchemaOf(declared.definition);
-  const rules = readResourceRules(schema);
-  if (rules.length === 0) return [];
+  const { defs, aliases } = door;
+  const ruleDef: DefResolver = (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k);
+  const groups = declaredResourceRules(declared.definition, ruleDef);
+  if (groups.length === 0) return [];
   const definition = declared.definition as unknown as ResourceManifest;
   const module = (definition.metadata as { module?: string } | undefined)?.module;
   const subject = door.subject();
   reportRuleEvaluation("resourceRules", false);
-  const definitionIdentity = { identityOnly: true as const, kind: definition.kind, metadata: (definition.metadata ?? {}) as Record<string, unknown> };
-  const findings = evaluateResourceRules(
-    subject,
-    schema,
-    door.moduleNames(definitionIdentity),
-    door.functions(definition),
-    binderOf(door),
-  );
+  const binder = binderOf(door);
   const out: RelationFinding[] = [];
   const definitionName = definition.metadata?.name as string;
-  const describe = (report: ResourceRuleDiagnostic): RuleReport["report"] => ({
-    code: report.code,
-    severity: report.severity,
-    message: report.message,
-    definition: { kind: definition.kind, name: definitionName, source: (definition.metadata as { source?: string } | undefined)?.source },
-    path: report.path,
-  });
-  for (const report of reportResourceRules(subject, definition, findings, !module || door.rootModules.has(module))) {
-    if (report.evaluationFailure) {
-      out.push({
-        diagnostic: carrier(subject, { type: "failure", key: `resource\u0000${module ?? ""}.${definitionName}`, rule: report.rule, module, report: describe(report) }),
-        judgedAt: "",
-      });
-      continue;
+  for (const group of groups) {
+    const declarer = group.declarer as unknown as ResourceManifest;
+    const declarerModule = (declarer.metadata as { module?: string } | undefined)?.module;
+    const declarerName = declarer.metadata?.name as string;
+    const declarerIdentity = { identityOnly: true as const, kind: declarer.kind, metadata: (declarer.metadata ?? {}) as Record<string, unknown> };
+    const findings = evaluateResourceRules(
+      subject,
+      group.rules,
+      door.moduleNames(declarerIdentity),
+      door.functions(group.declarer),
+      binder,
+    );
+    for (const report of reportResourceRules(subject, declarer, findings, !declarerModule || door.rootModules.has(declarerModule))) {
+      if (report.evaluationFailure) {
+        out.push({
+          diagnostic: carrier(subject, {
+            type: "failure",
+            key: `resource\u0000${declarerModule ?? ""}.${declarerName}`,
+            rule: report.rule,
+            module: declarerModule,
+            report: describedAt(declarer, report),
+          }),
+          judgedAt: "",
+        });
+        continue;
+      }
+      out.push({ diagnostic: ruleDiagnostic(report), judgedAt: report.path ?? "" });
     }
-    out.push({ diagnostic: ruleDiagnostic(report), judgedAt: report.path ?? "" });
   }
   // The rules the entry declares itself are tallied: a rule that met nothing
   // to iterate on any resource of its kind is one nothing proved.
@@ -194,7 +216,7 @@ export function resourceRuleFindings(identity: DeclarationIdentity, door: RuleDo
           rule: rule.code,
           module,
           exercised: ruleExercised(subject, rule),
-          report: describe(reportUnexercisedRule(definition, rule)),
+          report: describedAt(definition, reportUnexercisedRule(definition, rule)),
         }),
         judgedAt: "",
       });

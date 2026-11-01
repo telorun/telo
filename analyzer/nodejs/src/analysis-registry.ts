@@ -232,7 +232,7 @@ export class AnalysisRegistry {
    *  registry's, and handing them out would make every consumer's scoping its
    *  own problem. */
   resolveSchemaTypeRefs(manifests: ResourceManifest[]): void {
-    resolveSchemaTypeRefsIn(manifests, this.aliases, this.aliasesByModule);
+    resolveSchemaTypeRefsIn(manifests, this.aliases, this.aliasesByModule, this.defs);
   }
 
   /**

@@ -1,0 +1,291 @@
+kind: Telo.Library
+metadata:
+  name: DataModel
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Data]
+  description: |
+    Describes one list endpoint of records, whatever serves it: the shape of a
+    record, the property that identifies it, which filters, sort orders and
+    facets the endpoint accepts, and which properties point at records of other
+    collections. Contradictions between those declarations are refused before
+    the app runs, and the declaration is the contract APIs enforce and screens
+    offer.
+requires:
+  # A collection relating to itself, or two relating to each other, fail to boot
+  # on 0.125.1 with ERR_LOCAL_REF_PENDING: a `use: schema` reference was awaited
+  # there. Verified by running 0.125.1; forward-declared at the release carrying
+  # the declaration read.
+  telo: ">=0.126.0"
+exports:
+  kinds:
+    - Collection
+  # The entry point a kind extending `Collection` resolves `@telorun/data-model`
+  # to, so it runs this module's guards beside its own.
+  code:
+    - specifier: "@telorun/data-model"
+      format: js
+      path: ./nodejs/data-model.mjs
+      source: ./nodejs/src/index.ts
+---
+# Operators and what each needs of a property's type, and the rules below, are
+# mirrored by `collectionProblems` in `nodejs/src/collection-problems.ts`: keep
+# the two alike.
+kind: Telo.Definition
+metadata:
+  name: Collection
+  description: >-
+    One list endpoint of records: the shape of a record, the property
+    identifying it, the filters (property and operator), sort orders and facets
+    the endpoint accepts, and relations from a property to another collection's
+    records. Publishes what it declares; refuses a filter, sort, facet or
+    relation that contradicts the record shape.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./nodejs/data-model.mjs&local_path=./nodejs/src/index.ts#CollectionController
+schema:
+  type: object
+  required: [model, query]
+  examples:
+    - model: !ref Post
+      query:
+        filters:
+          - { property: title, operator: contains }
+          - { property: authorId, operator: in }
+          - { property: publishedOn, operator: absent }
+        sort: [{ property: title }]
+        facets: [{ property: authorId }]
+      relations:
+        authorId: { collection: !ref authors }
+  properties:
+    model:
+      title: Model
+      description: The shape of one record as it is read.
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    key:
+      title: Key
+      description: The property identifying a record. The model declares it and lists it as required.
+      type: string
+      default: id
+    query:
+      title: Query
+      description: What the list endpoint accepts. Nothing outside it is served.
+      type: object
+      additionalProperties: false
+      required: [filters, sort]
+      properties:
+        filters:
+          title: Filters
+          description: >-
+            The accepted filters, one `{ property, operator }` each. `absent`
+            matches records whose property is null or missing, and fits only a
+            property the model leaves optional or admits `null`.
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property, operator]
+            properties:
+              property: { type: string }
+              operator: { enum: [eq, contains, gt, gte, lt, lte, in, absent] }
+        sort:
+          title: Sort
+          description: The properties a list may be sorted by.
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property]
+            properties:
+              property: { type: string }
+        facets:
+          title: Facets
+          description: >-
+            The properties whose present values, with counts, the endpoint
+            answers. None when omitted.
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [property]
+            properties:
+              property: { type: string }
+    relations:
+      title: Relations
+      description: >-
+        Properties that point at another collection's records, keyed by
+        property. The property holds the target's key (a list property holds a
+        list of keys).
+      type: object
+      additionalProperties:
+        type: object
+        additionalProperties: false
+        required: [collection]
+        properties:
+          collection:
+            title: Collection
+            description: The collection the property points into; it may be this one.
+            x-telo-ref: { kind: Self.Collection, use: schema }
+  x-telo-resource-rules:
+    - resolve: [/model]
+      condition: !cel >-
+        cel.bind(k, has(self.key) ? self.key : 'id',
+          has(self.model.schema.properties) && k in self.model.schema.properties
+          && has(self.model.schema.required) && k in self.model.schema.required)
+      code: DATA_MODEL_KEY_UNDECLARED
+      message: >-
+        does not declare its key as a required property. Every record carries
+        its key: add it to the model's properties and to its `required`, or name
+        the property that identifies a record in `key`.
+    - resolve: [/model]
+      in: /query/filters
+      condition: !cel >-
+        has(self.model.schema.properties) && this.property in self.model.schema.properties
+      code: DATA_MODEL_FILTER_UNKNOWN_PROPERTY
+      message: >-
+        filters by a property `model` does not declare. Use a property of
+        `model`, or add this one to it.
+    # The property's plain types, `null` aside — those of its listed values where
+    # it declares only `enum`. A property declaring neither takes any operator
+    # but `absent`, which needs the property to be optional or nullable.
+    - resolve: [/model]
+      in: /query/filters
+      condition: !cel >-
+        !has(self.model.schema.properties) || !(this.property in self.model.schema.properties)
+        || cel.bind(p, self.model.schema.properties[this.property],
+           cel.bind(types,
+             ('type' in p
+               ? (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null')
+               : ('enum' in p
+                    ? p.enum
+                        .filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                        .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number'))
+                    : [])),
+             this.operator == 'absent'
+             ? (!(has(self.model.schema.required) && this.property in self.model.schema.required)
+                || ('type' in p
+                      ? (type(p.type) == string ? [p.type] : p.type).exists(t, t == 'null')
+                      : ('enum' in p
+                           ? p.enum.exists(v, type(v) == null_type)
+                           : (!('const' in p) || type(p.const) == null_type))))
+             : (size(types) == 0
+                || (this.operator in ['eq', 'in'] && types.exists(t, t in ['string', 'number', 'integer', 'boolean']))
+                || (this.operator == 'contains' && 'string' in types)
+                || (this.operator in ['gt', 'gte', 'lt', 'lte'] && types.exists(t, t in ['string', 'number', 'integer'])))))
+      code: DATA_MODEL_FILTER_OPERATOR_UNSUPPORTED
+      message: >-
+        uses an operator the property's type does not support: `contains` needs
+        a string, `gt` / `gte` / `lt` / `lte` a string or a number, `absent` a
+        property the model leaves optional or admits null, and no operator
+        applies to an object or a list.
+    # A filter parameter is spelled as its property, so one named as a parameter
+    # the endpoint owns would be read as that parameter.
+    - in: /query/filters
+      condition: !cel "!(this.property in ['limit', 'cursor', 'sort', 'facet']) && !this.property.startsWith('_telo')"
+      code: DATA_MODEL_FILTER_RESERVED_NAME
+      message: >-
+        filters by a property named as a query parameter the list endpoint owns:
+        `limit`, `cursor`, `sort`, `facet`, and every name beginning `_telo`.
+        Rename the property, or leave it out of `query.filters`.
+    - resolve: [/model]
+      in: /query/sort
+      condition: !cel >-
+        has(self.model.schema.properties) && this.property in self.model.schema.properties
+      code: DATA_MODEL_SORT_UNKNOWN_PROPERTY
+      message: >-
+        sorts by a property `model` does not declare. Use a property of
+        `model`, or add this one to it.
+    - resolve: [/model]
+      in: /query/sort
+      condition: !cel >-
+        !has(self.model.schema.properties) || !(this.property in self.model.schema.properties)
+        || cel.bind(p, self.model.schema.properties[this.property],
+           cel.bind(types,
+             ('type' in p
+               ? (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null')
+               : ('enum' in p
+                    ? p.enum
+                        .filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                        .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number'))
+                    : [])),
+             size(types) == 0 || types.exists(t, t in ['string', 'number', 'integer', 'boolean'])))
+      code: DATA_MODEL_SORT_UNSUPPORTED
+      message: >-
+        sorts by a property that holds an object or a list. A list is ordered by
+        one plain value: sort by a string, number or boolean property.
+    - resolve: [/model]
+      in: /query/facets
+      condition: !cel >-
+        has(self.model.schema.properties) && this.property in self.model.schema.properties
+      code: DATA_MODEL_FACET_UNKNOWN_PROPERTY
+      message: >-
+        facets a property `model` does not declare. Use a property of `model`,
+        or add this one to it.
+    - resolve: [/model]
+      in: /query/facets
+      condition: !cel >-
+        !has(self.model.schema.properties) || !(this.property in self.model.schema.properties)
+        || cel.bind(p, self.model.schema.properties[this.property],
+           cel.bind(types,
+             ('type' in p
+               ? (type(p.type) == string ? [p.type] : p.type).filter(t, t != 'null')
+               : ('enum' in p
+                    ? p.enum
+                        .filter(v, type(v) == string || type(v) == bool || type(v) == int || type(v) == double)
+                        .map(v, type(v) == string ? 'string' : (type(v) == bool ? 'boolean' : 'number'))
+                    : [])),
+             size(types) == 0 || types.exists(t, t in ['string', 'number', 'integer', 'boolean'])))
+      code: DATA_MODEL_FACET_UNSUPPORTED
+      message: >-
+        facets a property that holds an object or a list. Facet a string,
+        number or boolean property: one plain value.
+    - resolve: [/model]
+      in: /relations
+      condition: !cel >-
+        has(self.model.schema.properties) && key in self.model.schema.properties
+      code: DATA_MODEL_RELATION_UNKNOWN_PROPERTY
+      message: >-
+        names a property `model` does not declare. Use a property of `model`,
+        or add this one to it.
+    # Compared with `null` aside, by item type for a list property, where both
+    # sides declare a type.
+    - resolve: [/model, /relations/*/collection/model]
+      in: /relations
+      condition: !cel >-
+        !has(self.model.schema.properties) || !(key in self.model.schema.properties)
+        || cel.bind(k, has(this.collection.key) ? this.collection.key : 'id',
+           !has(this.collection.model.schema.properties) || !(k in this.collection.model.schema.properties)
+           || !('type' in self.model.schema.properties[key])
+           || !('type' in this.collection.model.schema.properties[k])
+           || cel.bind(own,
+                (type(self.model.schema.properties[key].type) == string
+                   ? [self.model.schema.properties[key].type]
+                   : self.model.schema.properties[key].type).filter(t, t != 'null'),
+              cel.bind(mine,
+                (own == ['array'] && 'items' in self.model.schema.properties[key]
+                   && 'type' in self.model.schema.properties[key].items)
+                  ? (type(self.model.schema.properties[key].items.type) == string
+                       ? [self.model.schema.properties[key].items.type]
+                       : self.model.schema.properties[key].items.type).filter(t, t != 'null')
+                  : own,
+              cel.bind(theirs,
+                (type(this.collection.model.schema.properties[k].type) == string
+                   ? [this.collection.model.schema.properties[k].type]
+                   : this.collection.model.schema.properties[k].type).filter(t, t != 'null'),
+                mine.all(t, t in theirs) && theirs.all(t, t in mine)))))
+      code: DATA_MODEL_RELATION_VALUE_MISMATCH
+      message: >-
+        holds a value of another type than the target's key. A relation's value
+        is the target's key: declare the same type.
+    - resolve: [/model, /relations/*/collection]
+      in: /relations
+      condition: !cel >-
+        !has(self.model.schema.properties) || !(key in self.model.schema.properties)
+        || cel.bind(k, has(this.collection.key) ? this.collection.key : 'id',
+             this.collection.query.filters.exists(f, f.property == k && f.operator == 'in'))
+      code: DATA_MODEL_RELATION_KEY_NOT_FILTERABLE
+      message: >-
+        points at a collection that does not accept its key with `in`, so
+        related records cannot be fetched in one batched request. Add
+        `{ property: <key>, operator: in }` to the target's `query.filters`.

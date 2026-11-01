@@ -14,7 +14,12 @@
  * is the instance, so a second walk would change nothing and cost a
  * whole-manifest traversal on a request path.
  */
-import { decodePlainLiterals, isResolvedReference, listRequests, type AnalysisRegistry } from "@telorun/analyzer";
+import {
+  decodePlainLiterals,
+  isResolvedReference,
+  type AnalysisRegistry,
+  type DeclarationRequests,
+} from "@telorun/analyzer";
 import type { EvaluationContext, ResourceManifest } from "@telorun/sdk";
 
 type SchemaResolver = (ref: string) => Record<string, any> | undefined;
@@ -24,8 +29,8 @@ export interface LiteralDecodingHost {
   registry(): AnalysisRegistry;
   /** The root Application's own module names. */
   rootModules(): ReadonlySet<string>;
-  /** Every declaration a named type resolves against. */
-  typeDeclarations(): Record<string, any>[];
+  /** What a named type resolves against. */
+  typeRequests(): DeclarationRequests;
 }
 
 const decoded = new WeakSet<object>();
@@ -42,7 +47,7 @@ export function decodeResourceLiterals(
   let unresolved = false;
   const slots = host.registry().derivedSlotsOf(resource, {
     rootModules: host.rootModules(),
-    types: listRequests(host.typeDeclarations() as unknown as ResourceManifest[]),
+    types: host.typeRequests(),
     // Declarations, never instances: a call target need not exist yet, and a
     // step's edge is no init-order edge.
     resolveTarget: (ref) => {

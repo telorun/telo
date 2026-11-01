@@ -6,12 +6,15 @@ metadata:
     A filter bar provides one control per listed filter — and, when none are
     listed, exactly the filters its collection declares, in that order and with
     their operators — around the node it filters, and nothing at all when that
-    node is switched off. A standalone
-    form lists every property a control can enter, a list of scalars included.
+    node is switched off. A filter over a property with a presented relation
+    offers the related records, every value unless it asks for only those
+    present, whatever the collection facets. A standalone form lists every
+    property a control can enter, a list of scalars included.
     A design token set provides its tokens by name, its typefaces apart from
     its CSS values.
 imports:
   Ui: ../
+  DataModel: ../../data-model
   Font: ../../font
   Probe: ./__fixtures__/probe
   Run: ../../run
@@ -24,60 +27,80 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string, title: Task }
     isDone: { type: boolean }
     priority: { type: integer }
     status: { enum: [open, blocked, done] }
     tags: { type: array, items: { type: string } }
+    ownerId: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema: { type: object, required: [id], properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: DataModel.Collection
+metadata: { name: people }
+model: !ref Person
+query: { filters: [{ property: id, operator: in }], sort: [] }
 ---
 # What the collection's list accepts: not every scalar property, and not the
 # operator a type would suggest.
-kind: Ui.Collection
-metadata:
-  name: todos
+kind: DataModel.Collection
+metadata: { name: todos }
+model: !ref Todo
 query:
   filters:
     - { property: status, operator: in }
     - { property: text, operator: contains }
     - { property: priority, operator: gte }
+    - { property: ownerId, operator: eq }
   sort: []
+  facets: [{ property: ownerId }]
+relations:
+  ownerId: { collection: !ref people }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: todosPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref todos, basePath: /api/todos }
+relations:
+  ownerId:
+    source: { kind: Ui.CollectionSource, collection: !ref people, basePath: /api/people }
+    label: !cel "row.name"
 ---
 kind: Ui.Filters
 metadata:
   name: derived
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todosPresentation
 content: { type: text, text: Todos, when: false }
 ---
 kind: Ui.Filters
 metadata:
   name: shown
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todosPresentation
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
 metadata:
   name: written
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todosPresentation
 fields:
-  - property: priority
-    operator: gte
-  - property: text
-    operator: contains
+  - { property: priority, operator: gte }
+  - { property: text, operator: contains }
+  - { property: ownerId, operator: eq, values: present }
 content:
   type: stack
   children:
     - type: composite
-      ref: { kind: Ui.Table, model: !ref Todo, collection: !ref todos, source: { basePath: /api/todos }, columns: [{ value: !cel "row.text" }] }
+      ref: { kind: Ui.Listing, model: !ref Todo, presentation: !ref todosPresentation, layout: { kind: Ui.TableLayout, columns: [{ value: !cel "row.text" }] } }
 ---
 kind: Ui.Form
 metadata:
   name: form
 model: !ref Todo
-source: { basePath: /api/todos }
+presentation: !ref todosPresentation
 ---
 kind: Font.Family
 metadata:
@@ -109,17 +132,18 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
-        derived: !cel "steps.shown.result.node.fields.map(f, {'property': f.property, 'operator': f.operator, 'label': f.label})"
+        derived: !cel "steps.shown.result.node.fields.map(f, {'property': f.property, 'operator': f.operator, 'label': f.label, 'values': f.values, 'options': has(f.options) ? f.options.basePath : ''})"
         derivedContent: !cel "has(steps.derived.result.node)"
-        written: !cel "steps.written.result.node.fields"
+        written: !cel "steps.written.result.node.fields.map(f, {'property': f.property, 'operator': f.operator, 'label': f.label, 'labels': f.labels, 'schema': f.schema, 'pinned': f.pinned, 'control': f.control, 'values': f.values, 'options': has(f.options) ? f.options.basePath : ''})"
         writtenContent: !cel "steps.written.result.node.content.children.map(c, c.type)"
-        form: !cel "steps.form.result.node.fields"
+        form: !cel "steps.form.result.node.fields.map(f, f.type == 'picker' ? {'type': f.type, 'property': f.property, 'options': f.options.basePath} : f)"
         theme: !cel "{'tokens': steps.theme.result.tokens, 'body': steps.theme.result.fonts['font.body'].family}"
       expected:
         derived:
-          - { property: status, operator: in, label: { text: status, context: null, lang: und, computed: false } }
-          - { property: text, operator: contains, label: { text: Task, context: null, lang: und, computed: false } }
-          - { property: priority, operator: gte, label: { text: priority, context: null, lang: und, computed: false } }
+          - { property: status, operator: in, label: { text: status, context: null, lang: und, computed: false }, values: all, options: "" }
+          - { property: text, operator: contains, label: { text: Task, context: null, lang: und, computed: false }, values: all, options: "" }
+          - { property: priority, operator: gte, label: { text: priority, context: null, lang: und, computed: false }, values: all, options: "" }
+          - { property: ownerId, operator: eq, label: { text: ownerId, context: null, lang: und, computed: false }, values: all, options: /api/people }
         derivedContent: false
         written:
           - property: priority
@@ -129,6 +153,8 @@ steps:
             schema: { type: integer }
             pinned: false
             control: auto
+            values: all
+            options: ""
           - property: text
             operator: contains
             label: { text: Task, context: null, lang: und, computed: false }
@@ -136,8 +162,20 @@ steps:
             schema: { type: string, title: Task }
             pinned: false
             control: auto
-        writtenContent: [table]
+            values: all
+            options: ""
+          - property: ownerId
+            operator: eq
+            label: { text: ownerId, context: null, lang: und, computed: false }
+            labels: []
+            schema: { type: integer }
+            pinned: false
+            control: auto
+            values: present
+            options: /api/people
+        writtenContent: [listing]
         form:
+          - { type: input, property: id, label: { text: id, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
           - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
           - { type: input, property: isDone, label: { text: isDone, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
           - { type: input, property: priority, label: { text: priority, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
@@ -151,6 +189,7 @@ steps:
               - { value: done, label: { text: done, context: null, lang: und, computed: false } }
             control: auto
           - { type: input, property: tags, label: { text: tags, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: picker, property: ownerId, options: /api/people }
         theme:
           tokens: { color.accent: "#1f8fff", radius.md: 6px }
           body: Inter

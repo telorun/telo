@@ -3,6 +3,7 @@ import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState, type
 import { useControl, useControls } from "./effective-controls.js";
 import { styleAttribute } from "./bindings.js";
 import type { Operator } from "./collection.js";
+import { typedValue } from "./filter-choices.js";
 import { FilterControl } from "./filter-control.js";
 import {
   activeCount,
@@ -23,6 +24,8 @@ import {
   type Values,
 } from "./filter-state.js";
 import { useHost, useHostStore } from "./host.js";
+import type { OptionSourceSpec } from "./option-source.js";
+import { useRelatedLabels, type RelatedLabels } from "./related-labels.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { openValue } from "./open-address.js";
 import { FilterContext, RendererContext } from "./renderer-context.js";
@@ -50,7 +53,7 @@ interface BarState {
 }
 
 /** The word telling two filters on one property apart, where they share its label. */
-const CAPTIONS: Record<Operator, string> = {
+export const CAPTIONS: Record<Operator, string> = {
   eq: "operatorEq",
   contains: "operatorContains",
   gt: "operatorGt",
@@ -58,6 +61,7 @@ const CAPTIONS: Record<Operator, string> = {
   lt: "operatorLt",
   lte: "operatorLte",
   in: "operatorIn",
+  absent: "operatorAbsent",
 };
 
 /** How long typed text rests before it applies, under `apply: typing`. */
@@ -82,11 +86,14 @@ function groupsOf(fields: FilterField[]): Group[] {
   return [...byProperty.values()];
 }
 
-/** What a filter holds, as a chip says it: each value's label, yes or no, or the value. */
-function shownValue(field: FilterField, values: string[], say: Say, text: (label: WireText) => string): string {
+/** What a filter holds, as a chip says it: each related record's label, each
+ *  value's label, yes or no, or the value. */
+function shownValue(field: FilterField, values: string[], say: Say, text: (label: WireText) => string, labels: RelatedLabels): string {
   return values
     .map((value) => {
-      if (plainTypes(field.schema).includes("boolean")) return say(value === "true" ? "yes" : "no");
+      const related = field.options ? labels.label(filterKey(field), typedValue(field.schema, value)) : undefined;
+      if (related) return related.label;
+      if (field.operator === "absent" || plainTypes(field.schema).includes("boolean")) return say(value === "true" ? "yes" : "no");
       const label = labelFor(field.labels, value);
       return label ? text(label) : value;
     })
@@ -157,7 +164,7 @@ function AddFilter({ items, onAdd }: { items: { key: string; label: string }[]; 
   );
 }
 
-/** A filter bar: every table inside it obeys what is applied here. */
+/** A filter bar: every listing inside it obeys what is applied here. */
 export function Filters({ node }: { node: SpecNode }) {
   const id = useId();
   const control = useControls();
@@ -165,12 +172,13 @@ export function Filters({ node }: { node: SpecNode }) {
   const say = useSay();
   const text = useText();
   const caption = (operator: Operator) => say(CAPTIONS[operator]);
-  const valuesOf = (field: FilterField, values: string[]) => shownValue(field, values, say, (label) => text(label));
+  const valuesOf = (field: FilterField, values: string[]) => shownValue(field, values, say, (label) => text(label), chosenLabels);
   const host = useHost();
   const store = useHostStore();
   const environment = useContext(RendererContext);
   const outer = useContext(FilterContext);
   const fields = node.fields as FilterField[];
+  const basePath = node.basePath as string;
   const presets = node.presets as FilterPreset[];
   const state = node.state as BarState;
   const chosenOnly = node.show === "chosen";
@@ -268,6 +276,21 @@ export function Filters({ node }: { node: SpecNode }) {
   }, [applied, chosenOpen]);
   const params = useMemo(() => [...outer, ...paramsOf(fields, applied)], [outer, fields, applied]);
   const held = (field: FilterField) => draft[filterKey(field)] ?? [];
+  // The chosen records of the fields offering records, labelled for the chips and the controls.
+  const sources = useMemo(
+    () => Object.fromEntries(fields.flatMap((field) => (field.options ? [[filterKey(field), field.options] as [string, OptionSourceSpec]] : []))),
+    [fields],
+  );
+  const chosenLabels = useRelatedLabels(
+    sources,
+    Object.fromEntries(fields.filter((field) => field.options).map((field) => [filterKey(field), held(field).map((value) => typedValue(field.schema, value))])),
+  );
+  /** Where a present field's values are read: the bar's collection, under
+   *  every filter applied around and in the bar but the field's own. */
+  const facetOf = (field: FilterField) => ({
+    basePath,
+    filters: [...outer, ...paramsOf(fields.filter((other) => filterKey(other) !== filterKey(field)), applied)],
+  });
   const offShow = (field: FilterField) => removed.has(filterKey(field)) && held(field).length === 0;
   const onShow = (group: Group) =>
     !chosenOnly || group.members.some((index) => fields[index].pinned || (filterKey(fields[index]) in draft && !offShow(fields[index])));
@@ -288,6 +311,9 @@ export function Filters({ node }: { node: SpecNode }) {
         values={held(field)}
         onChange={(values, how) => set(field, values, how)}
         onCommit={commit}
+        facet={facetOf(field)}
+        labels={chosenLabels}
+        source={filterKey(field)}
       />
     );
     const drawn = (

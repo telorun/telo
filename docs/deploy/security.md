@@ -168,16 +168,33 @@ Stated explicitly so nothing is designed around a promise:
 - **No controller sandbox / capability grants.** The `grants:` spec is a draft.
 - **No artifact signing or provenance attestation.** Integrity is verified
   against a hash *you* pinned; there is no publisher signature to verify it
-  against.
+  against. This covers the published `telorun/*` images too: the repository's
+  publishing workflows contain no signing, provenance or SBOM step, so pin an
+  image by digest and verify what you pull by your own policy.
 - **No SBOM generation.**
 - **No vulnerability scanning of module dependencies.**
 
 Scan the container image you build and pin your imports; those are the controls
 that exist today.
 
+## Hardening checklist
+
+1. **Pin the base image by digest**: `FROM telorun/node:<exact-ver>-slim@sha256:<digest>` — a tag, even an exact one, can be re-pushed.
+2. **Pin every module import** with its version and `#sha256-` fragment ([above](#integrity-from-the-pin-to-the-bytes)); `telo upgrade` maintains them.
+3. **Gate CI on `telo check`** run with the same CLI version as the image ([Upgrades & version skew](/deploy/upgrades#the-habit-upgrade-and-check-inside-the-target-image)); it resolves imports and verifies pins.
+4. **Prove nothing is fetched at run time**: run the built image with `docker run --network none` and the real environment. A pre-warmed cache boots; a missing controller or manifest fails the step.
+5. **Refuse private-network module fetches** in the build with `TELO_EGRESS=public-only` ([Egress control](#egress-control)).
+6. **Run unprivileged on a read-only filesystem** with dropped capabilities ([Running unprivileged](/deploy/production#running-unprivileged)).
+7. **Scan the final image** with your scanner; Telo does not scan module dependencies.
+
+## Licence for self-hosting
+
+Self-hosting Telo to run your own products is permitted; offering Telo itself as a managed service is not without a commercial licence. The terms are in the [Deploy overview](/deploy#licensing-for-self-hosting).
+
 ## See also
 
-- [Running in production](/deploy/production) — lifecycle, signals, env vars.
+- [Running in production](/deploy/production) — lifecycle, signals, unprivileged runs, state.
+- [Environment variables](/reference/environment-variables) — every variable the runtime reads.
 - [Docker image](/deploy/docker) — cache warming and image variants.
 - [Module system](/reference/kernel/modules) — refs, transports, and how
   publisher namespaces work.

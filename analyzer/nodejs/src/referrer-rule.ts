@@ -34,8 +34,11 @@ import {
   type ReferentPlace,
   type ReferrerReads,
 } from "./read-place.js";
+import type { ResourceDefinition } from "@telorun/sdk";
+import { authorSchemaChain, type DefResolver } from "./extends-resolution.js";
+import { REFERRER_RULES_ANNOTATION, ruleIdentity } from "./rule-inheritance.js";
 
-export const REFERRER_RULES_ANNOTATION = "x-telo-referrer-rules";
+export { REFERRER_RULES_ANNOTATION };
 
 export interface ReferrerRule {
   /**
@@ -127,6 +130,29 @@ export function readReferrerRules(schema: unknown): ReferrerRule[] {
     });
   });
   return rules;
+}
+
+/** The referrer rules one definition of an `extends` chain declares itself. */
+export interface DeclaredReferrerRules {
+  readonly declarer: ResourceDefinition;
+  readonly rules: readonly ReferrerRule[];
+}
+
+/** The referrer rules a kind's resources are judged by, grouped by declaring
+ *  definition, ancestors first — the resource-rule twin
+ *  (`declaredResourceRules`), a rule's identity its code under its filter. */
+export function declaredReferrerRules(
+  definition: ResourceDefinition,
+  resolve: DefResolver,
+): DeclaredReferrerRules[] {
+  const seen = new Set<string>();
+  const out: DeclaredReferrerRules[] = [];
+  for (const declarer of authorSchemaChain(definition, resolve)) {
+    const rules = readReferrerRules(declarer.schema).filter((rule) => !seen.has(ruleIdentity(REFERRER_RULES_ANNOTATION, rule)!));
+    for (const rule of rules) seen.add(ruleIdentity(REFERRER_RULES_ANNOTATION, rule)!);
+    if (rules.length > 0) out.push({ declarer, rules });
+  }
+  return out;
 }
 
 /** True when this node carries the annotation — the recognizer the schema-kind

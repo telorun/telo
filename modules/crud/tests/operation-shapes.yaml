@@ -25,21 +25,22 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
+kind: SQLite.Table
+metadata: { name: articlesTable }
+table: articles
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  body: { type: text }
+  author: { type: text, nullable: false }
+  is_public: { type: integer, nullable: false, default: 0 }
+  created_at: { type: text, nullable: false, default: "2026-10-07" }
+---
 kind: SQLite.Schema
 metadata: { name: migrate }
 connection: !ref db
 version: !cel "module.version"
-migrations:
-  0001_articles:
-    statement: |
-      CREATE TABLE articles (
-        id         INTEGER PRIMARY KEY AUTOINCREMENT,
-        title      TEXT    NOT NULL,
-        body       TEXT,
-        author     TEXT    NOT NULL,
-        is_public  INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT    NOT NULL DEFAULT '2026-10-07'
-      )
+tables: [!ref articlesTable]
 ---
 # What an update may replace.
 kind: Telo.JsonSchema
@@ -48,20 +49,13 @@ schema:
   type: object
   required: [title]
   additionalProperties: false
-  properties:
-    title: { type: string, minLength: 1 }
-    body: { type: string }
-    isPublic: { type: boolean }
+  properties: { title: { type: string, minLength: 1 }, body: { type: string }, isPublic: { type: boolean } }
 ---
 # A create also names the author, which no update changes.
 kind: Telo.JsonSchema
 metadata: { name: ArticleDraft }
 extends: ArticleEdit
-schema:
-  type: object
-  required: [author]
-  properties:
-    author: { type: string }
+schema: { type: object, required: [author], properties: { author: { type: string } } }
 ---
 # A row of the list: no body.
 kind: Telo.JsonSchema
@@ -70,10 +64,7 @@ schema:
   type: object
   required: [id, title, isPublic]
   additionalProperties: false
-  properties:
-    id: { type: integer }
-    title: { type: string }
-    isPublic: { type: boolean }
+  properties: { id: { type: integer }, title: { type: string }, isPublic: { type: boolean } }
 ---
 # One record: everything written, the key, and what the table fills in.
 kind: Telo.JsonSchema
@@ -82,27 +73,21 @@ extends: ArticleDraft
 schema:
   type: object
   required: [id, isPublic, createdAt]
-  properties:
-    id: { type: integer }
-    createdAt: { type: string }
+  properties: { id: { type: integer }, createdAt: { type: string } }
 ---
-kind: Crud.Resource
-metadata: { name: articles }
+kind: Crud.Api
+metadata: { name: articlesApi }
 connection: !ref db
 singular: article
 plural: articles
-model:
-  kind: Crud.Model
-  schemas:
-    read: !ref Article
-    list: !ref ArticleRow
-    create: !ref ArticleDraft
-    update: !ref ArticleEdit
+collection:
+  kind: Crud.Collection
+  model: !ref Article
+  table: !ref articlesTable
+  schemas: { list: !ref ArticleRow, create: !ref ArticleDraft, update: !ref ArticleEdit }
   query:
-    filters:
-      - { property: body, operator: contains }
-    sort:
-      - { property: author }
+    filters: [{ property: body, operator: contains }]
+    sort: [{ property: author }]
 ---
 kind: Http.Reference
 metadata: { name: docs }
@@ -118,24 +103,21 @@ with:
     openapi:
       info: { title: Articles API, version: 1.0.0 }
     mounts:
-      - { path: /articles, mount: !ref articles }
+      - { path: /articles, mount: !ref articlesApi }
       - { path: /reference, mount: !ref docs }
 targets:
   - !ref server
 steps:
   - name: create
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles", method: POST }
-    inputs:
-      body: { title: First, body: The long text, author: ada }
+    inputs: { body: { title: First, body: The long text, author: ada } }
   - name: createSecond
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles", method: POST }
-    inputs:
-      body: { title: Second, author: bob, isPublic: true }
+    inputs: { body: { title: Second, author: bob, isPublic: true } }
   # `createdAt` is a property of a record, not of a create.
   - name: createServerSet
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles", method: POST }
-    inputs:
-      body: { title: Third, author: eve, createdAt: "1999-01-01" }
+    inputs: { body: { title: Third, author: eve, createdAt: "1999-01-01" } }
   - name: verifyCreate
     invoke: { kind: Assert.Equals }
     inputs:
@@ -183,12 +165,10 @@ steps:
   # not the update's to touch.
   - name: update
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles/1", method: PUT }
-    inputs:
-      body: { title: First again, isPublic: true }
+    inputs: { body: { title: First again, isPublic: true } }
   - name: updateAuthor
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles/1", method: PUT }
-    inputs:
-      body: { title: First again, author: mallory }
+    inputs: { body: { title: First again, author: mallory } }
   - name: readUpdated
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19317/articles/1" }
   - name: verifyUpdate

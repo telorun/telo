@@ -10,6 +10,7 @@ import { createDockerBackend } from "./docker/backend.js";
 import type { SessionDockerClient } from "./docker/docker-api.js";
 import { FakeEngine } from "./docker/fake-engine.test-support.js";
 import type { EngineDockerClient } from "./docker/session-container-engine.js";
+import { testProcessUser } from "./docker/test-process-user.test-support.js";
 import { buildServer } from "./server.js";
 
 /** The runner as `main` builds it, over a fake engine and a store and bundle
@@ -34,6 +35,7 @@ export async function bootTestServer(
     teloImages: config.teloImages,
     workspaceImage: config.workspaceImage,
     supervisor: { build: "0123456789abcdef", subpath: ".supervisor/0123456789abcdef" },
+    sessionUser: testProcessUser(),
     log: { info() {}, warn() {} },
   });
   const { app } = await buildServer({ backend, config, store });

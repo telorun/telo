@@ -1,3 +1,5 @@
+import type { InvokeErrorLocation } from "./invoke-error.js";
+
 /** The manifest site a statically-raised diagnostic was reported at, carried
  *  through verbatim from the analyzer's `data` so a renderer resolves
  *  `file:line:col` against the `LoadedGraph` exactly as `telo check` does —
@@ -27,6 +29,9 @@ export interface RuntimeDiagnostic {
   /** Set when the failure came from static analysis rather than a running
    *  resource; lets the renderer point at the offending line. */
   origin?: DiagnosticOrigin;
+  /** Where a failure that left a dispatch was caused, as an `InvokeError`'s
+   *  `location` says it: set by the dispatch exit that wrapped the failure. */
+  location?: InvokeErrorLocation;
   /** Set when this entry failed ONLY because another resource in the same
    *  failure set did — it carries no independent cause. Renderers collapse
    *  these into one line rather than repeating one failure per dependent. */

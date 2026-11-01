@@ -1,0 +1,174 @@
+kind: Telo.Application
+metadata:
+  name: UiFieldRefusalsTest
+  version: 1.0.0
+  description: |
+    What a form field refuses — a property the model does not declare or lists
+    twice, a control that does not fit it, a group declared twice or split, kept
+    state no field shows — statically and again when the form is first read.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref fieldRules
+  - !ref fieldActionInputControlAtRuntime
+  - !ref fieldChoiceControlAtRuntime
+  - !ref fieldChoiceMismatchAtRuntime
+  - !ref fieldDuplicateAtRuntime
+  - !ref fieldFiltersStateFieldUnknownAtRuntime
+  - !ref fieldGroupDuplicateAtRuntime
+  - !ref fieldGroupSplitAtRuntime
+  - !ref fieldGroupUnknownAtRuntime
+  - !ref fieldInputControlAtRuntime
+  - !ref fieldRequiredNotEnteredAtRuntime
+  - !ref fieldStateFieldUnknownAtRuntime
+  - !ref fieldUnknownAtRuntime
+---
+# Field kinds, groups, kept state and option sources, each refused where it is written.
+kind: Assert.Manifest
+metadata:
+  name: fieldRules
+source: ./__fixtures__/invalid/fields/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/fieldUnknown at 'fields[0]': lists a field for a property the model does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/fieldDuplicate at 'fields[0]': enters a property another field enters too"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/fieldDuplicate at 'fields[1]': enters a property another field enters too"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/requiredNotEntered: leaves a property the model requires with no field, so a valid record could never be sent"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/groupUnknown at 'fields[0]': names a group `groups` does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/groupDuplicate at 'groups[0]': has the name of another group"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/groupDuplicate at 'groups[1]': has the name of another group"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/groupSplit at 'groups[0]': is named by fields that are not listed one after another"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Form/stateFieldUnknown: keeps a property under `state.fields` no field shows"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Filters/filtersStateFieldUnknown: keeps a property under `policy.state.fields` no filter of the bar shows"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.DateRangeField/startsNowhere: starts at a preset it does not declare"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.DateRangeField/twoMonths at 'presets[0]': has the label of another preset"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.DateRangeField/twoMonths at 'presets[1]': has the label of another preset"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.CollectionOptions/searchNotAccepted: searches with a property and operator the collection does not accept"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.CollectionOptions/valueNotFilterable: yields a value no request can look options up by: `value` must be a property of the record, read as `row.<property>`, that the collection accepts with operator `in`, so a chosen value is labelled by one request"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.CollectionOptions/optionFilterNotAccepted at 'filters.name': filters its source by a property the collection does not accept an equality on"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/inputControl at 'fields[0]': required by Ui.InputField — asks for a control its property cannot be entered with"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Action/actionInputControl at 'fields[0]': required by Ui.InputField — asks for a control its property cannot be entered with"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/choiceControl at 'fields[0]': required by Ui.ChoiceField — asks for a control a choice cannot be drawn with, or for a property no choice can enter"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/choiceMismatch at 'fields[0]': required by Ui.ChoiceField — offers options whose value is of another type than the property holds, or than its items hold for a list"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/pickerMismatch at 'fields[0]': required by Ui.PickerField — offers options whose value is of another type than the property holds, or than its items hold for a list"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/rangeProperty at 'fields[0]': required by Ui.DateRangeField — enters a property that is not a date range: an object of exactly `from` and `to`, each `type: string` with `format: date`"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Ui.Form/rangeDefault at 'fields[0]': required by Ui.DateRangeField — starts at a preset while the model gives the property a `default` too"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldActionInputControlAtRuntime
+source: ./__fixtures__/invalid/field-action-input-control/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Action 'actionInputControl': 'fields[0]' asks for a control its property cannot be entered with ('slider' for 'isDone')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldChoiceControlAtRuntime
+source: ./__fixtures__/invalid/field-choice-control/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'choiceControl': 'fields[0]' asks for a control a choice cannot be drawn with, or for a property no choice can enter ('tags' for 'owner')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldChoiceMismatchAtRuntime
+source: ./__fixtures__/invalid/field-choice-mismatch/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'choiceMismatch': 'fields[0]' offers options whose value is of another type than the property holds, or than its items hold for a list ('count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldDuplicateAtRuntime
+source: ./__fixtures__/invalid/field-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'fieldDuplicate': 'fields[1]' enters a property another field enters too ('text')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldFiltersStateFieldUnknownAtRuntime
+source: ./__fixtures__/invalid/field-filters-state-field-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Filters 'filtersStateFieldUnknown': 'policy.state.fields[0]' keeps a property no filter shows ('count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldGroupDuplicateAtRuntime
+source: ./__fixtures__/invalid/field-group-duplicate/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'groupDuplicate': 'groups[1]' has the name of another group ('main')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldGroupSplitAtRuntime
+source: ./__fixtures__/invalid/field-group-split/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'groupSplit': 'groups[0]' is named by fields that are not listed one after another ('main')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldGroupUnknownAtRuntime
+source: ./__fixtures__/invalid/field-group-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'groupUnknown': 'fields[0]' names a group 'groups' does not declare ('details')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldInputControlAtRuntime
+source: ./__fixtures__/invalid/field-input-control/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'inputControl': 'fields[0]' asks for a control its property cannot be entered with ('toggle' for 'text')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldRequiredNotEnteredAtRuntime
+source: ./__fixtures__/invalid/field-required-not-entered/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'requiredNotEntered': leaves a property the model requires with no field ('owner')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldStateFieldUnknownAtRuntime
+source: ./__fixtures__/invalid/field-state-field-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'stateFieldUnknown': 'state.fields[0]' keeps a property no field shows ('count')"
+---
+kind: Assert.Manifest
+metadata:
+  name: fieldUnknownAtRuntime
+source: ./__fixtures__/invalid/field-unknown/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Form 'fieldUnknown': 'fields[0]' lists a field for a property the model does not declare ('title')"

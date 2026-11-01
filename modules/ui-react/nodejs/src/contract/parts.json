@@ -1,28 +1,54 @@
 {
   "parts": {
-    "shell": ["app", "header", "header-content", "header-start", "app-title", "nav", "nav-menu", "header-end", "sidebar", "sidebar-toggle", "main", "page", "page-title", "tab-bar"],
-    "structure": ["box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "list", "list-heading", "data"],
+    "shell": [
+      "app", "header", "header-content", "header-start", "app-title", "nav", "nav-menu", "header-end", "sidebar",
+      "sidebar-toggle", "main", "page", "page-title", "tab-bar"
+    ],
+    "structure": [
+      "box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "list",
+      "list-heading", "list-empty", "data"
+    ],
     "navigation": ["navigation", "nav-toggle", "nav-item", "nav-group", "nav-panel"],
     "tabs": ["tabs", "tab-list", "tab", "tab-panel"],
-    "table": [
-      "table", "table-toolbar", "table-create", "table-main", "table-frame", "table-grid", "table-head", "table-body",
-      "table-row", "table-header-cell", "table-sort", "table-cell", "row-actions", "row-action", "row-edit", "row-delete",
-      "table-detail", "table-empty", "table-loading", "pager", "pager-status", "pager-prev", "pager-next"
+    "listing": [
+      "listing", "listing-toolbar", "listing-create", "listing-main", "listing-empty", "listing-loading",
+      "load-more", "pager", "pager-status", "pager-prev", "pager-next", "row-actions", "row-action", "row-edit",
+      "row-delete", "listing-sort", "listing-sort-option", "listing-detail", "record-move", "record-create"
     ],
+    "table": [
+      "table", "table-frame", "table-grid", "table-head", "table-body", "table-row", "table-header-cell",
+      "table-sort", "table-cell", "table-detail"
+    ],
+    "list-layout": ["list-layout", "list-item"],
+    "cards-layout": ["cards-layout", "card"],
+    "board-layout": ["board-layout", "board-column", "board-heading", "board-cards", "board-card"],
+    "calendar-layout": [
+      "calendar-layout", "calendar-header", "calendar-prev", "calendar-title", "calendar-next", "calendar-period",
+      "calendar-grid", "calendar-weekday", "calendar-day", "calendar-day-label", "calendar-event"
+    ],
+    "timeline-layout": [
+      "timeline-layout", "timeline-header", "timeline-prev", "timeline-title", "timeline-next", "timeline-scale",
+      "timeline-axis", "timeline-tick", "timeline-lane", "timeline-lane-label", "timeline-track", "timeline-bar"
+    ],
+    "tree-layout": ["tree-layout", "tree-item", "tree-toggle", "tree-children"],
     "form": [
       "form", "field", "label", "input", "textarea", "select", "checkbox", "options", "option", "tags", "tag",
-      "tag-remove", "field-error", "form-error", "form-actions", "submit", "cancel", "field-group", "field-group-label",
-      "field-group-description", "field-description", "field-warning", "switch", "slider", "slider-value", "options-more", "option-hint"
+      "tag-remove", "field-error", "form-error", "form-actions", "submit", "cancel", "field-group",
+      "field-group-label", "field-group-description", "field-description", "field-warning", "switch", "slider",
+      "slider-value", "options-more", "option-hint"
     ],
-    "picker": ["picker", "picker-value", "picker-chosen", "picker-trigger", "picker-search", "picker-list", "picker-option", "picker-empty"],
+    "picker": [
+      "picker", "picker-value", "picker-chosen", "picker-trigger", "picker-search", "picker-list", "picker-option",
+      "picker-empty"
+    ],
     "date-range": ["date-range", "date-range-presets", "date-range-preset", "date-range-from", "date-range-to"],
     "action": ["action", "action-result", "action-failure", "row-answer", "row-failure", "disabled-text"],
     "filters": [
-      "filters", "filters-bar", "filters-content", "filters-toggle", "filters-count", "filters-add", "filters-apply",
-      "filters-reset", "filters-presets", "filters-preset", "filters-summary", "summary-chip", "summary-chip-remove",
-      "filter", "filter-label", "filter-group", "filter-bound", "filter-caption", "filter-remove", "filter-chip",
-      "filter-input", "filter-select", "filter-options", "filter-option", "filter-toggle", "filter-slider", "filter-slider-value",
-      "filter-tags", "filter-tag", "filter-tag-remove"
+      "filters", "filters-bar", "filters-content", "filters-toggle", "filters-count", "filters-add",
+      "filters-apply", "filters-reset", "filters-presets", "filters-preset", "filters-summary", "summary-chip",
+      "summary-chip-remove", "filter", "filter-label", "filter-group", "filter-bound", "filter-caption",
+      "filter-remove", "filter-chip", "filter-input", "filter-select", "filter-options", "filter-option",
+      "filter-toggle", "filter-slider", "filter-slider-value", "filter-tags", "filter-tag", "filter-tag-remove"
     ],
     "surface": [
       "surface-overlay", "surface", "surface-header", "surface-title", "surface-description", "surface-body",
@@ -32,10 +58,7 @@
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {
-    "data-state": {
-      "values": ["idle", "loading", "error", "empty", "submitting"],
-      "on": ["page", "data", "table", "form", "filters", "component", "action", "row-action"]
-    },
+    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "data", "listing", "form", "filters", "component", "action", "row-action"] },
     "data-invalid": { "values": ["true"], "on": ["field", "picker"] },
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
@@ -44,10 +67,10 @@
     "data-placement": { "values": ["above", "aside", "collapsible", "overlay"], "on": ["filters"] },
     "data-active": { "values": ["true"], "on": ["filter", "filter-chip"] },
     "data-pending": { "values": ["true"], "on": ["filters"] },
-    "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface"] },
+    "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface", "cards-layout"] },
     "data-align": { "values": ["start", "center", "end"], "on": ["surface"] },
     "data-modal": { "values": ["true", "false"], "on": ["surface"] },
-    "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell"] },
+    "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell", "listing-sort-option"] },
     "data-width": { "values": ["contained", "full"], "on": ["header", "page"] }
   },
   "partStates": [
@@ -59,8 +82,8 @@
     { "part": "surface-body", "properties": ["overflow-y", "min-height"], "because": "a surface's body scrolls while its header stays" },
     { "part": "form-actions", "properties": ["position", "bottom"], "because": "a form's actions stay at its surface's bottom edge" },
     { "part": "table-frame", "properties": ["overflow-x"], "because": "a grid wider than its table scrolls in its frame" },
-    { "part": "table", "properties": ["display", "grid-template-columns"], "because": "a panel sits beside the frame and the pager" },
-    { "part": "table-toolbar", "properties": ["order"], "because": "the toolbar stays above a panel" },
+    { "part": "listing", "properties": ["display", "grid-template-columns"], "because": "a panel sits beside the records and the pager" },
+    { "part": "listing-toolbar", "properties": ["order"], "because": "the toolbar stays above a panel" },
     { "part": "surface", "properties": ["order"], "because": "a panel sits on its side" },
     { "part": "app", "properties": ["display", "grid-template-columns"], "because": "a sidebar sits beside the page" },
     { "part": "tab-bar", "properties": ["position", "bottom"], "because": "a tab bar stays at the bottom edge" },
@@ -68,7 +91,10 @@
     { "part": "page", "properties": ["max-width", "margin-inline"], "because": "a contained page is no wider than the width.page token, centred" },
     { "part": "header", "properties": ["display", "grid-template-columns", "padding-inline"], "because": "beside a sidebar the header spans every column of the application, and its content holds the inset" },
     { "part": "header-content", "properties": ["padding-inline", "grid-column"], "because": "a contained header's content starts and ends where a contained page does" },
-    { "part": "main", "properties": ["padding-inline"], "because": "the page column is inset by the space.page token" }
+    { "part": "main", "properties": ["padding-inline"], "because": "the page column is inset by the space.page token" },
+    { "part": "calendar-grid", "properties": ["display", "grid-template-columns"], "because": "a calendar's days are a grid of seven weekdays, or of the one day shown" },
+    { "part": "timeline-axis", "properties": ["display", "grid-template-columns"], "because": "a timeline's columns are the periods of its scale" },
+    { "part": "timeline-track", "properties": ["display", "grid-template-columns"], "because": "a bar spans the columns of the periods it lasts" }
   ],
   "rendererTokens": ["width.page", "space.page"]
 }

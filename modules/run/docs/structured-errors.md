@@ -87,6 +87,10 @@ Any other CEL expression is an analyzer error — the throw union would be unbou
 
 It is legal only inside a `catch:` branch, at any depth (inside an `if:` or a nested `try:` of one). In a `finally:` branch — where `error` is null when nothing failed — or outside every `catch:`, there is no caught failure: `telo check` reports `RETHROW_WITHOUT_CAUGHT_ERROR` and the run fails with `ERR_RETHROW_WITHOUT_CAUGHT_ERROR`. Its contribution to the throw union is the enclosing `try`'s propagated union, as for `code: !cel "error.code"`.
 
+## Where a failure was written
+
+Every step a `Run.Sequence`, `Run.Iteration`, `Run.Loop` or `Run.Projection` dispatches tells the target where that step's `inputs:` are written in the resource (`/steps/1/inputs`, `/steps/2/then/0/inputs`, `/steps/0/cases/a~1b/0/inputs` for a case key holding `/`). A target whose failure names the input it is about (`Assert.Equals` names the first differing node of `expected`) can then be located at that node of the manifest. A rethrown failure keeps the place it was first located at.
+
 ## `throws: { inherit: true }`
 
 A definition with `inherit: true` declares that its effective throw union is the union of everything it dispatches. `Run.Sequence` uses this: its declared throws is empty at the definition level; the actual union is computed per-manifest from the steps it runs and the `targets:` it runs before them.

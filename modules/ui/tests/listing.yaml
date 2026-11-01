@@ -1,0 +1,281 @@
+kind: Telo.Application
+metadata:
+  name: UiListingTest
+  version: 1.0.0
+  description: |
+    A listing with no layout draws a table from the row model: one column per
+    property but the collection's key, each header from the property's title or
+    name, sortable exactly where the collection lists the property, shown as the
+    property's type and format say — the same for a column written by hand — and
+    labelled through its relation where the presentation presents one. A cell
+    may be a component given values of the record, whose files the listing
+    lists. An opener carries its form with where and how it opens: a dialog
+    with its defaults, closing after a submit and asking before unsaved input
+    is dropped — the same node whether the dialog is left out or declared with
+    nothing set. A form enters a property with a presented relation with a
+    picker of the related records, read from the same source a listing of
+    those records reads. A listing declaring no row actions carries an empty
+    list of them, and the renderer's words for no records.
+imports:
+  Ui: ../
+  DataModel: ../../data-model
+  Widgets: ./__fixtures__/widgets
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema:
+  type: object
+  required: [id, name]
+  properties:
+    id: { type: integer }
+    name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Todo }
+schema:
+  type: object
+  required: [id, text]
+  properties:
+    id: { type: integer }
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean }
+    dueOn: { type: [string, "null"], format: date }
+    ownerId: { type: integer }
+    owner:
+      type: object
+      properties:
+        name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: TodoInput }
+schema:
+  type: object
+  required: [text]
+  properties:
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean }
+    dueOn: { type: [string, "null"], format: date }
+    ownerId: { type: integer }
+---
+kind: DataModel.Collection
+metadata: { name: people }
+model: !ref Person
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: todos }
+model: !ref Todo
+query:
+  filters: [{ property: isDone, operator: eq }]
+  sort: [{ property: text }, { property: dueOn }]
+relations:
+  ownerId: { collection: !ref people }
+---
+kind: Ui.CollectionSource
+metadata: { name: peopleSource }
+collection: !ref people
+basePath: /api/people
+---
+kind: Ui.CollectionPresentation
+metadata: { name: todosPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref todos, basePath: /api/todos }
+relations:
+  ownerId:
+    source: !ref peopleSource
+    label: !cel "row.name"
+---
+kind: Ui.Listing
+metadata: { name: peopleList }
+presentation: { kind: Ui.CollectionPresentation, source: !ref peopleSource }
+model: !ref Person
+---
+kind: Ui.Listing
+metadata: { name: derived }
+presentation: !ref todosPresentation
+model: !ref Todo
+---
+kind: Ui.Form
+metadata: { name: todoForm }
+model: !ref TodoInput
+presentation: !ref todosPresentation
+fields: [text, dueOn]
+---
+kind: Ui.Listing
+metadata: { name: written }
+presentation: !ref todosPresentation
+model: !ref Todo
+filters: { isDone: false }
+pageSize: 10
+paging: more
+rowStyle:
+  by: !cel "row.isDone"
+  cases: { "true": muted }
+  default: strong
+create: { form: !ref todoForm }
+edit:
+  form: { kind: Ui.Form, model: !ref TodoInput, presentation: !ref todosPresentation }
+  surface: { kind: Ui.Dialog }
+delete: true
+empty: { type: text, text: Nothing to do }
+layout:
+  kind: Ui.TableLayout
+  columns:
+    - value: !cel "row.dueOn"
+    - header: Owner
+      value: !cel "row.owner.name"
+      style:
+        by: !cel "row.owner.name"
+        cases: { ada: [accent, strong] }
+    - { header: Fixed, value: always }
+    - header: Status
+      cell:
+        kind: Ui.Component
+        component: !ref Widgets.statusPill
+        model: !ref Todo
+        props:
+          done: !cel "row.isDone"
+          label: Done
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: derived
+    invoke: { kind: Probe.Read, source: !ref derived }
+  - name: written
+    invoke: { kind: Probe.Read, source: !ref written }
+  - name: people
+    invoke: { kind: Probe.Read, source: !ref peopleList }
+  - name: checkDerived
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        layout: !cel "steps.derived.result.node.layout"
+        rest: !cel >-
+          {
+            'basePath': steps.derived.result.node.basePath,
+            'key': steps.derived.result.node.key,
+            'pageSize': steps.derived.result.node.pageSize,
+            'paging': steps.derived.result.node.paging,
+            'sort': steps.derived.result.node.sort,
+            'delete': steps.derived.result.node.delete,
+            'rowActions': steps.derived.result.node.rowActions,
+            'relations': steps.derived.result.node.relations,
+            'empty': steps.derived.result.node.empty,
+            'compact': has(steps.derived.result.node.compact),
+            'schemaRequired': steps.derived.result.node.schema.required,
+            'assets': steps.derived.result.assets
+          }
+      expected:
+        # The collection's key, `id`, names a record and is not shown.
+        layout:
+          type: table
+          reads: {}
+          columns:
+            - { header: { text: Task, context: null, lang: und, computed: false }, value: { root: row, path: [text] }, sort: text, present: { type: string }, labels: [] }
+            - { header: { text: isDone, context: null, lang: und, computed: false }, value: { root: row, path: [isDone] }, present: { type: boolean }, labels: [] }
+            - header: { text: dueOn, context: null, lang: und, computed: false }
+              value: { root: row, path: [dueOn] }
+              sort: dueOn
+              present: { type: [string, "null"], format: date }
+              labels: []
+            - { header: { text: ownerId, context: null, lang: und, computed: false }, value: { root: row, path: [ownerId] }, relation: ownerId, present: { type: integer }, labels: [] }
+            - { header: { text: owner, context: null, lang: und, computed: false }, value: { root: row, path: [owner] }, present: { type: object }, labels: [] }
+        rest:
+          basePath: /api/todos
+          key: id
+          pageSize: 25
+          paging: pages
+          sort: [text, dueOn]
+          delete: false
+          rowActions: []
+          relations:
+            ownerId:
+              type: collection
+              schema: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string } } }
+              value: { root: row, path: [id] }
+              label: { root: row, path: [name] }
+              basePath: /api/people
+              filters: {}
+              pageSize: 25
+          empty: { type: text, text: { word: noRows } }
+          compact: false
+          schemaRequired: [id, text]
+          assets: []
+  - name: checkWritten
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        dateColumnsAgree: !cel "steps.written.result.node.layout.columns[0] == steps.derived.result.node.layout.columns[2]"
+        columns: !cel "steps.written.result.node.layout.columns.map(c, has(c.cell) ? {'header': c.header, 'cell': {'type': c.cell.type, 'export': c.cell.export, 'abi': c.cell.abi, 'external': c.cell.external, 'props': c.cell.props, 'entry': c.cell.module.name, 'stylesheets': c.cell.stylesheets.map(s, s.name)}} : c)"
+        filters: !cel "steps.written.result.node.filters"
+        pageSize: !cel "steps.written.result.node.pageSize"
+        paging: !cel "steps.written.result.node.paging"
+        rowStyle: !cel "steps.written.result.node.rowStyle"
+        empty: !cel "steps.written.result.node.empty"
+        create: !cel "steps.written.result.node.create.form.fields"
+        edit: !cel "steps.written.result.node.edit.form.fields.map(f, {'type': f.type, 'property': f.property})"
+        picker: !cel "steps.written.result.node.edit.form.fields[3].options == steps.written.result.node.relations.ownerId"
+        oneSource: !cel "steps.people.result.node.basePath == steps.written.result.node.edit.form.fields[3].options.basePath"
+        createOpens: !cel "{'surface': steps.written.result.node.create.surface, 'afterSubmit': steps.written.result.node.create.afterSubmit, 'unsaved': steps.written.result.node.create.unsaved}"
+        declaredDialogIsTheSame: !cel "steps.written.result.node.edit.surface == steps.written.result.node.create.surface"
+        delete: !cel "steps.written.result.node.delete"
+        assets: !cel "steps.written.result.assets.map(a, {'name': a.name, 'mediaType': a.mediaType, 'sameDigest': a.digest == steps.written.result.node.layout.columns[3].cell.module.digest})"
+      expected:
+        dateColumnsAgree: true
+        columns:
+          - header: { text: dueOn, context: null, lang: und, computed: false }
+            value: { root: row, path: [dueOn] }
+            sort: dueOn
+            present: { type: [string, "null"], format: date }
+            labels: []
+          - header: { text: Owner, context: null, lang: und, computed: false }
+            value: { root: row, path: [owner, name] }
+            present: { type: string }
+            style:
+              by: { root: row, path: [owner, name] }
+              cases: { ada: [accent, strong] }
+            labels: []
+          - { header: { text: Fixed, context: null, lang: und, computed: false }, value: { value: always }, labels: [] }
+          - header: { text: Status, context: null, lang: und, computed: false }
+            cell:
+              type: component
+              export: StatusPill
+              abi: ui_react-1
+              external: [react]
+              entry: badges.js
+              stylesheets: [badges.css]
+              props:
+                done: { root: row, path: [isDone] }
+                label: { value: Done }
+        filters: { isDone: { value: false } }
+        pageSize: 10
+        paging: more
+        rowStyle:
+          by: { root: row, path: [isDone] }
+          cases: { "true": muted }
+          default: strong
+        empty: { type: text, text: { text: Nothing to do, context: null, lang: und, computed: false } }
+        create:
+          - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+          - { type: input, property: dueOn, label: { text: dueOn, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
+        edit:
+          - { type: input, property: text }
+          - { type: input, property: isDone }
+          - { type: input, property: dueOn }
+          - { type: picker, property: ownerId }
+        picker: true
+        oneSource: true
+        createOpens:
+          surface: { type: dialog, size: medium, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
+          afterSubmit: close
+          unsaved: confirm
+        declaredDialogIsTheSame: true
+        delete: true
+        assets:
+          - { name: badges.js, mediaType: text/javascript, sameDigest: true }
+          - { name: badges.css, mediaType: text/css, sameDigest: true }

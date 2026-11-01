@@ -1,0 +1,16 @@
+# Its own check does not reach the library's listing, which is refused when it
+# is first read.
+kind: Telo.Application
+metadata:
+  name: UiInvalidLayoutExtensionApp
+  version: 1.0.0
+imports:
+  Lib: ./lib
+  Probe: ../../probe
+targets:
+  - invoke: !ref read
+---
+kind: Probe.Read
+metadata:
+  name: read
+source: !ref Lib.plan

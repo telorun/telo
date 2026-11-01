@@ -63,6 +63,37 @@
               "computed"
             ],
             "additionalProperties": false
+          },
+          "inputPointer": {
+            "description": "An RFC 6901 pointer into the inputs of the dispatch that raised the failure, naming the input it is about.",
+            "type": "string",
+            "pattern": "^(/([^/~]|~[01])*)*$"
+          },
+          "location": {
+            "description": "Where in a manifest the failure was caused: the resource whose declaration holds the offending value, its declaring module, and a pointer into that declaration. Attached by the kernel where the failure first left a dispatch, and carried unchanged after.",
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "module": {
+                "type": "string"
+              },
+              "pointer": {
+                "type": "string",
+                "pattern": "^(/([^/~]|~[01])*)*$"
+              }
+            },
+            "required": [
+              "kind",
+              "name"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

@@ -28,6 +28,8 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
         throw new InvokeError(
           "ERR_INVALID_CONFIG",
           `Assert.Matches "${name}": 'pattern' must be a string`,
+          undefined,
+          { inputPointer: "/pattern" },
         );
       }
       let regex: RegExp;
@@ -37,6 +39,8 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
         throw new InvokeError(
           "ERR_INVALID_CONFIG",
           `Assert.Matches "${name}": invalid pattern — ${err instanceof Error ? err.message : String(err)}`,
+          undefined,
+          { inputPointer: "/pattern" },
         );
       }
 
@@ -47,7 +51,9 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
             "\n" +
             `  ${red("✗")} ${message}\n`,
         );
-        throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Matches "${name}": ${message}`);
+        throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Matches "${name}": ${message}`, undefined, {
+          inputPointer: "/actual",
+        });
       }
       if (regex.test(actual)) {
         ctx.stdout.write(
@@ -63,7 +69,9 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
           "\n" +
           `  ${red("✗")} ${message}\n`,
       );
-      throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Matches "${name}": ${message}`);
+      throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Matches "${name}": ${message}`, undefined, {
+        inputPointer: "/pattern",
+      });
     },
   };
 }

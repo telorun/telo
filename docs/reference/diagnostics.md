@@ -1,12 +1,12 @@
 ---
 sidebar_label: Diagnostics reference
 slug: /reference/diagnostics
-description: Every diagnostic code the Telo analyzer and runtime can emit, what triggers it, and how to fix it.
+description: The diagnostic codes the Telo analyzer, runtime and release tooling emit, what triggers it, and how to fix it.
 ---
 
 # Diagnostics reference
 
-Every code Telo can emit, with what triggers it and what to do. Look a code up
+The diagnostic codes Telo emits, with what triggers each and what to do. Look a code up
 here — the message text contains your resource names, but the code is stable.
 
 Telo reports problems in two places:
@@ -60,6 +60,11 @@ how to read a failure, and the debugging flags — see
 | `BASE_WITH_TEMPLATE_BODY` | A definition declares `base:` alongside `resources:` / `controllers:` / a dispatch slot. `base:` is read only on the inherited-controller path, which a body switches off — so it would never be evaluated. Drop one or the other. |
 | `EXPORT_KIND_UNKNOWN` | A `Telo.Library`'s `exports.kinds` entry names no kind the library declares. A bare name that is an IMPORTED kind is called out separately: re-export it as `Alias.Kind`, or declare a local kind that extends it. |
 | `EXPORT_RESOURCE_UNKNOWN` | A `Telo.Library`'s `exports.resources` entry names no resource the library declares, or an instance the aliased import does not export. |
+| `DEPRECATED_KIND` ⚠️ | A resource's kind carries `metadata.deprecated`. Reported at its `kind:` line with the reason and, when the kind names one, its `replacedBy`; editors strike the kind through. The resource still runs. Move to the replacement, or — for `JavaScript.Script`, which has no single successor — to the step grammar with CEL, or a new kind. |
+| `INVALID_DEPRECATION` ⚠️ | A `metadata.deprecated` block on a module or kind doc is not an object, carries a key other than `reason` / `replacedBy`, or has an empty `reason`. A bare `true` says a thing is deprecated without saying what to do instead. |
+| `DEPRECATION_REPLACEMENT_UNRESOLVED` ⚠️ | `metadata.deprecated.replacedBy` names an alias that is not an import of the file, or a kind that does not resolve. A replacement a consumer cannot follow is no better than none. |
+| `TEMPLATE_TARGETS_INVALID` | A templated definition's `targets:` is not a list of `!ref <entry>` to a `resources:` entry or an inline declaration of a `Telo.Service` / `Telo.Runnable` kind. |
+| `TEMPLATE_TARGETS_WITH_RUN` | A templated definition declares both `targets:` and `run:`; each says what running the kind does. Declare one — a single entry is `targets: [!ref <entry>]`. |
 
 ### References
 
@@ -82,6 +87,9 @@ how to read a failure, and the debugging flags — see
 | `X_TELO_REF_INVALID_OUTPUT_TYPE` | A structured `x-telo-ref` declares an `outputType` that is not a JSON Schema object, so it would read as absent and the slot would accept a target returning anything. |
 | `MOUNT_ON_NON_MOUNT` / `MOUNT_DISPATCHER_CONFLICT` | `mount:` used on a non-Mount definition, or alongside another dispatcher (`invoke:` / `provide:` / `run:`). |
 | `PROVIDE_ON_NON_PROVIDER` / `PROVIDE_DISPATCHER_CONFLICT` | `provide:` on a definition that is not a `Telo.Provider`, or beside another dispatcher. |
+| `X_TELO_REF_UNKNOWN_KEY` | A structured `x-telo-ref` carries a key nothing reads. The message lists the known keys; an unrecognized one has exactly the effect of leaving it out. |
+| `X_TELO_REF_INVALID_THROWS_THROUGH` | An `x-telo-ref` `throwsThrough:` is not a boolean. Only `true` declares that throws from the slot's target surface through the declaring resource. |
+| `X_TELO_REF_SCALAR_TYPE` ⚠️ | A reference slot still carries the scalar `type:` that plain-string references were pinned to. A `!ref` resolves to an object, so the slot would reject the value it accepts. `telo migrate` removes it. |
 
 ### Expansion tags
 
@@ -121,6 +129,7 @@ how to read a failure, and the debugging flags — see
 | `CEL_UNKNOWN_FUNCTION` | The expression calls a function that does not exist. The message suggests the nearest name; `telo cel functions` lists them all. |
 | `CEL_WRONG_CALL_FORM` | The function exists but is called the wrong way round — a method written as a global (`size(x)` vs `x.size()`), or vice versa. The message shows the correct spelling. |
 | `CEL_TYPE_ARGUMENT_MISMATCH` | The expression reads a value of the same value type on both sides, the disagreement beneath a type argument: a `Telo.Stream` of `Telo.Bytes` into a field or call-target `inputType` slot declaring a `Telo.Stream` of strings, at any depth of the value. Any other misfit of a declared shape is `CEL_TYPE_ERROR`. |
+| `CEL_INVALID_ARGUMENT` | A literal argument a catalog function refuses — an out-of-range number, a malformed pattern, an unknown time zone — decided from the expression alone, with the function's own wording. The same refusal at run time is the call's error. |
 | `CEL_NULLABLE_ACCESS` | Dereferencing a value whose schema admits `null` without a guard — or an `!interpolate` hole that is such a value, since a null has no text. |
 | `INTERPOLATION_HOLE_NOT_CONVERTIBLE` | An `!interpolate` hole's type has no `string()` conversion (a list, a map). Convert it inside the hole, or write the whole value as `!cel`. |
 | `UNTAGGED_INTERPOLATION` | A plain string holds `${{`, which is never evaluated. Loading normally migrates it, so this means it was read without migrations or no hole can be read out of it (`"${{ foo"`). Run `telo migrate`, or tag the text `!literal` if it is literal. In an imported library it is reported at your import of it, since the library then fails to load; import a version that fixes it. |
@@ -203,6 +212,9 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 | `LIVE_VALUE_RETRIED` | A step passes a live value (a `Telo.Stream`) into a target, and either the step or the target declares a retry. A stream is consumed once; a re-attempt would pass an exhausted one. Drop the retry, or collect the stream into a plain value first. |
 | `SPAN_ATTRIBUTE_INVALID` | An `x-telo-span-attribute` value is not an attribute name — write dot-separated lowercase segments of letters, digits and underscores (`telo.check.exit_code`) — or names one the runtime sets on every span itself (`error.type`, `telo.cancellation.reason`, `telo.resource.kind`, `telo.resource.name`). Reported at the mark. See [Tracing](/build/tracing). |
 | `SPAN_ATTRIBUTE_MISPLACED` | An `x-telo-span-attribute` mark the runtime cannot read. The kernel reads a mark wherever a contract (`inputType` / `outputType`) reaches it through `properties`, following `$ref` into `$defs` entries and named shapes. At the mark: the marked node is not a scalar, or sits beside `x-telo-sensitive: true`. At the property that reaches it: the contract reaches the mark through an array item or a map value, which holds any number of values per dispatch (at the contract itself when the mark is on its root). At the mark again: no contract reaches it at all — a kind's `schema:` / `status:`, a `$defs` entry nothing references, a named shape no contract uses and its library does not export. |
+| `CONTRACT_INPUTS_AT_RUN_SITE` | A resource whose contract has required `inputType` fields is wired where it is started with `run()` — an application's `targets:`, a templated kind's `run:` — and a `run()` passes no arguments, so nothing can supply them. Invoke it from a step or a route instead, or drop the requirement. |
+| `CONTRACT_SLOT_INPUTS_UNSATISFIABLE` | A resource is wired at a slot where the consumer builds the arguments from the slot's declared kind alone, but its contract requires inputs that kind does not declare. Declare them on the slot's kind, or relax the contract. |
+| `THROWS_NOT_SUBSTITUTABLE` | A definition's `throws.codes` names a code outside the ceiling an ancestor abstract declares. A caller holding it through the ancestor is told which codes it can catch and nothing re-checks the replacing list at dispatch. Report the failure under a code the ancestor declares, or add the code to the ancestor. Refused at registration too, as `ERR_THROWS_NOT_SUBSTITUTABLE`. |
 
 ### Execution zones and durable regions
 
@@ -219,6 +231,7 @@ A function is a resource whose capability resolves to `Telo.Callable` — a `Tel
 | `DURABLE_NONDETERMINISM` | A volatile call (`uuidv4()`, `now()`) — or a module function reaching one, named by its chain, or a native function whose kind does not declare `deterministic: true` — sits inside a region declared idempotent. That region re-runs on a resume with its earlier effects intact, so a value that differs per pass makes the re-run something other than a no-op. Pin it once with `Durable.Value`. |
 | `DURABLE_DETACH_FORBIDDEN` | A detached dispatch inside a durable region. Progress is recorded when a step completes, so detached work would be recorded as done while still running. Start a nested durable run instead. |
 | `DURABLE_UNJOURNALABLE_RESULT` | A step inside a durable region invokes a target whose declared output is a live value. A stream cannot be recorded and replayed; collect what you need into a plain value inside the step. Fails at runtime as `ERR_DURABLE_UNJOURNALABLE_VALUE`. |
+| `ZONE_ATTRIBUTE_MISSING` | A requirement asks for zone attributes (`atomic`, `idempotent`, …) and the zone it reaches is open but does not declare them, so the guarantee the requirement is built on does not hold inside it. Declare the attributes on the providing slot, or reach the resource through a zone that has them. |
 
 ### Resource rules and referrer rules
 
@@ -318,6 +331,9 @@ A whole supply naming a need or fulfilment of another type is `REFERENCE_KIND_MI
 | `SENSITIVE_ANNOTATION_MISPLACED` | `x-telo-sensitive` was written where no declared contract (`inputType` / `outputType`) reaches it — the kernel reads it wherever a contract does, following `$ref` into `$defs` entries and named shapes — so nothing reads it (a function's signature included, whose arguments ride no trace payload) and the value would ride the debug wire in clear. See [Marking a contract field sensitive](/extend/sensitive-contract-fields). |
 | `SENSITIVE_ANNOTATION_INVALID` | `x-telo-sensitive` must be exactly `true`. It is a marker, not a level. On a need type's field it also requires a field holding text — a string, or a value type written as its text (`Telo.Url`): a sensitive value is redacted by its text — either refused for an imported library too, at the import that reaches it, and by the kernel at load (`ERR_SENSITIVE_ANNOTATION_INVALID`). |
 | `VALUE_SCHEMA_FROM_INVALID` | A kind's `x-telo-value-schema-from` names a location its schema cannot hold a value at — a segment before the first reference slot naming no declared property, or `*` on a node that is no list — or its `{ from, member }` form names no member: `#` on a node reached by an index rather than a key, or a pointer to a node that is not a string — or, written as a list of locations, the list is empty or one of its elements is no location. Written in the kind's `schema:`, `inputType` or `outputType`, or in a named shape one of them names. A module-authoring bug, refused when the kernel registers the kind (`ERR_VALUE_SCHEMA_FROM_INVALID`). |
+| `SCHEMA_MAP_INCOMPLETE` | An `x-telo-schema-map` has no entry for a value of the keyed field's `enum`. An entry declaring an unmapped value projects to nothing, so it disappears from every consumer's view of the shape. |
+| `X_TELO_TYPE_DEPRECATED` ⚠️ | A schema uses the earlier value-type keywords (`x-telo-binary`, `x-telo-stream`, …) that `x-telo-type` replaced. `telo migrate` rewrites them. |
+| `SQL_BEFORE_MIGRATIONS_RENAMED` ⚠️ | A `SQLite.Schema` / `Postgres.Schema` document uses `beforeMigrations:`, now `prepare:`. `telo migrate` renames it. |
 
 ### Texts and translations
 
@@ -387,11 +403,12 @@ These come from the release planner rather than from `telo check`. See
 | `NO_DESTINATION_KNOWN` | A module has never published, its `release.modules` entry declares no `registry:` and neither does the block. Declare one, pass `--registry`, or set `TELO_OCI_REGISTRY`. |
 | `DESTINATION_COLLISION` | Two modules resolve to one ref, because a ref is the registry base plus the module's own directory name. Rename a directory, or give one subtree its own `registry:`. |
 | `IMPORT_DESTINATION_CONFLICT` | A relative import between two workspace modules does not agree about where the target publishes. Publishing rewrites the import to the ref the importer's own path yields, so the artifact would name a module nobody pushes. Use a pinned remote import across a publish boundary. |
+| `WORKSPACE_MODULE_NESTED` | A module the workspace lists lies inside the directory of a module that imports it, so it ships inside that module's artifact and is not released on its own. Drop its entry from `telo-workspace.yaml`. |
 
 ### The workspace marker (`telo-workspace.yaml`)
 
 Reported by `telo release`, and by the editor as you type. See
-[Workspaces](/guides/workspaces).
+[Workspaces](/learn/workspaces).
 
 | Code | What it means and what to do |
 | --- | --- |
@@ -435,6 +452,9 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_NEED_TYPE_UNRESOLVED` / `ERR_NEED_PARAMETERS_INVALID` / `ERR_NEED_FIELD_UNDECLARED` / `ERR_NEED_SLOT_MISMATCH` / `ERR_NEED_UNDECLARED` / `ERR_NEED_FORWARD_INCOMPATIBLE` / `ERR_NEED_DIRECTORY_FORWARDED_TWICE` / `ERR_NEED_ENV_NAME_COLLISION` / `ERR_NEED_ROOT_SUPPLY_REQUIRED` / `ERR_LIBRARY_ENV_KEY_REJECTED` / `ERR_RESOURCE_INPUT_NEED_TYPE` / `ERR_REFERENCE_KIND_MISMATCH` / `ERR_SENSITIVE_ANNOTATION_INVALID` | The load-time twins of the [need diagnostics](#needs), raised for every module the application reaches, in one error with every other error the analysis found. |
 | `ERR_UNTAGGED_INTERPOLATION` | A plain string holding `${{` reached the compiler — read without migrations, or no hole can be read out of it. The static form is `UNTAGGED_INTERPOLATION`. |
 | `ERR_SCHEMA_PROJECTION_UNRESOLVED` | A slot that opted into a declaration-derived shape (`x-telo-schema-projection-from`) got none; raised when the resource is created. Refused rather than degraded, since a repository kind would otherwise accept arbitrary keys in a SQL identifier position. |
+| `ERR_BASE_WITH_TEMPLATE_BODY` | The runtime half of `BASE_WITH_TEMPLATE_BODY`: a definition declares `base:` beside `resources:`, `controllers:` or a dispatch slot. Drop `base:` and dispatch to a child with `!ref`, or drop the body. |
+| `ERR_THROWS_NOT_SUBSTITUTABLE` | The runtime half of `THROWS_NOT_SUBSTITUTABLE`, raised when the definition registers. |
+| `ERR_KIND_SCOPE_UNRESOLVED` | A resource's kind resolves to no module that declares it, so its template body or `base:` mapping has no scope to run in. |
 
 ### Initialization
 
@@ -466,6 +486,7 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_BINDING_CYCLE` | The runtime half of `BINDING_CYCLE`: named bindings resolved to a cycle while being evaluated. |
 | `ERR_EFFECT_RECOVERY_FAILED` | An inverse (what `init()` / `run()` returned to undo themselves) refused during teardown. The cascade continued; the failures are aggregated here. |
 | `ERR_EFFECT_NO_FRAME` / `ERR_EFFECT_NO_SCOPE` / `ERR_EFFECT_SCOPE_CLOSED` / `ERR_EFFECT_SCOPE_CLOSING` | A controller called `ctx.effect(...).perform()` outside any lifecycle frame, or on a resource already torn down. An effect must be registered while the frame that owns it is open — see [Authoring a module](/extend/authoring-a-module). |
+| `ERR_RECONCILE_FAILED` | A reconcile (reload with a changed manifest) unwound the affected resources and then failed to re-initialize them. The kernel is degraded and must be rebuilt; the message carries the underlying failure. |
 
 ### Dispatch
 
@@ -480,6 +501,8 @@ Reported by `telo release`, and by the editor as you type. See
 | `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE` | An `!interpolate` hole evaluated to null, a list or a map, which CEL's `string()` cannot turn into text. The message names the hole and the type found. Declare `outputType` on the resource producing the value so `telo check` sees its type, or guard it inside the hole. |
 | `ERR_INVOKE_CANCELLED` | The invoke was cancelled — a shutdown signal, a disconnected client, or an elapsed deadline. |
 | `ERR_EXECUTION_FAILED` | A dispatch failed; the underlying error is attached as its cause. |
+| `ERR_ASSERTION_FAILED` | An `Assert.*` resource found the actual value different from what the test expected. The message names the assertion and the difference. Fails the test, and its `Test.Suite`, like any dispatch error. |
+| `INVALID_THROW_STEP` | A `throw:` step's `code` resolved to nothing or an empty string. The code is required and must resolve to a non-empty string; a route's `catches:` can map this failure like any other. |
 | `ERR_INVALID_VALUE` | A resource reference string is not `<Kind>.<Name>`. |
 | `ERR_TYPE_NOT_FOUND` / `ERR_TYPE_VALIDATION_FAILED` | A named type is not in the registry, or its rule evaluation threw. |
 | `ERR_NETWORK_UNREACHABLE` | An outbound fetch could not reach its host. |

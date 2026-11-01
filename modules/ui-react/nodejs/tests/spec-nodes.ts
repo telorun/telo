@@ -54,7 +54,7 @@ export const component = (name: string, props: Record<string, unknown> = {}): Sp
 
 export const dialogSurface = { type: "dialog", size: "medium", modal: true, dismiss: { escape: true, outside: true, closeButton: true } };
 
-/** How a table opens a form: a dialog with its defaults unless overridden. */
+/** How a listing opens a form: a dialog with its defaults unless overridden. */
 export const opener = (overrides: Record<string, unknown> = {}) => ({
   form: formNode(),
   surface: dialogSurface,
@@ -63,24 +63,35 @@ export const opener = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-export const tableNode = (overrides: Record<string, unknown> = {}): SpecNode => ({
-  type: "table",
+/** The columns of the test listing's table. */
+export const todoColumns = [
+  { header: "Task", value: row("text"), sort: "text", present: { type: "string" }, labels: [] },
+  { header: "Priority", value: row("priority"), sort: "priority", present: { type: "integer" }, labels: [], style: { by: row("priority"), cases: { "1": "danger" }, default: "strong" } },
+  { header: "Due", value: row("dueOn"), sort: "dueOn", present: { type: "string", format: "date" }, labels: [] },
+  { header: "State", cell: component("StatusPill", { done: row("isDone") }), labels: [] },
+];
+
+/**
+ * A listing as `ui` provides it, drawn as a table: every member it fills
+ * filled. `columns` is laid into the table layout, and `layout` replaces it.
+ */
+export const listingNode = ({ columns = todoColumns, layout, ...overrides }: Record<string, any> = {}): SpecNode => ({
+  type: "listing",
   schema: todoSchema,
   basePath: "/api/todos",
+  key: "id",
   query: {},
-  rowKey: "id",
   pageSize: 2,
-  rowActions: [],
-  delete: true,
+  paging: "pages",
+  sort: ["text", "priority", "dueOn"],
+  rowStyle: { by: row("isDone"), cases: { true: "muted" } },
   create: opener(),
   edit: opener(),
-  rowStyle: { by: row("isDone"), cases: { true: "muted" } },
-  columns: [
-    { header: "Task", value: row("text"), sort: "text", present: { type: "string" } },
-    { header: "Priority", value: row("priority"), sort: "priority", present: { type: "integer" }, style: { by: row("priority"), cases: { "1": "danger" }, default: "strong" } },
-    { header: "Due", value: row("dueOn"), sort: "dueOn", present: { type: "string", format: "date" } },
-    { header: "State", cell: component("StatusPill", { done: row("isDone") }) },
-  ],
+  delete: true,
+  rowActions: [],
+  relations: {},
+  empty: { type: "text", text: { word: "noRows" } },
+  layout: layout ?? { type: "table", columns, reads: {} },
   ...overrides,
 });
 
@@ -92,12 +103,14 @@ export const filterField = (property: keyof typeof todoSchema.properties, operat
   schema: todoSchema.properties[property],
   pinned: false,
   control: "auto",
+  values: "all",
   ...more,
 });
 
 /** A filter bar with the policy a bar that declares none carries. */
 export const filtersNode = (content: SpecNode, overrides: Record<string, unknown> = {}): SpecNode => ({
   type: "filters",
+  basePath: "/api/todos",
   fields: [
     filterField("text", "contains"),
     filterField("isDone", "eq"),

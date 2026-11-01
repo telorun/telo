@@ -1,0 +1,19 @@
+# The application and its library each declare a shape named `Item`; the
+# collection's model is the application's, whose `title` it filters by.
+kind: Telo.Application
+metadata: { name: DataModelCollidingModelApp, version: 1.0.0 }
+imports:
+  DataModel: ../../../../
+  Lib: ./lib
+---
+kind: Telo.JsonSchema
+metadata: { name: Item }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, title: { type: string } }
+---
+kind: DataModel.Collection
+metadata: { name: items }
+model: !ref Item
+query: { filters: [{ property: title, operator: contains }], sort: [] }

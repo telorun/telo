@@ -9,7 +9,7 @@ metadata:
     its pickers, date range, project choice, columns, toggles, groups, kept
     values and enablement, and the answer it draws: plural headings, warning
     boxes, the files list with its billing-only columns and its draft and
-    upload row actions, the failure box — and the projects page's table with
+    upload row actions, the failure box — and the projects page's listing with
     its query and row action. The routes these call are asserted by
     `answers-every-route.yaml`.
 imports:
@@ -55,7 +55,7 @@ steps:
       form: !cel "steps.page.result.body.children[1].content.children[3].children[1]"
       polishForm: !cel "steps.polishPage.result.body.children[1].content.children[3].children[1]"
       files: !cel "steps.page.result.body.children[1].content.children[3].children[1].result.children[9]"
-      table: !cel "steps.projectsPage.result.body.children[1].content.children[1]"
+      listing: !cel "steps.projectsPage.result.body.children[1].content.children[1]"
 
   # The application: two pages, the stylesheet beside the theme, and a
   # language read from Accept-Language.
@@ -401,28 +401,28 @@ steps:
               present: { type: string, format: uri }
               labels: []
 
-  # The projects page: a table over the sheet the address names, offering a
+  # The projects page: a listing over the sheet the address names, offering a
   # reminder on every row that has an address.
   - name: verifyProjectsPage
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         nodes: !cel "steps.projectsPage.result.body.children.map(c, c.type)"
-        table:
-          type: !cel "steps.nodes.result.table.type"
-          shown: !cel "steps.nodes.result.table.shown"
-          basePath: !cel "steps.nodes.result.table.basePath"
-          query: !cel "steps.nodes.result.table.query"
-          filters: !cel "steps.nodes.result.table.filters"
+        listing:
+          type: !cel "steps.nodes.result.listing.type"
+          shown: !cel "steps.nodes.result.listing.shown"
+          basePath: !cel "steps.nodes.result.listing.basePath"
+          query: !cel "steps.nodes.result.listing.query"
+          filters: !cel "steps.nodes.result.listing.filters"
           remind:
-            path: !cel "steps.nodes.result.table.rowActions[0].action.path"
-            inputs: !cel "steps.nodes.result.table.rowActions[0].inputs"
-            confirm: !cel "steps.nodes.result.table.rowActions[0].confirm"
-            enabled: !cel "steps.nodes.result.table.rowActions[0].enabled"
+            path: !cel "steps.nodes.result.listing.rowActions[0].action.path"
+            inputs: !cel "steps.nodes.result.listing.rowActions[0].inputs"
+            confirm: !cel "steps.nodes.result.listing.rowActions[0].confirm"
+            enabled: !cel "steps.nodes.result.listing.rowActions[0].enabled"
       expected:
         nodes: [ text, data ]
-        table:
-          type: table
+        listing:
+          type: listing
           shown: { at: { root: data, path: [ authorized ] }, matches: { const: true } }
           basePath: /api/projects
           query:

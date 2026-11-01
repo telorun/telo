@@ -3,8 +3,7 @@
 # create and edit forms opening on every kind of surface. Every table but the
 # task board lists the tasks crud serves, so each write reloads them all.
 kind: Ui.View
-metadata:
-  name: tablesPage
+metadata: { name: tablesPage }
 content:
   type: stack
   children:
@@ -18,10 +17,9 @@ content:
         forms in a dialog, the surface a table uses when it names none.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         create: { form: !ref newTaskForm }
         edit: { form: !ref taskForm }
         delete: true
@@ -36,21 +34,22 @@ content:
         has its colour, and a priority no case names takes the default. Eight rows to a page.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 8
-        columns:
-          - value: !cel "row.title"
-          - { header: Where, value: !cel "row.projectCode" }
-          - value: !cel "row.status"
-            style: { by: !cel "row.status", cases: { todo: muted, doing: accent, review: warning, done: success } }
-          - value: !cel "row.priority"
-            style: { by: !cel "row.priority", cases: { "5": danger, "4": warning }, default: muted }
-          - value: !cel "row.estimate"
-          - value: !cel "row.dueOn"
-          - value: !cel "row.assigneeEmail"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - { header: Where, value: !cel "row.projectCode" }
+            - value: !cel "row.status"
+              style: { by: !cel "row.status", cases: { todo: muted, doing: accent, review: warning, done: success } }
+            - value: !cel "row.priority"
+              style: { by: !cel "row.priority", cases: { "5": danger, "4": warning }, default: muted }
+            - value: !cel "row.estimate"
+            - value: !cel "row.dueOn"
+            - value: !cel "row.assigneeEmail"
         rowStyle: { by: !cel "row.blocked", cases: { "true": [ strong, danger ] } }
 
     # ---- Members behind a reference ----
@@ -64,18 +63,24 @@ content:
         is a mail link and the brief a link to a page.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation:
+          kind: Ui.CollectionPresentation
+          source:
+            kind: Ui.CollectionSource
+            collection: { kind: DataModel.Collection, model: !ref TaskCard, query: { filters: [], sort: [] } }
+            basePath: /api/task-board
         model: !ref TaskCard
-        collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
-        source: { basePath: /api/task-board }
         pageSize: 6
-        columns:
-          - value: !cel "row.title"
-          - value: !cel "row.assignee.name"
-          - value: !cel "row.assignee.contact"
-          - value: !cel "row.project.code"
-          - value: !cel "row.project.name"
-          - value: !cel "row.project.brief"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.assignee.name"
+            - value: !cel "row.assignee.contact"
+            - value: !cel "row.project.code"
+            - value: !cel "row.project.name"
+            - value: !cel "row.project.brief"
 
     # ---- Filtered by the address, and by a fixed value ----
     - { type: text, text: Filtered by the address, style: heading }
@@ -91,37 +96,37 @@ content:
         - { type: link, text: No project, href: /tables }
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
         query:
           project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
-        source:
-          basePath: /api/tasks
-          filters: { projectCode: !cel "query.project" }
+        filters: { projectCode: !cel "query.project" }
         pageSize: 10
-        columns:
-          - value: !cel "row.title"
-          - value: !cel "row.status"
-          - value: !cel "row.assigneeEmail"
-          - value: !cel "row.dueOn"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.assigneeEmail"
+            - value: !cel "row.dueOn"
     - { type: text, text: Blocked tasks, style: subheading }
     - type: text
       style: muted
       text: This one is filtered by a fixed value written into the table, and lists only the tasks that are blocked.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source:
-          basePath: /api/tasks
-          filters: { blocked: true }
+        filters: { blocked: true }
         pageSize: 5
-        columns:
-          - value: !cel "row.title"
-          - value: !cel "row.projectCode"
-          - value: !cel "row.status"
+        layout:
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.projectCode"
+            - value: !cel "row.status"
 
     # ---- Where a form opens ----
     - { type: text, text: Where a form opens, style: heading }
@@ -140,15 +145,16 @@ content:
         without asking, and is part of the address. Each row offers a confirmed delete.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 5
-        columns: &surfaceColumns
-          - value: !cel "row.title"
-          - value: !cel "row.status"
-          - value: !cel "row.dueOn"
+        layout: &surfaceLayout
+          kind: Ui.TableLayout
+          columns:
+            - value: !cel "row.title"
+            - value: !cel "row.status"
+            - value: !cel "row.dueOn"
         create:
           form: !ref newTaskForm
           surface: { kind: Ui.Dialog, size: small }
@@ -173,12 +179,11 @@ content:
         button. Both close after a save and ask before unsaved input is dropped.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 5
-        columns: *surfaceColumns
+        layout: *surfaceLayout
         create:
           form: !ref newTaskForm
           surface: { kind: Ui.Drawer, side: start, size: small }
@@ -199,12 +204,11 @@ content:
         of the address.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 5
-        columns: *surfaceColumns
+        layout: *surfaceLayout
         create:
           form: !ref newTaskForm
           surface: { kind: Ui.Drawer, side: top, modal: false }
@@ -221,12 +225,11 @@ content:
         which stays open after a save.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 5
-        columns: *surfaceColumns
+        layout: *surfaceLayout
         create:
           form: !ref newTaskForm
           surface:
@@ -247,12 +250,11 @@ content:
         the create form opens in a sheet from the bottom.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 5
-        columns: *surfaceColumns
+        layout: *surfaceLayout
         create:
           form: !ref newTaskForm
           surface: { kind: Ui.InlineSurface, compact: { kind: Ui.Drawer, side: bottom } }
@@ -270,12 +272,11 @@ content:
         sheet from the bottom.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 5
-        columns: *surfaceColumns
+        layout: *surfaceLayout
         create:
           form: !ref newTaskForm
           surface: { kind: Ui.Panel, side: start, size: small, dismiss: { escape: false } }
@@ -297,41 +298,36 @@ content:
         both.
     - type: composite
       ref:
-        kind: Ui.Table
+        kind: Ui.Listing
+        presentation: !ref tasksPresentation
         model: !ref Task
-        collection: !ref taskModel
-        source: { basePath: /api/tasks }
         pageSize: 5
-        columns: *surfaceColumns
+        layout: *surfaceLayout
         create: { form: !ref newTaskForm, surface: !ref taskPage }
         edit: { form: !ref taskForm, surface: !ref taskPage }
 ---
-# The form that creates a task, opened by every table's New button.
+# The form that creates a task, opened by every listing's New button.
 kind: Ui.Form
-metadata:
-  name: newTaskForm
+metadata: { name: newTaskForm }
 model: !ref TaskDraft
-source: { basePath: /api/tasks }
+presentation: !ref tasksPresentation
 ---
-# The form that replaces a task, opened by every table's edit button over the
+# The form that replaces a task, opened by every listing's edit button over the
 # record read by its key.
 kind: Ui.Form
-metadata:
-  name: taskForm
+metadata: { name: taskForm }
 model: !ref TaskEdit
-source: { basePath: /api/tasks }
+presentation: !ref tasksPresentation
 ---
-# One page surface, named by both openers of a table: the address says either
+# One page surface, named by both openers of a listing: the address says either
 # a new task or the task with this key.
 kind: Ui.PageSurface
-metadata:
-  name: taskPage
+metadata: { name: taskPage }
 address: { name: task }
 ---
 # The page every application lists at /tables, placing the view.
 kind: Ui.Page
-metadata:
-  name: tablesScreen
+metadata: { name: tablesScreen }
 path: /tables
 title: Tables
 children:

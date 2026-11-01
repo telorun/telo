@@ -46,6 +46,13 @@ import {
 import { recordDeclarationScope } from "./declaration-scope.js";
 import { effectOwnerOf, executeReturnedChain } from "./effect-scope.js";
 import { moduleCallsOf } from "./module-functions.js";
+import { declarationReadsOf } from "./declaration-reads.js";
+import {
+  dispatchLocation,
+  locateInvokeFailure,
+  recordCallerDeclaration,
+  type DispatchCaller,
+} from "./failure-location.js";
 import { impactClosure, reverseTopologicalOrder } from "./resource-edges.js";
 import {
   mayReachListener,
@@ -726,11 +733,17 @@ export class EvaluationContext implements IEvaluationContext {
    *  injection swaps refs for live instances, so the walk sees plain objects and
    *  cannot wander into a controller's (possibly cyclic) object graph.
    *
-   *  Read twice, and RETAINED for the context's lifetime because of the second
-   *  reader: to attribute an init failure to its cause, and to order teardown
-   *  (`teardownOrder`) so a consumer's inverses run while the resources it holds
-   *  are still alive. */
+   *  RETAINED for the context's lifetime: read to attribute an init failure to
+   *  its cause, to order teardown (`teardownOrder`, without declaration reads)
+   *  so a consumer's inverses run while the resources it holds are still alive,
+   *  and to find what a reconciliation re-creates (`impactedBy`). */
   private readonly resourceDependencies = new Map<string, string[]>();
+
+  /** The names among a resource's dependencies it reaches by more than a
+   *  reference: a CEL read or a module call. A name it otherwise reaches only
+   *  through a declaration-read site (`declaration-reads.ts`) orders nothing at
+   *  teardown, since nothing of the target's instance is held. */
+  private readonly readDependencies = new Map<string, ReadonlySet<string>>();
 
   /**
    * Names resolved by NAME during initialization, rather than through a
@@ -1069,6 +1082,7 @@ export class EvaluationContext implements IEvaluationContext {
   deregisterManifest(name: string): void {
     this.declaredManifests.delete(name);
     this.resourceDependencies.delete(name);
+    this.readDependencies.delete(name);
     this.createdInstances.delete(name);
     this.withheldResources.delete(name);
     this.recreatedResources.delete(name);
@@ -1440,13 +1454,9 @@ export class EvaluationContext implements IEvaluationContext {
             // `resource` rather than `createdRes`: the registered declaration
             // still holds its expressions, while the created copy holds the
             // values they were expanded to.
-            this.resourceDependencies.set(name, [
-              ...new Set([
-                ...localDependencyNames(refs),
-                ...celResourceReads(resource),
-                ...this.moduleCallDependencies(resource),
-              ]),
-            ]);
+            const reads = new Set([...celResourceReads(resource), ...this.moduleCallDependencies(resource)]);
+            this.resourceDependencies.set(name, [...new Set([...localDependencyNames(refs), ...reads])]);
+            this.readDependencies.set(name, reads);
             const payload: Record<string, unknown> = {
               resource: {
                 kind: createdRes.kind,
@@ -1887,9 +1897,19 @@ export class EvaluationContext implements IEvaluationContext {
         reverseTopologicalOrder(
           tiers.get(priority)!,
           (value) => value.resource.metadata.name as string,
-          (name) => this.resourceDependencies.get(name),
+          (name) => this.heldDependencies(name),
         ),
       );
+  }
+
+  /** What `name` holds of the resources it depends on, in teardown's sense: its
+   *  dependencies without the names it reaches only as a declaration read. */
+  private heldDependencies(name: string): readonly string[] | undefined {
+    const all = this.resourceDependencies.get(name);
+    const declarationOnly = declarationReadsOf(this.resourceInstances.get(name)?.resource);
+    if (!all || !declarationOnly) return all;
+    const reads = this.readDependencies.get(name);
+    return all.filter((dependency) => !declarationOnly.has(dependency) || reads?.has(dependency) === true);
   }
 
   /**
@@ -1995,6 +2015,7 @@ export class EvaluationContext implements IEvaluationContext {
     name: string,
     inputs: TInputs,
     ctx?: InvokeContext,
+    caller?: DispatchCaller,
   ): Promise<any> {
     const entry = this.resourceInstances.get(name);
 
@@ -2067,7 +2088,7 @@ export class EvaluationContext implements IEvaluationContext {
       );
     }
 
-    return this.runInvoke(effectiveKind, name, entry.instance, inputs, ctx);
+    return this.runInvoke(effectiveKind, name, entry.instance, inputs, ctx, caller);
   }
 
   /**
@@ -2082,6 +2103,7 @@ export class EvaluationContext implements IEvaluationContext {
     instance: ResourceInstance,
     inputs: TInputs,
     ctx?: InvokeContext,
+    caller?: DispatchCaller,
   ): Promise<any> {
     if (typeof instance.invoke !== "function" && typeof instance.run !== "function") {
       throw new RuntimeError(
@@ -2089,7 +2111,7 @@ export class EvaluationContext implements IEvaluationContext {
         `Resource ${kind}.${name} does not have an invoke or run method`,
       );
     }
-    return this.runInvoke(kind, name, instance, inputs, ctx);
+    return this.runInvoke(kind, name, instance, inputs, ctx, caller);
   }
 
   /**
@@ -2177,6 +2199,9 @@ export class EvaluationContext implements IEvaluationContext {
     instance: ResourceInstance,
     inputs: TInputs,
     ctx?: InvokeContext,
+    /** The resource whose controller issued this dispatch: a failure leaving it
+     *  is located in that resource's declaration, at `ctx.inputsAt`. */
+    caller?: DispatchCaller,
   ): Promise<any> {
     // Explicit seed (trigger / embedder) wins; otherwise inherit the ambient
     // tree token; otherwise open a fresh, never-cancellable scope. The token
@@ -2281,9 +2306,14 @@ export class EvaluationContext implements IEvaluationContext {
     // always (re)establishes the ALS scope. Derived, never a fresh literal: a
     // literal drops every field it does not restate (`zones`), making
     // propagation differ between tracing on and off.
+    // `inputsAt` names this call's inputs in the caller's declaration, so the
+    // target's context never carries it on.
+    const inputsAt = ctx?.inputsAt;
     const invokeCtx: InvokeContext = tracing
       ? deriveContext(baseCtx, { invocationId, parentInvocationId, traceId })
-      : baseCtx;
+      : inputsAt === undefined
+        ? baseCtx
+        : deriveContext(baseCtx, {});
 
     // Pre-dispatch gate: a sub-invoke reached after the tree was cancelled is
     // refused without ever touching the controller.
@@ -2371,6 +2401,7 @@ export class EvaluationContext implements IEvaluationContext {
           await this.emitSpan(`${name}.InvokeRejected.Undeclared`, () => span("end", "rejected", detail));
         }
         finish("rejected", { errorType: settled.code });
+        locateInvokeFailure(settled, caller, inputsAt);
         throw settled;
       }
       if (err instanceof Error) {
@@ -2396,9 +2427,15 @@ export class EvaluationContext implements IEvaluationContext {
       // location prefix. Attach the original error as `cause` so
       // formatErrorForDiagnostic walks the chain and surfaces the underlying
       // stack and well-known error fields (AWS, pg, Node system errors).
-      const wrapped = new RuntimeError("ERR_EXECUTION_FAILED", message, [
-        { kind, resource: name, message, code },
-      ]);
+      const diagnostic: RuntimeDiagnostic = {
+        kind,
+        resource: name,
+        message,
+        code,
+        ...(caller ? { location: dispatchLocation(caller, inputsAt, undefined) } : {}),
+      };
+      if (caller) recordCallerDeclaration(diagnostic, caller);
+      const wrapped = new RuntimeError("ERR_EXECUTION_FAILED", message, [diagnostic]);
       (wrapped as { cause?: unknown }).cause = err;
       throw wrapped;
     }

@@ -38,6 +38,12 @@ template body inherits, by delegation:
   parent's, so a parent that closes its schema (`additionalProperties: false`)
   cannot accept an added field; declaring one is
   `EXTENDS_CLOSED_PARENT_ADDS_FIELD`, and the fix is a `base:` mapping.
+- **The rules — by addition**, with a controller of its own or without one.
+  Without `base:`, the child is judged by its
+  ancestors' [resource rules](./resource-rules.md#inheritance) and
+  [referrer rules](./referrer-rules.md#inheritance) as well as its own, and may
+  add rules but never remove or replace one: a code it inherits is refused at the
+  child. With `base:` it inherits none, since its schema is its own.
 - **The published reading.** `resources.<child>` is the parent instance's
   `snapshot()`. Without `base:`, the fields the child declares **that the parent
   did not** are published over it, so a field the parent has never heard of reads
@@ -81,35 +87,41 @@ it was written for, so a declaration without one would never be applied —
 
 ```yaml
 kind: Telo.Definition
-metadata: { name: Doubler }
-extends: JS.Script
-schema: { type: object, additionalProperties: false, properties: {} }
+metadata: { name: RepoStars }
+extends: Http.Request
+schema:
+  type: object
+  required: [client]
+  properties:
+    client: { x-telo-ref: Http.Client }  # re-declared to expose it; forwarded below
 base:
-  code: |
-    function main({ n }) { return { out: n * 2 }; }
+  client: !cel "self.client"
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    required: [value]
-    properties: { value: { type: integer } }
+    required: [owner, repo]
+    properties:
+      owner: { type: string }
+      repo: { type: string }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    required: [doubled]
-    properties: { doubled: { type: integer } }
+    required: [stars]
+    properties: { stars: { type: integer } }
 inputs:
-  n: !cel "inputs.value"
+  url: !cel "'/repos/' + inputs.owner + '/' + inputs.repo"
+  method: GET
 result:
-  doubled: !cel "result.out"
+  stars: !cel "result.body.stargazers_count"
 ```
 
 One dispatch now checks four boundaries where none were checked before: the
 child's inputs, the mapped values against the parent's contract, the parent's
 result, and the mapped result against the child's `outputType`.
 
-`Doubler` stays wired wherever `JS.Script` is. Where the wiring rule bites is a
+`RepoStars` stays wired wherever `Http.Request` is. Where the wiring rule bites is a
 slot whose consumer builds the arguments itself from the slot's declared kind
 alone — it would send the parent's shape to something that accepts the child's,
 so `telo check` rejects it (`CONTRACT_SLOT_INPUTS_UNSATISFIABLE`). At a slot that
@@ -122,6 +134,8 @@ the author supplies the arguments and the call site is checked instead.
 definition: an object of CEL expressions over `self` (typed from the child's own
 schema), evaluated once to build the config passed to the inherited controller.
 It mirrors the existing `inputs:` / `result:` top-level-sibling factoring.
+
+`base:` runs once, at creation, and sees only `self` — never a call's `inputs`. What varies per call is mapped by `inputs:` / `result:` (see [Presenting your own signature](#presenting-your-own-signature)).
 
 ```yaml
 kind: Telo.Definition
@@ -188,6 +202,9 @@ controller's config is this.
 > `!cel "[self.client]"`, or any wrapping of the reference will fail. Keep
 > reference forwarding and value-building CEL in separate `base:` fields — the same
 > rule that governs `self`-derived references in a templated `resources:` body.
+> A bare path may go on past the reference (`!cel "self.client.baseUrl"`): it
+> reads what that resource was declared with, never a member of its controller's
+> instance — in `base:`, `inputs:` and `result:` alike.
 
 ## Worked example — a GitHub client library
 
@@ -196,7 +213,7 @@ A small library that exposes a `GithubClient` plus one wrapped operation:
 ```yaml
 kind: Telo.Library
 metadata:
-  name: github
+  name: Github
   namespace: acme
   version: 0.1.0
 imports:
@@ -246,7 +263,7 @@ Consuming it — the client is constructed from `{ token }`, and because it *is*
 ```yaml
 kind: Telo.Application
 metadata:
-  name: github-demo
+  name: GithubDemo
   version: 1.0.0
 imports:
   Gh: oci://ghcr.io/acme/github@0.1.0
@@ -254,29 +271,29 @@ imports:
 secrets:
   ghToken: { env: GITHUB_TOKEN, type: string }
 targets:
-  - invoke: !ref TopRepos
-  - invoke: !ref RateLimit
+  - invoke: !ref topRepos
+  - invoke: !ref rateLimit
 ---
 kind: Gh.GithubClient
-metadata: { name: Api }
+metadata: { name: api }
 token: !cel "secrets.ghToken"
 ---
 kind: Gh.SearchRepos                # a wrapped operation
-metadata: { name: TopRepos }
-client: !ref Api                    # GithubClient into the inherited Http.Client slot
+metadata: { name: topRepos }
+client: !ref api                    # GithubClient into the inherited Http.Client slot
 q: "stars:>10000"
 ---
 kind: Http.Request                  # the escape hatch: a raw request for an unwrapped endpoint
-metadata: { name: RateLimit }
-client: !ref Api                    # same GithubClient, straight into Http.Request's client slot
+metadata: { name: rateLimit }
+client: !ref api                    # same GithubClient, straight into Http.Request's client slot
 inputs:
   url: /rate_limit
   method: GET
 ```
 
-At runtime both instances are native instances of their parents: `Api` runs
-`http-client`'s `Client` controller (from its `base:`-mapped config) and `TopRepos`
-runs the `Request` controller. Because `Api` *is* a `Client`, it drops into every
+At runtime both instances are native instances of their parents: `api` runs
+`http-client`'s `Client` controller (from its `base:`-mapped config) and `topRepos`
+runs the `Request` controller. Because `api` *is* a `Client`, it drops into every
 `client` slot with no special handling.
 
 ## Inheritance vs. templated composition

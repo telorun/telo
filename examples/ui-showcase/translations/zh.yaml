@@ -471,9 +471,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: "自动生成的管理界面" }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "基于提供 API 的任务模型的一条声明：一个筛选栏、一个可排序的分页表格、一个添加任务的表单和一个修改任务的表单，以及每行需确认的删除。列、字段和筛选器全部由模型推导而来，因此界面提供的正是 API 所接受的内容。" }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "基于提供 API 的任务模型的一条声明：一个筛选栏、一个可排序的分页表格、一个添加任务的表单和一个修改任务的表单，以及每行需确认的删除。列、字段和筛选器全部由模型推导而来，因此界面提供的正是 API 所接受的内容。" }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "筛选栏位于表格旁的末尾边，只显示你选择的筛选器，每个都是一个可打开其控件的胶囊。它以键 aside 将选择保存在此浏览器中 — 这也是筛选页上表格旁筛选栏的键，因此在任一页面上选择的筛选器都会在两个页面上生效。" }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "新任务在从末尾边滑出的抽屉中打开，保存后保持打开并清空，以便添加下一个。任务在列表旁的面板中修改，该面板是地址的一部分；带着未保存的输入离开时会先询问。" }
+
+  # Related records.
+  - { text: "Related records", translation: "关联记录" }
+  - { text: "Posts and their authors", translation: "文章及其作者" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "每篇文章用键指明作者。作者列改为显示作者的姓名，页面上所有作者通过一次请求读取；筛选栏的作者筛选按姓名列出每位作者。新建和编辑表单从可按姓名搜索的作者列表中选择作者。" }
+  - { text: "Only the authors with posts", translation: "只看有文章的作者" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "这些筛选只列出其他筛选留下的文章中出现的作者和状态，并附上各自的文章数。文章以卡片绘制，在断点以下以列表绘制，滚动到末尾时加载更多。" }
+  - { text: "On a board by status", translation: "按状态排在看板上" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "每个状态一列，每列各自读取和计数。把卡片拖到另一列，或从它的菜单移动，即可更改状态；页面上的每个文章列表都会重新读取。" }
+  - { text: "On a calendar", translation: "在日历上" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "文章显示在各自的发布日期上，每次一个月；所显示的月份会读取日期在该月的每篇文章。没有日期的文章不在日历上。" }
+  - { text: "The authors", translation: "作者" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "作者自己的界面，由其集合生成。它读取的地址与文章的作者筛选和选择器相同，因此在这里添加的作者会立即出现在那里。" }
+  - { text: "Reporting lines as a tree", translation: "以树形展示汇报关系" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "每个人指明自己向谁汇报，这是人员与自身的关系。树先读取不向任何人汇报的人，展开某人时再读取其下属。表单从同一批人员中选择上级。" }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "作者" }
+  - { text: "Draft", translation: "草稿" }
+  - { text: "Published", translation: "已发布" }
+  - { text: "Published on", translation: "发布日期" }
+  - { text: "Reports to", translation: "上级" }
+  - { text: "Post", translation: "文章" }
 
   # Themes.
   - { text: Four mounts of one design, translation: "同一设计的四个挂载点" }
@@ -584,3 +606,8 @@ texts:
   - { text: "Must have at least {$limit} items", translation: "至少 {$limit} 项" }
   - { text: "Must have at most {$limit} items", translation: "最多 {$limit} 项" }
   - { text: Must not repeat an item, translation: "不能有重复项" }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "加载更多" }
+  - { text: "Move to", translation: "移动到" }
+  - { text: "{$label} ({$count})", translation: "{$label}（{$count}）" }
+  - { text: "not set", translation: "未设置" }

@@ -1,0 +1,194 @@
+kind: Telo.Library
+metadata:
+  name: UiInvalidLayouts
+  version: 1.0.0
+  description: Test fixture exporting listings whose layouts each read records by something their collection or model cannot answer.
+imports:
+  Ui: ../../../../
+  DataModel: ../../../../../data-model
+exports:
+  resources:
+    - propertyUnknown
+    - groupUnsupported
+    - groupNotFilterable
+    - groupsNotFaceted
+    - groupsNotEnumerable
+    - spanNotDate
+    - spanNotFilterable
+    - parentNotSelfRelation
+    - parentNotFilterable
+    - moveInputsUnbound
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [id, title, status]
+  properties:
+    id: { type: integer }
+    title: { type: string }
+    status: { enum: [open, done] }
+    priority: { enum: [low, high] }
+    category: { enum: [bug, feature] }
+    assigneeId: { type: integer }
+    dueOn: { type: string, format: date }
+---
+# The row a listing draws, declaring no `assigneeId`.
+kind: Telo.JsonSchema
+metadata: { name: TaskRow }
+schema:
+  type: object
+  required: [id, title]
+  properties:
+    id: { type: integer }
+    title: { type: string }
+---
+# The row a listing draws, its `status` an object.
+kind: Telo.JsonSchema
+metadata: { name: TaskWithObjectStatus }
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+    status: { type: object }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskMove }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, status]
+  properties:
+    id: { type: integer }
+    status: { enum: [open, done] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Employee }
+schema: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string }, managerId: { type: [integer, "null"] } } }
+---
+kind: DataModel.Collection
+metadata: { name: people }
+model: !ref Person
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: tasks }
+model: !ref Task
+query:
+  filters:
+    - { property: status, operator: eq }
+    - { property: category, operator: eq }
+    - { property: title, operator: eq }
+    - { property: title, operator: gte }
+    - { property: title, operator: lte }
+    - { property: assigneeId, operator: eq }
+    - { property: assigneeId, operator: absent }
+  sort: []
+  facets: [{ property: status }, { property: assigneeId }]
+relations:
+  assigneeId: { collection: !ref people }
+---
+kind: DataModel.Collection
+metadata: { name: employees }
+model: !ref Employee
+query: { filters: [{ property: id, operator: in }, { property: managerId, operator: eq }], sort: [] }
+relations:
+  managerId: { collection: !ref employees }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasksPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref tasks, basePath: /api/tasks }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: employeesPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref employees, basePath: /api/employees }
+---
+kind: Ui.Listing
+metadata: { name: propertyUnknown }
+presentation: !ref tasksPresentation
+model: !ref TaskRow
+layout: { kind: Ui.BoardLayout, groups: { property: assigneeId, values: present } }
+---
+kind: Ui.Listing
+metadata: { name: groupUnsupported }
+presentation: !ref tasksPresentation
+model: !ref TaskWithObjectStatus
+layout: { kind: Ui.BoardLayout, groups: { property: status, values: present } }
+---
+kind: Ui.Listing
+metadata: { name: groupNotFilterable }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.BoardLayout, groups: { property: priority } }
+---
+kind: Ui.Listing
+metadata: { name: groupsNotFaceted }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.BoardLayout, groups: { property: category, values: present } }
+---
+kind: Ui.Listing
+metadata: { name: groupsNotEnumerable }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.BoardLayout, groups: { property: title } }
+---
+kind: Ui.Listing
+metadata: { name: spanNotDate }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.CalendarLayout, span: { start: title } }
+---
+kind: Ui.Listing
+metadata: { name: spanNotFilterable }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.CalendarLayout, span: { start: dueOn } }
+---
+kind: Ui.Listing
+metadata: { name: parentNotSelfRelation }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.TreeLayout, parent: assigneeId }
+---
+kind: Ui.Listing
+metadata: { name: parentNotFilterable }
+presentation: !ref employeesPresentation
+model: !ref Employee
+layout: { kind: Ui.TreeLayout, parent: managerId }
+---
+kind: Ui.Listing
+metadata: { name: moveInputsUnbound }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout:
+  kind: Ui.BoardLayout
+  groups: { property: status }
+  move:
+    action: !ref moveTask
+    inputs:
+      id: !cel "row.id"
+---
+kind: Ui.Listing
+metadata: { name: moveReadsUnknown }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout:
+  kind: Ui.BoardLayout
+  groups: { property: status }
+  move:
+    action: !ref moveTask
+    inputs:
+      id: !cel "row.id"
+      status: !cel "to.state"
+---
+kind: Ui.Action
+metadata: { name: moveTask }
+inputModel: !ref TaskMove
+source: { path: /api/tasks/move }
+label: Move

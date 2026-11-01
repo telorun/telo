@@ -1,0 +1,193 @@
+kind: Telo.Application
+metadata:
+  name: UiShowcaseRelatedRecordsTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/ui-showcase` on a database of its own and reads its related
+    records page: posts whose author is shown by name in a table, as cards and
+    on a board by status, and placed on a calendar by publication day; filter
+    bars offering every author or only those with posts; the post form's
+    author picker; the authors' generated screen; and the reporting lines as a
+    tree. It then calls what those screens call: the facet request behind the
+    present authors, the batched label lookup, the tree's roots and children,
+    a board move, and a write the foreign key refuses.
+imports:
+  App: ../../../modules/app
+  Run: ../../../modules/run
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's database goes in; see `serves-the-showcase.yaml`.
+  dbFile:
+    env: UI_SHOWCASE_TEST_DIR
+    type: string
+    x-telo-type: Telo.HostPath
+    default: ./.telo
+targets:
+  - !ref test
+---
+kind: HttpClient.Client
+metadata: { name: browser }
+baseUrl: http://127.0.0.1:8157
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: app }
+    source: ../telo.yaml
+    variables:
+      dbFile: !cel "variables.dbFile.joinPath('ui-showcase-records-' + uuidv4() + '.db')"
+    ports:
+      http: 8157
+targets:
+  - !ref app
+steps:
+  - name: page
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/records" }
+  - name: nodes
+    value: !cel "steps.page.result.body.children[0].children"
+
+  # Every way the page draws posts names the author through one relation: the
+  # table's author column, the bar's author field and the form's picker read
+  # the authors source, and every layout reads the posts.
+  - name: verifyPage
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        title: !cel "steps.page.result.body.title"
+        kinds: !cel "steps.nodes.result.map(n, n.type)"
+        relation: !cel "steps.nodes.result[2].content.relations.authorId"
+        column: !cel "steps.nodes.result[2].content.layout.columns.filter(c, c.value.path[0] == 'authorId').map(c, c.relation)"
+        barField: !cel "steps.nodes.result[2].fields.filter(f, f.property == 'authorId').map(f, [f.operator, f.values, f.options == steps.nodes.result[2].content.relations.authorId])"
+        picker: !cel "steps.nodes.result[2].content.create.form.fields.filter(f, f.property == 'authorId').map(f, [f.type, f.options == steps.nodes.result[2].content.relations.authorId])"
+        layouts: !cel "[2, 5, 8, 11, 17].map(i, cel.bind(l, i == 2 || i == 5 ? steps.nodes.result[i].content : steps.nodes.result[i], [l.basePath, l.layout.type]))"
+      expected:
+        title: { lang: en, message: [Related records] }
+        kinds: [text, text, filters, text, text, filters, text, text, listing, text, text, listing, text, text, filters, text, text, listing]
+        relation:
+          type: collection
+          schema:
+            type: object
+            required: [name, email, id]
+            additionalProperties: false
+            properties:
+              name: { type: string, title: Name, minLength: 1 }
+              email: { type: string, title: E-mail, minLength: 3 }
+              id: { type: integer }
+          value: { root: row, path: [id] }
+          label: { root: row, path: [name] }
+          hint: { root: row, path: [email] }
+          basePath: /api/authors
+          filters: {}
+          search: { property: name, operator: contains }
+          pageSize: 25
+        column: [authorId]
+        barField: [[eq, all, true]]
+        picker: [[picker, true]]
+        layouts:
+          - [/api/posts, table]
+          - [/api/posts, cards]
+          - [/api/posts, board]
+          - [/api/posts, calendar]
+          - [/api/employees, tree]
+
+  # Only the present values, with counts; cards that become a list on a narrow
+  # screen and load more at the end; one board column per status, moved by the
+  # application's own route; the calendar's days; and the tree's parent.
+  - name: verifyLayouts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        present: !cel "steps.nodes.result[5].fields.map(f, [f.property, f.values])"
+        cards: !cel "cel.bind(l, steps.nodes.result[5].content, [l.paging, l.layout.size, l.compact.type, l.layout.reads])"
+        board: !cel "cel.bind(l, steps.nodes.result[8].layout, [l.reads.groups.property, l.reads.groups.values, l.reads.groups.enum, l.move.action.path, l.move.inputs])"
+        calendar: !cel "cel.bind(l, steps.nodes.result[11].layout, [l.period, l.reads.span])"
+        authors: !cel "[steps.nodes.result[14].content.basePath, steps.nodes.result[14].content.layout.type]"
+        tree: !cel "cel.bind(l, steps.nodes.result[17], [l.layout.reads.parent, l.relations.managerId.basePath, l.create.form.fields.filter(f, f.property == 'managerId').map(f, f.type)])"
+      expected:
+        present: [[authorId, present], [status, present]]
+        cards: [scroll, small, list, {}]
+        board:
+          - status
+          - all
+          - [draft, review, published]
+          - /api/post-status
+          - { id: { root: row, path: [id] }, status: { root: to, path: [status] } }
+        calendar: [month, { start: publishedOn, format: date }]
+        authors: [/api/authors, table]
+        tree: [managerId, /api/employees, [picker]]
+
+  # The requests those screens send. The facet request answers each author's
+  # count among the posts the other filters leave; the label lookup reads
+  # several authors in one `id.in` request.
+  - name: authorFacet
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/posts?facet=authorId" }
+  - name: publishedAuthorFacet
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/posts?facet=authorId&status=published" }
+  - name: labels
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/authors?id.in=1&id.in=3" }
+  - name: roots
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/employees?managerId.absent=true&sort=name" }
+  - name: reports
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: "/api/employees?managerId=2&sort=name" }
+  - name: verifyReads
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        facet: !cel "steps.authorFacet.result.body.values.map(v, [v.value, v.count])"
+        publishedFacet: !cel "steps.publishedAuthorFacet.result.body.values.map(v, [v.value, v.count])"
+        labels: !cel "steps.labels.result.body.rows.map(r, [r.id, r.name])"
+        roots: !cel "steps.roots.result.body.rows.map(r, r.name)"
+        reports: !cel "steps.reports.result.body.rows.map(r, r.name)"
+      expected:
+        facet: [[1, 3], [2, 2], [3, 2]]
+        publishedFacet: [[1, 2], [2, 1]]
+        labels: [[1, Sofia Rossi], [3, James Walker]]
+        roots: [Ada Brooks, Grace Okafor]
+        reports: [James Walker, Tomás Ortega]
+
+  # A post of this run's own, moved to review as a board's drag sends it; a
+  # post naming an author who does not exist is refused by the foreign key.
+  - name: subject
+    value: { title: !cel "'A post for the board ' + uuidv4()" }
+  - name: create
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/posts, method: POST }
+    inputs:
+      body: { title: !cel "steps.subject.result.title", authorId: 4, status: draft }
+  - name: move
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/post-status, method: POST }
+    inputs:
+      body: { id: !cel "steps.create.result.body.id", status: review }
+  - name: moved
+    invoke: { kind: HttpClient.Request, client: !ref browser }
+    inputs:
+      url: !cel "'/api/posts/' + string(steps.create.result.body.id)"
+  - name: unknownAuthor
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/posts, method: POST }
+    inputs:
+      body: { title: !cel "steps.subject.result.title", authorId: 999, status: draft }
+  - name: signed
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /api/posts }
+    inputs:
+      query: { title.contains: !cel "steps.subject.result.title" }
+  - name: remove
+    invoke: { kind: HttpClient.Request, client: !ref browser, method: DELETE }
+    inputs:
+      url: !cel "'/api/posts/' + string(steps.create.result.body.id)"
+  - name: verifyWrites
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        created: !cel "[steps.create.result.status, steps.create.result.body.authorId, steps.create.result.body.status]"
+        move: !cel "[steps.move.result.status, steps.move.result.body.status]"
+        moved: !cel "[steps.moved.result.body.title == steps.subject.result.title, steps.moved.result.body.status]"
+        # Refused, and nothing stored: the run's only post is the one moved.
+        unknownAuthor: !cel "[steps.unknownAuthor.result.status >= 400, steps.signed.result.body.rows.map(r, r.authorId)]"
+        removed: !cel "steps.remove.result.status"
+      expected:
+        created: [201, 4, draft]
+        move: [200, review]
+        moved: [true, review]
+        unknownAuthor: [true, [4]]
+        removed: 204

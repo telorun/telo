@@ -4,8 +4,9 @@ metadata:
   version: 1.0.0
   description: >-
     Test fixture: a hand-written REST collection held in memory, speaking the
-    collection contract a data grid reads — limit, cursor, one-key sort,
-    filters, a total — with create, replace and delete on its items.
+    collection contract a listing reads — limit, cursor, one-key sort,
+    filters with absent, facets, a total — with create, replace and delete on
+    its items.
 exports:
   kinds: [Collection]
 ---

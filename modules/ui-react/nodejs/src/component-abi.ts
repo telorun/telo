@@ -6,6 +6,8 @@ export type SpecNode = { type: string } & Record<string, any>;
 export interface Hosted {
   /** The component ABIs this renderer implements. */
   abis: string[];
+  /** The listing layout contracts it hosts a layout component of. */
+  layoutAbis: string[];
   /** The bare specifiers the page's import map supplies. */
   specifiers: string[];
 }
@@ -13,8 +15,9 @@ export interface Hosted {
 /**
  * Replace every component this renderer cannot host with an error node, in
  * place: one written against another ABI, or importing a specifier the page
- * does not supply. Everything around it is kept, so the rest of the page
- * renders. `report` is told about each one.
+ * does not supply — and a listing whose layout, or compact layout, is such a
+ * component of the layout contract. Everything around it is kept, so the rest
+ * of the page renders. `report` is told about each one.
  */
 export function withUnhostedComponentsReplaced(
   node: SpecNode,
@@ -26,7 +29,7 @@ export function withUnhostedComponentsReplaced(
   const down = (below: SpecNode): SpecNode => (child ?? visit)(below);
   const visit = (current: SpecNode): SpecNode => {
     if (current.type === "component") {
-      const refused = refusal(current, hosted);
+      const refused = refusal(current, hosted.abis, hosted.specifiers);
       if (!refused) return current;
       report(refused, current);
       return refused;
@@ -46,10 +49,25 @@ export function withUnhostedComponentsReplaced(
       if (current.result !== undefined) next.result = down(current.result);
       next.failure = down(current.failure);
     }
-    if (current.type === "table") {
-      next.columns = current.columns.map((column: Record<string, any>) =>
-        column.cell ? { ...column, cell: down(column.cell) } : column,
-      );
+    if (current.type === "listing") {
+      for (const spec of [current.layout, current.compact]) {
+        if (spec?.type !== "component") continue;
+        const refused = refusal(spec, hosted.layoutAbis, hosted.specifiers, true);
+        if (!refused) continue;
+        report(refused, current);
+        return refused;
+      }
+      next.empty = down(current.empty);
+      // A layout's per-record content, and each component a table column draws in place of a value.
+      const layout = (spec: Record<string, any>) => ({
+        ...spec,
+        ...(spec.content !== undefined ? { content: down(spec.content) } : {}),
+        ...(Array.isArray(spec.columns)
+          ? { columns: spec.columns.map((column: Record<string, any>) => (column.cell ? { ...column, cell: down(column.cell) } : column)) }
+          : {}),
+      });
+      next.layout = layout(current.layout);
+      if (current.compact !== undefined) next.compact = layout(current.compact);
     }
     if (Array.isArray(current.rowActions)) {
       next.rowActions = current.rowActions.map((entry: Record<string, any>) => ({ ...entry, action: down(entry.action) }));
@@ -82,18 +100,19 @@ export class HostedNodes {
   }
 }
 
-function refusal(component: SpecNode, hosted: Hosted): SpecNode | undefined {
-  if (!hosted.abis.includes(component.abi)) {
+/** Why a component — a node, or a listing's layout — cannot be hosted under `abis` with `specifiers` supplied. */
+function refusal(component: SpecNode, abis: string[], specifiers: string[], layout = false): SpecNode | undefined {
+  if (!abis.includes(component.abi)) {
     return errorNode(
       "ERR_UI_COMPONENT_ABI_UNSUPPORTED",
-      `The component '${component.export}' is built for ${component.abi === undefined ? "no declared ABI" : `ABI '${component.abi}'`}; this application hosts ${hosted.abis.map((abi) => `'${abi}'`).join(", ")}.`,
+      `The component '${component.export}' is built for ${component.abi === undefined ? "no declared ABI" : `ABI '${component.abi}'`}; this application hosts ${abis.map((abi) => `'${abi}'`).join(", ")}${layout ? " for a listing layout" : ""}.`,
     );
   }
-  const unsupplied = (component.external as string[]).filter((name) => !hosted.specifiers.includes(name));
+  const unsupplied = (component.external as string[]).filter((name) => !specifiers.includes(name));
   if (unsupplied.length > 0) {
     return errorNode(
       "ERR_UI_COMPONENT_IMPORT_UNSUPPLIED",
-      `The component '${component.export}' imports ${unsupplied.map((name) => `'${name}'`).join(", ")}, which this application does not supply. It supplies ${hosted.specifiers.map((name) => `'${name}'`).join(", ")}; anything else must be bundled into the component.`,
+      `The component '${component.export}' imports ${unsupplied.map((name) => `'${name}'`).join(", ")}, which this application does not supply. It supplies ${specifiers.map((name) => `'${name}'`).join(", ")}; anything else must be bundled into the component.`,
     );
   }
   return undefined;

@@ -37,6 +37,8 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
           throw new InvokeError(
             "ERR_ASSERTION_FAILED",
             `Assert.Contains "${name}": ${message}`,
+            undefined,
+            { inputPointer: "/value" },
           );
         }
         kind = "substring";
@@ -51,7 +53,9 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
             "\n" +
             `  ${red("✗")} ${message}\n`,
         );
-        throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Contains "${name}": ${message}`);
+        throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Contains "${name}": ${message}`, undefined, {
+          inputPointer: "/actual",
+        });
       }
 
       if (ok) {
@@ -68,7 +72,9 @@ export async function create(manifest: AssertManifest, ctx: ResourceContext) {
           "\n" +
           `  ${red("✗")} ${message}\n`,
       );
-      throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Contains "${name}": ${message}`);
+      throw new InvokeError("ERR_ASSERTION_FAILED", `Assert.Contains "${name}": ${message}`, undefined, {
+        inputPointer: "/value",
+      });
     },
   };
 }

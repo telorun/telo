@@ -132,7 +132,9 @@ supplies it — the rule does not run on that resource, and the skip is reported
 
 **A pointer may continue past a reference** into the declaration it names, a
 hop at a time, and `*` ranges over every item of a list or value of a map — the
-location grammar of `x-telo-value-schema-from`. A form's rule reading the model
+location grammar of `x-telo-value-schema-from` — including a collection whose
+entries hold a reference deeper down (`/table/foreignKeys/*/references/table`
+reads the table each foreign key names). A form's rule reading the model
 behind each field's option source writes:
 
 ```yaml
@@ -142,7 +144,10 @@ behind each field's option source writes:
 ```
 
 Each hop resolves as the first does, in the scope of the declaration holding the
-reference; a hop that cannot be resolved skips the rule as above. `telo check`
+reference: a hop out of a declaration another module wrote reads that module's
+own names and imports, so it reaches a declaration the module keeps to itself
+as well as one it exports. A hop that cannot be resolved skips the rule as
+above. `telo check`
 follows a pointer past a slot into every kind the slot may hold, and refuses one
 that names nothing in any of them (`RESOURCE_RULE_INVALID`).
 
@@ -301,10 +306,21 @@ pathological expression over one huge element still runs to completion.
 
 ## Inheritance
 
-Rules are read off the author-facing schema, so an `extends` child without
-`base:` inherits its parent's and one declaring its own replaces them — exactly
-how the rest of the config contract merges. `Sql.Schema` declares the reclaim
-warning once and every backend's `Schema` kind gets it.
+An `extends` child without `base:` is judged by its ancestors' rules and its
+own, joined along the chain with the ancestors' first: a child adds rules and
+never removes one, as a subtype's invariant is its parent's conjoined with its
+own. `Sql.Schema` declares the reclaim warning once and every backend's `Schema`
+kind gets it, whatever rules that kind declares beside it.
+
+A rule's `code` is unique along the chain, so a child declaring a rule under a
+code it inherits is `RESOURCE_RULE_INVALID` at the child's `code`, and the
+inherited rule still runs as declared. Each rule is judged as the rule of the
+kind that declared it: its module calls resolve in that kind's module, and a
+rule that throws is reported at that kind's declaration.
+
+A child with `base:` inherits no rule: its author schema is its own, and the
+parent's rules guard the configuration the mapping builds through the parent's
+controller.
 
 ## Keep the runtime guard
 

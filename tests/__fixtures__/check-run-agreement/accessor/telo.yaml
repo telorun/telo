@@ -4,8 +4,8 @@
 # table names, given by `!ref` and given inline, and a read through a nullable
 # member needs no guard, since nothing evaluates it. The provider's other
 # fields are still evaluated at creation — an expression beside an accessor in
-# the same field included — and a template body's accessor reaches the entry it
-# composes as written.
+# the same field included — and a template body's accessor, or one its consumer
+# writes and the body forwards, reaches the entry it composes as written.
 kind: Telo.Application
 metadata:
   name: AccessorApp
@@ -75,12 +75,20 @@ metadata:
 model: !ref Todo
 label: todos
 ---
+kind: Acc.Styled
+metadata:
+  name: styled
+model: !ref Todo
+rowStyle: !cel "row.owner.name"
+---
 kind: Run.Sequence
 metadata:
   name: main
 steps:
   - name: preset
     invoke: { kind: Acc.Read, source: !ref preset }
+  - name: styled
+    invoke: { kind: Acc.Read, source: !ref styled }
   - name: byRef
     invoke: { kind: Acc.Read, source: !ref byRef }
   - name: byInline
@@ -92,6 +100,7 @@ steps:
         byRef: !cel "steps.byRef.result"
         byInline: !cel "steps.byInline.result"
         preset: !cel "steps.preset.result"
+        styled: !cel "steps.styled.result"
       expected:
         byRef:
           title: Todos 1.0.0
@@ -115,3 +124,8 @@ steps:
           headers: [Label]
           values:
             - { value: todos }
+        styled:
+          title: Styled
+          rowStyle: { root: row, path: [owner, name] }
+          headers: []
+          values: []

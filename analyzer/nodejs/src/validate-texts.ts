@@ -113,6 +113,12 @@ export interface TextPassOptions {
   ) => { kind: MessageValueKind; describe: string } | undefined;
   /** The schema the plain chain at `path` of `manifest` reads, when it is one. */
   readonly producedSchemaAt?: (manifest: ResourceManifest, path: string) => Record<string, any> | undefined;
+  /** The declaration that wrote the value at `path` of `manifest` when it is not
+   *  `manifest`'s own module — a template body's literal in a forward view. */
+  readonly writerAt?: (manifest: ResourceManifest, path: string) => ResourceManifest | undefined;
+  /** True when a template body wrote the value at `path` of `manifest` whole: its
+   *  judgement is the defining module's own, made at the definition. */
+  readonly bodyWroteWhole?: (manifest: ResourceManifest, path: string) => boolean;
 }
 
 const isExpression = (value: unknown): boolean => isTaggedSentinel(value);
@@ -381,8 +387,9 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
         const at = renderValuePath(path);
         if (judgedPaths.has(at)) continue;
         judgedPaths.add(at);
+        const bodyWritten = (place: string) => options.bodyWroteWhole?.(manifest, place) === true;
         if (site.fragment === "TextCatalog") {
-          if (!judged) continue;
+          if (!judged || bodyWritten(at)) continue;
           const catalog = siteValueOf(site);
           // A bare `self.<path>` a template body or a `base:` mapping writes hands
           // on what the consumer wrote, judged where the consumer wrote it.
@@ -399,34 +406,45 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
         }
         if (expressionsWithin(site.value, isExpression).length > 0) continue;
         if (!options.accepts(site.fragment, site.value)) continue;
+        // What a body wrote whole is judged at its definition; the data a text's
+        // values come from may still be the consumer's.
+        const own = bodyWritten(at);
+        const ownValues =
+          own && !!site.valuesFrom && bodyWritten(renderValuePath([...writing.base, ...site.valuesFrom.path]));
         if (site.fragment === "Message") {
           if (!judged) continue;
           const read = judgeMessage(site.value);
-          for (const problem of read.problems) {
-            diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
+          if (!own) {
+            for (const problem of read.problems) {
+              diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
+            }
           }
-          if (read.message && site.declaredValues) {
+          if (!own && read.message && site.declaredValues) {
             for (const problem of judgeDeclaredValues(read.message, site.declaredValues)) {
               diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
             }
           }
-          if (read.message && site.valuesFrom) {
+          if (read.message && site.valuesFrom && !ownValues) {
             for (const problem of judgeDataValues(read.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
               diagnostics.push(problemDiagnostic(problem, manifest, path, "the message"));
             }
           }
           continue;
         }
-        const text = judgeText(site.value, lang);
-        if (text.text) show(module, keyOfText(text.text));
+        const writer = options.writerAt?.(manifest, at);
+        const writtenIn = writer ? scope.moduleOf(writer) : module;
+        const text = judgeText(site.value, writer ? scope.langOfModule(writtenIn) : lang);
+        if (text.text) show(writtenIn, keyOfText(text.text));
         if (!judged) continue;
-        for (const problem of text.problems) diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
-        if (text.text && site.declaredValues) {
+        if (!own) {
+          for (const problem of text.problems) diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
+        }
+        if (!own && text.text && site.declaredValues) {
           for (const problem of judgeDeclaredValues(text.text.message, site.declaredValues)) {
             diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
           }
         }
-        if (text.text && site.valuesFrom) {
+        if (text.text && site.valuesFrom && !ownValues) {
           for (const problem of judgeDataValues(text.text.message, site.valuesFrom.schema, [...writing.base, ...site.valuesFrom.path])) {
             diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
           }

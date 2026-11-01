@@ -69,6 +69,11 @@ variables:
     arg: concurrency
     description: How many tests run at once.
     default: 3
+  allowEmpty:
+    type: boolean
+    arg: allow-empty
+    description: Succeed when no test matches, instead of failing.
+    default: false
 imports:
   Test: ./modules/test
 targets:
@@ -81,3 +86,4 @@ include: !cel "variables.include"
 exclude: !cel "variables.exclude"
 filter: !cel "variables.filter"
 concurrency: !cel "variables.concurrency"
+allowEmpty: !cel "variables.allowEmpty"

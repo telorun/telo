@@ -1,0 +1,31 @@
+# Two resources whose `use: schema` slots name each other: declaration reads,
+# so no init order is needed between them, and they boot in either order.
+kind: Telo.Application
+metadata:
+  name: SchemaReferenceMutual
+  version: 1.0.0
+imports:
+  Run: ../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Node
+capability: Telo.Invocable
+schema:
+  type: object
+  properties:
+    peer:
+      x-telo-ref: { kind: Self.Node, use: schema }
+resources:
+  - kind: Run.Value
+    metadata: { name: body }
+    value: ok
+invoke: !ref body
+---
+kind: Self.Node
+metadata: { name: first }
+peer: !ref second
+---
+kind: Self.Node
+metadata: { name: second }
+peer: !ref first

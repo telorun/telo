@@ -2,7 +2,7 @@
 
 Serves a [`Ui`](../ui/README.md) interface as a web application. `UiReact.App`
 is a mount: put it on an `Http.Server` and the pages it declares become a
-working application — navigation, data tables, forms, filters, buttons that
+working application — navigation, listings, forms, filters, buttons that
 run an operation and draw its answer, swappable themes — drawn in the browser
 by a React renderer this module ships prebuilt.
 
@@ -27,7 +27,7 @@ by a React renderer this module ships prebuilt.
   form's values; hidden content keeps what it holds and requests nothing.
 - **Operations that answer in place.** An action draws its answer, or why it
   failed, under its form; a row's action draws its answer in place of its
-  button. A success refreshes the readers and tables it changed and can move
+  button. A success refreshes the readers and listings it changed and can move
   the page, and a serial action's presses run one after another.
 - **Swappable themes, separate brand.** An application picks its look with one
   reference — [`theme: !ref UiReact.defaultTheme`](docs/theme.md), or a theme
@@ -61,15 +61,27 @@ by a React renderer this module ships prebuilt.
   and labelled from an API, date ranges with presets in the viewer's time zone,
   labelled groups — checked against the model as values are entered, and kept
   in the address or a store between visits.
+- **Listings that keep their place.** A [`Ui.Listing`](../ui/docs/listing.md)
+  is drawn as a table, a list, cards, a kanban board, a calendar, a timeline
+  or a tree — read as its layout's read plan says, and paged by a pager, a
+  "Load more" button or infinite scroll, drawing only the pages in view. A
+  card dragged to another column, an event to another day or a record under
+  another parent runs the layout's move, with a "Move to" menu as its keyboard
+  path. A write anywhere
+  on the page reloads every listing of that collection without losing the
+  viewer's place, an open form or what it holds, and a related record is shown
+  by its label, looked up in batches. [How listings behave](docs/app.md#listings-and-filter-bars).
 - **Filter bars as declared.** Every [placement](../ui/docs/filter-placement.md)
   and every control is drawn — a bar above or beside the list, folded behind
   a toggle or in an overlay; chips, switches, sliders, tags, presets — and the
   chosen filters are kept [in the address or the browser's
-  storage](docs/urls.md#filter-state) when the bar says so.
+  storage](docs/urls.md#filter-state) when the bar says so. A filter over a
+  related record offers those records by name, and can offer only the values
+  present under the other filters, each with its count.
 - **Operations without a script.** A [`Ui.Action`](../ui/docs/action.md) is
   drawn as a form and a button: the record is checked in the page, posted,
   and the lists the action declares are drawn from the answer — links
-  included. A table offers the same operations on each row, with a question
+  included. A listing offers the same operations on each record, with a question
   first where one is declared.
 - **Lists are entered, not just shown.** A list property is a group of options
   or typed tags, in every form.
@@ -80,7 +92,9 @@ by a React renderer this module ships prebuilt.
   forms and formatting numbers; each document says which headers it varies
   on, and one copy is kept per language.
 - **An open seam.** A module ships its own React components, and they get
-  navigation, requests and refresh from the host.
+  navigation, requests and refresh from the host — and its own listing layouts
+  (a map, a seat plan), given the records the renderer reads under the
+  [layout contract](docs/layouts-abi.md).
 
 ## Kinds
 
@@ -96,7 +110,9 @@ by a React renderer this module ships prebuilt.
 
 Also: [what it serves](docs/urls.md), [the styling contract](docs/styling.md),
 [the controls contract](docs/controls-abi.md) every text box, choice, list,
-overlay and glyph is drawn under, and [the component ABI](docs/component-abi.md).
+overlay and glyph is drawn under, [the component ABI](docs/component-abi.md),
+and [the layout contract](docs/layouts-abi.md) a module's listing layout is
+written against.
 
 ## Example
 
@@ -106,6 +122,7 @@ metadata: { name: TodoAdmin, version: 1.0.0 }
 lang: en
 imports:
   Http: oci://ghcr.io/telorun/http-server
+  DataModel: oci://ghcr.io/telorun/data-model
   Ui: oci://ghcr.io/telorun/ui
   UiReact: oci://ghcr.io/telorun/ui-react
 ports:
@@ -116,19 +133,31 @@ kind: Telo.JsonSchema
 metadata: { name: Todo }
 schema:
   type: object
-  required: [text]
+  required: [id, text]
   properties:
     id: { type: integer }
     text: { type: string, title: Task, minLength: 1 }
     isDone: { type: boolean, title: Done }
 ---
-# What the collection's list accepts: the table sorts only by what it lists.
-kind: Ui.Collection
-metadata: { name: todoCollection }
-query:
-  filters: []
-  sort:
-    - { property: text }
+kind: Telo.JsonSchema
+metadata: { name: TodoInput }
+schema:
+  type: object
+  required: [text]
+  properties:
+    text: { type: string, title: Task, minLength: 1 }
+    isDone: { type: boolean, title: Done }
+---
+# What the collection's list accepts: the listing sorts only by what it lists.
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query: { filters: [], sort: [{ property: text }] }
 ---
 kind: UiReact.App
 metadata: { name: admin }
@@ -143,12 +172,11 @@ pages:
     children:
       - type: composite
         ref:
-          kind: Ui.Table
+          kind: Ui.Listing
+          presentation: !ref todos
           model: !ref Todo
-          collection: !ref todoCollection
-          source: { basePath: /api/todos }
           create:
-            form: { kind: Ui.Form, model: !ref Todo, source: { basePath: /api/todos } }
+            form: { kind: Ui.Form, model: !ref TodoInput, presentation: !ref todos }
           delete: true
 ---
 kind: Http.Server

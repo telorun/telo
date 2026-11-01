@@ -9,7 +9,7 @@ sidebar_label: Ai.TextStream
 
 `Ai.TextStream` is a `Telo.Invocable` that drives `Ai.Model.stream(...)` and exposes the resulting `StreamPart` sequence on `result.output` as a `Stream<StreamPart>`. It is the streaming counterpart of [Ai.Text](./ai-text.md): same `model` reference, same `system`/`options` semantics, different output shape.
 
-`Ai.TextStream` is a thin configured wrapper — it validates inputs, prepends a system prompt, merges options, and forwards the model's iterable. Encoding (NDJSON / SSE / plain text / raw bytes) is the consumer's responsibility: pipe `result.output` through a format-codec encoder kind (`Ndjson.Encoder`, `Sse.Encoder`, `PlainText.Encoder`, `Octet.Encoder`) to turn `StreamPart` records into bytes, or iterate the stream directly in a `JS.Script` step.
+`Ai.TextStream` is a thin configured wrapper — it validates inputs, prepends a system prompt, merges options, and forwards the model's iterable. Encoding (NDJSON / SSE / plain text / raw bytes) is the consumer's responsibility: pipe `result.output` through a format-codec encoder kind (`Ndjson.Encoder`, `Sse.Encoder`, `PlainText.Encoder`, `Octet.Encoder`) to turn `StreamPart` records into bytes, or drain the stream in a step with `Stream.Collect` and read the parts in CEL.
 
 ```yaml
 kind: Telo.Application
@@ -167,29 +167,20 @@ Pair with `Content-Type: text/plain; charset=utf-8`.
 
 **Loses:** `usage`, `finishReason`, structured error metadata.
 
-## Iterating directly in `JS.Script`
+## Reading the stream in a step
 
-If the consumer is JS, skip the encoder pipeline and iterate `result.output` directly. The `Stream` class is exposed in every `JS.Script`'s scope:
-
-```yaml
-kind: JS.Script
-metadata: { name: CollectText }
-code: |
-  async function main({ stream }) {
-    let text = "";
-    for await (const part of stream) {
-      if (part.type === "text-delta") text += part.delta;
-    }
-    return { text };
-  }
-```
+To consume the parts yourself, skip the encoder pipeline and drain `result.output` with `Stream.Collect` (the `stream` module). It returns every part as `items`, which CEL then filters and joins:
 
 ```yaml
-- name: Collect
+- name: collect
+  invoke: !ref collectParts          # a Stream.Collect
   inputs:
-    stream: !cel "steps.Stream.result.output"
-  invoke: !ref CollectText
+    input: !cel "steps.stream.result.output"
+- name: text
+  value: !cel "steps.collect.result.items.filter(p, p.type == 'text-delta').map(p, p.delta).join('')"
 ```
+
+`Stream.Collect` buffers the whole stream, so it suits a finite response you want as one value; for an unbounded one, pipe through an encoder instead.
 
 ## Cancellation
 

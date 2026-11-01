@@ -11,7 +11,7 @@ metadata:
     against the table's row model — and hands them to its controller as
     bindings.
 exports:
-  kinds: [Table, Preset, Read]
+  kinds: [Table, Preset, Styled, Read]
 ---
 kind: Telo.Definition
 metadata:
@@ -76,6 +76,37 @@ resources:
     columns:
       - header: Label
         value: !cel "self.label"
+provide: !ref table
+---
+# A templated kind with an accessor field of its own, forwarded whole to the
+# table it composes: the chain reaches the table as written, and the table
+# makes the binding.
+kind: Telo.Definition
+metadata:
+  name: Styled
+  description: Provides a table over the given row model, styled by the row value its consumer names.
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [model, rowStyle]
+  properties:
+    model:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    rowStyle:
+      type: string
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row:
+            x-telo-context-ref-from: "model/schema"
+resources:
+  - kind: Self.Table
+    metadata: { name: table }
+    model: !cel "self.model"
+    title: Styled
+    rowStyle: !cel "self.rowStyle"
 provide: !ref table
 ---
 kind: Telo.Definition

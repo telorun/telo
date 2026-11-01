@@ -1,0 +1,24 @@
+kind: Telo.Library
+metadata:
+  name: UiAppRelativeReferenceLib
+  version: 1.0.0
+  description: Test fixture exporting a collection source whose base path is no app-relative reference.
+imports:
+  Ui: ../../../../
+  DataModel: ../../../../../data-model
+exports:
+  resources: [protocolRelative]
+---
+kind: Telo.JsonSchema
+metadata: { name: Item }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: DataModel.Collection
+metadata: { name: items }
+model: !ref Item
+query: { filters: [], sort: [] }
+---
+kind: Ui.CollectionSource
+metadata: { name: protocolRelative }
+collection: !ref items
+basePath: //x

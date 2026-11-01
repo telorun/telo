@@ -4,7 +4,7 @@ Load benchmarking for any invocable Telo resource. `Benchmark.Suite` drives one 
 
 ## Why use this
 
-- **Invocable-agnostic** — HTTP calls, SQL queries, `JavaScript.Script`, a local `Run.Sequence` — anything with the `Telo.Invocable` capability is a valid scenario target.
+- **Invocable-agnostic** — HTTP calls, SQL queries, a local `Run.Sequence` — anything with the `Telo.Invocable` capability is a valid scenario target.
 - **Weighted scenarios** — run mixed workloads in parallel with per-scenario `weight`.
 - **Threshold gating** — `report.thresholds` exits non-zero when `p99` / `p95` / `p50` / `errorRate` are breached; drop straight into CI.
 - **Result validation** — per-scenario CEL `validate` expression flags failed responses without halting the suite.

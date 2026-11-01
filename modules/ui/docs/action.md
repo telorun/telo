@@ -45,7 +45,7 @@ onSuccess:
 
 An action is a [composite](composite.md): it is placed on a page with
 `{ type: composite, ref: !ref generateReports }`, or
-[offered on each row](#row-actions) of a table or a `list` node.
+[offered on each record](#row-actions) of a listing or a `list` node.
 
 ## Fields
 
@@ -100,8 +100,9 @@ with it.
 ## After a success
 
 `onSuccess.refreshes` lists [app-relative](nodes.md#addresses) paths: every
-[`Ui.Data`](data.md) whose `source.path` and every [`Ui.Table`](table.md)
-whose `source.basePath` equals one of them reads again.
+[`Ui.Data`](data.md) whose `source.path`, and every [`Ui.Listing`](listing.md)
+whose presentation's [collection source](collection-source.md) has a
+`basePath`, equal to one of them reads again.
 
 `onSuccess.navigate` is a path into `result`, or a fixed address. An
 app-relative address of a declared page moves within the application; any
@@ -120,8 +121,8 @@ nothing about the operation itself.
 
 ## Row actions
 
-A [`Ui.Table`](table.md#row-actions) and a [`list` node](nodes.md#values-and-lists) offer
-an action on every row through `rowActions`, each entry a `Ui.RowAction`:
+A [`Ui.Listing`](listing.md#row-actions) and a [`list` node](nodes.md#values-and-lists) offer
+an action on every record through `rowActions`, each entry a `Ui.RowAction`:
 
 | Field | | |
 | --- | --- | --- |
@@ -134,7 +135,7 @@ an action on every row through `rowActions`, each entry a `Ui.RowAction`:
 `inputs` is judged against the action's input model as a call's arguments are
 (`CONTRACT_INPUTS_MISMATCH`, `CEL_UNKNOWN_FIELD`, `CEL_TYPE_ERROR`,
 `ACCESSOR_NOT_PLAIN_CHAIN`), over `row` plus what is in scope where the rows
-are drawn: in a table, the table's declared `query`; in a list, the roots of
+are drawn: in a listing, the listing's declared `query`; in a list, the roots of
 the tree the list sits in — `result`, `input` and `values` in an answer, `data`
 and `query` in a reader. A root nothing binds there is `CEL_UNKNOWN_IDENTIFIER`.
 Every required input is bound there, and the inputs are read when the button is
@@ -145,8 +146,8 @@ pressed action draws its own `result` tree — over its own `result`, `input`
 and `values`, the last being the record sent — in place of its button, and its
 `failure` tree beside the button, unless a confirmation was open, where the
 refusal is shown instead. The action's `onSuccess` and `concurrency` apply
-wherever it runs, and a table reads its rows again after any success. In a
-table a row's answer lasts while that row is on the shown page, through the
+wherever it runs, and a listing reads its records again after any success. In
+a listing a record's answer lasts while that record is shown, through the
 reload its own success causes; in a list it lasts as long as the answer the
 list is drawn from.
 
@@ -170,7 +171,7 @@ list is drawn from.
 
 The action refuses the same things itself when it is first read, as
 `ERR_<code>` — each field kind answering for its own fit — for a manifest that never passed
-`telo check`; a table or a list refuses row inputs that make no record of the
+`telo check`; a listing or a list refuses row inputs that make no record of the
 action's input model as `ERR_UI_ROW_ACTION_INPUTS_INVALID`.
 
 A reference on the way to a member a `value` or `list` node names that names

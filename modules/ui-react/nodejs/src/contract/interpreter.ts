@@ -9,6 +9,7 @@
  * a stylesheet link reports that it loaded.
  */
 import controlsContract from "./controls.json" with { type: "json" };
+import layoutsContract from "./layouts.json" with { type: "json" };
 
 /** Names one element of the page. Several keys narrow together; `index` picks
  *  among what is left, in document order. */
@@ -147,6 +148,29 @@ export interface ControlsContract {
 }
 
 const contract = controlsContract as unknown as ControlsContract;
+
+/** One built-in layout of `ui_react_layouts-1`: what its export draws and reports, held as a control is. */
+export interface LayoutContract extends ControlContract {
+  /** The name the reference implementation is exported under. */
+  export: string;
+}
+
+/** The layout contract of a generation. */
+export interface LayoutsContract {
+  generation: string;
+  supplied: string[];
+  /** Every prop a layout component is given. */
+  props: string[];
+  /** The members of each record. */
+  record: string[];
+  /** The members of each group. */
+  group: string[];
+  intents: Record<string, string | null>;
+  /** The built-in layouts, by the spec's `type`. */
+  layouts: Record<string, LayoutContract>;
+}
+
+const layoutsOf = layoutsContract as unknown as LayoutsContract;
 
 /** A host drawing one control into a container. */
 export interface VectorHost {
@@ -503,10 +527,34 @@ export async function runVector(options: {
   vector: Vector;
   host: (container: HTMLElement) => VectorHost;
 }): Promise<Problem[]> {
-  const { vector } = options;
-  const view = options.window as View;
   const control = contract.controls[options.control];
   if (!control) return [{ step: null, message: `'${options.control}' is no control of ${contract.generation}` }];
+  return runAgainst(control, options);
+}
+
+/**
+ * Run one vector against a layout component of `ui_react_layouts-1`, as
+ * {@link runVector} runs one against a control: `layout` names the built-in
+ * whose parts and intents it is held to, by the spec's `type`.
+ */
+export async function runLayoutVector(options: {
+  window: Window;
+  layout: string;
+  base: Record<string, unknown>;
+  vector: Vector;
+  host: (container: HTMLElement) => VectorHost;
+}): Promise<Problem[]> {
+  const layout = layoutsOf.layouts[options.layout];
+  if (!layout) return [{ step: null, message: `'${options.layout}' is no layout of ${layoutsOf.generation}` }];
+  return runAgainst(layout, options);
+}
+
+async function runAgainst(
+  control: ControlContract,
+  options: { window: Window; base: Record<string, unknown>; vector: Vector; host: (container: HTMLElement) => VectorHost },
+): Promise<Problem[]> {
+  const { vector } = options;
+  const view = options.window as View;
   prepareWindow(view);
   const document = view.document;
   const opener = document.createElement("button");

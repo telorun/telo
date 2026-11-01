@@ -17,6 +17,7 @@ import {
   type CatchEntryReading,
   type CatchList,
   type OutcomeEntry,
+  type ScopeRung,
 } from "./catch-scope.js";
 import type { ValidateFunction } from "ajv";
 import { schemaIssues } from "./schema-error-report.js";
@@ -134,6 +135,15 @@ function checkCoverage(site: CatchList, union: ThrowsUnion, ladder: CatchLadder,
   }
 
   return diagnostics;
+}
+
+/** Every scope list on a ladder, each once. */
+function scopeListsOf(rung: ScopeRung, out = new Set<CatchList>(), seen = new Set<ScopeRung>()): Set<CatchList> {
+  if (seen.has(rung)) return out;
+  seen.add(rung);
+  if (rung.list) out.add(rung.list);
+  for (const encloser of rung.enclosers) scopeListsOf(encloser, out, seen);
+  return out;
 }
 
 /** A handler as a message names it: `!ref <name>` for a reference, its kind
@@ -307,6 +317,9 @@ export function validateThrowsCoverage(
   /** The ladder the analysis already built over `manifests`, so the CEL scope
    *  rule and this pass read one. */
   built?: CatchLadder,
+  /** Whether a template body wrote the value a forward view holds at a path
+   *  whole — no consumer's forward at, above or beneath it. */
+  bodyWroteWhole?: (manifest: ResourceManifest, path: string) => boolean,
 ): AnalysisDiagnostic[] {
   const diagnostics: AnalysisDiagnostic[] = [];
   diagnostics.push(...validateThrowsDeclarations(manifests));
@@ -327,6 +340,12 @@ export function validateThrowsCoverage(
     }
   }
 
+  // A list a template body wrote whole is its definition's, whichever consumer
+  // instantiates it: no consumer can change it, and what a forwarded value adds
+  // to a handler's union is bounded by the throws its slot's kind declares, so
+  // a list covering what the body's own slots allow covers every consumer.
+  const bodyList = (list: CatchList): boolean => bodyWroteWhole?.(list.manifest, list.ownPath) === true;
+
   for (const manifest of ladder.allManifests) {
     if (!manifest.kind || !manifest.metadata?.name) continue;
     if (isKindDocument(manifest)) continue;
@@ -344,6 +363,7 @@ export function validateThrowsCoverage(
       manifest,
       definition.schema,
       (entries, arrayPath) => {
+        if (bodyWroteWhole?.(manifest, arrayPath)) return;
         diagnostics.push(
           ...checkCatchAllPlacement(entries, resource, "returns", filePath, `${pathPrefix}${arrayPath}`, routing),
         );
@@ -355,6 +375,13 @@ export function validateThrowsCoverage(
   // Each list against its own denominator, and each dispatch site against
   // everything that can render its throws.
   for (const site of ladder.lists) {
+    if (bodyList(site)) {
+      // Covered or not, a site is a consumer's to answer only when a list on its
+      // ladder is one the consumer can change.
+      if (site.isScope || [...scopeListsOf(ladder.scopeRung(site.manifest, null))].every(bodyList)) continue;
+      diagnostics.push(...checkCoverage(site, ladder.unionOf(site), ladder, generatedKinds));
+      continue;
+    }
     diagnostics.push(
       ...checkCatchAllPlacement(
         site.entries,

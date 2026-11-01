@@ -1,10 +1,10 @@
 import type { InvokeContext, ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
 import { isSqlConnection, type SqlConnection } from "@telorun/sql";
-import { planQuery, sortText, type AcceptedQuery, type QueryInputs } from "./collection-query.js";
-import { countStatement, pageStatement } from "./collection-statement.js";
+import { planFacet, planQuery, sortText, type AcceptedQuery, type QueryInputs } from "./collection-query.js";
+import { countStatement, facetStatement, pageStatement } from "./collection-statement.js";
 import { decodeRow, decodeValue, KEY, modelProperties, type ModelProperty } from "./model-properties.js";
 import { modelSchema } from "./model-schema.js";
-import { encodeCursor } from "./page-cursor.js";
+import { encodeCursor, encodeFacetCursor } from "./page-cursor.js";
 
 type ReaderResource = RuntimeResource & {
   connection: unknown;
@@ -17,6 +17,12 @@ type ReaderResource = RuntimeResource & {
 export interface CollectionPage {
   rows: Record<string, unknown>[];
   total: number;
+  next: string | null;
+}
+
+/** One page of a property's present values, each with how many rows hold it. */
+export interface FacetPage {
+  values: { value: unknown; count: number }[];
   next: string | null;
 }
 
@@ -35,7 +41,7 @@ class Reader implements ResourceInstance {
     private readonly ctx: ResourceContext,
   ) {}
 
-  async invoke(inputs: QueryInputs, invokeCtx?: InvokeContext): Promise<CollectionPage> {
+  async invoke(inputs: QueryInputs, invokeCtx?: InvokeContext): Promise<CollectionPage | FacetPage> {
     const owner = `Crud.Reader '${this.resource.metadata.name}'`;
     const connection: SqlConnection = this.ctx.resolveRef(
       this.resource.connection,
@@ -47,6 +53,7 @@ class Reader implements ResourceInstance {
     this.returned ??= modelProperties(modelSchema(this.resource.row, this.ctx, owner, "row"));
     const readable = this.readable;
     const returned = this.returned;
+    if (inputs?.facet !== undefined && inputs.facet !== null) return this.facet(connection, readable, inputs, invokeCtx);
     const query = planQuery(readable, this.resource.query, inputs ?? {});
 
     // The key and the sorted property are read whatever the row shows: the next
@@ -79,6 +86,30 @@ class Reader implements ResourceInstance {
         })
       : null;
     return { rows, total, next };
+  }
+
+  private async facet(
+    connection: SqlConnection,
+    readable: Map<string, ModelProperty>,
+    inputs: QueryInputs,
+    invokeCtx?: InvokeContext,
+  ): Promise<FacetPage> {
+    const query = planFacet(readable, this.resource.query, inputs);
+    const statement = facetStatement(connection.dialect, this.resource.table, query);
+    const fetched = await connection.execute<{ value: unknown; count: unknown }>(
+      statement.sql,
+      statement.params,
+      undefined,
+      invokeCtx,
+    );
+    const more = fetched.rows.length > query.limit;
+    const values = fetched.rows
+      .slice(0, query.limit)
+      .map((row) => ({ value: decodeValue(query.property, row.value), count: Number(row.count) }));
+    const next = more
+      ? encodeFacetCursor({ property: query.property.name, value: values[values.length - 1].value })
+      : null;
+    return { values, next };
   }
 }
 

@@ -1,0 +1,245 @@
+kind: Telo.Application
+metadata:
+  name: CrudRelatedRecordsTest
+  version: 1.0.0
+  description: |
+    Collections relating to each other over SQLite, every relation matched by
+    the foreign key on its column — posts to their author, employees to their
+    manager in the same collection — start, beside a relation with no foreign
+    key and a foreign key with no relation. A facet request answers each
+    present value of a property under the active filters, with how many rows
+    hold it, a page at a time; `absent` selects the rows whose property holds
+    no value, or those that hold one. A facet the collection does not declare,
+    a sort beside a facet and an `absent` value that is not a boolean are each
+    a 400 naming the parameter.
+imports:
+  Crud: ../
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref migrate
+  - !ref test
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Table
+metadata: { name: authorsTable }
+table: authors
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  name: { type: text, nullable: false }
+---
+# `editor_id` holds a foreign key no relation names; `reviewer_id` a relation
+# no foreign key covers.
+kind: SQLite.Table
+metadata: { name: postsTable }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  author_id: { type: integer }
+  reviewer_id: { type: integer }
+  editor_id: { type: integer }
+foreignKeys:
+  author: { columns: [author_id], references: { table: !ref authorsTable, columns: [id] } }
+  editor: { columns: [editor_id], references: { table: !ref authorsTable, columns: [id] } }
+---
+kind: SQLite.Table
+metadata: { name: employeesTable }
+table: employees
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  name: { type: text, nullable: false }
+  manager_id: { type: integer }
+foreignKeys:
+  manager: { columns: [manager_id], references: { table: !ref employeesTable, columns: [id] } }
+---
+kind: SQLite.Schema
+metadata: { name: migrate }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref authorsTable, !ref postsTable, !ref employeesTable]
+migrations:
+  0001_authors:
+    statement: "INSERT INTO authors (name) VALUES ('Ada'), ('Bob'), ('Cyd')"
+  0002_posts:
+    statement: |
+      INSERT INTO posts (title, author_id) VALUES
+        ('Fixing x', 1), ('x marks', 1), ('Notes', 2), ('Next x', 3), ('Plain', NULL), ('x alone', NULL)
+  0003_employees:
+    statement: |
+      INSERT INTO employees (name, manager_id) VALUES
+        ('Ann', NULL), ('Ben', 1), ('Cal', 1), ('Dee', NULL), ('Eve', 2)
+---
+kind: Telo.JsonSchema
+metadata: { name: AuthorDraft }
+schema: { type: object, required: [name], additionalProperties: false, properties: { name: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+extends: AuthorDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    authorId: { type: integer }
+    reviewerId: { type: integer }
+    editorId: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+extends: PostDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: EmployeeDraft }
+schema:
+  type: object
+  required: [name]
+  additionalProperties: false
+  properties: { name: { type: string }, managerId: { type: integer } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Employee }
+extends: EmployeeDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Crud.Collection
+metadata: { name: authors }
+model: !ref Author
+table: !ref authorsTable
+schemas: { list: !ref Author, create: !ref AuthorDraft, update: !ref AuthorDraft }
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: Crud.Collection
+metadata: { name: posts }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query:
+  filters: [{ property: title, operator: contains }, { property: authorId, operator: eq }]
+  sort: [{ property: title }]
+  facets: [{ property: authorId }]
+relations:
+  authorId: { collection: !ref authors }
+  reviewerId: { collection: !ref authors }
+---
+# Related to itself: a manager is an employee.
+kind: Crud.Collection
+metadata: { name: employees }
+model: !ref Employee
+table: !ref employeesTable
+schemas: { list: !ref Employee, create: !ref EmployeeDraft, update: !ref EmployeeDraft }
+query:
+  filters: [{ property: id, operator: in }, { property: managerId, operator: eq }, { property: managerId, operator: absent }]
+  sort: []
+  facets: [{ property: managerId }]
+relations:
+  managerId: { collection: !ref employees }
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19333 }
+    mounts:
+      - path: /api/authors
+        mount: { kind: Crud.Api, connection: !ref db, singular: author, plural: authors, collection: !ref authors }
+      - path: /api/posts
+        mount: { kind: Crud.Api, connection: !ref db, singular: post, plural: posts, collection: !ref posts }
+      - path: /api/employees
+        mount: { kind: Crud.Api, connection: !ref db, singular: employee, plural: employees, collection: !ref employees }
+targets: [!ref server]
+steps:
+  # ── Facets: present values under the filters, a page at a time ──
+  - name: authorsOfX
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/posts?facet=authorId&title.contains=x" }
+  - name: firstPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/posts?facet=authorId&limit=2" }
+  - name: secondPage
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19333/api/posts?facet=authorId&limit=2&cursor=' + steps.firstPage.result.body.next"
+  - name: managers
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/employees?facet=managerId" }
+  - name: verifyFacets
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        authorsOfX:
+          status: !cel "steps.authorsOfX.result.status"
+          body: !cel "steps.authorsOfX.result.body"
+        firstPage: !cel "steps.firstPage.result.body.values"
+        secondPage: !cel "steps.secondPage.result.body"
+        managers: !cel "steps.managers.result.body"
+      expected:
+        authorsOfX:
+          status: 200
+          body: { values: [{ value: 1, count: 2 }, { value: 3, count: 1 }], next: null }
+        firstPage: [{ value: 1, count: 2 }, { value: 2, count: 1 }]
+        secondPage: { values: [{ value: 3, count: 1 }], next: null }
+        managers: { values: [{ value: 1, count: 2 }, { value: 2, count: 1 }], next: null }
+
+  # ── Absent: no manager, or a manager ──
+  - name: noManager
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/employees?managerId.absent=true" }
+  - name: withManager
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/employees?managerId.absent=false" }
+  - name: verifyAbsent
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        noManager: !cel "steps.noManager.result.body"
+        withManager: !cel "steps.withManager.result.body.rows.map(r, r.id)"
+      expected:
+        noManager:
+          rows: [{ id: 1, name: Ann }, { id: 4, name: Dee }]
+          total: 2
+          next: null
+        withManager: [2, 3, 5]
+
+  # ── Refusals, naming the parameter ──
+  - name: undeclaredFacet
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/posts?facet=title" }
+  - name: sortBesideFacet
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/posts?facet=authorId&sort=title" }
+  - name: listCursorOnFacet
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !cel "'http://127.0.0.1:19333/api/employees?facet=managerId&cursor=' + steps.firstPage.result.body.next"
+  - name: absentNotBoolean
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/employees?managerId.absent=maybe" }
+  - name: absentUndeclared
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19333/api/posts?authorId.absent=true" }
+  - name: verifyRefusals
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        undeclaredFacet:
+          status: !cel "steps.undeclaredFacet.result.status"
+          issues: !cel "steps.undeclaredFacet.result.body.data.issues"
+        sortBesideFacet: !cel "steps.sortBesideFacet.result.body.data.issues"
+        listCursorOnFacet: !cel "steps.listCursorOnFacet.result.body.data.issues"
+        absentNotBoolean: !cel "steps.absentNotBoolean.result.body.data.issues"
+        absentUndeclared: !cel "steps.absentUndeclared.result.body.data.issues"
+      expected:
+        undeclaredFacet:
+          status: 400
+          issues: [{ pointer: /query/facet, keyword: enum, params: { allowedValues: [authorId] } }]
+        sortBesideFacet: [{ pointer: /query/sort, keyword: additionalProperties, params: { additionalProperty: sort } }]
+        listCursorOnFacet: [{ pointer: /query/cursor, keyword: invalid, params: {} }]
+        absentNotBoolean: [{ pointer: /query/managerId.absent, keyword: type, params: { type: boolean } }]
+        absentUndeclared:
+          - { pointer: /query/authorId.absent, keyword: additionalProperties, params: { additionalProperty: authorId.absent } }

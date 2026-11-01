@@ -1,0 +1,19 @@
+# This library's `Author` has a `name`; the application's has a `handle`.
+kind: Telo.Library
+metadata: { name: CrossingLib }
+imports:
+  Kinds: ../kinds
+exports:
+  resources: [authors, libAuthorsSource]
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+schema: { type: object, properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: Kinds.Collection
+metadata: { name: authors }
+model: !ref Author
+---
+kind: Kinds.Source
+metadata: { name: libAuthorsSource }
+collection: !ref authors

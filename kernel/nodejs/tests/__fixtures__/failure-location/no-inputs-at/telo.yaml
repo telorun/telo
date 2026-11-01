@@ -1,0 +1,19 @@
+# A controller dispatching on its own, with no written place for the inputs.
+kind: Telo.Application
+metadata: { name: FailureNoInputsAt }
+imports:
+  Assert: ../../../../../../modules/assert
+targets: [!ref caller]
+---
+kind: Telo.Definition
+metadata: { name: Caller }
+capability: Telo.Runnable
+controllers:
+  - pkg:telo/local/js?path=./caller.mjs#Caller
+schema: { type: object }
+---
+kind: Assert.Equals
+metadata: { name: matcher }
+---
+kind: Self.Caller
+metadata: { name: caller }

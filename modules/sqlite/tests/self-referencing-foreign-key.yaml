@@ -1,0 +1,72 @@
+kind: Telo.Application
+metadata:
+  name: SqliteSelfReferencingForeignKey
+  version: 1.0.0
+  description: |
+    A table whose foreign key references itself — a tree — boots and is
+    enforced: a row naming its parent is stored, one naming a missing parent is
+    refused. The reference is a declaration read, so the table needs no other
+    table, and itself, to be created first.
+imports:
+  Sql: ../../sql
+  SQLite: ../
+  Assert: ../../assert
+  Run: ../../run
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+version: !cel "module.version"
+tables: [!ref employees]
+---
+kind: SQLite.Table
+metadata: { name: employees }
+table: employees
+columns:
+  id: { type: integer, primaryKey: true }
+  managerId: { type: integer }
+foreignKeys:
+  manager:
+    columns: [managerId]
+    references: { table: !ref employees, columns: [id] }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: insertRoot
+    invoke: !ref command
+    inputs: { sql: "INSERT INTO employees (id, managerId) VALUES (1, NULL)" }
+  - name: insertReport
+    invoke: !ref command
+    inputs: { sql: "INSERT INTO employees (id, managerId) VALUES (2, 1)" }
+  - name: orphanInsert
+    try:
+      - name: attemptOrphan
+        invoke: !ref command
+        inputs: { sql: "INSERT INTO employees (id, managerId) VALUES (3, 99)" }
+    catch:
+      - name: orphanRefused
+        value: !cel "error.message.contains('FOREIGN KEY constraint failed')"
+  - name: readTree
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: "SELECT id, managerId FROM employees ORDER BY id" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        orphanRefused: !cel "steps.orphanRefused.result"
+        rows: !cel "steps.readTree.result.rows"
+      expected:
+        orphanRefused: true
+        rows: [{ id: 1, managerId: null }, { id: 2, managerId: 1 }]
+---
+kind: Sql.Command
+metadata: { name: command }
+connection: !ref db

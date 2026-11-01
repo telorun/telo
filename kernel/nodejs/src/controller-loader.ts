@@ -1,6 +1,7 @@
 import type { ModuleSources } from "@telorun/analyzer";
 import { ControllerInstance, RuntimeError, type Logger } from "@telorun/sdk";
 import { BundleControllerLoader } from "./controller-loaders/bundle-loader.js";
+import type { BundlePreparations } from "./controller-loaders/bundle-preparations.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
 import {
   NO_SIBLING_LIBRARIES,
@@ -132,6 +133,9 @@ export interface ControllerLoaderOptions {
    *  the bundle-skip diagnostics that replaced `TELO_BUNDLE_DEBUG` actually reach
    *  a sink at trace level instead of a no-op logger. */
   log?: Logger;
+  /** The load's bundle preparations, shared by every kind's loader so a
+   *  module's bundle is prepared once per load rather than once per kind. */
+  bundlePreparations?: BundlePreparations;
 }
 
 /**
@@ -169,7 +173,7 @@ export class ControllerLoader {
     });
     if (options.log) this.npmLoader.setLogger(options.log);
     this.napiLoader = new NapiControllerLoader(options.cacheRoot);
-    this.bundleLoader = new BundleControllerLoader(options.cacheRoot, options.log);
+    this.bundleLoader = new BundleControllerLoader(options.cacheRoot, options.log, options.bundlePreparations);
   }
 
   async load(

@@ -4,7 +4,7 @@
   "spec": "7. Resolution & schema",
   "request": {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "Resolve a named type reference to its JSON Schema, in the scope of the module that wrote the name.",
+    "description": "Resolve a named type reference to its effective JSON Schema, `extends` folded, in the scope of the module that wrote the name — answered from its declaration when the type has not been created yet.",
     "type": "object",
     "properties": {
       "instance": {

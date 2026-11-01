@@ -1,0 +1,191 @@
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminRelatedRecordsTest
+  version: 1.0.0
+  description: |
+    An admin over posts whose `authorId` points at authors, over SQLite with
+    the matching foreign key, written with nothing beyond its source and how a
+    related author is labelled: the listing's author column shows the author's
+    name, the filter bar's author filter offers authors by name, and the
+    create and edit forms enter the author with a picker of authors, all read
+    from the one authors source. The same admin drawn as a board by `status`
+    reads one column per value of the status enum, and a record is moved by an
+    action the application declares over the record as read and as the move
+    leaves it.
+imports:
+  CrudUi: ../
+  Crud: ../../crud
+  SQLite: ../../sqlite
+  Ui: ../../ui
+  Probe: ../../ui/tests/__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: SQLite.Table
+metadata: { name: authorsTable }
+table: authors
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  name: { type: text, nullable: false }
+---
+kind: SQLite.Table
+metadata: { name: postsTable }
+table: posts
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+  author_id: { type: integer }
+  status: { type: text, nullable: false }
+foreignKeys:
+  author: { columns: [author_id], references: { table: !ref authorsTable, columns: [id] } }
+---
+kind: Telo.JsonSchema
+metadata: { name: AuthorDraft }
+schema: { type: object, required: [name], additionalProperties: false, properties: { name: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+extends: AuthorDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostDraft }
+schema:
+  type: object
+  required: [title, status]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+    authorId: { type: integer }
+    status: { enum: [draft, review, published] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+extends: PostDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: PostMove }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, status]
+  properties:
+    id: { type: integer }
+    status: { enum: [draft, review, published] }
+---
+kind: Crud.Collection
+metadata: { name: authors }
+model: !ref Author
+table: !ref authorsTable
+schemas: { list: !ref Author, create: !ref AuthorDraft, update: !ref AuthorDraft }
+query:
+  filters: [{ property: id, operator: in }, { property: name, operator: contains }]
+  sort: [{ property: name }]
+---
+kind: Crud.Collection
+metadata: { name: posts }
+model: !ref Post
+table: !ref postsTable
+schemas: { list: !ref Post, create: !ref PostDraft, update: !ref PostDraft }
+query:
+  filters: [{ property: title, operator: contains }, { property: authorId, operator: eq }, { property: status, operator: eq }]
+  sort: [{ property: title }]
+  facets: [{ property: authorId }]
+relations:
+  authorId: { collection: !ref authors }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: authorsSource }
+collection: !ref authors
+basePath: /api/authors
+---
+kind: CrudUi.CollectionSource
+metadata: { name: postsSource }
+collection: !ref posts
+basePath: /api/posts
+---
+kind: CrudUi.Admin
+metadata: { name: postsAdmin }
+source: !ref postsSource
+relations:
+  authorId:
+    source: !ref authorsSource
+    label: !cel "row.name"
+    search: { property: name, operator: contains }
+---
+kind: CrudUi.Admin
+metadata: { name: postsBoard }
+source: !ref postsSource
+layout:
+  kind: Ui.BoardLayout
+  groups: { property: status }
+  content: { type: value, value: !cel "row.title" }
+  move:
+    action:
+      kind: Ui.Action
+      inputModel: !ref PostMove
+      source: { path: /api/posts/move }
+      label: Move
+    inputs:
+      id: !cel "row.id"
+      status: !cel "to.status"
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: admin
+    invoke: { kind: Probe.Read, source: !ref postsAdmin }
+  - name: board
+    invoke: { kind: Probe.Read, source: !ref postsBoard }
+  - name: checkRelated
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(bar, steps.admin.result.node, cel.bind(l, bar.content, {
+          'column': l.layout.columns.filter(c, c.value.path[0] == 'authorId').map(c, {'relation': c.relation}),
+          'relation': l.relations.authorId,
+          'filter': bar.fields.filter(f, f.property == 'authorId').map(f, {'operator': f.operator, 'options': f.options == l.relations.authorId}),
+          'create': l.create.form.fields.filter(f, f.property == 'authorId').map(f, {'type': f.type, 'options': f.options == l.relations.authorId}),
+          'edit': l.edit.form.fields.filter(f, f.property == 'authorId').map(f, {'type': f.type, 'options': f.options == l.relations.authorId})
+        }))
+      expected:
+        column: [{ relation: authorId }]
+        relation:
+          type: collection
+          schema: { type: object, required: [name, id], additionalProperties: false, properties: { name: { type: string }, id: { type: integer } } }
+          value: { root: row, path: [id] }
+          label: { root: row, path: [name] }
+          basePath: /api/authors
+          filters: {}
+          search: { property: name, operator: contains }
+          pageSize: 25
+        filter: [{ operator: eq, options: true }]
+        create: [{ type: picker, options: true }]
+        edit: [{ type: picker, options: true }]
+  - name: checkBoard
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        cel.bind(l, steps.board.result.node.content.layout, {
+          'type': l.type,
+          'groups': l.reads.groups,
+          'content': l.content,
+          'move': {'inputs': l.move.inputs, 'path': l.move.action.path}
+        })
+      expected:
+        type: board
+        groups:
+          property: status
+          values: all
+          enum: [draft, review, published]
+          labels:
+            - { value: draft, label: { text: draft, context: null, lang: und, computed: false } }
+            - { value: review, label: { text: review, context: null, lang: und, computed: false } }
+            - { value: published, label: { text: published, context: null, lang: und, computed: false } }
+        content: { type: value, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
+        move:
+          inputs: { id: { root: row, path: [id] }, status: { root: to, path: [status] } }
+          path: /api/posts/move

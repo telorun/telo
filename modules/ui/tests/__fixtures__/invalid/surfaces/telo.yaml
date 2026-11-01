@@ -8,6 +8,7 @@ metadata:
   version: 1.0.0
 imports:
   Ui: ../../../../
+  DataModel: ../../../../../data-model
 ---
 kind: Ui.Dialog
 metadata:
@@ -54,44 +55,48 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string }
 ---
-kind: Ui.Collection
-metadata:
-  name: todos
-query: { filters: [], sort: [] }
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query: { filters: [], sort: [] }
 ---
 kind: Ui.Form
 metadata:
   name: todoForm
 model: !ref Todo
-source: { basePath: /api/todos }
+presentation: !ref todos
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: surfaceIsForm
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 create:
   form: !ref todoForm
   surface: !ref todoForm
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: editAgain
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 edit:
   form: !ref todoForm
   afterSubmit: again
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: bareCreate
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 create: !ref todoForm

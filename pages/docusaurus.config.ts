@@ -8,6 +8,7 @@ import { generateExamplesIndex } from "./lib/generate-examples-index";
 import { generateStandardLibrary } from "./lib/generate-standard-library";
 import landingSample from "./lib/landing-sample";
 import { substituteVersions } from "./lib/version-map";
+import remarkShiki from "./plugins/remark-shiki";
 import remarkVersions from "./plugins/remark-versions";
 import sidebars from "./sidebars";
 
@@ -135,7 +136,7 @@ const config: Config = {
       }
 
       if (/\/cli\/README\.md$/.test(normalized)) {
-        result.frontMatter.slug = "/learn/installation-and-cli";
+        result.frontMatter.slug = "/learn/telo-cli";
         return result;
       }
 
@@ -161,14 +162,7 @@ const config: Config = {
     [
       "classic",
       {
-        docs: {
-          // Read directly from original markdown files — no copies
-          path: "..",
-          routeBasePath: "/",
-          include: docInclude,
-          sidebarPath: "./sidebars.ts",
-          remarkPlugins: [remarkVersions],
-        },
+        docs: false,
         blog: false,
         sitemap: {
           // `changefreq` / `priority` are ignored by Google and identical on
@@ -185,6 +179,17 @@ const config: Config = {
   ],
 
   plugins: [
+    [
+      "./plugins/docs-without-glob-watch",
+      {
+        // Read directly from original markdown files — no copies
+        path: "..",
+        routeBasePath: "/",
+        include: docInclude,
+        sidebarPath: "./sidebars.ts",
+        remarkPlugins: [remarkVersions, remarkShiki],
+      },
+    ],
     [
       "./plugins/llms-txt",
       {

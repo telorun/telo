@@ -5,8 +5,7 @@
 # condition. Each form writes for real, and the lists under them read again
 # after every save. Every application places this view on its `/forms` page.
 kind: Ui.View
-metadata:
-  name: formsPage
+metadata: { name: formsPage }
 content:
   type: stack
   children:
@@ -30,7 +29,7 @@ content:
       ref:
         kind: Ui.Form
         model: !ref Request
-        source: { basePath: /api/requests }
+        presentation: !ref requestsPresentation
         state: { key: request, address: true, store: { kind: Ui.LocalStore } }
 
     # ---- Each control chosen by hand ----
@@ -45,7 +44,7 @@ content:
       ref:
         kind: Ui.Form
         model: !ref Request
-        source: { basePath: /api/requests }
+        presentation: !ref requestsPresentation
         fields:
           - { kind: Ui.InputField, property: title, control: auto }
           - { kind: Ui.InputField, property: kind, control: options }
@@ -96,7 +95,12 @@ content:
       ref:
         kind: Ui.Form
         model: !ref Booking
-        source: { basePath: /api/bookings }
+        presentation:
+          kind: Ui.CollectionPresentation
+          source:
+            kind: Ui.CollectionSource
+            collection: { kind: DataModel.Collection, model: !ref StoredBooking, query: { filters: [], sort: [] } }
+            basePath: /api/bookings
         groups:
           - { name: project, label: The project, description: "Which project, and who leads the work." }
           - name: people
@@ -118,10 +122,8 @@ content:
               label: !cel "row.name"
               hint: !cel "row.location"
               href: !cel "row.contact"
-              collection: !ref peopleModel
-              source:
-                basePath: /api/people
-                filters: { role: !cel "values.leadRole", active: true }
+              source: !ref peopleSource
+              filters: { role: !cel "values.leadRole", active: true }
               search: { property: name, operator: contains }
           - kind: Ui.PickerField
             property: reviewerEmails
@@ -143,8 +145,8 @@ content:
               value: !cel "row.email"
               label: !cel "row.name"
               hint: !cel "row.location"
-              collection: !ref peopleModel
-              source: { basePath: /api/people, filters: { active: true } }
+              source: !ref peopleSource
+              filters: { active: true }
               pageSize: 3
           - kind: Ui.DateRangeField
             property: period
@@ -187,35 +189,38 @@ content:
 # The active members of the team, searched by name and linked to their e-mail.
 # The booking form's reviewers and sponsor are both picked from it.
 kind: Ui.CollectionOptions
-metadata:
-  name: teamOptions
+metadata: { name: teamOptions }
 model: !ref Person
 value: !cel "row.email"
 label: !cel "row.name"
 hint: !cel "row.location"
 href: !cel "row.contact"
-collection: !ref peopleModel
-source:
-  basePath: /api/people
-  filters: { active: true }
+source: !ref peopleSource
+filters: { active: true }
 search: { property: name, operator: contains }
 ---
 # The projects, each offered by its name with its code as a hint. The booking
 # form and the actions page's project fields choose from it.
 kind: Ui.CollectionOptions
-metadata:
-  name: projectOptions
+metadata: { name: projectOptions }
 model: !ref Project
 value: !cel "row.code"
 label: !cel "row.name"
 hint: !cel "row.code"
-collection: !ref projectModel
-source: { basePath: /api/projects }
+source: !ref projectsSource
+---
+# The requests the two request forms send: `POST /api/requests` stores one and
+# answers with it, under the key the table assigns.
+kind: Ui.CollectionPresentation
+metadata: { name: requestsPresentation }
+source:
+  kind: Ui.CollectionSource
+  collection: { kind: DataModel.Collection, model: !ref StoredRequest, query: { filters: [], sort: [] } }
+  basePath: /api/requests
 ---
 # The page every application lists at /forms, placing the view.
 kind: Ui.Page
-metadata:
-  name: formsScreen
+metadata: { name: formsScreen }
 path: /forms
 title: Forms
 children:

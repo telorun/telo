@@ -1,0 +1,344 @@
+kind: Telo.Application
+metadata:
+  name: UiListingLayoutsTest
+  version: 1.0.0
+  description: |
+    Each layout draws a listing's records with its own keys and states its read
+    plan with every default filled: a board reads one column per value of its
+    grouping — listed from the property's enum, paged from a presented relation,
+    or present in the facet answer — a calendar reads each shown period over a
+    start and an end of one date format, and a tree reads its roots and each
+    expanded record's children over a relation of the collection to itself. A
+    record is drawn with the content written, or with one value per model
+    property but the key. A move is an operation over the record as read and
+    the record as the move leaves it, its action provided once. A component
+    layout carries the export it draws with, its props — a fixed one once, a
+    row-bound one per record — and its plan; a layout of another module
+    extending it is drawn by it.
+imports:
+  Ui: ../
+  DataModel: ../../data-model
+  Probe: ./__fixtures__/probe
+  Rooms: ./__fixtures__/room-plan
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema:
+  type: object
+  required: [id, name]
+  properties:
+    id: { type: integer }
+    name: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [id, title, status]
+  properties:
+    id: { type: integer }
+    title: { type: string }
+    status: { enum: [open, doing, done] }
+    assigneeId: { type: integer }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskMove }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, status]
+  properties:
+    id: { type: integer }
+    status: { enum: [open, doing, done] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Event }
+schema:
+  type: object
+  required: [id, title, startsOn]
+  properties:
+    id: { type: integer }
+    title: { type: string }
+    startsOn: { type: string, format: date }
+    endsOn: { type: [string, "null"], format: date }
+---
+kind: Telo.JsonSchema
+metadata: { name: Employee }
+schema:
+  type: object
+  required: [id, name]
+  properties:
+    id: { type: integer }
+    name: { type: string }
+    managerId: { type: [integer, "null"] }
+---
+kind: DataModel.Collection
+metadata: { name: people }
+model: !ref Person
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: tasks }
+model: !ref Task
+query:
+  filters: [{ property: status, operator: eq }, { property: assigneeId, operator: eq }]
+  sort: [{ property: title }]
+  facets: [{ property: status }]
+relations:
+  assigneeId: { collection: !ref people }
+---
+kind: DataModel.Collection
+metadata: { name: events }
+model: !ref Event
+query:
+  filters: [{ property: startsOn, operator: lte }, { property: endsOn, operator: gte }]
+  sort: [{ property: startsOn }]
+---
+kind: DataModel.Collection
+metadata: { name: employees }
+model: !ref Employee
+query:
+  filters: [{ property: id, operator: in }, { property: managerId, operator: eq }, { property: managerId, operator: absent }]
+  sort: [{ property: name }]
+relations:
+  managerId: { collection: !ref employees }
+---
+kind: Ui.CollectionSource
+metadata: { name: peopleSource }
+collection: !ref people
+basePath: /api/people
+---
+kind: Ui.CollectionSource
+metadata: { name: employeesSource }
+collection: !ref employees
+basePath: /api/employees
+---
+kind: Ui.CollectionPresentation
+metadata: { name: tasksPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref tasks, basePath: /api/tasks }
+relations:
+  assigneeId: { source: !ref peopleSource, label: !cel "row.name" }
+---
+kind: Ui.Listing
+metadata: { name: board }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout:
+  kind: Ui.BoardLayout
+  groups: { property: status }
+  content:
+    type: stack
+    children:
+      - { type: value, value: !cel "row.title", style: strong }
+      - { type: value, value: !cel "row.assigneeId" }
+  move:
+    action:
+      kind: Ui.Action
+      inputModel: !ref TaskMove
+      source: { path: /api/tasks/move }
+      label: Move
+    inputs:
+      id: !cel "row.id"
+      status: !cel "to.status"
+compact: { kind: Ui.CardLayout }
+---
+kind: Ui.Listing
+metadata: { name: presentBoard }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.BoardLayout, groups: { property: status, values: present } }
+---
+kind: Ui.Listing
+metadata: { name: assigneeBoard }
+presentation: !ref tasksPresentation
+model: !ref Task
+layout: { kind: Ui.BoardLayout, groups: { property: assigneeId } }
+---
+kind: Ui.Listing
+metadata: { name: calendar }
+presentation: { kind: Ui.CollectionPresentation, source: { kind: Ui.CollectionSource, collection: !ref events, basePath: /api/events } }
+model: !ref Event
+layout:
+  kind: Ui.CalendarLayout
+  span: { start: startsOn, end: endsOn }
+  period: week
+---
+kind: Ui.Listing
+metadata: { name: tree }
+presentation:
+  kind: Ui.CollectionPresentation
+  source: !ref employeesSource
+  relations:
+    managerId: { source: !ref employeesSource, label: !cel "row.name" }
+model: !ref Employee
+layout:
+  kind: Ui.TreeLayout
+  parent: managerId
+  content: { type: value, value: !cel "row.name" }
+---
+kind: Telo.JsonSchema
+metadata: { name: Booking }
+schema:
+  type: object
+  required: [id, roomId, guest]
+  properties:
+    id: { type: integer }
+    roomId: { type: integer }
+    guest: { type: string }
+---
+kind: DataModel.Collection
+metadata: { name: bookings }
+model: !ref Booking
+query: { filters: [{ property: roomId, operator: eq }], sort: [], facets: [{ property: roomId }] }
+---
+kind: Ui.CollectionPresentation
+metadata: { name: bookingsPresentation }
+source: { kind: Ui.CollectionSource, collection: !ref bookings, basePath: /api/bookings }
+---
+kind: Ui.Listing
+metadata: { name: roomPlan }
+presentation: !ref bookingsPresentation
+model: !ref Booking
+layout: { kind: Rooms.RoomPlan, room: roomId, title: Rooms }
+---
+kind: Ui.Listing
+metadata: { name: component }
+presentation: !ref bookingsPresentation
+model: !ref Booking
+layout:
+  kind: Ui.ComponentLayout
+  component: !ref Rooms.roomPlanComponent
+  props:
+    title: !cel "row.guest"
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: board
+    invoke: { kind: Probe.Read, source: !ref board }
+  - name: presentBoard
+    invoke: { kind: Probe.Read, source: !ref presentBoard }
+  - name: assigneeBoard
+    invoke: { kind: Probe.Read, source: !ref assigneeBoard }
+  - name: calendar
+    invoke: { kind: Probe.Read, source: !ref calendar }
+  - name: tree
+    invoke: { kind: Probe.Read, source: !ref tree }
+  - name: roomPlan
+    invoke: { kind: Probe.Read, source: !ref roomPlan }
+  - name: component
+    invoke: { kind: Probe.Read, source: !ref component }
+  - name: checkBoard
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        layout: !cel >-
+          cel.bind(l, steps.board.result.node.layout, {
+            'type': l.type,
+            'content': l.content,
+            'reads': l.reads,
+            'move': {'inputs': l.move.inputs, 'prompt': has(l.move.prompt), 'action': {'type': l.move.action.type, 'path': l.move.action.path}}
+          })
+        compact: !cel "steps.board.result.node.compact"
+        presentGroups: !cel "steps.presentBoard.result.node.layout.reads"
+        assigneeGroups: !cel "steps.assigneeBoard.result.node.layout.reads"
+      expected:
+        layout:
+          type: board
+          content:
+            type: stack
+            children:
+              - { type: value, value: { root: row, path: [title] }, style: strong, present: { type: string }, labels: [] }
+              - { type: value, value: { root: row, path: [assigneeId] }, present: { type: integer }, labels: [] }
+          reads:
+            groups:
+              property: status
+              values: all
+              enum: [open, doing, done]
+              labels:
+                - { value: open, label: { text: open, context: null, lang: und, computed: false } }
+                - { value: doing, label: { text: doing, context: null, lang: und, computed: false } }
+                - { value: done, label: { text: done, context: null, lang: und, computed: false } }
+          move:
+            inputs: { id: { root: row, path: [id] }, status: { root: to, path: [status] } }
+            prompt: false
+            action: { type: action, path: /api/tasks/move }
+        # A card layout with every default: the record's values but the key.
+        compact:
+          type: cards
+          size: medium
+          reads: {}
+          content:
+            type: stack
+            children:
+              - { type: value, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
+              - type: value
+                value: { root: row, path: [status] }
+                labels:
+                  - { value: open, label: { text: open, context: null, lang: und, computed: false } }
+                  - { value: doing, label: { text: doing, context: null, lang: und, computed: false } }
+                  - { value: done, label: { text: done, context: null, lang: und, computed: false } }
+              - { type: value, value: { root: row, path: [assigneeId] }, present: { type: integer }, labels: [] }
+        presentGroups:
+          groups:
+            property: status
+            values: present
+            labels:
+              - { value: open, label: { text: open, context: null, lang: und, computed: false } }
+              - { value: doing, label: { text: doing, context: null, lang: und, computed: false } }
+              - { value: done, label: { text: done, context: null, lang: und, computed: false } }
+        # Paged from the presented relation, which labels each column.
+        assigneeGroups:
+          groups: { property: assigneeId, values: all, relation: assigneeId, labels: [] }
+  - name: checkCalendar
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.calendar.result.node.layout"
+      expected:
+        type: calendar
+        period: week
+        reads:
+          span: { start: startsOn, end: endsOn, format: date }
+        content:
+          type: stack
+          children:
+            - { type: value, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
+            - { type: value, value: { root: row, path: [startsOn] }, present: { type: string, format: date }, labels: [] }
+            - { type: value, value: { root: row, path: [endsOn] }, present: { type: [string, "null"], format: date }, labels: [] }
+  - name: checkTree
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.tree.result.node.layout"
+      expected:
+        type: tree
+        reads: { parent: managerId }
+        content: { type: value, value: { root: row, path: [name] }, present: { type: string }, labels: [] }
+  - name: checkComponent
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        extension: !cel >-
+          cel.bind(l, steps.roomPlan.result.node.layout, {
+            'type': l.type, 'export': l.export, 'abi': l.abi, 'external': l.external,
+            'entry': l.module.name, 'stylesheets': l.stylesheets, 'props': l.props, 'reads': l.reads
+          })
+        props: !cel "steps.component.result.node.layout.props"
+        reads: !cel "steps.component.result.node.layout.reads"
+        assets: !cel "steps.component.result.assets.map(a, a.name)"
+      expected:
+        extension:
+          type: component
+          export: RoomPlan
+          abi: ui_react_layouts-1
+          external: [react]
+          entry: room-plan.js
+          stylesheets: []
+          props: { title: { value: Rooms } }
+          reads: { groups: { property: roomId, values: present, labels: [] } }
+        props: { title: { root: row, path: [guest] } }
+        reads: {}
+        assets: [room-plan.js]

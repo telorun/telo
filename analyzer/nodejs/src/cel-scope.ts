@@ -69,7 +69,9 @@ import {
   analyzerContractScope,
   PERMISSIVE_CONTRACT,
   resolveContract,
+  valueSchemaHostOf,
 } from "./invocation-contract.js";
+import type { ValueSchemaHost } from "./value-schema-slot.js";
 import {
   mergeKernelGlobalsIntoContext,
   type KernelGlobalsIndex,
@@ -729,6 +731,8 @@ export class CelScopeResolver {
    *  module's globals. */
   private readonly fallbackContexts = new WeakMap<Record<string, any>, Record<string, any>>();
   private readonly typedEnvironments: TypedEnvironments;
+  /** How a context annotation's subpath crosses reference slots, built on first use. */
+  private crossingHost: ValueSchemaHost | undefined;
 
   /** Per-resource state, replaced at each `enterResource`. */
   private stepContext: Record<string, any> | undefined;
@@ -780,10 +784,12 @@ export class CelScopeResolver {
 
   /**
    * Every way the bindings this site's regions type from the resource's
-   * referrers are typed: one variant per distinct combination of the types the
-   * referrers' scopes give them. A site with no such binding, or whose
-   * referrers all agree, has exactly one; a binding nothing references keeps
-   * the keywords it declares.
+   * referrers are typed: one variant per distinct combination of the types ONE
+   * referrer gives them — never a binding typed by one referrer beside another
+   * typed by a second, which no referrer gives. Referrers giving the same types
+   * (a consumer and the forward view built from it) are one variant. A site
+   * with no such binding, or whose referrers all agree, has exactly one; a
+   * binding nothing references keeps the keywords it declares.
    */
   siteVariants(site: CelSiteRef): ReferrerVariant[] {
     const chain: ReadonlyArray<{ schema: Record<string, any> | undefined }> =
@@ -798,20 +804,39 @@ export class CelScopeResolver {
       if (!properties || typeof properties !== "object") continue;
       for (const [name, binding] of Object.entries(properties as Record<string, unknown>)) owners.set(name, binding);
     }
-    let variants: ReferrerVariant[] = [{ bindings: {}, referrers: [] }];
+    // What each referrer — a slot, and the outermost scope of its chain — gives
+    // every binding it types.
+    type Referrer = ReferrerVariant["referrers"][number];
+    const byReferrer = new Map<string, { referrer: Referrer; bindings: Record<string, Record<string, any>> }>();
     for (const [name, binding] of owners) {
       const from = readFromReferrer(binding);
       if (from === undefined || !bindingExistsAt(binding, site.mode)) continue;
-      const typed = this.typesFromReferrers(site.source, from);
-      if (typed.length === 0) continue;
-      variants = variants.flatMap((variant) =>
-        typed.map((t) => ({
-          bindings: { ...variant.bindings, [name]: t.bindings[from]! },
-          referrers: [...variant.referrers, ...t.referrers],
-        })),
-      );
+      for (const typed of this.typesFromReferrers(site.source, from)) {
+        for (const referrer of typed.referrers) {
+          const key = `${this.referrerId(referrer.manifest)}\0${referrer.path}\0${referrer.label}`;
+          let entry = byReferrer.get(key);
+          if (!entry) byReferrer.set(key, (entry = { referrer, bindings: {} }));
+          entry.bindings[name] = typed.bindings[from]!;
+        }
+      }
     }
-    return variants;
+    if (byReferrer.size === 0) return [{ bindings: {}, referrers: [] }];
+    const variants = new Map<string, { bindings: Record<string, Record<string, any>>; referrers: Referrer[] }>();
+    for (const { referrer, bindings } of byReferrer.values()) {
+      const json = stableJson(bindings);
+      let variant = variants.get(json);
+      if (!variant) variants.set(json, (variant = { bindings, referrers: [] }));
+      variant.referrers.push(referrer);
+    }
+    return [...variants.values()];
+  }
+
+  /** A resource's identity among the referrers this analysis types from. */
+  private referrerId(m: ResourceManifest): number {
+    const index = this.referrerTypes;
+    let id = index.ids.get(m);
+    if (id === undefined) index.ids.set(m, (id = index.next++));
+    return id;
   }
 
   /** The types the resources referencing `m` give the binding `name` at their
@@ -821,9 +846,7 @@ export class CelScopeResolver {
     let byName = index.types.get(m);
     const known = byName?.get(name);
     if (known) return known;
-    let id = index.ids.get(m);
-    if (id === undefined) index.ids.set(m, (id = index.next++));
-    const key = `${id}\0${name}`;
+    const key = `${this.referrerId(m)}\0${name}`;
     // A chain leading back to a resource being typed adds nothing.
     if (index.inProgress.has(key)) return [];
     index.inProgress.add(key);
@@ -1236,6 +1259,9 @@ export class CelScopeResolver {
           declarations,
           shapes: this.inputs.shapes,
           sitePath: localPath,
+          referenceHost: (this.crossingHost ??= valueSchemaHostOf(
+            analyzerContractScope(defs, aliases, scopes, declarations),
+          )),
         }),
         rootManifest,
       );

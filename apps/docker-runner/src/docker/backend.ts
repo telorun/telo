@@ -75,8 +75,8 @@ export function createDockerBackend(deps: DockerBackendDeps): RunnerBackend {
   /**
    * Take over the containers a previous runner process left. Containers that
    * are gone, never started, or not the stored session's (another app set or
-   * agent, or session supervisors of another protocol generation — containers
-   * older than this runner build) are removed and the session suspends, its
+   * agent, session supervisors of another protocol generation — containers
+   * older than this runner build — or not running as the session user) are removed and the session suspends, its
    * directory kept: its resume creates current ones. A container that has
    * ended is the session's infrastructure failure, named; the sweep then
    * removes what is left.

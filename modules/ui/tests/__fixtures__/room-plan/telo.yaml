@@ -1,0 +1,61 @@
+kind: Telo.Library
+metadata:
+  name: UiRoomPlan
+  version: 1.0.0
+  description: >-
+    Test fixture shipping a listing layout of its own: bookings drawn on a room
+    plan by a browser component, a lane per room, written as a kind over the
+    component layout.
+imports:
+  Ui: ../../../
+exports:
+  kinds: [RoomPlan]
+  resources: [roomPlanComponent]
+  browser:
+    - specifier: "@fixture/room-plan"
+      path: ./browser/room-plan.js
+      source: ./browser/src/room-plan.js
+      abi: ui_react_layouts-1
+      external: [react]
+      exports: [RoomPlan]
+---
+kind: Ui.ComponentExport
+metadata: { name: roomPlanComponent }
+entry: "@fixture/room-plan"
+export: RoomPlan
+props:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      title: { type: string }
+---
+# A layout of another module: its own keys, mapped onto the component layout.
+kind: Telo.Definition
+metadata:
+  name: RoomPlan
+  description: Draws bookings on a room plan under a heading, a lane per room.
+extends: Ui.ComponentLayout
+schema:
+  type: object
+  additionalProperties: false
+  required: [room, title]
+  properties:
+    room: { type: string, description: The property holding a booking's room. }
+    title: { type: string, description: The heading drawn above the plan. }
+  x-telo-referrer-rules:
+    - referrer: Ui.Listing
+      resolve: [/presentation/source/collection]
+      condition: !cel >-
+        has(referrer.presentation.source.collection.query.filters)
+        && referrer.presentation.source.collection.query.filters.exists(f, f.property == self.room && f.operator == 'eq')
+      code: UI_LAYOUT_GROUP_NOT_FILTERABLE
+      message: >-
+        lays bookings out by a room property the collection does not accept an
+        equality on. Declare it with operator `eq` under the collection's
+        `query.filters`.
+base:
+  component: !ref roomPlanComponent
+  groups: !cel "{'property': self.room, 'values': 'present'}"
+  props: !cel "{'title': self.title}"

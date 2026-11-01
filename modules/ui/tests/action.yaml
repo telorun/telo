@@ -13,13 +13,14 @@ metadata:
     left out — the failure tree with the error's code and message. An action
     that draws nothing carries no `result`, and one over a model with no
     properties is a bare button. A form over the same model enters the same
-    properties. An action placed on a page is the page's node. A table, and a
+    properties. An action placed on a page is the page's node. A listing, and a
     list inside an answer, carry each row action as the action's own node with
     the row's inputs, its question only when one is asked, its condition only
     when one is written, and — where it prompts — the action's fields the row
-    does not bind; a table carries the query parameters it declares.
+    does not bind; a listing carries the query parameters it declares.
 imports:
   Ui: ../
+  DataModel: ../../data-model
   Probe: ./__fixtures__/probe
   Run: ../../run
   Assert: ../../assert
@@ -139,7 +140,15 @@ kind: Ui.Form
 metadata:
   name: requestForm
 model: !ref ReportRequest
-source: { basePath: /api/requests }
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/requests
+    collection:
+      kind: DataModel.Collection
+      model: { kind: Telo.JsonSchema, schema: { type: object, required: [id], properties: { id: { type: string } } } }
+      query: { filters: [], sort: [] }
 ---
 kind: Ui.View
 metadata:
@@ -154,6 +163,7 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
     id: { type: integer }
     name: { type: string }
@@ -177,12 +187,19 @@ inputModel: !ref Archive
 source: { path: /api/todos/archive }
 label: Archive
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: todos
 model: !ref Todo
-collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
-source: { basePath: /api/todos }
+presentation:
+  kind: Ui.CollectionPresentation
+  source:
+    kind: Ui.CollectionSource
+    basePath: /api/todos
+    collection:
+      kind: DataModel.Collection
+      model: !ref Todo
+      query: { filters: [], sort: [] }
 query:
   status: { type: string }
 rowActions:

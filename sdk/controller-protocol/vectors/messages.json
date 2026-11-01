@@ -404,6 +404,26 @@
     },
     {
       "message": "Dispatch.DetachSettle",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "task": "t3",
+        "outcome": "failed",
+        "error": {
+          "code": "ERR_ASSERTION_FAILED",
+          "message": "port: expected 8080, got 80",
+          "inputPointer": "/expected/port",
+          "location": {
+            "kind": "Run.Sequence",
+            "name": "check",
+            "module": "file:///app/telo.yaml",
+            "pointer": "/steps/1/inputs/expected/port"
+          }
+        }
+      }
+    },
+    {
+      "message": "Dispatch.DetachSettle",
       "part": "response",
       "body": {}
     },
@@ -475,6 +495,27 @@
           },
           "invocationId": 7,
           "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Assert.Equals",
+        "name": "equals",
+        "inputs": {
+          "actual": 80,
+          "expected": 8080
+        },
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c",
+          "inputsAt": "/steps/1/inputs"
         }
       }
     },
@@ -1619,6 +1660,43 @@
         }
       },
       "pointer": "/context/traceId"
+    },
+    {
+      "name": "a dispatch whose inputsAt is not a JSON Pointer",
+      "message": "Dispatch.Invoke",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "kind": "Sql.Query",
+        "name": "health",
+        "inputs": {},
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "inputsAt": "steps/1/inputs"
+        }
+      },
+      "pointer": "/context/inputsAt"
+    },
+    {
+      "name": "a settled failure whose location names no resource",
+      "message": "Dispatch.DetachSettle",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "task": "t3",
+        "outcome": "failed",
+        "error": {
+          "code": "ERR_ASSERTION_FAILED",
+          "message": "differs",
+          "location": {
+            "kind": "Run.Sequence",
+            "pointer": "/steps/0/inputs"
+          }
+        }
+      },
+      "pointer": "/error/location"
     },
     {
       "name": "a span settled with an outcome the protocol does not name",

@@ -24,6 +24,7 @@ import {
   type WorkloadTokens,
   type WorkspaceAccess,
 } from "@telorun/runner-core";
+import type { SessionUser } from "@telorun/runner-core/container";
 
 import type { K8sRunnerConfig } from "../config.js";
 import { resolveResources } from "../limits.js";
@@ -169,7 +170,7 @@ export class KubernetesSessionWorkload implements BackendWorkload {
     callbacks: WorkloadCallbacks,
     pod: V1Pod,
   ): Promise<AdoptionOutcome> {
-    const read = readAdoptable(pod, spec, deps.config.defaultImage);
+    const read = readAdoptable(pod, spec, deps.config.defaultImage, deps.config.sessionUser);
     if ("stale" in read) return { kind: "stale", reason: read.stale };
     const agent = withAgentToken(spec.agent, read.agentToken);
     const workload = new KubernetesSessionWorkload(deps, { ...spec, agent }, callbacks);
@@ -781,11 +782,18 @@ function readAdoptable(
   pod: V1Pod,
   spec: SessionWorkloadSpec,
   kernelImage: string,
+  user: SessionUser,
 ):
   | { ip: string; supervisorToken: string; slots: Record<string, number>; agentToken: string | undefined }
   | { stale: string } {
   const ip = podStatus(pod)?.podIP;
   if (!ip) return { stale: "it has no address" };
+  const security = pod.spec?.securityContext;
+  if (security?.runAsUser !== user.uid || security?.runAsGroup !== user.gid) {
+    return {
+      stale: `it runs as ${security?.runAsUser ?? "the image's user"}:${security?.runAsGroup ?? "the image's group"}, not the session user ${user.uid}:${user.gid}`,
+    };
+  }
   const containers = pod.spec?.containers ?? [];
   const apps = containers.find((c) => c.name === APPS_CONTAINER);
   if (!apps) return { stale: `it has no '${APPS_CONTAINER}' container` };

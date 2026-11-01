@@ -313,6 +313,22 @@ export class HostStore {
     listeners.add(listener);
     return () => listeners.delete(listener);
   };
+
+  private readonly writes = new Map<string, Set<(record: Record<string, unknown>) => void>>();
+
+  /** Say that a write to the collection at `basePath` answered with this
+   *  record, so wherever it is drawn it is drawn from that answer. */
+  readonly written = (basePath: string, record: Record<string, unknown>): void => {
+    for (const listener of [...(this.writes.get(basePath) ?? [])]) listener(record);
+  };
+
+  /** Call `listener` with each record a write to the collection answered with. */
+  readonly onWritten = (basePath: string, listener: (record: Record<string, unknown>) => void): (() => void) => {
+    const listeners = this.writes.get(basePath) ?? new Set();
+    this.writes.set(basePath, listeners);
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
 }
 
 export const HostContext = createContext<HostStore | null>(null);

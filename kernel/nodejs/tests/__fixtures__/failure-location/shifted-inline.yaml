@@ -1,0 +1,21 @@
+# The failing step's sequence is declared inline, and an `!if` shifts its indices.
+kind: Telo.Application
+metadata: { name: FailureShiftedInline }
+imports:
+  Assert: ../../../../../modules/assert
+  Run: ../../../../../modules/run
+targets: [!ref outer]
+---
+kind: Run.Sequence
+metadata: { name: outer }
+steps:
+  - name: inner
+    invoke:
+      kind: Run.Sequence
+      steps:
+        - !if
+          if: !cel "false"
+          then: { name: skipped, value: 0 }
+        - name: matches
+          invoke: { kind: Assert.Equals }
+          inputs: { actual: 2, expected: 3 }

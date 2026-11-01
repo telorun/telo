@@ -5,7 +5,7 @@ metadata:
   description: |
     A shape of the vocabulary that holds another checks it: a surface spec's
     compact surface, whether the surface floats or sits in the page, and the
-    surface of a table node's opener, a filter placement's overlay and its
+    surface of a listing node's opener, a filter placement's overlay and its
     compact placement, and the placement and the store of a filters node. A
     wrong nested value is refused where it
     is written, and refused again by the contract of whatever provides it when
@@ -30,7 +30,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "Echo.TypedSurface/panelCompact: /spec/compact/dismiss is missing required property 'closeButton'"
     - code: SCHEMA_VIOLATION
-      message: "Echo.TypedNode/tableSurface: /node/create/surface must match exactly one schema in oneOf"
+      message: "Echo.TypedNode/listingSurface: /node/create/surface must match exactly one schema in oneOf"
     - code: SCHEMA_VIOLATION
       message: "Echo.TypedPlacement/placementSurface: /spec/surface/dismiss is missing required property 'outside'"
     - code: SCHEMA_VIOLATION
@@ -86,32 +86,36 @@ steps:
     catch:
       - name: panelCompactRefusal
         value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
-  - name: tableSurface
+  - name: listingSurface
     try:
-      - name: tableSurfaceRead
+      - name: listingSurfaceRead
         invoke:
           kind: Probe.Read
           source:
             kind: Echo.AnyNode
             node:
-              type: table
+              type: listing
               schema: {}
               basePath: /api/todos
+              key: id
               query: {}
-              rowKey: id
               pageSize: 25
-              columns: []
+              paging: pages
+              sort: []
               rowActions: []
+              relations: {}
+              empty: { type: text, text: { word: noRows } }
+              layout: { type: table, columns: [], reads: {} }
               delete: false
               create:
                 form: { type: form, schema: {}, basePath: /api/todos, fields: [], groups: [], state: { address: false, store: { type: memory }, fields: [] } }
                 surface: { type: dialog, size: huge, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
                 afterSubmit: close
                 unsaved: confirm
-      - name: tableSurfaceAccepted
+      - name: listingSurfaceAccepted
         throw: { code: ACCEPTED, message: the provider's contract accepted the value }
     catch:
-      - name: tableSurfaceRefusal
+      - name: listingSurfaceRefusal
         value: !cel "error.code + ' ' + error.message.substring(error.message.lastIndexOf('Error: '))"
   - name: placementSurface
     try:
@@ -152,6 +156,7 @@ steps:
             kind: Echo.AnyNode
             node:
               type: filters
+              basePath: /api/todos
               fields: []
               content: { type: text, text: { word: loading } }
               show: all
@@ -175,6 +180,7 @@ steps:
             kind: Echo.AnyNode
             node:
               type: filters
+              basePath: /api/todos
               fields: []
               content: { type: text, text: { word: loading } }
               show: all
@@ -192,7 +198,7 @@ steps:
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
-      actual: !cel "[steps.overlayCompactRefusal.result, steps.panelCompactRefusal.result, steps.tableSurfaceRefusal.result, steps.placementSurfaceRefusal.result, steps.placementCompactRefusal.result, steps.filtersPlacementRefusal.result, steps.filtersStoreRefusal.result]"
+      actual: !cel "[steps.overlayCompactRefusal.result, steps.panelCompactRefusal.result, steps.listingSurfaceRefusal.result, steps.placementSurfaceRefusal.result, steps.placementCompactRefusal.result, steps.filtersPlacementRefusal.result, steps.filtersStoreRefusal.result]"
       expected:
         - "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected another shape"
         - "ERR_OUTPUT_INVALID Error: /compact matches no alternative — expected one with 'size'"

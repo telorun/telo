@@ -8,7 +8,7 @@ description: Test Telo manifests with Telo manifests — Run.Sequence drives the
 
 Telo tests are themselves Telo manifests: a `Run.Sequence` (or a top-level `Assert.Events` / `Assert.Manifest`) drives the test, and the `Telo.Application`'s `targets:` list invokes it. Because a test runs on the same kernel you deploy, the behaviour you assert in development is the behaviour you get in production.
 
-Run a single test manifest with the [`telo` CLI](/learn/installation-and-cli):
+Run a single test manifest with the [`telo` CLI](/learn/telo-cli):
 
 ```bash
 telo ./tests/add-two-numbers.yaml
@@ -29,44 +29,165 @@ metadata:
   version: 1.0.0
 imports:
   Run: oci://ghcr.io/telorun/run@<version>
-  JavaScript: oci://ghcr.io/telorun/javascript@<version>
   Assert: oci://ghcr.io/telorun/assert@<version>
 targets:
-  - !ref TestAdd
+  - !ref testAdd
+---
+kind: Run.Value
+metadata:
+  name: add
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      a: { type: integer }
+      b: { type: integer }
+    required: [a, b]
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      sum: { type: integer }
+    required: [sum]
+value:
+  sum: !cel "inputs.a + inputs.b"
 ---
 kind: Run.Sequence
 metadata:
-  name: TestAdd
+  name: testAdd
 steps:
-  - name: AddNumbers
+  - name: addNumbers
+    invoke: !ref add
+    inputs: { a: 5, b: 3 }
+  - name: verifySum
+    invoke: { kind: Assert.Equals }
     inputs:
-      a: 5
-      b: 3
-    invoke:
-      kind: JavaScript.Script
-      outputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            sum: { type: integer }
-          required: [sum]
-      code: |
-        function main({ a, b }) {
-          return { sum: a + b }
-        }
-  - name: VerifySum
-    inputs:
-      actual: !cel "steps.AddNumbers.result.sum"
+      actual: !cel "steps.addNumbers.result.sum"
       expected: 8
-    invoke:
-      kind: Assert.Equals
 ```
 
 Prefer `Assert.Equals` over `Assert.Schema` for checking an output: it reads as
 a plain expected value and compares the whole result at once. Declaring
-`outputType` on the script is what makes `steps.AddNumbers.result.sum`
-type-check rather than fall back to a permissive shape.
+`outputType` on `add` is what makes `steps.addNumbers.result.sum` type-check
+rather than fall back to a permissive shape.
+
+## Testing an HTTP API
+
+An application that serves requests is tested through its own front door. Declare
+it with `App.Instance` in a `Run.Sequence`'s `with:` block, and call it with
+`HttpClient.Request`. The child is listening before the first step, so the call
+needs no retry, and it is gone after the last step, so the port is free again.
+This test runs the finished application from [Your first HTTP API](/learn/first-http-api),
+which sits in the directory above `tests/`:
+
+```yaml
+kind: Telo.Application
+metadata:
+  name: GreetingApiTest
+  version: 1.0.0
+imports:
+  Run: oci://ghcr.io/telorun/run@<version>
+  App: oci://ghcr.io/telorun/app@<version>
+  HttpClient: oci://ghcr.io/telorun/http-client@<version>
+  Assert: oci://ghcr.io/telorun/assert@<version>
+targets:
+  - !ref test
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: greetingApp }
+    source: ../telo.yaml
+    ports: { http: 8942 }
+    variables: { greeting: Hej }
+targets:
+  - !ref greetingApp
+steps:
+  - name: greet
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+      url: http://127.0.0.1:8942/v1/greet?name=World
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.greet.result.status"
+        body: !cel "steps.greet.result.body"
+      expected:
+        status: 200
+        body: { message: "Hej, World!" }
+```
+
+- **Inputs are supplied by the name the child declares** — `ports.http` and
+  `variables.greeting` here, never `PORT` or `GREETING`. `telo check` follows
+  `source` and refuses a name the child does not declare.
+- **Give every test a port of its own.** Tests in a suite run side by side, and a
+  port two of them bind is a test that fails for no reason in the code.
+- **Assert on `steps.<name>.result.status` and `.body`** with `Assert.Equals`,
+  as above.
+
+### With a database
+
+A test must not depend on what a previous run left behind. For a SQLite-backed
+application, let the file variable also accept `:memory:` and hand the test a
+database of its own, discarded with the child. In the notes application from
+[Talking to a database](/learn/talking-to-a-database), `dbFile` becomes:
+
+```yaml
+variables:
+  dbFile:
+    env: DB_FILE
+    type: string
+    anyOf:
+      - { const: ":memory:" }
+      - { x-telo-type: { name: Telo.HostPath, entry: file } }
+    default: ./notes.db
+```
+
+and the test's child is started with `variables: { dbFile: ":memory:" }` on another port:
+
+```yaml
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: notesApp }
+    source: ../telo.yaml
+    ports: { http: 8941 }
+    variables: { dbFile: ":memory:" }
+targets:
+  - !ref notesApp
+steps:
+  - name: create
+    invoke:
+      kind: HttpClient.Request
+      method: POST
+      url: http://127.0.0.1:8941/v1/notes
+      headers: { content-type: application/json }
+      body: { title: first, body: hello }
+  - name: list
+    invoke:
+      kind: HttpClient.Request
+      method: GET
+      url: http://127.0.0.1:8941/v1/notes
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        created: !cel "steps.create.result.body"
+        listed: !cel "steps.list.result.body"
+      expected:
+        created: { created: 1 }
+        listed: [{ id: 1, title: first, body: hello }]
+```
+
+The first row is always `id: 1`, because the table starts empty on every run.
+When a test has to use a database file that outlives it, identify each row it
+writes per run (`uuidv4()`) instead of assuming the table is empty.
 
 ## Running a whole suite
 
@@ -90,11 +211,11 @@ variables:
 imports:
   Test: oci://ghcr.io/telorun/test@<version>
 targets:
-  - !ref RunAll
+  - !ref runAll
 ---
 kind: Test.Suite
 metadata:
-  name: RunAll
+  name: runAll
 include: !cel "variables.include"
 exclude:
   - "**/__fixtures__/**"
@@ -112,6 +233,16 @@ telo ./test-suite.yaml --help                            # what the suite accept
 
 See the [`Test.Suite` reference on the hub](https://hub.telo.run/?q=Test.Suite) for the full field list.
 
+## When a test fails
+
+A failed step reports where its input was written, the way `telo check` reports a diagnostic — under `telo` directly and inside a `Test.Suite` run alike:
+
+```
+tests/add-two-numbers.yaml:43:17  error  Assert.Equals "SequenceTestAddSteps1VerifySum": expected 9, got 8  ERR_ASSERTION_FAILED
+```
+
+The position is the node inside the failing step's `inputs:` the failure is about (for `Assert.Equals`, the first difference in `expected`), in the innermost sequence that ran the step, whether its target is declared inline or by `!ref`. Where the step the runtime ran is not the one written there — a step a template body declares, or one whose list an `!if` or `!for-each` reshaped — the failure names the resource and gives no position rather than a wrong one.
+
 ## Step shapes
 
 A test drives its assertions with the ordinary `Run.Sequence` grammar — invoke,
@@ -123,22 +254,22 @@ Two shapes come up constantly in tests:
 
 ```yaml
 # Assert on an earlier step's result — actual/expected are call inputs
-- name: VerifySum
+- name: verifySum
   inputs:
-    actual: !cel "steps.AddNumbers.result.sum"
+    actual: !cel "steps.addNumbers.result.sum"
     expected: 8
   invoke:
     kind: Assert.Equals
 
 # Assert that something fails, and how
-- name: Attempt
+- name: attempt
   try:
-    - name: Boom
+    - name: boom
       throw:
         code: UNAUTHORIZED
         message: "bad token"
   catch:
-    - name: Inspect
+    - name: inspect
       inputs:
         actual: !cel "error.code"
         expected: UNAUTHORIZED
@@ -147,7 +278,7 @@ Two shapes come up constantly in tests:
 ```
 
 `error.step` inside a `catch:` names the **enclosing** step that failed
-(`Attempt` above), not the inner one.
+(`attempt` above), not the inner one.
 
 ## Assertion kinds
 
@@ -164,20 +295,17 @@ All exported by the `assert` stdlib (`Assert: oci://ghcr.io/telorun/assert@<vers
 
 ### `Assert.Events`
 
-Watches the kernel event stream and asserts an ordered subsequence:
+Watches the kernel event stream and asserts an ordered subsequence. An event is named after the resource that was dispatched — here the `add` of the anatomy test above; list `expectEvents` in `targets:` beside `testAdd`:
 
 ```yaml
 kind: Assert.Events
-metadata: { name: ExpectEvents }
+metadata: { name: expectEvents }
 filter:
-  - type: "*"
+  - type: "*.Invoked"
 expect:
-  - event: JavaScript.Script.*.Invoked
+  - event: add.Invoked
     payload:
       outputs: { sum: 8 }
-  - event: Assert.Schema.*.Invoked
-    payload:
-      outputs: true
 ```
 
 ### `Assert.Manifest`
@@ -186,7 +314,7 @@ Asserts the analyzer's diagnostics on a fixture without running it:
 
 ```yaml
 kind: Assert.Manifest
-metadata: { name: TestExtendsMalformed }
+metadata: { name: testExtendsMalformed }
 source: ./__fixtures__/extends-malformed.yaml
 expect:
   errors:
@@ -204,4 +332,4 @@ Two shapes:
 
 - [`Test.Suite` reference on the hub](https://hub.telo.run/?q=Test.Suite) — discovery, isolation, and CLI flags.
 - [`Run.Sequence` reference on the hub](https://hub.telo.run/?q=Run.Sequence) — the full step grammar.
-- [Installation & CLI](/learn/installation-and-cli) — running and watching manifests with `telo`.
+- [Telo CLI](/learn/telo-cli) — running and watching manifests with `telo`.

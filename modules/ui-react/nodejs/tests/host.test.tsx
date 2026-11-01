@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import abi from "../src/contract/abi.json" with { type: "json" };
 import { loadFixtureComponents, render, type Page, type Rendered } from "./harness.js";
-import { component, formNode, tableNode, todos } from "./spec-nodes.js";
+import { component, formNode, listingNode, todos } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -111,7 +111,7 @@ describe("the host object", () => {
   });
 
   it("refetches the tables on a changed collection, and no other", async () => {
-    rendered = await show([probe, tableNode(), tableNode({ basePath: "/api/other" })]);
+    rendered = await show([probe, listingNode(), listingNode({ basePath: "/api/other" })]);
     const lists = (base: string) => rendered!.requests.filter((request) => request.startsWith(`GET ${base}?`)).length;
     const [same, other] = [lists("/api/todos"), lists("/api/other")];
     await rendered.click(rendered.fixture("notify"));
@@ -120,7 +120,7 @@ describe("the host object", () => {
   });
 
   it("tells listeners of a form's write and of a delete, until they unsubscribe", async () => {
-    rendered = await show([probe, formNode(), tableNode()]);
+    rendered = await show([probe, formNode(), listingNode()]);
     await rendered.enter(rendered.part("input"), "From the form");
     await rendered.click(rendered.part("submit"));
     expect(rendered.fixture("changes").textContent).toBe("1");
@@ -170,7 +170,7 @@ describe("a hosted component", () => {
   });
 
   it("gets a row-bound property only inside a table cell, and its stylesheet in the component layer", async () => {
-    rendered = await show([component("StatusPill", { done: { root: "row", path: ["isDone"] } }), tableNode()]);
+    rendered = await show([component("StatusPill", { done: { root: "row", path: ["isDone"] } }), listingNode()]);
     const pills = [...document.querySelectorAll(".fixture-pill")].map((pill) => pill.textContent);
     expect(pills).toEqual(["Open", "Done", "Open"]);
     const styles = [...document.head.querySelectorAll("style[data-telo-component-style]")].map((style) => style.textContent);

@@ -5,10 +5,9 @@ import { tableReferenceResolver } from "../src/schema/table-reference.js";
 /**
  * A `references.table` slot, resolved to the referenced table's physical name.
  *
- * The cases that matter are the two SHAPES the slot can hold. Which one arrives
- * is a race with Phase-5 injection, so a resolver that reads only one of them
- * works on some passes of the init loop and not others — which is exactly how
- * every cross-table foreign key came to fail.
+ * The slot is a declaration read: the kernel never injects an instance there,
+ * so it holds the reference as written and the name is read off the
+ * declaration it names.
  */
 describe("tableReferenceResolver", () => {
   const ctx = (declared: Record<string, ResourceManifest>): ResourceContext =>
@@ -22,8 +21,8 @@ describe("tableReferenceResolver", () => {
     expect(resolve({ kind: "X.Table", name: "users" })).toBe("users_t");
   });
 
-  it("reads the name off the instance when injection got there first", () => {
-    expect(resolve({ table: "users_t" })).toBe("users_t");
+  it("refuses a value that is no reference, a live table included", () => {
+    expect(() => resolve({ table: "users_t" })).toThrow(/is not a reference to a X.Table/);
   });
 
   it("takes a plain string as the name it already is", () => {

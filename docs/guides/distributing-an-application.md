@@ -167,6 +167,18 @@ Imports are verified the same way, each against the pin its manifest records, an
 each module's payload layers against the `layers:` index in its verified
 `telo.yaml`.
 
+### Running a published ref in production
+
+`telo run oci://…` fetches the root and its modules into the cache root on
+first start, so that start needs the network and, for a private registry, the
+Docker credentials ([Air-gapped and private registries](/deploy/docker#air-gapped-and-private-registries)).
+`telo install` takes manifest paths and URLs, not an `oci://` ref, so it cannot
+warm that cache ahead of time. For a deployment that must boot offline, build the
+manifest into an image with a warmed cache ([Docker image](/deploy/docker)) or
+ship a [packaged binary](/learn/packaging-an-app). Start containers with
+`--no-input`, and give the application its needs
+([Providing needs](/learn/providing-needs)).
+
 ## Register with the hub
 
 The [hub](https://hub.telo.run) indexes a published application by its ref, as

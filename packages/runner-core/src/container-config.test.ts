@@ -4,6 +4,8 @@ import {
   containerConfig,
   optionalContainerConfig,
   sessionConfigSchema,
+  loadSessionUserFromEnv,
+  loadSessionUserFromObject,
   loadTeloImageSource,
   teloImage,
   teloImageRefusal,
@@ -139,5 +141,36 @@ describe("the kernel image of a telo version", () => {
     expect(properties.image.deprecated).toBe(true);
     expect(properties.pullPolicy.deprecated).toBe(true);
     expect(schema.required).toEqual([]);
+  });
+});
+
+describe("the session user", () => {
+  const FILE = { file: "/etc/telo/session.yaml", path: "user" };
+
+  it("is 1000:1000 unless one is set, read from RUNNER_SESSION_USER or a file's map", () => {
+    expect(loadSessionUserFromEnv({})).toEqual({ uid: 1000, gid: 1000 });
+    expect(loadSessionUserFromObject(undefined, FILE)).toEqual({ uid: 1000, gid: 1000 });
+    expect(loadSessionUserFromEnv({ RUNNER_SESSION_USER: "2000:0" })).toEqual({ uid: 2000, gid: 0 });
+    expect(loadSessionUserFromObject({ uid: 2000, gid: 0 }, FILE)).toEqual({ uid: 2000, gid: 0 });
+  });
+
+  it.each([
+    ["0:0", "the uid of RUNNER_SESSION_USER is 0: a session runs untrusted code, so its user is never root"],
+    ["node", "RUNNER_SESSION_USER must name the user by number — write it as <uid>:<gid>, both numeric (e.g. 1000:1000), got 'node'."],
+    ["1000", "RUNNER_SESSION_USER names no gid — write it as <uid>:<gid>"],
+    ["1000:", "RUNNER_SESSION_USER names no gid"],
+    ["1000:node", "RUNNER_SESSION_USER must name the group by number"],
+  ])("refuses RUNNER_SESSION_USER=%s, naming the variable", (value, message) => {
+    expect(() => loadSessionUserFromEnv({ RUNNER_SESSION_USER: value })).toThrow(message);
+  });
+
+  it.each([
+    [{ uid: 0, gid: 0 }, "`user.uid` in /etc/telo/session.yaml is 0: a session runs untrusted code"],
+    [{ uid: "node", gid: 1000 }, "`user.uid` in /etc/telo/session.yaml must be a number, got 'node'."],
+    [{ uid: 1000 }, "`user.gid` in /etc/telo/session.yaml is required"],
+    [{ uid: 1000, gid: 1000, name: "node" }, "`user.name` in /etc/telo/session.yaml is not a setting this runner reads (expected one of: uid, gid)."],
+    ["1000:1000", "`user` in /etc/telo/session.yaml must be a map of a numeric uid and gid"],
+  ])("refuses the file's user %j, naming the key", (value, message) => {
+    expect(() => loadSessionUserFromObject(value, FILE)).toThrow(message);
   });
 });

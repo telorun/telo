@@ -21,7 +21,7 @@ by `!ref`, as in `logging.sinks`:
 ```yaml
 kind: Telo.Application
 metadata:
-  name: my-app
+  name: MyApp
 tracing:
   sinks:
     - kind: Telo.LogTraceSink
@@ -156,7 +156,7 @@ nothing.
 
 There is no separate metrics signal. A counter or a latency distribution is an
 aggregation over spans — the count of `execute_tool` spans, the durations of
-`chat` spans — computed by the backend receiving them.
+`chat` spans — computed by the backend receiving them. For running this in production see [Logs and traces](/deploy/production#logs-and-traces).
 
 ## Reference
 

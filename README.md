@@ -4,7 +4,7 @@
 
 <h1 align="center">Telo</h1>
 
-<p align="center">Runtime for declarative applications — backends and UIs.</p>
+<p align="center">Runtime for declarative applications — backend services and the data screens on top of them.</p>
 
 <p align="center">
   <a href="https://github.com/telorun/telo/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/telorun/telo/actions/workflows/test.yml/badge.svg" /></a>
@@ -17,30 +17,45 @@
   <img alt="Changesets" src="https://img.shields.io/badge/maintained%20with-changesets-176de3" />
 </p>
 
-Telo is an execution engine (Micro-Kernel) that runs logic defined entirely in YAML manifests. Instead of writing imperative code, you define your routes, databases, schemas, screens, and AI workflows as atomic, interconnected YAML documents. Telo takes those manifests and runs them.
+Telo runs applications described in YAML files instead of written as program code. You declare your web APIs, databases, data screens (tables, forms, create/edit/delete) and AI workflows as small, connected YAML documents, and Telo checks them and runs them. There is no drag-and-drop screen builder: screens are declared in YAML like everything else.
 
-Built to be language-agnostic and infinitely extensible.
+Today you extend Telo in TypeScript (Rust for some native modules); the runtime is designed so other languages can be added.
+
+**Where Telo is today:** the core runtime, module system, standard library and checker work, but Telo is pre-1.0 and not yet recommended for production use. See [Status](#status).
+
+Deciding whether Telo fits your team? Start with [Compared to low-code platforms](https://telo.run/learn/vs-low-code), [Licensing](https://telo.run/learn/licensing) and the [examples](./examples/INDEX.md).
 
 ```bash
 # Reconcile your manifest into a running application
 $ telo ./examples/todo-app
 
-{"level":30,"time":1771610393008,"pid":1310178,"hostname":"dev","msg":"Server listening at http://127.0.0.1:8077"}
+{"time":"2026-11-01T10:29:16.386Z","level":"INFO","severity":9,"msg":"Listening","resource":{"kind":"HttpServer.Server","name":"server","id":"HttpServer.Server.server"},"attributes":{"server.address":"0.0.0.0","server.port":8077,"url.scheme":"http"},"event_name":"http.server.started"}
 ```
+
+(On a terminal the same record prints human-readable and coloured.)
+
+## Get started
+
+Install the CLI — a single executable that carries its own runtime:
+
+```bash
+curl -fsSL https://telo.sh/install.sh | sh
+```
+
+On Windows, `irm https://telo.sh/install.ps1 | iex`. With Node.js already installed, `npm install -g @telorun/cli` gives the same `telo`.
+
+Then follow [**Getting Started**](https://telo.run/learn/getting-started) on [telo.run](https://telo.run) — install, a first manifest, and what the kernel did with it — and [Your first HTTP API](https://telo.run/learn/first-http-api). Modules and their kinds are discoverable on the [hub](https://hub.telo.run).
 
 ## Why use Telo?
 
-- **Open Standards:** Built on YAML, JSON Schema, and CEL — no proprietary DSL.
-- **Static Analysis:** CEL type checking, reference validation, and IDE diagnostics catch errors before runtime.
-- **Micro-Kernel Architecture:** Telo itself knows nothing about HTTP or SQL. Everything is a module you import, scope, and compose with typed variable and secret contracts.
-- **Language Agnostic:** Available as a Node.js runtime today, with a shared YAML runtime contract that allows for future Rust or Go implementations without changing your manifests.
+- **Open standards:** built on YAML, JSON Schema and CEL (a small expression language) — no proprietary language.
+- **Mistakes caught before the app runs:** wrong references, wrong value types and missing inputs are reported with the exact place to fix, in the editor or in CI.
+- **Everything is a module:** Telo itself knows nothing about HTTP or SQL. Each capability is a module you import and combine, with declared inputs and secrets.
+- **Other runtimes are possible:** the runtime is Node.js today, with a shared YAML contract so other implementations can run the same manifests. A narrower Rust runtime exists and is in progress.
 
 ## What It Does
 
-- **Loads** YAML resources and compiles CEL expressions (`!cel`, `!interpolate`) into an in-memory registry.
-- **Resolves** resource dependencies via a multi-pass init loop, handling ordering automatically.
-- **Indexes** resources by Kind and Name for constant-time lookup.
-- **Dispatches** execution to the controller that owns each Kind.
+Telo reads your YAML files, checks them, works out what depends on what, starts everything in the right order, and hands each piece to the code that implements it. For the mechanics, see [How Telo works](https://telo.run/learn/how-telo-works).
 
 ## Example manifest
 
@@ -48,9 +63,9 @@ See [examples/](./examples/) for a list of working applications.
 
 ## Status
 
-Telo is under heavy development. While it is pre-1.0, breaking changes ship in **minor** releases — manifest shapes, kind schemas, and APIs can change between versions. Pin your imports and expect to update manifests when you upgrade. The core runtime, module system, and standard library are functional, but Telo is not yet recommended for production use.
+Telo is pre-1.0 on purpose. The core runtime, module system, standard library and checker work, but Telo is not yet recommended for production use. Breaking changes ship in **minor** releases: manifest shapes and module definitions can change between versions, so pin your imports and expect to update manifests when you upgrade (`telo migrate` rewrites old spellings for you).
 
-**1.0 lands when the Rust kernel reaches feature parity with the Node.js implementation** — that is the milestone that freezes the manifest contract across runtimes.
+**1.0 is planned for when the second, Rust-based runtime can run everything the Node.js one can** — that is the milestone that freezes the manifest format across runtimes.
 
 ## The Meaning of Telo
 
@@ -76,8 +91,7 @@ At kernel execution time, execution is always routed by **Kind.Name**. The kerne
 
 ## Architecture
 
-The architecture is inspired by Kubernetes-style manifests: declarative resources, explicit kinds, and a control plane that routes work based on those definitions.
-Those manifests were taken to the next level by allowing them to run inside a standalone runtime host.
+The architecture is inspired by Kubernetes-style manifests: declarative resources, explicit kinds, and a runtime that routes work based on those definitions. Unlike Kubernetes, the manifests run inside one standalone process rather than describing a cluster.
 
 ## See more at
 
@@ -86,6 +100,8 @@ Those manifests were taken to the next level by allowing them to run inside a st
 - [Modules](modules/README.md)
 
 ## License
+
+In plain terms: Telo is free to use, including commercially. You can build, host and sell your own products on it. You cannot offer Telo itself to others as a managed service without a commercial licence from CodeNet Sp. z o.o. (contact@codenet.pl). The modules, SDK, examples and docs you build with are MIT. Details: [Licensing](https://telo.run/learn/licensing).
 
 Two licenses, split by directory. Each MIT directory carries its own `LICENSE`; everything else falls under the root [LICENSE](https://github.com/telorun/telo/blob/main/LICENSE), the Sustainable Use License.
 

@@ -1,0 +1,87 @@
+# An application that writes each of `CrudUi.Admin`'s presentation keys
+# wrongly, one mistake per resource: a key none of them has, a value outside
+# the set an opener or the listing takes, and a resource at `surface` that is
+# no surface.
+kind: Telo.Application
+metadata:
+  name: CrudUiAdminRefusalsApp
+  version: 1.0.0
+imports:
+  CrudUi: ../../../
+  Crud: ../../../../crud
+  SQLite: ../../../../sqlite
+  Ui: ../../../../ui
+---
+kind: SQLite.Table
+metadata: { name: tasksTable }
+table: tasks
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  title: { type: text, nullable: false }
+---
+kind: Telo.JsonSchema
+metadata: { name: Task }
+schema:
+  type: object
+  required: [title]
+  additionalProperties: false
+  properties:
+    title: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: TaskRecord }
+extends: Task
+schema:
+  type: object
+  required: [id]
+  properties:
+    id: { type: integer }
+---
+kind: Crud.Collection
+metadata: { name: tasks }
+model: !ref TaskRecord
+table: !ref tasksTable
+schemas: { list: !ref TaskRecord, create: !ref Task, update: !ref Task }
+query: { filters: [{ property: title, operator: contains }], sort: [] }
+---
+kind: CrudUi.CollectionSource
+metadata: { name: tasksSource }
+collection: !ref tasks
+basePath: /api/tasks
+---
+kind: CrudUi.Admin
+metadata: { name: filtersKey }
+source: !ref tasksSource
+filters: { sumary: chips }
+---
+kind: CrudUi.Admin
+metadata: { name: createKey }
+source: !ref tasksSource
+create: { afterSubmitt: again }
+---
+kind: CrudUi.Admin
+metadata: { name: editKey }
+source: !ref tasksSource
+edit: { unsavd: confirm }
+---
+kind: CrudUi.Admin
+metadata: { name: createAfter }
+source: !ref tasksSource
+create: { afterSubmit: later }
+---
+# `again` is a create's: an edit has no next record to start.
+kind: CrudUi.Admin
+metadata: { name: editAfter }
+source: !ref tasksSource
+edit: { afterSubmit: again }
+---
+kind: CrudUi.Admin
+metadata: { name: createSurface }
+source: !ref tasksSource
+create:
+  surface: { kind: Ui.LocalStore }
+---
+kind: CrudUi.Admin
+metadata: { name: pagingValue }
+source: !ref tasksSource
+paging: sideways

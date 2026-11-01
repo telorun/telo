@@ -1,0 +1,17 @@
+modules:
+  modules/ui: Added
+body: "Listings are drawn as a list or feed (Ui.ListLayout), cards or a gallery
+  (Ui.CardLayout), a kanban board (Ui.BoardLayout), a calendar (Ui.CalendarLayout), a
+  timeline in lanes (Ui.TimelineLayout), a tree over a relation of the collection to
+  itself (Ui.TreeLayout) or a browser component of your own (Ui.ComponentLayout), each
+  carrying content drawn per record and a read plan (reads: groups, span, parent) with
+  every default filled, over the new Ui.Grouping and Ui.Span shapes. A layout's move is
+  a Ui.RowAction over row and to, checked as a call site and twinned by
+  ERR_UI_ROW_ACTION_INPUTS_INVALID. New referrer rules UI_LAYOUT_PROPERTY_UNKNOWN,
+  UI_LAYOUT_GROUP_UNSUPPORTED, UI_LAYOUT_GROUP_NOT_FILTERABLE,
+  UI_LAYOUT_GROUPS_NOT_FACETED, UI_LAYOUT_GROUPS_NOT_ENUMERABLE,
+  UI_LAYOUT_SPAN_NOT_DATE, UI_LAYOUT_SPAN_NOT_FILTERABLE,
+  UI_LAYOUT_PARENT_NOT_SELF_RELATION and UI_LAYOUT_PARENT_NOT_FILTERABLE, each with its
+  ERR_ twin. conformance/listing-reads.json pins the exact requests a read plan sends,
+  produced by the pageRequest, reloadRequests and valuesRequest exports of @telorun/ui;
+  Ui.Words gains loadMore and moveTo."

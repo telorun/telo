@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { AGENT_MODULE_MOUNT, agentContainer, type SessionContainerArgs } from "./container-spec.js";
 
-const ARGS: SessionContainerArgs = { sessionId: "s1", bundleVolume: "vol", childNetwork: "net" };
+const ARGS: SessionContainerArgs = { sessionId: "s1", bundleVolume: "vol", childNetwork: "net", user: { uid: 2000, gid: 2000 } };
 const KERNEL = "telorun/node:0-slim";
 
 function agent(source: RunnerAgent["source"]): RunnerAgent {

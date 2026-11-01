@@ -64,6 +64,9 @@ function scopeCel(
   };
 }
 
+/** Where the body is written in the resource's declaration. */
+const STEPS_POINTER = "/steps";
+
 interface RunSequenceManifest {
   metadata: Record<string, string | number | boolean>;
   with?: ScopeHandle;
@@ -105,6 +108,8 @@ class RunSequence {
           scope,
           scopeCel(scope, { inputs: {} }),
           invokeCtx,
+          undefined,
+          STEPS_POINTER,
         );
       });
     } else {
@@ -114,6 +119,8 @@ class RunSequence {
         undefined,
         { inputs: {} },
         invokeCtx,
+        undefined,
+        STEPS_POINTER,
       );
     }
   }
@@ -147,10 +154,20 @@ class RunSequence {
           scope,
           scopeCel(scope, extraCtx),
           invokeCtx,
+          undefined,
+          STEPS_POINTER,
         );
       });
     } else {
-      await this.engine.executeSteps(this.resource.steps, steps, undefined, extraCtx, invokeCtx);
+      await this.engine.executeSteps(
+        this.resource.steps,
+        steps,
+        undefined,
+        extraCtx,
+        invokeCtx,
+        undefined,
+        STEPS_POINTER,
+      );
     }
 
     if (this.resource.outputs) {

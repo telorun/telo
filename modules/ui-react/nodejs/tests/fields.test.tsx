@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Rendered } from "./harness.js";
-import { dialogSurface, memoryState, operation, opener, tableNode } from "./spec-nodes.js";
+import { dialogSurface, memoryState, operation, opener, listingNode } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -112,7 +112,7 @@ describe("a picker", () => {
     rendered = await render({
       path: "/",
       collections: { "/api/people": people, "/api/tasks": [{ id: 1, text: "Plan", watchers: ["p1", "p3", "p5"] }] },
-      pages: { "/": { title: "Tasks", children: [tableNode({ basePath: "/api/tasks", columns: [], edit: opener({ form }) })] } },
+      pages: { "/": { title: "Tasks", children: [listingNode({ basePath: "/api/tasks", columns: [], edit: opener({ form }) })] } },
     });
     await rendered.click(rendered.part("row-edit"));
     expect(peopleRequests()).toEqual(["GET /api/people?limit=25&id.in=p1&id.in=p3&id.in=p5"]);
@@ -127,7 +127,7 @@ describe("an option source under a mount", () => {
       path: "/",
       prefix: "/admin",
       collections: { "/api/people": people, "/api/tasks": [{ id: 1, text: "Plan", watchers: ["p5"] }] },
-      pages: { "/": { title: "Tasks", children: [tableNode({ basePath: "/api/tasks", columns: [], edit: opener({ form }) })] } },
+      pages: { "/": { title: "Tasks", children: [listingNode({ basePath: "/api/tasks", columns: [], edit: opener({ form }) })] } },
     });
     await rendered.click(rendered.part("row-edit"));
     await rendered.click(rendered.part("picker-trigger"));
@@ -228,5 +228,35 @@ describe("live validation", () => {
     await rendered.click(rendered.part("submit"));
     expect(rendered.part("field-error").textContent).toBe("Is not a valid date");
     expect(rendered.parts("form-error")).toEqual([]);
+  });
+});
+
+describe("a picker derived from a relation", () => {
+  it("offers the related records from the relation's source and submits the chosen record's key", async () => {
+    const postSchema = { type: "object", required: ["authorId"], properties: { title: { type: "string", title: "Title" }, authorId: { type: "integer", title: "Author" } } };
+    const authorsSource = {
+      type: "collection",
+      schema: { type: "object", properties: { id: { type: "integer" }, name: { type: "string" } } },
+      value: { root: "row", path: ["id"] },
+      label: { root: "row", path: ["name"] },
+      basePath: "/api/authors",
+      filters: {},
+      pageSize: 25,
+    };
+    // As `ui` derives it for a bare property name with a presented relation.
+    const derived = { type: "picker", property: "authorId", label: "Author", description: null, labels: [], options: authorsSource, surface: dialogSurface };
+    const form = { type: "form", schema: postSchema, basePath: "/api/posts", fields: [input("title", "Title"), derived], groups: [], state: memoryState(["title", "authorId"]) };
+    rendered = await render({
+      path: "/",
+      collections: { "/api/posts": [], "/api/authors": [{ id: 1, name: "Ada" }, { id: 3, name: "Linus" }] },
+      pages: { "/": { title: "Posts", children: [form] } },
+    });
+    await rendered.enter(rendered.part("input"), "On kernels");
+    await rendered.click(rendered.part("picker-trigger"));
+    expect(rendered.parts("picker-option").map((option) => option.textContent)).toEqual(["Ada", "Linus"]);
+    await rendered.click(rendered.parts("picker-option")[1]);
+    expect(rendered.part("picker-chosen").textContent).toBe("Linus");
+    await rendered.click(rendered.part("submit"));
+    expect(rendered.sent.at(-1)).toMatchObject({ request: "POST /api/posts", body: { title: "On kernels", authorId: 3 } });
   });
 });

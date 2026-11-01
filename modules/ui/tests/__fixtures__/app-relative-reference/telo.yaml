@@ -1,0 +1,58 @@
+# One collection source per address: five that are no app-relative reference,
+# three that are.
+kind: Telo.Application
+metadata:
+  name: UiAppRelativeReferenceApp
+  version: 1.0.0
+imports:
+  Ui: ../../../
+  DataModel: ../../../../data-model
+---
+kind: Telo.JsonSchema
+metadata: { name: Item }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: DataModel.Collection
+metadata: { name: items }
+model: !ref Item
+query: { filters: [], sort: [] }
+---
+kind: Ui.CollectionSource
+metadata: { name: protocolRelative }
+collection: !ref items
+basePath: //x
+---
+kind: Ui.CollectionSource
+metadata: { name: backslash }
+collection: !ref items
+basePath: /\x
+---
+kind: Ui.CollectionSource
+metadata: { name: tab }
+collection: !ref items
+basePath: "/\t/x"
+---
+kind: Ui.CollectionSource
+metadata: { name: delete }
+collection: !ref items
+basePath: "/a\x7Fb"
+---
+kind: Ui.CollectionSource
+metadata: { name: relative }
+collection: !ref items
+basePath: x
+---
+kind: Ui.CollectionSource
+metadata: { name: plain }
+collection: !ref items
+basePath: /x
+---
+kind: Ui.CollectionSource
+metadata: { name: root }
+collection: !ref items
+basePath: /
+---
+kind: Ui.CollectionSource
+metadata: { name: doubled }
+collection: !ref items
+basePath: /a//b

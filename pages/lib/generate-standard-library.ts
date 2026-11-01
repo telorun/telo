@@ -119,7 +119,7 @@ export function generateStandardLibrary(modulesRoot: string, outFile: string): v
     "",
     "`telo upgrade ./manifest.yaml` moves pins to the latest published version;",
     "`telo install ./manifest.yaml` pre-fetches everything so the run needs no",
-    "network. Both are covered in the [CLI reference](/learn/installation-and-cli).",
+    "network. Both are covered in the [CLI reference](/learn/telo-cli).",
     "",
     "An import may also carry a `#sha256-…` integrity pin, which is verified on",
     "every read — see [Security & supply chain](/deploy/security).",

@@ -26,6 +26,8 @@ interface Asking {
   index: number;
   row: Row;
   key: string;
+  /** The roots the press binds beside the row: a move's `to`. */
+  extra: Roots;
   /** What its prompt's fields hold, and what was refused of them. */
   values: EnteredValues;
   fieldErrors: Record<string, string>;
@@ -52,6 +54,10 @@ export interface RowActions {
   cell(row: Row, key: string, disabled?: boolean): ReactNode;
   /** The confirmation of the press being asked about, when one is open. */
   dialog: ReactNode;
+  /** Press an entry for a row, its inputs read over `extra` beside the row: a move's `to`. */
+  press(index: number, row: Row, key: string, extra?: Roots): void;
+  /** What an entry's last press of a row failed with, drawn as its failure tree; nothing otherwise. */
+  failure(index: number, key: string): ReactNode;
   /** Whether a press of a row is pending or queued. */
   busy(key: string): boolean;
   /** Keep only the answers of these rows. */
@@ -66,9 +72,13 @@ export interface RowActions {
  * drawn in place of its button, over `result`, `input` and `values` (the
  * record sent); a failure is drawn beside the button, or in the confirmation
  * when one is open. `roots` are the roots the rows are drawn under;
- * `succeeded` is told about each success.
+ * `succeeded` is told about each success, with what it answered and the row's key.
  */
-export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded: () => void): RowActions {
+export function useRowActions(
+  entries: RowActionSpec[],
+  roots: Roots,
+  succeeded: (result: Record<string, unknown> | undefined, key: string) => void,
+): RowActions {
   const host = useHost();
   const store = useHostStore();
   const say = useSay();
@@ -96,11 +106,11 @@ export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded:
     setBusyKeys(new Map(pending.current));
   };
 
-  const send = async (index: number, row: Row, key: string, values: EnteredValues, inDialog: boolean) => {
+  const send = async (index: number, row: Row, key: string, extra: Roots, values: EnteredValues, inDialog: boolean) => {
     if (pending.current.has(key)) return;
     const entry = entries[index];
     const { action } = entry;
-    const rowRoots = { ...roots, row };
+    const rowRoots = { ...roots, ...extra, row };
     const prompted = entry.prompt?.fields ?? [];
     const asked = entry.prompt ? shownFields(action.schema, prompted, values, rowRoots) : [];
     // What the dialog entered, with the row's own values over it, bound now.
@@ -109,38 +119,50 @@ export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded:
       const invalid = fieldFindings(action.schema, asked, input, {}, say);
       const unshown = hiddenFindings(action.schema, prompted.filter((field) => !asked.includes(field)), input, say, (label) => text(label));
       if (Object.keys(invalid).length > 0 || unshown.length > 0) {
-        setAsking({ index, row, key, values, busy: false, fieldErrors: invalid, ...(unshown.length > 0 ? { formError: unshown.join(" ") } : {}) });
+        setAsking({ index, row, key, extra, values, busy: false, fieldErrors: invalid, ...(unshown.length > 0 ? { formError: unshown.join(" ") } : {}) });
         return;
       }
     }
     hold(key, index);
     answer(answerKey(index, key), undefined);
-    if (inDialog) setAsking({ index, row, key, values, busy: true, fieldErrors: {} });
+    if (inDialog) setAsking({ index, row, key, extra, values, busy: true, fieldErrors: {} });
     const outcome = await queues.run(action, () => runOperation(host, prefix, action, input, say));
     hold(key, undefined);
     if (outcome.ok) {
       setAsking(undefined);
       if (action.result !== undefined) answer(answerKey(index, key), outcome);
       followSuccess(action, outcome.result, host, store, pages);
-      succeeded();
+      succeeded(outcome.result, key);
       return;
     }
     if (!inDialog) return answer(answerKey(index, key), outcome);
     if (outcome.error.status === 400 && entry.prompt) {
       // A prompt shows a refusal as a form does: on its fields, and under them.
       const { byField, other } = refusalOf(outcome.body, asked, say);
-      setAsking({ index, row, key, values, busy: false, fieldErrors: byField, ...(other.length > 0 ? { formError: other.join(" ") } : {}) });
+      setAsking({ index, row, key, extra, values, busy: false, fieldErrors: byField, ...(other.length > 0 ? { formError: other.join(" ") } : {}) });
       return;
     }
-    setAsking({ index, row, key, values, busy: false, fieldErrors: {}, failure: outcome.error });
+    setAsking({ index, row, key, extra, values, busy: false, fieldErrors: {}, failure: outcome.error });
   };
 
-  const press = (index: number, row: Row, key: string) => {
+  const press = (index: number, row: Row, key: string, extra: Roots = {}) => {
     if (pending.current.has(key)) return;
     const entry = entries[index];
-    if (entry.confirm === undefined && entry.prompt === undefined) return void send(index, row, key, {}, false);
+    if (entry.confirm === undefined && entry.prompt === undefined) return void send(index, row, key, extra, {}, false);
     const values = entry.prompt ? enteredValues(entry.action.schema, entry.prompt.fields) : {};
-    setAsking({ index, row, key, values, busy: false, fieldErrors: {} });
+    setAsking({ index, row, key, extra, values, busy: false, fieldErrors: {} });
+  };
+
+  const failureOf = (index: number, key: string): ReactNode => {
+    const outcome = answers.get(answerKey(index, key));
+    if (!outcome || outcome.ok) return null;
+    return (
+      <div data-telo-part="row-failure">
+        <RootsContext.Provider value={{ error: outcome.error, input: outcome.input, values: outcome.input }}>
+          <Node node={entries[index].action.failure} />
+        </RootsContext.Provider>
+      </div>
+    );
   };
 
   const cell = (row: Row, key: string, disabled = false): ReactNode =>
@@ -171,13 +193,7 @@ export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded:
             {text(action.label)}
           </button>
           {!allowed && entry.enabled && <span data-telo-part="disabled-text">{text(entry.enabled.disabledText, undefined, rowRoots)}</span>}
-          {outcome && !outcome.ok && (
-            <div data-telo-part="row-failure">
-              <RootsContext.Provider value={{ error: outcome.error, input: outcome.input, values: outcome.input }}>
-                <Node node={action.failure} />
-              </RootsContext.Provider>
-            </div>
-          )}
+          {failureOf(index, key)}
         </Fragment>
       );
     });
@@ -186,8 +202,8 @@ export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded:
   if (asking) {
     const entry = entries[asking.index];
     const prompt = entry.prompt;
-    const rowRoots = { ...roots, row: asking.row };
-    const submit = () => void send(asking.index, asking.row, asking.key, asking.values, true);
+    const rowRoots = { ...roots, ...asking.extra, row: asking.row };
+    const submit = () => void send(asking.index, asking.row, asking.key, asking.extra, asking.values, true);
     dialog = (
       <Confirmation
         title={text(entry.confirm ?? entry.action.label, undefined, rowRoots)}
@@ -231,6 +247,8 @@ export function useRowActions(entries: RowActionSpec[], roots: Roots, succeeded:
   return {
     cell,
     dialog,
+    press,
+    failure: failureOf,
     busy: (key) => busyKeys.has(key),
     retain: (keys) =>
       setAnswers((current) => {

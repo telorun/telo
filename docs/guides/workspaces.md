@@ -14,6 +14,12 @@ instead of once per app. The same location bounds the walk that collects `.env`
 files, and every path the release system names — a module key, a ledger entry, a
 changelog fragment — is relative to it.
 
+**For a deployment**, the marker decides where `telo install` writes the cache and
+where `telo run` looks for it: an image that copies only the app directory ships
+no cache at all, and one that copies the marker must copy the `.telo` tree beside
+it. `TELO_CACHE_DIR` overrides both — see
+[where the cache lands](/deploy/docker#where-the-cache-lands).
+
 The file is **optional**, and so is every block in it. A marker whose whole
 content is comments is a valid one: it anchors the cache and bounds the env walk,
 which is all a session workspace ever needs.

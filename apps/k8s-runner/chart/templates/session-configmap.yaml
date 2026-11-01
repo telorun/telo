@@ -1,5 +1,6 @@
 # The session file the runner reads at boot (SESSION_CONFIG_FILE): the session
-# containers' resources, session containers and the base-image picker. The
+# containers' resources and user, session containers and the base-image picker.
+# `user` is written only when set, so the runner's default applies otherwise. The
 # runner refuses a key it does not read, so a misspelt value fails the rollout
 # instead of falling back to a default.
 apiVersion: v1
@@ -11,4 +12,6 @@ metadata:
     {{- include "k8s-runner.labels" . | nindent 4 }}
 data:
   session.yaml: |
-    {{- dict "resources" .Values.session.resources "containers" .Values.session.containers "baseImages" .Values.session.baseImages | toYaml | nindent 4 }}
+    {{- $session := dict "resources" .Values.session.resources "containers" .Values.session.containers "baseImages" .Values.session.baseImages }}
+    {{- if .Values.session.user }}{{- $_ := set $session "user" .Values.session.user }}{{- end }}
+    {{- $session | toYaml | nindent 4 }}

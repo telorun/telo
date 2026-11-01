@@ -63,16 +63,16 @@ and how to use them — onboarding without requiring the LLM to call a separate
 
 ```yaml
 kind: Telo.Application
-metadata: { name: my-stdio-mcp }
+metadata: { name: MyStdioMcp, version: 1.0.0 }
 imports:
-  Mcp: oci://ghcr.io/telorun/mcp-server@0.9.0
-  JS: oci://ghcr.io/telorun/javascript@0.7.0
-targets: [ !ref Server ]
+  Mcp: oci://ghcr.io/telorun/mcp-server@<version>
+  Run: oci://ghcr.io/telorun/run@<version>
+targets: [!ref server]
 ---
 kind: Mcp.StdioServer
-metadata: { name: Server }
+metadata: { name: server }
 serverInfo: { name: my-stdio-mcp, version: 1.0.0 }
-tools: [ WeatherTools ]
+tools: [!ref WeatherTools]
 ---
 kind: Mcp.Tools
 metadata: { name: WeatherTools }
@@ -82,12 +82,23 @@ entries:
     argumentsSchema:
       type: object
       properties: { city: { type: string } }
-      required: [ city ]
-    handler: { kind: JS.Script, name: GetWeatherImpl }
+      required: [city]
+    handler: !ref getWeather
     inputs: { city: !cel "request.arguments.city" }
     result:
       content:
         - { type: text, text: !cel "result.summary" }
+---
+kind: Run.Value
+metadata: { name: getWeather }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties: { city: { type: string } }
+    required: [city]
+value:
+  summary: !interpolate "Sunny in ${{ inputs.city }}"
 ```
 
 ## Differences from `Mcp.HttpEndpoint`

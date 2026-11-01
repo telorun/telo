@@ -6,11 +6,12 @@ metadata:
     Each surface kind provides where a form appears with every member it takes
     filled: what is declared as written, the rest from the kind's defaults. An
     address is carried as declared, and a compact surface — by reference or
-    declared in place — as the dialog or drawer it provides. A table hands its
+    declared in place — as the dialog or drawer it provides. A listing hands its
     openers' surfaces, and what each says about a submit and about unsaved
     input, to the node it provides.
 imports:
   Ui: ../
+  DataModel: ../../data-model
   Probe: ./__fixtures__/probe
   Run: ../../run
   Assert: ../../assert
@@ -62,22 +63,30 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string }
 ---
-kind: Ui.Table
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  collection: { kind: DataModel.Collection, model: !ref Todo, query: { filters: [], sort: [] } }
+  basePath: /api/todos
+---
+kind: Ui.Listing
 metadata:
   name: table
 model: !ref Todo
-collection: { kind: Ui.Collection, query: { filters: [], sort: [] } }
-source: { basePath: /api/todos }
+presentation: !ref todos
 create:
-  form: { kind: Ui.Form, model: !ref Todo, source: { basePath: /api/todos } }
+  form: { kind: Ui.Form, model: !ref Todo, presentation: !ref todos }
   surface: !ref beside
   afterSubmit: again
   unsaved: discard
 edit:
-  form: { kind: Ui.Form, model: !ref Todo, source: { basePath: /api/todos } }
+  form: { kind: Ui.Form, model: !ref Todo, presentation: !ref todos }
   surface: { kind: Ui.Drawer, side: start }
   afterSubmit: keep
 ---

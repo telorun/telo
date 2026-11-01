@@ -20,6 +20,7 @@ const schema = Type.Object({
   ),
   filter: Type.Optional(Type.String()),
   concurrency: Type.Optional(Type.Integer({ minimum: 1 })),
+  allowEmpty: Type.Optional(Type.Boolean()),
   env: Type.Optional(Type.Record(Type.String(), Type.String())),
 });
 
@@ -209,7 +210,16 @@ export async function create(
       const tests = discoverTests(baseDir, include, exclude, filter);
 
       if (tests.length === 0) {
-        ctx.stderr.write(bold(yellow(`Test.Suite.${manifest.metadata.name}: no tests found`)) + "\n");
+        if (manifest.allowEmpty) {
+          ctx.stderr.write(bold(yellow(`Test.Suite.${manifest.metadata.name}: no tests found`)) + "\n");
+          return;
+        }
+        ctx.stderr.write(
+          bold(red(`Test.Suite.${manifest.metadata.name}: no tests found`)) +
+            dim(" — nothing matched include/exclude/filter; set allowEmpty to accept an empty run") +
+            "\n",
+        );
+        ctx.requestExit(1);
         return;
       }
 

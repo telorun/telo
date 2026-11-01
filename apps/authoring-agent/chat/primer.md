@@ -229,6 +229,10 @@ the member a list sorts by — is annotated `x-telo-eval: accessor`, with an
         properties:
           row: { x-telo-context-ref-from: "model/schema" }
 
+The path after the reference may cross further references
+(`"source/collection/model"`: the model of the collection the sibling `source`
+reads, each map entry from its own `source`).
+
 A resource writes a PLAIN CHAIN there (`rowStyle: !cel "row.status"`) or a
 literal (`rowStyle: muted`). The chain is type-checked against the binding
 (`CEL_UNKNOWN_FIELD`, `CEL_UNKNOWN_IDENTIFIER`, `CEL_TYPE_ERROR`) and NEVER
@@ -345,7 +349,11 @@ value rather than as a broken reference. This is the ONLY case where an
 
 `use` says WHEN control reaches the target, relative to this resource's own
 invocation. Pick the one that is true:
-  - `schema`           — names a shape only (a `Telo.Type` slot). No instance.
+  - `schema`           — names a DECLARATION to read (a `Telo.Type` slot, a
+                         foreign key's table). No instance and no init order:
+                         a resource may name itself, and two may name each
+                         other. What is read through it (a shape's schema,
+                         `extends` folded) is answered from declarations.
   - `dependency`       — held and read; you call library methods on it
                          (`connection.query()`, `encoder.encode()`). Control
                          never transfers to its ENTRY POINT.
@@ -1371,6 +1379,13 @@ referrer replaced by the declaration it names, one level deep — so
 A rule code names one rule per `referrer:` filter, so one judgement declared for
 two owner kinds keeps one code.
 
+Both families inherit. A kind extending another without `base:` is judged by
+its ancestors' rules and its own — it adds rules and never removes or replaces
+one, so a code it inherits (under the same `referrer:` filter, for a referrer
+rule) is refused at the child as `RESOURCE_RULE_INVALID` /
+`REFERRER_RULE_INVALID`. A `base:` child's schema is its own, so it inherits
+none. Declare a rule every implementation shares once, on the kind they extend.
+
 Both families: write `condition:` with the `!cel` tag, guard optional fields,
 and expect a rule that never ran anywhere to be reported as unexercised rather
 than to pass silently. A rule is SKIPPED when a value it reads holds a `!cel` or
@@ -1997,20 +2012,39 @@ decoder's limits:
 
 ## A REST API over a table — the `crud` module
 
-`Crud.Resource` mounts list / read / create / replace / delete over one table:
-`connection:` (a `Sql.Connection`), `singular:`, `plural:`, `model:` (a
-`Crud.Model`), optional `table:` and `idParam:`. A `Crud.Model` holds
-`schemas: { read, list, create, update }` — four `Telo.JsonSchema` shapes, all
-required; `read` and `list` declare a required `id`, `create` and `update` omit
-it and set `additionalProperties: false` — and `query: { filters: [{ property,
-operator }], sort: [{ property }] }`, all required (`[]` for none): the only
-filters and sorts the list accepts, each naming a property of `read`. Properties are camelCase, columns snake_case, the primary key is
-the integer column `id`. It does not create the table.
+Four modules split the work, and each imports only what is below it:
+`data-model` (imports nothing) holds `DataModel.Collection`, the declaration of
+one list endpoint; `crud` (imports `http-server`, `sql`, `data-model`, never
+`ui`) serves one SQL table; `ui` (imports `data-model`) draws collections;
+`crud-ui` (imports `crud` and `ui`) generates the admin screen.
+
+A `DataModel.Collection` holds `model` (the record shape, a `Telo.JsonSchema`),
+`key` (default `id`, declared and required in `model`), `query: { filters:
+[{ property, operator }], sort: [{ property }] }` (both required, `[]` for
+none; operators `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, `in`, `absent`),
+optional `query.facets: [{ property }]` (properties whose present values, with
+counts, the endpoint answers) and optional `relations: { <property>: {
+collection: !ref <other collection> } }` — the property holds the target's key,
+and the target must accept `in` on its key. A collection may relate to itself
+or to another that relates back. `telo check` refuses a filter, sort, facet or
+relation naming a property `model` lacks, an operator the type cannot take and
+`absent` on a required property.
+
+`Crud.Collection` extends it for a SQL table: `table:` (an `Sql.Table`
+reference whose primary key is `id`) and `schemas: { list, create, update }` —
+three `Telo.JsonSchema` shapes, all required — beside the inherited `model`.
+`model` and `list` declare a required `id`; `create` and `update` omit it and
+set `additionalProperties: false`. `Crud.Api` mounts list / read / create /
+replace / delete over it: `connection:` (a `Sql.Connection`), `singular:`,
+`plural:`, `collection:` (a `Crud.Collection`; there is no `model:` or `table:`
+key) and optional `idParam:`. A relation contradicting the table's foreign key
+is refused before the app runs. Properties are camelCase, columns snake_case,
+the primary key is the integer column `id`. It does not create the table.
 
 **The `Table` you declare for it names its columns in snake_case** — property
 `isDone` is the column `is_done`, `dueOn` is `due_on`. The `Table` / `Schema`
 kinds take a column name as written, so copying the camelCase property into
-`columns:` creates a column `Crud.Resource` never reads, and the failure is a
+`columns:` creates a column `Crud.Api` never reads, and the failure is a
 500 at the first request (`no such column: "is_done"`) that `telo check` cannot
 see. Single-word names (`id`, `text`) are the same in both forms, which is why
 the mistake hides until a two-word property. Write `columns: { id: …, text: …,
@@ -2042,11 +2076,15 @@ optional — in step CEL over a fetched row test `has(row.dueOn)`, never
 - `GET <prefix>?limit=<1–100, default 25>&cursor=<next>&sort=<property | -property>`
   plus filters: `<property>=` (equals — the bare name only; `<property>.eq=` is
   refused), `<property>.contains=` (strings, any case),
-  `<property>.gt|gte|lt|lte=`, `<property>.in=` repeated per value.
+  `<property>.gt|gte|lt|lte=`, `<property>.in=` repeated per value,
+  `<property>.absent=true|false` (null or missing, or present).
   A filter is accepted ONLY where the model's `query.filters` lists that
   property with that operator, and a `sort` only for a property under
   `query.sort` — `id` included, which is never implied. ONE sort property; with
   none the order is `id`; `id` breaks ties; rows with no value sort last.
+- `?facet=<property>` plus filters answers `{ values: [{ value, count }], next
+  }` for a property under `query.facets`. `facet` is reserved beside `limit`,
+  `cursor`, `sort` and `_telo…`.
 - It answers `{ rows, total, next }` — read rows as `result.body.rows`, never
   `result.body[0]`. `total` counts the filtered set; `next` is `null` on the
   last page, otherwise sent back as `cursor`.
@@ -3426,7 +3464,8 @@ to say.
   reference through is a bare `!cel "self.<path>"` inside a templated kind's
   body, which hands over what the instance was given. Such a path may go on
   past a reference into what that resource was declared with
-  (`!cel "self.model.schemas.list"`); `telo check` checks the value there as
+  (`!cel "self.model.schemas.list"`) — never into a member of its
+  controller's instance; `telo check` checks the value there as
   the entry's field only when the referenced resource is declared in the same
   module as the resource using the kind, and leaves it unchecked otherwise.
 - Declare a resource INLINE when it is used EXACTLY ONCE, and give it its own
@@ -3903,8 +3942,8 @@ the user says so. Never write a frontend instead: no HTML page of your own, no
 React code, no `JS.Script`.
 
 **A user interface is written ONLY with the `ui` and `ui-*` modules**
-(`ui-react`, `ui-lucide`, …) — pages, forms, tables, styling and navigation all
-come from their kinds, or from `crud`'s `Crud.Ui` over them. REFUSE anything
+(`ui-react`, `ui-lucide`, …) — pages, forms, listings, styling and navigation all
+come from their kinds, or from `crud-ui`'s `CrudUi.Admin` over them. REFUSE anything
 else, even when the user asks for it by name: a raw `.html` / `.css` / `.js`
 file, an HTML string returned from a route, `Http.Static` serving a hand-made
 page, a React / Vue / jQuery snippet, an inline `<script>` or `<style>`. Say in
@@ -3917,13 +3956,28 @@ unaffected.)
 Where to start:
 
   - `ui` is the vocabulary of a screen, with no browser code in it:
-    `Ui.Table` (a paged, sortable list with create, edit and delete),
-    `Ui.Form`, `Ui.Filters` (a filter bar over the tables inside it),
-    `Ui.Action` (a button posting to a route and drawing what it answered),
-    `Ui.Data` (a record read when the page loads) and `Ui.View` (a node tree
-    placed wherever it is needed), each reading `Telo.JsonSchema` shapes and,
-    for a list, the `Ui.Collection` declaring which filters and sorts the API
-    accepts.
+    `Ui.Listing` (the records of a collection, paged and sortable, with create,
+    edit and delete), `Ui.Form`, `Ui.Filters` (a filter bar over the listings
+    inside it), `Ui.Action` (a button posting to a route and drawing what it
+    answered), `Ui.Data` (a record read when the page loads) and `Ui.View` (a
+    node tree placed wherever it is needed), each reading `Telo.JsonSchema`
+    shapes. A collection reaches a screen in two small resources: a
+    `Ui.CollectionSource` (a `DataModel.Collection` and its `basePath`, written
+    once and used by every screen and picker over it) and a
+    `Ui.CollectionPresentation` (`source`, and `relations: { <property>: {
+    source, label, hint?, href?, search? } }` showing a related record by
+    name). From a relation the listing labels the column, the filter bar offers
+    the records (`values: present` offers only those that occur, with counts,
+    for a property under `query.facets`) and the form enters a picker. A
+    `Ui.Listing` draws with `layout`, a kind under `Ui.ListingLayout`:
+    `Ui.TableLayout` (default), `Ui.ListLayout`, `Ui.CardLayout`,
+    `Ui.BoardLayout` (`groups`), `Ui.CalendarLayout` and `Ui.TimelineLayout`
+    (`span`), `Ui.TreeLayout` (`parent`), or `Ui.ComponentLayout` for a
+    component of your own; `compact` is the layout below the narrow-screen
+    breakpoint, and a layout's `move` is a row action running when a card,
+    event or tree item is dragged. `telo check` refuses a layout whose filter
+    the collection does not accept. `Ui.Collection`, `Ui.Table` and `Crud.Ui`
+    no longer exist.
   - `ui-react` renders it: `UiReact.App` is a mount holding the pages — each
     a `Ui.Page`, inline or `!ref` — and their `navigation` tree, which names
     pages by `!ref`, never by path, and is drawn by a placement kind: a
@@ -3942,13 +3996,15 @@ Where to start:
     share it. The
     `UiReact.App` is listed under the same `Http.Server`'s `mounts` as the API
     it calls.
-  - A screen over one SQL table's records is `crud`: one `Crud.Model` shared by
-    `Crud.Resource` (the API) and `Crud.Ui` (the whole screen). Hand-build from
+  - A screen over one SQL table's records is `crud` plus `crud-ui`: one
+    `Crud.Collection` shared by `Crud.Api` (the API, `collection:`) and a
+    `CrudUi.CollectionSource` that `CrudUi.Admin` (the whole screen, with
+    optional `relations`, `layout`, `compact`, `paging`) reads. Hand-build from
     the `ui` kinds when the screen is anything more.
 
 Before the first screen file, call the `guide_…` tool that covers user
 interfaces, then ONE `get_kinds` call for every `ui`, `ui-react`,
-`http-server` (and `crud`) kind you will declare, with the refs the
+`http-server` (and `data-model`, `crud`, `crud-ui`) kind you will declare, with the refs the
 `LIBRARY INDEX:` gives. The API comes first: a screen calls routes and never
 reaches a database itself, and the screen and its routes read the same shapes.
 

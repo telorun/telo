@@ -272,20 +272,27 @@ function opToSql(op: Op): string {
 
 // ── Exports ───────────────────────────────────────────────────────────────────
 
+/** The registry key a reference to a named type resolves through — its
+ *  canonical `telo:<module>/<Type>` id when stamped, else its name. */
+function namedTypeKey(value: Record<string, any>): string | undefined {
+  if (value.__ref !== true) return undefined;
+  if (typeof value.$ref === "string") return value.$ref;
+  return typeof value.name === "string" ? value.name : undefined;
+}
+
 function extractDefaults(
   inputType: string | Record<string, any> | undefined,
   ctx: ResourceContext,
 ): Record<string, unknown> {
   if (!inputType) return {};
 
-  // Resolve schema: string ref → look up, inline object → use directly
+  // Resolve schema: a name or a reference → look up, inline object → use directly
   let schema: Record<string, any> | undefined;
-  if (typeof inputType === "string") {
-    schema = ctx.lookupSchema(inputType) as Record<string, any> | undefined;
-  } else if (inputType.schema && typeof inputType.schema === "object") {
-    schema = inputType.schema;
-  } else {
-    schema = inputType;
+  const named = typeof inputType === "string" ? inputType : namedTypeKey(inputType);
+  if (named !== undefined) {
+    schema = ctx.lookupSchema(named) as Record<string, any> | undefined;
+  } else if (typeof inputType !== "string") {
+    schema = inputType.schema && typeof inputType.schema === "object" ? inputType.schema : inputType;
   }
 
   if (!schema || typeof schema !== "object") return {};

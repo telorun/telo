@@ -482,7 +482,7 @@ export class KeyParts {
     const members = collected.analysed.map((member) => member.declaration);
     members.forEach((m, i) => ranks.set(m, [1, 0, root, i]));
     const manifests = [...list, ...members];
-    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule);
+    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule, defs);
     const resource = this.rootResourceOf(declaration, witness);
     const part: RegionPart = {
       declaration,
@@ -580,7 +580,7 @@ export class KeyParts {
     const members = collected.analysed.map((member) => member.declaration);
     members.forEach((m, i) => ranks.set(m, [1, 0, root, i]));
     const manifests = [...list, ...members];
-    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule);
+    resolveSchemaTypeRefs(manifests, aliases, aliasesByModule, defs);
     return {
       declaration,
       projection,

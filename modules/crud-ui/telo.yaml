@@ -1,0 +1,193 @@
+kind: Telo.Library
+metadata:
+  name: CrudUi
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [UI, Data]
+  description: >-
+    A ready admin screen over a database-backed REST collection from one
+    declaration: a filter bar, a paged listing drawn as a table, cards, a board
+    or any other layout, create and edit forms and a confirmed delete. Related
+    records are shown by name and picked from a list, all derived from the data
+    model.
+requires:
+  # 0.125.1 checks this file clean and fails at boot: its forward past a
+  # source reads the instance, so the body's forms and listing get no `model`
+  # (ERR_RESOURCE_SCHEMA_VALIDATION_FAILED). Verified by execution.
+  telo: ">=0.126.0"
+imports:
+  Crud: ../crud
+  UiKit: ../ui
+exports:
+  kinds: [CollectionSource, Admin]
+---
+kind: Telo.Definition
+metadata:
+  name: CollectionSource
+  description: >-
+    Where a browser reads a database-backed collection of records from: the
+    collection, with the record shape of every operation — list row, create
+    and update bodies — and the app-relative URL its REST API is mounted at.
+    Written once and used by admin screens, listings, filters and pickers.
+capability: Telo.Provider
+extends: UiKit.CollectionSource
+schema:
+  type: object
+  properties:
+    collection:
+      title: Collection
+      description: The collection read, with the shape of each of its operations.
+      x-telo-ref: { kind: Crud.Collection, use: dependency }
+---
+# The screen a hand-written `ui` page would hold, generated from the collection:
+# `docs/admin.md` lists this body as a manifest, and a test proves the two render
+# the same page. Every key but `source` is forwarded as written, so what an
+# omitted one means is the `ui` side's.
+kind: Telo.Definition
+metadata:
+  name: Admin
+  description: >-
+    A ready admin screen over a REST collection: a filter bar, a sortable paged
+    listing, a form to create a record and one to edit it, and a confirmed
+    delete on every record. Columns, fields, filters, related-record labels and
+    pickers are derived from the data model, so a property added to it appears
+    without an edit.
+capability: Telo.Provider
+extends: UiKit.Composite
+schema:
+  type: object
+  additionalProperties: false
+  required: [source]
+  examples:
+    - source: !ref tasksSource
+  properties:
+    source:
+      title: Source
+      description: >-
+        The collection shown and the URL its API is mounted at under the
+        application's mount.
+      x-telo-ref: { kind: Self.CollectionSource, use: dependency }
+    relations:
+      title: Relations
+      description: >-
+        How each related record is read, labelled and searched, keyed by a
+        property the collection relates. Omitted, related records are shown by
+        key.
+      $ref: "telo://UiKit/Relations"
+    filters:
+      title: Filters
+      description: >-
+        How the filter bar behaves: which filters are on show, where its
+        controls sit, how each is entered, when a change applies, what
+        summarises it and where its state is kept.
+      $ref: "telo://UiKit/FilterPolicy"
+    create:
+      title: Create
+      description: >-
+        Where the form that adds a record opens, what it does once the record
+        is saved and what happens to unsaved input.
+      type: object
+      additionalProperties: false
+      properties:
+        surface:
+          title: Surface
+          description: Where the form appears.
+          x-telo-ref: { kind: UiKit.Surface, use: dependency }
+        afterSubmit:
+          title: After submit
+          description: >-
+            What the form does once the record is saved: `close`, `again` — stay
+            open, back at the values a new record starts from — or `keep` its
+            values.
+          $ref: "telo://UiKit/AfterCreate"
+        unsaved:
+          title: Unsaved input
+          description: Whether leaving the form with unsaved input asks first (`confirm`) or drops it (`discard`).
+          $ref: "telo://UiKit/UnsavedInput"
+    edit:
+      title: Edit
+      description: >-
+        Where the form that changes a record opens, what it does once the
+        record is saved and what happens to unsaved input.
+      type: object
+      additionalProperties: false
+      properties:
+        surface:
+          title: Surface
+          description: Where the form appears.
+          x-telo-ref: { kind: UiKit.Surface, use: dependency }
+        afterSubmit:
+          title: After submit
+          description: "What the form does once the record is saved: `close`, or `keep` it open."
+          $ref: "telo://UiKit/AfterEdit"
+        unsaved:
+          title: Unsaved input
+          description: Whether leaving the form with unsaved input asks first (`confirm`) or drops it (`discard`).
+          $ref: "telo://UiKit/UnsavedInput"
+    paging:
+      title: Paging
+      description: >-
+        How further pages are reached: a pager (`pages`), a "Load more"
+        control (`more`), or the next page loaded as the end comes into view
+        (`scroll`).
+      enum: [pages, more, scroll]
+    layout:
+      title: Layout
+      description: >-
+        How the records are drawn, over `row`, one record of the list. Omitted,
+        a table with one column per property of the list shape but the key.
+      x-telo-ref: { kind: UiKit.ListingLayout, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-ref-from: source/collection/schemas/list, x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, type: object, properties: {}, additionalProperties: false }
+    compact:
+      title: Compact
+      description: >-
+        How the records are drawn below the application's breakpoint. Omitted,
+        `layout` is drawn at every width.
+      x-telo-ref: { kind: UiKit.ListingLayout, use: call }
+      x-telo-context:
+        type: object
+        properties:
+          row: { x-telo-context-ref-from: source/collection/schemas/list, x-telo-context-eval: accessor }
+          query: { x-telo-context-eval: accessor, type: object, properties: {}, additionalProperties: false }
+resources:
+  - kind: UiKit.CollectionPresentation
+    metadata: { name: presentation }
+    source: !cel "self.source"
+    relations: !cel "self.relations"
+  - kind: UiKit.Form
+    metadata: { name: createForm }
+    model: !cel "self.source.collection.schemas.create"
+    presentation: !ref presentation
+  - kind: UiKit.Form
+    metadata: { name: editForm }
+    model: !cel "self.source.collection.schemas.update"
+    presentation: !ref presentation
+  - kind: UiKit.Listing
+    metadata: { name: listing }
+    presentation: !ref presentation
+    model: !cel "self.source.collection.schemas.list"
+    paging: !cel "self.paging"
+    create:
+      form: !ref createForm
+      surface: !cel "self.create.surface"
+      afterSubmit: !cel "self.create.afterSubmit"
+      unsaved: !cel "self.create.unsaved"
+    edit:
+      form: !ref editForm
+      surface: !cel "self.edit.surface"
+      afterSubmit: !cel "self.edit.afterSubmit"
+      unsaved: !cel "self.edit.unsaved"
+    delete: true
+    layout: !cel "self.layout"
+    compact: !cel "self.compact"
+  - kind: UiKit.Filters
+    metadata: { name: filters }
+    presentation: !ref presentation
+    policy: !cel "self.filters"
+    content: { type: composite, ref: !ref listing }
+provide: !ref filters

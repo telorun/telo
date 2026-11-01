@@ -1,0 +1,41 @@
+kind: Telo.Application
+metadata:
+  name: UiAppRelativeReferenceTest
+  version: 1.0.0
+  description: |
+    An app-relative reference is `/` followed by anything but `/` or `\`, with
+    no control character anywhere — one shape every place a manifest writes
+    one names. A protocol-relative address, a leading backslash, a tab, a
+    delete character and a relative path are refused by `telo check`; `/x`,
+    `/` and `/a//b` are not. A library's refused address is refused again when
+    its resource is created.
+imports:
+  Probe: ./__fixtures__/probe
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref main
+  - !ref refusedAtCreation
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: addresses
+    invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/app-relative-reference/telo.yaml }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.addresses.result.reported.map(l, l.split(':')[0])"
+      expected:
+        - SCHEMA_VIOLATION Ui.CollectionSource/protocolRelative
+        - SCHEMA_VIOLATION Ui.CollectionSource/backslash
+        - SCHEMA_VIOLATION Ui.CollectionSource/tab
+        - SCHEMA_VIOLATION Ui.CollectionSource/delete
+        - SCHEMA_VIOLATION Ui.CollectionSource/relative
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCreation }
+source: ./__fixtures__/app-relative-reference/consumer/telo.yaml
+expect:
+  errors: []
+  runFails: "/basePath must match pattern"

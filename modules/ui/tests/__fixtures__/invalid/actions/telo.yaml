@@ -11,6 +11,7 @@ metadata:
   version: 1.0.0
 imports:
   Ui: ../../../../
+  DataModel: ../../../../../data-model
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -117,6 +118,7 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
     id: { type: integer }
     name: { type: string }
@@ -156,18 +158,22 @@ inputModel: !ref Rename
 source: { path: /api/todos/rename }
 label: Rename
 ---
-kind: Ui.Collection
-metadata:
-  name: todos
-query: { filters: [], sort: [] }
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source:
+  kind: Ui.CollectionSource
+  basePath: /api/todos
+  collection:
+    kind: DataModel.Collection
+    model: !ref Todo
+    query: { filters: [], sort: [] }
 ---
 # Each map is held to its own action's model, so this one is clean.
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: eachItsOwn
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref archive
     inputs: { id: !cel "row.id", status: archived }
@@ -175,83 +181,75 @@ rowActions:
     inputs: { name: !cel "row.name" }
     confirm: Rename it?
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: rowMemberUnknown
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref archive
     inputs: { id: !cel "row.missing" }
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: chainMistyped
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref archive
     inputs: { id: !cel "row.name" }
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: inputComputed
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref archive
     inputs: { id: !cel "row.id + 1" }
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: inputsAbsent
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref rename
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: inputsEmpty
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref rename
     inputs: {}
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: confirmFlag
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref rename
     inputs: { name: !cel "row.name" }
     confirm: true
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: confirmEmpty
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 rowActions:
   - action: !ref rename
     inputs: { name: !cel "row.name" }
     confirm: ""
 ---
-kind: Ui.Table
+kind: Ui.Listing
 metadata:
   name: queryTypo
 model: !ref Todo
-collection: !ref todos
-source: { basePath: /api/todos }
+presentation: !ref todos
 query:
   status: { type: string }
 rowActions:

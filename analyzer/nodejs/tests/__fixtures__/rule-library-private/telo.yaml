@@ -1,0 +1,15 @@
+kind: Telo.Application
+metadata: { name: RuleLibraryPrivateApp }
+imports:
+  Model: ./model
+  Lib: ./lib
+---
+# Shares its name with a declaration the library keeps to itself.
+kind: Model.Collection
+metadata: { name: hidden }
+origin: good
+---
+kind: Model.Collection
+metadata: { name: holder }
+origin: good
+related: !ref Lib.entry

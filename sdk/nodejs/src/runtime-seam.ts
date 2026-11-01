@@ -34,7 +34,8 @@ export interface RuntimeSeam {
    * both failure modes in one place. That text is the failure's own message,
    * then one `  [<CODE>] <message>` line per diagnostic it carries (`details`
    * and further message lines beneath it, a nested context's diagnostics one
-   * level further in, `derived` entries left out, no location) — the form
+   * level further in, `derived` entries left out), a failure the kernel located
+   * in a written manifest preceded by its `<file>:<line>:<col>` — the form
    * `kernel/specs/controller-protocol.md` §9.2 fixes for every kernel.
    *
    * **The caller owns the child's lifetime.** Drain both streams, or stop it with

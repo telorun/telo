@@ -37,10 +37,14 @@ import {
   type ValueIssue,
   valueIssue,
   refSentinelTarget,
+  parseCanonicalTypeSchemaId,
+  canonicalTypeSchemaId,
 } from "@telorun/sdk";
 import type { TextRecord } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
 import { declarationOfInstance } from "./instance-declaration.js";
+import { authoredDeclarationOf, declarationScopeOf } from "./declaration-scope.js";
+import type { DispatchCaller, DispatchingContext } from "./failure-location.js";
 import {
   decodePlainLiterals,
   declaredScalarPaths,
@@ -84,6 +88,7 @@ import { pathToFileURL } from "url";
 import { bigIntView } from "./bigint-schema-view.js";
 import type { ModuleArtifact } from "./bundle/module-artifact.js";
 import type { SiblingLibraryMap } from "./controller-loaders/sibling-libraries.js";
+import type { BundlePreparations } from "./controller-loaders/bundle-preparations.js";
 import { resolveModuleFileUri, type NativeFileModule } from "./module-file-resolution.js";
 import { hostEnv } from "./host-env.js";
 import type { LoggingHost } from "./logging/logging-host.js";
@@ -330,8 +335,25 @@ export class ResourceContextImpl implements ResourceContext {
     this.validator.addSchema(name, schema);
   }
 
+  /**
+   * A named type's schema, `extends` folded: the one its `Telo.JsonSchema`
+   * registered, else the one the analysis registered for its declaration — the
+   * same fold — so a resource reading a shape through a declaration-read
+   * reference is answered whatever the creation order. A canonical
+   * `telo:<module>/<Type>` id names that module's shape and a bare name this
+   * resource's module's — asked by that id before the registry's bare-name entry,
+   * which another module's shape of the same name may hold; any other key, and a
+   * bare name this module declares no shape for, answers only from the registry.
+   */
   lookupSchema(name: string): object | undefined {
-    return this.validator.getSchema(name);
+    const module = this.metadata.module;
+    const id = parseCanonicalTypeSchemaId(name)
+      ? name
+      : !name.includes(".") && typeof module === "string"
+        ? canonicalTypeSchemaId(module, name)
+        : undefined;
+    const own = id === undefined ? undefined : (this.validator.getSchema(id) ?? this.analysisView.shapeLookup(id));
+    return own ?? this.validator.getSchema(name);
   }
 
   registerTypeRules(name: string, rules: TypeRule[]): void {
@@ -370,7 +392,7 @@ export class ResourceContextImpl implements ResourceContext {
    *  {@link resolveTypeFieldSchema} — the warm must land on the same schema
    *  object the runtime compiles, or its baked entry is one nothing asks for. */
   resolveTypeSchema(typeRef: unknown): Record<string, any> | undefined {
-    return resolveTypeFieldSchema(typeRef, (name) => this.validator.getSchema(name));
+    return resolveTypeFieldSchema(typeRef, (name) => this.lookupSchema(name));
   }
 
   /** Compile `schema` but compose the CEL `rules:` registered under `name`.
@@ -630,7 +652,13 @@ export class ResourceContextImpl implements ResourceContext {
     inputs: TInputs,
     options?: InvokeByNameOptions,
   ): Promise<any> {
-    return this.contextForName(name).invoke(kind, name, inputs, options?.ctx);
+    return (this.contextForName(name) as unknown as DispatchingContext).invoke(
+      kind,
+      name,
+      inputs,
+      options?.ctx,
+      this.dispatchCaller(),
+    );
   }
 
   invokeResolved<TInputs>(
@@ -640,7 +668,37 @@ export class ResourceContextImpl implements ResourceContext {
     inputs: TInputs,
     ctx?: InvokeContext,
   ): Promise<any> {
-    return this.owningContext.invokeResolved(kind, name, instance, inputs, ctx);
+    return (this.owningContext as unknown as DispatchingContext).invokeResolved(
+      kind,
+      name,
+      instance,
+      inputs,
+      ctx,
+      this.dispatchCaller(),
+    );
+  }
+
+  #caller: DispatchCaller | undefined;
+
+  /** This resource as the issuer of a dispatch — what a failure leaving it is
+   *  located in. Kept once the declaration it was created from is bound. */
+  private dispatchCaller(): DispatchCaller | undefined {
+    if (this.#caller) return this.#caller;
+    const name = this.metadata?.name;
+    const kind = this.#resolvedKind;
+    if (typeof name !== "string" || kind === undefined) return undefined;
+    const module = (this.moduleContext as { source?: unknown }).source;
+    const declaration = this.#manifest
+      ? (authoredDeclarationOf(this.#manifest) ?? (this.#manifest as unknown as ResourceManifest))
+      : undefined;
+    const caller: DispatchCaller = {
+      kind,
+      name,
+      ...(typeof module === "string" ? { module } : {}),
+      ...(declaration ? { declaration } : {}),
+    };
+    if (declaration) this.#caller = caller;
+    return caller;
   }
 
   resolveImportedInstance(alias: string, name: string): ResourceInstance | undefined {
@@ -654,10 +712,20 @@ export class ResourceContextImpl implements ResourceContext {
    * the CEL `resources` layering use, so a declaration lookup cannot disagree
    * with them about what a name means.
    *
-   * Used to resolve a DECLARATION-derived contract slot at bind time.
+   * Used to resolve a DECLARATION-derived contract slot at bind time. With
+   * `holder` — a declaration a lookup returned — the name is resolved in the
+   * scope that declared the holder, where the reference was written.
    */
-  resolveDeclaredManifest(name: string, alias?: string): ResourceManifest | undefined {
-    return this.owningContext.resolveDeclaredManifest?.(name, alias);
+  resolveDeclaredManifest(name: string, alias?: string, holder?: ResourceManifest): ResourceManifest | undefined {
+    if (holder === undefined) return this.owningContext.resolveDeclaredManifest?.(name, alias);
+    const scope = declarationScopeOf(holder);
+    if (!scope) {
+      throw new RuntimeError(
+        "ERR_REF_UNRESOLVED",
+        `'${alias ? `${alias}.` : ""}${name}' was read from a declaration the runtime did not hand out, so the scope it was written in is unknown. Pass a declaration a lookup returned, or none for a name this resource wrote.`,
+      );
+    }
+    return scope.resolveDeclaredManifest?.(name, alias);
   }
 
   /** The named shape a contract field of `holder` names, read from the
@@ -1069,7 +1137,14 @@ export class ResourceContextImpl implements ResourceContext {
       definitions: context.definitions!,
       aliases: context.aliases!,
       aliasesByModule: context.aliasesByModule ?? new Map(),
+      readDeclaration: (declaration) => this.readAcrossReference(declaration),
     };
+  }
+
+  /** A declaration as a read past a reference sees it — a named shape with its
+   *  `extends` folded — by the reading `telo check` takes. */
+  readAcrossReference(declaration: ResourceManifest): ResourceManifest {
+    return this.kernel.readAcrossReference(declaration);
   }
 
   /** The concrete reference sites of a declaration, as Phase-5 injection reads
@@ -1112,6 +1187,12 @@ export class ResourceContextImpl implements ResourceContext {
    *  cache a dev build of a local module's controller source. */
   getCacheRoot(): string | undefined {
     return this.kernel.getCacheRoot();
+  }
+
+  /** The load's bundle preparations, kernel-only like {@link getCacheRoot}: one
+   *  per kernel, so every kind of a module shares its bundle's preparation. */
+  getBundlePreparations(): BundlePreparations {
+    return this.kernel.bundlePreparations;
   }
 
   /** The artifact of the module whose manifest resolved from `source`. Kernel-only

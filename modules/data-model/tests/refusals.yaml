@@ -1,0 +1,248 @@
+kind: Telo.Application
+metadata:
+  name: DataModelRefusalsTest
+  version: 1.0.0
+  description: |
+    What a collection refuses about its own declaration: a key the model does not
+    require, a filter, sort or facet by a property the model does not declare, an
+    operator the property's type cannot carry (`absent` on a required property
+    included), a filter named as a parameter the endpoint owns, a sort or facet
+    by a list, and a relation naming an undeclared property, holding another
+    type than its target's key (a target another module exports included) or
+    pointing at a target that cannot be asked for keys with `in`. Each is
+    reported by `telo check` where the collection is declared, and refused by
+    the collection itself when a manifest reaches it without that check. A
+    self-relation and a pair of collections relating to each other pass the
+    check and boot.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref keyUndeclared
+  - !ref keyUndeclaredAtRuntime
+  - !ref filterUnknownProperty
+  - !ref filterUnknownPropertyAtRuntime
+  - !ref filterOperatorUnsupported
+  - !ref filterOperatorUnsupportedAtRuntime
+  - !ref filterAbsentRequired
+  - !ref filterAbsentRequiredAtRuntime
+  - !ref filterReservedName
+  - !ref filterReservedNameAtRuntime
+  - !ref sortUnknownProperty
+  - !ref sortUnknownPropertyAtRuntime
+  - !ref sortUnsupported
+  - !ref sortUnsupportedAtRuntime
+  - !ref facetUnknownProperty
+  - !ref facetUnknownPropertyAtRuntime
+  - !ref facetUnsupported
+  - !ref facetUnsupportedAtRuntime
+  - !ref relationUnknownProperty
+  - !ref relationUnknownPropertyAtRuntime
+  - !ref relationValueMismatch
+  - !ref relationValueMismatchAtRuntime
+  - !ref relationValueMismatchAcrossModules
+  - !ref relationValueMismatchAcrossModulesAtRuntime
+  - !ref relationKeyNotFilterable
+  - !ref relationKeyNotFilterableAtRuntime
+  - !ref relations
+---
+kind: Assert.Manifest
+metadata: { name: keyUndeclared }
+source: ./__fixtures__/refusals/key-undeclared/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection: does not declare its key as a required property"
+---
+kind: Assert.Manifest
+metadata: { name: keyUndeclaredAtRuntime }
+source: ./__fixtures__/refusals/key-undeclared/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_KEY_UNDECLARED] RuntimeError: DataModel.Collection 'collection': 'model' does not declare a required 'id'"
+---
+kind: Assert.Manifest
+metadata: { name: filterUnknownProperty }
+source: ./__fixtures__/refusals/filter-unknown-property/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.filters[0]': filters by a property `model` does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: filterUnknownPropertyAtRuntime }
+source: ./__fixtures__/refusals/filter-unknown-property/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_FILTER_UNKNOWN_PROPERTY] RuntimeError: DataModel.Collection 'collection': 'query.filters[0]' filters by 'status', which 'model' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: filterOperatorUnsupported }
+source: ./__fixtures__/refusals/filter-operator-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.filters[1]': uses an operator the property's type does not support"
+---
+kind: Assert.Manifest
+metadata: { name: filterOperatorUnsupportedAtRuntime }
+source: ./__fixtures__/refusals/filter-operator-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_FILTER_OPERATOR_UNSUPPORTED] RuntimeError: DataModel.Collection 'collection': 'query.filters[1]' uses an operator the property's type does not support ('contains' on 'done', declared boolean)"
+---
+kind: Assert.Manifest
+metadata: { name: filterAbsentRequired }
+source: ./__fixtures__/refusals/filter-absent-required/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.filters[1]': uses an operator the property's type does not support"
+---
+kind: Assert.Manifest
+metadata: { name: filterAbsentRequiredAtRuntime }
+source: ./__fixtures__/refusals/filter-absent-required/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_FILTER_OPERATOR_UNSUPPORTED] RuntimeError: DataModel.Collection 'collection': 'query.filters[1]' uses an operator the property's type does not support ('absent' on 'title', declared string)"
+---
+kind: Assert.Manifest
+metadata: { name: filterReservedName }
+source: ./__fixtures__/refusals/filter-reserved-name/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.filters[1]': filters by a property named as a query parameter the list endpoint owns"
+---
+kind: Assert.Manifest
+metadata: { name: filterReservedNameAtRuntime }
+source: ./__fixtures__/refusals/filter-reserved-name/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_FILTER_RESERVED_NAME] RuntimeError: DataModel.Collection 'collection': 'query.filters[1]' filters by 'facet', named as a query parameter the list endpoint owns"
+---
+kind: Assert.Manifest
+metadata: { name: sortUnknownProperty }
+source: ./__fixtures__/refusals/sort-unknown-property/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.sort[1]': sorts by a property `model` does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: sortUnknownPropertyAtRuntime }
+source: ./__fixtures__/refusals/sort-unknown-property/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_SORT_UNKNOWN_PROPERTY] RuntimeError: DataModel.Collection 'collection': 'query.sort[1]' sorts by 'status', which 'model' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: sortUnsupported }
+source: ./__fixtures__/refusals/sort-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.sort[1]': sorts by a property that holds an object or a list"
+---
+kind: Assert.Manifest
+metadata: { name: sortUnsupportedAtRuntime }
+source: ./__fixtures__/refusals/sort-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_SORT_UNSUPPORTED] RuntimeError: DataModel.Collection 'collection': 'query.sort[1]' sorts by 'tags', which holds an object or a list"
+---
+kind: Assert.Manifest
+metadata: { name: facetUnknownProperty }
+source: ./__fixtures__/refusals/facet-unknown-property/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.facets[1]': facets a property `model` does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: facetUnknownPropertyAtRuntime }
+source: ./__fixtures__/refusals/facet-unknown-property/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_FACET_UNKNOWN_PROPERTY] RuntimeError: DataModel.Collection 'collection': 'query.facets[1]' facets by 'status', which 'model' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: facetUnsupported }
+source: ./__fixtures__/refusals/facet-unsupported/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'query.facets[1]': facets a property that holds an object or a list"
+---
+kind: Assert.Manifest
+metadata: { name: facetUnsupportedAtRuntime }
+source: ./__fixtures__/refusals/facet-unsupported/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_FACET_UNSUPPORTED] RuntimeError: DataModel.Collection 'collection': 'query.facets[1]' facets by 'tags', which holds an object or a list"
+---
+kind: Assert.Manifest
+metadata: { name: relationUnknownProperty }
+source: ./__fixtures__/refusals/relation-unknown-property/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'relations.authorId': names a property `model` does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: relationUnknownPropertyAtRuntime }
+source: ./__fixtures__/refusals/relation-unknown-property/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_RELATION_UNKNOWN_PROPERTY] RuntimeError: DataModel.Collection 'collection': 'relations.authorId' names a property 'model' does not declare"
+---
+kind: Assert.Manifest
+metadata: { name: relationValueMismatch }
+source: ./__fixtures__/refusals/relation-value-mismatch/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'relations.authorId': holds a value of another type than the target's key"
+---
+kind: Assert.Manifest
+metadata: { name: relationValueMismatchAtRuntime }
+source: ./__fixtures__/refusals/relation-value-mismatch/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_RELATION_VALUE_MISMATCH] RuntimeError: DataModel.Collection 'collection': 'relations.authorId' holds string, and the target's key 'id' is integer"
+---
+kind: Assert.Manifest
+metadata: { name: relationValueMismatchAcrossModules }
+source: ./__fixtures__/refusals/relation-value-mismatch-across-modules/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'relations.tagIds': holds a value of another type than the target's key"
+---
+kind: Assert.Manifest
+metadata: { name: relationValueMismatchAcrossModulesAtRuntime }
+source: ./__fixtures__/refusals/relation-value-mismatch-across-modules/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_RELATION_VALUE_MISMATCH] RuntimeError: DataModel.Collection 'collection': 'relations.tagIds' holds integer, and the target's key 'id' is string"
+---
+kind: Assert.Manifest
+metadata: { name: relationKeyNotFilterable }
+source: ./__fixtures__/refusals/relation-key-not-filterable/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "DataModel.Collection/collection at 'relations.authorId': points at a collection that does not accept its key with `in`"
+---
+kind: Assert.Manifest
+metadata: { name: relationKeyNotFilterableAtRuntime }
+source: ./__fixtures__/refusals/relation-key-not-filterable/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_DATA_MODEL_RELATION_KEY_NOT_FILTERABLE] RuntimeError: DataModel.Collection 'collection': 'relations.authorId' points at a collection that does not accept 'id' with 'in'"
+---
+kind: Assert.Manifest
+metadata: { name: relations }
+source: ./__fixtures__/relations/telo.yaml
+expect:
+  errors: []
+  runs: true

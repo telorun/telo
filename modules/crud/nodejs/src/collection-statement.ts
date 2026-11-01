@@ -1,5 +1,5 @@
 import type { SqlDialect } from "@telorun/sql";
-import type { CollectionQuery, Filter } from "./collection-query.js";
+import type { CollectionQuery, FacetQuery, Filter } from "./collection-query.js";
 import { KEY, type ModelProperty } from "./model-properties.js";
 
 export interface Statement {
@@ -38,6 +38,7 @@ class Rendering {
   filter(filter: Filter): string {
     const column = this.column(filter.property);
     if (filter.operator === "in") return this.dialect.renderIn(column, filter.values, this.bind);
+    if (filter.operator === "absent") return `${column} ${filter.values[0] === true ? "IS NULL" : "IS NOT NULL"}`;
     if (filter.operator === "contains") {
       // Folded on both sides: LIKE alone is case-sensitive on some engines.
       return `LOWER(${column}) LIKE LOWER(${this.bind(containsPattern(String(filter.values[0])))}) ESCAPE '${LIKE_ESCAPE}'`;
@@ -99,6 +100,25 @@ export function countStatement(dialect: SqlDialect, table: string, query: Collec
   const rendering = new Rendering(dialect);
   const where = rendering.where(query.filters.map((filter) => rendering.filter(filter)));
   return { sql: `SELECT COUNT(*) AS ${rendering.column("total")} FROM ${table}${where}`, params: rendering.params };
+}
+
+/**
+ * One page of a facet: each present value of the property under the filters,
+ * with how many rows hold it, in value order, read one past `limit` so the
+ * caller can tell whether another page follows. A NULL is no value.
+ */
+export function facetStatement(dialect: SqlDialect, table: string, query: FacetQuery): Statement {
+  const rendering = new Rendering(dialect);
+  const column = rendering.column(query.property);
+  const where = rendering.where([
+    ...query.filters.map((filter) => rendering.filter(filter)),
+    `${column} IS NOT NULL`,
+    query.after ? `${column} > ${rendering.bind(query.after.value)}` : undefined,
+  ]);
+  const sql =
+    `SELECT ${column} AS ${rendering.column("value")}, COUNT(*) AS ${rendering.column("count")} FROM ${table}${where}` +
+    ` GROUP BY ${column} ORDER BY ${column} ASC LIMIT ${rendering.bind(query.limit + 1)}`;
+  return { sql, params: rendering.params };
 }
 
 /** The written row, under its property names, in the shape `returning` gives. */

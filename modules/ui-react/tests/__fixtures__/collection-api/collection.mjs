@@ -1,8 +1,8 @@
-// A hand-written collection that speaks the contract a `Ui.Table` source
-// reads. The logic is a plain function of a request, so a test can call it
+// A hand-written collection that speaks the collection contract a listing
+// reads — facets and the `absent` operator included. The logic is a plain function of a request, so a test can call it
 // with no server; the mount below puts it on one.
 
-const OPERATORS = ["contains", "gt", "gte", "lt", "lte", "in"];
+const OPERATORS = ["contains", "gt", "gte", "lt", "lte", "in", "absent"];
 
 /** A validation problem with one issue, as an `Http.Api` answers one. */
 const invalid = (pointer, keyword, params = {}) => ({
@@ -36,7 +36,7 @@ export function createCollection(seed, required = []) {
     const names = [...new Set(query.keys())];
     for (const name of names) {
       // Keys beginning `_telo` are the renderer's own.
-      if (["limit", "cursor", "sort"].includes(name) || name.startsWith("_telo")) continue;
+      if (["limit", "cursor", "sort", "facet"].includes(name) || name.startsWith("_telo")) continue;
       const dot = name.lastIndexOf(".");
       const operator = dot > 0 && OPERATORS.includes(name.slice(dot + 1)) ? name.slice(dot + 1) : "eq";
       const property = operator === "eq" ? name : name.slice(0, dot);
@@ -47,10 +47,27 @@ export function createCollection(seed, required = []) {
         const value = row[property];
         if (operator === "eq") return String(value) === values[0];
         if (operator === "in") return values.includes(String(value));
+        if (operator === "absent") return (value === null || value === undefined) === (values[0] === "true");
         if (operator === "contains") return String(value ?? "").toLowerCase().includes(values[0].toLowerCase());
         const order = compare(value, against(row));
         return operator === "gt" ? order > 0 : operator === "gte" ? order >= 0 : operator === "lt" ? order < 0 : order <= 0;
       });
+    }
+    if (query.has("facet")) {
+      // The present values of one property under the filters, with their counts, paged.
+      const property = query.get("facet");
+      if (!properties().has(property)) return invalid("/query/facet", "invalid");
+      const counts = new Map();
+      for (const row of selected) {
+        const value = row[property];
+        if (value === null || value === undefined) continue;
+        const known = [...counts.keys()].find((each) => each === value);
+        counts.set(known ?? value, (counts.get(known ?? value) ?? 0) + 1);
+      }
+      const values = [...counts].sort(([a], [b]) => compare(a, b)).map(([value, count]) => ({ value, count }));
+      const from = query.has("cursor") ? Number(Buffer.from(query.get("cursor"), "base64url").toString()) : 0;
+      const to = from + limit;
+      return { status: 200, body: { values: values.slice(from, to), next: to < values.length ? Buffer.from(String(to)).toString("base64url") : null } };
     }
     if (query.has("sort")) {
       const sort = query.get("sort");

@@ -346,10 +346,16 @@ export interface ResourceContext extends ControllerContext {
    * not the resource has been constructed, which is what lets such a slot avoid
    * an ordering edge — and what lets a resource read a slot pointing at itself.
    *
+   * A name read off another declaration — a reference a declaration this
+   * method returned holds — means what it means where it was WRITTEN: pass that
+   * declaration as `holder`, and the name is resolved in the scope of the module
+   * that declared it (its own names and its own imports' aliases). A `holder`
+   * this method did not return is refused with `ERR_REF_UNRESOLVED`.
+   *
    * Optional because a third-party context implementation must keep compiling;
-   * absent reads as "no declaration in scope".
+   * a controller whose checks need it refuses to start without it.
    */
-  resolveDeclaredManifest?(name: string, alias?: string): ResourceManifest | undefined;
+  resolveDeclaredManifest?(name: string, alias?: string, holder?: ResourceManifest): ResourceManifest | undefined;
   validateSchema(value: any, schema: any): void;
   /**
    * A value that arrived from outside Telo — a transport body, query or header

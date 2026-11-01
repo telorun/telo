@@ -31,7 +31,20 @@ export function validateSinkAttachment(
   /** Only the sinks declared in a scope: the module level's were judged once
    *  over every configuration. */
   scopedOnly = false,
+  /** A declaration that exists for the analysis alone (a template forward
+   *  view): a reference it holds is a template body's, which attaches nothing. */
+  analysisOnly: (m: ResourceManifest) => boolean = () => false,
 ): AnalysisDiagnostic[] {
+  const ownerOf = (id: string): ResourceManifest | undefined => {
+    const node = graph.nodes.get(id);
+    const resource = node?.type === "step" ? graph.nodes.get(node.owner) : node;
+    return resource?.type === "step" ? undefined : resource?.manifest;
+  };
+  const referenced = (m: ResourceManifest) =>
+    graph.edgesTo(nodeIdFor(m)).some((edge) => {
+      const from = ownerOf(edge.from);
+      return !from || !analysisOnly(from);
+    });
   const exported = new Map<string, Set<string>>();
   for (const m of manifests) {
     if (m.kind !== "Telo.Library") continue;
@@ -56,7 +69,7 @@ export function validateSinkAttachment(
     // module declares at its top level.
     const scoped = isScopeMemberDeclaration(m);
     if (scopedOnly && !scoped) continue;
-    if (!scoped && graph.edgesTo(nodeIdFor(m)).length > 0) continue;
+    if (!scoped && referenced(m)) continue;
     if (!scoped && module !== undefined && exported.get(module)?.has(name)) continue;
     diagnostics.push(sinkUnattachedDiagnostic(m, scoped));
   }

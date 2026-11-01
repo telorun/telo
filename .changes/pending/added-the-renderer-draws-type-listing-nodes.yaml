@@ -1,0 +1,17 @@
+modules:
+  modules/ui-react: Added
+body: "The renderer draws type: listing nodes in place of type: table, as a table
+  layout: it executes the layout's read plan (a read per group value, shown period and
+  tree level), pages by a pager, a Load more button or infinite scroll drawing only the
+  pages in view, reloads every listing and present filter over a basePath without losing
+  the viewer's place, an open form or its entered values, draws a record a write
+  answered with at once, labels related records through batched in requests, swaps to
+  the compact layout below the breakpoint keeping its state, and draws the listing's
+  empty node. Filter fields offer related records, present values with their counts at
+  the bar's basePath, and a switch for absent. Breaking: the listing's own parts are
+  listing, listing-toolbar, listing-create, listing-main, listing-empty and
+  listing-loading (were table, table-toolbar, table-create, table-main, table-empty and
+  table-loading), a list node's empty cell is list-empty, data-state and the reserved
+  display and grid-template-columns moved from table to listing and order from
+  table-toolbar to listing-toolbar, and load-more is new; the table part is the table
+  layout alone."

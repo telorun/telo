@@ -16,6 +16,7 @@ metadata:
     over a nullable integer.
 imports:
   Ui: ../
+  DataModel: ../../data-model
   Probe: ./__fixtures__/probe
   Run: ../../run
   Assert: ../../assert
@@ -55,7 +56,9 @@ metadata:
   name: Todo
 schema:
   type: object
+  required: [id]
   properties:
+    id: { type: integer }
     text: { type: string, title: Task }
     isDone: { type: boolean }
     priority: { type: integer, minimum: 1, maximum: 5 }
@@ -64,9 +67,13 @@ schema:
     archived: { type: [boolean, "null"] }
     rank: { type: [integer, "null"], minimum: 1, maximum: 9 }
 ---
-kind: Ui.Collection
-metadata:
-  name: todos
+kind: Ui.CollectionPresentation
+metadata: { name: todos }
+source: { kind: Ui.CollectionSource, collection: !ref todoCollection, basePath: /api/todos }
+---
+kind: DataModel.Collection
+metadata: { name: todoCollection }
+model: !ref Todo
 query:
   filters:
     - { property: text, operator: contains }
@@ -77,20 +84,19 @@ query:
     - { property: status, operator: eq }
     - { property: archived, operator: eq }
     - { property: rank, operator: lte }
+    - { property: rank, operator: absent }
   sort: []
 ---
 kind: Ui.Filters
 metadata:
   name: plain
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
 metadata:
   name: declaredAbove
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 policy:
   placement: { kind: Ui.AbovePlacement }
 content: { type: text, text: Todos }
@@ -98,8 +104,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: written
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: text, operator: contains, pinned: true }
   - { property: isDone, operator: eq, control: toggle, default: true }
@@ -130,8 +135,7 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: stored
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 policy:
   state: { key: kept, store: { kind: Ui.LocalStore } }
 content: { type: text, text: Todos }
@@ -139,15 +143,16 @@ content: { type: text, text: Todos }
 kind: Ui.Filters
 metadata:
   name: nullable
-model: !ref Todo
-collection: !ref todos
+presentation: !ref todos
 fields:
   - { property: archived, operator: eq, control: toggle, default: true }
   - { property: rank, operator: lte, control: slider }
+  - { property: rank, operator: absent, default: true }
 presets:
   - label: Archived
     values:
       - { property: archived, operator: eq, value: true }
+      - { property: rank, operator: absent, value: true }
 content: { type: text, text: Todos }
 ---
 kind: Run.Sequence
@@ -185,6 +190,7 @@ steps:
         tab: !cel "steps.tab.result"
         plain: !cel >-
           {
+            'basePath': steps.plain.result.node.basePath,
             'show': steps.plain.result.node.show,
             'placement': steps.plain.result.node.placement,
             'controls': steps.plain.result.node.controls,
@@ -225,6 +231,7 @@ steps:
             address: { name: filters }
         tab: { type: session }
         plain:
+          basePath: /api/todos
           show: all
           placement: { type: above }
           controls: direct
@@ -232,7 +239,7 @@ steps:
           summary: none
           state: { address: false, store: { type: memory }, fields: [text, isDone, priority, effort, status, archived, rank] }
           presets: []
-          firstField: { property: text, operator: contains, label: { text: Task, context: null, lang: und, computed: false }, schema: { type: string, title: Task }, pinned: false, control: auto, labels: [] }
+          firstField: { property: text, operator: contains, label: { text: Task, context: null, lang: und, computed: false }, schema: { type: string, title: Task }, pinned: false, control: auto, values: all, labels: [] }
         declaredAboveIsTheSame: true
         written:
           show: chosen
@@ -261,7 +268,9 @@ steps:
         nullable:
           - [ archived, toggle, [ true ] ]
           - [rank, slider]
+          - [ rank, auto, [ true ] ]
         nullablePresets:
           - label: { text: Archived, context: null, lang: und, computed: false }
             values:
               - { property: archived, operator: eq, value: [true] }
+              - { property: rank, operator: absent, value: [true] }

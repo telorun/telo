@@ -276,6 +276,16 @@ export function isIterableSchema(node: unknown): boolean {
   return types.some((t) => t === "array" || t === "object");
 }
 
+/** The refusal of a child rule reusing an inherited code — shared with the
+ *  referrer-rule twin. */
+export function inheritedCodeMessage(code: string, ancestor: string, filter = ""): string {
+  return (
+    `Rule code '${code}'${filter} is inherited from '${ancestor}', which this kind extends. A kind ` +
+    "adds rules to the ones it inherits and never replaces one, so the inherited rule runs here " +
+    "as declared; give this rule a code of its own."
+  );
+}
+
 /**
  * Report every way a kind's rule declarations are malformed. Runs on the
  * `Telo.Definition` / `Telo.Abstract` doc, so a defect lands on the line the
@@ -302,6 +312,8 @@ export function validateResourceRuleDeclarations(
   kindSchemas?: KindSchemas,
   /** The named shapes an `in:` pointer follows a `$ref` into. */
   shapes?: RuleShapeLookup,
+  /** For a merge-form child, each code it inherits and the kind declaring it. */
+  inherited?: ReadonlyMap<string, string>,
 ): ResourceRuleIssue[] {
   const own = (manifest as unknown as Record<string, unknown>).schema;
   const schema = effectiveSchema ?? own;
@@ -343,7 +355,10 @@ export function validateResourceRuleDeclarations(
       );
     } else {
       const first = seen.get(entry.code);
-      if (first !== undefined) {
+      const ancestor = inherited?.get(entry.code);
+      if (ancestor !== undefined) {
+        issue(`${at}.code`, inheritedCodeMessage(entry.code, ancestor));
+      } else if (first !== undefined) {
         issue(
           `${at}.code`,
           `Rule code '${entry.code}' is already used by rule ${first}. A code names one rule, ` +
@@ -466,6 +481,8 @@ export function resourceRuleCallIssues(
  */
 export function evaluateResourceRules(
   manifest: ResourceManifest,
+  /** The kind's author schema, or the rules one declarer of its chain declares
+   *  (`declaredResourceRules`). */
   definitionSchema: unknown,
   /** The DECLARING kind's module names, not the subject resource's: the
    *  condition is the kind author's expression. */
@@ -480,7 +497,9 @@ export function evaluateResourceRules(
   /** The resource's kind, as the binder's reference-reach lookup spells it. */
   kind: string = manifest.kind,
 ): ResourceRuleFinding[] {
-  const rules = readResourceRules(definitionSchema);
+  const rules = Array.isArray(definitionSchema)
+    ? (definitionSchema as readonly ResourceRule[])
+    : readResourceRules(definitionSchema);
   if (rules.length === 0) return [];
 
   const findings: ResourceRuleFinding[] = [];

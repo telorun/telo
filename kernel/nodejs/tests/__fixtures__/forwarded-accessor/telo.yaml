@@ -1,0 +1,48 @@
+# A templated kind with an accessor field of its own, forwarded to the kind it
+# composes: the entry receives the chain as written and makes the binding.
+kind: Telo.Application
+metadata:
+  name: ForwardedAccessor
+  version: 1.0.0
+---
+kind: Telo.Definition
+metadata:
+  name: Column
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./probe.mjs#Column
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    value:
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { type: object, properties: { name: { type: string } } }
+---
+kind: Telo.Definition
+metadata:
+  name: Labelled
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label:
+      x-telo-eval: accessor
+      x-telo-context:
+        type: object
+        properties:
+          row: { type: object, properties: { name: { type: string } } }
+resources:
+  - kind: Self.Column
+    metadata: { name: column }
+    value: !cel "self.label"
+provide: !ref column
+---
+kind: Self.Labelled
+metadata:
+  name: labelled
+label: !cel "row.name"

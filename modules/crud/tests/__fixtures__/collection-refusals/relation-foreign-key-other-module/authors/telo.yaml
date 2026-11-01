@@ -1,0 +1,33 @@
+kind: Telo.Library
+metadata:
+  name: CrudRelationForeignKeyOtherModuleAuthors
+  version: 1.0.0
+  description: Test fixture exporting a collection of authors stored in the table `authors`.
+imports:
+  Crud: ../../../../../
+  SQLite: ../../../../../../sqlite
+exports:
+  resources: [authors]
+---
+kind: Telo.JsonSchema
+metadata: { name: AuthorDraft }
+schema: { type: object, required: [name], additionalProperties: false, properties: { name: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+extends: AuthorDraft
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
+---
+kind: SQLite.Table
+metadata: { name: authorsTable }
+table: authors
+columns:
+  id: { type: integer, primaryKey: true }
+  name: { type: text }
+---
+kind: Crud.Collection
+metadata: { name: authors }
+model: !ref Author
+table: !ref authorsTable
+schemas: { list: !ref Author, create: !ref AuthorDraft, update: !ref AuthorDraft }
+query: { filters: [{ property: id, operator: in }], sort: [] }

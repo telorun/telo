@@ -230,6 +230,28 @@ export interface ConditionedView extends ConditionedDeclaration {
    *  that member — where it stands there (a choice node transparent), and the
    *  path read on in what it names. */
   readonly crossed: readonly ViewCrossing[];
+  /** What the view holds of the body itself. */
+  readonly body?: ViewBody;
+}
+
+/** What a view holds of its body entry as written: a finding there is the
+ *  definition's when its own check makes the same one, else its consumer's. */
+export interface ViewBody {
+  /** The kind of the declaration whose body holds the entry, as written. */
+  readonly holderKind: string;
+  /** Each `<code>\0<path>` the definition's own check reports in the entry. */
+  readonly ownFindings: ReadonlySet<string>;
+  /** True when the consumer's expansion refused a choice or a repeat of the
+   *  body: the refusal is the one report, and nothing at a body place is. */
+  readonly incomplete: boolean;
+  /** The view's places holding a body expression, by union keys — the
+   *  definition's check types each. */
+  readonly expressions: readonly string[];
+  /** The view's places holding a body reference to anything but a sibling,
+   *  as written — the definition's check resolves each in its own module. */
+  readonly references: readonly string[];
+  /** The view's places holding a reference aimed at a sibling's view. */
+  readonly siblings: readonly string[];
 }
 
 /** One reference a view's forwards read across. */

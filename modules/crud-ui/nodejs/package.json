@@ -1,0 +1,17 @@
+{
+  "name": "@telorun/crud-ui-build",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Test-only package for the std/crud-ui module, which has no controller code. Never published; it runs the module's unit tests.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8",
+    "yaml": "^2.8.3"
+  }
+}

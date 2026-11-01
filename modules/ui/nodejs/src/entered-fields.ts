@@ -3,7 +3,9 @@ import { descriptionOf, labelsOf } from "./spec-texts.js";
 import { controlFits } from "./control-fit.js";
 import { isField, type FieldSpec } from "./field-answer.js";
 import { isEnterable, labelOf, propertiesOf, type JsonSchema } from "./model-schema.js";
+import type { OptionSourceSpec } from "./option-source.js";
 import type { Condition } from "./row-binding.js";
+import { dialogSpec } from "./surface-spec.js";
 
 /** A `Ui.FieldGroup` as written. A member holding nothing is one left out. */
 export interface GroupConfig {
@@ -30,11 +32,26 @@ export const inputSpec = (name: string, property: JsonSchema | undefined): Field
   control: "auto",
 });
 
+/** A bare property name's field where the property has a presented relation:
+ *  a picker of the related records, in a dialog with its defaults. */
+export const relationSpec = (name: string, property: JsonSchema | undefined, options: OptionSourceSpec): FieldSpec => ({
+  type: "picker",
+  property: name,
+  label: labelOf(name, property),
+  description: descriptionOf(property),
+  labels: labelsOf(property),
+  options,
+  surface: dialogSpec(),
+});
+
+const propertySpec = (name: string, property: JsonSchema | undefined, relations: Readonly<Record<string, OptionSourceSpec>>): FieldSpec =>
+  Object.hasOwn(relations, name) ? relationSpec(name, property, relations[name]) : inputSpec(name, property);
+
 /** One field per property a control can enter, in declaration order. */
-export const enterableSpecs = (schema: JsonSchema): FieldSpec[] =>
+export const enterableSpecs = (schema: JsonSchema, relations: Readonly<Record<string, OptionSourceSpec>> = {}): FieldSpec[] =>
   propertiesOf(schema)
     .filter(([, property]) => isEnterable(property))
-    .map(([name, property]) => inputSpec(name, property));
+    .map(([name, property]) => propertySpec(name, property, relations));
 
 const groupSpec = ({ name, label, description, shown }: GroupConfig): GroupSpec => ({
   name,
@@ -48,7 +65,9 @@ const groupSpec = ({ name, label, description, shown }: GroupConfig): GroupSpec 
  * its own kind whether it can enter its property in `schema`, and the whole
  * held to what an owner promises: every field names a declared property and
  * group, no property is entered twice, a group's fields are listed together
- * and every required property is entered. `slot` names the model slot.
+ * and every required property is entered. `slot` names the model slot. A
+ * property named bare with a relation in `relations` is entered with a picker
+ * of the related records.
  */
 export async function enteredFields(
   schema: JsonSchema,
@@ -57,6 +76,7 @@ export async function enteredFields(
   ctx: ResourceContext,
   owner: string,
   slot: "model" | "inputModel",
+  relations: Readonly<Record<string, OptionSourceSpec>> = {},
 ): Promise<{ fields: FieldSpec[]; groups: GroupSpec[] }> {
   const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
   const model = slot === "model" ? "the model" : "the input model";
@@ -70,7 +90,7 @@ export async function enteredFields(
     }
   });
   const fields: FieldSpec[] = [];
-  if (!listed) fields.push(...enterableSpecs(schema));
+  if (!listed) fields.push(...enterableSpecs(schema, relations));
   else {
     for (const [index, entry] of listed.entries()) {
       const at = `${owner}: 'fields[${index}]'`;
@@ -88,7 +108,7 @@ export async function enteredFields(
             `${at} lists a property no control can enter ('${entry}'). A property name enters a string, a number, a boolean, one of an 'enum', or a list of those: remove it, give '${slot}' a property of such a type, or name a field kind that enters it.`,
           );
         }
-        spec = inputSpec(entry, properties[entry]);
+        spec = propertySpec(entry, properties[entry], relations);
       } else {
         const field = ctx.resolveRef(entry, isField, () => `'fields[${index}]' of ${owner}`, "Ui.Field");
         const answer = await field.invoke({ model: schema });

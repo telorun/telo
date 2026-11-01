@@ -311,7 +311,7 @@ function syntheticSlugForId(id) {
     return `/extend/sdk/nodejs/${id.slice("templating/nodejs/docs/".length)}`;
   }
 
-  if (id === "cli/README") return "/learn/installation-and-cli";
+  if (id === "cli/README") return "/learn/telo-cli";
   if (id === "docs/coding-agents") return "/build/coding-agents";
   if (id.startsWith("docs/guides/")) return `/learn/${id.slice("docs/guides/".length)}`;
 

@@ -18,7 +18,7 @@ This is the *templated* form of a definition. It is the counterpart to the contr
 | it's reusable and you want it type-safe at the manifest level | the logic is novel runtime behaviour, not a wiring of existing kinds |
 | you want it editable and analyzable without shipping a package | you need imperative control the template engine can't express |
 
-Templates are the preferred extension path whenever they fit — see the `JS.Script`-is-a-last-resort guidance in `CLAUDE.md`: before writing code, check whether the work is a composition that belongs in a generic templated kind.
+Templates are the preferred extension path whenever they fit: before writing a controller, check whether the work is a composition that belongs in a generic templated kind. `JS.Script` is deprecated and no substitute for either.
 
 ## Anatomy
 
@@ -78,7 +78,9 @@ inputs:
 - `invoke` names it with a `!ref`, the same spelling every other reference uses. A `!ref` naming no entry is `TEMPLATE_DISPATCH_UNKNOWN`. A bare string or a `{ kind, name }` object there is the deprecated spelling: `telo check` warns `DEPRECATED_TEMPLATE_DISPATCH_FORM` and the kernel still runs it, because published modules carry it — write `!ref` instead.
 - Reference slots **inside** an entry follow the same rule: `!ref` or an inline declaration, naming a sibling entry or a resource of the declaring module (`TEMPLATE_REF_UNKNOWN` otherwise).
 - A reference the **instance** holds reaches an entry only through a bare `!cel "self.<path>"`, which forwards the value untouched — a single slot (`connection: !cel "self.connection"`) or a whole value holding several (`routes: !cel "self.routes"`, where each route's `handler` is a reference the instance declared). Any other expression is evaluated by CEL and yields data, so a computed value at or above a reference slot is `REF_SLOT_COMPUTED` — and `ERR_REF_SLOT_COMPUTED` at boot, refused before the body is expanded, which is what reaches you when the body belongs to a published dependency your own `telo check` says nothing about: to forward routes, declare them on the kind already shaped as the router expects rather than assembling them with `map`. The same rule holds outside a body, at a resource field the kind evaluates at creation.
+- A forwarded path may **continue past a reference** (`model: !cel "self.model.schemas.list"`, or a repeat's `!cel "each.value.source.label"`). Past it, the path reads what the referenced resource was **declared with** — the fields its author wrote, and for a kind extending another with `base:`, that kind's own fields rather than the mapping onto its parent — never a member of the controller's instance. A method or property the instance holds under a declared field's name changes nothing, and a value only the controller fills in (a default it applies, a field it computes) is not there to forward. A reference the declaration holds is handed on as the live instance. `telo check` and the run read the same declaration.
 - A forwarded value is **checked as the entry kind's own field**. At boot the entry receives it verbatim, so `telo check` validates what each consumer writes there exactly as it would a resource of the entry's kind: its schema (inheritance and `x-telo-schema-from` resolved), its reference slots and their `inputs:`, and the CEL inside it in the entry's contexts — `request.*` in a route's `inputs:`, `result.*` in its `returns:` — unless your kind marks the path `x-telo-eval: compile`, which evaluates it before it is forwarded. Each finding is reported on the consumer's own line (`workflows[0].returns[0].status`), under its usual code. So your kind's `schema:` declares only what it adds — titles, a field it requires that the entry does not — and never restates the entry's constraints or `x-telo-context` blocks. The one thing it must keep is every **reference slot** under the forwarded value: a reference is resolved where the consumer declared it only when your kind's schema marks the slot `x-telo-ref`. A declaration that disagrees with the entry's field is `TEMPLATE_FORWARD_INCOMPATIBLE` at your kind.
+- For each consumer, `telo check` judges **every entry as that consumer instantiates it**, forwarded or not: what the consumer forwards, the entry's literals as written, its other expressions as written (typed once, by your definition's own check), and each `!ref` to a sibling as that sibling as the same consumer instantiates it. So a rule reading across entries — a layout's referrer rule resolving `/presentation/source/collection` through a sibling `presentation: !ref presentation` and on into the consumer's own collection — judges each consumer's real wiring. A finding at a place the consumer wrote is reported there; a finding at a place your body wrote is reported once, at your definition, when your own check makes the same finding there (a literal the entry's schema refuses), and otherwise at each consumer, naming the entry and field (`` `CrudUi.Admin` body entry `listing`, field `presentation`: … ``). A `self.<path>` the consumer leaves unset hands the entry nothing, as at boot. A `!ref` from the body to a resource of your own module is resolved in your module, never to a consumer's resource of the same name; when that resource is not exported a consumer's check cannot see past it, and a rule that would read through it reports that it did not run.
 - `inputs` is what gets passed to the `Sql.Query`. Inside it, CEL sees both `self` and `inputs` (the caller's arguments to `Read`). The map is checked against the dispatch target's declared `inputType` like any call site: a literal that does not satisfy it is `TEMPLATE_TARGET_MISMATCH`, and a `!cel` whose type does not fit the argument — a string into an `integer`, a `self` field declared nullable into an argument that takes no null — is `CEL_TYPE_ERROR` at that argument, where it would otherwise fail at dispatch with `ERR_INPUT_INVALID`.
 
 ## Provider template
@@ -97,12 +99,22 @@ schema:
   properties:
     secret: { type: string }
 resources:
-  - kind: JavaScript.Script
+  - kind: Run.Value
     metadata: { name: source }
-    inputType: { type: object, additionalProperties: true }
-    outputType: { type: object, additionalProperties: true }
-    code: |
-      function main(input) { return { raw: input.value } }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [value]
+        properties: { value: { type: string } }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [raw]
+        properties: { raw: { type: string } }
+    value:
+      raw: !cel "inputs.value"
 provide: !ref source
 inputs:
   value: !cel "self.secret"
@@ -116,7 +128,7 @@ result:
 
 ## Mount template
 
-A `Telo.Mount` template declares an internal mountable surface (typically an `Http.Api`) plus any handlers it needs, then names the surface with `mount:`. `modules/crud` is the canonical example — `Crud.Resource` builds four SQL handlers and one `Http.Api`, all from `self`. Its list route answers with an envelope — one page of rows, the count of every match and the cursor of the next page — rather than a bare array:
+A `Telo.Mount` template declares an internal mountable surface (typically an `Http.Api`) plus any handlers it needs, then names the surface with `mount:`. `modules/crud` is the canonical example — `Crud.Api` builds four SQL handlers and one `Http.Api`, all from `self`. Its list route answers with an envelope — one page of rows, the count of every match and the cursor of the next page — rather than a bare array:
 
 ```yaml
 kind: Telo.Definition

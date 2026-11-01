@@ -10,10 +10,10 @@ metadata:
 # A library rather than a theme written inline at the application, so the
 # example's tests can check the very theme the `/brand` mount draws with.
 imports:
-  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
-  Radix: oci://ghcr.io/telorun/ui-react-radix@0.4.1#sha256-rPVtkc4_jc3Cf551MpSvHH-E9Au6Kqbp1LB64esxjaE
-  Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
+  Radix: ../../../modules/ui-react-radix
+  Font: ../../../modules/font
 exports:
   resources: [ theme ]
 ---
@@ -21,8 +21,7 @@ exports:
 # The typefaces are named here and shipped by whoever draws with the theme: the
 # example's `/brand` application serves Inter's faces through its own tokens.
 kind: UiReact.Theme
-metadata:
-  name: theme
+metadata: { name: theme }
 tokens:
   kind: Ui.DesignTokens
   color.background: "#f8f4ec"
@@ -64,6 +63,5 @@ controls:
 # The typefaces by name alone: a family with no faces is drawn from what the
 # viewer has. Named because two tokens use it.
 kind: Font.Family
-metadata:
-  name: inter
+metadata: { name: inter }
 family: Inter

@@ -30,6 +30,7 @@ import { fileStepResult, stepJournalPath, stepLabel } from "./emitted-step.js";
 import { InvokeError, isInvokeError } from "./invoke-error.js";
 import { executeInvokeStep, type InvokeStep, type InvokeStepContext } from "./invoke-step.js";
 import { formatDisplayMessage } from "./display-message.js";
+import { jsonPointerSegment } from "./issue-keywords.js";
 import { literalStepValue } from "./literal-step-value.js";
 import { RuntimeError } from "./types.js";
 import { isTextRecord, type TextRecord } from "./text-record.js";
@@ -196,6 +197,11 @@ export interface StepBodyOwner {
  *  kind injects its own scope variables (`item`, `index`, `iteration`,
  *  `previous`, …) through `extraCtx`; the engine knows none of them. */
 export class StepEngine {
+  /** Each step's written place in the owning resource's declaration (RFC 6901),
+   *  registered by {@link registerWrittenPointers}. */
+  private readonly writtenPointers = new WeakMap<Step, string>();
+  private readonly registeredLists = new WeakSet<Step[]>();
+
   constructor(
     private readonly ctx: StepEngineContext,
     private readonly owner: StepBodyOwner,
@@ -246,6 +252,38 @@ export class StepEngine {
     }
   }
 
+  /** Record where every step of `stepList`, at any depth, is written — once per
+   *  list, through the branches {@link resolveInvokes} walks. */
+  private registerWrittenPointers(stepList: Step[], pointer: string): void {
+    if (this.registeredLists.has(stepList)) return;
+    this.registeredLists.add(stepList);
+    for (const [index, step] of stepList.entries()) {
+      const here = `${pointer}/${index}`;
+      this.writtenPointers.set(step, here);
+      if (isIfStep(step)) {
+        this.registerWrittenPointers(step.then, `${here}/then`);
+        if (step.elseif) {
+          for (const [elseifIndex, branch] of step.elseif.entries()) {
+            this.registerWrittenPointers(branch.then, `${here}/elseif/${elseifIndex}/then`);
+          }
+        }
+        if (step.else) this.registerWrittenPointers(step.else, `${here}/else`);
+      }
+      if (isWhileStep(step)) this.registerWrittenPointers(step.do, `${here}/do`);
+      if (isSwitchStep(step)) {
+        for (const [caseName, branch] of Object.entries(step.cases)) {
+          this.registerWrittenPointers(branch, `${here}/cases/${jsonPointerSegment(caseName)}`);
+        }
+        if (step.default) this.registerWrittenPointers(step.default, `${here}/default`);
+      }
+      if (isTryStep(step)) {
+        this.registerWrittenPointers(step.try, `${here}/try`);
+        if (step.catch) this.registerWrittenPointers(step.catch, `${here}/catch`);
+        if (step.finally) this.registerWrittenPointers(step.finally, `${here}/finally`);
+      }
+    }
+  }
+
   private inlineInvokeResourceName(stepName: string, stepPath: string[]): string {
     return inlineStepTargetName(this.owner, stepPath, stepName);
   }
@@ -257,6 +295,11 @@ export class StepEngine {
    *   resumable subtree. Omitted, it is derived from the ambient step path, so a
    *   NESTED body nests its keys instead of restarting at the root — see
    *   {@link baseStepPath}.
+   * @param pointer Where `stepList` is written in the owning resource's
+   *   declaration, as an RFC 6901 pointer (`/steps`). Given, every step's
+   *   dispatch carries where its `inputs:` are written (`inputsAt`); omitted,
+   *   none does — so a caller whose list is not its resource's own written field
+   *   omits it rather than guess.
    */
   async executeSteps(
     stepList: Step[],
@@ -265,7 +308,9 @@ export class StepEngine {
     extraCtx: Record<string, unknown>,
     invokeCtx?: InvokeContext,
     path?: string,
+    pointer?: string,
   ): Promise<void> {
+    if (pointer !== undefined) this.registerWrittenPointers(stepList, pointer);
     const base = path ?? baseStepPath(invokeCtx);
     for (const step of stepList) {
       await this.executeStep(step, steps, scope, extraCtx, invokeCtx, base);
@@ -333,14 +378,17 @@ export class StepEngine {
     path = "steps",
   ): Promise<void> {
     const here = this.pathOf(path, step);
-    if (isInvokeStep(step))
+    if (isInvokeStep(step)) {
+      const written = this.writtenPointers.get(step);
       await executeInvokeStep(step, this.ctx, {
         steps,
         scope,
         cel: extraCtx,
         invokeCtx,
         journalPath: here,
+        ...(written === undefined ? {} : { inputsAt: `${written}/inputs` }),
       });
+    }
     else if (isIfStep(step)) await this.executeIfStep(step, steps, scope, extraCtx, invokeCtx, here);
     else if (isWhileStep(step))
       await this.executeWhileStep(step, steps, scope, extraCtx, invokeCtx, here);

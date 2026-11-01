@@ -7,12 +7,16 @@ description: "Every Telo application logs with no configuration. Set the level, 
 The first time you run an application, it talks:
 
 ```
-{"time":"2026-08-10T11:44:28.577Z","level":"INFO","severity":9,"msg":"Server listening at http://127.0.0.1:8080"}
+{"time":"2026-11-01T10:23:55.441Z","level":"INFO","severity":9,"msg":"Listening","resource":{"kind":"HttpServer.Server","name":"server","id":"HttpServer.Server.server"},"attributes":{"server.address":"0.0.0.0","server.port":8080,"url.scheme":"http"},"event_name":"http.server.started"}
 ```
 
 Nothing in your manifest asked for that. This page explains where it comes from
 and how to turn it up, down, or off — which is most of what anyone needs from
 logging on day one.
+
+The `resource` names its emitter by the kind's own module name,
+`HttpServer.Server`, not by the alias your manifest imported it under
+(`Http.Server`).
 
 ## Your app already logs
 
@@ -23,17 +27,18 @@ follows where the output is going:
 **On a terminal** — human-readable, aligned, coloured:
 
 ```
-11:44:50.558  INFO   Server listening at http://127.0.0.1:8080
+10:24:27.961  INFO   HttpServer.Server.server  Listening  server.address=0.0.0.0  server.port=8080  url.scheme=http
 ```
 
 **Piped or redirected** — one JSON object per line, ready for whatever collects
 it:
 
 ```
-{"time":"2026-08-10T11:44:28.577Z","level":"INFO","severity":9,"msg":"Server listening at http://127.0.0.1:8080"}
+{"time":"2026-11-01T10:23:55.441Z","level":"INFO","severity":9,"msg":"Listening","resource":{"kind":"HttpServer.Server","name":"server","id":"HttpServer.Server.server"},"attributes":{"server.address":"0.0.0.0","server.port":8080,"url.scheme":"http"},"event_name":"http.server.started"}
 ```
 
-Same records, two encodings. You do not configure the switch; it follows the
+Both go to standard error, so a program's own output on standard out stays
+separate. Same records, two encodings. You do not configure the switch; it follows the
 destination, so `telo ./telo.yaml` reads well by hand and `telo ./telo.yaml >
 app.log` produces something machine-readable.
 

@@ -131,6 +131,7 @@ class RunIteration {
             },
             invokeCtx,
             turnStepPath(invokeCtx, index),
+            "/steps",
           );
         };
 

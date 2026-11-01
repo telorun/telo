@@ -4,8 +4,8 @@ A form over a data model.
 
 | Field | | |
 | --- | --- | --- |
-| `model` | required | the shape of the record |
-| `source.basePath` | required | [app-relative](nodes.md#addresses) URL of the collection written to |
+| `model` | required | the shape of the record the form sends |
+| `presentation` | required | the [`Ui.CollectionPresentation`](collection-presentation.md) written to: its source's `basePath` is where, its relations how related records are offered |
 | `fields` | every enterable property | the fields, top to bottom: a property name, or a [field kind](field-kinds.md) |
 | `groups` | none | labelled sections the fields name by `group` ([field kinds](field-kinds.md#groups)) |
 | `state` | not kept | where the values entered are kept between visits ([kept values](field-kinds.md#kept-values)) |
@@ -13,6 +13,15 @@ A form over a data model.
 A property name is exactly `{ kind: Ui.InputField, property: <name> }`: the
 page document is the same for both spellings. A field's label is the
 property's `title`, else its name.
+
+## Related records
+
+A property whose relation the presentation presents is entered with a
+[picker](field-kinds.md#uipickerfield) of the related records — searched with
+the relation's `search`, labelled with its `label` and `hint`, linked with its
+`href` — whether it is named bare in `fields` or `fields` is left out, so a
+post form shows an author picker with nothing written beyond the relation. A
+field kind written for the property wins.
 
 ## Fields drawn on a condition
 
@@ -51,8 +60,10 @@ field's `auto` control fits exactly what a property name can enter.
 
 | Placed as | Request |
 | --- | --- |
-| a node on a page, or a table's `create` | `POST <basePath>` |
-| a table's `edit` | `PUT <basePath>/<rowKey value>`, prefilled from the record read at `GET <basePath>/<rowKey value>` |
+| a node on a page, or a listing's `create` | `POST <basePath>` |
+| a listing's `edit` | `PUT <basePath>/<key value>`, prefilled from the record read at `GET <basePath>/<key value>`, the key being the collection's `key` |
+
+`basePath` is the presentation's source's.
 
 ## What it sends
 
@@ -62,7 +73,7 @@ field's `auto` control fits exactly what a property name can enter.
   the list may hold less than the record does. What it sends is every property
   of the form's model the record held a value for — whether or not the form
   shows it — with each field's entered value over it, because `PUT` replaces
-  ([the collection contract](collection-contract.md#items)). A field left
+  ([the collection contract](../../data-model/docs/collection-contract.md#items)). A field left
   empty is left out, which clears that property. A property the record held as
   `null` is left out, and so is anything in the record the model does not
   declare — so a form over a narrower model than the record sends only what

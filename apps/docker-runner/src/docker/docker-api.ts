@@ -4,7 +4,7 @@
 export interface InspectedSessionContainer {
   Id: string;
   Name?: string;
-  Config?: { Image?: string; Env?: string[]; Labels?: Record<string, string> };
+  Config?: { Image?: string; User?: string; Env?: string[]; Labels?: Record<string, string> };
   State?: { Status?: string; Running?: boolean; ExitCode?: number; Error?: string; OOMKilled?: boolean };
   NetworkSettings?: { Networks?: Record<string, { IPAddress?: string }> };
 }
@@ -45,6 +45,8 @@ export type PortBindings = Record<string, Array<{ HostIp: string; HostPort: stri
 export interface CreateContainerOpts {
   name: string;
   Image: string;
+  /** `uid:gid`, overriding the image's own `USER`. */
+  User: string;
   /** Replaces the image's entry point; an app container's is the supervisor. */
   Entrypoint?: string[];
   /** Omitted to keep the image's own (the agent's catalog image). */

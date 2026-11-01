@@ -90,8 +90,15 @@ network namespace. An app declaring one is refused (`400 port_conflict` on a
 create or `PUT …/apps`, `rejected` on a reload's `endpoints` event), naming what
 binds it. The runner reaches both over the pod IP; neither is published.
 
-**A shared `fsGroup` is required**: every container reads and writes `/workspace`,
-so they must share a GID or the agent writes files an app cannot read.
+**Every container runs as the session user**, the session file's `user`
+(`{ uid, gid }`, default `1000:1000` — the kernel image's `node` user), set once on
+the pod as `runAsUser`, `runAsGroup` and `fsGroup` with `runAsNonRoot: true`, so
+the agent's image runs as it too whatever its own `USER` says. The shared group is
+what lets every container read and write `/workspace`. Each container gets a
+writable `HOME` at `/home/telo` (an `emptyDir` of its own, `npm_config_cache`
+beneath it), because a uid the image's `/etc/passwd` does not list has `HOME=/`.
+An agent `image` must therefore run as an arbitrary numeric non-root uid, with
+`HOME` supplied by the runner.
 
 **The agent is routed like an app port, and reported like one.** Its `port`
 is the tcp port it listens on, and the runner refuses to start without one. Where an application declares the
@@ -173,7 +180,8 @@ with its run id when a run outlived the runner, `ready` otherwise. A run that wa
 serving keeps serving, and the runner can stop it.
 
 - A session whose pod is gone, not running, or not the stored one (another app
-  set or agent) becomes `suspended`, its pod removed and its claim kept.
+  set or agent, or a `runAsUser` / `runAsGroup` other than the session user)
+  becomes `suspended`, its pod removed and its claim kept.
 - A pod whose supervisors speak **another protocol generation** predates this
   runner build: it is removed and the session becomes `suspended`, so the
   editor's `resume` builds a current pod over the same claim. This keeps boot
@@ -261,7 +269,7 @@ declaring a port the pod reserves.
 | `PORT` | `8062` | HTTP listen port |
 | `RUNNER_DISPLAY_NAME` | `Telo Runner` | Display name advertised on `/v1/capabilities` (the editor's runner label) |
 | `RUNNER_DESCRIPTION` | `Runs the Telo application in a cloud environment` | Description advertised on `/v1/capabilities` |
-| `SESSION_CONFIG_FILE` | _(unset → every default)_ | The [session file](#configuration-files): the session containers' resources, session containers and the base-image picker. The chart mounts it from the `telo-k8s-runner-session` ConfigMap |
+| `SESSION_CONFIG_FILE` | _(unset → every default)_ | The [session file](#configuration-files): the session containers' resources and user, session containers and the base-image picker. The chart mounts it from the `telo-k8s-runner-session` ConfigMap |
 | `AGENT_CONFIG_FILE` | _(unset → no agent)_ | The [agent file](#configuration-files): the operator's co-resident agent, advertised as `features.agents`, and its container's resources. The chart mounts it from the `telo-k8s-runner-agent` ConfigMap when `agent.image` or `agent.moduleRef` is set |
 | `AGENT_SECRET_<NAME>` | — | The value of each name the agent file lists under `secretEnv`; required for each (chart: `agent.secretEnv`, each from a Secret key) |
 | `RUNNER_SUPERVISOR_IMAGE` | _(required; the chart sets it to the runner's own image)_ | The runner's own image, which every session pod's `supervisor` init container copies the session supervisor out of (from `/opt/telo-runner/supervisor`) |
@@ -298,7 +306,7 @@ declaring a port the pod reserves.
 | `RUNNER_TERMS_TITLE` | `Usage agreement` | Heading shown above the agreement |
 | `RUNNER_TERMS_VERSION` | _(hash of body)_ | Acceptance version; defaults to a content hash so any edit to the body automatically re-prompts every client. Set explicitly only to control material-change vs typo |
 
-A runner started with a variable this release no longer reads refuses to boot, naming each one: `RUNNER_WATCH_MAX_SESSIONS`, `RUNNER_WATCH_IDLE_SECONDS`, `RUNNER_WATCH_MAX_TTL_SECONDS`, `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` and `RUNNER_WATCH_RELOAD_LIMIT` are renamed to `RUNNER_MAX_SESSIONS`, `RUNNER_SESSION_IDLE_SECONDS`, `RUNNER_SESSION_MAX_RUNNING_SECONDS`, `RUNNER_SESSION_RETENTION_SECONDS` and `RUNNER_SESSION_RELOAD_LIMIT`; `RUNNER_WATCH_SESSIONS`, `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`, `RUNNER_EXIT_TTL_MS`, `RUNNER_MAX_TTL_SECONDS` and `RUNNER_APP_MAX_TTL_SECONDS` are removed, and so are `RUNNER_SELF_URL` and `RUNNER_INIT_IMAGE`, which served the bundle fetch (the chart's `session.initImage` is refused the same way). The settings the configuration files now hold refuse to boot as variables, each naming the file key to set: `RUNNER_MAX_CPU`, `RUNNER_MAX_MEMORY`, `RUNNER_MAX_EPHEMERAL_STORAGE`, `RUNNER_SESSION_CONTAINERS`, `RUNNER_SESSION_CONTAINERS_MAX`, `RUNNER_SESSION_CONTAINERS_RESOURCES` and every `RUNNER_BASE_IMAGE_*` (the session file), and `RUNNER_APP_MAX_CPU`, `RUNNER_APP_MAX_MEMORY`, `RUNNER_APP_MAX_EPHEMERAL_STORAGE`, `AGENT_IMAGE`, `AGENT_MODULE_REF`, `AGENT_PORT`, `AGENT_PULL_POLICY`, `AGENT_TOKEN_ENV`, `AGENT_TITLE`, `AGENT_DESCRIPTION` and `AGENT_ENV` (the agent file).
+A runner started with a variable this release no longer reads refuses to boot, naming each one: `RUNNER_WATCH_MAX_SESSIONS`, `RUNNER_WATCH_IDLE_SECONDS`, `RUNNER_WATCH_MAX_TTL_SECONDS`, `RUNNER_WATCH_SUSPENDED_TTL_SECONDS` and `RUNNER_WATCH_RELOAD_LIMIT` are renamed to `RUNNER_MAX_SESSIONS`, `RUNNER_SESSION_IDLE_SECONDS`, `RUNNER_SESSION_MAX_RUNNING_SECONDS`, `RUNNER_SESSION_RETENTION_SECONDS` and `RUNNER_SESSION_RELOAD_LIMIT`; `RUNNER_WATCH_SESSIONS`, `RUNNER_WORKSPACE_CHECKPOINT_SECONDS`, `RUNNER_EXIT_TTL_MS`, `RUNNER_MAX_TTL_SECONDS` and `RUNNER_APP_MAX_TTL_SECONDS` are removed, and so are `RUNNER_SELF_URL` and `RUNNER_INIT_IMAGE`, which served the bundle fetch (the chart's `session.initImage` is refused the same way). The settings the configuration files now hold refuse to boot as variables, each naming the file key to set: `RUNNER_MAX_CPU`, `RUNNER_MAX_MEMORY`, `RUNNER_MAX_EPHEMERAL_STORAGE`, `RUNNER_SESSION_USER` (`user`), `RUNNER_SESSION_CONTAINERS`, `RUNNER_SESSION_CONTAINERS_MAX`, `RUNNER_SESSION_CONTAINERS_RESOURCES` and every `RUNNER_BASE_IMAGE_*` (the session file), and `RUNNER_APP_MAX_CPU`, `RUNNER_APP_MAX_MEMORY`, `RUNNER_APP_MAX_EPHEMERAL_STORAGE`, `AGENT_IMAGE`, `AGENT_MODULE_REF`, `AGENT_PORT`, `AGENT_PULL_POLICY`, `AGENT_TOKEN_ENV`, `AGENT_TITLE`, `AGENT_DESCRIPTION` and `AGENT_ENV` (the agent file).
 
 ### Configuration files
 
@@ -315,11 +323,12 @@ defaulting on its own. A request is held at or below its container's effective
 limit.
 
 **The session file** (`SESSION_CONFIG_FILE`, chart: `session.resources`,
-`session.containers`, `session.baseImages`):
+`session.user`, `session.containers`, `session.baseImages`):
 
 | Key | Default | Meaning |
 | --- | --- | --- |
 | `resources` | as above | The session pod's `workspace`, `apps` and `supervisor` containers; every app shares the `apps` container's |
+| `user` | `{ uid: 1000, gid: 1000 }` | The numeric user every container of a session pod runs as: the pod's `runAsUser` (`uid`), `runAsGroup` and `fsGroup` (`gid`). Both keys are required when it is given; uid `0` or a non-numeric value refuses to boot, gid `0` is allowed (OpenShift) |
 | `containers.enabled` | `false` | Serve every session a container engine of its own — see [Session containers](#session-containers); needs `RUNNER_INTERNAL_URL` |
 | `containers.max` | `4` | Most containers one session may hold at once; a create beyond it is `429` |
 | `containers.resources` | as above | Every session container's pod |

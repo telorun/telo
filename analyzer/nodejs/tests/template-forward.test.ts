@@ -169,11 +169,28 @@ describe("a template forward is checked as the entry kind's field", () => {
   });
 
   it("reports nothing about what the consumer did not write", () => {
-    // The view holds only what is forwarded, so it lacks the entry's required
-    // `title`; that is the library's, and a valid consumer checks clean.
+    // The view holds the entry's required `title` as the body writes it, so a
+    // valid consumer checks clean.
     expect(
       errors(routesKind(workflowsSlot), consumer({ returns: [{ status: 200, body: cel("result") }] })),
     ).toEqual([]);
+  });
+
+  it("forwards a field the consumer omits as its schema default, as the kernel fills self", () => {
+    const titled = (title: Record<string, unknown>): ResourceManifest => {
+      const kind = routesKind(workflowsSlot) as unknown as {
+        schema: { properties: Record<string, unknown> };
+        resources: Array<Record<string, unknown>>;
+      };
+      kind.schema.properties.title = title;
+      kind.resources[0]!.title = cel("self.title");
+      return kind as unknown as ResourceManifest;
+    };
+    const valid = consumer({ returns: [{ status: 200 }] });
+    expect(errors(titled({ type: "string", default: "Routes" }), valid)).toEqual([]);
+    expect(errors(titled({ type: "string" }), valid).map((d) => [d.code, d.data?.resource])).toEqual([
+      ["SCHEMA_VIOLATION", { kind: "Lib.Routes", name: "app" }],
+    ]);
   });
 
   it("reports an issue the wrapper's own schema already reports once", () => {

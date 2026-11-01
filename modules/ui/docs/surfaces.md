@@ -1,9 +1,9 @@
 # Surfaces
 
 A surface is where a form appears when it is opened, and how it is dismissed.
-Whoever opens the form names it — a table's `create` and `edit` each take one
-— and the form itself says nothing about it, so one form can open in a dialog
-from one table and in a panel from another.
+Whoever opens the form names it — a listing's `create` and `edit` each take
+one — and the form itself says nothing about it, so one form can open in a
+dialog from one listing and in a panel from another.
 
 Each way of appearing is a kind. `kind:` is the only thing that tells them
 apart, and each kind takes only the keys that mean something for it: a key a
@@ -19,11 +19,10 @@ kind does not take is `SCHEMA_VIOLATION` on that resource.
 | [`Ui.PageSurface`](#uipagesurface) | in place of the page's content |
 
 ```yaml
-kind: Ui.Table
+kind: Ui.Listing
 metadata: { name: todos }
 model: !ref Todo
-collection: !ref todoCollection
-source: { basePath: /api/todos }
+presentation: !ref todosPresentation
 create:
   form: !ref todoForm
   surface: { kind: Ui.Dialog, size: small }
@@ -41,7 +40,7 @@ A surface is written in place, as above, or declared once and named with
 ## The abstracts
 
 - **`Ui.Surface`** — any surface. A slot that takes a surface, such as a
-  table's `create.surface`, is typed by it, so it accepts all six kinds and a
+  listing's `create.surface`, is typed by it, so it accepts all six kinds and a
   kind of your own that extends it. It provides a `Ui.SurfaceSpec`.
 - **`Ui.Overlay`** — a surface floating over the page: `Ui.Dialog`,
   `Ui.Drawer` and `Ui.Popover` extend it, and it extends `Ui.Surface`. A slot
@@ -67,7 +66,7 @@ that names it.
 | `address` | | [`{ name }`](#address) |
 | `compact` | | [the surface used on a narrow viewport](#compact) |
 
-This is the surface a table uses when an opener names none: leaving `surface`
+This is the surface a listing uses when an opener names none: leaving `surface`
 out and writing `surface: { kind: Ui.Dialog }` are the same thing.
 
 ## Ui.Drawer
@@ -103,8 +102,8 @@ an address opened cold has none.
 | --- | --- | --- |
 | `compact` | | [the surface used on a narrow viewport](#compact) |
 
-In a table, the create form is drawn above the grid and the edit form under
-the row it changes. It has no address.
+In a listing, the create form is drawn above the records and the edit form
+under the record it changes. It has no address.
 
 ## Ui.Panel
 
@@ -135,7 +134,7 @@ closes. It always has an address, since it is a place of its own.
 form can be linked to, reloaded, and left with the browser's back button.
 `name` is letters and digits, starting with a letter.
 
-- **Give a table's `create` and `edit` the same name.** That is the intended
+- **Give a listing's `create` and `edit` the same name.** That is the intended
   spelling: under one name, the address says either "a new record" or "the
   record with this key", and opening one closes the other.
 - **An empty value means a new record.** So under a name only an `edit` opener

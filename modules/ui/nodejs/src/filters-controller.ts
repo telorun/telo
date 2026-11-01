@@ -1,9 +1,12 @@
 import { RuntimeError, type ResourceContext, type ResourceInstance, type RuntimeResource, type TextRecord } from "@telorun/sdk";
 import { labelsOf, quotedText, sameWritten, type ValueLabel } from "./spec-texts.js";
 import type { Provided, SpecNode } from "./composite.js";
-import { isCollection, type CollectionQuery, type Operator } from "./collection-controller.js";
+import { presentationAt } from "./collection-presentation.js";
+import type { AcceptedQuery, Operator } from "./collection-source.js";
+import { optionValueMismatch } from "./field-answer.js";
 import { abovePlacement, isFilterPlacement } from "./filter-placement.js";
-import { labelOf, modelSchema, type JsonSchema } from "./model-schema.js";
+import { labelOf, type JsonSchema } from "./model-schema.js";
+import { isOptionSource, type OptionSourceSpec } from "./option-source.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
 import { controlFits, type Control } from "./control-fit.js";
 import { stateSpec, type StateConfig } from "./state-record.js";
@@ -16,6 +19,8 @@ interface FieldConfig {
   operator: Operator;
   pinned?: boolean;
   control?: Control;
+  values?: "all" | "present";
+  options?: unknown;
   default?: unknown;
 }
 
@@ -35,8 +40,7 @@ interface PolicyConfig {
 }
 
 type FiltersResource = RuntimeResource & {
-  model: unknown;
-  collection: unknown;
+  presentation: unknown;
   fields?: FieldConfig[];
   presets?: PresetConfig[];
   policy?: PolicyConfig;
@@ -51,29 +55,14 @@ export interface FilterField {
   schema: JsonSchema;
   pinned: boolean;
   control: Control;
+  values: "all" | "present";
+  options?: OptionSourceSpec;
   default?: Scalar[];
 }
 
 export interface FilterPreset {
   label: TextRecord;
   values: { property: string; operator: Operator; value: Scalar[] }[];
-}
-
-const ACCEPTS: Record<Operator, string[]> = {
-  eq: ["string", "number", "integer", "boolean"],
-  in: ["string", "number", "integer", "boolean"],
-  contains: ["string"],
-  gt: ["string", "number", "integer"],
-  gte: ["string", "number", "integer"],
-  lt: ["string", "number", "integer"],
-  lte: ["string", "number", "integer"],
-};
-
-/** Whether a property's declared type carries an operator. Judged where the
- *  property declares one plain type, as the static rules are. */
-function operatorFits(property: JsonSchema, operator: Operator): boolean {
-  const declared = property.type;
-  return typeof declared !== "string" || ACCEPTS[operator].includes(declared);
 }
 
 /** A declared value as plain data: an integer an expression computed arrives wide. */
@@ -101,47 +90,54 @@ function valueFits(property: JsonSchema, value: unknown): boolean {
  *  the filter cannot hold it: a list without `in`, one value with it, or a
  *  value its property refuses. */
 export function heldValues(property: JsonSchema, operator: Operator, declared: unknown): Scalar[] | undefined {
+  if (operator === "absent") return typeof declared === "boolean" ? [declared] : undefined;
   if (Array.isArray(declared) !== (operator === "in")) return undefined;
   const values = [declared].flat().map(plain);
   return values.every((value) => valueFits(property, value)) ? (values as Scalar[]) : undefined;
 }
 
-/** Whether a value asks a switch to be off: it is on, or it holds nothing. */
-const switchedOff = (control: Control, held: Scalar[]): boolean => control === "toggle" && held.includes(false);
+/** Whether a value asks a switch to be off: it is on, or it holds nothing.
+ *  A filter under `absent` is entered with a switch whatever its control. */
+const switchedOff = (control: Control, operator: Operator, held: Scalar[]): boolean =>
+  (control === "toggle" || operator === "absent") && held.includes(false);
+
+/** Where a field's choices come from, when they are records: its own option
+ *  source by field index, else the property's relation. */
+export interface FieldChoices {
+  overrides: ReadonlyMap<number, OptionSourceSpec>;
+  relations: Readonly<Record<string, OptionSourceSpec>>;
+}
+
+const NO_CHOICES: FieldChoices = { overrides: new Map(), relations: {} };
 
 /** The filters a bar shows: the ones listed, or every one the collection
- *  accepts, in the order it declares them. */
+ *  accepts, in the order it declares them. The collection's own guards hold
+ *  every accepted filter to its model, so a filter it accepts names a declared
+ *  property with an operator that fits it. */
 export function filterFields(
   schema: JsonSchema,
-  accepted: CollectionQuery["filters"],
-  listed: FieldConfig[] | undefined,
+  query: AcceptedQuery,
+  listed: FieldConfig[] | undefined | null,
   owner: string,
+  choices: FieldChoices = NO_CHOICES,
 ): FilterField[] {
   const properties = (schema.properties ?? {}) as Record<string, JsonSchema>;
-  const field = ({ property, operator, pinned, control }: FieldConfig, held?: Scalar[]): FilterField => ({
-    property,
-    operator,
-    label: labelOf(property, properties[property]),
-    labels: labelsOf(properties[property]),
-    schema: properties[property],
-    pinned: pinned === true,
-    control: control ?? "auto",
-    ...(held === undefined ? {} : { default: held }),
-  });
-  if (!listed) {
-    const incomplete = (reason: string) =>
-      new RuntimeError(
-        "ERR_UI_FILTER_MODEL_INCOMPLETE",
-        `${owner}: shows every filter the collection accepts, and the model cannot answer for one of them: ${reason}. Give the bar a model that can, or list the filters to show under 'fields'.`,
-      );
-    for (const { property, operator } of accepted) {
-      if (!Object.hasOwn(properties, property)) throw incomplete(`it does not declare '${property}'`);
-      if (!operatorFits(properties[property], operator)) {
-        throw incomplete(`'${operator}' does not fit '${property}', declared ${properties[property].type}`);
-      }
-    }
-    return accepted.map((filter) => field(filter));
-  }
+  const field = ({ property, operator, pinned, control, values }: FieldConfig, index: number | undefined, held?: Scalar[]): FilterField => {
+    const options = (index === undefined ? undefined : choices.overrides.get(index)) ?? choices.relations[property];
+    return {
+      property,
+      operator,
+      label: labelOf(property, properties[property]),
+      labels: labelsOf(properties[property]),
+      schema: properties[property],
+      pinned: pinned === true,
+      control: control ?? "auto",
+      values: values ?? "all",
+      ...(options ? { options } : {}),
+      ...(held === undefined ? {} : { default: held }),
+    };
+  };
+  if (!listed) return query.filters.map((filter) => field(filter, undefined));
   return listed.map((config, index) => {
     const { property, operator } = config;
     if (listed.findIndex((other) => other.property === property && other.operator === operator) !== index) {
@@ -150,40 +146,41 @@ export function filterFields(
         `${owner}: 'fields[${index}]' lists a property and operator another field already has ('${operator}' on '${property}'). A filter is one property with one operator: remove one of the two.`,
       );
     }
-    if (!Object.hasOwn(properties, property)) {
-      throw new RuntimeError(
-        "ERR_UI_FILTER_UNKNOWN_PROPERTY",
-        `${owner}: 'fields[${index}]' filters by a property the model does not declare ('${property}'). Use a property of 'model', or add this one to it.`,
-      );
-    }
-    if (!operatorFits(properties[property], operator)) {
-      throw new RuntimeError(
-        "ERR_UI_FILTER_OPERATOR_UNSUPPORTED",
-        `${owner}: 'fields[${index}]' uses an operator the property's type does not support ('${operator}' on '${property}', declared ${properties[property].type}): 'contains' needs a string, 'gt' / 'gte' / 'lt' / 'lte' a string or a number, and no operator applies to an object or a list.`,
-      );
-    }
-    if (!accepted.some((filter) => filter.property === property && filter.operator === operator)) {
+    if (!query.filters.some((filter) => filter.property === property && filter.operator === operator)) {
       throw new RuntimeError(
         "ERR_UI_FILTER_NOT_ACCEPTED",
         `${owner}: 'fields[${index}]' filters by a property and operator the collection does not accept ('${operator}' on '${property}'). Declare the pair under the collection's 'query.filters', or remove this field.`,
+      );
+    }
+    if (config.values === "present" && !query.facets.some((facet) => facet.property === property)) {
+      throw new RuntimeError(
+        "ERR_UI_FILTER_VALUES_NOT_FACETED",
+        `${owner}: 'fields[${index}]' offers only the values present for a property the collection does not facet ('${property}'). Add the property to the collection's 'query.facets', or offer 'all' values.`,
+      );
+    }
+    const override = choices.overrides.get(index);
+    if (override && properties[property] && optionValueMismatch(properties[property], override)) {
+      throw new RuntimeError(
+        "ERR_UI_FILTER_OPTION_VALUE_MISMATCH",
+        `${owner}: 'fields[${index}]' offers options whose value is of another type than the property holds ('${property}'). Make the source's 'value' read a property of the property's type, or filter another property.`,
       );
     }
     const control = config.control ?? "auto";
     if (control !== "auto" && control !== "none" && !controlFits(control, properties[property], operator)) {
       throw new RuntimeError(
         "ERR_UI_FILTER_CONTROL_UNSUPPORTED",
-        `${owner}: 'fields[${index}]' asks for a control its filter cannot be entered with ('${control}' for '${operator}' on '${property}'): 'select' and 'options' need an 'enum' or a boolean, 'toggle' a boolean with 'eq', 'slider' a number or integer declaring 'minimum' and 'maximum' with 'eq' or a comparison, and 'tags' the 'in' operator.`,
+        `${owner}: 'fields[${index}]' asks for a control its filter cannot be entered with ('${control}' for '${operator}' on '${property}'): 'select' and 'options' need an 'enum' or a boolean, 'toggle' a boolean with 'eq' or any property under 'absent', 'slider' a number or integer declaring 'minimum' and 'maximum' with 'eq' or a comparison, and 'tags' the 'in' operator.`,
       );
     }
-    if (config.default === undefined) return field(config);
+    if (config.default == null) return field(config, index);
     const held = heldValues(properties[property], operator, config.default);
-    if (!held || switchedOff(control, held)) {
+    if (!held || switchedOff(control, operator, held)) {
       throw new RuntimeError(
         "ERR_UI_FILTER_DEFAULT_INVALID",
-        `${owner}: 'fields[${index}]' declares a default its filter cannot hold ('${operator}' on '${property}'): a value that is not of the property's type or not one of its 'enum', a list without the 'in' operator, a single value with it, or 'false' for a filter entered with a 'toggle', which holds true or nothing.`,
+        `${owner}: 'fields[${index}]' declares a default its filter cannot hold ('${operator}' on '${property}'): a value that is not of the property's type or not one of its 'enum', a list without the 'in' operator, a single value with it, anything but 'true' under 'absent', or 'false' for a filter entered with a 'toggle', which holds true or nothing.`,
       );
     }
-    return field(config, held);
+    return field(config, index, held);
   });
 }
 
@@ -205,10 +202,10 @@ export function filterPresets(fields: FilterField[], declared: PresetConfig[] | 
         );
       }
       const held = heldValues(shown.schema, operator, value);
-      if (!held || switchedOff(shown.control, held)) {
+      if (!held || switchedOff(shown.control, operator, held)) {
         throw new RuntimeError(
           "ERR_UI_FILTER_PRESET_VALUE_INVALID",
-          `${owner}: 'presets[${index}]' sets a value its filter cannot hold ('${operator}' on '${property}'): one that is not of the property's type or not one of its 'enum', a list without the 'in' operator, a single value with it, or 'false' for a filter entered with a 'toggle', which holds true or nothing.`,
+          `${owner}: 'presets[${index}]' sets a value its filter cannot hold ('${operator}' on '${property}'): one that is not of the property's type or not one of its 'enum', a list without the 'in' operator, a single value with it, anything but 'true' under 'absent', or 'false' for a filter entered with a 'toggle', which holds true or nothing.`,
         );
       }
       return { property, operator, value: held };
@@ -225,14 +222,15 @@ class Filters implements ResourceInstance {
 
   async provide(): Promise<Provided> {
     const owner = `Ui.Filters '${this.resource.metadata.name}'`;
-    const schema = modelSchema(this.resource.model, this.ctx, owner);
-    const collection = this.ctx.resolveRef(
-      this.resource.collection,
-      isCollection,
-      () => `'collection' of ${owner}`,
-      "Ui.Collection",
-    );
-    const fields = filterFields(schema, collection.query.filters, this.resource.fields, owner);
+    const { basePath, collection, relations } = presentationAt(this.resource.presentation, this.ctx, owner);
+    const schema = collection.model;
+    const overrides = new Map<number, OptionSourceSpec>();
+    for (const [index, config] of (this.resource.fields ?? []).entries()) {
+      if (config.options == null) continue;
+      const source = this.ctx.resolveRef(config.options, isOptionSource, () => `'fields[${index}].options' of ${owner}`, "Ui.OptionSource");
+      overrides.set(index, await source.provide());
+    }
+    const fields = filterFields(schema, collection.query, this.resource.fields, owner, { overrides, relations });
     const presets = filterPresets(fields, this.resource.presets, owner);
     const content = await resolveNode(this.resource.content, this.ctx, `${owner} content`);
     // Filters over nothing are nothing.
@@ -247,6 +245,7 @@ class Filters implements ResourceInstance {
     const state = await stateSpec(policy.state, fields.map((field) => field.property), schema, this.ctx, owner, "policy.state", "filter");
     const node: SpecNode = {
       type: "filters",
+      basePath,
       fields,
       content: content.node,
       show: policy.show ?? "all",

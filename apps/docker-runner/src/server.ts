@@ -127,6 +127,7 @@ async function main(): Promise<void> {
     teloImages: config.teloImages,
     workspaceImage: config.workspaceImage,
     supervisor,
+    sessionUser: config.sessionUser,
     log: bootLog,
   });
 

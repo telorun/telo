@@ -15,12 +15,14 @@
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { moduleScopedDefResolver, type AliasResolver } from "./alias-resolver.js";
+import { listRequests } from "./declaration-requests.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
 import { readExpansionSites, type ExpansionSite } from "./expansion-sites.js";
 import { controllerBearingAncestor, hasOwnControllerOrTemplate } from "./extends-resolution.js";
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
+import { namedShapeReading } from "./named-shape-reading.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import { isInjectedDeclaration } from "./resource-input.js";
 import { declarationOf, resolveReferenceOutcome, type NameResolution } from "./reference-resolution.js";
@@ -99,6 +101,7 @@ export function readTemplateConsumers(inputs: TemplateConsumerInputs): TemplateC
       ));
       return { declaration, module: declaration ? moduleOf(declaration) : undefined };
     },
+    readDeclaration: namedShapeReading(listRequests(manifests)),
     emitted: (value, _instance, forward) => (forward ? forwardMarker(forward) : value),
     decidedValue: (holder, source) => inputs.decidedValue(holder, source),
     ...(inputs.lift ? { lift: inputs.lift } : {}),

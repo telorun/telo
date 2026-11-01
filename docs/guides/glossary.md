@@ -49,7 +49,7 @@ is loaded at boot. Which one to load is named by a PURL on the definition.
 ### Capability
 
 A kind's lifecycle role — `Telo.Service`, `Telo.Runnable`, `Telo.Invocable`,
-`Telo.Provider`, `Telo.Mount`, `Telo.Sink`, `Telo.Type`. It determines which
+`Telo.Provider`, `Telo.Callable`, `Telo.Mount`, `Telo.Sink`, `Telo.Type`. It determines which
 reference slots will accept the kind.
 
 ### Module
@@ -78,6 +78,25 @@ that module's kinds (`Http.Server`) and for its exported instances
 An entry in an application's `targets:` list — what to start once everything has
 initialized. Takes a `Telo.Runnable` or a `Telo.Service`.
 
+### Mount
+
+A `Telo.Mount` resource — an HTTP router (`Http.Api`) or middleware — attached to a
+server under a path prefix with the server's `mounts:` list. See
+[Your first HTTP API](/learn/first-http-api).
+
+### Step
+
+One entry of a step body (`Run.Sequence`'s `steps:`): an `invoke`, a `value`, a
+conditional, a loop, a `switch`, a `try`, a `throw`. Its result is read by later
+steps as `steps.<name>.result`. See [Composing behaviour](/learn/composing-behaviour).
+
+### Need
+
+A typed request a module makes of whoever runs it — a database address, a
+directory, a public URL — declared under `needs:` and fulfilled by an import or,
+at the root, read from the environment at load. See
+[Declaring a need](/learn/declaring-a-need).
+
 ### Hold
 
 What a long-lived resource takes to keep the process alive. `Http.Server`
@@ -93,6 +112,24 @@ for an instance an import exports. See [`!ref` and `!cel`](/learn/refs-and-cel).
 
 The expression tag. Wraps a [CEL](https://github.com/google/cel-spec) expression
 evaluated against whatever is in scope at that point.
+
+### `!interpolate`
+
+The text tag. Literal text with `${{ expr }}` holes, always a string — the CEL
+join of the text with `string(<hole>)` for each hole. See
+[`!ref` and `!cel`](/learn/refs-and-cel#cel--compute-a-value).
+
+### `!sql`
+
+The statement tag. Shares the `!interpolate` hole grammar, but each hole becomes a
+bound parameter instead of text pasted into the statement. See
+[Talking to a database](/learn/talking-to-a-database#sql-binds-parameters--it-does-not-build-a-string).
+
+### Binding
+
+A named CEL value readable by its bare name. `Run.Value` and `Run.Choice` take a
+`bindings:` map to name intermediate values. See
+[naming an intermediate value](/learn/refs-and-cel#naming-an-intermediate-value).
 
 ### Snapshot / published state
 

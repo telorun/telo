@@ -1,0 +1,31 @@
+kind: Telo.Application
+metadata: { name: EntryViewsApp }
+imports:
+  Views: ../lib
+---
+kind: Views.Source
+metadata: { name: posts }
+filters: [status]
+---
+kind: Views.Admin
+metadata: { name: badAdmin }
+source: !ref posts
+layout: { kind: Views.Layout, group: author }
+---
+kind: Views.Admin
+metadata: { name: goodAdmin }
+source: !ref posts
+layout: { kind: Views.Layout, group: status }
+---
+kind: Views.Crossed
+metadata: { name: crossed }
+source: !ref posts
+layout: { kind: Views.Layout, group: status }
+---
+kind: Views.Shared
+metadata: { name: shared }
+layout: { kind: Views.Layout, group: author }
+---
+kind: Views.Hidden
+metadata: { name: hidden }
+layout: { kind: Views.Layout, group: status }

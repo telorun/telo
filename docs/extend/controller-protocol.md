@@ -159,6 +159,20 @@ declares (or the built-in one for an ambient code), or nothing. The kernel holds
 `data` to the code's declared `data` schema first; a mismatch is
 `ERR_OUTPUT_INVALID`. In Node it is `ctx.declaredDisplayMessage(code, data)`.
 
+## Pointing a failure at the input it is about
+
+A failure may carry `inputPointer`, an RFC 6901 pointer into the inputs of the
+dispatch that raised it (`/expected/rows`). The caller says where it wrote those
+inputs: a `Dispatch.Invoke` / `Dispatch.InvokeResolved` context may carry
+`inputsAt`, a pointer into the calling resource's own declaration
+(`/steps/1/inputs`). Where the failure leaves that dispatch the kernel joins the
+two into the error's `location` — the calling resource's kind, name and module and
+the pointer — and keeps the first location attached. `inputsAt` belongs to the one
+dispatch that carries it: never forward the context you received with it to a call
+of your own. A failure you rethrow keeps its `inputPointer` and `location`
+unchanged. In Node the options are `new InvokeError(code, message, data,
+{ inputPointer })` and the context member `inputsAt`.
+
 ## Generations, and `abi=telo-7`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import abi from "../src/contract/abi.json" with { type: "json" };
 import controls from "../src/contract/controls.json" with { type: "json" };
+import layouts from "../src/contract/layouts.json" with { type: "json" };
 import parts from "../src/contract/parts.json" with { type: "json" };
 
 const read = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -114,5 +115,31 @@ describe("the documented controls contract", () => {
     for (const [name, control] of entries) expect((members.get(`${name}Props`) ?? []).sort(), name).toEqual([...control.props].sort());
     const set = declaration.split("export interface Controls {")[1].split("\n}")[0];
     expect([...set.matchAll(/^  (\w+):/gm)].map((match) => match[1])).toEqual(entries.map(([name]) => name));
+  });
+});
+
+describe("the documented layout contract", () => {
+  const page = read("../../docs/layouts-abi.md");
+  const declaration = read("../src/contract/ui-react-layouts.d.ts");
+  const members = declaredMembers(declaration);
+
+  it("lists exactly the props, a record's and a group's members and the intents of the data file", () => {
+    const first = (heading: string) => table(section(page, heading)).map(([name]) => names(name)[0]);
+    const [props, record, group] = section(page, "What it receives").split("\n\n").filter((part) => part.startsWith("| ")).map((part) => table(part).map(([name]) => names(name)[0]));
+    expect([props, record, group]).toEqual([layouts.props.filter((name) => !name.startsWith("on")), layouts.record, layouts.group]);
+    expect(first("Intents")).toEqual(Object.keys(layouts.intents));
+    expect(rows(section(page, "What it may leave to the page"))).toEqual(layouts.supplied);
+  });
+
+  it("lists every built-in layout with its export, root and sub-parts", () => {
+    const documented = table(section(page, "The built-in layouts")).map(([type, exported, root, sub]) => ({ type: names(type)[0], export: names(exported)[0], roots: names(root), sub: names(sub) }));
+    expect(documented).toEqual(Object.entries(layouts.layouts).map(([type, layout]) => ({ type, export: layout.export, roots: layout.roots, sub: layout.subParts })));
+  });
+
+  it("embeds the declaration, which declares exactly the props, a record's and a group's members", () => {
+    expect(page).toContain("```ts\n" + declaration + "```");
+    expect((members.get("LayoutProps") ?? []).sort()).toEqual([...layouts.props].sort());
+    expect((members.get("LayoutRecord") ?? []).sort()).toEqual([...layouts.record].sort());
+    expect((members.get("LayoutGroup") ?? []).sort()).toEqual([...layouts.group].sort());
   });
 });

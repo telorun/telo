@@ -27,7 +27,7 @@ import {
 import type { OpenZoneAttributes } from "./zone-attribute.js";
 import { tryParseDurationMs } from "./duration.js";
 import { fileStepResult, stepLabel } from "./emitted-step.js";
-import { InvokeError } from "./invoke-error.js";
+import { InvokeError, strandInputPointer } from "./invoke-error.js";
 import { RuntimeError } from "./types.js";
 import { predicateResult } from "./step-predicate.js";
 import { isKindRef, refSentinelTarget, type KindRef, type ScopeContext } from "./ref.js";
@@ -219,6 +219,12 @@ export interface InvokeStepState {
   /** Where the step is written, as a predicate refusal names it — the boot
    *  runner's `targets[<i>]`. Defaults to the journal path, else the name. */
   site?: string;
+  /** Where this step's `inputs:` are written in the calling resource's
+   *  declaration (RFC 6901), sent as the dispatch context's `inputsAt`. Absent
+   *  when the composer knows no written place, and never sent without an
+   *  `invokeCtx` to carry it, since a context seeded from nothing would replace
+   *  the ambient one. */
+  inputsAt?: string;
 }
 
 /**
@@ -674,6 +680,16 @@ async function dispatch(
   // to install into — that is one runtime's mechanism, and a second-language
   // leaf has no `AsyncLocalStorage`.
   const attemptCtx = state.invokeCtx;
+  // What a kernel dispatch carries: the attempt's context with where THIS
+  // step's inputs are written, or with none — never an `inputsAt` the context
+  // arrived with, which names the call that reached this body. The direct call
+  // below gets none: it has no exit to read one at and would hand it on.
+  const ownCtx =
+    attemptCtx?.inputsAt === undefined ? attemptCtx : deriveContext(attemptCtx, {});
+  const dispatchCtx =
+    attemptCtx && state.inputsAt !== undefined
+      ? deriveContext(attemptCtx, { inputsAt: state.inputsAt })
+      : ownCtx;
 
   if (raw && typeof (raw as Invocable).invoke === "function") {
     // A pre-injected live instance (a `!ref` resolved at Phase 5). Route it
@@ -681,15 +697,24 @@ async function dispatch(
     // injection, so the call is instrumented exactly like a by-name dispatch.
     // A truly anonymous instance (no stamp) falls back to a direct call.
     const identity = getRefIdentity(raw as object);
-    result = identity
-      ? await ctx.invokeResolved(
-          identity.kind,
-          identity.name,
-          raw as ResourceInstance,
-          inputs,
-          attemptCtx,
-        )
-      : await (raw as Invocable).invoke(inputs, attemptCtx);
+    if (identity) {
+      result = await ctx.invokeResolved(
+        identity.kind,
+        identity.name,
+        raw as ResourceInstance,
+        inputs,
+        dispatchCtx,
+      );
+    } else {
+      try {
+        result = await (raw as Invocable).invoke(inputs, ownCtx);
+      } catch (err) {
+        // No dispatch exit saw this call, so a pointer into its inputs would be
+        // read by an outer exit against that exit's own inputs.
+        strandInputPointer(err);
+        throw err;
+      }
+    }
   } else {
     const ref = referenceIn(raw);
     if (!ref) {
@@ -710,12 +735,12 @@ async function dispatch(
           `Cross-module reference '${ref.alias}.${ref.name}' did not resolve to an exported instance.`,
         );
       }
-      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs, attemptCtx);
+      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs, dispatchCtx);
     } else if (state.scope) {
       const instance = state.scope.getInstance(ref.name) as unknown as ResourceInstance;
-      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs, attemptCtx);
+      result = await ctx.invokeResolved(ref.kind, ref.name, instance, inputs, dispatchCtx);
     } else {
-      result = await ctx.invoke(ref.kind, ref.name, inputs, { ctx: attemptCtx });
+      result = await ctx.invoke(ref.kind, ref.name, inputs, { ctx: dispatchCtx });
     }
   }
   return result;

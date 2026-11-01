@@ -1,0 +1,24 @@
+# A collection `telo check` refuses where it is declared; a consumer's check
+# sees nothing, so there the collection refuses itself when it is created.
+kind: Telo.Library
+metadata:
+  name: DataModelKeyUndeclared
+  version: 1.0.0
+  description: Test fixture exporting a collection refused as DATA_MODEL_KEY_UNDECLARED.
+imports:
+  DataModel: ../../../../../
+exports:
+  resources: [collection]
+---
+kind: Telo.JsonSchema
+metadata: { name: Post }
+schema:
+  type: object
+  required: [title]
+  properties:
+    title: { type: string }
+---
+kind: DataModel.Collection
+metadata: { name: collection }
+model: !ref Post
+query: { filters: [], sort: [] }

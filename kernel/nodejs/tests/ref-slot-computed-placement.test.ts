@@ -345,7 +345,8 @@ describe("an expression at or above a reference slot", () => {
 
       expect(analyzer.map(({ code, path }) => [code, path])).toEqual(placement.expected);
       expect(reasons(analyzer.map((d) => d.message))).toEqual(reasons(kernel));
-    });
+      // Each case runs a whole analysis and a kernel load; the first also pays the worker's one-time module load.
+    }, 30_000);
   });
 });
 

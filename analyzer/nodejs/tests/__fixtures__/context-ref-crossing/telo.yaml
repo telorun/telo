@@ -1,0 +1,53 @@
+kind: Telo.Application
+metadata: { name: CrossingApp }
+imports:
+  Kinds: ./kinds
+  Lib: ./lib
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+schema: { type: object, properties: { id: { type: integer }, handle: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Person }
+schema: { type: object, properties: { handle: { type: string } } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Reviewer }
+extends: Person
+schema: { type: object, properties: { id: { type: integer } } }
+---
+kind: Kinds.Collection
+metadata: { name: reviewers }
+model: !ref Reviewer
+---
+kind: Kinds.Source
+metadata: { name: reviewersSource }
+collection: !ref reviewers
+---
+kind: Kinds.Source
+metadata: { name: authorsSource }
+collection: !ref Lib.authors
+---
+kind: Kinds.Collection
+metadata: { name: localAuthors }
+model: !ref Author
+---
+kind: Kinds.Source
+metadata: { name: localAuthorsSource }
+collection: !ref localAuthors
+---
+kind: Kinds.Presentation
+metadata: { name: fits }
+relations:
+  authorId: { source: !ref authorsSource, label: !cel "row.name" }
+  reviewerId: { source: !ref reviewersSource, label: !cel "row.handle" }
+  editorId: { source: !ref localAuthorsSource, label: !cel "row.handle" }
+  publisherId: { source: !ref Lib.libAuthorsSource, label: !cel "row.name" }
+---
+kind: Kinds.Presentation
+metadata: { name: misses }
+relations:
+  authorId: { source: !ref authorsSource, label: !cel "row.handle" }
+  reviewerId: { source: !ref reviewersSource, label: !cel "row.name" }
+  publisherId: { source: !ref Lib.libAuthorsSource, label: !cel "row.handle" }

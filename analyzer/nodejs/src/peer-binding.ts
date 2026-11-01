@@ -74,7 +74,8 @@
  *
  * Browser-safe: no Node built-ins.
  */
-import type { DeclarationRequests } from "./declaration-requests.js";
+import type { DeclarationRequests, NameRequests } from "./declaration-requests.js";
+import type { LibraryDeclarations } from "./library-declarations.js";
 import type { ResourceManifest } from "@telorun/sdk";
 import { isRefSentinel, MODULE_PATH_ENGINE } from "@telorun/templating";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
@@ -89,7 +90,7 @@ import {
   resolvePointer,
   type DynamicLeaf,
 } from "./resource-rule.js";
-import { isTypeKind, resolveTypeFieldToSchema } from "./validate-cel-context.js";
+import { namedShapeReading } from "./named-shape-reading.js";
 import {
   isIterableSchema,
   rulePointerReaches,
@@ -97,7 +98,7 @@ import {
   type KindSchemas,
 } from "./validate-resource-rules.js";
 import { isResolvedReference } from "./resolved-reference.js";
-import { importPathThrough, scopeReadAt } from "./scoped-name-resolver.js";
+import { importPathOf, importPathThrough, scopeReadAt } from "./scoped-name-resolver.js";
 
 /**
  * The half of a definition registry both halves below need.
@@ -122,6 +123,22 @@ export interface PeerBinderRegistry {
 export interface PeerAliasScope {
   moduleForAlias(alias: string): string | undefined;
   resolveKind(kind: string): string | undefined;
+}
+
+/**
+ * The modules a reference may be written in that the analysis did not load as
+ * its own — imported dependencies, of which a consumer holds only the exports.
+ * A reference such a module's declaration writes is read in THAT module: its
+ * own aliases, and its own declarations, the ones it keeps to itself included.
+ */
+export interface WritingModules {
+  /** True when `module` is an imported dependency's, not an analysed module's. */
+  isDependency(module: string): boolean;
+  /** The module `alias` names in `module`'s own imports. */
+  moduleForAlias(module: string, alias: string): string | undefined;
+  /** `module`'s module-level declaration of `name` — exported or internal — of
+   *  the instance at `instance` where it is imported as several. */
+  declaredIn(module: string, name: string, instance: readonly string[] | undefined): ResourceManifest | undefined;
 }
 
 /** What a rule sees for one entry of a referrer's collection. */
@@ -613,7 +630,7 @@ export class PeerBinder {
         return { ok: true, view: current };
       }
       const prefix = segments.slice(0, k);
-      if (!this.isReferenceLocation(holder, kind, prefix)) continue;
+      if (!this.isReferenceLocation(holder, kind, prefix, k < segments.length)) continue;
       const resolved = this.resolveReferences(holder, kind, toPointer(prefix));
       if (!resolved.ok) return resolved;
       if (resolved.value === undefined || resolved.value === null) return { ok: true, view };
@@ -666,8 +683,15 @@ export class PeerBinder {
   }
 
   /** Whether the value at `segments` of a declaration is a reference site, or a
-   *  collection whose entries are. */
-  private isReferenceLocation(holder: ResourceManifest, kind: string, segments: readonly string[]): boolean {
+   *  collection whose entries are or hold one. A pointer that `continues` past a
+   *  collection whose entries only HOLD references walks on into an entry, to the
+   *  reference it names. */
+  private isReferenceLocation(
+    holder: ResourceManifest,
+    kind: string,
+    segments: readonly string[],
+    continues = false,
+  ): boolean {
     const sites = this.env.refSitesOf(holder, kind);
     const shapes = this.env.refSlotsOf(kind);
     if (!sites || !shapes) return false;
@@ -676,7 +700,8 @@ export class PeerBinder {
     if (sites.has(path)) return true;
     const raw = resolvePointer(this.view(holder), pointer);
     if (!raw || typeof raw !== "object") return false;
-    return entryShapeOf(shapes, path, Array.isArray(raw)) !== undefined;
+    const entry = entryShapeOf(shapes, path, Array.isArray(raw));
+    return entry !== undefined && (!continues || shapes.includes(entry));
   }
 
   /** True when the rule has something to compare — the input to the
@@ -837,6 +862,9 @@ export function analyzerPeerBinder(
   slotAccepts?: (slotKinds: readonly string[], declarationKind: string) => boolean,
   /** How a bound declaration is read (`RuleDeclarationViews.of`). */
   viewOf?: (declaration: ResourceManifest) => ResourceManifest,
+  /** Where a dependency's declaration reads the references it writes. Omitted,
+   *  every reference is read in the analysed modules' scope. */
+  writing?: WritingModules,
 ): PeerBinder {
   const names = requests.names;
 
@@ -845,24 +873,9 @@ export function analyzerPeerBinder(
    * its `schema`, as every other reader of a shape sees it. A rule reading the
    * declaration as written would miss every inherited property.
    */
-  const typeManifests = requests;
-  const folded = new WeakMap<ResourceManifest, ResourceManifest>();
-  const effective = (declaration: ResourceManifest | undefined): ResourceManifest | undefined => {
-    if (!declaration) return undefined;
-    const shape = declaration as unknown as { schema?: unknown; extends?: unknown };
-    if (!shape.extends || !isTypeKind(declaration.kind, typeManifests)) return declaration;
-    let view = folded.get(declaration);
-    if (!view) {
-      const schema = resolveTypeFieldToSchema(
-        { schema: shape.schema, extends: shape.extends },
-        typeManifests,
-        declaration as unknown as Record<string, any>,
-      );
-      view = schema ? ({ ...declaration, schema } as ResourceManifest) : declaration;
-      folded.set(declaration, view);
-    }
-    return view;
-  };
+  const reading = namedShapeReading(requests);
+  const effective = (declaration: ResourceManifest | undefined): ResourceManifest | undefined =>
+    declaration && reading(declaration);
 
   /**
    * An alias RESOLVES OR NOTHING DOES. Resource names are module-scoped, so two
@@ -873,6 +886,11 @@ export function analyzerPeerBinder(
    * produces.
    */
   const declarationOf: DeclarationLookup = (ref, from) => {
+    const writer = from?.referrer;
+    const writerModule = (writer?.metadata as { module?: unknown } | undefined)?.module;
+    if (writing && typeof writerModule === "string" && writing.isDependency(writerModule)) {
+      return effective(dependencyDeclaration(writing, ref, writer!, writerModule, from!.path));
+    }
     if (ref.alias && ref.alias !== "Self") {
       const module = aliases.moduleForAlias(ref.alias);
       return module
@@ -880,10 +898,37 @@ export function analyzerPeerBinder(
         : undefined;
     }
     // Read where it is written: a scope member's references name its scope's
-    // members first.
+    // members first, then the module that wrote the reference, before any other.
     return effective(
-      names.resolve(ref.name, undefined, from && scopeReadAt(from.referrer, from.path)),
+      names.resolve(
+        ref.name,
+        (from?.referrer.metadata as { module?: string } | undefined)?.module,
+        from && scopeReadAt(from.referrer, from.path),
+      ),
     );
+  };
+
+  /**
+   * A reference a dependency's declaration writes: a scope member first, then
+   * the writing module's own declaration of the name — never another module's
+   * that shares it, and never nothing merely because the module does not export
+   * it. Through an alias, the declaration of the module that alias imports there.
+   */
+  const dependencyDeclaration = (
+    scope: WritingModules,
+    ref: ReferenceValue,
+    writer: ResourceManifest,
+    module: string,
+    path: string,
+  ): ResourceManifest | undefined => {
+    if (ref.alias && ref.alias !== "Self") {
+      const target = scope.moduleForAlias(module, ref.alias);
+      return target === undefined
+        ? undefined
+        : scope.declaredIn(target, ref.name, importPathThrough(writer, ref.alias));
+    }
+    const within = scopeReadAt(writer, path);
+    return (within && names.scopeMember(ref.name, within)) ?? scope.declaredIn(module, ref.name, importPathOf(writer));
   };
 
   /**
@@ -919,6 +964,26 @@ export function analyzerPeerBinder(
     ...(slotAccepts ? { slotAccepts } : {}),
     ...(viewOf ? { viewOf } : {}),
   });
+}
+
+/**
+ * The {@link WritingModules} of one analysis: every module but `rootModules` is
+ * a dependency; its aliases are its own table; its declarations are those the
+ * analysis holds by module, then the library documents the host collected
+ * (`libraryDeclarations`), which carry what the library does not export.
+ */
+export function analyzerWritingModules(
+  rootModules: ReadonlySet<string>,
+  aliasesByModule: ReadonlyMap<string, Pick<PeerAliasScope, "moduleForAlias">>,
+  names: Pick<NameRequests, "inModule">,
+  libraries: Pick<LibraryDeclarations, "declaration"> | undefined,
+): WritingModules {
+  return {
+    isDependency: (module) => !rootModules.has(module),
+    moduleForAlias: (module, alias) => aliasesByModule.get(module)?.moduleForAlias(alias),
+    declaredIn: (module, name, instance) =>
+      names.inModule(name, module, instance) ?? libraries?.declaration(module, name),
+  };
 }
 
 /**

@@ -78,6 +78,11 @@ export class ConfigSection {
     );
   }
 
+  /** A setting as written, for a reader that validates it itself. */
+  raw(key: string): unknown {
+    return this.values[key];
+  }
+
   boolean(key: string, fallback: boolean): boolean {
     const value = this.values[key];
     if (value === undefined || value === null) return fallback;

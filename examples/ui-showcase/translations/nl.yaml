@@ -487,9 +487,31 @@ texts:
 
   # CRUD.
   - { text: A generated admin screen, translation: Een gegenereerd beheerscherm }
-  - { text: "One declaration over the tasks model the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the model, so the screen offers exactly what the API accepts.", translation: "Eén declaratie over het takenmodel waaruit de API wordt geserveerd: een filterbalk, een sorteerbare tabel met pagina's, een formulier om een taak toe te voegen en een om haar te wijzigen, en verwijderen met bevestiging op elke rij. De kolommen, de velden en de filters worden allemaal afgeleid uit het model, dus het scherm biedt precies wat de API accepteert." }
+  - { text: "One declaration over the tasks collection the API is served from: a filter bar, a sortable paged table, a form to add a task and one to change it, and a confirmed delete on every row. The columns, the fields and the filters are all derived from the collection, so the screen offers exactly what the API accepts.", translation: "Eén declaratie over het takenmodel waaruit de API wordt geserveerd: een filterbalk, een sorteerbare tabel met pagina's, een formulier om een taak toe te voegen en een om haar te wijzigen, en verwijderen met bevestiging op elke rij. De kolommen, de velden en de filters worden allemaal afgeleid uit het model, dus het scherm biedt precies wat de API accepteert." }
   - { text: "The bar sits beside the table at the end edge and shows only the filters you choose, each as a chip that opens its control. It keeps its choice in this browser under the key aside — the key of the bar beside the table on the Filters page, so a filter chosen on either page is chosen on both.", translation: "De balk staat naast de tabel aan de eindrand en toont alleen de filters die je kiest, elk als chip die zijn besturingselement opent. Hij bewaart zijn keuze in deze browser onder de sleutel aside — de sleutel van de balk naast de tabel op de pagina Filters, dus een filter dat op een van beide pagina's is gekozen, is op beide gekozen." }
   - { text: "A new task opens in a drawer from the end edge and stays open, emptied, for the next one. A task is changed in a panel beside the list, which is part of the address, and leaving it with unsaved input asks first.", translation: "Een nieuwe taak opent in een lade vanaf de eindrand en blijft open, leeggemaakt, voor de volgende. Een taak wordt gewijzigd in een paneel naast de lijst, dat deel uitmaakt van het adres, en wie het verlaat met niet-opgeslagen invoer, krijgt eerst een vraag." }
+
+  # Related records.
+  - { text: "Related records", translation: "Gerelateerde records" }
+  - { text: "Posts and their authors", translation: "Berichten en hun auteurs" }
+  - { text: "Each post names its author by key. The author column shows the author's name instead, read in one request for every author on the page, and the bar's author filter offers every author by name. The create and edit forms pick the author from a list of authors, searched by name.", translation: "Elk bericht noemt zijn auteur bij diens sleutel. De auteurskolom toont in plaats daarvan de naam van de auteur, gelezen in één verzoek voor alle auteurs op de pagina, en het auteursfilter van de balk biedt elke auteur bij naam aan. De formulieren voor aanmaken en bewerken kiezen de auteur uit een lijst van auteurs, doorzoekbaar op naam." }
+  - { text: "Only the authors with posts", translation: "Alleen de auteurs met berichten" }
+  - { text: "These filters offer only the authors and the statuses present among the posts the other filters leave, each with how many posts it has. The posts are drawn as cards, and as a list below the breakpoint, loading more as you reach the end.", translation: "Deze filters bieden alleen de auteurs en statussen aan die voorkomen onder de berichten die de andere filters overlaten, elk met het aantal berichten. De berichten worden als kaarten getekend, en onder het breekpunt als een lijst die meer laadt zodra je het einde bereikt." }
+  - { text: "On a board by status", translation: "Op een bord per status" }
+  - { text: "One column per status, each read and counted on its own. Drag a card to another column, or move it from its menu, to change its status; every list of posts on the page reads again.", translation: "Eén kolom per status, elk apart gelezen en geteld. Sleep een kaart naar een andere kolom, of verplaats hem via zijn menu, om zijn status te wijzigen; elke lijst met berichten op de pagina wordt opnieuw gelezen." }
+  - { text: "On a calendar", translation: "Op een kalender" }
+  - { text: "The posts on the day each is published, a month at a time; the month shown reads every post dated in it. A post with no date is not on the calendar.", translation: "De berichten op de dag dat elk verschijnt, een maand tegelijk; de getoonde maand leest elk bericht dat erin gedateerd is. Een bericht zonder datum staat niet op de kalender." }
+  - { text: "The authors", translation: "De auteurs" }
+  - { text: "The authors' own screen, generated from their collection. It reads the same address the posts' author filter and picker read, so an author added here is offered there at once.", translation: "Het eigen scherm van de auteurs, gegenereerd uit hun collectie. Het leest hetzelfde adres als het auteursfilter en de auteurskiezer van de berichten, dus een auteur die hier wordt toegevoegd, wordt daar meteen aangeboden." }
+  - { text: "Reporting lines as a tree", translation: "Rapportagelijnen als boom" }
+  - { text: "Each person names who they report to, a relation of the people to themselves. The tree reads the people who report to nobody first, and a person's reports when they are opened. The form picks the manager from the same people.", translation: "Elke persoon noemt aan wie hij rapporteert, een relatie van de mensen met zichzelf. De boom leest eerst de mensen die aan niemand rapporteren, en de medewerkers van een persoon zodra die wordt geopend. Het formulier kiest de leidinggevende uit dezelfde mensen." }
+  # The labels of the related-records page's models.
+  - { text: "Author", translation: "Auteur" }
+  - { text: "Draft", translation: "Concept" }
+  - { text: "Published", translation: "Gepubliceerd" }
+  - { text: "Published on", translation: "Gepubliceerd op" }
+  - { text: "Reports to", translation: "Rapporteert aan" }
+  - { text: "Post", translation: "Bericht" }
 
   # Themes.
   - { text: Four mounts of one design, translation: Vier koppelpunten van één ontwerp }
@@ -609,3 +631,8 @@ texts:
   - text: "Must have at most {$limit} items"
     translation: { plural: limit, cases: { one: "Hoogstens {$limit} item", other: "Hoogstens {$limit} items" } }
   - { text: Must not repeat an item, translation: Items mogen niet herhaald worden }
+  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
+  - { text: "Load more", translation: "Meer laden" }
+  - { text: "Move to", translation: "Verplaatsen naar" }
+  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
+  - { text: "not set", translation: "niet ingesteld" }

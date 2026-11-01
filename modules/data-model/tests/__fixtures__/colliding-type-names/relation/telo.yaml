@@ -1,0 +1,34 @@
+# The application and its library each declare a shape named `Tag`, with keys of
+# different types; each relation is judged against its own target's `Tag`.
+kind: Telo.Application
+metadata: { name: DataModelCollidingRelationApp, version: 1.0.0 }
+imports:
+  DataModel: ../../../../
+  Lib: ./lib
+---
+kind: Telo.JsonSchema
+metadata: { name: Tag }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Item }
+schema:
+  type: object
+  required: [id]
+  properties: { id: { type: integer }, tagId: { type: string }, localTagId: { type: integer } }
+---
+kind: DataModel.Collection
+metadata: { name: localTags }
+model: !ref Tag
+query: { filters: [{ property: id, operator: in }], sort: [] }
+---
+kind: DataModel.Collection
+metadata: { name: items }
+model: !ref Item
+query: { filters: [], sort: [] }
+relations:
+  tagId: { collection: !ref Lib.tags }
+  localTagId: { collection: !ref localTags }

@@ -7,20 +7,13 @@ metadata:
     their own inverse runs, and one that may hold another, so the order a
     context unwinds in is observable from a probe after teardown.
 exports:
-  kinds:
-    - Node
-    - Group
-    - Task
-    - Journal
-  resources:
-    - provider
-    - journal
-files:
-  - "nodejs/*.mjs"
+  kinds: [Node, Group, Task, Journal]
+  resources: [provider, journal]
+files: ["nodejs/*.mjs"]
 ---
-# One effect, one inverse, one line in the journal. `holds:` is what makes a
-# node a consumer of another: an init-order edge, so the kernel must unwind this
-# node before the one it names.
+# One effect, one inverse, one line in the journal. `holds:` makes a node a
+# consumer of another, unwound before it; `reads:` is a declaration read, which
+# orders nothing.
 kind: Telo.Definition
 metadata:
   name: Node
@@ -33,17 +26,17 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required:
-    - label
+  required: [label]
   properties:
     label:
       title: The name this node records itself under.
       type: string
     holds:
       title: Another node this one holds for as long as it is alive.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
+    reads:
+      title: Another node whose declaration this one reads, holding nothing of it.
+      x-telo-ref: { kind: Self.Node, use: schema }
 ---
 # A node whose references live INSIDE an array, which is the shape that
 # distinguishes a manifest from its own declaration after Phase-5 injection: the
@@ -60,8 +53,7 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required:
-    - label
+  required: [label]
   properties:
     label:
       type: string
@@ -72,9 +64,7 @@ schema:
         additionalProperties: false
         properties:
           node:
-            x-telo-ref:
-              kind: Self.Node
-              use: dependency
+            x-telo-ref: { kind: Self.Node, use: dependency }
 ---
 # A boot target: something the kernel RUNS, not merely initializes. Nothing runs
 # a resource a second time, so rebuilding one that has already started would
@@ -89,8 +79,7 @@ controllers:
 schema:
   type: object
   additionalProperties: false
-  required:
-    - label
+  required: [label]
   properties:
     label:
       type: string
@@ -110,10 +99,7 @@ schema:
 outputType:
   type: object
   properties:
-    entries:
-      type: array
-      items:
-        type: string
+    entries: { type: array, items: { type: string } }
 ---
 kind: Self.Node
 metadata:

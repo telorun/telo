@@ -4,7 +4,12 @@ import {
   RunnerConfigError,
   type RunnerCoreConfig,
 } from "@telorun/runner-core";
-import { loadTeloImageSource, type TeloImageSource } from "@telorun/runner-core/container";
+import {
+  loadSessionUserFromEnv,
+  loadTeloImageSource,
+  type SessionUser,
+  type TeloImageSource,
+} from "@telorun/runner-core/container";
 
 export { RunnerConfigError };
 
@@ -24,6 +29,9 @@ export interface RunnerConfig extends RunnerCoreConfig {
   /** The kernel image the runner's own workspace container runs on
    *  (`RUNNER_IMAGE`). */
   workspaceImage: string;
+  /** Who every container of a session's workload runs as, and who owns the
+   *  session's directory (`RUNNER_SESSION_USER`). */
+  sessionUser: SessionUser;
 }
 
 /** The kernel image this runner's own containers run on unless told otherwise. */
@@ -66,5 +74,6 @@ export function loadRunnerConfig(env: NodeJS.ProcessEnv): RunnerConfig {
     publicBaseUrl,
     teloImages: loadTeloImageSource(env),
     workspaceImage: env.RUNNER_IMAGE?.trim() || DEFAULT_KERNEL_IMAGE,
+    sessionUser: loadSessionUserFromEnv(env),
   };
 }

@@ -166,6 +166,22 @@ describe("the session pod", () => {
   });
 });
 
+describe("the session user", () => {
+  it("is every container's user and the volumes' group, as the session file configures it", () => {
+    const pod = build({ config: { ...config, sessionUser: { uid: 2000, gid: 2000 } } });
+    expect(pod.spec!.securityContext).toMatchObject({
+      runAsNonRoot: true,
+      runAsUser: 2000,
+      runAsGroup: 2000,
+      fsGroup: 2000,
+    });
+    for (const container of pod.spec!.containers) {
+      expect(container.securityContext).not.toHaveProperty("runAsUser");
+      expect(envOf(container)).toMatchObject({ HOME: "/home/telo", npm_config_cache: "/home/telo/.npm" });
+    }
+  });
+});
+
 describe("reserved ports", () => {
   it("are every slot's supervisor port and every app slot's debug-stream port, named for no app", () => {
     const reserved = reservedPortsFor();

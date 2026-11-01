@@ -336,7 +336,7 @@ function sameLeafJsType(a: unknown, b: unknown): boolean {
   if (b === null) return false;
   if (a === undefined || b === undefined) return false;
   // A tagged sentinel is `typeof "object"` like every other object, so the
-  // plain type test read `!ref todos` and `{kind: Crud.Resource, …}` as the
+  // plain type test read `!ref todos` and `{kind: Crud.Api, …}` as the
   // same shape and swapped the value under the tag — the reference kept its
   // `!ref`, over a value that stringified to `[object Object]`. Whether a leaf
   // is tagged, and by WHICH engine, is part of what it is: a tag is emitted for

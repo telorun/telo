@@ -1,0 +1,587 @@
+{
+  "description": "The exact requests a listing's read plan sends: for one read of the plan's product, its first page, the next page, the reload of the pages loaded, or a grouping's values. Produced by `ui`'s own plan requests and held by every renderer's.",
+  "rows": [
+    {
+      "name": "a board column reads its group's records under every filter and the viewer's sort",
+      "listing": {
+        "basePath": "/api/tasks",
+        "pageSize": 25,
+        "paging": "pages",
+        "filters": [
+          [
+            "projectId",
+            "7"
+          ]
+        ],
+        "bar": [
+          [
+            "title.contains",
+            "plan"
+          ]
+        ],
+        "sort": "-dueOn"
+      },
+      "reads": {
+        "groups": {
+          "property": "status",
+          "values": "all",
+          "enum": [
+            "open",
+            "doing",
+            "done"
+          ],
+          "labels": []
+        }
+      },
+      "read": {
+        "group": "doing"
+      },
+      "event": "open",
+      "requests": [
+        {
+          "path": "/api/tasks",
+          "params": [
+            [
+              "limit",
+              "25"
+            ],
+            [
+              "sort",
+              "-dueOn"
+            ],
+            [
+              "projectId",
+              "7"
+            ],
+            [
+              "title.contains",
+              "plan"
+            ],
+            [
+              "status",
+              "doing"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a present board reads its columns from the facet request, under the filters and no sort",
+      "listing": {
+        "basePath": "/api/tasks",
+        "pageSize": 25,
+        "paging": "pages",
+        "filters": [
+          [
+            "projectId",
+            "7"
+          ]
+        ],
+        "bar": [
+          [
+            "title.contains",
+            "plan"
+          ]
+        ],
+        "sort": "-dueOn"
+      },
+      "reads": {
+        "groups": {
+          "property": "status",
+          "values": "present",
+          "labels": []
+        }
+      },
+      "read": {},
+      "event": "values",
+      "requests": [
+        {
+          "path": "/api/tasks",
+          "params": [
+            [
+              "limit",
+              "25"
+            ],
+            [
+              "facet",
+              "status"
+            ],
+            [
+              "projectId",
+              "7"
+            ],
+            [
+              "title.contains",
+              "plan"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a board of every related record pages its columns from the relation's source",
+      "listing": {
+        "basePath": "/api/tasks",
+        "pageSize": 25,
+        "paging": "pages",
+        "filters": [
+          [
+            "projectId",
+            "7"
+          ]
+        ],
+        "bar": [
+          [
+            "title.contains",
+            "plan"
+          ]
+        ],
+        "sort": "-dueOn"
+      },
+      "reads": {
+        "groups": {
+          "property": "assigneeId",
+          "values": "all",
+          "relation": "assigneeId",
+          "labels": []
+        }
+      },
+      "relations": {
+        "assigneeId": {
+          "basePath": "/api/people",
+          "pageSize": 50
+        }
+      },
+      "read": {},
+      "event": "values",
+      "requests": [
+        {
+          "path": "/api/people",
+          "params": [
+            [
+              "limit",
+              "50"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a month period without an end reads the records starting in it",
+      "listing": {
+        "basePath": "/api/events",
+        "pageSize": 100,
+        "paging": "pages",
+        "filters": [],
+        "bar": [],
+        "sort": "startsOn"
+      },
+      "reads": {
+        "span": {
+          "start": "startsOn",
+          "format": "date"
+        }
+      },
+      "read": {
+        "period": {
+          "from": "2026-10-01",
+          "to": "2026-10-31"
+        }
+      },
+      "event": "open",
+      "requests": [
+        {
+          "path": "/api/events",
+          "params": [
+            [
+              "limit",
+              "100"
+            ],
+            [
+              "sort",
+              "startsOn"
+            ],
+            [
+              "startsOn.gte",
+              "2026-10-01"
+            ],
+            [
+              "startsOn.lte",
+              "2026-10-31"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a month period with an end reads the records overlapping it",
+      "listing": {
+        "basePath": "/api/events",
+        "pageSize": 100,
+        "paging": "pages",
+        "filters": [],
+        "bar": [],
+        "sort": "startsOn"
+      },
+      "reads": {
+        "span": {
+          "start": "startsOn",
+          "end": "endsOn",
+          "format": "date"
+        }
+      },
+      "read": {
+        "period": {
+          "from": "2026-10-01",
+          "to": "2026-10-31"
+        }
+      },
+      "event": "open",
+      "requests": [
+        {
+          "path": "/api/events",
+          "params": [
+            [
+              "limit",
+              "100"
+            ],
+            [
+              "sort",
+              "startsOn"
+            ],
+            [
+              "startsOn.lte",
+              "2026-10-31"
+            ],
+            [
+              "endsOn.gte",
+              "2026-10-01"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a timeline lane in a period adds the group, then the period's bounds",
+      "listing": {
+        "basePath": "/api/bookings",
+        "pageSize": 100,
+        "paging": "pages",
+        "filters": [],
+        "bar": [],
+        "sort": "startsAt"
+      },
+      "reads": {
+        "groups": {
+          "property": "roomId",
+          "values": "all",
+          "relation": "roomId",
+          "labels": []
+        },
+        "span": {
+          "start": "startsAt",
+          "end": "endsAt",
+          "format": "date-time"
+        }
+      },
+      "read": {
+        "group": "4",
+        "period": {
+          "from": "2026-10-01T00:00:00Z",
+          "to": "2026-12-31T23:59:59Z"
+        }
+      },
+      "event": "open",
+      "requests": [
+        {
+          "path": "/api/bookings",
+          "params": [
+            [
+              "limit",
+              "100"
+            ],
+            [
+              "sort",
+              "startsAt"
+            ],
+            [
+              "roomId",
+              "4"
+            ],
+            [
+              "startsAt.lte",
+              "2026-12-31T23:59:59Z"
+            ],
+            [
+              "endsAt.gte",
+              "2026-10-01T00:00:00Z"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "tree roots are the records with no parent",
+      "listing": {
+        "basePath": "/api/employees",
+        "pageSize": 25,
+        "paging": "pages",
+        "filters": [],
+        "bar": [],
+        "sort": "name"
+      },
+      "reads": {
+        "parent": "managerId"
+      },
+      "read": {},
+      "event": "open",
+      "requests": [
+        {
+          "path": "/api/employees",
+          "params": [
+            [
+              "limit",
+              "25"
+            ],
+            [
+              "sort",
+              "name"
+            ],
+            [
+              "managerId.absent",
+              "true"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "an expanded record's children are the records naming it as parent",
+      "listing": {
+        "basePath": "/api/employees",
+        "pageSize": 25,
+        "paging": "pages",
+        "filters": [],
+        "bar": [],
+        "sort": "name"
+      },
+      "reads": {
+        "parent": "managerId"
+      },
+      "read": {
+        "parent": "42"
+      },
+      "event": "open",
+      "requests": [
+        {
+          "path": "/api/employees",
+          "params": [
+            [
+              "limit",
+              "25"
+            ],
+            [
+              "sort",
+              "name"
+            ],
+            [
+              "managerId",
+              "42"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "under more, the next page is read with the cursor the last page answered",
+      "listing": {
+        "basePath": "/api/posts",
+        "pageSize": 20,
+        "paging": "more",
+        "filters": [],
+        "bar": [
+          [
+            "authorId",
+            "3"
+          ]
+        ],
+        "sort": "-publishedOn"
+      },
+      "reads": {},
+      "read": {},
+      "event": "more",
+      "loaded": [
+        "c1",
+        "c2"
+      ],
+      "requests": [
+        {
+          "path": "/api/posts",
+          "params": [
+            [
+              "limit",
+              "20"
+            ],
+            [
+              "cursor",
+              "c2"
+            ],
+            [
+              "sort",
+              "-publishedOn"
+            ],
+            [
+              "authorId",
+              "3"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a reload of three loaded pages refetches all three in order, each with the cursor the refetch before it answered",
+      "listing": {
+        "basePath": "/api/posts",
+        "pageSize": 20,
+        "paging": "more",
+        "filters": [],
+        "bar": [
+          [
+            "authorId",
+            "3"
+          ]
+        ],
+        "sort": "-publishedOn"
+      },
+      "reads": {},
+      "read": {},
+      "event": "reload",
+      "loaded": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "answers": [
+        "r1",
+        "r2",
+        "r3"
+      ],
+      "requests": [
+        {
+          "path": "/api/posts",
+          "params": [
+            [
+              "limit",
+              "20"
+            ],
+            [
+              "sort",
+              "-publishedOn"
+            ],
+            [
+              "authorId",
+              "3"
+            ]
+          ]
+        },
+        {
+          "path": "/api/posts",
+          "params": [
+            [
+              "limit",
+              "20"
+            ],
+            [
+              "cursor",
+              "r1"
+            ],
+            [
+              "sort",
+              "-publishedOn"
+            ],
+            [
+              "authorId",
+              "3"
+            ]
+          ]
+        },
+        {
+          "path": "/api/posts",
+          "params": [
+            [
+              "limit",
+              "20"
+            ],
+            [
+              "cursor",
+              "r2"
+            ],
+            [
+              "sort",
+              "-publishedOn"
+            ],
+            [
+              "authorId",
+              "3"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "name": "a reload of twelve loaded pages refetches the first page alone",
+      "listing": {
+        "basePath": "/api/posts",
+        "pageSize": 20,
+        "paging": "more",
+        "filters": [],
+        "bar": [
+          [
+            "authorId",
+            "3"
+          ]
+        ],
+        "sort": "-publishedOn"
+      },
+      "reads": {},
+      "read": {},
+      "event": "reload",
+      "loaded": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c11",
+        "c12"
+      ],
+      "answers": [
+        "r1"
+      ],
+      "requests": [
+        {
+          "path": "/api/posts",
+          "params": [
+            [
+              "limit",
+              "20"
+            ],
+            [
+              "sort",
+              "-publishedOn"
+            ],
+            [
+              "authorId",
+              "3"
+            ]
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -2173,8 +2173,10 @@ export function solveCelSites(input: CelSiteSolveInput): CelSiteSolution {
    *  reference written in `near` — is written: the declaration of the union
    *  holding it, and its projected keys there at the witness. */
   const memberAt = (member: object, near: ConditionedDeclaration, wit: Witness): { holder: ConditionedDeclaration; at: Keys } => {
-    const within = viewSites.has(near) ? (near as ConditionedView).consumer : near;
-    for (const holder of [within, within.declaredIn, ...union.declarations]) {
+    const isView = viewSites.has(near);
+    const within = isView ? (near as ConditionedView).consumer : near;
+    // A view holds the scope members its body entry declares.
+    for (const holder of [...(isView ? [near] : []), within, within.declaredIn, ...union.declarations]) {
       if (!holder) continue;
       const keys = unionKeysIn(holder, member);
       if (!keys) continue;

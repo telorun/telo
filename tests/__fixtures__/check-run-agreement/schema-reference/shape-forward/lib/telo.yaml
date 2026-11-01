@@ -1,0 +1,32 @@
+# A forward past a `use: schema` reference reads the shape it names with its
+# `extends` folded: `id` is inherited as an integer, which the entry's `idType`
+# refuses — reported by this library's `telo check`, and by the kernel when a
+# consumer, whose entry-scoped check is silent, boots it.
+kind: Telo.Library
+metadata:
+  name: ShapeForwardFaulty
+  version: 1.0.0
+  description: >-
+    Fixture library whose templated resource forwards an inherited shape
+    property its entry refuses.
+imports:
+  Lib: ../../../../template-shape-forward
+---
+kind: Lib.IdType
+metadata: { name: described }
+model: !ref Child
+---
+kind: Telo.JsonSchema
+metadata: { name: Child }
+extends: Base
+schema:
+  type: object
+  properties:
+    label: { type: string }
+---
+kind: Telo.JsonSchema
+metadata: { name: Base }
+schema:
+  type: object
+  properties:
+    id: { type: integer }

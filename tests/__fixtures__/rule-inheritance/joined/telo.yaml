@@ -1,0 +1,34 @@
+# A merge-form child is judged by its parent's resource rule and its own.
+kind: Telo.Library
+metadata:
+  name: RuleInheritanceJoined
+exports:
+  resources: [entry]
+---
+kind: Telo.Definition
+metadata: { name: Base }
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./base.mjs#Base]
+schema:
+  type: object
+  properties:
+    label: { type: string }
+  x-telo-resource-rules:
+    - condition: !cel "has(self.label)"
+      code: BASE_NEEDS_LABEL
+      message: has no label.
+---
+kind: Telo.Definition
+metadata: { name: Entry }
+extends: Self.Base
+schema:
+  type: object
+  properties:
+    tag: { type: string }
+  x-telo-resource-rules:
+    - condition: !cel "has(self.tag)"
+      code: ENTRY_NEEDS_TAG
+      message: has no tag.
+---
+kind: Self.Entry
+metadata: { name: entry }

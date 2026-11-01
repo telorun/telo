@@ -11,7 +11,7 @@ judges each one where it is written.
 | --- | --- |
 | a node's `text`, `badge`, link `text`, `alt`, a value's `text`, a list's `heading`, a column's `header` | `Ui.BoundText` |
 | an enablement's `disabledText`, a row action's `confirm` | `Ui.BoundText`, not empty |
-| an action's `label`, a table column's `header`, a group's `label` and `description`, a preset's `label` | `Text`, formatted with no values |
+| an action's `label`, a table layout column's `header`, a group's `label` and `description`, a preset's `label` | `Text`, formatted with no values |
 | a model's `title`, `description` and the `title` of an enumeration's `const` branch | the schema's own texts |
 
 A `Text` formatted with no values may not name a placeholder: `Hello {$name}` as
@@ -69,6 +69,9 @@ required — and name it instead.
 | `pagerRange` | {$first}–{$last} of {$total} |
 | `pagerEmpty` | 0 of {$total} |
 | `nextPage` | Next page |
+| `loadMore` | Load more |
+| `moveTo` | Move to |
+| `valueCount` | {$label} ({$count}) — a value offered with how many records hold it |
 | `yes` | Yes |
 | `no` | No |
 | `none` | None |
@@ -96,6 +99,7 @@ required — and name it instead.
 | `operatorLt` | before |
 | `operatorLte` | to |
 | `operatorIn` | one of |
+| `operatorAbsent` | not set |
 | `filterControl` | {$label} {$operator} |
 | `filterChip` | {$label} {$operator} {$value} |
 | `filterGroupSummary` | {$label}: {$summary} |
@@ -163,7 +167,7 @@ record with `values` beside it, each value a binding; a word is
 `{ word: <id> }`. A model's title, description and enumeration labels are records
 of language `und`: they are matched against a catalog by their words.
 
-- Every `value` node, `list` column, table column, filter field and form or
+- Every `value` node, `list` column, table layout column, filter field and form or
   action field carries `labels: [{ value, label }]` — the label of each value an
   enumeration offers, `[]` when none — so a value is shown by its label while
   the value sent back is unchanged.

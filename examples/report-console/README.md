@@ -25,9 +25,10 @@ Google** goes to a consent stand-in that grants at once;
 `/api/auth/consent?outcome=denied` and `?outcome=expired` answer as a refused
 or lapsed consent would.
 
-The UI and translation modules are not released yet, so this example imports
-`ui`, `ui-react` and `i18n` from this workspace by relative path and runs only
-from a checkout. Its other imports are pinned.
+The UI, data-model and translation modules are not released yet, so this
+example imports `http-server`, `i18n`, `data-model`, `ui` and `ui-react` from
+this workspace by relative path and runs only from a checkout. Its other import
+is pinned.
 
 ## What the screen does
 
@@ -37,7 +38,7 @@ Http.Server (:8140)
 ├── /api       → consoleApi  (guarded: 401 without a session)
 └── /          → UiReact.App
                  ├── /          Reports: sign-in gate → account, report form, answer
-                 └── /projects  Projects: a table of one sheet's projects
+                 └── /projects  Projects: a listing of one sheet's projects
 ```
 
 - **Sign-in gate.** A `Ui.Data` reader over `/api/auth` draws the banner with
@@ -70,9 +71,13 @@ Http.Server (:8140)
   replaces the button, and **Upload**, which sends the folder chosen at the
   press and the period the report was generated for, one press at a time.
   A refusal is drawn as `HTTP <status> · <code>` and its message.
-- **The projects page** is a `Ui.Table` over `/api/projects`, filtered by the
-  page address's `sheet` (the report links to it), with a confirmed
-  **Remind** on every row that has an address.
+- **The projects page** is a `Ui.Listing` drawn as a table over
+  `/api/projects`, filtered by the page address's `sheet` (the report links to
+  it), with a confirmed **Remind** on every row that has an address.
+- **The Drive and the projects** are each a `DataModel.Collection` — the
+  record shape and the filters its list route accepts — read through one
+  `Ui.CollectionSource` naming its URL, which both pickers of Drive files and
+  the projects choice and listing share.
 
 ## Translation
 

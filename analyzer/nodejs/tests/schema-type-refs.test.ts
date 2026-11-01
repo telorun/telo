@@ -3,6 +3,7 @@ import { canonicalTypeSchemaId, parseTeloTypeRef } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
 import { AliasResolver } from "../src/alias-resolver.js";
 import { DefinitionRegistry } from "../src/definition-registry.js";
+import { resolvedReference } from "../src/resolved-reference.js";
 import { resolveSchemaTypeRefs } from "../src/resolve-schema-type-refs.js";
 import { validateSchemaTypeRefs } from "../src/validate-schema-type-refs.js";
 
@@ -61,6 +62,31 @@ describe("resolveSchemaTypeRefs", () => {
     resolveSchemaTypeRefs([unknown, builtin]);
     expect(refOf(unknown)).toBe("telo://Nope/MetadataFilter");
     expect(refOf(builtin)).toBe("telo://manifest#/$defs/ResourceRef");
+  });
+});
+
+describe("resolveSchemaTypeRefs — references to a named shape", () => {
+  const defs = {
+    resolve: (kind: string) =>
+      kind === "Telo.JsonSchema" ? { capability: "Telo.Type" } : kind === "Std.Store" ? { capability: "Telo.Provider" } : undefined,
+  };
+
+  it("stamps the id of the module that wrote it beside each, at any field", () => {
+    const aliases = new AliasResolver();
+    aliases.registerImport("Lib", "library", []);
+    const m = {
+      kind: "Std.Collection",
+      metadata: { name: "items", module: "app" },
+      model: resolvedReference("Telo.JsonSchema", "Item"),
+      relations: { tag: { model: resolvedReference("library.JsonSchema", "Tag", "Lib"), store: resolvedReference("Std.Store", "db") } },
+    } as unknown as ResourceManifest;
+    resolveSchemaTypeRefs([m], undefined, new Map([["app", aliases]]), {
+      resolve: (kind) => (kind === "library.JsonSchema" ? { capability: "Telo.Type" } : defs.resolve(kind)),
+    });
+    const value = m as any;
+    expect(value.model).toEqual({ ...resolvedReference("Telo.JsonSchema", "Item"), $ref: canonicalTypeSchemaId("app", "Item") });
+    expect(value.relations.tag.model.$ref).toBe(canonicalTypeSchemaId("library", "Tag"));
+    expect(value.relations.tag.store).toEqual(resolvedReference("Std.Store", "db"));
   });
 });
 

@@ -1,0 +1,18 @@
+kind: Telo.Library
+metadata:
+  name: UiRelationTargetAcrossModulesAuthors
+  version: 1.0.0
+  description: Test fixture exporting a collection of authors.
+imports:
+  DataModel: ../../../../../../data-model
+exports:
+  resources: [authors]
+---
+kind: Telo.JsonSchema
+metadata: { name: Author }
+schema: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string } } }
+---
+kind: DataModel.Collection
+metadata: { name: authors }
+model: !ref Author
+query: { filters: [{ property: id, operator: in }], sort: [] }
