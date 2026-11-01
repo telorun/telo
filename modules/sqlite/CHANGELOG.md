@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.12.0 - 2026-11-01
+### Fixed
+* A table whose foreign key references itself boots, and the slot's schema comment says why.
+* Foreign keys are documented: the foreignKeys entry of SQLite.Table, and what SQLite allows of a key after its table is created.
+
 ## 0.11.0 - 2026-10-23
 ### Added
 * File slots declare entry: file, so telo check refuses a directory wired where a file is wanted (HOST_PATH_ENTRY_MISMATCH) and the kernel refuses an existing directory there when the resource is created. Requires telo 0.121.0.

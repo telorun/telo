@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.0 - 2026-11-01
+### Added
+* An application's contract carries its requiredness: each input's `required` is true only where some configuration of the application requires it, with `requiredWhen` listing those configurations, a `default` is served only where one is declared, and `dimensions` names each key's values and the environment variables it is read from. Ingest revision 10 re-ingests every tracked version to record them, and refuses an application whose `telo module manifest --json` payload carries no `dimensions`.
+* An application's reported dimensions carry a member dimension's member, which a reader no longer splits out of the key; INGEST_REV defaults to 11, so the deploy re-ingests every tracked version once.
+
 ## 0.19.4 - 2026-10-29
 ### Fixed
 * The library design guide says a library inside an application's directory ships inside that application's artifact.

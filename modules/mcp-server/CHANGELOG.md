@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.20.1 - 2026-11-01
+### Fixed
+* The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
+
 ## 0.20.0 - 2026-10-25
 ### Added
 * The `catches:` contexts of `Mcp.Tools`, `Mcp.Resources` and `Mcp.Prompts` mark `error.code` and `error.data` with `x-telo-caught-member`, so inside an entry `error.data` is typed from the `data` of the codes the entry matches.

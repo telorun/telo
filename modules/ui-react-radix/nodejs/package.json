@@ -1,6 +1,6 @@
 {
   "name": "@telorun/ui-react-radix-build",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "license": "MIT",
   "private": true,
   "description": "Build-only package for the std/ui-react-radix module's browser entry. Never published — the entry ships inside the module artifact's browser layer. This package exists to declare the dependencies esbuild inlines (the Radix primitives and the icon set) and to TYPE-CHECK the source, which esbuild does not do.",

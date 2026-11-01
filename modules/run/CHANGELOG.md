@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.31.0 - 2026-11-01
+### Added
+* Run.Sequence, Run.Iteration, Run.Loop and Run.Projection tell each step's dispatch where that step's inputs are written in the resource, so a failure inside them can be traced to its place in the manifest.
+### Fixed
+* The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
+
 ## 0.30.0 - 2026-10-25
 ### Added
 * The error context of `Run.Iteration`, `Run.Projection` and `Run.Loop` reads `error.displayMessage`, the text a person is shown for the failure as its record, or null when it carries none, beside `error.message`, as every step `catch:` does.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.29.0 - 2026-11-01
+### Added
+* A Table's foreignKeys entry is typed on the Sql.Table abstract — { columns, references: { table, columns }, onDelete?, onUpdate? }, with references.table a reference to a table of any engine — so something reading foreign keys through a Sql.Table reference needs no knowledge of the backend; the entry is documented.
+* The declarative-schema guide now states that a module's tables join a schema only by the schema's own tables: list, and that a library contributing tables exports them for the application's schema to list rather than borrowing that schema.
+### Fixed
+* A foreign key's 'references.table' and a column's enum 'type:' are read from the referenced declaration alone, so a table referencing itself or a pair referencing each other boots; the docs no longer list it as a limitation.
+* The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
+
 ## 0.28.1 - 2026-10-18
 ### Fixed
 * The backend-authoring guide shows a connection opened over a need-typed access slot that observes the server's version and features, instead of a connection string.

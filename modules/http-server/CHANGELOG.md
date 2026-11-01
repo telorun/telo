@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.41.1 - 2026-11-01
+### Fixed
+* An expression in an `Http.Server` `notFoundHandler.returns` entry is now typed against `request` (`method`, `path`, `host`, `params`, `query`, `headers`, `body`) and `result` (the `invoke:` target's `outputType`), as the server evaluates it — before, `telo check` and the load refused every such expression as `CEL_IN_NON_EVAL_FIELD`.
+* The documentation no longer recommends the deprecated JavaScript script kind; its examples use the step grammar with CEL instead.
+
 ## 0.41.0 - 2026-10-30
 ### Added
 * Http.Server takes a tls block to serve HTTPS: a certificate and private key (inline PEM or host files, optional passphrase) and, for mutual TLS, clientCa with clientCertificate set to required. Unreadable or mismatched material fails the server's creation with ERR_HTTP_TLS_INVALID without echoing the key. Omitted, the server speaks plain HTTP as before.

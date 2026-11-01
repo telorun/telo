@@ -5,7 +5,7 @@
 kind: Telo.Library
 metadata:
   name: ScheduledJobs
-  version: 0.1.0
+  version: 0.2.0
   license: MIT
   description: >-
     A recurring-jobs application from one declaration: list the jobs by name,

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.14.0 - 2026-11-01
+### Added
+* Test.Suite fails with a non-zero exit when it discovers no tests, so a mistyped include or filter cannot pass as green; set allowEmpty: true to accept an empty run. The repository's own test suites take --allow-empty.
+
 ## 0.13.1 - 2026-10-23
 ### Fixed
 * Test.Suite accepts a 'concurrency' supplied as a 64-bit integer — what any !cel integer expression produces — instead of failing with a BigInt conversion error.

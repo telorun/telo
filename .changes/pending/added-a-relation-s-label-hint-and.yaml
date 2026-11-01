@@ -1,6 +1,0 @@
-modules:
-  modules/ui: Added
-body: "A relation's label, hint and href in Ui.CollectionPresentation (and the
-  Ui.Relations shape) are checked against the model of the collection that entry's
-  source reads: a member the related record does not have is refused by telo check where
-  it is written."

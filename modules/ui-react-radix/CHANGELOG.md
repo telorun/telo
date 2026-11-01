@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.5.0 - 2026-11-01
+### Added
+* The theme styles a listing's parts and the Load more button and a list's empty cell. Breaking: its rules for the table's toolbar, create button, main area, empty and loading cells now select listing-toolbar, listing-create, listing-main, listing-empty, listing-loading and list-empty, and the panel beside the records sits in listing.
+* The theme styles the listing layouts: the sort control, list items, cards, board columns and cards, the calendar's header, days and events, the timeline's axis, lanes and bars, the tree's items and levels, a record's Move to and create buttons and its inline form's place.
+
 ## 0.3.0 - 2026-10-23
 ### Added
 * The theme sets its page measure and inset as the `width.page` (`72rem`) and `space.page` (`1.5rem`) design tokens instead of `max-width` and inline padding on the `page`, `main` and `header` parts, and styles the header's row through the new `header-content` part, so a full-width page and a header lined up with a contained page work under it.
