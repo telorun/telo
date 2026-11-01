@@ -17,8 +17,8 @@ metadata:
     isn't HTTP API or SQS. See `examples/aws/lambda/README.md` for the
     full packaging + deploy walkthrough.
 imports:
-  Lambda: oci://ghcr.io/telorun/aws/lambda@0.11.0#sha256-z4Sh2fdoIbnEGK8rKrMI3c6OiqXv3mktJJ4kQQSsvuU
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Lambda: oci://ghcr.io/telorun/aws/lambda@0.12.0#sha256-m6AEJNfJguLIFgbZuNmO06pdUathLclu3dMHpgqXreQ
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 targets:
   - !ref main
 ---

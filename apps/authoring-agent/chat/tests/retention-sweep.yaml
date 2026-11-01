@@ -29,13 +29,13 @@ imports:
       workspaceDir: !cel "variables.scratch.joinPath('workspace')"
       modelEndpoint: http://127.0.0.1:18485/v1
   App: oci://ghcr.io/telorun/app@0.5.0#sha256-gy9aUWi_lnazVkYQ3DEH19ASGtIRb7OTv21-yjK9D6U
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
+  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
+  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
   Stream: ../../../../modules/stream
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.9.0#sha256-mkVdF8GOFVDrSExWWtNIYa9zAyuUrJmLBGxBTHNHTdk
   Run: ../../../../modules/run
-  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+  Assert: oci://ghcr.io/telorun/assert@0.22.0#sha256-72ysePrZIFbPDsX6TdpS4vCuzCnGCx_KVDUunxJ_0OU
 variables:
   # The agent's state is a file that outlives the run; each run starts its two
   # conversations empty.

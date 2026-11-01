@@ -10,10 +10,10 @@ metadata:
 # A library rather than a theme written inline at the application, so the
 # example's tests can check the very theme the `/brand` mount draws with.
 imports:
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  Radix: ../../../modules/ui-react-radix
-  Font: ../../../modules/font
+  Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
+  UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
+  Radix: oci://ghcr.io/telorun/ui-react-radix@0.5.0#sha256-ACs2HwX3OnEuXIee99qjtsMPioz4YyyHYqDrDZa5ISo
+  Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
 exports:
   resources: [ theme ]
 ---

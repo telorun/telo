@@ -24,11 +24,11 @@ requires:
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
-  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.0#sha256-9__RzYEfgYTe0zBIBEqSMh87VWj4k6I0UteCLxlINZk
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.1#sha256-9g3_fiv6_tyQd_YOzwfA_T1fobtK9u_s3KFHMELpI7Y
 exports:
   kinds: [App]
 ---

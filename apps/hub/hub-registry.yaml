@@ -18,13 +18,13 @@ requires:
   # `resources:` inputs on a library.
   telo: ">=0.83.0"
 imports:
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  Postgres: oci://ghcr.io/telorun/postgres@0.9.2#sha256-Qy-tUrCBV_ar51vfQHDBPP8oytowO4lyWwAfeyb92Pc
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
+  Postgres: oci://ghcr.io/telorun/postgres@0.10.0#sha256-eob7bBkouibe1-MDGizDVWE9_r8yLMN8kjiDW7BQGtc
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
   Shell: oci://ghcr.io/telorun/shell@0.13.1#sha256-EuLg0IyhQahI2u11cyY5gqPLbLxecA6zwofr2nRT8Ow
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.1#sha256-DIwBfYFt1lviymf0OxCZE2i3uL1hw99bmWxrZUKpElU
-  Durable: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
+  Durable: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
   Schema:
     source: ./hub-schema.yaml
     resources:

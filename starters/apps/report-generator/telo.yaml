@@ -34,18 +34,18 @@ lang: en
 # `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
-  Ui: oci://ghcr.io/telorun/ui@0.7.1#sha256-PtnIZbm-QU-lCPQRJ9ugFnna8P9PICG7Xbths8_5ZRY
-  UiReact: oci://ghcr.io/telorun/ui-react@0.8.1#sha256-hYxGm5zErFIY3fNURBCh6Jg6qTSWdaWg2bIZqv_yC30
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
+  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
+  Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
+  UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
+  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
+  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
   Collection: oci://ghcr.io/telorun/collection@0.9.0#sha256-Fpb3ikCM8ANNwrM6069WEB-QjA3UofvUqMvYrgBW9sw
   SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.0#sha256-Dv384bDGk8HV_5kUVMaMQGK38LAurkRve54AS1h9d1c
   Blob: oci://ghcr.io/telorun/blob@0.2.0#sha256-UgFwVFoZWZ_s8GWHIi-0qJB8K82CZ5gSQN0HZaqpc58
   BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.0#sha256-64KNO1vwB6VsYNBi9QOdsoevPOzVVCt022ONSbqX90g
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate

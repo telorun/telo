@@ -277,6 +277,10 @@ jobs:
           # restate them.
           json=$(pnpm run --silent telo changed '**/tests/*.yaml' --base "$base" -o json) \
             || full "telo changed failed"
+          # Drop what the suites exclude, or a change touching only those leaves
+          # them an empty run (a failure).
+          json=$(jq -c '.affected |= map(select(test("^(apps|examples|starters|blueprints|workspace|\\.claude)/") | not))' <<<"$json") \
+            || full "Could not filter the selection"
           count=$(jq '.affected | length' <<<"$json") || full "telo changed returned no answer"
           if [ "$count" = "0" ]; then
             echo "mode=none" >> "$GITHUB_OUTPUT"
@@ -353,6 +357,7 @@ jobs:
           changed=$(git diff --name-only "$base...HEAD") || full
           if grep -qE '^test-suite-integration\.yaml$' <<<"$changed"; then full; fi
           json=$(pnpm run --silent telo changed '**/tests/integration/*.yaml' --base "$base" -o json) || full
+          json=$(jq -c '.affected |= map(select(test("^(apps|\\.claude)/") | not))' <<<"$json") || full
           count=$(jq '.affected | length' <<<"$json") || full
           if [ "$count" = "0" ]; then
             echo "integration_mode=none" >> "$GITHUB_OUTPUT"

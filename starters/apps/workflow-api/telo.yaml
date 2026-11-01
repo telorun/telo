@@ -25,7 +25,7 @@ metadata:
           -d '{"tier":"standard","items":[{"price":1200,"quantity":2}]}'
 imports:
   WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@0.3.6#sha256-f2iOhElVN8Q-MI_qLqNoM4Di4kVnFKrVFDHVUST3y1Y
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Cache: oci://ghcr.io/telorun/cache@0.13.1#sha256-I7DgXjd5VlbhFuAmpOALY7Fbu9LvD7hBrMmE8jOWXbE
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY
 targets:

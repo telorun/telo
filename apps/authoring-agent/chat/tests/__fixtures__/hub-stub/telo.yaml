@@ -17,9 +17,9 @@ metadata:
     fixed text starting with the marker HUB_GUIDE_TEXT — the shape of the hub's
     authoring guides.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.40.0#sha256-_siVH-ocHHO9CzJB00KYSR7-VhMXsFiJGQXGhqtgfns
-  Mcp: oci://ghcr.io/telorun/mcp-server@0.20.0#sha256-MfmQvQwppLmgtRr3LTHWBTODaM81FhCa0JYELlStlSk
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
+  Mcp: oci://ghcr.io/telorun/mcp-server@0.20.1#sha256-2YBL3hfynm7V9HDH_lJQSgmjOajlSA7dp8b3oMobRwA
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 ports:
   http:
     env: PORT

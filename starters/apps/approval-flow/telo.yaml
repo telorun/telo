@@ -43,16 +43,16 @@ lang: en
 # changes are unreleased, with `http-server`, which `ui-react` reaches through
 # this repository's `codec`; `telo upgrade --pin-local` pins them once they ship.
 imports:
-  Http: ../../../modules/http-server
-  DataModel: ../../../modules/data-model
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  Run: oci://ghcr.io/telorun/run@0.30.0#sha256-xce3zcKQZYXAuMPQqUW4R0avisqZWYowLDLeaP7wXkc
+  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
+  DataModel: oci://ghcr.io/telorun/data-model@0.2.0#sha256-rxGXii0Db-DcSJY0MUEY1KzbklXN15tLwKwK93z3AHg
+  Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
+  UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
+  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
-  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.1#sha256-2zh8d4sURSCk3aYbZ-VyED-LuOD6-LsXCbKszuTROC4
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.0#sha256-9__RzYEfgYTe0zBIBEqSMh87VWj4k6I0UteCLxlINZk
-  Sql: oci://ghcr.io/telorun/sql@0.28.1#sha256-ZlxQTTYQtAhK2aAyLRYMwBN-U4b8ww4ulu0SVnIxFu8
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
+  DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.1#sha256-9g3_fiv6_tyQd_YOzwfA_T1fobtK9u_s3KFHMELpI7Y
+  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
+  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate

@@ -20,11 +20,11 @@ imports:
   HttpClient: ../../../../modules/http-client
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
   Stream: ../../../../modules/stream
-  SQLite: oci://ghcr.io/telorun/sqlite@0.11.0#sha256-QdM_zH8JQGB2URI9uT0hM5lnWGKLed-4NvFk81V7Xs4
+  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
-  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.8.1#sha256-s499a6neOc42YDcB9x5YZeTjcEvjwXwKw5y27mcUiG0
+  RecordStreamSql: oci://ghcr.io/telorun/record-stream-sql@0.9.0#sha256-mkVdF8GOFVDrSExWWtNIYa9zAyuUrJmLBGxBTHNHTdk
   Run: ../../../../modules/run
-  Assert: oci://ghcr.io/telorun/assert@0.21.1#sha256-9CCELeaW54ph9v7qtM1zBRq9-gqXK4fwF0NubWAhsN4
+  Assert: oci://ghcr.io/telorun/assert@0.22.0#sha256-72ysePrZIFbPDsX6TdpS4vCuzCnGCx_KVDUunxJ_0OU
 variables:
   # This test's own workspace, emptied before each run.
   scratch:
