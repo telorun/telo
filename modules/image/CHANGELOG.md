@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.10.1 - 2026-10-23
 ### Fixed
 * Image.Blank accepts a 'width' and 'height', and Image.Blank, Image.Overlay and Image.Fit a 'quality', supplied as a 64-bit integer — what any !cel integer expression produces — instead of failing in the canvas or refusing a valid quality.

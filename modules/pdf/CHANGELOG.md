@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.3 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.11.2 - 2026-10-23
 ### Fixed
 * Pdf.Rasterizer and Pdf.Text accept a 'page', Pdf.Rasterizer a 'quality', and Pdf.FormFields a field's 'page', supplied as a 64-bit integer — what any !cel integer expression produces — instead of failing with 'Invalid page request' or refusing a valid value.

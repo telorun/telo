@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: CacheRedis
-  version: 0.12.1
+  version: 0.12.2
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Performance, Storage]

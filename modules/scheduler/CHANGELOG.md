@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.11.0 - 2026-10-23
 ### Added
 * `every`, `cron` and `timezone` are top-level matchers, so an editor or an application outline labels a schedule's `invoke` trigger by the values written there.

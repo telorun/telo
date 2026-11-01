@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.9.1 - 2026-10-23
 ### Fixed
 * VectorStoreMemory.Store accepts a computed CEL integer for 'dimensions' and bounds vectors exactly as the same literal does; before, every vector was refused as the wrong length. A value no JS number holds exactly is refused at creation, naming the store.

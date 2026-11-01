@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.10.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.10.0 - 2026-11-01
 ### Fixed
 * Foreign keys are documented: the foreignKeys entry of Postgres.Table, and how a key is added, matched and dropped.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.33.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.33.0 - 2026-11-01
 ### Added
 * Breaking: `Crud.Model` is now `Crud.Collection` and `Crud.Resource` is now `Crud.Api`, whose `model` key becomes `collection`; the `CRUD_MODEL_*` rules (and `ERR_CRUD_MODEL_*`) are renamed `CRUD_COLLECTION_*`. A collection extends `DataModel.Collection`: `schemas.read` is replaced by its `model`, leaving `schemas: { list, create, update }`, its `key` is always `id`, and its filter and sort rules are the data model's. It now requires `table`, the `Sql.Table` its records are stored in, and the API's `table` is removed, its schema refusing any undeclared key. A collection refuses a property with no snake_case column (`CRUD_COLLECTION_PROPERTY_UNKNOWN_COLUMN`), a table whose primary key is not `id` (`CRUD_COLLECTION_TABLE_KEY_NOT_PRIMARY`) and a relation the foreign key on its column contradicts (`CRUD_COLLECTION_RELATION_FOREIGN_KEY_MISMATCH`), before the app runs and at start. The list route answers a facet request (`facet=<property>`, each present value with its count under the filters, paged by `limit` / `cursor`) and the `absent` filter (`<property>.absent=true|false`). `Crud.Ui` is removed: the admin screen moves to the `crud-ui` module, and `crud` no longer imports `ui`.

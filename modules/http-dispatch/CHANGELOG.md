@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.17.0 - 2026-10-25
 ### Added
 * dispatchCatches binds error.displayMessage in every catch entry's CEL: the caught failure's display message record, or null when it has none.

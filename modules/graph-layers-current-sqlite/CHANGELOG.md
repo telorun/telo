@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.2.0 - 2026-10-10
 ### Added
 * New SQLite module: the current strategy for layered knowledge graphs, with no versioning. NodeTable and RelationshipTable extend the engine's Table, taking the author's columns and adding the layer bookkeeping as internal columns with their indexes; Node, Relationship and Store declare the types and one layer each, optionally built on an ordered list of base layers. Each layer holds only its current statements, a write takes effect at once, and a store reads the layers beneath it as they are now. Concurrent writes to one key through one layer each take effect in some order: none fails for having raced another. A table kind is held to its engine table's rules, restated on its own fields under the engine's codes, and reserves the graph_ prefix for column and index names in its schema. A merge or create of a key the store's view does not show - never stated, or hidden by the layer's own removal - stores the given properties plus the declared default of every other one.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.4.0 - 2026-10-23
 ### Added
 * File slots declare entry: file, so telo check refuses a directory wired where a file is wanted (HOST_PATH_ENTRY_MISMATCH) and the kernel refuses an existing directory there when the resource is created. Requires telo 0.121.0.

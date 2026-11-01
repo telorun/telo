@@ -1,7 +1,7 @@
 kind: Telo.Library
 metadata:
   name: Image
-  version: 0.10.1
+  version: 0.10.2
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Data]
@@ -21,7 +21,7 @@ metadata:
   name: Blank
   description: Produces a solid-color image canvas of the given size, encoded as PNG/JPEG/WebP bytes.
 capability: Telo.Invocable
-controllers: [pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#blank]
+controllers: [pkg:npm/@telorun/image@0.10.2?local_path=./nodejs#blank]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -109,7 +109,7 @@ metadata:
   name: Overlay
   description: Draws labelled rectangles onto an image and returns the annotated image as encoded bytes.
 capability: Telo.Invocable
-controllers: [pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#overlay]
+controllers: [pkg:npm/@telorun/image@0.10.2?local_path=./nodejs#overlay]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -255,7 +255,7 @@ metadata:
     pixel counts are refused from the header before decoding. Returns the bytes,
     the final dimensions and the media type.
 capability: Telo.Invocable
-controllers: [pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#fit]
+controllers: [pkg:npm/@telorun/image@0.10.2?local_path=./nodejs#fit]
 throws:
   codes:
     ERR_IMAGE_TOO_LARGE:
