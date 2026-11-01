@@ -1,30 +1,21 @@
 kind: Telo.Application
-metadata:
-  name: RunSequenceWhile
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunSequenceWhile, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testWhileLoop
 ---
 kind: Run.Sequence
-metadata:
-  name: testWhileLoop
+metadata: { name: testWhileLoop }
 steps:
   # --- while: basic counter loop ---
   # Pre-initialize Counter at n=0. The while loop overwrites it each iteration.
   - name: counter
-    inputs:
-      n: 0
+    inputs: { n: 0 }
     invoke:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            n: { type: number }
+        schema: { type: object, properties: { n: { type: number } } }
       value:
         n: !cel "inputs.n"
 
@@ -38,10 +29,7 @@ steps:
           kind: Run.Value
           inputType:
             kind: Telo.JsonSchema
-            schema:
-              type: object
-              properties:
-                n: { type: number }
+            schema: { type: object, properties: { n: { type: number } } }
           value:
             n: !cel "inputs.n + 1.0"
 
@@ -50,31 +38,19 @@ steps:
       n: !cel "steps.counter.result.n"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          n:
-            type: number
-            const: 3
+      schema: { type: object, properties: { n: { type: number, const: 3 } } }
 
   # --- while: loop body can reference outer steps ---
   - name: multiplier
-    invoke:
-      kind: Run.Value
-      value:
-        factor: 2
+    invoke: { kind: Run.Value, value: { factor: 2 } }
 
   - name: accumulator
-    inputs:
-      total: 0
+    inputs: { total: 0 }
     invoke:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            total: { type: number }
+        schema: { type: object, properties: { total: { type: number } } }
       value:
         total: !cel "inputs.total"
 
@@ -91,9 +67,7 @@ steps:
             kind: Telo.JsonSchema
             schema:
               type: object
-              properties:
-                total: { type: number }
-                factor: { type: number }
+              properties: { total: { type: number }, factor: { type: number } }
           value:
             total: !cel "inputs.total + inputs.factor"
 
@@ -102,12 +76,7 @@ steps:
       total: !cel "steps.accumulator.result.total"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          total:
-            type: number
-            const: 8
+      schema: { type: object, properties: { total: { type: number, const: 8 } } }
 
   # --- while: condition false from the start, body never runs ---
   - name: neverRuns
@@ -115,12 +84,7 @@ steps:
     do:
       # Would fail if this ran.
       - name: shouldNotExecute
-        inputs:
-          x: 1
+        inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              x:
-                const: 0
+          schema: { type: object, properties: { x: { const: 0 } } }

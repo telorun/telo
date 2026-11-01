@@ -20,10 +20,7 @@ metadata:
     navigation entry naming a page the application does not list, at any
     depth of its groups, is refused where it is written and by the
     application itself.
-imports:
-  Probe: ./__fixtures__/probe
-  Run: ../../run
-  Assert: ../../assert
+imports: { Probe: ./__fixtures__/probe, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref computedChildren
   - !ref computedChildrenAtRuntime
@@ -57,9 +54,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: computedChildrenAtRuntime }
 source: ./__fixtures__/invalid/computed-children/telo.yaml
-expect:
-  errors: []
-  runFails: "ERR_REF_SLOT_COMPUTED"
+expect: { errors: [], runFails: "ERR_REF_SLOT_COMPUTED" }
 ---
 kind: Assert.Manifest
 metadata: { name: duplicatePath }
@@ -189,15 +184,12 @@ expect:
 kind: Assert.Manifest
 metadata: { name: themeControlDisjoint }
 source: ./__fixtures__/theme-control-disjoint/lib/telo.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: themeControlDisjointAtRuntime }
 source: ./__fixtures__/theme-control-disjoint/telo.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }
 ---
 kind: Assert.Manifest
 metadata: { name: unroutedPage }

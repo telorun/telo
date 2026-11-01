@@ -10,13 +10,8 @@ metadata:
     API with language, recency and safe-search settings and returns ranked results
     with title, URL, snippet and publication date, paging with an opaque cursor. No
     API key; the instance is reached through a configurable HTTP client.
-imports:
-  WebSearch: ../web-search
-  Http: ../http-client
-  Run: ../run
-exports:
-  kinds:
-    - WebSearchEngine
+imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
+exports: { kinds: [WebSearchEngine] }
 ---
 # A templated engine: the whole mapping is the `search` sequence below, reaching
 # the instance through the request the application supplies. It declares no
@@ -48,8 +43,7 @@ throws:
       description: >-
         The instance answered 403: its JSON output is not enabled. Add `json` to
         `search.formats` in the instance's `settings.yml`.
-    ERR_SEARCH_RATE_LIMITED:
-      description: The instance's limiter answered 429.
+    ERR_SEARCH_RATE_LIMITED: { description: The instance's limiter answered 429. }
     ERR_SEARCH_FAILED:
       description: >-
         The instance was unreachable, answered with any other status, or answered
@@ -65,9 +59,7 @@ schema:
         The HTTP request the instance is reached through. Its client's `baseUrl` is
         the instance's root (without a trailing slash); timeouts and retries are
         the client's.
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     safeSearch:
       title: Safe search
       description: How strictly the instance filters explicit results.
@@ -76,8 +68,7 @@ schema:
       default: moderate
 resources:
   - kind: Run.Sequence
-    metadata:
-      name: search
+    metadata: { name: search }
     inputType: !ref WebSearch.Query
     outputType: !ref WebSearch.Results
     steps:
@@ -210,26 +201,21 @@ resources:
   # One page of results, mapped onto the contract's result shape; every failure
   # is raised here as a contract code.
   - kind: Run.Sequence
-    metadata:
-      name: page
+    metadata: { name: page }
     inputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [params]
         additionalProperties: false
-        properties:
-          params:
-            type: object
-            additionalProperties: { type: string }
+        properties: { params: { type: object, additionalProperties: { type: string } } }
     outputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [results]
         additionalProperties: false
-        properties:
-          results: { type: array }
+        properties: { results: { type: array } }
     steps:
       - name: fetch
         try:

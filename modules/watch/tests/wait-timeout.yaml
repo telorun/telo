@@ -7,10 +7,7 @@ metadata:
     passed returns `changed: false` with the version the store knows. The same
     cursor can be waited on again, since a timed-out wait leaves nothing
     behind, and `maxTimeout` caps a call asking for longer.
-imports:
-  Watch: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Watch: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---

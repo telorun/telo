@@ -24,15 +24,8 @@ requires:
   # kind (`UNDEFINED_KIND`) and the `observes` key (`X_TELO_REF_UNKNOWN_KEY`).
   # Verified by execution against 0.116.0.
   telo: ">=0.117.0"
-imports:
-  Sql: ../sql
-exports:
-  kinds:
-    - DatabaseAccess
-    - Connection
-    - Table
-    - Enum
-    - Schema
+imports: { Sql: ../sql }
+exports: { kinds: [DatabaseAccess, Connection, Table, Enum, Schema] }
 ---
 kind: Telo.NeedType
 metadata:
@@ -65,19 +58,15 @@ metadata:
     extensions, so a need asking for more refuses to start.
 capability: Telo.Provider
 extends: Sql.Connection
-controllers:
-  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#ConnectionController
+controllers: [pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#ConnectionController]
 schema:
   type: object
   additionalProperties: false
-  required:
-    - access
+  required: [access]
   examples:
     - access: !ref databaseAccess
     - access: !ref databaseAccess
-      pool:
-        min: 2
-        max: 20
+      pool: { min: 2, max: 20 }
   properties:
     access:
       title: Access
@@ -88,10 +77,7 @@ schema:
         `features:` are checked against the live server. TLS is configured with the
         standard libpq `sslmode` query parameter of the URL (`disable`, `require`,
         `verify-ca`, `verify-full`).
-      x-telo-ref:
-        kind: Self.DatabaseAccess
-        use: dependency
-        observes: [version, features]
+      x-telo-ref: { kind: Self.DatabaseAccess, use: dependency, observes: [version, features] }
     pool:
       title: Pool
       description: Database connection pool configuration.
@@ -154,15 +140,13 @@ metadata:
     that stores it.
 capability: Telo.Provider
 extends: Sql.Enum
-controllers:
-  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#EnumController
+controllers: [pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#EnumController]
 schema:
   type: object
   additionalProperties: false
   required: [typeName, values]
   examples:
-    - typeName: message_role
-      values: [system, user, assistant]
+    - { typeName: message_role, values: [system, user, assistant] }
   properties:
     typeName:
       title: Type Name
@@ -206,8 +190,7 @@ metadata:
     are applied, and a removal is recorded rather than executed.
 capability: Telo.Provider
 extends: Sql.Table
-controllers:
-  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#TableController
+controllers: [pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#TableController]
 x-telo-schema-projection:
   entries: /columns
   key: type
@@ -218,10 +201,7 @@ x-telo-schema-projection:
   # crosses is the enum itself, because it is the type at the granularity a
   # consumer acts on — the enum in a CRUD model's OpenAPI operation, a completion
   # list in the editor, a filter a repository can reject before the query.
-  reference:
-    from: values
-    keyword: enum
-    base: { type: string }
+  reference: { from: values, keyword: enum, base: { type: string } }
 schema:
   type: object
   additionalProperties: false
@@ -229,9 +209,8 @@ schema:
   # A table needs a column. `columns` is the row contract and is always
   # written; it may be empty only when `internalColumns` holds the table's columns.
   anyOf:
-    - properties:
-        columns: { minProperties: 1 }
-    - required: [internalColumns]
+    - { properties: { columns: { minProperties: 1 } } }
+    - { required: [internalColumns] }
   # The cross-field rules are inherited from `Sql.Table`: they check relationships
   # the shared reconciler enforces at boot for EVERY backend, so a copy here would
   # be a second one to keep in step — and a backend that forgot to make it would
@@ -280,8 +259,7 @@ schema:
         The row contract: `{}` beside `internalColumns` declares a table that
         has none.
       type: object
-      propertyNames:
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       additionalProperties:
         type: object
         additionalProperties: false
@@ -290,8 +268,7 @@ schema:
         # because nothing can tell a function call from a string by looking at
         # it — so exactly one may be set, and saying so here means `telo check`
         # reports it instead of the boot.
-        not:
-          required: [default, defaultExpression]
+        not: { required: [default, defaultExpression] }
         # A primary key and an identity column cannot hold NULL, and the engine
         # enforces that whether or not the declaration says so. Declaring the
         # opposite is a contradiction, and left standing it would make every
@@ -302,26 +279,17 @@ schema:
         allOf:
           - if:
               required: [nullable]
-              properties:
-                nullable: { const: true }
+              properties: { nullable: { const: true } }
               anyOf:
-                - required: [primaryKey]
-                  properties:
-                    primaryKey: { const: true }
-                - required: [identity]
+                - { required: [primaryKey], properties: { primaryKey: { const: true } } }
+                - { required: [identity] }
             then: false
           - if:
               anyOf:
-                - required: [primaryKey]
-                  properties:
-                    primaryKey: { const: true }
-                - required: [identity]
-            then:
-              properties:
-                nullable: { default: false }
-            else:
-              properties:
-                nullable: { default: true }
+                - { required: [primaryKey], properties: { primaryKey: { const: true } } }
+                - { required: [identity] }
+            then: { properties: { nullable: { default: false } } }
+            else: { properties: { nullable: { default: true } } }
         properties:
           type:
             title: Type
@@ -380,9 +348,7 @@ schema:
                 needs is the physical name, which the declaration carries, so
                 nothing here requires the type to be constructed first.
               type: object
-              x-telo-ref:
-                kind: Self.Enum
-                use: schema
+              x-telo-ref: { kind: Self.Enum, use: schema }
           length:
             title: Length
             description: Character length for `varchar` / `char`.
@@ -411,14 +377,8 @@ schema:
               Whether the column admits NULL. Omitted, it is false on a primary
               key or an identity column and true on any other.
             type: boolean
-          primaryKey:
-            title: Primary Key
-            type: boolean
-            default: false
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+          primaryKey: { title: Primary Key, type: boolean, default: false }
+          unique: { title: Unique, type: boolean, default: false }
           identity:
             title: Identity
             description: >-
@@ -460,10 +420,8 @@ schema:
         only one of the two maps.
       type: object
       minProperties: 1
-      propertyNames:
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-      additionalProperties:
-        $ref: "#/properties/columns/additionalProperties"
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
+      additionalProperties: { $ref: "#/properties/columns/additionalProperties" }
     indexes:
       title: Indexes
       description: Indexes keyed by name, which is their durable identity.
@@ -478,10 +436,7 @@ schema:
             type: array
             minItems: 1
             items: { type: string }
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+          unique: { title: Unique, type: boolean, default: false }
           method:
             title: Method
             description: Index method (`btree`, `gin`, `gist`, `hash`, `brin`).
@@ -561,8 +516,7 @@ schema:
         `telo check`. Removing one is IMMEDIATE — a dropped constraint loses no
         data, so recording it would put a grace window on a free removal.
       type: object
-      propertyNames:
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       additionalProperties:
         type: object
         additionalProperties: false
@@ -617,9 +571,7 @@ schema:
                 # would also make the two most ordinary foreign keys there are
                 # unbootable: a tree table references itself, and a mutual pair
                 # references each other, and both are cycles.
-                x-telo-ref:
-                  kind: Self.Table
-                  use: schema
+                x-telo-ref: { kind: Self.Table, use: schema }
               columns:
                 title: Columns
                 type: array
@@ -646,8 +598,7 @@ metadata:
     versions and the declared time have passed.
 capability: Telo.Runnable
 extends: Sql.Schema
-controllers:
-  - pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#SchemaController
+controllers: [pkg:telo/local/js?path=./nodejs/postgres.mjs&local_path=./nodejs/src/index.ts#SchemaController]
 schema:
   type: object
   additionalProperties: false
@@ -655,8 +606,7 @@ schema:
   # The version is the reclamation clock and nothing else reads it, so it is
   # required exactly when a policy is declared — an app that only runs
   # migrations writes neither.
-  dependencies:
-    reclaim: [version]
+  dependencies: { reclaim: [version] }
   examples:
     - connection: !ref Db
       schema: app
@@ -667,9 +617,7 @@ schema:
     connection:
       title: Connection
       description: Reference to the PostgreSQL connection this schema lives in.
-      x-telo-ref:
-        kind: Self.Connection
-        use: dependency
+      x-telo-ref: { kind: Self.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
@@ -699,10 +647,7 @@ schema:
         order is never load-bearing: cross-table constraints are deferred until
         every table exists, and foreign-key ordering is never the author's problem.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Table
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Table, use: dependency } }
     extensions:
       title: Extensions
       description: >-
@@ -720,9 +665,7 @@ schema:
         would take every dependent object with it — the drop stays a person's
         decision, and the record says one is owed.
       type: array
-      items:
-        type: string
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      items: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
     enums:
       title: Enums
       description: >-
@@ -734,10 +677,7 @@ schema:
         ordinary policy; one a table outside this schema still uses stays held and
         is reported as held rather than attempted.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Enum
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Enum, use: dependency } }
     ledger:
       title: Ledger
       description: >-
@@ -762,10 +702,8 @@ schema:
         stores the migration key alone.
       type: object
       x-telo-eval: compile
-      propertyNames:
-        pattern: "^[A-Za-z0-9_.-]+$"
-      additionalProperties:
-        $ref: "#/$defs/migration"
+      propertyNames: { pattern: "^[A-Za-z0-9_.-]+$" }
+      additionalProperties: { $ref: "#/$defs/migration" }
     migrations:
       title: Migrations
       description: >-
@@ -774,10 +712,8 @@ schema:
         field alone and looks exactly like an imperative migration set.
       type: object
       x-telo-eval: compile
-      propertyNames:
-        pattern: "^[A-Za-z0-9_.-]+$"
-      additionalProperties:
-        $ref: "#/$defs/migration"
+      propertyNames: { pattern: "^[A-Za-z0-9_.-]+$" }
+      additionalProperties: { $ref: "#/$defs/migration" }
   $defs:
     migration:
       title: Migration
@@ -786,8 +722,8 @@ schema:
         one. All statements in an entry run together.
       type: object
       oneOf:
-        - required: [statement]
-        - required: [statements]
+        - { required: [statement] }
+        - { required: [statements] }
       properties:
         statement:
           title: Statement
@@ -798,7 +734,4 @@ schema:
           title: Statements
           type: array
           minItems: 1
-          items:
-            type: string
-            contentMediaType: application/sql
-            x-telo-widget: code
+          items: { type: string, contentMediaType: application/sql, x-telo-widget: code }

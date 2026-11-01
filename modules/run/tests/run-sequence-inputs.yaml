@@ -1,10 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: RunSequenceInputs
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunSequenceInputs, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testInputs
 ---
@@ -13,8 +9,7 @@ targets:
 # Regression: the controller used to spread caller inputs flat, so `inputs.x`
 # failed at runtime with "Unknown variable: inputs".
 kind: Run.Sequence
-metadata:
-  name: greet
+metadata: { name: greet }
 steps:
   - name: build
     if: !cel "inputs.shout"
@@ -25,10 +20,7 @@ steps:
           kind: Run.Value
           inputType:
             kind: Telo.JsonSchema
-            schema:
-              type: object
-              properties:
-                name: { type: string }
+            schema: { type: object, properties: { name: { type: string } } }
           value:
             text: !cel "'HELLO ' + inputs.name"
     else:
@@ -38,24 +30,18 @@ steps:
           kind: Run.Value
           inputType:
             kind: Telo.JsonSchema
-            schema:
-              type: object
-              properties:
-                name: { type: string }
+            schema: { type: object, properties: { name: { type: string } } }
           value:
             text: !cel "'hello ' + inputs.name"
 outputs:
   loud: !cel "steps.loud.result.text"
 ---
 kind: Run.Sequence
-metadata:
-  name: testInputs
+metadata: { name: testInputs }
 steps:
   - name: callGreet
     invoke: !ref greet
-    inputs:
-      name: telo
-      shout: true
+    inputs: { name: telo, shout: true }
   - name: verify
     inputs:
       text: !cel "steps.callGreet.result.loud"
@@ -63,6 +49,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text: { const: "HELLO telo" }
+        properties: { text: { const: "HELLO telo" } }
         required: [ text ]

@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - tgk
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [tgk] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: tgk, member: package/4.0.0_best_int/tgk.traineddata.gz, sha256: 660f8476c5635c93f83955f7bdce7c2c45bc685463a9c139b292c7f5853de0e9, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: tgk
-  description: Tajik, Cyrillic script
+metadata: { name: tgk, description: "Tajik, Cyrillic script" }
 code: tgk
 data: !module-path ./tessdata/tgk.traineddata.gz

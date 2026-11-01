@@ -22,49 +22,40 @@ targets:
   - !ref danglingReference
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: File
+metadata: { name: File }
 schema:
   type: object
-  properties:
-    url: { type: string, title: Download, format: uri-reference }
+  properties: { url: { type: string, title: Download, format: uri-reference } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Batch
+metadata: { name: Batch }
 schema:
   type: object
   properties:
     files: { type: array, items: !ref File }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Answer
+metadata: { name: Answer }
 schema:
   type: object
   $defs:
     File:
       type: object
-      properties:
-        url: { $ref: "#/$defs/Address", title: Download }
+      properties: { url: { $ref: "#/$defs/Address", title: Download } }
     Address: { type: string, title: Address, format: uri-reference }
   properties:
     inline:
       type: array
       items:
         type: object
-        properties:
-          url: { type: string, title: Download, format: uri-reference }
+        properties: { url: { type: string, title: Download, format: uri-reference } }
     named: { type: array, items: !ref File }
     local: { type: array, items: { $ref: "#/$defs/File" } }
     batch: !ref Batch
 ---
 kind: Ui.Action
-metadata:
-  name: generate
-inputModel:
-  kind: Telo.JsonSchema
-  schema: { type: object, properties: {} }
+metadata: { name: generate }
+inputModel: { kind: Telo.JsonSchema, schema: { type: object, properties: {} } }
 outputModel: !ref Answer
 source: { path: /api/reports }
 label: Generate
@@ -85,16 +76,14 @@ result:
       columns: [{ value: !cel "row.url" }]
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Report
+metadata: { name: Report }
 schema:
   type: object
   required: [id]
   $defs:
     File:
       type: object
-      properties:
-        url: { type: string, title: Download, format: uri-reference }
+      properties: { url: { type: string, title: Download, format: uri-reference } }
     Site: { type: string, title: Website, format: uri }
   properties:
     id: { type: integer }
@@ -109,8 +98,7 @@ source:
   collection: { kind: DataModel.Collection, model: !ref Report, query: { filters: [], sort: [] } }
 ---
 kind: Ui.Listing
-metadata:
-  name: reports
+metadata: { name: reports }
 model: !ref Report
 presentation: !ref reportsPresentation
 layout:
@@ -119,14 +107,12 @@ layout:
     - value: !cel "row.latest.url"
 ---
 kind: Ui.Listing
-metadata:
-  name: derived
+metadata: { name: derived }
 model: !ref Report
 presentation: !ref reportsPresentation
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: generate
     invoke: { kind: Probe.Read, source: !ref generate }
@@ -153,8 +139,7 @@ steps:
           - { header: { text: Website, context: null, lang: und, computed: false }, value: { root: row, path: [site] }, present: { type: string, format: uri }, labels: [] }
 ---
 kind: Assert.Manifest
-metadata:
-  name: danglingReference
+metadata: { name: danglingReference }
 source: ./__fixtures__/invalid/dangling-reference/telo.yaml
 expect:
   errors: []

@@ -16,11 +16,7 @@ requires:
   # 0.121.0: `data` declares `entry: file`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
   telo: ">=0.121.0"
-exports:
-  kinds:
-    - Model
-    - Language
-    - OrientationModel
+exports: { kinds: [Model, Language, OrientationModel] }
 ---
 # The model kinds alone, in a leaf that almost never changes. Language modules
 # import this rather than the engine: an in-repo import edge bumps its dependent
@@ -60,8 +56,7 @@ metadata:
     passes the code to the engine and never reads the file name, so pointing `data`
     at your own file uses a custom or fine-tuned model.
 extends: Self.Model
-controllers:
-  - pkg:telo/local/js?path=./nodejs/tesseract-model.mjs&local_path=./nodejs/src/index.ts#ModelController
+controllers: [pkg:telo/local/js?path=./nodejs/tesseract-model.mjs&local_path=./nodejs/src/index.ts#ModelController]
 schema:
   type: object
   required: [code]
@@ -88,5 +83,4 @@ metadata:
     file. A recognizer uses it to detect how a page is rotated and which script it
     is written in before reading the text. It carries no language code.
 extends: Self.Model
-controllers:
-  - pkg:telo/local/js?path=./nodejs/tesseract-model.mjs&local_path=./nodejs/src/index.ts#ModelController
+controllers: [pkg:telo/local/js?path=./nodejs/tesseract-model.mjs&local_path=./nodejs/src/index.ts#ModelController]

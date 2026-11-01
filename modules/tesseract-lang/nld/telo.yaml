@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - nld
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [nld] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: nld, member: package/4.0.0_best_int/nld.traineddata.gz, sha256: a2d904b6ddc4feb0d31ecfcd7361a554102e7aa2e278c54f4fc029e0d0815571, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: nld
-  description: Dutch, Latin script
+metadata: { name: nld, description: "Dutch, Latin script" }
 code: nld
 data: !module-path ./tessdata/nld.traineddata.gz

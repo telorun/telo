@@ -68,10 +68,7 @@ value:
       content: [{ type: text, text: wrap up }]
   tools:
     - name: get_weather
-      parameters:
-        type: object
-        properties:
-          city: { type: string }
+      parameters: { type: object, properties: { city: { type: string } } }
   toolChoice: none
 ---
 kind: Run.Sequence
@@ -83,8 +80,7 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
@@ -100,8 +96,7 @@ with:
       - request:
           path: /responses
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
@@ -122,8 +117,7 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
@@ -137,8 +131,7 @@ with:
       - request:
           path: /responses
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
@@ -153,10 +146,8 @@ with:
                   data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}}
   - kind: Server.Server
     metadata: { name: EchoServer }
-    listen:
-      port: 8876
-    openapi:
-      info: { title: Fake OpenAI API, version: 1.0.0 }
+    listen: { port: 8876 }
+    openapi: { info: { title: Fake OpenAI API, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref EchoApi
@@ -179,16 +170,14 @@ steps:
   - name: chatStreamParts
     inputs:
       input: !cel "steps.chatStream.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: responsesStream
     inputs: !cel "steps.request.result"
     invoke: !ref responsesStream
   - name: responsesStreamParts
     inputs:
       input: !cel "steps.responsesStream.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertSent
     inputs:
       actual:
@@ -201,5 +190,4 @@ steps:
         responses: "1 tool, tool_choice none"
         chatStream: "1 tool, tool_choice none"
         responsesStream: "1 tool, tool_choice none"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

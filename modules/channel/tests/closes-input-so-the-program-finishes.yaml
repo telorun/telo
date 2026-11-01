@@ -37,10 +37,7 @@ metadata: { name: awaitExit }
 condition: !cel "resources.quiz.status.exitCode == null"
 maxIterations: 200
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 20ms
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: test }

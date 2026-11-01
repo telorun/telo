@@ -81,8 +81,7 @@ outputType:
     type: object
     required: [ok]
     additionalProperties: false
-    properties:
-      ok: { type: boolean }
+    properties: { ok: { type: boolean } }
 ---
 kind: Durable.Await
 metadata: { name: projectionApproval }
@@ -93,8 +92,7 @@ outputType:
     type: object
     required: [ok]
     additionalProperties: false
-    properties:
-      ok: { type: boolean }
+    properties: { ok: { type: boolean } }
 ---
 kind: Durable.Await
 metadata: { name: secondApproval }
@@ -105,8 +103,7 @@ outputType:
     type: object
     required: [ok]
     additionalProperties: false
-    properties:
-      ok: { type: boolean }
+    properties: { ok: { type: boolean } }
 ---
 kind: Local.Workflow
 metadata: { name: process }
@@ -181,19 +178,16 @@ journal: !ref journal
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "matched.Invoked"
-  - type: "projected.Invoked"
-  - type: "done.Invoked"
+  - { type: "matched.Invoked" }
+  - { type: "projected.Invoked" }
+  - { type: "done.Invoked" }
 expect:
   # ONCE each, and zero is the failure they are written to catch: `matched` and
   # `projected` are skipped when the resumed turn is handed a different element,
   # and `done` is never reached when the loop re-evaluates its condition and exits.
-  - event: matched.Invoked
-    times: 1
-  - event: projected.Invoked
-    times: 1
-  - event: done.Invoked
-    times: 1
+  - { event: matched.Invoked, times: 1 }
+  - { event: projected.Invoked, times: 1 }
+  - { event: done.Invoked, times: 1 }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -226,16 +220,14 @@ steps:
   # and the guard's 300ms window has closed.
   - name: firstGap
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 1500ms
+    inputs: { duration: 1500ms }
   - name: deliverFirst
     invoke:
       kind: Local.Deliver
       journal: !ref journal
       await: !ref firstApproval
       token: !cel "'composer-1:' + inputs.ticket"
-      payload:
-        ok: true
+      payload: { ok: true }
     inputs:
       ticket: !cel "steps.ticket.result"
   - name: firstResume
@@ -259,16 +251,14 @@ steps:
 
   - name: projectionGap
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 400ms
+    inputs: { duration: 400ms }
   - name: deliverProjection
     invoke:
       kind: Local.Deliver
       journal: !ref journal
       await: !ref projectionApproval
       token: !cel "'composer-3:' + inputs.ticket"
-      payload:
-        ok: true
+      payload: { ok: true }
     inputs:
       ticket: !cel "steps.ticket.result"
   - name: projectionResume
@@ -290,18 +280,14 @@ steps:
         inputs:
           run: !cel "steps.start.result.runId"
 
-  - name: secondGap
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 1500ms
+  - { name: secondGap, invoke: { kind: Timer.Delay }, inputs: { duration: 1500ms } }
   - name: deliverSecond
     invoke:
       kind: Local.Deliver
       journal: !ref journal
       await: !ref secondApproval
       token: !cel "'composer-2:' + inputs.ticket"
-      payload:
-        ok: true
+      payload: { ok: true }
     inputs:
       ticket: !cel "steps.ticket.result"
   - name: secondResume
@@ -321,7 +307,5 @@ steps:
       actual:
         status: !cel "steps.finished.result.status"
         guarded: !cel "'guarded' in steps.finished.result.result.steps"
-      expected:
-        status: completed
-        guarded: true
+      expected: { status: completed, guarded: true }
     invoke: { kind: Assert.Equals }

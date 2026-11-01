@@ -14,24 +14,10 @@ metadata:
 # An agent's `context` input is typed by `x-telo-value-schema-from` naming a LIST
 # of locations — its tool providers' `contextType`s and its resolver's — which no
 # runtime before 0.122.0 reads: an older one refuses the annotation's list form.
-requires:
-  telo: ">=0.122.0"
-imports:
-  Run: ../run
-  Stream: ../stream
+requires: { telo: ">=0.122.0" }
+imports: { Run: ../run, Stream: ../stream }
 exports:
-  kinds:
-    - Model
-    - ModelStream
-    - Buffered
-    - Text
-    - TextStream
-    - ToolProvider
-    - Tools
-    - Agent
-    - AgentStream
-    - ImageModel
-    - Image
+  kinds: [Model, ModelStream, Buffered, Text, TextStream, ToolProvider, Tools, Agent, AgentStream, ImageModel, Image]
   resources:
     - AgentStreamPart
     - ContentPart
@@ -63,15 +49,13 @@ schema:
   additionalProperties: false
   required: [role, content]
   properties:
-    role:
-      type: string
-      enum: [system, user, assistant, tool]
+    role: { type: string, enum: [system, user, assistant, tool] }
     content:
       description: >-
         The turn's content: a plain string, or parts when it carries anything other
         than text.
       anyOf:
-        - type: string
+        - { type: string }
         - type: array
           minItems: 1
           # A shape names a sibling shape by its canonical id: that is the form a
@@ -91,19 +75,11 @@ schema:
   # property, so the finding names the key.
   anyOf:
     - required: [role]
-      properties:
-        role: { enum: [system, user] }
-        toolCalls: false
-        toolCallId: false
+      properties: { role: { enum: [system, user] }, toolCalls: false, toolCallId: false }
     - required: [role]
-      properties:
-        role: { const: assistant }
-        toolCallId: false
+      properties: { role: { const: assistant }, toolCallId: false }
     - required: [role, toolCallId]
-      properties:
-        role: { const: tool }
-        toolCallId: { minLength: 1 }
-        toolCalls: false
+      properties: { role: { const: tool }, toolCallId: { minLength: 1 }, toolCalls: false }
 ---
 kind: Telo.JsonSchema
 metadata:
@@ -179,8 +155,8 @@ schema:
       # degrades to accepting. That is the documented rule, and it is why leaving
       # this untyped bought nothing.
       anyOf:
-        - x-telo-type: Telo.Bytes
-        - type: string
+        - { x-telo-type: Telo.Bytes }
+        - { type: string }
     uri:
       type: string
       description: >-
@@ -192,14 +168,12 @@ schema:
       # Two patterns and no lookahead, which not every regex engine has: the
       # first requires a scheme, the second refuses the one scheme that is bytes.
       allOf:
-        - pattern: "^[A-Za-z][A-Za-z0-9+.-]*:"
+        - { pattern: "^[A-Za-z][A-Za-z0-9+.-]*:" }
         - pattern: "^([^Dd]|[Dd][^Aa]|[Dd][Aa][^Tt]|[Dd][Aa][Tt][^Aa]|[Dd][Aa][Tt][Aa][^:])"
     mediaType:
       type: string
       description: The media part's IANA media type, e.g. `image/png`.
-    name:
-      type: string
-      description: A media part's file name, e.g. `report.pdf`.
+    name: { type: string, description: "A media part's file name, e.g. `report.pdf`." }
     # The call a `tool-call` part carries.
     toolCall: !ref ToolCall
     citation:
@@ -221,33 +195,21 @@ schema:
   # A part a model produces forbids `cacheBreakpoint` with a `false` property, so
   # the finding names the key.
   anyOf:
+    - { required: [type, text], properties: { type: { const: text } } }
     - required: [type, text]
-      properties:
-        type: { const: text }
-    - required: [type, text]
-      properties:
-        type: { enum: [reasoning, refusal] }
-        cacheBreakpoint: false
+      properties: { type: { enum: [reasoning, refusal] }, cacheBreakpoint: false }
     - required: [type, toolCall]
-      properties:
-        type: { const: tool-call }
-        cacheBreakpoint: false
+      properties: { type: { const: tool-call }, cacheBreakpoint: false }
     - required: [type, citation]
-      properties:
-        type: { const: citation }
-        cacheBreakpoint: false
+      properties: { type: { const: citation }, cacheBreakpoint: false }
     - required: [type, mediaType]
-      properties:
-        type: { enum: [image, audio, video, file] }
+      properties: { type: { enum: [image, audio, video, file] } }
       # Exactly one of the two: one is required, and `uri` is forbidden beside
       # `data` with a `false` property, so the finding names the key at fault.
       anyOf:
-        - required: [data]
-        - required: [uri]
-      dependencies:
-        data:
-          properties:
-            uri: false
+        - { required: [data] }
+        - { required: [uri] }
+      dependencies: { data: { properties: { uri: false } } }
 ---
 # SystemPrompt — what the four operations take as `system`.
 #
@@ -266,16 +228,13 @@ metadata:
   description: A system prompt — plain text, or a non-empty list of text parts when one of them marks a prompt-cache breakpoint.
 schema:
   anyOf:
-    - type: string
-      contentMediaType: text/markdown
-      x-telo-widget: code
+    - { type: string, contentMediaType: text/markdown, x-telo-widget: code }
     - type: array
       minItems: 1
       items:
         allOf:
-          - $ref: "telo:AI/ContentPart"
-          - properties:
-              type: { const: text }
+          - { $ref: "telo:AI/ContentPart" }
+          - { properties: { type: { const: text } } }
 ---
 # Ai.ContentResolver — what fetches referenced content for the model: the
 # `resolver` of the four operations, one shape each references. `context` below
@@ -306,10 +265,7 @@ schema:
       type: array
       minItems: 1
       uniqueItems: true
-      items:
-        type: string
-        pattern: "^[a-z][a-z0-9+.-]*$"
-        not: { const: data }
+      items: { type: string, pattern: "^[a-z][a-z0-9+.-]*$", not: { const: data } }
     concurrency:
       title: Concurrency
       description: >-
@@ -328,16 +284,11 @@ schema:
         named type reference or an inline type definition. The operation requires
         its own `context` input to satisfy it. Without it `context` is empty, so a
         mapping reading a field of it is refused.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     invoke:
       title: Invoke
       description: The resource asked for each reference — a reference or an inline declaration.
-      x-telo-ref:
-        kind: Telo.Executable
-        use: call
-        inputs: /inputs
+      x-telo-ref: { kind: Telo.Executable, use: call, inputs: /inputs }
     inputs:
       title: Inputs mapping
       description: >-
@@ -379,37 +330,29 @@ schema:
         text: { type: string }
         data:
           anyOf:
-            - x-telo-type: Telo.Bytes
-            - type: string
+            - { x-telo-type: Telo.Bytes }
+            - { type: string }
         uri:
           type: string
           allOf:
-            - pattern: "^[A-Za-z][A-Za-z0-9+.-]*:"
+            - { pattern: "^[A-Za-z][A-Za-z0-9+.-]*:" }
             - pattern: "^([^Dd]|[Dd][^Aa]|[Dd][Aa][^Tt]|[Dd][Aa][Tt][^Aa]|[Dd][Aa][Tt][Aa][^:])"
         mediaType: { type: string }
         name: { type: string }
         cacheBreakpoint: { type: boolean }
       # ContentPart's branches for the types a caller sends.
       anyOf:
-        - required: [type, text]
-          properties:
-            type: { const: text }
+        - { required: [type, text], properties: { type: { const: text } } }
         - required: [type, mediaType]
-          properties:
-            type: { enum: [image, audio, video, file] }
+          properties: { type: { enum: [image, audio, video, file] } }
           anyOf:
-            - required: [data]
-            - required: [uri]
-          dependencies:
-            data:
-              properties:
-                uri: false
+            - { required: [data] }
+            - { required: [uri] }
+          dependencies: { data: { properties: { uri: false } } }
       x-telo-context:
         type: object
         additionalProperties: false
-        properties:
-          result:
-            x-telo-context-ref-from: "invoke/outputType"
+        properties: { result: { x-telo-context-ref-from: "invoke/outputType" } }
 ---
 # Ai.StreamPart — the same content, arriving in pieces.
 #
@@ -509,19 +452,7 @@ schema:
   properties:
     type:
       type: string
-      enum:
-        - text-delta
-        - reasoning-delta
-        - content-part
-        - tool-call-delta
-        - tool-call
-        - provider-state
-        - step-finish
-        - tool-result
-        - message
-        - tool-approval-decision
-        - tool-approval-request
-        - finish
+      enum: [text-delta, reasoning-delta, content-part, tool-call-delta, tool-call, provider-state, step-finish, tool-result, message, tool-approval-decision, tool-approval-request, finish]
     delta:
       type: string
       description: >-
@@ -563,18 +494,10 @@ schema:
       additionalProperties: false
       required: [toolCallId, name, decision]
       properties:
-        toolCallId:
-          type: string
-          description: The id of the `tool-call` the decision is on.
-        name:
-          type: string
-          description: The tool's name as the model saw it.
-        decision:
-          type: string
-          enum: [approve, reject, defer]
-        reason:
-          type: string
-          description: The approver's reason, when it gave one.
+        toolCallId: { type: string, description: The id of the `tool-call` the decision is on. }
+        name: { type: string, description: The tool's name as the model saw it. }
+        decision: { type: string, enum: [approve, reject, defer] }
+        reason: { type: string, description: "The approver's reason, when it gave one." }
     providerState:
       description: >-
         Opaque provider state, forwarded as the model produced it. Pass it back as
@@ -610,19 +533,13 @@ schema:
       additionalProperties: false
       required: [toolCallId, name, content]
       properties:
-        toolCallId:
-          type: string
-          description: The id of the `tool-call` this answers.
-        name:
-          type: string
-          description: The tool's name as the model saw it.
+        toolCallId: { type: string, description: The id of the `tool-call` this answers. }
+        name: { type: string, description: The tool's name as the model saw it. }
         content:
           description: What was fed back to the model — text, or content parts.
           anyOf:
-            - type: string
-            - type: array
-              items:
-                $ref: "telo://Self/ContentPart"
+            - { type: string }
+            - { type: array, items: { $ref: "telo://Self/ContentPart" } }
         output:
           description: >-
             The tool's own result, before any `result:` mapping shaped what the model
@@ -656,9 +573,7 @@ kind: Telo.JsonSchema
 metadata:
   name: FinishReason
   description: Why a model stopped generating — it finished, hit a length limit, was filtered, or asked for tools.
-schema:
-  type: string
-  enum: [stop, length, content-filter, tool-calls, other]
+schema: { type: string, enum: [stop, length, content-filter, tool-calls, other] }
 ---
 # Two usage shapes, and the difference is WHO fills them.
 #
@@ -895,17 +810,13 @@ throws:
         type: object
         required: [partType]
         properties:
-          partType:
-            type: string
-            description: The `type` of the content part that was refused.
+          partType: { type: string, description: The `type` of the content part that was refused. }
           scheme:
             type: string
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-          mediaType:
-            type: string
-            description: The part's media type, when it has one.
+          mediaType: { type: string, description: "The part's media type, when it has one." }
     ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
         The model asked for a tool with arguments that are not a JSON object.
@@ -915,9 +826,7 @@ throws:
         type: object
         required: [tool]
         properties:
-          tool:
-            type: string
-            description: The name of the tool the model asked for.
+          tool: { type: string, description: The name of the tool the model asked for. }
     ERR_MODEL_RESPONSE_INVALID:
       description: >-
         The endpoint reported success but the answer cannot be read: a body that
@@ -974,8 +883,7 @@ inputType:
         additionalProperties: true
         description: The shape the answer must take, e.g. a JSON schema the provider enforces.
     # A choice about tools means nothing on a call that offers none.
-    dependencies:
-      toolChoice: [tools]
+    dependencies: { toolChoice: [tools] }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -997,15 +905,12 @@ outputType:
           The text parts of `content`, concatenated. Carried beside the parts because
           the overwhelmingly common consumer wants exactly this and should not have to
           fold the list to get it.
-      usage:
-        $ref: "telo://Self/TokenUsage"
-      finishReason:
-        $ref: "telo://Self/FinishReason"
+      usage: { $ref: "telo://Self/TokenUsage" }
+      finishReason: { $ref: "telo://Self/FinishReason" }
       toolCalls:
         type: array
         description: The calls the model asked for, when it asked for any.
-        items:
-          $ref: "telo://Self/ToolCall"
+        items: { $ref: "telo://Self/ToolCall" }
       providerState:
         description: Opaque state to replay on the next request. See the input of the same name.
       alternatives:
@@ -1013,9 +918,7 @@ outputType:
         description: >-
           Further candidates, when the request asked for more than one. The first
           candidate is always the one reported in `content` / `text`.
-        items:
-          type: object
-          additionalProperties: true
+        items: { type: object, additionalProperties: true }
 ---
 # Ai.ModelStream — the same contract, delivered as it is generated.
 #
@@ -1173,17 +1076,13 @@ throws:
         type: object
         required: [partType]
         properties:
-          partType:
-            type: string
-            description: The `type` of the content part that was refused.
+          partType: { type: string, description: The `type` of the content part that was refused. }
           scheme:
             type: string
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-          mediaType:
-            type: string
-            description: The part's media type, when it has one.
+          mediaType: { type: string, description: "The part's media type, when it has one." }
     ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
         The model asked for a tool with arguments that are not a JSON object.
@@ -1193,9 +1092,7 @@ throws:
         type: object
         required: [tool]
         properties:
-          tool:
-            type: string
-            description: The name of the tool the model asked for.
+          tool: { type: string, description: The name of the tool the model asked for. }
     ERR_MODEL_RESPONSE_INVALID:
       description: >-
         The endpoint reported success but the answer cannot be read: a body that
@@ -1216,9 +1113,7 @@ inputType:
         type: array
         minItems: 1
         items: !ref Message
-      options:
-        type: object
-        additionalProperties: true
+      options: { type: object, additionalProperties: true }
       tools:
         type: array
         items:
@@ -1228,9 +1123,7 @@ inputType:
           properties:
             name: { type: string }
             description: { type: string }
-            parameters:
-              type: object
-              additionalProperties: true
+            parameters: { type: object, additionalProperties: true }
       toolChoice:
         type: string
         enum: [auto, none]
@@ -1239,11 +1132,8 @@ inputType:
           it to the model; `none` asks for an answer without requesting a tool, while
           `tools` stay declared so the calls already in `messages` remain valid.
       providerState: {}
-      responseFormat:
-        type: object
-        additionalProperties: true
-    dependencies:
-      toolChoice: [tools]
+      responseFormat: { type: object, additionalProperties: true }
+    dependencies: { toolChoice: [tools] }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -1262,10 +1152,7 @@ outputType:
           names the call's id — never empty, and the `id` of the `tool-call` that
           follows — and its tool name, and none is emitted before that id is known.
           The implementation assigns the id, unique across every call of a run.
-        x-telo-type:
-          name: Telo.Stream
-          of:
-            $ref: "telo://Self/StreamPart"
+        x-telo-type: { name: Telo.Stream, of: { $ref: "telo://Self/StreamPart" } }
 ---
 kind: Telo.Definition
 metadata:
@@ -1275,8 +1162,7 @@ metadata:
     the completed text with token usage and a finish reason. Takes a default system
     prompt and per-call option overrides.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextController
+controllers: [pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextController]
 # `inherit`: what the model throws escapes this kind unchanged, so its codes are
 # part of this kind's union and a route's `catches:` may name them.
 throws:
@@ -1332,10 +1218,8 @@ outputType:
     type: object
     properties:
       text: { type: string }
-      usage:
-        $ref: "telo://Self/Usage"
-      finishReason:
-        $ref: "telo://Self/FinishReason"
+      usage: { $ref: "telo://Self/Usage" }
+      finishReason: { $ref: "telo://Self/FinishReason" }
     required: [text, usage, finishReason]
     additionalProperties: false
 schema:
@@ -1344,9 +1228,7 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation (OpenAI.ChatModel, OpenAI.ResponsesModel, or a third-party provider).
-      x-telo-ref:
-        kind: Self.Model
-        use: call
+      x-telo-ref: { kind: Self.Model, use: call }
     system:
       title: System prompt
       description: >-
@@ -1357,9 +1239,7 @@ schema:
       # reaches an unexported shape by reference only in some check orders. Held
       # to the shape and to ContentPart's text part by the module's unit test.
       anyOf:
-        - type: string
-          contentMediaType: text/markdown
-          x-telo-widget: code
+        - { type: string, contentMediaType: text/markdown, x-telo-widget: code }
         - type: array
           minItems: 1
           items:
@@ -1387,9 +1267,7 @@ schema:
     - model: !ref Gpt4oMini
       system: |
         You are a concise assistant. Answer in one sentence.
-      options:
-        temperature: 0.2
-        maxTokens: 256
+      options: { temperature: 0.2, maxTokens: 256 }
 ---
 # Streaming consumer. Drives Ai.Model.stream() and forwards the StreamPart
 # iterable on `result.output` per the streaming-Invocable convention. Encoding
@@ -1408,8 +1286,7 @@ metadata:
     call: what the model refuses it with rejects this call unchanged, and anything
     later rejects the iteration.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextStreamController
+controllers: [pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiTextStreamController]
 # `inherit`: what the model throws escapes this kind unchanged, so its codes are
 # part of this kind's union and a route's `catches:` may name them.
 throws:
@@ -1496,9 +1373,7 @@ schema:
       # reaches an unexported shape by reference only in some check orders. Held
       # to the shape and to ContentPart's text part by the module's unit test.
       anyOf:
-        - type: string
-          contentMediaType: text/markdown
-          x-telo-widget: code
+        - { type: string, contentMediaType: text/markdown, x-telo-widget: code }
         - type: array
           minItems: 1
           items:
@@ -1526,8 +1401,7 @@ schema:
     - model: !ref Gpt4oMini
       system: |
         You are a concise assistant. Answer in one sentence.
-      options:
-        temperature: 0.7
+      options: { temperature: 0.7 }
 ---
 # Ai.ToolProvider — abstract source of callable tools, mounted into an Ai.Agent the
 # same way an Http.Api mounts into an Http.Server. Implementations expose a runtime
@@ -1565,8 +1439,7 @@ metadata:
     result. A tool can require human-in-the-loop approval before it runs.
 capability: Telo.Mount
 extends: Self.ToolProvider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiToolsController
+controllers: [pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiToolsController]
 schema:
   type: object
   properties:
@@ -1577,9 +1450,7 @@ schema:
         a named type reference or an inline type definition. An agent mounting this
         provider requires its own `context` input to satisfy it. Without it `context`
         is empty, so a mapping reading a field of it is refused.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     tools:
       title: Tools
       description: The tools this provider exposes.
@@ -1593,9 +1464,7 @@ schema:
               Reference to any Telo.Invocable or Telo.Runnable to expose as a tool.
               A Run.Sequence (a Runnable with callable inputs/outputs) can wrap a
               multi-step pipeline as a single tool.
-            x-telo-ref:
-              kind: Telo.Executable
-              use: call
+            x-telo-ref: { kind: Telo.Executable, use: call }
           name:
             title: Name
             description: Tool name the model sees. Defaults to the referenced resource name.
@@ -1620,8 +1489,7 @@ schema:
             x-telo-context:
               type: object
               properties:
-                arguments:
-                  x-telo-context-from: "parameters/properties"
+                arguments: { x-telo-context-from: "parameters/properties" }
                 # Typed by the declared `contextType`; with none declared the
                 # node's own keywords stand, a closed empty object.
                 context:
@@ -1641,8 +1509,7 @@ schema:
             x-telo-context:
               type: object
               properties:
-                arguments:
-                  x-telo-context-from: "parameters/properties"
+                arguments: { x-telo-context-from: "parameters/properties" }
                 context:
                   type: object
                   properties: {}
@@ -1660,14 +1527,12 @@ schema:
             # string rejected a shipped feature — visible only once the value is
             # written in `!cel` form, which is type-checked against this schema.
             anyOf:
-              - type: string
-              - type: object
-              - type: array
+              - { type: string }
+              - { type: object }
+              - { type: array }
             x-telo-context:
               type: object
-              properties:
-                result:
-                  x-telo-context-ref-from: "tool/outputType"
+              properties: { result: { x-telo-context-ref-from: "tool/outputType" } }
         required: [tool, parameters]
         additionalProperties: false
   required: [tools]
@@ -1735,8 +1600,7 @@ metadata:
     each tool result and the messages to persist. Tool calls can wait for
     human-in-the-loop approval, and a paused run resumes.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentController
+controllers: [pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentController]
 # `inherit`: what the model throws escapes this kind unchanged, so its codes are
 # part of this kind's union and a route's `catches:` may name them.
 throws:
@@ -1763,10 +1627,8 @@ throws:
       description: >-
         The loop did not converge within `maxSteps` and `onMaxSteps` is `throw`. Raised
         rather than returned so it reaches a `catch:` and a route's `catches:`.
-    ERR_AGENT_UNKNOWN_TOOL:
-      description: The model asked for a tool no mounted provider advertises.
-    ERR_AGENT_TOOL_COLLISION:
-      description: Two mounted providers advertise the same tool name.
+    ERR_AGENT_UNKNOWN_TOOL: { description: The model asked for a tool no mounted provider advertises. }
+    ERR_AGENT_TOOL_COLLISION: { description: Two mounted providers advertise the same tool name. }
     ERR_AGENT_APPROVAL_UNKNOWN_TOOL:
       description: >-
         A tool provider entry's `approval.include` names a tool the entry does not
@@ -1785,9 +1647,7 @@ throws:
           toolCallId:
             type: string
             description: The id of the tool call the approver was asked about.
-          name:
-            type: string
-            description: The tool's name as the model saw it.
+          name: { type: string, description: The tool's name as the model saw it. }
     ERR_CONTENT_RESOLUTION_INVALID:
       description: >-
         The content resolver's answer, as `resolver.result` mapped it, is not a part
@@ -1835,9 +1695,7 @@ inputType:
           additionalProperties: false
           required: [toolCallId, approved]
           properties:
-            toolCallId:
-              type: string
-              description: The id of the pending tool call this decides.
+            toolCallId: { type: string, description: The id of the pending tool call this decides. }
             approved: { type: boolean }
             reason:
               type: string
@@ -1854,10 +1712,8 @@ outputType:
     properties:
       text: { type: string }
       # Accumulated across the loop's turns.
-      usage:
-        $ref: "telo://Self/Usage"
-      finishReason:
-        $ref: "telo://Self/FinishReason"
+      usage: { $ref: "telo://Self/Usage" }
+      finishReason: { $ref: "telo://Self/FinishReason" }
       limit:
         description: >-
           The bound that ended the run: `max-steps` when the step budget ran out
@@ -1888,9 +1744,7 @@ outputType:
           properties:
             toolCallId: { type: string }
             name: { type: string }
-            decision:
-              type: string
-              enum: [approve, reject, defer]
+            decision: { type: string, enum: [approve, reject, defer] }
             reason: { type: string }
       messages:
         description: >-
@@ -1915,9 +1769,7 @@ outputType:
           additionalProperties: false
           required: [text, toolCalls]
           properties:
-            text:
-              type: string
-              description: The text the model wrote on that call.
+            text: { type: string, description: The text the model wrote on that call. }
             toolCalls:
               description: The tools the model asked for on that call, in the order it asked.
               type: array
@@ -1934,19 +1786,13 @@ outputType:
           additionalProperties: false
           required: [toolCallId, name, content]
           properties:
-            toolCallId:
-              type: string
-              description: The id of the tool call this answers.
-            name:
-              type: string
-              description: The tool's name as the model saw it.
+            toolCallId: { type: string, description: The id of the tool call this answers. }
+            name: { type: string, description: The tool's name as the model saw it. }
             content:
               description: What was fed back to the model — text, or content parts.
               anyOf:
-                - type: string
-                - type: array
-                  items:
-                    $ref: "telo://Self/ContentPart"
+                - { type: string }
+                - { type: array, items: { $ref: "telo://Self/ContentPart" } }
             error:
               type: boolean
               description: True when the call failed and `content` is the error fed back.
@@ -1964,9 +1810,7 @@ schema:
     model:
       title: Model
       description: Reference to any Ai.Model implementation.
-      x-telo-ref:
-        kind: Self.Model
-        use: call
+      x-telo-ref: { kind: Self.Model, use: call }
     system:
       title: System prompt
       description: >-
@@ -1977,9 +1821,7 @@ schema:
       # reaches an unexported shape by reference only in some check orders. Held
       # to the shape and to ContentPart's text part by the module's unit test.
       anyOf:
-        - type: string
-          contentMediaType: text/markdown
-          x-telo-widget: code
+        - { type: string, contentMediaType: text/markdown, x-telo-widget: code }
         - type: array
           minItems: 1
           items:
@@ -2173,17 +2015,12 @@ schema:
           additionalProperties: false
           required: [decision]
           properties:
-            decision:
-              type: string
-              enum: [approve, reject, defer]
-            reason:
-              type: string
+            decision: { type: string, enum: [approve, reject, defer] }
+            reason: { type: string }
           x-telo-context:
             type: object
             additionalProperties: false
-            properties:
-              result:
-                x-telo-context-ref-from: "invoke/outputType"
+            properties: { result: { x-telo-context-ref-from: "invoke/outputType" } }
     resolver:
       title: Content resolver
       description: >-
@@ -2239,8 +2076,7 @@ metadata:
     persist. Tools run in parallel up to a bound and can wait for human-in-the-loop
     approval. Cancelling the run stops the model and every running tool.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentStreamController
+controllers: [pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiAgentStreamController]
 # `inherit`: what the model throws escapes this kind unchanged, so its codes are
 # part of this kind's union and a route's `catches:` may name them.
 throws:
@@ -2269,10 +2105,8 @@ throws:
       description: >-
         The loop did not converge within `maxSteps` and `onMaxSteps` is `throw`. Raised
         rather than returned so it reaches a `catch:` and a route's `catches:`.
-    ERR_AGENT_UNKNOWN_TOOL:
-      description: The model asked for a tool no mounted provider advertises.
-    ERR_AGENT_TOOL_COLLISION:
-      description: Two mounted providers advertise the same tool name.
+    ERR_AGENT_UNKNOWN_TOOL: { description: The model asked for a tool no mounted provider advertises. }
+    ERR_AGENT_TOOL_COLLISION: { description: Two mounted providers advertise the same tool name. }
     ERR_AGENT_APPROVAL_UNKNOWN_TOOL:
       description: >-
         A tool provider entry's `approval.include` names a tool the entry does not
@@ -2291,9 +2125,7 @@ throws:
           toolCallId:
             type: string
             description: The id of the tool call the approver was asked about.
-          name:
-            type: string
-            description: The tool's name as the model saw it.
+          name: { type: string, description: The tool's name as the model saw it. }
     ERR_CONTENT_RESOLUTION_INVALID:
       description: >-
         The content resolver's answer, as `resolver.result` mapped it, is not a part
@@ -2345,9 +2177,7 @@ inputType:
           additionalProperties: false
           required: [toolCallId, approved]
           properties:
-            toolCallId:
-              type: string
-              description: The id of the pending tool call this decides.
+            toolCallId: { type: string, description: The id of the pending tool call this decides. }
             approved: { type: boolean }
             reason:
               type: string
@@ -2359,10 +2189,7 @@ outputType:
     type: object
     properties:
       output:
-        x-telo-type:
-          name: Telo.Stream
-          of:
-            $ref: "telo://Self/AgentStreamPart"
+        x-telo-type: { name: Telo.Stream, of: { $ref: "telo://Self/AgentStreamPart" } }
         description: >-
           The run's parts in order: each model call's own parts (text and reasoning
           deltas, content parts, tool-call argument deltas, tool calls, provider state)
@@ -2402,9 +2229,7 @@ schema:
       # reaches an unexported shape by reference only in some check orders. Held
       # to the shape and to ContentPart's text part by the module's unit test.
       anyOf:
-        - type: string
-          contentMediaType: text/markdown
-          x-telo-widget: code
+        - { type: string, contentMediaType: text/markdown, x-telo-widget: code }
         - type: array
           minItems: 1
           items:
@@ -2601,17 +2426,12 @@ schema:
           additionalProperties: false
           required: [decision]
           properties:
-            decision:
-              type: string
-              enum: [approve, reject, defer]
-            reason:
-              type: string
+            decision: { type: string, enum: [approve, reject, defer] }
+            reason: { type: string }
           x-telo-context:
             type: object
             additionalProperties: false
-            properties:
-              result:
-                x-telo-context-ref-from: "invoke/outputType"
+            properties: { result: { x-telo-context-ref-from: "invoke/outputType" } }
     resolver:
       title: Content resolver
       description: >-
@@ -2768,9 +2588,7 @@ inputType:
           required: [data, mediaType]
           additionalProperties: false
           properties:
-            data:
-              description: Encoded image bytes.
-              x-telo-type: Telo.Bytes
+            data: { description: Encoded image bytes., x-telo-type: Telo.Bytes }
             mediaType: { type: string }
       mask:
         description: Which region to repaint, as an image whose transparent area marks the target. Required under an inpainting intent.
@@ -2778,18 +2596,13 @@ inputType:
         required: [data, mediaType]
         additionalProperties: false
         properties:
-          data:
-            description: Encoded mask bytes.
-            x-telo-type: Telo.Bytes
+          data: { description: Encoded mask bytes., x-telo-type: Telo.Bytes }
           mediaType: { type: string }
       options:
         description: Request options, already merged by the operation from its own and the caller's.
         type: object
         additionalProperties: true
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    $ref: "telo://Self/ImageResult"
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo://Self/ImageResult" } }
 ---
 # Ai.Image — the buffered generation operation, symmetric to Ai.Text. It merges
 # options, forwards cancellation, and hands the call to the model; the kernel
@@ -2808,8 +2621,7 @@ metadata:
     encoded bytes with their media type plus why the run ended and what it cost.
     Refused images come back as a short list rather than an error.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiImageController
+controllers: [pkg:telo/local/js?path=./nodejs/ai.mjs&local_path=./nodejs/src/index.ts#AiImageController]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -2842,9 +2654,7 @@ inputType:
           required: [data, mediaType]
           additionalProperties: false
           properties:
-            data:
-              description: Encoded image bytes.
-              x-telo-type: Telo.Bytes
+            data: { description: Encoded image bytes., x-telo-type: Telo.Bytes }
             mediaType: { type: string }
       mask:
         description: Which region to repaint, as an image whose transparent area marks the target. Required under an inpainting intent.
@@ -2852,18 +2662,13 @@ inputType:
         required: [data, mediaType]
         additionalProperties: false
         properties:
-          data:
-            description: Encoded mask bytes.
-            x-telo-type: Telo.Bytes
+          data: { description: Encoded mask bytes., x-telo-type: Telo.Bytes }
           mediaType: { type: string }
       options:
         description: Per-call option overrides. Shallow-merged over this resource's `options`; the call wins.
         type: object
         additionalProperties: true
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    $ref: "telo://Self/ImageResult"
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo://Self/ImageResult" } }
 schema:
   type: object
   properties:
@@ -2897,9 +2702,7 @@ schema:
   additionalProperties: false
   examples:
     - model: !ref Painter
-      options:
-        size: 1024x1024
-        quality: low
+      options: { size: 1024x1024, quality: low }
     - model: !ref Painter
       intent: inpaint
 ---
@@ -2926,8 +2729,7 @@ metadata:
 capability: Telo.Invocable
 extends: Self.Model
 # What the streaming model throws is what this throws: the fold catches nothing.
-throws:
-  inherit: true
+throws: { inherit: true }
 schema:
   type: object
   additionalProperties: false
@@ -2936,16 +2738,13 @@ schema:
     model:
       title: Model
       description: The streaming model to drive and collect.
-      x-telo-ref:
-        kind: Self.ModelStream
-        use: [call, trigger.consumer]
+      x-telo-ref: { kind: Self.ModelStream, use: [call, trigger.consumer] }
 resources:
   - kind: Run.Sequence
     # A literal name: the body's children live in this instance's own child
     # context, so it is unique there, and a literal is what lets
     # `validate-template-dispatch` check that `invoke:` names a sibling at all.
-    metadata:
-      name: fold
+    metadata: { name: fold }
     steps:
       - name: start
         # The WHOLE input, passed through. Enumerating the fields here would be
@@ -2957,8 +2756,7 @@ resources:
       - name: parts
         inputs:
           input: !cel "steps.start.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       # One traversal per bucket, rather than recomputing the same
       # filter/map/join chain inside several output expressions.
       - name: buckets

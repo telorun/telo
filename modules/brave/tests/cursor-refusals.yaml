@@ -3,9 +3,7 @@
 # for different inputs, and a position that is not numeric or names an offset
 # or skip beyond the bounds Brave serves.
 kind: Telo.Application
-metadata:
-  name: BraveCursorRefusalsTest
-  version: 1.0.0
+metadata: { name: BraveCursorRefusalsTest, version: 1.0.0 }
 imports:
   Brave: ..
   WebSearch: ../../web-search

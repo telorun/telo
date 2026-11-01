@@ -14,8 +14,7 @@ metadata:
     the collection itself when a manifest reaches it without that check. A
     self-relation and a pair of collections relating to each other pass the
     check and boot.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref keyUndeclared
   - !ref keyUndeclaredAtRuntime
@@ -243,6 +242,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relations }
 source: ./__fixtures__/relations/telo.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }

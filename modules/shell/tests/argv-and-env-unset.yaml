@@ -7,42 +7,28 @@ metadata:
     argument carrying shell metacharacters is passed through literally (no
     injection). A `null` env value unsets an inherited host variable, keeping it
     out of the child — which a plain override cannot do.
-imports:
-  Shell: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Shell: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---
 kind: Shell.LocalHost
-metadata:
-  name: local
-env:
-  SECRET: shh
-  KEEP: "yes"
+metadata: { name: local }
+env: { SECRET: shh, KEEP: "yes" }
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 steps:
   # argv: `a; b` reaches the program as one literal argument, not two commands.
   - name: argv
     inputs:
-      args:
-        - node
-        - -e
-        - "process.stdout.write(process.argv[1])"
-        - "a; b && echo pwned"
+      args: [node, -e, "process.stdout.write(process.argv[1])", "a; b && echo pwned"]
     invoke:
       kind: Shell.Command
       host: !ref local
 
   # env null unsets an inherited host var; KEEP is untouched.
   - name: unset
-    inputs:
-      command: 'printf %s "$SECRET|$KEEP"'
-      env:
-        SECRET: null
+    inputs: { command: 'printf %s "$SECRET|$KEEP"', env: { SECRET: null } }
     invoke:
       kind: Shell.Command
       host: !ref local
@@ -52,8 +38,5 @@ steps:
       actual:
         argvOut: !cel "steps.argv.result.stdout"
         unsetOut: !cel "steps.unset.result.stdout"
-      expected:
-        argvOut: "a; b && echo pwned"
-        unsetOut: "|yes"
-    invoke:
-      kind: Assert.Equals
+      expected: { argvOut: "a; b && echo pwned", unsetOut: "|yes" }
+    invoke: { kind: Assert.Equals }

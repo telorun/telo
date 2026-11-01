@@ -21,15 +21,13 @@ targets:
 kind: Run.Sequence
 metadata: { name: throwsNotFound }
 steps:
-  - name: raise
-    throw: { code: NOT_FOUND, message: "no such order" }
+  - { name: raise, throw: { code: NOT_FOUND, message: "no such order" } }
 ---
 # Union {NOT_FOUND}. Its route declares an entry for that code, which wins.
 kind: Run.Sequence
 metadata: { name: throwsNotFoundOverridden }
 steps:
-  - name: raise
-    throw: { code: NOT_FOUND, message: "gone for good" }
+  - { name: raise, throw: { code: NOT_FOUND, message: "gone for good" } }
 ---
 # Union {NOT_FOUND}, behind a route whose own entry matches POST only. A GET
 # therefore falls PAST a route list that exists and declines — the case that
@@ -53,11 +51,7 @@ kind: Run.Value
 metadata: { name: producesInvalidOutput }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ok: { type: boolean }
-    required: [ ok ]
+  schema: { type: object, properties: { ok: { type: boolean } }, required: [ok] }
 value:
   ok: !cel "dyn('definitely-not-a-boolean')"
 ---
@@ -68,11 +62,7 @@ kind: Run.Value
 metadata: { name: requiresIntegerInput }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      id: { type: integer }
-    required: [ id ]
+  schema: { type: object, properties: { id: { type: integer } }, required: [id] }
 value:
   id: !cel "inputs.id"
 ---
@@ -91,14 +81,12 @@ routes:
   - request: { path: /not-found, method: GET }
     handler: !ref throwsNotFound
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 
   - request: { path: /overridden, method: GET }
     handler: !ref throwsNotFoundOverridden
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
     catches:
       - when: !cel "error.code == 'NOT_FOUND'"
         status: 410
@@ -111,30 +99,25 @@ routes:
   - request: { path: /declined, method: GET }
     handler: !ref throwsNotFoundOnGet
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
     catches:
       # Renders NOT_FOUND differently for writes only. A GET leaves this entry
       # unmatched, so the router's list answers.
       - when: !cel "error.code == 'NOT_FOUND' && request.method == 'POST'"
         status: 409
-        content:
-          application/json:
-            body: { source: route }
+        content: { application/json: { body: { source: route } } }
 
   - request: { path: /server-rendered, method: GET }
     handler: !ref producesInvalidOutput
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 
   - request: { path: /unclaimed, method: GET }
     handler: !ref requiresIntegerInput
     inputs:
       id: !cel "request.query.id"
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
 # Every rung under test renders a 4xx/5xx, so the client must REPORT the status
 # rather than raise on it — that is what `throwOnHttpError: false` is for.
@@ -152,9 +135,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8951
+    listen: { address: 127.0.0.1, port: 8951 }
     catches:
       - when: !cel "error.code == 'ERR_OUTPUT_INVALID'"
         status: 502
@@ -178,9 +159,7 @@ steps:
       actual:
         status: !cel "steps.hitNotFound.result.status"
         body: !cel "steps.hitNotFound.result.body"
-      expected:
-        status: 404
-        body: { source: router, code: NOT_FOUND, path: /not-found }
+      expected: { status: 404, body: { source: router, code: NOT_FOUND, path: /not-found } }
     invoke: { kind: Assert.Equals }
 
   # A route entry beats the router entry matching the same code.
@@ -192,9 +171,7 @@ steps:
       actual:
         status: !cel "steps.hitOverridden.result.status"
         body: !cel "steps.hitOverridden.result.body"
-      expected:
-        status: 410
-        body: { source: route, code: NOT_FOUND }
+      expected: { status: 410, body: { source: route, code: NOT_FOUND } }
     invoke: { kind: Assert.Equals }
 
   # A route list that declines does not stop the outer rungs: declaring one entry
@@ -207,9 +184,7 @@ steps:
       actual:
         status: !cel "steps.hitDeclined.result.status"
         body: !cel "steps.hitDeclined.result.body"
-      expected:
-        status: 404
-        body: { source: router, code: NOT_FOUND, path: /declined }
+      expected: { status: 404, body: { source: router, code: NOT_FOUND, path: /declined } }
     invoke: { kind: Assert.Equals }
 
   # The server's list renders a throw that escaped the whole router — the rung
@@ -222,9 +197,7 @@ steps:
       actual:
         status: !cel "steps.hitServerRendered.result.status"
         body: !cel "steps.hitServerRendered.result.body"
-      expected:
-        status: 502
-        body: { source: server, code: ERR_OUTPUT_INVALID, method: GET }
+      expected: { status: 502, body: { source: server, code: ERR_OUTPUT_INVALID, method: GET } }
     invoke: { kind: Assert.Equals }
 
   # No rung claims it — the 500 problem, its detail the code's built-in text.

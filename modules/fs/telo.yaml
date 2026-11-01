@@ -18,15 +18,7 @@ requires:
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
   telo: ">=0.121.0"
 exports:
-  kinds:
-    - File
-    - FileWrite
-    - FileEdit
-    - DirectoryListing
-    - DirectoryCreation
-    - TreeSnapshot
-    - TreeSync
-    - FileRemoval
+  kinds: [File, FileWrite, FileEdit, DirectoryListing, DirectoryCreation, TreeSnapshot, TreeSync, FileRemoval]
 ---
 # Read a file. Returns its contents (utf8 text or, with `encoding: base64`, the
 # bytes base64-encoded) and byte size.
@@ -40,8 +32,7 @@ metadata:
     refuse a larger file before any of it is read. The path resolves against
     the resource's working directory unless it is absolute.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileController]
 throws:
   codes:
     ERR_FILE_TOO_LARGE:
@@ -84,10 +75,7 @@ outputType:
         title: Content
         description: "File contents — utf8 text, or a base64 string when `encoding: base64`."
         type: string
-      size:
-        title: Size
-        description: File size in bytes.
-        type: integer
+      size: { title: Size, description: File size in bytes., type: integer }
       sha256:
         title: SHA-256
         description: >-
@@ -109,7 +97,7 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }
 ---
 # Write a file, replacing it whole. `createParents` makes missing parent
 # directories. For surgical edits to an existing file use Fs.FileEdit.
@@ -126,8 +114,7 @@ metadata:
     once complete. An optional size limit refuses larger content and leaves the
     previous file untouched.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileWriteController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileWriteController]
 throws:
   codes:
     ERR_FILE_TOO_LARGE:
@@ -142,12 +129,8 @@ throws:
         additionalProperties: false
         required: [path, maxBytes]
         properties:
-          path:
-            type: string
-            description: The resolved path that was to be written.
-          maxBytes:
-            type: integer
-            description: The call's bound.
+          path: { type: string, description: The resolved path that was to be written. }
+          maxBytes: { type: integer, description: The call's bound. }
           size:
             type: integer
             description: >-
@@ -176,11 +159,9 @@ inputType:
         # string would match several branches and fail. anyOf degrades to
         # permissive there while still rejecting any other value here.
         anyOf:
-          - type: string
-          - x-telo-type: Telo.Bytes
-          - x-telo-type:
-              name: Telo.Stream
-              of: Telo.Bytes
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+          - { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
       encoding:
         title: Encoding
         description: >-
@@ -229,7 +210,7 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }
 ---
 # Edit a file in place by exact string replacement. Fails (rather than silently
 # no-op) when `oldString` is absent, or matches more than once without
@@ -244,8 +225,7 @@ metadata:
     Replacement is byte-level, so surrounding comments and YAML tags survive
     untouched; the path resolves against the resource's `cwd`.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileEditController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileEditController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -263,10 +243,7 @@ inputType:
         description: Exact substring to replace. Must be present, and unique unless `replaceAll`.
         type: string
         minLength: 1
-      newString:
-        title: New string
-        description: Replacement text.
-        type: string
+      newString: { title: New string, description: Replacement text., type: string }
       replaceAll:
         title: Replace all
         description: Replace every occurrence instead of requiring a single match.
@@ -298,7 +275,7 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }
 ---
 # List a directory. Each entry is `{ name, path, type, size }`; `path` is
 # relative to `cwd` so it can be fed back as an input. `recursive` walks
@@ -313,8 +290,7 @@ metadata:
     any depth, and pages a large tree with a limit and a cursor. Entry paths
     are relative to the working directory, ready for a read, write or remove.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#DirectoryListingController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#DirectoryListingController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -378,19 +354,10 @@ outputType:
           additionalProperties: false
           required: [name, path, type, size]
           properties:
-            name:
-              description: Entry base name.
-              type: string
-            path:
-              description: Path relative to `cwd`.
-              type: string
-            type:
-              description: Entry kind.
-              type: string
-              enum: [file, directory, other]
-            size:
-              description: Entry size in bytes.
-              type: integer
+            name: { description: Entry base name., type: string }
+            path: { description: Path relative to `cwd`., type: string }
+            type: { description: Entry kind., type: string, enum: [file, directory, other] }
+            size: { description: Entry size in bytes., type: integer }
 schema:
   type: object
   additionalProperties: false
@@ -406,7 +373,7 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }
 ---
 # Create a directory. `createParents` makes missing ancestors and is idempotent
 # (no error if it already exists); without it, an existing path or missing
@@ -421,8 +388,7 @@ metadata:
     missing parent is an error. The path resolves against the resource's `cwd`
     unless absolute.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#DirectoryCreationController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#DirectoryCreationController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -466,7 +432,7 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }
 ---
 # A content-hash walk of the requested files and directories: every regular
 # file as `{ path, hash, size }` (sha256 hex of its bytes), `path` relative to
@@ -484,8 +450,7 @@ metadata:
     snapshots diff into an exact change set — for detecting edits, syncing or
     caching. Entries can be excluded by base name at any depth.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#TreeSnapshotController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#TreeSnapshotController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -526,15 +491,9 @@ outputType:
           additionalProperties: false
           required: [path, hash, size]
           properties:
-            path:
-              description: Path relative to `cwd`.
-              type: string
-            hash:
-              description: sha256 hex digest of the file's bytes.
-              type: string
-            size:
-              description: File size in bytes.
-              type: integer
+            path: { description: Path relative to `cwd`., type: string }
+            hash: { description: sha256 hex digest of the file's bytes., type: string }
+            size: { description: File size in bytes., type: integer }
       missing:
         title: Missing
         description: >-
@@ -557,7 +516,7 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }
 ---
 # Apply an EXPLICIT change set to a tree: write each listed file (creating
 # parents) and remove each deleted path. It does NOT implicitly delete files
@@ -573,8 +532,7 @@ metadata:
     reports both counts. Files absent from the set are left untouched — nothing is
     ever deleted implicitly — so the same call serves a full seed or a partial delta.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#TreeSyncController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#TreeSyncController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -590,18 +548,15 @@ inputType:
           additionalProperties: false
           required: [path, content]
           properties:
-            path:
-              description: File to write, relative to `cwd`.
-              type: string
-              minLength: 1
+            path: { description: "File to write, relative to `cwd`.", type: string, minLength: 1 }
             content:
               description: >-
                 Bytes to write — utf8 text, a base64 string when `encoding: base64`,
                 or raw bytes (a Uint8Array) handed over by a byte-producing resource.
               # anyOf for the same reason as Fs.FileWrite's `content` — see there.
               anyOf:
-                - type: string
-                - x-telo-type: Telo.Bytes
+                - { type: string }
+                - { x-telo-type: Telo.Bytes }
             encoding:
               description: >-
                 How a string `content` is interpreted. `base64` decodes it to binary
@@ -621,10 +576,7 @@ outputType:
     additionalProperties: false
     required: [written, deleted]
     properties:
-      written:
-        title: Written
-        description: Number of files written.
-        type: integer
+      written: { title: Written, description: Number of files written., type: integer }
       deleted:
         title: Deleted
         description: Number of delete paths processed.
@@ -644,7 +596,7 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }
 ---
 # Remove a file, or a directory tree with `recursive`. A missing path is an
 # error.
@@ -656,8 +608,7 @@ metadata:
     `recursive` is set. A missing path is an error rather than a silent no-op.
     The path resolves against the resource's `cwd` unless absolute.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileRemovalController
+controllers: [pkg:telo/local/js?path=./nodejs/fs.mjs&local_path=./nodejs/src/index.ts#FileRemovalController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -682,10 +633,7 @@ outputType:
     additionalProperties: false
     required: [removed]
     properties:
-      removed:
-        title: Removed
-        description: True when the path was removed.
-        type: boolean
+      removed: { title: Removed, description: True when the path was removed., type: boolean }
 schema:
   type: object
   additionalProperties: false
@@ -701,4 +649,4 @@ schema:
       x-telo-type: { name: Telo.HostPath, entry: directory }
       x-telo-eval: compile
   examples:
-    - cwd: /srv/workspace
+    - { cwd: /srv/workspace }

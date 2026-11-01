@@ -7,8 +7,7 @@ metadata:
   name: AgentConclusionPromptTest
   version: 1.0.0
   description: The conclusion-prompt resource rule and its controller twin refuse the same agent.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref conclusionPromptUnused
   - !ref conclusionPromptUnusedAtRuntime

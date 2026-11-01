@@ -130,8 +130,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          joined: { type: string, pattern: "^loading: " }
+        properties: { joined: { type: string, pattern: "^loading: " } }
         required: [ joined ]
 ---
 # Pre-first-item source rejection: StreamWait must yield the cell-clear
@@ -163,8 +162,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              message: { type: string, pattern: "oops before first item" }
+            properties: { message: { type: string, pattern: "oops before first item" } }
             required: [ message ]
 ---
 # Cancellation propagation: consumer breaks early, StreamWait must call
@@ -231,6 +229,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          returnCalled: { const: true }
+        properties: { returnCalled: { const: true } }
         required: [ returnCalled ]

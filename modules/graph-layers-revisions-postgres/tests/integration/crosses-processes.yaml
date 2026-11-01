@@ -16,8 +16,7 @@ metadata:
     refused and the session fails GRAPH_DRAFT_CLOSED.
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
-include:
-  - ./__fixtures__/cross-process/model.yaml
+include: [./__fixtures__/cross-process/model.yaml]
 imports:
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
@@ -98,8 +97,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_revisions_processes CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_revisions_processes CASCADE }
 ---
 # Both layers are registered before any child starts, so the children race on
 # revisions rather than on a layer's first write. A draft opened and discarded
@@ -168,9 +166,7 @@ condition: !cel "resources.publisherA.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: publisherB }
@@ -187,9 +183,7 @@ condition: !cel "resources.publisherB.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 # Whichever published first, the other was refused: one revision, one refusal.
 kind: Run.Sequence
@@ -242,9 +236,7 @@ condition: !cel "resources.writerA.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: writerB }
@@ -261,9 +253,7 @@ condition: !cel "resources.writerB.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: GraphLayers.ListRevisions
 metadata: { name: topRevisions }
@@ -322,8 +312,7 @@ with:
 targets:
   - !ref closer
 steps:
-  - name: done
-    value: true
+  - { name: done, value: true }
 ---
 kind: Run.Sequence
 metadata: { name: closedFromElsewhere }

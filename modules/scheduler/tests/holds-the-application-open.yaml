@@ -39,16 +39,12 @@ targets:
 steps:
   - name: wait
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "120ms"
-      value: {}
+    inputs: { duration: "120ms", value: {} }
 ---
 kind: Assert.Events
 metadata: { name: assertHeldThenReleased }
 filter:
-  - type: "Kernel.*"
+  - { type: "Kernel.*" }
 expect:
-  - event: Kernel.Blocked
-    times: 1
-  - event: Kernel.Unblocked
-    times: 1
+  - { event: Kernel.Blocked, times: 1 }
+  - { event: Kernel.Unblocked, times: 1 }

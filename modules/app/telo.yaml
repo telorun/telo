@@ -30,11 +30,8 @@ requires:
   # environment instead. 0.123.0 is the release that will carry it —
   # forward-declared, because 0.122.0 is the newest published one.
   telo: ">=0.123.0"
-imports:
-  Channel: ../channel
-exports:
-  kinds:
-    - Instance
+imports: { Channel: ../channel }
+exports: { kinds: [Instance] }
 ---
 # App.Instance — another application, running as a resource of this one.
 #
@@ -58,8 +55,7 @@ capability: Telo.Service
 # remote host — not to applications. Extending the abstract is what lets one
 # `Channel.ReadUntil` step work against any of them.
 extends: Channel.Text
-controllers:
-  - pkg:telo/local/js?path=./nodejs/app.mjs&local_path=./nodejs/src/index.ts#Instance
+controllers: [pkg:telo/local/js?path=./nodejs/app.mjs&local_path=./nodejs/src/index.ts#Instance]
 status:
   type: object
   properties:
@@ -124,9 +120,7 @@ schema:
         This is where a second copy of the same application is given a port of its
         own.
       type: object
-      additionalProperties:
-        type: integer
-        x-telo-type: Telo.TcpPort
+      additionalProperties: { type: integer, x-telo-type: Telo.TcpPort }
       x-telo-eval: compile
     needs:
       title: Needs

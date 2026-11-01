@@ -2,11 +2,8 @@
 # time for every path it can see. One case per outcome the projection
 # distinguishes.
 kind: Telo.Application
-metadata:
-  name: ZoneStaticAnalysis
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: ZoneStaticAnalysis, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testSatisfied
   - !ref testUnsatisfiedAtRoute
@@ -21,41 +18,34 @@ targets:
 # through a Run.Sequence. Correlation resolves through the derived
 # `/transaction/connection` pointer, since the statement omits `connection:`.
 kind: Assert.Manifest
-metadata:
-  name: testSatisfied
+metadata: { name: testSatisfied }
 source: ./__fixtures__/zone-satisfied.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # The flagship diagnostic: a bound statement wired straight to an HTTP route.
 # The requirement reaches a `trigger.inbound` edge, where the runtime
 # GUARANTEES a fresh context — so it can never be satisfied, and errors.
 kind: Assert.Manifest
-metadata:
-  name: testUnsatisfiedAtRoute
+metadata: { name: testUnsatisfiedAtRoute }
 source: ./__fixtures__/zone-unsatisfied-at-route.yaml
 expect:
   errors:
-    - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "inbound trigger registration"
+    - { code: ZONE_REQUIREMENT_UNSATISFIED, message: "inbound trigger registration" }
 ---
 # Nothing encloses an Application's boot targets, so an open requirement
 # arriving there errors at boot.
 kind: Assert.Manifest
-metadata:
-  name: testUnsatisfiedAtBoot
+metadata: { name: testUnsatisfiedAtBoot }
 source: ./__fixtures__/zone-unsatisfied-at-boot.yaml
 expect:
   errors:
-    - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "boot targets"
+    - { code: ZONE_REQUIREMENT_UNSATISFIED, message: "boot targets" }
 ---
 # Type-scoping alone would report clean here. The statement is on a different
 # connection than the enclosing transaction, so under the fixed runtime it is
 # simply not transactional — the provider is passed undischarged.
 kind: Assert.Manifest
-metadata:
-  name: testCrossConnection
+metadata: { name: testCrossConnection }
 source: ./__fixtures__/zone-cross-connection.yaml
 expect:
   errors:
@@ -67,8 +57,7 @@ expect:
 # it. A hard error would reject a working manifest — this WARNS, and the runtime
 # assertion stays the enforcement.
 kind: Assert.Manifest
-metadata:
-  name: testDeferredAtConsumer
+metadata: { name: testDeferredAtConsumer }
 source: ./__fixtures__/zone-deferred-at-consumer.yaml
 expect:
   errors: []
@@ -82,11 +71,9 @@ expect:
 # unconditional `[call, detached]` union this replaced would have flagged every
 # working cached transactional call.
 kind: Assert.Manifest
-metadata:
-  name: testCacheDefaultIsClean
+metadata: { name: testCacheDefaultIsClean }
 source: ./__fixtures__/zone-through-cache-sync.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # The same manifest with `revalidate: background`, the one setting under which
 # the slot really does detach. The set `[call, detached]` contains a member the
@@ -94,23 +81,19 @@ expect:
 # decidably, not undecidably — and this errors. The statement would throw
 # ERR_ZONE_REQUIRED on every stale revalidation.
 kind: Assert.Manifest
-metadata:
-  name: testCacheBackgroundErrors
+metadata: { name: testCacheBackgroundErrors }
 source: ./__fixtures__/zone-through-cache-background.yaml
 expect:
   errors:
-    - code: ZONE_REQUIREMENT_UNSATISFIED
-      message: "guaranteed a fresh context"
+    - { code: ZONE_REQUIREMENT_UNSATISFIED, message: "guaranteed a fresh context" }
 ---
 # A library exporting a sequence whose requirement correlates on a connection it
 # does NOT export: unsatisfiable from outside by construction. Reported at the
 # library's own check — the one desk where it is fixable — never by an importer
 # against a file it does not own.
 kind: Assert.Manifest
-metadata:
-  name: testExportUnsatisfiable
+metadata: { name: testExportUnsatisfiable }
 source: ./__fixtures__/zone-export-unsatisfiable/telo.yaml
 expect:
   errors:
-    - code: ZONE_EXPORT_UNSATISFIABLE
-      message: "billingDb"
+    - { code: ZONE_EXPORT_UNSATISFIABLE, message: "billingDb" }

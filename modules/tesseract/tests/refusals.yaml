@@ -6,10 +6,7 @@ metadata:
     Each way a call is refused reports its own code. Each `try:` ends with a
     `throw:` that only runs when the call wrongly succeeded, so its code reaching
     the assertion is a failure too.
-imports:
-  Tesseract: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Tesseract: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref refusesBadCalls
 ---

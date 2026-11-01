@@ -14,11 +14,8 @@ requires:
   # The controllers return effect chains; everything newer the module relies on
   # arrives through its `container` import.
   telo: ">=0.82.0"
-imports:
-  Container: ../container
-exports:
-  kinds:
-    - Engine
+imports: { Container: ../container }
+exports: { kinds: [Engine] }
 ---
 # Docker.Engine — a Container.Engine over the Docker Engine API 1.41. The exact
 # requests it sends are listed in docs/engine-api.md.
@@ -32,8 +29,7 @@ metadata:
     Engine API requests, so a runner can serve the same endpoint per session.
 capability: Telo.Provider
 extends: Container.Engine
-controllers:
-  - pkg:telo/local/js?path=./nodejs/docker.mjs&local_path=./nodejs/src/index.ts#Engine
+controllers: [pkg:telo/local/js?path=./nodejs/docker.mjs&local_path=./nodejs/src/index.ts#Engine]
 schema:
   type: object
   additionalProperties: false

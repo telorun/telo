@@ -19,8 +19,7 @@ targets:
   - !ref main
 ---
 kind: Ui.Dialog
-metadata:
-  name: wide
+metadata: { name: wide }
 size: large
 modal: false
 dismiss: { outside: false }
@@ -28,45 +27,37 @@ address: { name: todo }
 compact: !ref sheet
 ---
 kind: Ui.Drawer
-metadata:
-  name: sheet
+metadata: { name: sheet }
 side: bottom
 size: full
 ---
 kind: Ui.Popover
-metadata:
-  name: bubble
+metadata: { name: bubble }
 side: top
 align: end
 dismiss: { escape: false }
 compact: { kind: Ui.Dialog, size: small }
 ---
 kind: Ui.InlineSurface
-metadata:
-  name: inRow
+metadata: { name: inRow }
 ---
 kind: Ui.Panel
-metadata:
-  name: beside
+metadata: { name: beside }
 side: start
 size: small
 dismiss: { closeButton: false }
 address: { name: todo }
 ---
 kind: Ui.PageSurface
-metadata:
-  name: ownPage
+metadata: { name: ownPage }
 address: { name: todo }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    text: { type: string }
+  properties: { id: { type: integer }, text: { type: string } }
 ---
 kind: Ui.CollectionPresentation
 metadata: { name: todos }
@@ -76,8 +67,7 @@ source:
   basePath: /api/todos
 ---
 kind: Ui.Listing
-metadata:
-  name: table
+metadata: { name: table }
 model: !ref Todo
 presentation: !ref todos
 create:
@@ -91,8 +81,7 @@ edit:
   afterSubmit: keep
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: wide
     invoke: { kind: Probe.Read, source: !ref wide }

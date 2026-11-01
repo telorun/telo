@@ -11,13 +11,8 @@ metadata:
     publication date for a query, with location, recency and content-moderation
     settings. Up to 100 results per query, sliced with an opaque cursor.
     Authenticated with an API key on a configurable HTTP client.
-imports:
-  WebSearch: ../web-search
-  Http: ../http-client
-  Run: ../run
-exports:
-  kinds:
-    - WebSearchEngine
+imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
+exports: { kinds: [WebSearchEngine] }
 ---
 # A templated engine over `POST /search`. Exa returns one ranked list of at most
 # 100 results and cannot page, so the 100 are the whole reachable window: a
@@ -44,10 +39,8 @@ throws:
       description: >-
         Exa answered 401 (the API key is invalid) or 403 FEATURE_DISABLED (the key's
         plan does not include the request).
-    ERR_SEARCH_RATE_LIMITED:
-      description: Exa answered 429.
-    ERR_SEARCH_QUOTA_EXCEEDED:
-      description: Exa answered 402 — the account's credits or budget are used up.
+    ERR_SEARCH_RATE_LIMITED: { description: Exa answered 429. }
+    ERR_SEARCH_QUOTA_EXCEEDED: { description: Exa answered 402 — the account's credits or budget are used up. }
     ERR_SEARCH_FAILED:
       description: >-
         Exa was unreachable, answered with any other error, or answered with a body
@@ -63,9 +56,7 @@ schema:
         The HTTP request Exa is reached through. Its client's `baseUrl` is
         `https://api.exa.ai`, and its credential an `Http.ApiKeyHeader` with header
         `x-api-key`.
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     safeSearch:
       title: Safe search
       description: Exa's content moderation, sent as `moderation`.
@@ -73,8 +64,7 @@ schema:
       default: false
 resources:
   - kind: Run.Sequence
-    metadata:
-      name: search
+    metadata: { name: search }
     inputType: !ref WebSearch.Query
     outputType: !ref WebSearch.Results
     steps:
@@ -119,24 +109,21 @@ resources:
   # One request, mapped onto the contract's result shape; every failure is raised
   # here as a contract code.
   - kind: Run.Sequence
-    metadata:
-      name: page
+    metadata: { name: page }
     inputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [body]
         additionalProperties: false
-        properties:
-          body: { type: object }
+        properties: { body: { type: object } }
     outputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [results]
         additionalProperties: false
-        properties:
-          results: { type: array }
+        properties: { results: { type: array } }
     steps:
       - name: fetch
         try:

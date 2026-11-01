@@ -48,10 +48,7 @@ metadata: { name: wrongKeyRequest }
 client:
   kind: Http.Client
   baseUrl: http://localhost:8960/echo/v1
-  credential:
-    kind: Http.ApiKeyHeader
-    header: x-api-key
-    key: wrong-key
+  credential: { kind: Http.ApiKeyHeader, header: x-api-key, key: wrong-key }
 ---
 kind: Http.Request
 metadata: { name: scriptedRequest }
@@ -74,8 +71,7 @@ request: !ref echoRequest
 maxTokens: 256
 cacheLifetime: 1h
 betas: [beta-one-2025-01-01, beta-two-2025-02-02]
-options:
-  temperature: 0.2
+options: { temperature: 0.2 }
 ---
 kind: Anthropic.MessagesModel
 metadata: { name: wrongKey }
@@ -181,39 +177,29 @@ with:
       - request:
           path: /messages
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 429
             when: !cel "request.body.model == 'claude-limited'"
-            headers:
-              Retry-After: "7"
+            headers: { Retry-After: "7" }
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
-                body:
-                  type: error
-                  error: { type: rate_limit_error, message: slow down }
+                body: { type: error, error: { type: rate_limit_error, message: slow down } }
           - status: 529
             when: !cel "request.body.model == 'claude-overloaded'"
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
-                body:
-                  type: error
-                  error: { type: overloaded_error, message: Overloaded }
+                body: { type: error, error: { type: overloaded_error, message: Overloaded } }
           - status: 200
             content:
-              text/plain:
-                schema: { type: string }
-                body: '{"type": "message", "content": [{"ty'
+              text/plain: { schema: { type: string }, body: '{"type": "message", "content": [{"ty' }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 8960
-    openapi:
-      info: { title: Fake Messages API, version: 1.0.0 }
+    listen: { port: 8960 }
+    openapi: { info: { title: Fake Messages API, version: 1.0.0 } }
     mounts:
       - path: /echo/v1
         mount: !ref EchoApi
@@ -246,11 +232,8 @@ steps:
             messages:
               - role: user
                 content:
-                  - type: text
-                    text: describe this
-                    cache_control: { type: ephemeral, ttl: 1h }
-                  - type: image
-                    source: { type: base64, media_type: image/png, data: aGk= }
+                  - { type: text, text: describe this, cache_control: { type: ephemeral, ttl: 1h } }
+                  - { type: image, source: { type: base64, media_type: image/png, data: aGk= } }
             temperature: 0.2
         usage:
           promptTokens: 55

@@ -24,20 +24,17 @@ maxEntries: 1
 ---
 kind: Run.Value
 metadata: { name: body }
-value:
-  ok: true
+value: { ok: true }
 ---
 kind: Idempotency.Once
-metadata:
-  name: once
+metadata: { name: once }
 store: !ref tinyStore
 claimTtl: "30s"
 ttl: "60s"
 invoke: !ref body
 ---
 kind: Run.Sequence
-metadata:
-  name: testOverflow
+metadata: { name: testOverflow }
 steps:
   - name: first
     invoke: !ref once

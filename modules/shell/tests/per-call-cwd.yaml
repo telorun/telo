@@ -6,10 +6,7 @@ metadata:
     A call's `cwd` overlays the host's working directory: with argv execution
     (no shell) and an absolute path, with a shell command line, and as a
     relative path resolved against the host's own working directory.
-imports:
-  Shell: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Shell: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -24,25 +21,19 @@ kind: Run.Sequence
 metadata: { name: test }
 steps:
   - name: argvAbsolute
-    inputs:
-      args: [pwd]
-      cwd: /usr
+    inputs: { args: [pwd], cwd: /usr }
     invoke:
       kind: Shell.Command
       host: !ref local
 
   - name: commandLine
-    inputs:
-      command: pwd
-      cwd: /usr/bin
+    inputs: { command: pwd, cwd: /usr/bin }
     invoke:
       kind: Shell.Command
       host: !ref local
 
   - name: relativeToHost
-    inputs:
-      command: pwd
-      cwd: usr
+    inputs: { command: pwd, cwd: usr }
     invoke:
       kind: Shell.Command
       host: !ref root
@@ -57,5 +48,4 @@ steps:
         argvAbsolute: "/usr\n"
         commandLine: "/usr/bin\n"
         relativeToHost: "/usr\n"
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

@@ -6,8 +6,7 @@ metadata:
   name: SecretScanRuleRefusalsTest
   version: 1.0.0
   description: Each detector resource rule and its controller twin refuse the same rule set.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref prefixesEmpty
   - !ref prefixesEmptyAtRuntime

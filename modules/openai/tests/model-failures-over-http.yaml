@@ -148,31 +148,22 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 429
             when: !cel "request.body.model == 'gpt-limited'"
-            headers:
-              Retry-After: "7"
+            headers: { Retry-After: "7" }
             content:
               application/json:
                 schema: { type: object, additionalProperties: true }
-                body:
-                  error: { message: slow down }
+                body: { error: { message: slow down } }
           - status: 200
             when: !cel "request.body.model == 'gpt-cut-json'"
-            content:
-              text/plain:
-                schema: { type: string }
-                body: '{"choices": [{"mess'
+            content: { text/plain: { schema: { type: string }, body: '{"choices": [{"mess' } }
           - status: 200
             when: !cel "request.body.model == 'gpt-html'"
-            content:
-              text/html:
-                schema: { type: string }
-                body: <html>bad gateway</html>
+            content: { text/html: { schema: { type: string }, body: <html>bad gateway</html> } }
           - status: 200
             when: !cel "request.body.model == 'gpt-misshapen'"
             content:
@@ -200,15 +191,12 @@ with:
       - request:
           path: /responses
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
             content:
-              text/plain:
-                schema: { type: string }
-                body: '{"status": "completed", "outp'
+              text/plain: { schema: { type: string }, body: '{"status": "completed", "outp' }
   # The echoing answers live under their own mount: a route serializes every
   # answer of one status with one schema, so an object body cannot share a route
   # with the text bodies above.
@@ -218,8 +206,7 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
@@ -234,8 +221,7 @@ with:
       - request:
           path: /responses
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
@@ -252,10 +238,8 @@ with:
                   usage: { input_tokens: 7, output_tokens: 3, total_tokens: 10 }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 8914
-    openapi:
-      info: { title: Fake OpenAI API, version: 1.0.0 }
+    listen: { port: 8914 }
+    openapi: { info: { title: Fake OpenAI API, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref FakeApi

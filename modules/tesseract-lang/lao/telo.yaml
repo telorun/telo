@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - lao
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [lao] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: lao, member: package/4.0.0_best_int/lao.traineddata.gz, sha256: 660306d4a42941426256c723a7d6d3b65f81e6c428e5f83d5f25180a486d0011, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: lao
-  description: Lao, Lao script
+metadata: { name: lao, description: "Lao, Lao script" }
 code: lao
 data: !module-path ./tessdata/lao.traineddata.gz

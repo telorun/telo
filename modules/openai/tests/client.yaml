@@ -50,9 +50,7 @@ with:
             body: { type: object, additionalProperties: true }
             headers:
               type: object
-              properties:
-                authorization: { type: string }
-                openai-organization: { type: string }
+              properties: { authorization: { type: string }, openai-organization: { type: string } }
         handler: !ref noop
         returns:
           - status: 200
@@ -64,8 +62,7 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body:
                   choices:
-                    - message: { content: hello }
-                      finish_reason: stop
+                    - { message: { content: hello }, finish_reason: stop }
                   usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
           - status: 401
             content:
@@ -75,8 +72,7 @@ with:
                   error: { type: invalid_request_error, code: invalid_api_key, message: Incorrect API key }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 8977
+    listen: { port: 8977 }
     mounts:
       - path: /v1
         mount: !ref ChatApi

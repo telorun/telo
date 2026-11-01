@@ -26,10 +26,7 @@ kind: Run.Value
 metadata: { name: recorder }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      id: { type: string }
+  schema: { type: object, properties: { id: { type: string } } }
 value:
   id: !cel "inputs.id"
 ---
@@ -37,11 +34,7 @@ kind: Ai.Tools
 metadata: { name: turnTools }
 contextType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [turnId]
-    properties:
-      turnId: { type: string }
+  schema: { type: object, required: [turnId], properties: { turnId: { type: string } } }
 tools:
   - tool: !ref recorder
     name: record
@@ -56,8 +49,7 @@ contextType:
   schema:
     type: object
     required: [sessionId]
-    properties:
-      sessionId: { type: string }
+    properties: { sessionId: { type: string } }
 tools:
   - tool: !ref recorder
     name: record_session
@@ -72,13 +64,11 @@ tools:
   - tool: !ref recorder
     name: record
     parameters: { type: object, additionalProperties: false }
-    inputs:
-      id: "fixed"
+    inputs: { id: "fixed" }
 ---
 kind: AiEcho.EchoModel
 metadata: { name: echo }
-emitToolCall:
-  name: record
+emitToolCall: { name: record }
 ---
 kind: Ai.Agent
 metadata: { name: turnAgent }
@@ -106,16 +96,12 @@ metadata: { name: toolReceivesCallerContext }
 steps:
   - name: call
     invoke: !ref turnAgent
-    inputs:
-      prompt: "go"
-      context:
-        turnId: "turn-7"
+    inputs: { prompt: "go", context: { turnId: "turn-7" } }
   - name: assertText
     inputs:
       actual: !cel "steps.call.result.text"
       expected: '{"id":"turn-7"}'
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # Two providers, two declared types: a `context` satisfying both is accepted.
 kind: Run.Sequence
@@ -123,33 +109,24 @@ metadata: { name: everyProviderConstrainsContext }
 steps:
   - name: call
     invoke: !ref turnAndSessionAgent
-    inputs:
-      prompt: "go"
-      context:
-        turnId: "turn-7"
-        sessionId: "session-3"
+    inputs: { prompt: "go", context: { turnId: "turn-7", sessionId: "session-3" } }
   - name: assertText
     inputs:
       actual: !cel "steps.call.result.text"
       expected: '{"id":"turn-7"}'
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: undeclaredProviderAcceptsAnyContext }
 steps:
   - name: call
     invoke: !ref undeclaredAgent
-    inputs:
-      prompt: "go"
-      context:
-        anything: 1
+    inputs: { prompt: "go", context: { anything: 1 } }
   - name: assertText
     inputs:
       actual: !cel "steps.call.result.text"
       expected: '{"id":"fixed"}'
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 # A mapping reading a field of `context` with no `contextType` declared.
 kind: Assert.Manifest

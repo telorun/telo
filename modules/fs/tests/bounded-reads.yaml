@@ -8,10 +8,7 @@ metadata:
     and the roots it could not find. Fs.File reports the sha256 a snapshot
     reports for the same file, and refuses a file over `maxBytes` without
     reading it. Fs.DirectoryListing pages a tree in path order.
-imports:
-  Fs: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Fs: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 variables:
@@ -70,8 +67,7 @@ steps:
 
   # A file root, a directory root and a root that does not exist.
   - name: snapshot
-    inputs:
-      paths: [c.txt, a, gone/missing.txt]
+    inputs: { paths: [c.txt, a, gone/missing.txt] }
     invoke: !ref snap
 
   - name: readC
@@ -105,9 +101,7 @@ steps:
         inputs: { path: c.txt, maxBytes: 5 }
         invoke: !ref read
       - name: wasRead
-        throw:
-          code: FILE_WAS_READ
-          message: a file over `maxBytes` was read
+        throw: { code: FILE_WAS_READ, message: a file over `maxBytes` was read }
     catch:
       - name: assertTooLarge
         inputs:

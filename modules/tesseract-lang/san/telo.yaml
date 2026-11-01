@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - san
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [san] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: san, member: package/4.0.0_best_int/san.traineddata.gz, sha256: f1ed7e622f015c9caba5c2843a06deee9343955e7d57a38d96aa79b43e154916, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: san
-  description: Sanskrit, Devanagari script
+metadata: { name: san, description: "Sanskrit, Devanagari script" }
 code: san
 data: !module-path ./tessdata/san.traineddata.gz

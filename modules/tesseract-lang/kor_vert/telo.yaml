@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - kor_vert
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [kor_vert] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: kor_vert, member: package/4.0.0_best_int/kor_vert.traineddata.gz, sha256: e299cca7827988dad481beb5cd4601d02b4fff13efa03312b80224f372c232cf, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: kor_vert
-  description: Korean, vertical text, Hangul script
+metadata: { name: kor_vert, description: "Korean, vertical text, Hangul script" }
 code: kor_vert
 data: !module-path ./tessdata/kor_vert.traineddata.gz

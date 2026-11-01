@@ -7,10 +7,7 @@ metadata:
     back, edit it in place, list the tree, round-trip binary via base64, then
     remove everything. All paths resolve against a scratch `cwd` under
     __fixtures__ (created and removed by the test).
-imports:
-  Fs: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Fs: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 # The directory the test creates its scratch tree in — one anchor, from which
@@ -88,10 +85,7 @@ steps:
     invoke: !ref read
 
   - name: edit
-    inputs:
-      path: scratch-ops/note.txt
-      oldString: "version: 1"
-      newString: "version: 2"
+    inputs: { path: scratch-ops/note.txt, oldString: "version: 1", newString: "version: 2" }
     invoke: !ref edit
 
   - name: readEdited
@@ -120,10 +114,7 @@ steps:
     invoke: !ref write
 
   - name: editNeedle
-    inputs:
-      path: scratch-ops/needle.bin
-      oldString: needle
-      newString: ok
+    inputs: { path: scratch-ops/needle.bin, oldString: needle, newString: ok }
     invoke: !ref edit
 
   - name: readNeedle

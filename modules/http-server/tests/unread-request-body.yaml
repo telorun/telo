@@ -23,13 +23,9 @@ routes:
   - request:
       path: /ignored
       method: POST
-      schema:
-        body:
-          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
     maxBodyBytes: 64
-    handler:
-      kind: Run.Value
-      value: { handled: true }
+    handler: { kind: Run.Value, value: { handled: true } }
     returns:
       - status: 200
         content: { application/json: { body: { ok: true, note: answered without reading the body } } }
@@ -39,12 +35,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8973
+    listen: { address: 127.0.0.1, port: 8973 }
     contentTypeParsers:
-      - contentType: application/octet-stream
-        stream: true
+      - { contentType: application/octet-stream, stream: true }
     mounts:
       - path: /api
         mount: !ref api
@@ -56,22 +49,18 @@ steps:
   - name: chunks
     inputs:
       items: !cel "range(10).map(i, bytes(range(40).map(j, '0123456789').join('')))"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: ignored
     inputs:
       url: http://127.0.0.1:8973/api/ignored
       method: POST
       headers: { content-type: application/octet-stream }
       body: !cel "steps.chunks.result.output"
-    invoke:
-      kind: HttpClient.Request
+    invoke: { kind: HttpClient.Request }
   - name: assertAnswered
     inputs:
       actual:
         status: !cel "steps.ignored.result.status"
         body: !cel "steps.ignored.result.body"
-      expected:
-        status: 200
-        body: { ok: true, note: answered without reading the body }
+      expected: { status: 200, body: { ok: true, note: answered without reading the body } }
     invoke: !ref Assert.equals

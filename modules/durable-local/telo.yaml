@@ -14,19 +14,9 @@ requires:
   # 0.82.0: controllers return their effects from `init()` / `run()`; a runtime
   # that does not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
-imports:
-  Durable: ../durable
+imports: { Durable: ../durable }
 exports:
-  kinds:
-    - Workflow
-    - Journal
-    - Resumer
-    - Deliver
-    - Status
-    - Result
-    - Cancel
-    - Schedule
-    - Resume
+  kinds: [Workflow, Journal, Resumer, Deliver, Status, Result, Cancel, Schedule, Resume]
 ---
 # DurableLocal.Workflow — the single body-dispatch site of this backend.
 #
@@ -50,8 +40,7 @@ metadata:
     the same operation twice attaches to the live run rather than starting a second one.
 capability: Telo.Invocable
 extends: Durable.Run
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#workflow
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#workflow]
 # NO `status:` block, and the reason is a kernel limitation rather than a
 # choice. Observed state is illegal before a resource has started, and the kernel
 # marks a Telo.Invocable started only when it is a pure Runnable reached through
@@ -106,9 +95,7 @@ schema:
     journal:
       title: Journal
       description: Where this workflow's runs and their progress are recorded.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }
     runId:
       title: Run id
       description: >-
@@ -117,10 +104,7 @@ schema:
         which is how an idempotent start is expressed. Omit it and one is minted.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     onConflict:
       title: On conflict
       description: >-
@@ -136,8 +120,7 @@ schema:
       description: The body. Every step's outcome is recorded as it completes.
       x-telo-topology-role: steps
       type: array
-      items:
-        $ref: "telo://manifest#/$defs/Step"
+      items: { $ref: "telo://manifest#/$defs/Step" }
       # `replayed` — and nothing else — is what marks this zone durable to the
       # static checks. Keying them on the bare providing annotation would apply
       # them inside every transaction in the ecosystem; keying them on a KIND
@@ -146,19 +129,13 @@ schema:
         replayed: >-
           every step's outcome and every decision the body reaches is recorded, and a
           resume returns those records instead of re-executing the work
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     inputs:
       title: Inputs
       type: object
       additionalProperties: true
       description: Values forwarded into the body, read there as `inputs.<field>`.
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 # DurableLocal.Journal — this backend's storage seam, and NOT everyone's.
 #
@@ -201,8 +178,7 @@ metadata:
     before continuing it, so several pollers against one store do not both take the same
     one.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#resumer
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#resumer]
 schema:
   type: object
   required: [workflow]
@@ -211,9 +187,7 @@ schema:
     workflow:
       title: Workflow
       description: The workflow whose interrupted runs this poller continues.
-      x-telo-ref:
-        kind: Self.Workflow
-        use: [call]
+      x-telo-ref: { kind: Self.Workflow, use: [call] }
     interval:
       title: Interval
       description: How often to look for interrupted runs.
@@ -240,8 +214,7 @@ metadata:
     so a token that is stale or already used is an ordinary answer rather than a failure.
     The waiting work continues on whichever process picks it up next.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#deliver
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#deliver]
 throws:
   codes:
     ERR_DURABLE_PAYLOAD_INVALID:
@@ -251,19 +224,14 @@ throws:
         — a replay hands it back as the wait's result rather than re-entering the wait —
         so this is the only moment anything looks at it. A delivery that names no wait
         has nothing to check against and is not validated.
-inputType:
-  type: object
-  additionalProperties: true
+inputType: { type: object, additionalProperties: true }
 outputType:
   type: object
   additionalProperties: false
   required: [delivered]
   properties:
-    delivered:
-      type: boolean
-      description: False when no work is waiting on that token.
-    run:
-      type: string
+    delivered: { type: boolean, description: False when no work is waiting on that token. }
+    run: { type: string }
 schema:
   type: object
   required: [journal, token]
@@ -272,9 +240,7 @@ schema:
     journal:
       title: Journal
       description: The store holding the runs this delivers to.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }
     await:
       title: Await
       description: >-
@@ -282,18 +248,13 @@ schema:
         the shape that await declares — statically where the payload is a literal, and at
         runtime for the value actually sent. A delivery addressed by a token from outside
         the manifest names nothing, has no declaration to check against, and is unchecked.
-      x-telo-ref:
-        kind: Durable.Await
-        use: schema
+      x-telo-ref: { kind: Durable.Await, use: schema }
     token:
       title: Token
       description: The address the wait handed out.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     payload:
       title: Payload
       description: >-
@@ -302,10 +263,7 @@ schema:
         actually sent.
       x-telo-eval: runtime
       x-telo-schema-from: await/outputType
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 # DurableLocal.Status — a live reading, kept separate from Result.
 #
@@ -320,14 +278,11 @@ metadata:
     called off — and, when it is waiting, what for. An id that was never started, or has
     been purged, reads as unknown rather than failing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#status
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#status]
 inputType:
   type: object
   additionalProperties: true
-  properties:
-    run:
-      type: string
+  properties: { run: { type: string } }
 outputType:
   type: object
   additionalProperties: false
@@ -341,19 +296,13 @@ outputType:
     parked:
       type: object
       additionalProperties: false
-      properties:
-        path: { type: string }
-        resource: { type: string }
+      properties: { path: { type: string }, resource: { type: string } }
 schema:
   type: object
   required: [journal]
   additionalProperties: false
   properties:
-    journal:
-      title: Journal
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+    journal: { title: Journal, x-telo-ref: { kind: Self.Journal, use: dependency } }
     run:
       title: Run
       description: >-
@@ -361,10 +310,7 @@ schema:
         is what lets ONE of these serve every run rather than one per id.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 # DurableLocal.Result — the terminal value, optionally waited for.
 #
@@ -380,8 +326,7 @@ metadata:
     wait a stated length of time for work still in progress, so a caller that wants the
     outcome can ask for it without the work itself having to block anyone.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#result
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#result]
 # OPEN, and for a stated reason: a resource may configure `run:` as an expression
 # over the call's own inputs (`!cel "inputs.orderId"`), which is what lets ONE
 # addressing resource serve every run rather than one per id. Closing this would
@@ -390,9 +335,7 @@ controllers:
 inputType:
   type: object
   additionalProperties: true
-  properties:
-    run:
-      type: string
+  properties: { run: { type: string } }
 # CLOSED, like `Status`'s. This is the kind a start points every caller at, so
 # what it answers with is the one contract a manifest reads the outcome through —
 # left open, a typo below `result` was told nothing until it produced a blank at
@@ -413,9 +356,7 @@ outputType:
       description: >-
         What the run produced, present once it has finished. Open, because its shape is
         the body's rather than this kind's.
-    error:
-      type: object
-      additionalProperties: true
+    error: { type: object, additionalProperties: true }
     collapsedRegions:
       type: integer
       description: >-
@@ -440,19 +381,12 @@ schema:
   required: [journal]
   additionalProperties: false
   properties:
-    journal:
-      title: Journal
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+    journal: { title: Journal, x-telo-ref: { kind: Self.Journal, use: dependency } }
     run:
       title: Run
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     wait:
       title: Wait
       description: >-
@@ -482,14 +416,11 @@ metadata:
     executing right now stops at its next wait or restart rather than being interrupted
     mid-step.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#cancel
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#cancel]
 inputType:
   type: object
   additionalProperties: true
-  properties:
-    run:
-      type: string
+  properties: { run: { type: string } }
 outputType:
   type: object
   additionalProperties: false
@@ -503,28 +434,18 @@ schema:
   required: [journal]
   additionalProperties: false
   properties:
-    journal:
-      title: Journal
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+    journal: { title: Journal, x-telo-ref: { kind: Self.Journal, use: dependency } }
     run:
       title: Run
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     reason:
       title: Reason
       description: Recorded with the cancellation, so the report says why.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 # DurableLocal.Schedule — admit now, execute later.
 #
@@ -545,11 +466,8 @@ metadata:
     moment it begins. Reusing an id that is already taken schedules nothing, so submitting
     the same request twice queues one piece of work.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#schedule
-inputType:
-  type: object
-  additionalProperties: true
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#schedule]
+inputType: { type: object, additionalProperties: true }
 outputType:
   type: object
   additionalProperties: false
@@ -564,17 +482,15 @@ schema:
   required: [workflow]
   additionalProperties: false
   oneOf:
-    - required: [after]
-    - required: [at]
+    - { required: [after] }
+    - { required: [at] }
   properties:
     workflow:
       title: Workflow
       description: >-
         The work to start later. A dependency rather than a call: this kind records and
         returns, and the resumer is what eventually transfers control.
-      x-telo-ref:
-        kind: Self.Workflow
-        use: dependency
+      x-telo-ref: { kind: Self.Workflow, use: dependency }
     runId:
       title: Run id
       description: >-
@@ -582,38 +498,26 @@ schema:
         is how "do this once" is expressed. Omit it and one is minted.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     after:
       title: After
       description: How long from now, as a duration.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     at:
       title: At
       description: When, as a timestamp or epoch milliseconds.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     inputs:
       title: Inputs
       description: The values the work starts with when its time comes.
       type: object
       additionalProperties: true
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 # DurableLocal.Resume — the operator's override, and it is RECORDED.
 #
@@ -632,22 +536,16 @@ metadata:
     held because the code changed underneath it. Writes a record of the override, so work
     that continued against different code than it started with can be identified later.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#resume
+controllers: [pkg:telo/local/js?path=./nodejs/durable-local.mjs&local_path=./nodejs/src/index.ts#resume]
 inputType:
   type: object
   additionalProperties: true
-  properties:
-    run:
-      type: string
+  properties: { run: { type: string } }
 outputType:
   type: object
   additionalProperties: false
   required: [run, resumed]
-  properties:
-    run: { type: string }
-    resumed: { type: boolean }
-    status: { type: string }
+  properties: { run: { type: string }, resumed: { type: boolean }, status: { type: string } }
 schema:
   type: object
   required: [workflow]
@@ -658,23 +556,15 @@ schema:
       description: >-
         The work this releases. A dependency: this clears the hold and the resumer is what
         transfers control, so that every wake follows one path.
-      x-telo-ref:
-        kind: Self.Workflow
-        use: dependency
+      x-telo-ref: { kind: Self.Workflow, use: dependency }
     run:
       title: Run
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     reason:
       title: Reason
       description: Recorded with the override, in your own words.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }

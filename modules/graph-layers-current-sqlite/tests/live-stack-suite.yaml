@@ -37,9 +37,7 @@ kind: Layers.NodeTable
 metadata: { name: documents }
 table: documents
 key: id
-columns:
-  id: { type: text, nullable: false }
-  title: { type: text }
+columns: { id: { type: text, nullable: false }, title: { type: text } }
 ---
 kind: Layers.RelationshipTable
 metadata: { name: knowsTable }

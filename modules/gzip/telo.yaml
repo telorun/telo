@@ -10,12 +10,8 @@ metadata:
     bytes out, and back again. Both directions stay streaming, so a gzipped payload
     can be piped straight into another decoder — an archive extractor, a text
     decoder — without buffering the whole thing.
-imports:
-  Codec: ../codec
-exports:
-  kinds:
-    - Encoder
-    - Decoder
+imports: { Codec: ../codec }
+exports: { kinds: [Encoder, Decoder] }
 ---
 # Encoder: byte stream → gzip-compressed byte stream.
 kind: Telo.Definition
@@ -26,11 +22,8 @@ metadata:
     way to the wire without being buffered whole.
 capability: Telo.Invocable
 extends: Codec.Encoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/gzip.mjs&local_path=./nodejs/src/index.ts#EncoderController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/gzip.mjs&local_path=./nodejs/src/index.ts#EncoderController]
+schema: { type: object, additionalProperties: false }
 ---
 # Decoder: gzip byte stream → decompressed byte stream.
 #
@@ -45,8 +38,7 @@ metadata:
     into a downstream decoder instead of being buffered whole.
 capability: Telo.Invocable
 extends: Codec.Decoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/gzip.mjs&local_path=./nodejs/src/index.ts#DecoderController
+controllers: [pkg:telo/local/js?path=./nodejs/gzip.mjs&local_path=./nodejs/src/index.ts#DecoderController]
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -57,6 +49,4 @@ outputType:
         description: Decompressed byte stream (gunzipped `input`).
     required: [ output ]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }

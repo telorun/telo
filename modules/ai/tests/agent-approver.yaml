@@ -29,38 +29,28 @@ tools:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            amount: { type: integer }
+        schema: { type: object, properties: { amount: { type: integer } } }
       value:
         sent: !cel "inputs.amount"
     parameters:
       type: object
       additionalProperties: false
       required: [amount]
-      properties:
-        amount: { type: integer }
+      properties: { amount: { type: integer } }
     approval: !cel "arguments.amount > 100"
   - name: multiply
     tool:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            a: { type: integer }
-            b: { type: integer }
+        schema: { type: object, properties: { a: { type: integer }, b: { type: integer } } }
       value:
         product: !cel "inputs.a * inputs.b"
     parameters:
       type: object
       additionalProperties: false
       required: [a, b]
-      properties:
-        a: { type: integer }
-        b: { type: integer }
+      properties: { a: { type: integer }, b: { type: integer } }
 ---
 # The reviewer is a completion whose model echoes its prompt — the name of the
 # tool being called — and bills 200 tokens for it. The result mapping approves
@@ -94,8 +84,7 @@ steps:
           reason: !interpolate "the reviewer read ${{ result.text }}"
     inputs: { prompt: "pay" }
   - name: parts
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
     inputs: { input: !cel "steps.run.result.output" }
   - name: check
     invoke: !ref Assert.equals
@@ -136,8 +125,7 @@ steps:
         - type: step-finish
           usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
           finishReason: stop
-        - type: message
-          message: { role: assistant, content: '{"product":42}' }
+        - { type: message, message: { role: assistant, content: '{"product":42}' } }
         # The two model calls summed; neither of the reviewer's two is in it.
         - type: finish
           usage: { promptTokens: 20, completionTokens: 4, totalTokens: 24, unit: tokens, total: 24 }
@@ -166,8 +154,7 @@ steps:
               type: object
               additionalProperties: false
               required: [amount]
-              properties:
-                amount: { type: integer }
+              properties: { amount: { type: integer } }
           steps:
             - name: verdict
               value: !cel "inputs.amount > 1000 ? 'reject' : inputs.amount > 100 ? 'defer' : 'approve'"

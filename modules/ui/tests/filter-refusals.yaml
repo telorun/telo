@@ -6,10 +6,7 @@ metadata:
     What a filter bar refuses — a pair listed twice, a default, control or
     preset its filter cannot hold, a duplicate preset label — statically and
     again when the bar is first read, and where pinning a filter is a warning.
-imports:
-  Assert: ../../assert
-  Probe: ./__fixtures__/probe
-  Run: ../../run
+imports: { Assert: ../../assert, Probe: ./__fixtures__/probe, Run: ../../run }
 targets:
   - !ref filterDuplicateAtRuntime
   - !ref filterDefaultInvalidAtRuntime
@@ -25,88 +22,77 @@ targets:
   - !ref pinned
 ---
 kind: Assert.Manifest
-metadata:
-  name: filterDuplicateAtRuntime
+metadata: { name: filterDuplicateAtRuntime }
 source: ./__fixtures__/invalid/filter-duplicate/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'filterDuplicate': 'fields[1]' lists a property and operator another field already has ('contains' on 'text')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: filterDefaultInvalidAtRuntime
+metadata: { name: filterDefaultInvalidAtRuntime }
 source: ./__fixtures__/invalid/filter-default-invalid/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'filterDefaultInvalid': 'fields[0]' declares a default its filter cannot hold ('eq' on 'isDone')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: filterControlUnsupportedAtRuntime
+metadata: { name: filterControlUnsupportedAtRuntime }
 source: ./__fixtures__/invalid/filter-control-unsupported/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'filterControlUnsupported': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'gte' on 'count')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: presetUnknownFilterAtRuntime
+metadata: { name: presetUnknownFilterAtRuntime }
 source: ./__fixtures__/invalid/preset-unknown-filter/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'presetUnknownFilter': 'presets[0]' sets a property and operator the bar does not show ('gte' on 'count')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: presetValueInvalidAtRuntime
+metadata: { name: presetValueInvalidAtRuntime }
 source: ./__fixtures__/invalid/preset-value-invalid/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'presetValueInvalid': 'presets[0]' sets a value its filter cannot hold ('eq' on 'isDone')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: presetLabelDuplicateAtRuntime
+metadata: { name: presetLabelDuplicateAtRuntime }
 source: ./__fixtures__/invalid/preset-label-duplicate/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'presetLabelDuplicate': 'presets[1]' has the label of another preset ('Done')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: toggleOverTextAtRuntime
+metadata: { name: toggleOverTextAtRuntime }
 source: ./__fixtures__/invalid/toggle-over-text/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'toggleOverText': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'eq' on 'note')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: toggleUntypedAtRuntime
+metadata: { name: toggleUntypedAtRuntime }
 source: ./__fixtures__/invalid/toggle-untyped/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'toggleUntyped': 'fields[0]' asks for a control its filter cannot be entered with ('toggle' for 'eq' on 'anything')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: toggleDefaultOffAtRuntime
+metadata: { name: toggleDefaultOffAtRuntime }
 source: ./__fixtures__/invalid/toggle-default-off/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'toggleDefaultOff': 'fields[0]' declares a default its filter cannot hold ('eq' on 'isDone')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: togglePresetOffAtRuntime
+metadata: { name: togglePresetOffAtRuntime }
 source: ./__fixtures__/invalid/toggle-preset-off/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'togglePresetOff': 'presets[0]' sets a value its filter cannot hold ('eq' on 'isDone')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: filterPolicy
+metadata: { name: filterPolicy }
 source: ./__fixtures__/invalid/filter-policy/telo.yaml
 expect:
   errors:
@@ -127,8 +113,7 @@ expect:
 # are told it says nothing. An aside bar folds on a narrow viewport, compact
 # named or not.
 kind: Run.Sequence
-metadata:
-  name: pinned
+metadata: { name: pinned }
 steps:
   - name: check
     invoke: { kind: Probe.Diagnostics, source: ./__fixtures__/pinned/telo.yaml }
@@ -136,6 +121,4 @@ steps:
     invoke: { kind: Assert.Equals }
     inputs:
       actual: !cel "steps.check.result.reported.map(r, r.substring(0, r.indexOf(' pins a field')))"
-      expected:
-        - "RESOURCE_RULE_VIOLATED Ui.Filters/omitted:"
-        - "REFERRER_RULE_VIOLATED Ui.Filters/above at 'policy.placement': required by Ui.AbovePlacement —"
+      expected: ["RESOURCE_RULE_VIOLATED Ui.Filters/omitted:", "REFERRER_RULE_VIOLATED Ui.Filters/above at 'policy.placement': required by Ui.AbovePlacement —"]

@@ -9,10 +9,7 @@ metadata:
     each measured upright; a
     PNG whose header declares 30000×30000 is refused by code with the limit in
     its data; a PDF is unsupported.
-imports:
-  Image: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Image: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testFit
   - !ref testRefusals

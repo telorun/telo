@@ -1,16 +1,11 @@
 kind: Telo.Application
-metadata:
-  name: RunSequenceSwitch
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunSequenceSwitch, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testSwitch
 ---
 kind: Run.Sequence
-metadata:
-  name: testSwitch
+metadata: { name: testSwitch }
 steps:
   # --- switch: matching case executes, others do not ---
   - name: routeToB
@@ -19,49 +14,30 @@ steps:
       a:
         # Would fail if reached.
         - name: branchA
-          inputs:
-            x: 1
+          inputs: { x: 1 }
           invoke:
             kind: Assert.Schema
-            schema:
-              type: object
-              properties:
-                x:
-                  const: 0
+            schema: { type: object, properties: { x: { const: 0 } } }
       b:
         - name: branchB
-          inputs:
-            matched: "b"
+          inputs: { matched: "b" }
           invoke:
             kind: Assert.Schema
-            schema:
-              type: object
-              properties:
-                matched:
-                  const: "b"
+            schema: { type: object, properties: { matched: { const: "b" } } }
       c:
         # Would fail if reached.
         - name: branchC
-          inputs:
-            x: 1
+          inputs: { x: 1 }
           invoke:
             kind: Assert.Schema
-            schema:
-              type: object
-              properties:
-                x:
-                  const: 0
+            schema: { type: object, properties: { x: { const: 0 } } }
 
   - name: verifyBranchB
     inputs:
       result: !cel "steps.branchB.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- switch: no match falls through to default ---
   - name: routeToDefault
@@ -70,44 +46,27 @@ steps:
       known:
         # Would fail if reached.
         - name: knownCase
-          inputs:
-            x: 1
+          inputs: { x: 1 }
           invoke:
             kind: Assert.Schema
-            schema:
-              type: object
-              properties:
-                x:
-                  const: 0
+            schema: { type: object, properties: { x: { const: 0 } } }
     default:
       - name: defaultCase
-        inputs:
-          matched: "default"
+        inputs: { matched: "default" }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              matched:
-                const: "default"
+          schema: { type: object, properties: { matched: { const: "default" } } }
 
   - name: verifyDefault
     inputs:
       result: !cel "steps.defaultCase.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- switch: data-driven dispatch ---
   - name: computeRole
-    invoke:
-      kind: Run.Value
-      value:
-        role: "admin"
+    invoke: { kind: Run.Value, value: { role: "admin" } }
 
   - name: routeByRole
     switch: !cel "steps.computeRole.result.role"
@@ -118,34 +77,21 @@ steps:
             role: !cel "steps.computeRole.result.role"
           invoke:
             kind: Assert.Schema
-            schema:
-              type: object
-              properties:
-                role:
-                  const: "admin"
+            schema: { type: object, properties: { role: { const: "admin" } } }
       viewer:
         # Would fail if reached.
         - name: viewerAction
-          inputs:
-            x: 1
+          inputs: { x: 1 }
           invoke:
             kind: Assert.Schema
-            schema:
-              type: object
-              properties:
-                x:
-                  const: 0
+            schema: { type: object, properties: { x: { const: 0 } } }
 
   - name: verifyAdminAction
     inputs:
       result: !cel "steps.adminAction.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- switch inside if: nesting ---
   - name: nested
@@ -156,23 +102,14 @@ steps:
         cases:
           x:
             - name: nestedMatch
-              inputs:
-                val: "x"
+              inputs: { val: "x" }
               invoke:
                 kind: Assert.Schema
-                schema:
-                  type: object
-                  properties:
-                    val:
-                      const: "x"
+                schema: { type: object, properties: { val: { const: "x" } } }
 
   - name: verifyNested
     inputs:
       result: !cel "steps.nestedMatch.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }

@@ -31,9 +31,7 @@ collection:
   table:
     kind: SQLite.Table
     table: tasks
-    columns:
-      id: { type: integer, primaryKey: true }
-      text: { type: text }
+    columns: { id: { type: integer, primaryKey: true }, text: { type: text } }
   schemas: { list: !ref TaskRecord, create: !ref Task, update: !ref Task }
   query: { filters: [], sort: [] }
 ---
@@ -51,9 +49,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 19317
+    listen: { address: 127.0.0.1, port: 19317 }
     mounts:
       - path: /tasks
         mount: !ref tasksApi
@@ -76,6 +72,4 @@ steps:
       actual:
         status: !cel "steps.list.result.status"
         body: !cel "steps.list.result.body"
-      expected:
-        status: 500
-        body: { code: ERR_OUTPUT_INVALID }
+      expected: { status: 500, body: { code: ERR_OUTPUT_INVALID } }

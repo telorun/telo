@@ -10,8 +10,7 @@ metadata:
   name: GraphLayersRevisionsStaticRefusals
   version: 1.0.0
   description: The revisioned kinds' refusal over a store of a lower level of the contract.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref overCurrentStore
   - !ref overDraftsStore

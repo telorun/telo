@@ -8,8 +8,7 @@ metadata:
     call reports it under `cacheWritePromptTokens`, the second under
     `cachedPromptTokens`, and `promptTokens` counts the whole prompt both
     times. Skips silently when ANTHROPIC_API_KEY is unset.
-secrets:
-  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" } }
 imports:
   Anthropic: ../../
   Http: ../../../http-client
@@ -38,8 +37,7 @@ metadata: { name: live }
 model: claude-haiku-4-5
 request: !ref anthropicRequest
 maxTokens: 32
-options:
-  temperature: 0
+options: { temperature: 0 }
 ---
 kind: Ai.Text
 metadata: { name: text }

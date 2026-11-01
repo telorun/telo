@@ -1,9 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: ThrowsCoverageTests
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: ThrowsCoverageTests, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testUndeclaredCode
   - !ref testUncoveredCode
@@ -16,69 +13,56 @@ targets:
 # A catches: entry references a code not in the handler's declared / resolved
 # throw union → UNDECLARED_THROW_CODE.
 kind: Assert.Manifest
-metadata:
-  name: testUndeclaredCode
+metadata: { name: testUndeclaredCode }
 source: ./__fixtures__/undeclared-code.yaml
 expect:
   errors:
-    - code: UNDECLARED_THROW_CODE
-      message: BOGUS
+    - { code: UNDECLARED_THROW_CODE, message: BOGUS }
 ---
 # Handler declares two codes, catches: covers only one (no catch-all) →
 # UNCOVERED_THROW_CODE on the missing code.
 kind: Assert.Manifest
-metadata:
-  name: testUncoveredCode
+metadata: { name: testUncoveredCode }
 source: ./__fixtures__/uncovered-code.yaml
 expect:
   errors:
-    - code: UNCOVERED_THROW_CODE
-      message: "'B'"
+    - { code: UNCOVERED_THROW_CODE, message: "'B'" }
 ---
 # A no-when entry followed by a when:-qualified entry in returns: →
 # CATCHALL_NOT_LAST.
 kind: Assert.Manifest
-metadata:
-  name: testCatchAllNotLast
+metadata: { name: testCatchAllNotLast }
 source: ./__fixtures__/catchall-not-last.yaml
 expect:
   errors:
-    - code: CATCHALL_NOT_LAST
+    - { code: CATCHALL_NOT_LAST }
 ---
 # A `throw:` step with `code: !cel "error.code"` inside a catch propagates the
 # enclosing try block's union. Route covers both codes → zero analyzer errors.
 kind: Assert.Manifest
-metadata:
-  name: testPassthroughInsideCatch
+metadata: { name: testPassthroughInsideCatch }
 source: ./__fixtures__/passthrough-inside-catch.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # `rethrow: {}` in a catch contributes what the try block throws, as a
 # `code: !cel "error.code"` throw does.
 kind: Assert.Manifest
-metadata:
-  name: testRethrowInsideCatch
+metadata: { name: testRethrowInsideCatch }
 source: ./__fixtures__/rethrow-inside-catch.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # Sequences referencing each other transitively must not hang or crash — the
 # resolver's cycle detection returns an empty union and the analysis finishes.
 kind: Assert.Manifest
-metadata:
-  name: testInheritCycle
+metadata: { name: testInheritCycle }
 source: ./__fixtures__/inherit-cycle.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # A try block invoking a resource can throw a plain Error, which the catch
 # surfaces as INTERNAL_ERROR; the catch rethrows error.code. The resolver folds
 # INTERNAL_ERROR into the union, so a route covering it is valid (without the
 # fold-in the union would be empty and the when: would be UNDECLARED_THROW_CODE).
 kind: Assert.Manifest
-metadata:
-  name: testRethrowPlain
+metadata: { name: testRethrowPlain }
 source: ./__fixtures__/rethrow-plain-uncovered.yaml
-expect:
-  errors: []
+expect: { errors: [] }

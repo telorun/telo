@@ -10,10 +10,7 @@ metadata:
     The shape mirrors a token stream: wire records in, reshaped (Map),
     accumulated into running text (Scan), and re-fanned so one record can carry
     several parts or none (FlatMap).
-imports:
-  Stream: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Stream: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -48,8 +45,7 @@ steps:
   - name: collectMapped
     inputs:
       input: !cel "steps.mapped.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertMapped
     inputs:
       actual: !cel "steps.collectMapped.result.items"
@@ -75,8 +71,7 @@ steps:
   - name: collectAccumulated
     inputs:
       input: !cel "steps.accumulated.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertAccumulated
     inputs:
       actual: !cel "steps.collectAccumulated.result.items"
@@ -98,8 +93,7 @@ steps:
   - name: collectEmitted
     inputs:
       input: !cel "steps.emitted.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertEmitted
     inputs:
       actual: !cel "steps.collectEmitted.result.items"
@@ -119,8 +113,7 @@ steps:
   - name: collectExpanded
     inputs:
       input: !cel "steps.expanded.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertExpanded
     inputs:
       actual: !cel "steps.collectExpanded.result.items.join('')"
@@ -138,9 +131,7 @@ steps:
   - name: notAStream
     try:
       - name: notAStreamValue
-        invoke:
-          kind: Run.Value
-          value: { text: not a stream }
+        invoke: { kind: Run.Value, value: { text: not a stream } }
       - name: call
         inputs:
           input: !cel "steps.notAStreamValue.result.text"
@@ -169,8 +160,7 @@ steps:
       - name: drain
         inputs:
           input: !cel "steps.call.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
     catch:
       - name: assertNonArrayRefused
         inputs:

@@ -6,10 +6,7 @@ metadata:
     Fs error paths are surfaced, not swallowed: reading a missing file raises
     ENOENT naming the path; Fs.FileEdit fails when oldString is absent or matches
     ambiguously. The same edit with replaceAll succeeds and reports the count.
-imports:
-  Fs: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Fs: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -71,10 +68,7 @@ steps:
   - name: editAbsent
     try:
       - name: doEdit
-        inputs:
-          path: scratch-err/dup.txt
-          oldString: "not-present"
-          newString: "z"
+        inputs: { path: scratch-err/dup.txt, oldString: "not-present", newString: "z" }
         invoke: !ref edit
     catch:
       - name: assertNotFound
@@ -86,10 +80,7 @@ steps:
   - name: editAmbiguous
     try:
       - name: doEdit
-        inputs:
-          path: scratch-err/dup.txt
-          oldString: "x"
-          newString: "y"
+        inputs: { path: scratch-err/dup.txt, oldString: "x", newString: "y" }
         invoke: !ref edit
     catch:
       - name: assertAmbiguous

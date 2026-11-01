@@ -8,9 +8,7 @@
 # `Telo.Invocable` (a Run.Sequence body was rejected) and the direct wiring was
 # an init-order cycle, so `transaction:` threw on every path.
 kind: Telo.Application
-metadata:
-  name: BoundStatementInTransaction
-  version: 1.0.0
+metadata: { name: BoundStatementInTransaction, version: 1.0.0 }
 imports:
   Sql: ../
   SQLite: ../../sqlite
@@ -20,24 +18,21 @@ targets:
   - !ref testBoundStatement
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
 # A Run.Sequence in `steps:` — what the Telo.Executable widening buys, and what
 # breaks the cycle: a step's `invoke:` is not a Phase-5 injection site, so
 # `InsertAccount` may point its `transaction:` back at this transaction.
 kind: Sql.Transaction
-metadata:
-  name: accountTx
+metadata: { name: accountTx }
 connection: !ref db
 steps: !ref accountWrites
 inputs:
   email: !cel "inputs.email"
 ---
 kind: Run.Sequence
-metadata:
-  name: accountWrites
+metadata: { name: accountWrites }
 steps:
   - name: insert
     invoke: !ref insertAccount
@@ -51,29 +46,24 @@ steps:
 # (`/transaction/connection`) derives it, exactly as the controller's own `??`
 # does at runtime.
 kind: Sql.Command
-metadata:
-  name: insertAccount
+metadata: { name: insertAccount }
 transaction: !ref accountTx
 ---
 kind: Run.Sequence
-metadata:
-  name: testBoundStatement
+metadata: { name: testBoundStatement }
 steps:
   - name: createTable
-    inputs:
-      sql: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL)"
+    inputs: { sql: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL)" }
     invoke:
       kind: Sql.Command
       connection: !ref db
 
   - name: writeInTx
-    inputs:
-      email: ada@example.com
+    inputs: { email: ada@example.com }
     invoke: !ref accountTx
 
   - name: selectBack
-    inputs:
-      sql: "SELECT email FROM accounts"
+    inputs: { sql: "SELECT email FROM accounts" }
     invoke:
       kind: Sql.Query
       connection: !ref db
@@ -82,9 +72,8 @@ steps:
     inputs:
       actual: !cel "steps.selectBack.result.rows"
       expected:
-        - email: ada@example.com
-    invoke:
-      kind: Assert.Equals
+        - { email: ada@example.com }
+    invoke: { kind: Assert.Equals }
 
   # Deliberately absent: a step invoking `InsertAccount` outside its
   # transaction. That path is now a `telo check` ERROR — it is exactly what
@@ -99,15 +88,12 @@ steps:
     try:
       - name: callDoomed
         invoke: !ref rollbackTx
-        inputs:
-          email: doomed@example.com
+        inputs: { email: doomed@example.com }
     catch:
-      - name: ignored
-        value: rolled-back
+      - { name: ignored, value: rolled-back }
 
   - name: selectAfterRollback
-    inputs:
-      sql: "SELECT email FROM accounts"
+    inputs: { sql: "SELECT email FROM accounts" }
     invoke:
       kind: Sql.Query
       connection: !ref db
@@ -116,21 +102,18 @@ steps:
     inputs:
       actual: !cel "steps.selectAfterRollback.result.rows"
       expected:
-        - email: ada@example.com
-    invoke:
-      kind: Assert.Equals
+        - { email: ada@example.com }
+    invoke: { kind: Assert.Equals }
 ---
 kind: Sql.Transaction
-metadata:
-  name: rollbackTx
+metadata: { name: rollbackTx }
 connection: !ref db
 steps: !ref rollbackWrites
 inputs:
   email: !cel "inputs.email"
 ---
 kind: Run.Sequence
-metadata:
-  name: rollbackWrites
+metadata: { name: rollbackWrites }
 steps:
   - name: insert
     invoke: !ref insertDoomed
@@ -142,10 +125,8 @@ steps:
     invoke:
       kind: Sql.Command
       connection: !ref db
-    inputs:
-      sql: "INSERT INTO accounts (id, email) VALUES (1, 'duplicate-primary-key')"
+    inputs: { sql: "INSERT INTO accounts (id, email) VALUES (1, 'duplicate-primary-key')" }
 ---
 kind: Sql.Command
-metadata:
-  name: insertDoomed
+metadata: { name: insertDoomed }
 transaction: !ref rollbackTx

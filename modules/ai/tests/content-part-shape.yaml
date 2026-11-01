@@ -33,8 +33,7 @@ expect:
       message: "steps[3].inputs.messages[0].content[0].uri' do not satisfy echo's declared inputType: /messages/0/content/0/uri must match pattern"
     - code: CONTRACT_INPUTS_MISMATCH
       message: "steps[4].inputs.messages[0].content[0].uri' do not satisfy echo's declared inputType: /messages/0/content/0/uri must match pattern"
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'cacheControl' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'cacheControl' is not allowed" }
 ---
 kind: AiEcho.EchoModel
 metadata: { name: echo }

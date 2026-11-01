@@ -75,8 +75,7 @@ outputType:
     type: object
     required: [approvedBy]
     additionalProperties: false
-    properties:
-      approvedBy: { type: string }
+    properties: { approvedBy: { type: string } }
 ---
 kind: Local.Workflow
 metadata: { name: onboard }
@@ -117,13 +116,11 @@ wait: 20s
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "before.Invoked"
-  - type: "after.Invoked"
+  - { type: "before.Invoked" }
+  - { type: "after.Invoked" }
 expect:
-  - event: before.Invoked
-    times: 1
-  - event: after.Invoked
-    times: 1
+  - { event: before.Invoked, times: 1 }
+  - { event: after.Invoked, times: 1 }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -166,10 +163,7 @@ steps:
         status: !cel "steps.parked.result.status"
         waitingAt: !cel "steps.parked.result.parked.path"
         waitingOn: !cel "steps.parked.result.parked.resource"
-      expected:
-        status: parked
-        waitingAt: steps/waitForApproval
-        waitingOn: approval
+      expected: { status: parked, waitingAt: steps/waitForApproval, waitingOn: approval }
     invoke: { kind: Assert.Equals }
 
   - name: deliver
@@ -194,7 +188,5 @@ steps:
       actual:
         status: !cel "steps.finished.result.status"
         approvedBy: !cel "steps.finished.result.result.steps.waitForApproval.result.approvedBy"
-      expected:
-        status: completed
-        approvedBy: ada
+      expected: { status: completed, approvedBy: ada }
     invoke: { kind: Assert.Equals }

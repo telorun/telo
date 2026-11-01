@@ -5,8 +5,7 @@ metadata:
   description: |
     The input contract is checked statically: a level outside the six names and
     a key the contract does not declare are both refused by `telo check`.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref testUnknownLevel
   - !ref testUnknownInputKey
@@ -24,5 +23,4 @@ metadata: { name: testUnknownInputKey }
 source: ./__fixtures__/unknown-input-key.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'attrs' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'attrs' is not allowed" }

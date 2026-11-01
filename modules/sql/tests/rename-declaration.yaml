@@ -3,26 +3,20 @@
 # siblings. These are the rules a column's `renamedFrom:` already carries, one
 # level out, where only a peer rule can see them.
 kind: Telo.Application
-metadata:
-  name: RenameDeclarationChecks
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: RenameDeclarationChecks, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testClean
   - !ref testChain
   - !ref testSwap
 ---
 kind: Assert.Manifest
-metadata:
-  name: testClean
+metadata: { name: testClean }
 source: ./__fixtures__/rename-declaration/clean.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
-metadata:
-  name: testChain
+metadata: { name: testChain }
 source: ./__fixtures__/rename-declaration/chain.yaml
 expect:
   errors:
@@ -33,8 +27,7 @@ expect:
 # deliberately does: a rule reading its own entry is about that entry, so each
 # claimant answers for itself and each gets its own anchor.
 kind: Assert.Manifest
-metadata:
-  name: testSwap
+metadata: { name: testSwap }
 source: ./__fixtures__/rename-declaration/swap.yaml
 expect:
   errors:

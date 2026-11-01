@@ -7,10 +7,7 @@ metadata:
     from each side, shaping rows with `select` (unmatched left rows get a null
     right). Asserts the joined rows. Self-contained: depends only on
     Collection + Run + Assert.
-imports:
-  Collection: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Collection: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testJoin
 ---
@@ -46,5 +43,4 @@ steps:
         - { orderId: o1, customer: Ann }
         - { orderId: o2, customer: Bob }
         - { orderId: o3, customer: unknown }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

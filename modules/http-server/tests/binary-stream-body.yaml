@@ -24,14 +24,9 @@ routes:
   - request:
       path: /upload
       method: POST
-      schema:
-        body:
-          x-telo-type:
-            name: Telo.Stream
-            of: Telo.Bytes
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
     # Drains the streamed request body into one run of bytes.
-    handler:
-      kind: Octet.Decoder
+    handler: { kind: Octet.Decoder }
     inputs:
       input: !cel "request.body"
     returns:
@@ -47,12 +42,9 @@ metadata: { name: testUpload }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8958
+    listen: { address: 127.0.0.1, port: 8958 }
     contentTypeParsers:
-      - contentType: application/gzip
-        stream: true
+      - { contentType: application/gzip, stream: true }
     mounts:
       - path: /
         mount: !ref api
@@ -64,17 +56,13 @@ steps:
     inputs:
       url: http://127.0.0.1:8958/upload
       method: POST
-      headers:
-        content-type: application/gzip
+      headers: { content-type: application/gzip }
       body: hello stream body
-    invoke:
-      kind: HttpClient.Request
+    invoke: { kind: HttpClient.Request }
   - name: assert
     inputs:
       actual:
         status: !cel "steps.upload.result.status"
         body: !cel "steps.upload.result.body"
-      expected:
-        status: 200
-        body: { length: 17, text: hello stream body }
+      expected: { status: 200, body: { length: 17, text: hello stream body } }
     invoke: !ref Assert.equals

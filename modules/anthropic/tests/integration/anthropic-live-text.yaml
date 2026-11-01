@@ -6,8 +6,7 @@ metadata:
     Live Messages API test of `Anthropic.MessagesModel`: one complete answer
     through `Ai.Text`, with its usage and finish reason. Skips silently when
     ANTHROPIC_API_KEY is unset.
-secrets:
-  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" }
+secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string, default: "" } }
 imports:
   Anthropic: ../../
   Http: ../../../http-client
@@ -36,8 +35,7 @@ metadata: { name: live }
 model: claude-haiku-4-5
 request: !ref anthropicRequest
 maxTokens: 64
-options:
-  temperature: 0
+options: { temperature: 0 }
 ---
 kind: Ai.Text
 metadata: { name: text }
@@ -50,8 +48,7 @@ steps:
     if: !cel "secrets.anthropicApiKey != ''"
     then:
       - name: answer
-        inputs:
-          prompt: "Reply with the single word: pong"
+        inputs: { prompt: "Reply with the single word: pong" }
         invoke: !ref text
       - name: assertAnswer
         invoke: { kind: Assert.Equals }

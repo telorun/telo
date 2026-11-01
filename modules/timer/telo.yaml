@@ -10,9 +10,7 @@ metadata:
     call fits — between pipeline steps, in a retry backoff, in a handler. A pending
     wait is abandoned when the work around it is cancelled, so a disconnected client
     or an elapsed deadline does not hold it open.
-exports:
-  kinds:
-    - Delay
+exports: { kinds: [Delay] }
 ---
 # Delay: wait `duration`, then complete. Optionally echoes a `value` through
 # unchanged so it composes mid-pipeline (delay-then-forward). The wait is
@@ -26,16 +24,14 @@ metadata:
     through so it can sit mid-pipeline. Cancelling the surrounding work clears the
     wait instead of leaving it pending.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/timer.mjs&local_path=./nodejs/src/index.ts#Delay
+controllers: [pkg:telo/local/js?path=./nodejs/timer.mjs&local_path=./nodejs/src/index.ts#Delay]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     examples:
-      - duration: "250ms"
-      - duration: "2s"
-        value: { any: thing }
+      - { duration: "250ms" }
+      - { duration: "2s", value: { any: thing } }
     properties:
       duration:
         type: string
@@ -54,6 +50,4 @@ outputType:
         description: The input `value`, returned once the delay elapses (null when omitted).
     required: [ value ]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }

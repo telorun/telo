@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: CanBuildSelections
-  version: 1.0.0
+metadata: { name: CanBuildSelections, version: 1.0.0 }
 imports:
   Sql: ../
   SQLite: ../../sqlite
@@ -11,16 +9,14 @@ targets:
   - !ref testSelectionBuilder
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
 # Every clause here goes through the connection's SqlDialect: identifiers are
 # quoted by it, and `in` renders per-dialect (SQLite expands one placeholder per
 # element, PostgreSQL binds the whole array).
 kind: Sql.Selection
-metadata:
-  name: selectMembers
+metadata: { name: selectMembers }
 from: users
 columns:
   - id
@@ -34,8 +30,7 @@ limit: 10
 connection: !ref db
 ---
 kind: Run.Sequence
-metadata:
-  name: testSelectionBuilder
+metadata: { name: testSelectionBuilder }
 steps:
   - name: createTable
     inputs:
@@ -65,5 +60,4 @@ steps:
       expected:
         - { id: 2, label: Bob }
         - { id: 1, label: Alice }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

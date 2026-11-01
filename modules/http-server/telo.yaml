@@ -59,20 +59,14 @@ imports:
   HttpDispatch: ../http-dispatch
   # The response-encoder contract this module's own encoder slots pin.
   Codec: ../codec
-exports:
-  kinds:
-    - Server
-    - Api
-    - Reference
-    - Static
+exports: { kinds: [Server, Api, Reference, Static] }
 # Scalar's browser bundle, served by Reference. Lazily fetched: an app that
 # declares no Reference never downloads it. `sources.scalar.version` must be the
 # @scalar/fastify-api-reference release whose @scalar/core and
 # @scalar/openapi-parser versions nodejs/package.json pins — the page HTML and the
 # script reading it come from one release; nodejs/tests/scalar-release.test.ts
 # checks it.
-assets:
-  - ./assets/
+assets: [./assets/]
 sources:
   scalar:
     version: 1.44.6
@@ -95,8 +89,7 @@ metadata:
     bounded in bytes: a larger one is answered 413, and a body nobody reads to its
     end closes the connection.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpServerController
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpServerController]
 # The refusals this server answers itself, before or beside any route — no
 # `catches:` list sees them. Declared for their texts: each is rendered as a
 # problem whose `detail` is the code's display message.
@@ -123,8 +116,7 @@ throws:
         type: object
         additionalProperties: false
         required: [host]
-        properties:
-          host: { type: string, description: The host the request was sent to. }
+        properties: { host: { type: string, description: The host the request was sent to. } }
 schema:
   type: "object"
   properties:
@@ -197,14 +189,9 @@ schema:
       x-telo-eval: compile
       if:
         required: [clientCertificate]
-        properties:
-          clientCertificate: { const: required }
-      then:
-        required: [clientCa]
-        properties:
-          clientCa: { minItems: 1 }
-      else:
-        not: { required: [clientCa] }
+        properties: { clientCertificate: { const: required } }
+      then: { required: [clientCa], properties: { clientCa: { minItems: 1 } } }
+      else: { not: { required: [clientCa] } }
       properties:
         cert:
           title: Certificate
@@ -351,8 +338,7 @@ schema:
             type: "array"
             minItems: 1
             x-telo-topology-role: matcher
-            items:
-              x-telo-schema-from: "HttpDispatch.Request/$defs/Hostname"
+            items: { x-telo-schema-from: "HttpDispatch.Request/$defs/Hostname" }
           mount:
             title: Mount
             description: >-
@@ -410,10 +396,7 @@ schema:
               invoke:
                 title: Invoke
                 description: Resource invoked (or run) for each request; a throw refuses the request.
-                x-telo-ref:
-                  kind: Telo.Executable
-                  use: trigger.inbound
-                  inputs: /inputs
+                x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
               inputs:
                 title: Inputs
                 type: object
@@ -583,9 +566,7 @@ schema:
             # Accept either capability: a controller may implement `invoke()`
             # (typical) or `run()` (e.g. a Run.Sequence dispatching to a parser
             # pipeline). The kernel calls whichever method exists.
-            x-telo-ref:
-              kind: Telo.Executable
-              use: trigger.inbound
+            x-telo-ref: { kind: Telo.Executable, use: trigger.inbound }
             oneOf:
               - title: Parser Reference
                 description: String reference to an invocable parser.
@@ -594,10 +575,7 @@ schema:
                 title: Parser Object
                 description: Object reference to an invocable parser.
                 properties:
-                  kind:
-                    title: Kind
-                    description: Kind of the parser resource.
-                    type: "string"
+                  kind: { title: Kind, description: Kind of the parser resource., type: "string" }
                 required: [ "kind" ]
                 additionalProperties: true
           stream:
@@ -612,8 +590,7 @@ schema:
               either streamed or parsed, never both.
             type: "boolean"
         required: [ "contentType" ]
-        not:
-          required: [ "parser", "stream" ]
+        not: { required: ["parser", "stream"] }
     cors:
       title: CORS
       description: Cross-origin resource sharing configuration.
@@ -625,43 +602,31 @@ schema:
           title: Origin
           description: "Access-Control-Allow-Origin. '*', boolean, or array of strings."
           oneOf:
-            - type: "string"
-            - type: "boolean"
+            - { type: "string" }
+            - { type: "boolean" }
             - type: "array"
-              items:
-                title: Origin
-                description: Allowed origin value.
-                type: "string"
+              items: { title: Origin, description: Allowed origin value., type: "string" }
         methods:
           title: Methods
           description: "Access-Control-Allow-Methods. Comma-delimited string or array."
           oneOf:
-            - type: "string"
+            - { type: "string" }
             - type: "array"
-              items:
-                title: Method
-                description: Allowed HTTP method.
-                type: "string"
+              items: { title: Method, description: Allowed HTTP method., type: "string" }
         allowedHeaders:
           title: Allowed Headers
           description: "Access-Control-Allow-Headers. Comma-delimited string or array."
           oneOf:
-            - type: "string"
+            - { type: "string" }
             - type: "array"
-              items:
-                title: Header
-                description: Allowed request header name.
-                type: "string"
+              items: { title: Header, description: Allowed request header name., type: "string" }
         exposedHeaders:
           title: Exposed Headers
           description: "Access-Control-Expose-Headers. Comma-delimited string or array."
           oneOf:
-            - type: "string"
+            - { type: "string" }
             - type: "array"
-              items:
-                title: Header
-                description: Exposed response header name.
-                type: "string"
+              items: { title: Header, description: Exposed response header name., type: "string" }
         credentials:
           title: Credentials
           type: "boolean"
@@ -674,8 +639,8 @@ schema:
           title: Cache Control
           description: "Cache-Control for preflight responses. Integer (max-age=N) or string."
           oneOf:
-            - type: "integer"
-            - type: "string"
+            - { type: "integer" }
+            - { type: "string" }
         preflightContinue:
           title: Preflight Continue
           type: "boolean"
@@ -705,10 +670,7 @@ schema:
           title: Invoke
           description: Resource invoked (or run) to generate not-found response data.
           # Accept either capability so dual-mode kinds like Run.Sequence fit.
-          x-telo-ref:
-            kind: Telo.Executable
-            use: trigger.inbound
-            inputs: /inputs
+          x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
         inputs:
           title: Inputs
           type: "object"
@@ -802,13 +764,8 @@ schema:
   examples:
     - listen:
         port: !cel "ports.http"
-      openapi:
-        info:
-          title: Users API
-          version: 1.0.0
-      cors:
-        origin: "*"
-        methods: [ GET, POST ]
+      openapi: { info: { title: Users API, version: 1.0.0 } }
+      cors: { origin: "*", methods: [GET, POST] }
       mounts:
         - path: /v1
           mount: !ref UsersApi
@@ -845,16 +802,14 @@ schema:
       additionalProperties: false
       description: PEM text, given inline or as a file on the host. Exactly one of the two.
       properties:
-        pem:
-          type: string
-          description: The PEM text.
+        pem: { type: string, description: The PEM text. }
         file:
           type: string
           x-telo-type: Telo.HostPath
           description: Absolute path of a file holding the PEM text.
       oneOf:
-        - required: [pem]
-        - required: [file]
+        - { required: [pem] }
+        - { required: [file] }
 ---
 kind: "Telo.Definition"
 metadata:
@@ -862,8 +817,7 @@ metadata:
   description: Mountable router whose routes match requests, map inputs via CEL to a handler, and render conditional typed responses.
 capability: Telo.Mount
 topology: Router
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpApiController
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpApiController]
 schema:
   type: "object"
   properties:
@@ -948,8 +902,7 @@ schema:
             title: Tags
             description: OpenAPI tags grouping this route in the generated document.
             type: "array"
-            items:
-              type: "string"
+            items: { type: "string" }
           request:
             title: Request
             description: >-
@@ -1012,12 +965,8 @@ schema:
             x-telo-context:
               type: object
               properties:
-                inputs:
-                  type: object
-                  additionalProperties: true
-                result:
-                  type: object
-                  additionalProperties: true
+                inputs: { type: object, additionalProperties: true }
+                result: { type: object, additionalProperties: true }
               additionalProperties: false
           returns:
             title: Returns
@@ -1096,10 +1045,7 @@ schema:
                       format: email
                       description: New user's email address.
                       examples: [ "ada@example.com" ]
-                    age:
-                      type: integer
-                      description: Age in years.
-                      examples: [ 36 ]
+                    age: { type: integer, description: Age in years., examples: [36] }
             inputs:
               email: !cel "request.body.email"
               age: !cel "request.body.age"
@@ -1111,10 +1057,7 @@ schema:
                     schema:
                       type: object
                       properties:
-                        id:
-                          type: string
-                          description: Generated user id.
-                          examples: [ "8f14e45f" ]
+                        id: { type: string, description: Generated user id., examples: ["8f14e45f"] }
                         email:
                           type: string
                           description: The created user's email.
@@ -1132,11 +1075,7 @@ schema:
               params:
                 type: object
                 required: [ id ]
-                properties:
-                  id:
-                    type: string
-                    description: User id to fetch.
-                    examples: [ "8f14e45f" ]
+                properties: { id: { type: string, description: User id to fetch., examples: ["8f14e45f"] } }
               query:
                 type: object
                 properties:
@@ -1156,10 +1095,7 @@ schema:
                     type: object
                     required: [ id, email ]
                     properties:
-                      id:
-                        type: string
-                        description: User id.
-                        examples: [ "8f14e45f" ]
+                      id: { type: string, description: User id., examples: ["8f14e45f"] }
                       email:
                         type: string
                         description: User's email address.
@@ -1176,8 +1112,7 @@ metadata:
     document the server collects from its routes as an interactive reference
     page, and serves the document itself as JSON and YAML under the same prefix.
 capability: Telo.Mount
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpReferenceController
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpReferenceController]
 schema:
   type: "object"
   additionalProperties: false
@@ -1200,21 +1135,7 @@ schema:
       description: Colour preset for the reference page.
       type: "string"
       x-telo-eval: compile
-      enum:
-        - default
-        - alternate
-        - moon
-        - purple
-        - solarized
-        - bluePlanet
-        - deepSpace
-        - saturn
-        - kepler
-        - elysiajs
-        - fastify
-        - mars
-        - laserwave
-        - none
+      enum: [default, alternate, moon, purple, solarized, bluePlanet, deepSpace, saturn, kepler, elysiajs, fastify, mars, laserwave, none]
       default: default
   # The document is the SERVER's — collected from every mounted route's schema —
   # so a reference mounted on a server that declares no `openapi:` block has
@@ -1232,16 +1153,14 @@ schema:
         `openapi.info` on this server.
   examples:
     - {}
-    - title: Todo API docs
-      theme: deepSpace
+    - { title: Todo API docs, theme: deepSpace }
 ---
 kind: "Telo.Definition"
 metadata:
   name: "Static"
   description: Serves a directory of static files as a mountable router, with SPA fallback and Cache-Control options.
 capability: Telo.Mount
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpStaticController
+controllers: [pkg:telo/local/js?path=./nodejs/http-server.mjs&local_path=./nodejs/src/index.ts#HttpStaticController]
 schema:
   type: "object"
   description: >-
@@ -1291,7 +1210,7 @@ schema:
       default: false
   required: [ "root" ]
   examples:
-    - root: ./public
+    - { root: ./public }
     - root: ./dist
       spaFallback: true
       maxAge: 3600

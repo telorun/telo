@@ -1,17 +1,12 @@
 kind: Telo.Application
-metadata:
-  name: RunLoop
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunLoop, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref verifyLoop
   - !ref verifyIterationIsInteger
 ---
 kind: Run.Loop
-metadata:
-  name: countToThree
+metadata: { name: countToThree }
 condition: !cel "iteration < 3"
 maxIterations: 10
 steps:
@@ -20,12 +15,7 @@ steps:
       n: !cel "iteration"
     invoke:
       kind: Run.Value
-      inputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            n: {}
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { n: {} } } }
       value:
         seen: !cel "inputs.n"
 outputs:
@@ -35,25 +25,14 @@ outputs:
 # maxIterations flows from an untyped input; a runtime-resolved non-number must
 # surface INVALID_LOOP rather than silently no-op (NaN cap → zero iterations).
 kind: Run.Loop
-metadata:
-  name: badCap
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      cap: {}
+metadata: { name: badCap }
+inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { cap: {} } } }
 maxIterations: !cel "inputs.cap"
 steps:
-  - name: tick
-    invoke:
-      kind: Run.Value
-      value:
-        ok: true
+  - { name: tick, invoke: { kind: Run.Value, value: { ok: true } } }
 ---
 kind: Run.Sequence
-metadata:
-  name: verifyLoop
+metadata: { name: verifyLoop }
 steps:
   - name: runLoop
     invoke: !ref countToThree
@@ -65,25 +44,19 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          total: { type: number, const: 3 }
-          last: { type: number, const: 2 }
+        properties: { total: { type: number, const: 3 }, last: { type: number, const: 2 } }
   - name: badCapFails
     try:
       - name: run
         invoke: !ref badCap
-        inputs:
-          cap: "not a number"
+        inputs: { cap: "not a number" }
     catch:
       - name: assertBadCap
         inputs:
           code: !cel "error.code"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              code: { type: string, const: INVALID_LOOP }
+          schema: { type: object, properties: { code: { type: string, const: INVALID_LOOP } } }
 ---
 # `iteration` is declared `type: integer`, and a CEL integer is an int64 — so it
 # must compose with an integer literal with NO cast. Handed to CEL as a JS
@@ -92,8 +65,7 @@ steps:
 # `!cel "iteration"` bare cannot catch that: only arithmetic against an int
 # literal exercises the overload.
 kind: Run.Loop
-metadata:
-  name: countFromOne
+metadata: { name: countFromOne }
 maxIterations: 3
 steps:
   - name: tick
@@ -101,12 +73,7 @@ steps:
       label: !cel "'#' + string(iteration + 1)"
     invoke:
       kind: Run.Value
-      inputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            label: {}
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { label: {} } } }
       value:
         label: !cel "inputs.label"
 outputs:
@@ -114,16 +81,12 @@ outputs:
   lastLabel: !cel "previous.tick.result.label"
 ---
 kind: Run.Sequence
-metadata:
-  name: verifyIterationIsInteger
+metadata: { name: verifyIterationIsInteger }
 steps:
   - name: run
     invoke: !ref countFromOne
   - name: check
     inputs:
       actual: !cel "steps.run.result"
-      expected:
-        ordinal: 4
-        lastLabel: "#3"
-    invoke:
-      kind: Assert.Equals
+      expected: { ordinal: 4, lastLabel: "#3" }
+    invoke: { kind: Assert.Equals }

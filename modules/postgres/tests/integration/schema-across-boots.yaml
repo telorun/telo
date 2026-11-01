@@ -41,8 +41,7 @@ targets:
 ---
 kind: Test.Suite
 metadata: { name: boots }
-include:
-  - "__fixtures__/schema-boots/*.yaml"
+include: ["__fixtures__/schema-boots/*.yaml"]
 # These fixtures ARE the test, so the default fixture exclusion is dropped — it
 # exists to stop the workspace suite running them directly, which is still true
 # of the suite above this one.

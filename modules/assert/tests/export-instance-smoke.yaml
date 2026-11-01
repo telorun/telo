@@ -11,9 +11,7 @@ metadata:
     at runtime (not Phase 5 injection), so it confirms the scope path routes
     a non-`Self` alias into the import's exported instances. A failing
     assertion would throw and fail the test.
-imports:
-  Assert: ../
-  Run: ../../run
+imports: { Assert: ../, Run: ../../run }
 targets:
   - !ref check
 ---
@@ -22,16 +20,10 @@ metadata: { name: check }
 steps:
   - name: equals
     invoke: !ref Assert.equals
-    inputs:
-      actual: "hello"
-      expected: "hello"
+    inputs: { actual: "hello", expected: "hello" }
   - name: matches
     invoke: !ref Assert.matches
-    inputs:
-      actual: "hello world"
-      pattern: "^hello"
+    inputs: { actual: "hello world", pattern: "^hello" }
   - name: contains
     invoke: !ref Assert.contains
-    inputs:
-      actual: [ 1, 2, 3 ]
-      value: 2
+    inputs: { actual: [1, 2, 3], value: 2 }

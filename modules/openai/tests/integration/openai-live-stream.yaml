@@ -6,8 +6,7 @@ metadata:
     Live OpenAI streaming integration test. Skips silently when OPENAI_API_KEY
     is unset (locally: drop a .env.local in this directory; CI: secret on the
     workflow).
-secrets:
-  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" } }
 imports:
   OpenAI: ../../
   Http: ../../../http-client
@@ -39,9 +38,7 @@ kind: OpenAI.ChatModelStream
 metadata: { name: live }
 model: gpt-4o-mini
 request: !ref openaiRequest
-options:
-  temperature: 0
-  maxTokens: 32
+options: { temperature: 0, maxTokens: 32 }
 ---
 # Reuse the @telorun/ai test-support StreamCollector — feed it the live streaming model,
 # iterate stream(), and assert the contract shape (deltas concatenate to text,
@@ -51,15 +48,13 @@ metadata: { name: collector }
 model: !ref live
 ---
 kind: Run.Sequence
-metadata:
-  name: liveStream
+metadata: { name: liveStream }
 steps:
   - name: guardEnv
     if: !cel "secrets.openaiApiKey != ''"
     then:
       - name: collect
-        inputs:
-          prompt: "Reply with exactly: hello"
+        inputs: { prompt: "Reply with exactly: hello" }
         invoke: !ref collector
       - name: assert
         inputs:

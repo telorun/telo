@@ -11,11 +11,7 @@ metadata:
     structured data rather than text. For showing what an edit changed, summarizing
     a change set or reviewing generated text. Inputs over a size limit are reported
     as not comparable instead of being diffed.
-exports:
-  kinds:
-    - LineDiff
-  resources:
-    - lineDiff
+exports: { kinds: [LineDiff], resources: [lineDiff] }
 ---
 kind: Telo.Definition
 metadata:
@@ -29,10 +25,8 @@ metadata:
 capability: Telo.Callable
 deterministic: true
 params:
-  - name: before
-    schema: { type: string }
-  - name: after
-    schema: { type: string }
+  - { name: before, schema: { type: string } }
+  - { name: after, schema: { type: string } }
 returns:
   schema:
     type: object
@@ -89,14 +83,11 @@ returns:
                     description: Whether the line is unchanged, only in `after`, or only in `before`.
                     type: string
                     enum: [ context, added, removed ]
-                  text:
-                    description: The line, without its newline.
-                    type: string
+                  text: { description: "The line, without its newline.", type: string }
                   noNewline:
                     description: Present, and true, on a text's final line when no newline ends it.
                     type: boolean
-controllers:
-  - pkg:telo/local/js?path=./nodejs/text-diff.mjs&local_path=./nodejs/src/index.ts#LineDiff
+controllers: [pkg:telo/local/js?path=./nodejs/text-diff.mjs&local_path=./nodejs/src/index.ts#LineDiff]
 schema:
   type: object
   additionalProperties: false
@@ -116,8 +107,7 @@ schema:
       minimum: 0
       default: 262144
   examples:
-    - contextLines: 3
-      maxInputBytes: 262144
+    - { contextLines: 3, maxInputBytes: 262144 }
 ---
 kind: Self.LineDiff
 metadata:

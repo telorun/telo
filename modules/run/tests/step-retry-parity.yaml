@@ -18,10 +18,7 @@ metadata:
     no state and count nothing about themselves. A target that had to remember
     how often it was called would be testing its own bookkeeping as much as the
     loop's.
-imports:
-  Run: ../
-  Assert: ../../assert
-  Timer: ../../timer
+imports: { Run: ../, Assert: ../../assert, Timer: ../../timer }
 targets:
   - !ref test
   # Runs after the sequence, reporting on the stream it captured from boot.
@@ -33,10 +30,7 @@ targets:
 kind: Run.Sequence
 metadata: { name: declines }
 steps:
-  - name: boom
-    throw:
-      code: ERR_PAYMENT_DECLINED
-      message: declined
+  - { name: boom, throw: { code: ERR_PAYMENT_DECLINED, message: declined } }
 ---
 # Always fails with a DIFFERENT code, so the same policy still retries it — the
 # classification has to be per-code, not a blanket off switch.
@@ -49,9 +43,7 @@ kind: Run.Sequence
 metadata: { name: flaky }
 steps:
   - name: boom
-    throw:
-      code: ERR_UPSTREAM_UNAVAILABLE
-      message: upstream hiccup
+    throw: { code: ERR_UPSTREAM_UNAVAILABLE, message: upstream hiccup }
 ---
 # Sleeps far past the bound the step below puts on it. `Timer.Delay` honours
 # cancellation, which is what makes the timeout a stop rather than an
@@ -62,13 +54,12 @@ metadata: { name: slow }
 kind: Assert.Events
 metadata: { name: attempts }
 filter:
-  - type: "declines.InvokeRejected"
-  - type: "flaky.InvokeRejected"
+  - { type: "declines.InvokeRejected" }
+  - { type: "flaky.InvokeRejected" }
 expect:
   # ONE rejection: the code is declared non-retryable, so the budget of 2 is
   # never spent. Without the classification this would be 3.
-  - event: declines.InvokeRejected
-    times: 1
+  - { event: declines.InvokeRejected, times: 1 }
   # FOUR: the first attempt plus a budget of 3, because this code is not in the
   # list. Together with the line above, this is what shows `nonRetryable`
   # narrows the loop rather than disabling it.
@@ -94,8 +85,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_PAYMENT_DECLINED
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 
   # The same policy shape still retries a code it does not name. The budget is
   # spent and the failure propagates; how many attempts it took is the event
@@ -114,8 +104,7 @@ steps:
         inputs:
           actual: !cel "error.code"
           expected: ERR_UPSTREAM_UNAVAILABLE
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 
   # A step whose attempt exceeds its bound fails ERR_STEP_TIMEOUT — a code of
   # its own rather than a cancellation, because the two want opposite follow-ups
@@ -124,27 +113,23 @@ steps:
     try:
       - name: sleeps
         invoke: !ref slow
-        inputs:
-          duration: 5s
+        inputs: { duration: 5s }
         timeout: 50
     catch:
       - name: assertTimedOut
         inputs:
           actual: !cel "error.code"
           expected: ERR_STEP_TIMEOUT
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 
   # A step that finishes inside its bound is untouched, and the bound does not
   # leak into the result.
   - name: fastEnough
     invoke: !ref slow
-    inputs:
-      duration: 1ms
+    inputs: { duration: 1ms }
     timeout: 5000
   - name: assertCompleted
     inputs:
       actual: !cel "steps.fastEnough.result != null"
       expected: true
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

@@ -15,11 +15,8 @@ requires:
   # 0.121.0: `Store.root` declares `entry: directory`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
   telo: ">=0.121.0"
-imports:
-  Blob: ../blob
-exports:
-  kinds:
-    - Store
+imports: { Blob: ../blob }
+exports: { kinds: [Store] }
 ---
 # BlobFs.Store — a Blob.Store over a directory. Layout and file format are
 # specified in docs/store.md:
@@ -40,8 +37,7 @@ metadata:
     abandoned partial uploads are cleaned up after a day.
 capability: Telo.Provider
 extends: Blob.Store
-controllers:
-  - pkg:telo/local/js?path=./nodejs/blob-fs.mjs&local_path=./nodejs/src/index.ts#Store
+controllers: [pkg:telo/local/js?path=./nodejs/blob-fs.mjs&local_path=./nodejs/src/index.ts#Store]
 schema:
   type: object
   additionalProperties: false

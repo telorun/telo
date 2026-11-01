@@ -8,10 +8,7 @@ metadata:
     read-through-cache pattern where one branch streams a value computed at
     request time. Seeds a placeholder list statically, overrides it with runtime
     items, and asserts the runtime values won.
-imports:
-  Stream: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Stream: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---

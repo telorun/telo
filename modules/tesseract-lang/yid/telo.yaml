@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - yid
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [yid] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: yid, member: package/4.0.0_best_int/yid.traineddata.gz, sha256: 90b3c603e53727a996a11bb6c9f9281cf893ed9275ceed4e0b27cbbc7c530de8, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: yid
-  description: Yiddish, Hebrew script
+metadata: { name: yid, description: "Yiddish, Hebrew script" }
 code: yid
 data: !module-path ./tessdata/yid.traineddata.gz

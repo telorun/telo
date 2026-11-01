@@ -23,14 +23,12 @@ targets:
   - !ref test
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: fixture }
     source: ./__fixtures__/translated/telo.yaml
-    ports:
-      http: 8132
+    ports: { http: 8132 }
 targets:
   - !ref fixture
 steps:
@@ -146,13 +144,8 @@ steps:
             - { value: open, label: { lang: pl, message: [Otwarta] } }
             - { value: paid, label: { lang: pl, message: [Opłacona] } }
           badge: { lang: pl, message: [Otwarte] }
-        cookie:
-          lang: pl
-          vary: Cookie
-        fixed:
-          lang: pl
-          varies: false
-          shellLang: true
+        cookie: { lang: pl, vary: Cookie }
+        fixed: { lang: pl, varies: false, shellLang: true }
   # A thousand different Accept-Language values, half asking for Polish and
   # half for a language the translator lacks: two documents between them.
   - name: seen
@@ -161,9 +154,7 @@ steps:
     while: !cel "steps.seen.result.n < 1000"
     do:
       - name: asked
-        invoke:
-          kind: HttpClient.Request
-          url: http://127.0.0.1:8132/_telo/ui/app
+        invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8132/_telo/ui/app }
         inputs:
           headers:
             accept-language: !cel "(steps.seen.result.n % 2 == 0 ? 'pl-x-v' : 'de-x-v') + string(steps.seen.result.n)"

@@ -22,10 +22,7 @@ kind: Run.Value
 metadata: { name: loader }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      key: { type: string }
+  schema: { type: object, properties: { key: { type: string } } }
 value:
   source: !cel "'value-for-' + inputs.key"
 ---
@@ -41,8 +38,7 @@ metadata: { name: test }
 steps:
   - name: first
     invoke: !ref v
-    inputs:
-      key: "k1"
+    inputs: { key: "k1" }
   - name: assertMiss
     inputs:
       state: !cel "steps.first.result.state"
@@ -52,13 +48,10 @@ steps:
       schema:
         type: object
         required: [state, source]
-        properties:
-          state: { const: "miss" }
-          source: { const: "value-for-k1" }
+        properties: { state: { const: "miss" }, source: { const: "value-for-k1" } }
   - name: second
     invoke: !ref v
-    inputs:
-      key: "k1"
+    inputs: { key: "k1" }
   - name: assertFresh
     inputs:
       state: !cel "steps.second.result.state"
@@ -68,6 +61,4 @@ steps:
       schema:
         type: object
         required: [state, source]
-        properties:
-          state: { const: "fresh" }
-          source: { const: "value-for-k1" }
+        properties: { state: { const: "fresh" }, source: { const: "value-for-k1" } }

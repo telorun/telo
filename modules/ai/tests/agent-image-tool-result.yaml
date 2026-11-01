@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AgentImageToolResultTest
-  version: 1.0.0
+metadata: { name: AgentImageToolResultTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -13,50 +11,39 @@ targets:
 # Echo emits a deterministic tool call on the first turn, then echoes whatever text
 # the tool result carried on the second turn (its image part is ignored by the echo).
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
-emitToolCall:
-  name: snapshot
-  arguments: {}
+metadata: { name: echo }
+emitToolCall: { name: snapshot, arguments: {} }
 ---
 # A vision-style tool: returns multimodal content parts (a text part plus an image
 # part with base64 bytes) instead of a plain value — the shape Image.Overlay /
 # Pdf.Rasterizer tool results take in the form-agent workflow. A constant value, so
 # `value` is a plain literal with no `inputs` and no CEL.
 kind: Run.Value
-metadata:
-  name: snapshot
+metadata: { name: snapshot }
 value:
   - { type: text, text: page rendered }
   - { type: image, data: aGVsbG8=, mediaType: image/png }
 ---
 kind: Ai.Tools
-metadata:
-  name: visionTools
+metadata: { name: visionTools }
 tools:
   - tool: !ref snapshot
     name: snapshot
     description: Render the current page and return it as an image.
-    parameters:
-      type: object
-      additionalProperties: false
-      properties: {}
+    parameters: { type: object, additionalProperties: false, properties: {} }
 ---
 kind: Ai.Agent
-metadata:
-  name: visionAgent
+metadata: { name: visionAgent }
 model: !ref echo
 system: "Use tools to inspect the document."
 toolProviders:
   - provider: !ref visionTools
 ---
 kind: Run.Sequence
-metadata:
-  name: testImageToolResult
+metadata: { name: testImageToolResult }
 steps:
   - name: invoke
-    inputs:
-      prompt: "look at the page"
+    inputs: { prompt: "look at the page" }
     invoke: !ref visionAgent
   # Turn 1 → tool call snapshot() → tool returns content parts → carried into the
   # `tool` message and the trace untouched (NOT JSON-stringified). Turn 2 → Echo
@@ -73,9 +60,7 @@ steps:
       schema:
         type: object
         properties:
-          content:
-            type: array
-            minItems: 2
+          content: { type: array, minItems: 2 }
           textType: { type: string, const: text }
           imageType: { type: string, const: image }
           mediaType: { type: string, const: image/png }

@@ -7,19 +7,14 @@
 # branch is admitted everywhere; this is the manifest that used to be a schema
 # error one kind away from valid.
 kind: Telo.Application
-metadata:
-  name: WhileInIterationBody
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: WhileInIterationBody, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref countUp
   - !ref expectTotals
 ---
 kind: Run.Iteration
-metadata:
-  name: countUp
+metadata: { name: countUp }
 collection: !cel "[2, 3]"
 steps:
   - name: total
@@ -37,26 +32,17 @@ steps:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            limit: {}
-            reached: {}
+        schema: { type: object, properties: { limit: {}, reached: {} } }
       value:
         limit: !cel "inputs.limit"
         reached: !cel "inputs.reached"
 ---
 kind: Assert.Events
-metadata:
-  name: expectTotals
+metadata: { name: expectTotals }
 filter:
-  - type: "*"
+  - { type: "*" }
 expect:
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Run.Value }
-      outputs: { limit: 2, reached: 2 }
+    payload: { ref: { kind: Run.Value }, outputs: { limit: 2, reached: 2 } }
   - event: "*.Invoked"
-    payload:
-      ref: { kind: Run.Value }
-      outputs: { limit: 3, reached: 3 }
+    payload: { ref: { kind: Run.Value }, outputs: { limit: 3, reached: 3 } }

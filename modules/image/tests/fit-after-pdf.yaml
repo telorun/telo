@@ -22,8 +22,7 @@ targets:
 kind: Run.Sequence
 metadata: { name: fitCorrupt }
 with:
-  - kind: Image.Fit
-    metadata: { name: fit }
+  - { kind: Image.Fit, metadata: { name: fit } }
 steps:
   - name: tryCorrupt
     try:
@@ -50,8 +49,7 @@ steps:
   - name: page
     inputs:
       data: !cel "steps.document.result.data"
-    invoke:
-      kind: Pdf.Rasterizer
+    invoke: { kind: Pdf.Rasterizer }
   - name: assertRendered
     inputs:
       actual: !cel "steps.page.result.mediaType"

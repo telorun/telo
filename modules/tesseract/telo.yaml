@@ -23,25 +23,16 @@ requires:
   # creation with a TypeError naming this module. Verified by execution: the
   # published 0.107.0 tarball exports neither name.
   telo: ">=0.108.0"
-imports:
-  Ocr: ../ocr
-  TesseractModel: ../tesseract-model
+imports: { Ocr: ../ocr, TesseractModel: ../tesseract-model }
 exports:
-  kinds:
-    - Recognizer
-    - TesseractModel.Language
-    - TesseractModel.OrientationModel
-  resources:
-    - eng
-    - osd
+  kinds: [Recognizer, TesseractModel.Language, TesseractModel.OrientationModel]
+  resources: [eng, osd]
 # tesseract.js-core ships the Tesseract C++ engine compiled to WebAssembly: a
 # CommonJS loader beside its `.wasm`, which the controller hands the staged paths
 # to. The full builds rather than the smaller `-lstm` ones: orientation and
 # script detection runs on the legacy engine those omit. Recognition itself is
 # LSTM-only either way.
-assets:
-  - ./engine/
-  - ./tessdata/
+assets: [./engine/, ./tessdata/]
 sources:
   core:
     version: 7.0.0
@@ -79,15 +70,12 @@ sources:
 # Declared through the leaf's kind, so an application references the bundled
 # models exactly as it references an imported language module's.
 kind: TesseractModel.Language
-metadata:
-  name: eng
-  description: English, Latin script
+metadata: { name: eng, description: "English, Latin script" }
 code: eng
 data: !module-path ./tessdata/eng.traineddata.gz
 ---
 kind: TesseractModel.OrientationModel
-metadata:
-  name: osd
+metadata: { name: osd }
 data: !module-path ./tessdata/osd.traineddata.gz
 ---
 # Each concurrent recognition runs on its own engine in a worker thread, because a
@@ -105,8 +93,7 @@ metadata:
     Returns the text, confidences and boxes, the detected page rotation when an
     orientation model is set, and hOCR or TSV on request.
 extends: Ocr.Recognizer
-controllers:
-  - pkg:telo/local/js?path=./nodejs/tesseract.mjs&local_path=./nodejs/src/index.ts#RecognizerController
+controllers: [pkg:telo/local/js?path=./nodejs/tesseract.mjs&local_path=./nodejs/src/index.ts#RecognizerController]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -160,12 +147,8 @@ inputType:
         description: Overrides the recognizer's configured page segmentation for this call.
         type: string
         enum: [autoOsd, autoOnly, auto, singleColumn, singleBlockVertical, singleBlock, singleLine, singleWord, circleWord, singleChar, sparseText, sparseTextOsd, rawLine]
-      characterWhitelist:
-        description: Only these characters may be recognized.
-        type: string
-      characterBlacklist:
-        description: These characters are never recognized.
-        type: string
+      characterWhitelist: { description: Only these characters may be recognized., type: string }
+      characterBlacklist: { description: These characters are never recognized., type: string }
       preserveInterwordSpaces:
         description: Keep runs of spaces between words in `text` instead of collapsing them to one.
         type: boolean
@@ -178,9 +161,7 @@ inputType:
         description: Extra renderings of the result to return beside it.
         type: array
         uniqueItems: true
-        items:
-          type: string
-          enum: [hocr, tsv]
+        items: { type: string, enum: [hocr, tsv] }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -198,14 +179,8 @@ outputType:
         type: number
         minimum: 0
         maximum: 1
-      width:
-        description: The input image's width in pixels.
-        type: integer
-        minimum: 1
-      height:
-        description: The input image's height in pixels.
-        type: integer
-        minimum: 1
+      width: { description: The input image's width in pixels., type: integer, minimum: 1 }
+      height: { description: The input image's height in pixels., type: integer, minimum: 1 }
       blocks:
         description: Every text block, in reading order.
         type: array
@@ -236,9 +211,7 @@ outputType:
                 type: object
                 required: [x, y]
                 additionalProperties: false
-                properties:
-                  x: { type: integer, minimum: 0 }
-                  y: { type: integer, minimum: 0 }
+                properties: { x: { type: integer, minimum: 0 }, y: { type: integer, minimum: 0 } }
       lines:
         description: Every text line, in reading order.
         type: array
@@ -269,9 +242,7 @@ outputType:
                 type: object
                 required: [x, y]
                 additionalProperties: false
-                properties:
-                  x: { type: integer, minimum: 0 }
-                  y: { type: integer, minimum: 0 }
+                properties: { x: { type: integer, minimum: 0 }, y: { type: integer, minimum: 0 } }
             block:
               description: Index into `blocks` of the block this line belongs to.
               type: integer
@@ -306,9 +277,7 @@ outputType:
                 type: object
                 required: [x, y]
                 additionalProperties: false
-                properties:
-                  x: { type: integer, minimum: 0 }
-                  y: { type: integer, minimum: 0 }
+                properties: { x: { type: integer, minimum: 0 }, y: { type: integer, minimum: 0 } }
             line:
               description: Index into `lines` of the line this word belongs to.
               type: integer
@@ -347,8 +316,7 @@ schema:
   required: [languages]
   additionalProperties: false
   examples:
-    - languages: ["!ref Tesseract.eng"]
-      concurrency: 2
+    - { languages: ["!ref Tesseract.eng"], concurrency: 2 }
   properties:
     languages:
       title: Languages
@@ -359,18 +327,13 @@ schema:
       type: array
       minItems: 1
       uniqueItems: true
-      items:
-        x-telo-ref:
-          kind: TesseractModel.Language
-          use: dependency
+      items: { x-telo-ref: { kind: TesseractModel.Language, use: dependency } }
     orientationModel:
       title: Orientation model
       description: >-
         The orientation and script detection model (`Tesseract.osd`). Required by the
         `autoOsd` and `sparseTextOsd` page segmentations.
-      x-telo-ref:
-        kind: TesseractModel.OrientationModel
-        use: dependency
+      x-telo-ref: { kind: TesseractModel.OrientationModel, use: dependency }
     pageSegmentation:
       title: Page segmentation
       description: >-

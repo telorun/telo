@@ -11,11 +11,7 @@ metadata:
     limits enforced before decoding; make a solid-colour canvas; and draw
     labelled rectangles onto an image. Reads PNG, JPEG, WebP and GIF, and
     returns encoded PNG, JPEG or WebP bytes.
-exports:
-  kinds:
-    - Blank
-    - Overlay
-    - Fit
+exports: { kinds: [Blank, Overlay, Fit] }
 ---
 # Blank: a solid-color canvas → encoded image bytes. The seed of an image
 # pipeline — compose diagrams with Image.Overlay, or use it as a hermetic test
@@ -25,8 +21,7 @@ metadata:
   name: Blank
   description: Produces a solid-color image canvas of the given size, encoded as PNG/JPEG/WebP bytes.
 capability: Telo.Invocable
-controllers:
-  - pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#blank
+controllers: [pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#blank]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -39,8 +34,7 @@ inputType:
   schema:
     type: object
     examples:
-      - width: 120
-        height: 80
+      - { width: 120, height: 80 }
     properties:
       width:
         type: integer
@@ -74,12 +68,8 @@ outputType:
       image:
         x-telo-type: Telo.Bytes
         description: The solid-color canvas, as image bytes in the chosen format.
-      width:
-        type: integer
-        description: Canvas width in pixels (echoed back).
-      height:
-        type: integer
-        description: Canvas height in pixels (echoed back).
+      width: { type: integer, description: Canvas width in pixels (echoed back). }
+      height: { type: integer, description: Canvas height in pixels (echoed back). }
       mediaType:
         type: string
         description: MIME type of the encoded image (image/png, image/jpeg, or image/webp).
@@ -119,8 +109,7 @@ metadata:
   name: Overlay
   description: Draws labelled rectangles onto an image and returns the annotated image as encoded bytes.
 capability: Telo.Invocable
-controllers:
-  - pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#overlay
+controllers: [pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#overlay]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -148,17 +137,9 @@ inputType:
             y:
               type: number
               description: Top edge in pixels (top-left origin). May exceed the image bounds; the drawing is clipped.
-            width:
-              type: number
-              exclusiveMinimum: 0
-              description: Box width in pixels.
-            height:
-              type: number
-              exclusiveMinimum: 0
-              description: Box height in pixels.
-            label:
-              type: string
-              description: Optional tag drawn at the box's anchor corner.
+            width: { type: number, exclusiveMinimum: 0, description: Box width in pixels. }
+            height: { type: number, exclusiveMinimum: 0, description: Box height in pixels. }
+            label: { type: string, description: Optional tag drawn at the box's anchor corner. }
             color:
               type: string
               description: Optional per-shape override of the stroke (and label background) color.
@@ -274,8 +255,7 @@ metadata:
     pixel counts are refused from the header before decoding. Returns the bytes,
     the final dimensions and the media type.
 capability: Telo.Invocable
-controllers:
-  - pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#fit
+controllers: [pkg:npm/@telorun/image@0.10.1?local_path=./nodejs#fit]
 throws:
   codes:
     ERR_IMAGE_TOO_LARGE:
@@ -291,9 +271,7 @@ throws:
             type: string
             enum: [ maxBytes, maxPixels ]
             description: The limit that was exceeded.
-          max:
-            type: integer
-            description: That limit's value on the resource.
+          max: { type: integer, description: That limit's value on the resource. }
     ERR_UNSUPPORTED_IMAGE:
       description: >-
         The bytes are not a PNG, JPEG, WebP or GIF image that can be read: the
@@ -355,9 +333,7 @@ outputType:
 schema:
   type: object
   examples:
-    - format: jpeg
-      quality: 85
-      maxBytes: 10485760
+    - { format: jpeg, quality: 85, maxBytes: 10485760 }
   properties:
     format:
       title: Format

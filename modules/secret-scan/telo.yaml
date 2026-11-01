@@ -10,11 +10,7 @@ metadata:
     private keys and other high-entropy secrets, detected by known token prefixes,
     literal markers and Shannon entropy. Reports the rule, line and column of each
     finding and never the matched text, so the result is safe to log or show.
-exports:
-  kinds:
-    - Detector
-  resources:
-    - credentialFindings
+exports: { kinds: [Detector], resources: [credentialFindings] }
 ---
 kind: Telo.Definition
 metadata:
@@ -27,8 +23,7 @@ metadata:
 capability: Telo.Callable
 deterministic: true
 params:
-  - name: text
-    schema: { type: string }
+  - { name: text, schema: { type: string } }
 returns:
   schema:
     type: array
@@ -40,8 +35,7 @@ returns:
         rule: { type: string }
         line: { type: integer, minimum: 1 }
         column: { type: integer, minimum: 1 }
-controllers:
-  - pkg:telo/local/js?path=./nodejs/secret-scan.mjs&local_path=./nodejs/src/index.ts#Detector
+controllers: [pkg:telo/local/js?path=./nodejs/secret-scan.mjs&local_path=./nodejs/src/index.ts#Detector]
 schema:
   type: object
   additionalProperties: false
@@ -197,8 +191,7 @@ rules:
     token: { prefixes: [ xoxb-, xoxp-, xoxa-, xoxr-, xoxs- ], charset: base64url, minLength: 10 }
   - name: stripeKey
     token: { prefixes: [ sk_live_, rk_live_ ], charset: alphanumeric, minLength: 24 }
-  - name: privateKey
-    marker: { text: "PRIVATE KEY-----" }
+  - { name: privateKey, marker: { text: "PRIVATE KEY-----" } }
   - name: highEntropyToken
     entropy:
       charset: base64url

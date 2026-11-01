@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - ita
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [ita] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: ita, member: package/4.0.0_best_int/ita.traineddata.gz, sha256: f702fcfad297ce028ede3626d1467b67939f23ff23595f9badd54681cf25a4d3, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: ita
-  description: Italian, Latin script
+metadata: { name: ita, description: "Italian, Latin script" }
 code: ita
 data: !module-path ./tessdata/ita.traineddata.gz

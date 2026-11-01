@@ -5,9 +5,7 @@
 # result without a URL is dropped; a URL is returned exactly as reported, even
 # when it is not ASCII or not percent-encoded.
 kind: Telo.Application
-metadata:
-  name: SearxngResultMappingTest
-  version: 1.0.0
+metadata: { name: SearxngResultMappingTest, version: 1.0.0 }
 imports:
   SearXNG: ..
   Http: ../../http-client
@@ -49,8 +47,7 @@ with:
       - request:
           path: /search
           method: GET
-          schema:
-            query: { type: object, additionalProperties: true }
+          schema: { query: { type: object, additionalProperties: true } }
         handler: !ref canned
         returns:
           - status: 200
@@ -61,13 +58,10 @@ with:
                 body: !cel "result"
           - status: 200
             content:
-              application/json:
-                schema: { type: object, additionalProperties: true }
-                body: { results: [] }
+              application/json: { schema: { type: object, additionalProperties: true }, body: { results: [] } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18841
+    listen: { port: 18841 }
     mounts:
       - path: /
         mount: !ref FakeSearxng

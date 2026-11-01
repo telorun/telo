@@ -1,9 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: FsWriteRejectsLiteral
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: FsWriteRejectsLiteral, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testRejectsInlineBytes
 ---
@@ -14,9 +11,8 @@ targets:
 # no JSON Schema type can express: bytes ALWAYS arrive by reference, so a literal at
 # such a slot is wrong by construction.
 kind: Assert.Manifest
-metadata:
-  name: testRejectsInlineBytes
+metadata: { name: testRejectsInlineBytes }
 source: ./__fixtures__/write-content-literal.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
+    - { code: CONTRACT_INPUTS_MISMATCH }

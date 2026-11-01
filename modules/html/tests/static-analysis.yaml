@@ -3,8 +3,7 @@ metadata:
   name: HtmlStaticAnalysisTest
   version: 1.0.0
   description: What `telo check` refuses in a manifest using the html kinds.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref misspelledInput
   - !ref charsetBesideText
@@ -21,10 +20,8 @@ metadata: { name: misspelledInput }
 source: ./__fixtures__/misspelled-input.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'htlm' is not allowed"
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "missing required property 'html'"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'htlm' is not allowed" }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "missing required property 'html'" }
 ---
 # `charset` belongs to the bytes form; beside text it is refused.
 kind: Assert.Manifest
@@ -32,8 +29,7 @@ metadata: { name: charsetBesideText }
 source: ./__fixtures__/charset-beside-text.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'charset' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'charset' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: htmlInsteadOfDocument }
@@ -42,8 +38,7 @@ expect:
   errors:
     - code: CONTRACT_INPUTS_MISMATCH
       message: "missing required property 'document'"
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'html' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'html' is not allowed" }
 ---
 # A selector outside the grammar, at the top level and inside a nested field,
 # where a leading combinator is written `:scope > …`.
@@ -62,8 +57,7 @@ metadata: { name: misspelledNestedField }
 source: ./__fixtures__/misspelled-nested-field.yaml
 expect:
   errors:
-    - code: CEL_UNKNOWN_FIELD
-      message: "nmae"
+    - { code: CEL_UNKNOWN_FIELD, message: "nmae" }
 ---
 # `attr` exactly when `type: attr`, exactly one of `type` / `fields`, and no
 # `nullable` on a `many` field — each reported at the entry.
@@ -74,8 +68,7 @@ expect:
   errors:
     - code: SCHEMA_VIOLATION
       message: "/fields/noAttr is missing required property 'attr'"
-    - code: SCHEMA_VIOLATION
-      message: "/fields/both/type is not allowed here"
+    - { code: SCHEMA_VIOLATION, message: "/fields/both/type is not allowed here" }
     - code: SCHEMA_VIOLATION
       message: "/fields/neither is missing required property 'type'"
     - code: SCHEMA_VIOLATION
@@ -99,9 +92,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeNameAlphabetComputed }
 source: ./__fixtures__/node-name-alphabet-computed.yaml
-expect:
-  errors: []
-  runFails: "/document/nodes/0/tag must match pattern"
+expect: { errors: [], runFails: "/document/nodes/0/tag must match pattern" }
 ---
 # Names only a hand-built tree holds — an uppercase HTML tag the parser would
 # lowercase, an `svg` with no namespace — are refused by the node shape on a

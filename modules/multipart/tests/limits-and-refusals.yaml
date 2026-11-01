@@ -53,8 +53,7 @@ steps:
       maxPartBytes: 10
       maxParts: 2
       maxTotalBytes: 145
-    invoke:
-      kind: Multipart.Decoder
+    invoke: { kind: Multipart.Decoder }
   - name: assertExact
     inputs:
       actual: !cel "steps.exact.result.parts.map(p, p.name + '=' + string(p.content))"
@@ -70,8 +69,7 @@ steps:
           input: !cel "steps.partSource.result.output"
           contentType: multipart/form-data; boundary=b
           maxPartBytes: 9
-        invoke:
-          kind: Multipart.Decoder
+        invoke: { kind: Multipart.Decoder }
       - name: partAccepted
         throw: { code: NOT_REFUSED, message: a part over `maxPartBytes` was decoded }
     catch:
@@ -92,8 +90,7 @@ steps:
           input: !cel "steps.countSource.result.output"
           contentType: multipart/form-data; boundary=b
           maxParts: 1
-        invoke:
-          kind: Multipart.Decoder
+        invoke: { kind: Multipart.Decoder }
       - name: countAccepted
         throw: { code: NOT_REFUSED, message: more parts than `maxParts` were decoded }
     catch:
@@ -115,8 +112,7 @@ steps:
           input: !cel "steps.totalSource.result.output"
           contentType: multipart/form-data; boundary=b
           maxTotalBytes: 144
-        invoke:
-          kind: Multipart.Decoder
+        invoke: { kind: Multipart.Decoder }
       - name: totalAccepted
         throw: { code: NOT_REFUSED, message: a payload over `maxTotalBytes` was decoded }
     catch:
@@ -171,16 +167,14 @@ steps:
         - name: source
           inputs:
             items: !cel "item.chunks"
-          invoke:
-            kind: Stream.Of
+          invoke: { kind: Stream.Of }
         - name: refused
           try:
             - name: decode
               inputs:
                 input: !cel "steps.source.result.output"
                 contentType: !cel "item.contentType"
-              invoke:
-                kind: Multipart.Decoder
+              invoke: { kind: Multipart.Decoder }
             - name: accepted
               throw: { code: NOT_REFUSED, message: a malformed payload was decoded }
           catch:
@@ -209,8 +203,7 @@ steps:
   - name: source
     inputs:
       items: ["0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789"]
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: counted
     inputs:
       input: !cel "steps.source.result.output"
@@ -232,8 +225,7 @@ steps:
           input: !cel "steps.observed.result.output"
           contentType: multipart/form-data; boundary=b
           maxTotalBytes: 25
-        invoke:
-          kind: Multipart.Decoder
+        invoke: { kind: Multipart.Decoder }
       - name: accepted
         throw: { code: NOT_REFUSED, message: a payload over `maxTotalBytes` was decoded }
     catch:
@@ -255,8 +247,7 @@ steps:
   - name: source
     inputs:
       items: ["0123456789", "0123456789", "0123456789", "0123456789", "0123456789", "0123456789"]
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: counted
     inputs:
       input: !cel "steps.source.result.output"
@@ -268,15 +259,13 @@ steps:
       input: !cel "steps.counted.result.output"
       contentType: multipart/form-data; boundary=b
       maxTotalBytes: 25
-    invoke:
-      kind: Multipart.Reader
+    invoke: { kind: Multipart.Reader }
   - name: refused
     try:
       - name: drainParts
         inputs:
           input: !cel "steps.read.result.parts"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       - name: drained
         throw: { code: NOT_REFUSED, message: a payload over `maxTotalBytes` was read }
     catch:
@@ -300,17 +289,14 @@ steps:
         inputs:
           input: !cel "steps.source.result.output"
           contentType: multipart/form-data
-        invoke:
-          kind: Multipart.Reader
+        invoke: { kind: Multipart.Reader }
       - name: accepted
         throw: { code: NOT_REFUSED, message: a payload with no boundary was read }
     catch:
       - name: assertReason
         inputs:
           actual: { code: !cel "error.code", data: !cel "error.data" }
-          expected:
-            code: ERR_MULTIPART_MALFORMED
-            data: { reason: boundary-missing }
+          expected: { code: ERR_MULTIPART_MALFORMED, data: { reason: boundary-missing } }
         invoke: !ref Assert.equals
 ---
 # Everything else surfaces while the streams are drained. Three parts, the second
@@ -340,10 +326,7 @@ inputType:
             type: object
             properties:
               name: { type: string }
-              content:
-                x-telo-type:
-                  name: Telo.Stream
-                  of: Telo.Bytes
+              content: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
 collection: !cel "inputs.parts"
 concurrency: 1
 steps:
@@ -354,8 +337,7 @@ steps:
       - name: drain
         inputs:
           input: !cel "item.content"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
     catch:
       - name: assertReadInProgress
         inputs:
@@ -376,8 +358,7 @@ steps:
         - "--b\r\nContent-Disposition: form-data; name=\"file\"\r\n\r\n0123456789\r\n"
         - "--b\r\nContent-Disposition: form-data; name=\"never\"\r\n\r\nunread\r\n"
         - "--b--\r\n"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: observed
     inputs:
       input: !cel "steps.source.result.output"
@@ -391,8 +372,7 @@ steps:
       input: !cel "steps.observed.result.output"
       contentType: multipart/form-data; boundary=b
       maxPartBytes: 9
-    invoke:
-      kind: Multipart.Reader
+    invoke: { kind: Multipart.Reader }
   - name: partsFailed
     try:
       - name: walk
@@ -414,10 +394,9 @@ steps:
 kind: Run.Sequence
 metadata: { name: sourceBreaks }
 throws:
-  - code: SOURCE_BROKE
+  - { code: SOURCE_BROKE }
 steps:
-  - name: cutOff
-    throw: { code: SOURCE_BROKE, message: the upload was cut off }
+  - { name: cutOff, throw: { code: SOURCE_BROKE, message: the upload was cut off } }
 ---
 kind: Run.Sequence
 metadata: { name: sourceFailureIsRethrown }
@@ -437,8 +416,7 @@ steps:
         inputs:
           input: !cel "steps.decoderBroken.result.output"
           contentType: multipart/form-data; boundary=b
-        invoke:
-          kind: Multipart.Decoder
+        invoke: { kind: Multipart.Decoder }
       - name: decoded
         throw: { code: NOT_REFUSED, message: a broken source was decoded }
     catch:
@@ -461,15 +439,13 @@ steps:
     inputs:
       input: !cel "steps.readerBroken.result.output"
       contentType: multipart/form-data; boundary=b
-    invoke:
-      kind: Multipart.Reader
+    invoke: { kind: Multipart.Reader }
   - name: readerRefused
     try:
       - name: drainParts
         inputs:
           input: !cel "steps.read.result.parts"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       - name: drained
         throw: { code: NOT_REFUSED, message: a broken source was read to its end }
     catch:
@@ -523,8 +499,7 @@ steps:
         inputs:
           input: !cel "steps.unboundDecoderObserved.result.output"
           contentType: multipart/form-data
-        invoke:
-          kind: Multipart.Decoder
+        invoke: { kind: Multipart.Decoder }
       - name: decoded
         throw: { code: NOT_REFUSED, message: a payload with no boundary was decoded }
     catch:
@@ -556,8 +531,7 @@ steps:
         inputs:
           input: !cel "steps.unboundReaderObserved.result.output"
           contentType: multipart/form-data
-        invoke:
-          kind: Multipart.Reader
+        invoke: { kind: Multipart.Reader }
       - name: accepted
         throw: { code: NOT_REFUSED, message: a payload with no boundary was read }
     catch:
@@ -601,8 +575,7 @@ steps:
     inputs:
       input: !cel "steps.unpulledPartsObserved.result.output"
       contentType: multipart/form-data; boundary=b
-    invoke:
-      kind: Multipart.Reader
+    invoke: { kind: Multipart.Reader }
   - name: givenUp
     try:
       # Handed on through an untyped input: a stream of parts is not the stream
@@ -617,8 +590,7 @@ steps:
               inputs:
                 input: !cel "inputs.payload"
                 contentType: multipart/form-data
-              invoke:
-                kind: Multipart.Reader
+              invoke: { kind: Multipart.Reader }
       - name: accepted
         throw: { code: NOT_REFUSED, message: a payload with no boundary was read }
     catch:
@@ -632,26 +604,24 @@ steps:
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "decoderPull.Invoked"
-  - type: "decoderSourceEnded.Invoked"
-  - type: "readerPull.Invoked"
-  - type: "readerPartDelivered.Invoked"
-  - type: "readerSourceEnded.Invoked"
-  - type: "unboundDecoderPull.Invoked"
-  - type: "unboundDecoderSourceEnded.Invoked"
-  - type: "unboundReaderPull.Invoked"
-  - type: "unboundReaderSourceEnded.Invoked"
-  - type: "unpulledPartsPull.Invoked"
-  - type: "unpulledPartsSourceEnded.Invoked"
+  - { type: "decoderPull.Invoked" }
+  - { type: "decoderSourceEnded.Invoked" }
+  - { type: "readerPull.Invoked" }
+  - { type: "readerPartDelivered.Invoked" }
+  - { type: "readerSourceEnded.Invoked" }
+  - { type: "unboundDecoderPull.Invoked" }
+  - { type: "unboundDecoderSourceEnded.Invoked" }
+  - { type: "unboundReaderPull.Invoked" }
+  - { type: "unboundReaderSourceEnded.Invoked" }
+  - { type: "unpulledPartsPull.Invoked" }
+  - { type: "unpulledPartsSourceEnded.Invoked" }
 expect:
   # The limit plus one chunk: 10, 20, then the 30 that crosses 25.
-  - event: decoderPull.Invoked
-    times: 3
+  - { event: decoderPull.Invoked, times: 3 }
   - event: decoderSourceEnded.Invoked
     payload: { inputs: { state: cancelled } }
     times: 1
-  - event: readerPull.Invoked
-    times: 3
+  - { event: readerPull.Invoked, times: 3 }
   # `a` and `file`; `never` is not delivered.
   - event: readerPartDelivered.Invoked
     times: 2
@@ -664,13 +634,11 @@ expect:
   - event: unboundDecoderSourceEnded.Invoked
     payload: { inputs: { state: cancelled } }
     times: 1
-  - event: unboundReaderPull.Invoked
-    times: 0
+  - { event: unboundReaderPull.Invoked, times: 0 }
   - event: unboundReaderSourceEnded.Invoked
     payload: { inputs: { state: cancelled } }
     times: 1
-  - event: unpulledPartsPull.Invoked
-    times: 0
+  - { event: unpulledPartsPull.Invoked, times: 0 }
   - event: unpulledPartsSourceEnded.Invoked
     payload: { inputs: { state: cancelled } }
     times: 1

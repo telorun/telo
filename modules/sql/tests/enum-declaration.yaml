@@ -3,38 +3,29 @@
 # the SIBLING declarations one schema names, which neither a resource rule (one
 # resource) nor a plain referrer rule (a pair joined by one reference) can state.
 kind: Telo.Application
-metadata:
-  name: EnumDeclarationChecks
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: EnumDeclarationChecks, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testListed
   - !ref testUnlisted
   - !ref testStorageClassOnly
 ---
 kind: Assert.Manifest
-metadata:
-  name: testListed
+metadata: { name: testListed }
 source: ./__fixtures__/enum-declaration/listed.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
-metadata:
-  name: testUnlisted
+metadata: { name: testUnlisted }
 source: ./__fixtures__/enum-declaration/unlisted.yaml
 expect:
   errors:
-    - code: REFERRER_RULE_VIOLATED
-      message: "does not list in 'enums:'"
+    - { code: REFERRER_RULE_VIOLATED, message: "does not list in 'enums:'" }
 ---
 # A storage class is a string, and a presence-shaped read answers absence over a
 # value that holds no members — the optional library's own semantics — so the
 # column short-circuits and a schema declaring no enums at all stays clean.
 kind: Assert.Manifest
-metadata:
-  name: testStorageClassOnly
+metadata: { name: testStorageClassOnly }
 source: ./__fixtures__/enum-declaration/storage-class.yaml
-expect:
-  errors: []
+expect: { errors: [] }

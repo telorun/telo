@@ -17,11 +17,8 @@ requires:
   # blame its author. Declaring the floor turns that into one message naming the
   # cause. Forward-declared: 0.79.0 is the release that carries the form.
   telo: ">=0.79.0"
-imports:
-  KvStore: ../kv-store
-exports:
-  kinds:
-    - Once
+imports: { KvStore: ../kv-store }
+exports: { kinds: [Once] }
 ---
 # Idempotency.Once — the at-most-once decorator. Two durations, deliberately
 # distinct:
@@ -41,8 +38,7 @@ metadata:
     while the work is still in flight is told so rather than repeating it. Claims are
     time-bounded and renewed, so a crash frees the key.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/idempotency.mjs&local_path=./nodejs/src/index.ts#once
+controllers: [pkg:telo/local/js?path=./nodejs/idempotency.mjs&local_path=./nodejs/src/index.ts#once]
 throws:
   codes:
     # An absent or empty `key` is rejected by `inputType` below, as the kernel's
@@ -105,9 +101,7 @@ schema:
     store:
       title: Store
       description: Reference to the KvStore.Store holding claims and settled results.
-      x-telo-ref:
-        kind: KvStore.Store
-        use: dependency
+      x-telo-ref: { kind: KvStore.Store, use: dependency }
     claimTtl:
       title: Claim TTL
       type: string
@@ -130,10 +124,7 @@ schema:
       title: Invoke
       description: The wrapped body run at most once per key.
       type: object
-      x-telo-ref:
-        kind: Telo.Executable
-        use: call
-        inputs: /inputs
+      x-telo-ref: { kind: Telo.Executable, use: call, inputs: /inputs }
       # The claim makes this region genuinely re-runnable, so it EARNS
       # `idempotent` rather than asserting it: a second pass finds the settled
       # result and replays it instead of executing the body again. That is what

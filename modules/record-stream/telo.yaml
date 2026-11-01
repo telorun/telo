@@ -21,22 +21,8 @@ requires:
   # execution: the published 0.107.0 tarball exports none of them.
   telo: ">=0.108.0"
 exports:
-  kinds:
-    - ExtractText
-    - Tee
-    - EndHandler
-    - OnComplete
-    - JournalStore
-    - MemoryJournalStore
-    - Journal
-    - JournalSink
-    - JournalClaim
-    - JournalSource
-    - JournalRead
-    - JournalRemoval
-    - JournalExpiry
-  resources:
-    - StreamOutcome
+  kinds: [ExtractText, Tee, EndHandler, OnComplete, JournalStore, MemoryJournalStore, Journal, JournalSink, JournalClaim, JournalSource, JournalRead, JournalRemoval, JournalExpiry]
+  resources: [StreamOutcome]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/record-stream` to: the store contract a backend implements and the
   # journal protocol, one module scope across this module and every backend.
@@ -63,16 +49,13 @@ metadata:
     Projects a stream of mixed record types down to a stream of plain text, deciding
     per record type whether to emit a field, drop it, or fail the stream.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#ExtractTextController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#ExtractTextController]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     properties:
-      input:
-        x-telo-type: Telo.Stream
-        description: Async iterable of records to project.
+      input: { x-telo-type: Telo.Stream, description: Async iterable of records to project. }
     required: [input]
     additionalProperties: false
 outputType:
@@ -133,16 +116,12 @@ metadata:
   name: Tee
   description: Fans one input stream out to two output branches, each receiving every item in order.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#TeeController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#TeeController]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      input:
-        x-telo-type: Telo.Stream
-        description: Async iterable to fan out.
+    properties: { input: { x-telo-type: Telo.Stream, description: Async iterable to fan out. } }
     required: [input]
     additionalProperties: false
 outputType:
@@ -158,9 +137,7 @@ outputType:
         description: Second fan-out branch — every item from `input` in order.
     required: [outputA, outputB]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # How a stream ended, as a handler receives it: `completed` with no error,
 # `failed` with the input's error, or `cancelled` — with the cancellation's
@@ -178,9 +155,7 @@ schema:
   additionalProperties: false
   required: [state, error]
   properties:
-    state:
-      type: string
-      enum: [completed, failed, cancelled]
+    state: { type: string, enum: [completed, failed, cancelled] }
     error:
       description: >-
         The error that ended the stream, as data — null when it completed or its
@@ -190,10 +165,7 @@ schema:
       type: [object, "null"]
       additionalProperties: false
       required: [message]
-      properties:
-        code: { type: string }
-        message: { type: string }
-        data: {}
+      properties: { code: { type: string }, message: { type: string }, data: {} }
 ---
 # Passthrough that runs a handler exactly once on whichever ending the stream
 # reaches. Every item forwards to `output` in order as it arrives; the handler is
@@ -226,8 +198,7 @@ metadata:
     partial result, releasing a budget or marking work finished never depends on the
     stream succeeding.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#EndHandlerController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#EndHandlerController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -266,10 +237,7 @@ schema:
       description: >-
         Invocable or Runnable (e.g. a Run.Sequence) called exactly once when the
         stream ends, with the arguments `inputs` maps.
-      x-telo-ref:
-        kind: Telo.Executable
-        use: trigger.consumer
-        inputs: /inputs
+      x-telo-ref: { kind: Telo.Executable, use: trigger.consumer, inputs: /inputs }
     inputs:
       title: Handler inputs
       description: >-
@@ -287,8 +255,7 @@ schema:
           records:
             type: array
             description: Every item the stream carried up to its ending, in order.
-          outcome:
-            $ref: "telo://Self/StreamOutcome"
+          outcome: { $ref: "telo://Self/StreamOutcome" }
           context:
             type: object
             additionalProperties: true
@@ -321,8 +288,7 @@ metadata:
       ending and says which one it was.
     replacedBy: Self.EndHandler
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#OnCompleteController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#OnCompleteController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -340,9 +306,7 @@ outputType:
   schema:
     type: object
     properties:
-      output:
-        x-telo-type: Telo.Stream
-        description: Every item from `input`, in order.
+      output: { x-telo-type: Telo.Stream, description: "Every item from `input`, in order." }
     required: [output]
     additionalProperties: false
 schema:
@@ -354,9 +318,7 @@ schema:
         Invocable or Runnable (e.g. a Run.Sequence) called once, after `input`
         completes normally, with `{ records, context }`. Not called if the input
         errors or the consumer cancels early.
-      x-telo-ref:
-        kind: Telo.Executable
-        use: trigger.consumer
+      x-telo-ref: { kind: Telo.Executable, use: trigger.consumer }
   required: [handler]
   additionalProperties: false
 ---
@@ -399,11 +361,8 @@ metadata:
     change. Nothing is shared between instances or survives a restart, so it fits
     development, tests and single-process runs.
 extends: Self.JournalStore
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#MemoryJournalStoreController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#MemoryJournalStoreController]
+schema: { type: object, additionalProperties: false }
 ---
 # RecordStream.Journal — a keyed, offset-addressable replay journal over a store.
 # A producer claims a key and streams records into it (JournalSink); a consumer
@@ -420,8 +379,7 @@ metadata:
     each key is live, finished, failed, removed or abandoned by a writer that
     stopped sending heartbeats.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalController]
 schema:
   type: object
   additionalProperties: false
@@ -432,9 +390,7 @@ schema:
       description: >-
         Where the records live. An inline memory store keeps them for one process; a
         durable store keeps them across restarts and processes.
-      x-telo-ref:
-        kind: Self.JournalStore
-        use: dependency
+      x-telo-ref: { kind: Self.JournalStore, use: dependency }
     retention:
       title: Retention
       description: >-
@@ -500,20 +456,17 @@ metadata:
     writer from a dead one, and can resume a recording whose writer failed or died,
     continuing its ids so readers pick up where they stopped.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalSinkController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalSinkController]
 throws:
   codes:
-    ERR_INVALID_INPUT:
-      description: "`input` did not resolve to a stream."
+    ERR_INVALID_INPUT: { description: "`input` did not resolve to a stream." }
     ERR_JOURNAL_KEY_BUSY:
       description: >-
         The key already exists and is not this drain's to take — held live by
         another writer or drain, finished, or, without `resume`, failed or
         abandoned. Raised when claiming, before any record is pulled; raised
         later only if another writer took it over.
-    ERR_JOURNAL_KEY_REMOVED:
-      description: The key was removed, before the claim or while the drain ran.
+    ERR_JOURNAL_KEY_REMOVED: { description: "The key was removed, before the claim or while the drain ran." }
     ERR_JOURNAL_WRITER_LOST:
       description: >-
         The key was failed as abandoned because this writer's heartbeat was older
@@ -529,9 +482,7 @@ inputType:
         type: string
         minLength: 1
         description: Key to claim and append under (e.g. a turn id).
-      input:
-        x-telo-type: Telo.Stream
-        description: Async iterable of records to journal.
+      input: { x-telo-type: Telo.Stream, description: Async iterable of records to journal. }
       resume:
         type: boolean
         default: false
@@ -569,9 +520,7 @@ schema:
     journal:
       title: Journal
       description: The journal to write into.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }
 ---
 # Claim a key for a named writer without draining anything into it, so the key
 # exists — and readers tail it rather than wait for it — before the work that
@@ -594,8 +543,7 @@ metadata:
     Reports the id of the last record already there, and the recorded error of a
     failed recording it took over.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalClaimController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalClaimController]
 throws:
   codes:
     ERR_JOURNAL_KEY_BUSY:
@@ -603,8 +551,7 @@ throws:
         The key already exists under another writer — live, finished or, without
         `resume`, failed — or, without `resume`, this writer's claim went stale
         before a sink adopted it.
-    ERR_JOURNAL_KEY_REMOVED:
-      description: The key was removed.
+    ERR_JOURNAL_KEY_REMOVED: { description: The key was removed. }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -612,10 +559,7 @@ inputType:
     additionalProperties: false
     required: [key, writer]
     properties:
-      key:
-        type: string
-        minLength: 1
-        description: Key to claim.
+      key: { type: string, minLength: 1, description: Key to claim. }
       writer:
         type: string
         minLength: 1
@@ -651,10 +595,7 @@ outputType:
         type: [object, "null"]
         additionalProperties: false
         required: [message]
-        properties:
-          code: { type: string }
-          message: { type: string }
-          data: {}
+        properties: { code: { type: string }, message: { type: string }, data: {} }
 schema:
   type: object
   additionalProperties: false
@@ -663,9 +604,7 @@ schema:
     journal:
       title: Journal
       description: The journal to claim the key in.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }
 ---
 # Read a key back from a Journal: `{ id, data }` entries with id greater than
 # `fromId` (0 replays from the start), then the key's state decides — tail while
@@ -686,15 +625,13 @@ metadata:
     exactly where it dropped. A failed stream re-raises its recorded error, and a
     removed or abandoned one says so with a distinct code.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalSourceController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalSourceController]
 # `throws:` is what the CALL raises; the stream it returns raises later, where
 # no `catches:` for this call can see it — so the stream's codes are listed on
 # `output` instead.
 throws:
   codes:
-    ERR_JOURNAL_KEY_REMOVED:
-      description: Raised by the call when the key is already removed at open.
+    ERR_JOURNAL_KEY_REMOVED: { description: Raised by the call when the key is already removed at open. }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -702,10 +639,7 @@ inputType:
     additionalProperties: false
     required: [key]
     properties:
-      key:
-        type: string
-        minLength: 1
-        description: Key to read.
+      key: { type: string, minLength: 1, description: Key to read. }
       fromId:
         type: integer
         minimum: 0
@@ -735,9 +669,7 @@ schema:
     journal:
       title: Journal
       description: The journal to read from.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }
 ---
 # One snapshot of a key: its state, the recorded error of a failed key, the id of
 # its last record and the entries after `fromId`. Never waits and never raises
@@ -753,8 +685,7 @@ metadata:
     removed or never written, the id of its last record, and a page of records from
     a given offset. Suits listing history or checking status.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalReadController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalReadController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -762,10 +693,7 @@ inputType:
     additionalProperties: false
     required: [key]
     properties:
-      key:
-        type: string
-        minLength: 1
-        description: Key to read.
+      key: { type: string, minLength: 1, description: Key to read. }
       fromId:
         type: integer
         minimum: 0
@@ -798,13 +726,8 @@ outputType:
         type: [object, "null"]
         additionalProperties: false
         required: [message]
-        properties:
-          code: { type: string }
-          message: { type: string }
-          data: {}
-      lastId:
-        type: integer
-        description: Id of the key's last record; 0 when it has none.
+        properties: { code: { type: string }, message: { type: string }, data: {} }
+      lastId: { type: integer, description: Id of the key's last record; 0 when it has none. }
       entries:
         type: array
         description: The entries after `fromId`, in id order, at most `limit`.
@@ -812,9 +735,7 @@ outputType:
           type: object
           additionalProperties: false
           required: [id, data]
-          properties:
-            id: { type: integer }
-            data: {}
+          properties: { id: { type: integer }, data: {} }
 schema:
   type: object
   additionalProperties: false
@@ -823,9 +744,7 @@ schema:
     journal:
       title: Journal
       description: The journal to read from.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -835,19 +754,14 @@ metadata:
     told it was removed rather than left waiting. Reports whether the key was
     removed or was never there; removing it twice reports removed again.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalRemovalController
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalRemovalController]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [key]
-    properties:
-      key:
-        type: string
-        minLength: 1
-        description: Key to remove.
+    properties: { key: { type: string, minLength: 1, description: Key to remove. } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -867,9 +781,7 @@ schema:
     journal:
       title: Journal
       description: The journal to remove the key from.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }
 ---
 # One expiry pass. A provider performs no observable I/O at init and has no run(),
 # so the journal owns no timer: an application triggers this from its scheduler.
@@ -882,13 +794,8 @@ metadata:
     once their removal is old enough, fails streams whose writer stopped sending
     heartbeats, and returns how many streams it removed. Run it on a schedule.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalExpiryController
-inputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/record-stream.mjs&local_path=./nodejs/src/index.ts#JournalExpiryController]
+inputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -909,6 +816,4 @@ schema:
     journal:
       title: Journal
       description: The journal whose retention to apply.
-      x-telo-ref:
-        kind: Self.Journal
-        use: dependency
+      x-telo-ref: { kind: Self.Journal, use: dependency }

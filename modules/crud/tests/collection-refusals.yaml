@@ -16,8 +16,7 @@ metadata:
     The rules a collection inherits from the data model run too. Each refusal
     is reported by `telo check` where the collection is declared, and refused
     by the collection itself when a manifest reaches it without that check.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref keyUndeclared
   - !ref keyUndeclaredAtRuntime
@@ -216,15 +215,12 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationForeignKeySameTable }
 source: ./__fixtures__/collection-refusals/relation-foreign-key-same-table/lib/telo.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: relationForeignKeySameTableAtRuntime }
 source: ./__fixtures__/collection-refusals/relation-foreign-key-same-table/telo.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }
 ---
 kind: Assert.Manifest
 metadata: { name: inheritedRule }
@@ -244,12 +240,9 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationForeignKeyComposite }
 source: ./__fixtures__/collection-refusals/relation-foreign-key-composite/lib/telo.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: relationForeignKeyCompositeAtRuntime }
 source: ./__fixtures__/collection-refusals/relation-foreign-key-composite/telo.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }

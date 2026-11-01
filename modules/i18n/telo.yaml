@@ -13,14 +13,10 @@ metadata:
     Accept-Language preference list.
 # `lang:`, the text fragments, a native function's data slot and catalog sets
 # (`x-telo-text-catalog-set`) are read from 0.121.0; 0.120.1 refuses this file.
-requires:
-  telo: ">=0.121.0"
+requires: { telo: ">=0.121.0" }
 lang: en
 exports:
-  kinds:
-    - Catalog
-    - Translator
-    - Negotiator
+  kinds: [Catalog, Translator, Negotiator]
   # The entry point a dependent module's controller resolves `@telorun/i18n` to:
   # the reader of a translator's catalog set, one module scope across consumers.
   code:
@@ -41,8 +37,7 @@ metadata:
     translating it, plural cases included. Every value is written literally and
     checked against its source's placeholders and the language's plural categories.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Catalog
+controllers: [pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Catalog]
 schema: { $ref: "telo://manifest#/$defs/TextCatalog" }
 ---
 # I18n.Translator — a CEL function over a set of catalogs: `Self.t(text, lang,
@@ -59,8 +54,7 @@ metadata:
     written, in its own language.
 capability: Telo.Callable
 deterministic: true
-controllers:
-  - pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Translator
+controllers: [pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Translator]
 params:
   - name: text
     description: The source text, written at the call — a message, or `{ text, context }`.
@@ -71,11 +65,8 @@ params:
   - name: values
     description: A value for every placeholder and plural selector the text reads, by name.
     optional: true
-    schema:
-      type: object
-      x-telo-text-values-for: /text
-returns:
-  schema: { type: string }
+    schema: { type: object, x-telo-text-values-for: /text }
+returns: { schema: { type: string } }
 schema:
   type: object
   additionalProperties: false
@@ -87,8 +78,7 @@ schema:
         nothing: every text is formatted as written.
       type: array
       x-telo-text-catalog-set: true
-      items:
-        x-telo-ref: { kind: Self.Catalog, use: dependency }
+      items: { x-telo-ref: { kind: Self.Catalog, use: dependency } }
 ---
 # I18n.Negotiator — a CEL function choosing the language to answer in:
 # `Self.language(request.headers['accept-language'])`.
@@ -103,14 +93,12 @@ metadata:
     refused.
 capability: Telo.Callable
 deterministic: true
-controllers:
-  - pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Negotiator
+controllers: [pkg:telo/local/js?path=./nodejs/i18n.mjs&local_path=./nodejs/src/index.ts#Negotiator]
 params:
   - name: acceptLanguage
     description: An Accept-Language value — `pl-PL, pl;q=0.9, en;q=0.5`. Empty when the caller sent none.
     schema: { type: string }
-returns:
-  schema: { type: string, format: language-tag }
+returns: { schema: { type: string, format: language-tag } }
 schema:
   type: object
   additionalProperties: false

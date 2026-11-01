@@ -6,10 +6,7 @@ metadata:
     Smoke test for Stream.Collect — the terminal sink and inverse of Stream.Of.
     Seeds a stream of tagged records, collects it back to an array, and asserts the
     round-trip (count, order, and a CEL inspection over the materialized items).
-imports:
-  Stream: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Stream: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---
@@ -29,8 +26,7 @@ steps:
   - name: collect
     inputs:
       input: !cel "steps.src.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assert
     inputs:
       first: !cel "steps.collect.result.items[0].delta"

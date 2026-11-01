@@ -11,12 +11,7 @@ metadata:
     arrives for long-running work. Commands take stdin, a per-call environment
     overlay, a working directory and a kill timeout, and can bypass shell parsing
     entirely so untrusted values cannot inject.
-exports:
-  kinds:
-    - Host
-    - Command
-    - CommandStream
-    - LocalHost
+exports: { kinds: [Host, Command, CommandStream, LocalHost] }
 ---
 # Shell.Host — the abstract execution target every driver implements. A
 # Telo.Provider whose instance exposes the spawn primitive the operations call.
@@ -45,16 +40,15 @@ metadata:
     A non-zero exit is returned rather than raised, so the caller decides what it
     means.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/shell.mjs&local_path=./nodejs/src/index.ts#ShellCommandController
+controllers: [pkg:telo/local/js?path=./nodejs/shell.mjs&local_path=./nodejs/src/index.ts#ShellCommandController]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     oneOf:
-      - required: [command]
-      - required: [args]
+      - { required: [command] }
+      - { required: [args] }
     properties:
       command:
         title: Command
@@ -116,9 +110,7 @@ schema:
     host:
       title: Host
       description: Reference to the Shell.Host the command runs on.
-      x-telo-ref:
-        kind: Self.Host
-        use: dependency
+      x-telo-ref: { kind: Self.Host, use: dependency }
   examples:
     - host: !ref Local
 ---
@@ -135,16 +127,15 @@ metadata:
     or live-rendering long-running commands; when the exit code has to drive control
     flow, run the command to completion instead.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/shell.mjs&local_path=./nodejs/src/index.ts#ShellCommandStreamController
+controllers: [pkg:telo/local/js?path=./nodejs/shell.mjs&local_path=./nodejs/src/index.ts#ShellCommandStreamController]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     oneOf:
-      - required: [command]
-      - required: [args]
+      - { required: [command] }
+      - { required: [args] }
     properties:
       command:
         title: Command
@@ -203,9 +194,7 @@ schema:
     host:
       title: Host
       description: Reference to the Shell.Host the command runs on.
-      x-telo-ref:
-        kind: Self.Host
-        use: dependency
+      x-telo-ref: { kind: Self.Host, use: dependency }
   examples:
     - host: !ref Local
 ---
@@ -223,8 +212,7 @@ metadata:
     that per-call overlays merge over. The working directory is not a sandbox.
 capability: Telo.Provider
 extends: Self.Host
-controllers:
-  - pkg:telo/local/js?path=./nodejs/shell.mjs&local_path=./nodejs/src/index.ts#LocalHostController
+controllers: [pkg:telo/local/js?path=./nodejs/shell.mjs&local_path=./nodejs/src/index.ts#LocalHostController]
 schema:
   type: object
   additionalProperties: false
@@ -249,7 +237,5 @@ schema:
       type: object
       additionalProperties: { type: [string, "null"] }
   examples:
-    - cwd: ./workspace
-    - shell: /bin/bash
-      env:
-        CI: "true"
+    - { cwd: ./workspace }
+    - { shell: /bin/bash, env: { CI: "true" } }

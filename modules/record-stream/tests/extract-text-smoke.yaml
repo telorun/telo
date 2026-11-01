@@ -71,9 +71,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          text: { const: "hello" }
-          count: { const: 2 }
+        properties: { text: { const: "hello" }, count: { const: 2 } }
         required: [ text, count ]
 ---
 # Source emits an error part. ExtractText should throw with the error's
@@ -112,8 +110,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              message: { type: string, pattern: "boom" }
+            properties: { message: { type: string, pattern: "boom" } }
             required: [ message ]
 ---
 # Source emits a record whose discriminator value isn't listed in `records`.
@@ -146,6 +143,5 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: "ERR_UNKNOWN_RECORD" }
+            properties: { code: { const: "ERR_UNKNOWN_RECORD" } }
             required: [ code ]

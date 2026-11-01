@@ -17,16 +17,11 @@ metadata:
     This still fails loudly if the rust candidate is broken rather than absent —
     a resolved-but-unloadable controller is a hard error, not an env-missing one,
     so it never silently falls back to the JavaScript controller.
-imports:
-  Console:
-    source: ../
-    runtime: [rust, any]
-  Assert: ../../assert
+imports: { Console: { source: ../, runtime: [rust, any] }, Assert: ../../assert }
 targets:
   - name: print
     invoke: !ref Console.writeLine
-    inputs:
-      output: "printed by the {green rust} controller"
+    inputs: { output: "printed by the {green rust} controller" }
   - name: check
     invoke: !ref Assert.equals
     inputs:

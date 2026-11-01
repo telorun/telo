@@ -25,9 +25,7 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.LayersTable
 metadata: { name: graphLayers }
@@ -640,7 +638,4 @@ steps:
         pinned: !cel "size(steps.thirtyOne.result.bases)"
         refused: !cel "steps.thirtyThirdCode.result"
         unchanged: !cel "steps.listed.result.bases == steps.thirtyOne.result.bases"
-      expected:
-        pinned: 31
-        refused: [GRAPH_BASE_LIMIT, "32"]
-        unchanged: true
+      expected: { pinned: 31, refused: [GRAPH_BASE_LIMIT, "32"], unchanged: true }

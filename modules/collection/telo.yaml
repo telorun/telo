@@ -11,15 +11,7 @@ metadata:
     state, order by several computed sort keys, deduplicate by a computed key, split
     into batches, and join two collections on matching keys. Pure data transforms —
     a list in, a list out, no I/O and no control flow.
-exports:
-  kinds:
-    - GroupBy
-    - Summarize
-    - Fold
-    - Sort
-    - Distinct
-    - Chunk
-    - Join
+exports: { kinds: [GroupBy, Summarize, Fold, Sort, Distinct, Chunk, Join] }
 ---
 # Partition a collection by a CEL key tuple, reduce each group into a row, order
 # the rows. The one aggregation Telo can't express in pure CEL (folding N items
@@ -31,8 +23,7 @@ metadata:
     Partitions a collection by a CEL key tuple and reduces each group into an
     output row with CEL aggregate expressions, optionally ordered by CEL keys.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#GroupByController
+controllers: [pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#GroupByController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -52,9 +43,7 @@ outputType:
         description: >-
           One row per distinct key tuple — each group's key fields merged with
           its aggregate fields — in the declared order (input order otherwise).
-        items:
-          type: object
-          additionalProperties: true
+        items: { type: object, additionalProperties: true }
 schema:
   type: object
   required: [collection, key]
@@ -64,10 +53,7 @@ schema:
       title: Collection
       description: CEL expression resolving to the array of records to group. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     key:
       title: Key
       description: >-
@@ -94,28 +80,20 @@ schema:
       additionalProperties: true
       x-telo-context:
         type: object
-        properties:
-          key: { type: object }
-          group: { type: array }
-          inputs: {}
+        properties: { key: { type: object }, group: { type: array }, inputs: {} }
     orderBy:
       title: Order By
       description: >-
         Ordering applied to the output rows. Each entry sorts by a CEL key over
         row (an output row); entries apply in order as tie-breakers.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          row: { type: object }
+      x-telo-context: { type: object, properties: { row: { type: object } } }
       items:
         type: object
         required: [by]
         additionalProperties: false
         properties:
-          by:
-            title: By
-            description: CEL sort key evaluated over row (the output row).
+          by: { title: By, description: CEL sort key evaluated over row (the output row). }
           descending:
             title: Descending
             description: Sort this key descending (default ascending).
@@ -140,8 +118,7 @@ metadata:
   name: Summarize
   description: Reduces a whole collection to a single summary object with CEL aggregate expressions over the full set.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#SummarizeController
+controllers: [pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#SummarizeController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -168,10 +145,7 @@ schema:
       title: Collection
       description: CEL expression resolving to the array to summarize. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     aggregate:
       title: Aggregate
       description: >-
@@ -179,11 +153,7 @@ schema:
         Sees group (all elements); reduce with sum / avg / min / max / size.
       type: object
       additionalProperties: true
-      x-telo-context:
-        type: object
-        properties:
-          group: { type: array }
-          inputs: {}
+      x-telo-context: { type: object, properties: { group: { type: array }, inputs: {} } }
   examples:
     - collection: !cel "inputs.orders"
       aggregate:
@@ -210,8 +180,7 @@ metadata:
     fixed aggregators cannot. Returns the final projection, or the accumulator
     itself when none is declared.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#FoldController
+controllers: [pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#FoldController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -222,10 +191,8 @@ inputType:
       as `inputs.<name>`.
 throws:
   codes:
-    INVALID_COLLECTION:
-      description: "`collection` did not resolve to an array."
-    ERR_INVALID_PREDICATE:
-      description: "`while` evaluated to something other than a boolean."
+    INVALID_COLLECTION: { description: "`collection` did not resolve to an array." }
+    ERR_INVALID_PREDICATE: { description: "`while` evaluated to something other than a boolean." }
     INVALID_VALUE:
       description: >-
         `value` was written blank. Raised at load, not per call — a key with no
@@ -243,9 +210,7 @@ schema:
         / `value`, and holds BOTH the seed and the step to that shape at
         analysis time: a fold whose step drops a required field is an error
         before it runs, and so is a seed that never had it.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: >-
@@ -253,27 +218,19 @@ schema:
         definition. Declaring it types `steps.<name>.result` for callers, has
         `value` checked against it statically, and has the produced value
         validated at dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     collection:
       title: Collection
       description: CEL expression resolving to the array to fold over. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     initial:
       title: Initial
       description: >-
         The starting accumulator — a CEL expression, a structure with `!cel`
         leaves, or a literal. Sees inputs. It is the first `acc`, so it is held
         to `accType` exactly as `accumulate` is.
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
       x-telo-value-schema-from: accType
     while:
       title: While
@@ -341,8 +298,7 @@ metadata:
   name: Sort
   description: Orders a collection by a list of CEL sort keys, each ascending or descending, applied as tie-breakers.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#SortController
+controllers: [pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#SortController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -368,10 +324,7 @@ schema:
       title: Collection
       description: CEL expression resolving to the array to sort. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     order:
       title: Order
       description: >-
@@ -391,9 +344,7 @@ schema:
         required: [by]
         additionalProperties: false
         properties:
-          by:
-            title: By
-            description: CEL sort key evaluated over item.
+          by: { title: By, description: CEL sort key evaluated over item. }
           descending:
             title: Descending
             description: Sort this key descending (default ascending).
@@ -413,8 +364,7 @@ metadata:
   name: Distinct
   description: Keeps the first element for each distinct CEL key tuple, preserving input order.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#DistinctController
+controllers: [pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#DistinctController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -440,10 +390,7 @@ schema:
       title: Collection
       description: CEL expression resolving to the array to deduplicate. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     key:
       title: Key
       description: >-
@@ -470,8 +417,7 @@ metadata:
   name: Chunk
   description: Splits a collection into consecutive batches of at most `size` elements (trailing batch may be shorter).
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#ChunkController
+controllers: [pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#ChunkController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -488,8 +434,7 @@ outputType:
       chunks:
         type: array
         description: The batches, in input order.
-        items:
-          type: array
+        items: { type: array }
 schema:
   type: object
   required: [collection, size]
@@ -499,19 +444,13 @@ schema:
       title: Collection
       description: CEL expression resolving to the array to split. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     size:
       title: Size
       description: Maximum elements per batch (a positive integer). Sees inputs.
       type: integer
       minimum: 1
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
   examples:
     - collection: !cel "inputs.records"
       size: 100
@@ -523,8 +462,7 @@ metadata:
   name: Join
   description: Joins two collections on a CEL key from each side (inner or left), shaping each output row with a CEL select map.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#JoinController
+controllers: [pkg:telo/local/js?path=./nodejs/collection.mjs&local_path=./nodejs/src/index.ts#JoinController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -541,9 +479,7 @@ outputType:
       rows:
         type: array
         description: One row per matched pair (plus unmatched left rows for a left join).
-        items:
-          type: object
-          additionalProperties: true
+        items: { type: object, additionalProperties: true }
 schema:
   type: object
   required: [left, right, on]
@@ -553,18 +489,12 @@ schema:
       title: Left
       description: CEL expression resolving to the left (driving) array. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     right:
       title: Right
       description: CEL expression resolving to the right array, indexed by its key. Sees inputs.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     type:
       title: Type
       description: inner emits only matched pairs; left also emits unmatched left rows (right = null).

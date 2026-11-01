@@ -7,10 +7,7 @@ metadata:
     project, sums the logged minutes with the CEL `sum` reducer, derives hours,
     orders the rows, and asserts the exact grouped output. Self-contained:
     depends only on Collection + Run + Assert.
-imports:
-  Collection: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Collection: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testGroupBy
 ---
@@ -45,5 +42,4 @@ steps:
         - { user: Ann, project: Apollo, minutes: 120, hours: 2 }
         - { user: Ann, project: Zephyr, minutes: 60, hours: 1 }
         - { user: Bob, project: Apollo, minutes: 45, hours: 0.75 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

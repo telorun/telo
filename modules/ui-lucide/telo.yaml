@@ -17,14 +17,10 @@ metadata:
 requires:
   # Imports ui, which needs 0.121.0.
   telo: ">=0.121.0"
-imports:
-  Ui: ../ui
-exports:
-  kinds:
-    - Icon
+imports: { Ui: ../ui }
+exports: { kinds: [Icon] }
 # Every glyph ships in the assets layer; a resource reads only the one it names.
-assets:
-  - ./icons/
+assets: [./icons/]
 sources:
   lucide:
     version: 1.8.0
@@ -1987,8 +1983,7 @@ metadata:
     of the text beside it.
 capability: Telo.Provider
 extends: Ui.Icon
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui-lucide.mjs&local_path=./nodejs/src/index.ts#IconController
+controllers: [pkg:telo/local/js?path=./nodejs/ui-lucide.mjs&local_path=./nodejs/src/index.ts#IconController]
 schema:
   type: object
   additionalProperties: false

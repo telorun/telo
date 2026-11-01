@@ -107,11 +107,8 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 19313
-    openapi:
-      info: { title: Tasks API, version: 1.0.0 }
+    listen: { address: 127.0.0.1, port: 19313 }
+    openapi: { info: { title: Tasks API, version: 1.0.0 } }
     mounts:
       - path: /tasks
         mount: !ref tasksApi
@@ -203,10 +200,7 @@ steps:
         ascending: !cel "steps.dueAscending.result.body.rows.map(r, r.id)"
         descending: !cel "steps.dueDescending.result.body.rows.map(r, r.id)"
         rest: !cel "steps.dueDescendingRest.result.body.rows.map(r, r.id)"
-      expected:
-        ascending: [1, 2, 4, 3, 5, 6, 7]
-        descending: [4, 2, 1, 3]
-        rest: [5, 6, 7]
+      expected: { ascending: [1, 2, 4, 3, 5, 6, 7], descending: [4, 2, 1, 3], rest: [5, 6, 7] }
 
   # ── Each operator family ──
   - name: equal
@@ -362,6 +356,4 @@ steps:
       actual:
         properties: !cel "keys(steps.spec.result.body.paths['/tasks'].get.responses['200'].content['application/json'].schema.properties)"
         required: !cel "steps.spec.result.body.paths['/tasks'].get.responses['200'].content['application/json'].schema.required"
-      expected:
-        properties: [rows, total, values, next]
-        required: [next]
+      expected: { properties: [rows, total, values, next], required: [next] }

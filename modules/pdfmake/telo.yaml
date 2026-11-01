@@ -16,16 +16,9 @@ metadata:
 # expression under `content` to an empty string, and then rejects the document
 # for a value the author never wrote. Verified by running the previous released
 # CLI against this module's own test.
-requires:
-  telo: ">=0.82.0"
-imports:
-  Font: ../font
-exports:
-  kinds:
-    - Document
-  resources:
-    - Node
-    - Style
+requires: { telo: ">=0.82.0" }
+imports: { Font: ../font }
+exports: { kinds: [Document], resources: [Node, Style] }
 ---
 # The document node vocabulary, as one recursive shape.
 #
@@ -51,16 +44,16 @@ schema:
   title: Node
   description: One content node. Which key is present decides what it is.
   anyOf:
-    - $ref: "#/$defs/Text"
-    - $ref: "#/$defs/Table"
-    - $ref: "#/$defs/Columns"
-    - $ref: "#/$defs/Stack"
-    - $ref: "#/$defs/OrderedList"
-    - $ref: "#/$defs/UnorderedList"
-    - $ref: "#/$defs/Image"
-    - $ref: "#/$defs/Svg"
-    - $ref: "#/$defs/Canvas"
-    - $ref: "#/$defs/PageBreak"
+    - { $ref: "#/$defs/Text" }
+    - { $ref: "#/$defs/Table" }
+    - { $ref: "#/$defs/Columns" }
+    - { $ref: "#/$defs/Stack" }
+    - { $ref: "#/$defs/OrderedList" }
+    - { $ref: "#/$defs/UnorderedList" }
+    - { $ref: "#/$defs/Image" }
+    - { $ref: "#/$defs/Svg" }
+    - { $ref: "#/$defs/Canvas" }
+    - { $ref: "#/$defs/PageBreak" }
   $defs:
     # ---------------------------------------------------------------- values
 
@@ -68,9 +61,8 @@ schema:
       title: Style
       description: One named style from the document's `styles` map, or several applied in order.
       anyOf:
-        - type: string
-        - type: array
-          items: { type: string }
+        - { type: string }
+        - { type: array, items: { type: string } }
 
     Margin:
       title: Margin
@@ -80,23 +72,16 @@ schema:
       minItems: 1
       maxItems: 4
 
-    Color:
-      title: Color
-      description: A CSS colour name or `#rrggbb`.
-      type: string
+    Color: { title: Color, description: A CSS colour name or `#rrggbb`., type: string }
 
-    Alignment:
-      title: Alignment
-      type: string
-      enum: [left, center, right, justify]
+    Alignment: { title: Alignment, type: string, enum: [left, center, right, justify] }
 
     Width:
       title: Width
       description: A number of points, `auto` (fit the content) or `*` (share the remaining space).
       anyOf:
-        - type: number
-        - type: string
-          enum: ["auto", "*"]
+        - { type: number }
+        - { type: string, enum: ["auto", "*"] }
 
     Nodes:
       title: Nodes
@@ -124,14 +109,14 @@ schema:
           title: Text
           description: The text itself, or several runs concatenated with their own styling.
           anyOf:
-            - type: string
-            - type: number
+            - { type: string }
+            - { type: number }
             - type: array
               items:
                 anyOf:
-                  - type: string
-                  - type: number
-                  - $ref: "#/$defs/Text"
+                  - { type: string }
+                  - { type: number }
+                  - { $ref: "#/$defs/Text" }
         style: { $ref: "#/$defs/StyleRef" }
         font: { type: string, description: A key of the document's `fonts` map. }
         fontSize: { type: number }
@@ -142,22 +127,16 @@ schema:
         background: { $ref: "#/$defs/Color" }
         alignment: { $ref: "#/$defs/Alignment" }
         margin: { $ref: "#/$defs/Margin" }
-        decoration:
-          type: string
-          enum: [underline, lineThrough, overline]
+        decoration: { type: string, enum: [underline, lineThrough, overline] }
         decorationColor: { $ref: "#/$defs/Color" }
-        decorationStyle:
-          type: string
-          enum: [dashed, dotted, double, wavy]
+        decorationStyle: { type: string, enum: [dashed, dotted, double, wavy] }
         characterSpacing: { type: number }
         noWrap: { type: boolean }
         opacity: { type: number }
         link: { type: string, description: An external URL this run links to. }
         linkToDestination: { type: string }
         id: { type: string, description: Names this node as an internal link destination. }
-        pageBreak:
-          type: string
-          enum: [before, after]
+        pageBreak: { type: string, enum: [before, after] }
         preserveLeadingSpaces: { type: boolean }
 
     # ----------------------------------------------------------------- table
@@ -180,9 +159,7 @@ schema:
                 Rows of cells. A cell is a node, or a bare string or number as a
                 shorthand for a text node.
               type: array
-              items:
-                type: array
-                items: { $ref: "#/$defs/Cell" }
+              items: { type: array, items: { $ref: "#/$defs/Cell" } }
             widths:
               title: Widths
               description: One entry per column.
@@ -190,9 +167,8 @@ schema:
               items: { $ref: "#/$defs/Width" }
             heights:
               anyOf:
-                - type: number
-                - type: array
-                  items: { type: number }
+                - { type: number }
+                - { type: array, items: { type: number } }
             headerRows:
               title: Header rows
               description: How many leading rows repeat at the top of every page.
@@ -206,19 +182,17 @@ schema:
         alignment: { $ref: "#/$defs/Alignment" }
         fontSize: { type: number }
         color: { $ref: "#/$defs/Color" }
-        pageBreak:
-          type: string
-          enum: [before, after]
+        pageBreak: { type: string, enum: [before, after] }
 
     Cell:
       title: Cell
       description: A table cell — a node, or a bare string or number as a text shorthand.
       anyOf:
-        - type: string
-        - type: number
-        - type: "null"
-        - $ref: "#/$defs/SpanningCell"
-        - $ref: "#"
+        - { type: string }
+        - { type: number }
+        - { type: "null" }
+        - { $ref: "#/$defs/SpanningCell" }
+        - { $ref: "#" }
 
     SpanningCell:
       title: Spanning cell
@@ -231,8 +205,8 @@ schema:
       properties:
         text:
           anyOf:
-            - type: string
-            - type: number
+            - { type: string }
+            - { type: number }
         colSpan: { type: integer, minimum: 1 }
         rowSpan: { type: integer, minimum: 1 }
         style: { $ref: "#/$defs/StyleRef" }
@@ -292,22 +266,18 @@ schema:
       required: [columns]
       additionalProperties: false
       properties:
-        columns:
-          type: array
-          items: { $ref: "#/$defs/Column" }
+        columns: { type: array, items: { $ref: "#/$defs/Column" } }
         columnGap: { type: number }
         style: { $ref: "#/$defs/StyleRef" }
         margin: { $ref: "#/$defs/Margin" }
-        pageBreak:
-          type: string
-          enum: [before, after]
+        pageBreak: { type: string, enum: [before, after] }
 
     Column:
       title: Column
       description: One column — any node, optionally given an explicit width.
       anyOf:
-        - $ref: "#/$defs/SizedColumn"
-        - $ref: "#"
+        - { $ref: "#/$defs/SizedColumn" }
+        - { $ref: "#" }
 
     SizedColumn:
       title: Sized column
@@ -319,8 +289,8 @@ schema:
         width: { $ref: "#/$defs/Width" }
         text:
           anyOf:
-            - type: string
-            - type: number
+            - { type: string }
+            - { type: number }
         stack: { $ref: "#/$defs/Nodes" }
         style: { $ref: "#/$defs/StyleRef" }
         margin: { $ref: "#/$defs/Margin" }
@@ -339,9 +309,7 @@ schema:
         alignment: { $ref: "#/$defs/Alignment" }
         fontSize: { type: number }
         color: { $ref: "#/$defs/Color" }
-        pageBreak:
-          type: string
-          enum: [before, after]
+        pageBreak: { type: string, enum: [before, after] }
 
     OrderedList:
       title: Ordered list
@@ -354,7 +322,7 @@ schema:
         reversed: { type: boolean }
         separator:
           anyOf:
-            - type: string
+            - { type: string }
             - type: array
               items: { type: string }
               minItems: 2
@@ -373,10 +341,7 @@ schema:
       additionalProperties: false
       properties:
         ul: { $ref: "#/$defs/Nodes" }
-        type:
-          title: Marker
-          type: string
-          enum: [square, circle, none]
+        type: { title: Marker, type: string, enum: [square, circle, none] }
         markerColor: { $ref: "#/$defs/Color" }
         style: { $ref: "#/$defs/StyleRef" }
         margin: { $ref: "#/$defs/Margin" }
@@ -412,9 +377,7 @@ schema:
         alignment: { $ref: "#/$defs/Alignment" }
         margin: { $ref: "#/$defs/Margin" }
         link: { type: string }
-        pageBreak:
-          type: string
-          enum: [before, after]
+        pageBreak: { type: string, enum: [before, after] }
 
     Svg:
       title: SVG
@@ -435,9 +398,7 @@ schema:
           maxItems: 2
         alignment: { $ref: "#/$defs/Alignment" }
         margin: { $ref: "#/$defs/Margin" }
-        pageBreak:
-          type: string
-          enum: [before, after]
+        pageBreak: { type: string, enum: [before, after] }
 
     Canvas:
       title: Canvas
@@ -446,9 +407,7 @@ schema:
       required: [canvas]
       additionalProperties: false
       properties:
-        canvas:
-          type: array
-          items: { $ref: "#/$defs/Shape" }
+        canvas: { type: array, items: { $ref: "#/$defs/Shape" } }
         style: { $ref: "#/$defs/StyleRef" }
         margin: { $ref: "#/$defs/Margin" }
 
@@ -462,9 +421,7 @@ schema:
       required: [type]
       additionalProperties: false
       properties:
-        type:
-          type: string
-          enum: [line, rect, ellipse, polyline]
+        type: { type: string, enum: [line, rect, ellipse, polyline] }
         x: { type: number }
         y: { type: number }
         x1: { type: number }
@@ -481,9 +438,7 @@ schema:
           items:
             type: object
             additionalProperties: false
-            properties:
-              x: { type: number }
-              y: { type: number }
+            properties: { x: { type: number }, y: { type: number } }
         closePath: { type: boolean }
         color: { $ref: "#/$defs/Color" }
         lineColor: { $ref: "#/$defs/Color" }
@@ -493,9 +448,7 @@ schema:
         dash:
           type: object
           additionalProperties: false
-          properties:
-            length: { type: number }
-            space: { type: number }
+          properties: { length: { type: number }, space: { type: number } }
 
     PageBreak:
       title: Page break
@@ -503,10 +456,7 @@ schema:
       type: object
       required: [pageBreak]
       additionalProperties: false
-      properties:
-        pageBreak:
-          type: string
-          enum: [before, after]
+      properties: { pageBreak: { type: string, enum: [before, after] } }
 ---
 # A named style, and what `defaultStyle` sets.
 #
@@ -544,13 +494,9 @@ schema:
       $ref: "#/$defs/Color"
     alignment: { $ref: "#/$defs/Alignment" }
     margin: { $ref: "#/$defs/Margin" }
-    decoration:
-      type: string
-      enum: [underline, lineThrough, overline]
+    decoration: { type: string, enum: [underline, lineThrough, overline] }
     decorationColor: { $ref: "#/$defs/Color" }
-    decorationStyle:
-      type: string
-      enum: [dashed, dotted, double, wavy]
+    decorationStyle: { type: string, enum: [dashed, dotted, double, wavy] }
     characterSpacing: { type: number }
     noWrap: { type: boolean }
     opacity: { type: number }
@@ -560,14 +506,8 @@ schema:
       $ref: "#/$defs/Color"
     preserveLeadingSpaces: { type: boolean }
   $defs:
-    Color:
-      title: Color
-      description: A CSS colour name or `#rrggbb`.
-      type: string
-    Alignment:
-      title: Alignment
-      type: string
-      enum: [left, center, right, justify]
+    Color: { title: Color, description: A CSS colour name or `#rrggbb`., type: string }
+    Alignment: { title: Alignment, type: string, enum: [left, center, right, justify] }
     Margin:
       title: Margin
       description: "[left, top, right, bottom], [horizontal, vertical], or one value for all four."
@@ -590,8 +530,7 @@ metadata:
     are evaluated per invocation, so one resource serves as a report template rendered
     once per subject. Read the result back with a PDF reader to learn its page count.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/pdfmake.mjs&local_path=./nodejs/src/index.ts#DocumentController
+controllers: [pkg:telo/local/js?path=./nodejs/pdfmake.mjs&local_path=./nodejs/src/index.ts#DocumentController]
 throws:
   codes:
     ERR_RENDER_FAILED:
@@ -617,10 +556,7 @@ outputType:
     additionalProperties: false
     required: [bytes]
     properties:
-      bytes:
-        title: Bytes
-        description: The rendered PDF.
-        x-telo-type: Telo.Bytes
+      bytes: { title: Bytes, description: The rendered PDF., x-telo-type: Telo.Bytes }
 schema:
   type: object
   required: [content]
@@ -633,9 +569,7 @@ schema:
         template, so its parameter list is the thing most worth checking — declare it
         and every call site is validated against it. Omitted, any argument map is
         accepted.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     content:
       title: Content
       description: >-
@@ -644,10 +578,7 @@ schema:
       type: array
       items: { $ref: "telo://Self/Node" }
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     pageSize:
       title: Page size
       description: A named size, or explicit dimensions in points.
@@ -657,9 +588,7 @@ schema:
         - type: object
           additionalProperties: false
           required: [width, height]
-          properties:
-            width: { type: number }
-            height: { type: number }
+          properties: { width: { type: number }, height: { type: number } }
       default: A4
     pageOrientation:
       title: Page orientation
@@ -694,10 +623,7 @@ schema:
         and is rejected when the document renders. Roboto is always available under the
         name `Roboto` and needs no entry.
       type: object
-      additionalProperties:
-        x-telo-ref:
-          kind: Font.Family
-          use: dependency
+      additionalProperties: { x-telo-ref: { kind: Font.Family, use: dependency } }
     images:
       title: Images
       description: Named raster images an `image` node refers to, as data URIs.
@@ -709,30 +635,21 @@ schema:
       type: array
       items: { $ref: "telo://Self/Node" }
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     header:
       title: Header
       description: Repeated at the top of every page.
       type: array
       items: { $ref: "telo://Self/Node" }
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     footer:
       title: Footer
       description: Repeated at the bottom of every page.
       type: array
       items: { $ref: "telo://Self/Node" }
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     info:
       title: Document info
       description: PDF metadata.
@@ -745,10 +662,7 @@ schema:
         keywords: { type: string }
         creator: { type: string }
         producer: { type: string }
-    compress:
-      title: Compress
-      type: boolean
-      default: true
+    compress: { title: Compress, type: boolean, default: true }
     userPassword:
       title: User password
       description: Required to open the document.

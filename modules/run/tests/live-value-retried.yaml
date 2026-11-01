@@ -13,8 +13,7 @@ metadata:
     retry fragment, which also says WHERE the budget is. That genericity is what
     needs guarding: the check is gated on several conditions coinciding, and any
     one of them regressing turns it off with no other symptom.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref stepRetry
   - !ref targetRetry
@@ -26,76 +25,62 @@ targets:
 ---
 # The re-attempt is on the STEP.
 kind: Assert.Manifest
-metadata:
-  name: stepRetry
+metadata: { name: stepRetry }
 source: ./__fixtures__/retried-live-step.yaml
 expect:
   errors:
-    - code: LIVE_VALUE_RETRIED
-      message: "steps[1].inputs.input"
+    - { code: LIVE_VALUE_RETRIED, message: "steps[1].inputs.input" }
 ---
 # The re-attempt is on the TARGET. A live value is doomed by either site, so both
 # are consulted — reading only the step's would miss every `Http.Request` with a
 # client-level policy, which is the common shape.
 kind: Assert.Manifest
-metadata:
-  name: targetRetry
+metadata: { name: targetRetry }
 source: ./__fixtures__/retried-live-target.yaml
 expect:
   errors:
-    - code: LIVE_VALUE_RETRIED
-      message: "the target's `retry`"
+    - { code: LIVE_VALUE_RETRIED, message: "the target's `retry`" }
 ---
 # The DEPRECATED bare-count spelling. It is kept precisely because published
 # manifests carry it, so an annotation that only understood the object form would
 # leave the spelling most manifests in the wild still use unchecked.
 kind: Assert.Manifest
-metadata:
-  name: legacyRetries
+metadata: { name: legacyRetries }
 source: ./__fixtures__/retried-live-legacy.yaml
 expect:
   errors:
-    - code: LIVE_VALUE_RETRIED
-      message: "the target's `retries`"
+    - { code: LIVE_VALUE_RETRIED, message: "the target's `retries`" }
 ---
 # The live value arrives through the composer's OWN declared inputType rather
 # than from an earlier step — how an uploaded body reaches a handler. A check
 # reading only `steps.` chains reports nothing here.
 kind: Assert.Manifest
-metadata:
-  name: forwardedInput
+metadata: { name: forwardedInput }
 source: ./__fixtures__/retried-live-forwarded.yaml
 expect:
   errors:
-    - code: LIVE_VALUE_RETRIED
-      message: "steps[0].inputs.input"
+    - { code: LIVE_VALUE_RETRIED, message: "steps[0].inputs.input" }
 ---
 # A BOOT TARGET. The same shape as a step, so the check must reach it there too —
 # and it did not, because `builtins.ts` embeds the fragment instead of pointing at
 # it and so never met the loader that expands one.
 kind: Assert.Manifest
-metadata:
-  name: bootTarget
+metadata: { name: bootTarget }
 source: ./__fixtures__/retried-live-boot-target.yaml
 expect:
   errors:
-    - code: LIVE_VALUE_RETRIED
-      message: "targets[1].inputs.input"
+    - { code: LIVE_VALUE_RETRIED, message: "targets[1].inputs.input" }
 ---
 # A collected list is replayable, which is what retry is FOR. No diagnostic — the
 # check must not fire on the fix it recommends.
 kind: Assert.Manifest
-metadata:
-  name: replayableValue
+metadata: { name: replayableValue }
 source: ./__fixtures__/retried-value-ok.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # A live value with no re-attempt anywhere: the ordinary streaming pipeline, and
 # the false positive that would make the diagnostic unusable.
 kind: Assert.Manifest
-metadata:
-  name: noRetryDeclared
+metadata: { name: noRetryDeclared }
 source: ./__fixtures__/live-no-retry.yaml
-expect:
-  errors: []
+expect: { errors: [] }

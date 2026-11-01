@@ -57,8 +57,7 @@ metadata: { name: escapedPassword }
 steps:
   - name: createRole
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: "CREATE ROLE telo_escape LOGIN PASSWORD 'p@ss/w:rd'"
+    inputs: { sql: "CREATE ROLE telo_escape LOGIN PASSWORD 'p@ss/w:rd'" }
   - name: signIn
     invoke:
       kind: Run.Sequence
@@ -90,8 +89,7 @@ steps:
 ---
 kind: Test.Suite
 metadata: { name: refusals }
-include:
-  - "__fixtures__/database-access/*.yaml"
+include: ["__fixtures__/database-access/*.yaml"]
 # These fixtures ARE the test, so the default fixture exclusion is dropped.
 exclude: []
 env:

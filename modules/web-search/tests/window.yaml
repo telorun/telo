@@ -2,19 +2,13 @@
 # (the slice plus one probe, capped at the engine's maximum), and how to cut the
 # slice and learn whether anything follows it.
 kind: Telo.Application
-metadata:
-  name: WebSearchWindowTest
-  version: 1.0.0
-imports:
-  WebSearch: ..
-  Run: ../../run
-  Assert: ../../assert
+metadata: { name: WebSearchWindowTest, version: 1.0.0 }
+imports: { WebSearch: .., Run: ../../run, Assert: ../../assert }
 targets:
   - !ref window
 ---
 kind: Run.Sequence
-metadata:
-  name: window
+metadata: { name: window }
 steps:
   - name: requested
     invoke: { kind: Assert.Equals }

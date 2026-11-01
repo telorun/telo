@@ -49,20 +49,14 @@ metadata: { name: queryVector }
 model: !ref model
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 steps:
   - name: inspect
     inputs:
       probe: !cel resources.model
     invoke:
       kind: Run.Value
-      inputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            probe: {}
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { probe: {} } } }
       value:
         queryPrompt: !cel "'queryPrompt' in inputs.probe ? inputs.probe.queryPrompt : null"
         passagePrompt: !cel "'passagePrompt' in inputs.probe ? inputs.probe.passagePrompt : null"

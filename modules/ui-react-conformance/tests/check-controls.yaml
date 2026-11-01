@@ -28,5 +28,4 @@ steps:
         - check: vector-failed
           subject: "Select: asks to close on Escape, and stays open until the renderer closes it"
           message: 'step 2: the intents reported were [], not [["onOpenChange",false,"escape"]]; step 2: nothing is drawn as {"part":"select-content"}'
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

@@ -28,19 +28,13 @@ targets:
 ---
 kind: AiEcho.EchoModelStream
 metadata: { name: echo }
-emitToolCall:
-  name: ghost
-  arguments: {}
+emitToolCall: { name: ghost, arguments: {} }
 ---
 kind: Run.Value
 metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      a: { type: number }
-      b: { type: number }
+  schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
 value:
   product: !cel "inputs.a * inputs.b"
 ---
@@ -54,9 +48,7 @@ tools:
       type: object
       additionalProperties: false
       required: [ a, b ]
-      properties:
-        a: { type: number }
-        b: { type: number }
+      properties: { a: { type: number }, b: { type: number } }
 ---
 kind: Ai.AgentStream
 metadata: { name: assistant }
@@ -76,11 +68,7 @@ routes:
       path: /chat
       method: POST
       schema:
-        body:
-          type: object
-          required: [ prompt ]
-          properties:
-            prompt: { type: string }
+        body: { type: object, required: [prompt], properties: { prompt: { type: string } } }
     handler: !ref assistant
     inputs:
       prompt: !cel "request.body.prompt"
@@ -98,11 +86,7 @@ routes:
       - status: 500
         content:
           application/json:
-            schema:
-              type: object
-              required: [error]
-              properties:
-                error: { type: string }
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
             body:
               error: !cel "error.code"
 ---
@@ -131,28 +115,17 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      url: { type: string }
-      prompt: { type: string }
+    properties: { url: { type: string }, prompt: { type: string } }
     required: [ url, prompt ]
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: true
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: true } }
 ---
 kind: Run.Sequence
 metadata: { name: testToolError }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8952
-    openapi:
-      info:
-        title: AgentStream tool-error test
-        version: 1.0.0
+    listen: { address: 127.0.0.1, port: 8952 }
+    openapi: { info: { title: AgentStream tool-error test, version: 1.0.0 } }
     mounts:
       - path: /
         mount: !ref api
@@ -160,9 +133,7 @@ targets:
   - !ref Server
 steps:
   - name: hit
-    inputs:
-      url: http://127.0.0.1:8952/chat
-      prompt: "call the ghost"
+    inputs: { url: http://127.0.0.1:8952/chat, prompt: "call the ghost" }
     invoke: !ref fetchAndSummarize
   - name: assertTerminalError
     inputs:
@@ -187,14 +158,12 @@ steps:
   - name: direct
     try:
       - name: start
-        inputs:
-          prompt: "call the ghost"
+        inputs: { prompt: "call the ghost" }
         invoke: !ref assistant
       - name: drain
         inputs:
           input: !cel "steps.start.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
     catch:
       - name: assertCatchableByName
         inputs:

@@ -11,15 +11,8 @@ metadata:
     every effect or losing them all. Backend-neutral — an engine module supplies the
     recording and the resumption; this module supplies the pieces a body uses whatever
     engine is underneath.
-requires:
-  telo: ">=0.79.0"
-exports:
-  kinds:
-    - Run
-    - Idempotent
-    - Sleep
-    - Await
-    - Value
+requires: { telo: ">=0.79.0" }
+exports: { kinds: [Run, Idempotent, Sleep, Await, Value] }
 ---
 # Durable.Run — a MARKER, and deliberately nothing else.
 #
@@ -105,8 +98,7 @@ metadata:
     claim. Use it for a hot loop whose every write is an upsert, where a durable claim
     per iteration would cost more than it saves.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#idempotent
+controllers: [pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#idempotent]
 schema:
   type: object
   required: [reason, steps]
@@ -126,8 +118,7 @@ schema:
       description: The body whose re-execution you are asserting is safe.
       x-telo-topology-role: steps
       type: array
-      items:
-        $ref: "telo://manifest#/$defs/Step"
+      items: { $ref: "telo://manifest#/$defs/Step" }
       # The attribute's value is the CLASS of claim, which is all a kind can state
       # once for every instance of it; the specific justification is this
       # resource's own `reason:`, which is per instance by nature and readable as
@@ -138,20 +129,14 @@ schema:
         idempotent: >-
           the author asserts re-running this region is observably a no-op; this
           resource's `reason:` states why
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     inputs:
       title: Inputs
       type: object
       additionalProperties: true
       description: >-
         Values forwarded into the body, read there as `inputs.<field>`.
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 # Durable.Sleep — park until a time.
 #
@@ -173,11 +158,8 @@ metadata:
     continues to the original deadline instead of starting the clock again. The run
     releases its hold while waiting, so the application may exit and be restarted.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#sleep
-inputType:
-  type: object
-  additionalProperties: true
+controllers: [pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#sleep]
+inputType: { type: object, additionalProperties: true }
 outputType:
   type: object
   additionalProperties: false
@@ -192,8 +174,8 @@ schema:
   # Exactly one of the two, because they are two ways of saying the same thing
   # and accepting both would leave the precedence to be discovered.
   oneOf:
-    - required: [for]
-    - required: [until]
+    - { required: [for] }
+    - { required: [until] }
   # What a satisfying zone must GUARANTEE, not merely which kind it is. A kind
   # extending Durable.Run whose body slot omits `replayed` would satisfy the kind
   # test while being a zone the durable checks never look inside — the run would
@@ -215,10 +197,7 @@ schema:
       description: How long to wait, as a duration (`30s`, `72h`).
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     until:
       title: Until
       description: >-
@@ -226,10 +205,7 @@ schema:
         is a property of the data rather than of when the wait started.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
 ---
 # Durable.Await — park until something outside the run delivers a value.
 #
@@ -251,8 +227,7 @@ metadata:
     of what the delivery carries, so the steps that read it are type-checked. An optional
     deadline turns an unanswered wait into a failure rather than a run that waits forever.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#awaitDelivery
+controllers: [pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#awaitDelivery]
 throws:
   codes:
     ERR_DURABLE_AWAIT_TIMEOUT:
@@ -285,9 +260,7 @@ schema:
       description: >-
         What a delivery to this await carries. Per instance, because that is what it is —
         and without it the steps reading this result would type-check against nothing.
-      x-telo-ref:
-        kind: Telo.JsonSchema
-        use: schema
+      x-telo-ref: { kind: Telo.JsonSchema, use: schema }
     token:
       title: Token
       description: >-
@@ -298,10 +271,7 @@ schema:
         reads the work rather than by the work itself.
       type: string
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     timeout:
       title: Timeout
       description: >-
@@ -331,11 +301,8 @@ metadata:
     fixed for the life of the work. Use it inside a region that may re-run, where a fresh
     value each time would make the re-run produce different records.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#value
-inputType:
-  type: object
-  additionalProperties: true
+controllers: [pkg:telo/local/js?path=./nodejs/durable.mjs&local_path=./nodejs/src/index.ts#value]
+inputType: { type: object, additionalProperties: true }
 schema:
   type: object
   required: [value]
@@ -349,13 +316,8 @@ schema:
       title: Value
       description: The expression to evaluate once and record.
       x-telo-eval: runtime
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     outputType:
       title: Output type
       description: The shape of the recorded value, so steps reading it type-check.
-      x-telo-ref:
-        kind: Telo.JsonSchema
-        use: schema
+      x-telo-ref: { kind: Telo.JsonSchema, use: schema }

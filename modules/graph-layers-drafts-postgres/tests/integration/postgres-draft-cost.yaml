@@ -81,9 +81,7 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.RelationshipTable
 metadata: { name: knowsTable }
@@ -180,8 +178,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: !ref write
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_drafts_ops CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_drafts_ops CASCADE }
 ---
 # What this transaction has read from the two typed tables so far.
 kind: Run.Sequence
@@ -218,9 +215,7 @@ inputType:
   schema:
     type: object
     required: [from, to]
-    properties:
-      from: { type: integer }
-      to: { type: integer }
+    properties: { from: { type: integer }, to: { type: integer } }
 steps:
   - name: people
     invoke: !ref write
@@ -257,8 +252,7 @@ steps:
   # layers stand.
   - name: revision
     invoke: !ref write
-    inputs:
-      sql: UPDATE graph_drafts_ops.graph_layers SET head_revision = 1
+    inputs: { sql: UPDATE graph_drafts_ops.graph_layers SET head_revision = 1 }
   - name: beneath
     invoke: !ref write
     inputs:
@@ -378,11 +372,7 @@ kind: Run.Sequence
 metadata: { name: moveBeneath }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [at]
-    properties:
-      at: { type: integer }
+  schema: { type: object, required: [at], properties: { at: { type: integer } } }
 steps:
   - name: people
     invoke: !ref write
@@ -503,11 +493,7 @@ kind: Run.Sequence
 metadata: { name: measureConflicts }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [draft]
-    properties:
-      draft: { type: string }
+  schema: { type: object, required: [draft], properties: { draft: { type: string } } }
 steps:
   - name: session
     inputs: { draft: !cel "inputs.draft" }
@@ -570,11 +556,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [draft]
-      properties:
-        draft: { type: string }
+    schema: { type: object, required: [draft], properties: { draft: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -598,11 +580,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [draft]
-      properties:
-        draft: { type: string }
+    schema: { type: object, required: [draft], properties: { draft: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -624,11 +602,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [draft]
-      properties:
-        draft: { type: string }
+    schema: { type: object, required: [draft], properties: { draft: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -653,9 +627,7 @@ inputType:
   schema:
     type: object
     required: [at, beneath]
-    properties:
-      at: { type: integer }
-      beneath: { type: integer }
+    properties: { at: { type: integer }, beneath: { type: integer } }
 steps:
   - name: openMoved
     invoke: !ref openDraft
@@ -701,9 +673,7 @@ inputType:
   schema:
     type: object
     required: [draft, pages]
-    properties:
-      draft: { type: string }
-      pages: { type: integer }
+    properties: { draft: { type: string }, pages: { type: integer } }
 steps:
   - name: session
     inputs: { draft: !cel "inputs.draft", count: !cel "inputs.pages" }
@@ -735,11 +705,7 @@ steps:
               kind: Run.Sequence
               inputType:
                 kind: Telo.JsonSchema
-                schema:
-                  type: object
-                  required: [cursor]
-                  properties:
-                    cursor: { type: string }
+                schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
               steps:
                 - name: before
                   invoke: !ref readCounters
@@ -786,11 +752,7 @@ steps:
   kind: Run.Sequence
   inputType:
     kind: Telo.JsonSchema
-    schema:
-      type: object
-      required: [cursor]
-      properties:
-        cursor: { type: string }
+    schema: { type: object, required: [cursor], properties: { cursor: { type: string } } }
   steps:
     - name: before
       invoke: !ref readCounters
@@ -812,11 +774,7 @@ kind: Run.Sequence
 metadata: { name: measureSessionWalk }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [draft]
-    properties:
-      draft: { type: string }
+  schema: { type: object, required: [draft], properties: { draft: { type: string } } }
 steps:
   - name: session
     inputs: { draft: !cel "inputs.draft" }
@@ -888,9 +846,7 @@ inputType:
   schema:
     type: object
     required: [draft, key]
-    properties:
-      draft: { type: string }
-      key: { type: string }
+    properties: { draft: { type: string }, key: { type: string } }
 steps:
   - name: session
     inputs: { draft: !cel "inputs.draft", key: !cel "inputs.key" }
@@ -909,11 +865,7 @@ steps:
               kind: Run.Sequence
               inputType:
                 kind: Telo.JsonSchema
-                schema:
-                  type: object
-                  required: [key]
-                  properties:
-                    key: { type: string }
+                schema: { type: object, required: [key], properties: { key: { type: string } } }
               steps:
                 - name: before
                   invoke: !ref readCounters
@@ -977,12 +929,10 @@ steps:
     inputs: { draft: !cel "steps.registerTop.result.draft.id" }
   - name: noAutovacuumPeople
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_drafts_ops.people SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_drafts_ops.people SET (autovacuum_enabled = false) }
   - name: noAutovacuumKnows
     invoke: !ref write
-    inputs:
-      sql: ALTER TABLE graph_drafts_ops.knows SET (autovacuum_enabled = false)
+    inputs: { sql: ALTER TABLE graph_drafts_ops.knows SET (autovacuum_enabled = false) }
   - name: fixed
     invoke: !ref addFixed
   - name: populate
@@ -1132,10 +1082,7 @@ steps:
         withdrawn: !cel "[steps.deleteInSmallDraft.result.withdrawn, steps.deleteInLargeDraft.result.withdrawn]"
         sequential: !cel "[steps.deleteInSmallDraft.result.sequential, steps.deleteInLargeDraft.result.sequential]"
         more: !cel "steps.deleteInLargeDraft.result.fetched - steps.deleteInSmallDraft.result.fetched"
-      expected:
-        withdrawn: [10, 10]
-        sequential: [0, 0]
-        more: 0
+      expected: { withdrawn: [10, 10], sequential: [0, 0], more: 0 }
 
   # 5. A traversal in a session, beside a 20,000-row draft, at both layer sizes.
   - name: assertSessionWalk

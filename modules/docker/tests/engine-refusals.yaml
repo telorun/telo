@@ -7,8 +7,7 @@ metadata:
     check`; an endpoint nothing answers on fails the container's start with
     ERR_CONTAINER_ENGINE_UNREACHABLE, naming the container and the endpoint.
     Needs no engine on the machine.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref unknownScheme
   - !ref unreachable
@@ -18,8 +17,7 @@ metadata: { name: unknownScheme }
 source: ./__fixtures__/bad-endpoint.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: endpoint
+    - { code: SCHEMA_VIOLATION, message: endpoint }
 ---
 kind: Assert.Manifest
 metadata: { name: unreachable }

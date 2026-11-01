@@ -5,9 +5,7 @@
 # JSON results, and an unreachable instance are ERR_SEARCH_FAILED. A client with
 # `throwOnHttpError` maps the same way.
 kind: Telo.Application
-metadata:
-  name: SearxngFailuresTest
-  version: 1.0.0
+metadata: { name: SearxngFailuresTest, version: 1.0.0 }
 imports:
   SearXNG: ..
   Http: ../../http-client
@@ -49,20 +47,15 @@ with:
       - request:
           path: /search
           method: GET
-          schema:
-            query: { type: object, additionalProperties: true }
+          schema: { query: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 403
             when: !cel "request.query.q == 'denied'"
-            content:
-              text/plain:
-                body: Forbidden
+            content: { text/plain: { body: Forbidden } }
           - status: 429
             when: !cel "request.query.q == 'limited'"
-            content:
-              text/plain:
-                body: Too Many Requests
+            content: { text/plain: { body: Too Many Requests } }
           - status: 500
             when: !cel "request.query.q == 'broken'"
             content:
@@ -71,18 +64,13 @@ with:
                 body: { error: search error }
           - status: 200
             when: !cel "request.query.q == 'html'"
-            content:
-              text/html:
-                body: "<html><body>results</body></html>"
+            content: { text/html: { body: "<html><body>results</body></html>" } }
           - status: 200
             content:
-              application/json:
-                schema: { type: object, additionalProperties: true }
-                body: { query: other }
+              application/json: { schema: { type: object, additionalProperties: true }, body: { query: other } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18844
+    listen: { port: 18844 }
     mounts:
       - path: /
         mount: !ref FakeSearxng
@@ -137,8 +125,7 @@ steps:
           message: "SearXNG answered 403: the instance does not serve JSON results. Add `json` to `search.formats` in its settings.yml."
         - code: ERR_SEARCH_RATE_LIMITED
           message: SearXNG answered 429; its limiter asks the caller to slow down.
-        - code: ERR_SEARCH_FAILED
-          message: "SearXNG answered HTTP 500: search error"
+        - { code: ERR_SEARCH_FAILED, message: "SearXNG answered HTTP 500: search error" }
         - code: ERR_SEARCH_FAILED
           message: SearXNG answered 200 with a body that is not its JSON results.
         - code: ERR_SEARCH_FAILED
@@ -150,5 +137,4 @@ steps:
         # The client hands the body over as text.
         - code: ERR_SEARCH_FAILED
           message: 'SearXNG answered HTTP 500: {"error":"search error"}'
-        - code: ERR_SEARCH_FAILED
-          message: "The request to SearXNG failed: …"
+        - { code: ERR_SEARCH_FAILED, message: "The request to SearXNG failed: …" }

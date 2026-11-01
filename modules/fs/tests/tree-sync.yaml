@@ -7,10 +7,7 @@ metadata:
     hashes the result. Verifies: a full seed writes every file; `exclude` skips
     a vendor dir; equal content yields an equal hash; a delta writes changed
     files and deletes removed ones without touching untouched files.
-imports:
-  Fs: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Fs: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 # The directory the test writes its scratch tree into — one anchor, from which

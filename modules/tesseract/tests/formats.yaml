@@ -30,8 +30,7 @@ steps:
     invoke:
       kind: PdfMake.Document
       content:
-        - text: The quick brown fox jumps over the lazy dog
-          fontSize: 20
+        - { text: The quick brown fox jumps over the lazy dog, fontSize: 20 }
   - name: jpeg
     invoke: !ref rasterizer
     inputs:

@@ -33,9 +33,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8957
+    listen: { address: 127.0.0.1, port: 8957 }
     mounts:
       - path: /
         mount: !ref Lib.api
@@ -56,7 +54,5 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          status: { const: 200 }
-          message: { const: "Hello World!" }
+        properties: { status: { const: 200 }, message: { const: "Hello World!" } }
         required: [ status, message ]

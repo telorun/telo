@@ -7,8 +7,7 @@ metadata:
   name: HtmlSanitizePolicyRefusalsTest
   version: 1.0.0
   description: Each sanitize resource rule and its controller twin refuse the same policy.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref htmlSanitizeUnknownElement
   - !ref htmlSanitizeUnknownElementAtRuntime
@@ -36,8 +35,7 @@ targets:
 # An `attributes` entry for an element the policy does not keep: a sanitize policy contradicting itself, refused at the
 # declaration…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeUnknownElement
+metadata: { name: htmlSanitizeUnknownElement }
 source: ./__fixtures__/sanitize-policy/unknown-element/telo.yaml
 expect:
   errors:
@@ -46,8 +44,7 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeUnknownElementAtRuntime
+metadata: { name: htmlSanitizeUnknownElementAtRuntime }
 source: ./__fixtures__/sanitize-policy/unknown-element-app.yaml
 expect:
   errors: []
@@ -56,8 +53,7 @@ expect:
 # A URL attribute allowed with no scheme list: a sanitize policy contradicting itself, refused at the
 # declaration…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeUrlWithoutProtocols
+metadata: { name: htmlSanitizeUrlWithoutProtocols }
 source: ./__fixtures__/sanitize-policy/url-without-protocols/telo.yaml
 expect:
   errors:
@@ -66,18 +62,14 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeUrlWithoutProtocolsAtRuntime
+metadata: { name: htmlSanitizeUrlWithoutProtocolsAtRuntime }
 source: ./__fixtures__/sanitize-policy/url-without-protocols-app.yaml
-expect:
-  errors: []
-  runFails: "HTML_SANITIZE_URL_WITHOUT_PROTOCOLS"
+expect: { errors: [], runFails: "HTML_SANITIZE_URL_WITHOUT_PROTOCOLS" }
 ---
 # An element both kept and dropped with its content: a sanitize policy contradicting itself, refused at the
 # declaration…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeDropAllowed
+metadata: { name: htmlSanitizeDropAllowed }
 source: ./__fixtures__/sanitize-policy/drop-allowed/telo.yaml
 expect:
   errors:
@@ -86,18 +78,14 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeDropAllowedAtRuntime
+metadata: { name: htmlSanitizeDropAllowedAtRuntime }
 source: ./__fixtures__/sanitize-policy/drop-allowed-app.yaml
-expect:
-  errors: []
-  runFails: "HTML_SANITIZE_DROP_ALLOWED"
+expect: { errors: [], runFails: "HTML_SANITIZE_DROP_ALLOWED" }
 ---
 # An id prefix with no id or name allowed to prefix: refused at the
 # declaration…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeIdPrefixUnused
+metadata: { name: htmlSanitizeIdPrefixUnused }
 source: ./__fixtures__/sanitize-policy/id-prefix-unused/telo.yaml
 expect:
   errors:
@@ -106,18 +94,14 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeIdPrefixUnusedAtRuntime
+metadata: { name: htmlSanitizeIdPrefixUnusedAtRuntime }
 source: ./__fixtures__/sanitize-policy/id-prefix-unused-app.yaml
-expect:
-  errors: []
-  runFails: "HTML_SANITIZE_ID_PREFIX_UNUSED"
+expect: { errors: [], runFails: "HTML_SANITIZE_ID_PREFIX_UNUSED" }
 ---
 # An element whose content is raw text cannot be sanitized, so it cannot be kept:
 # refused at the declaration, anchored at the entry…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeRawTextStyle
+metadata: { name: htmlSanitizeRawTextStyle }
 source: ./__fixtures__/sanitize-policy/raw-text-style/telo.yaml
 expect:
   errors:
@@ -126,8 +110,7 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeRawTextStyleAtRuntime
+metadata: { name: htmlSanitizeRawTextStyleAtRuntime }
 source: ./__fixtures__/sanitize-policy/raw-text-style-app.yaml
 expect:
   errors: []
@@ -135,8 +118,7 @@ expect:
 ---
 # `noscript` is raw text too, since the parser runs with scripting enabled.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeRawTextNoscript
+metadata: { name: htmlSanitizeRawTextNoscript }
 source: ./__fixtures__/sanitize-policy/raw-text-noscript/telo.yaml
 expect:
   errors:
@@ -144,8 +126,7 @@ expect:
       message: "at 'elements[1]': keeps an element whose content is raw text"
 ---
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeRawTextNoscriptAtRuntime
+metadata: { name: htmlSanitizeRawTextNoscriptAtRuntime }
 source: ./__fixtures__/sanitize-policy/raw-text-noscript-app.yaml
 expect:
   errors: []
@@ -154,8 +135,7 @@ expect:
 # `svg` (like `math` and `image`) is never written as an HTML element, so a
 # policy cannot keep it: refused at the declaration, anchored at the entry…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeNotAnHtmlElement
+metadata: { name: htmlSanitizeNotAnHtmlElement }
 source: ./__fixtures__/sanitize-policy/not-an-html-element/telo.yaml
 expect:
   errors:
@@ -164,18 +144,14 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeNotAnHtmlElementAtRuntime
+metadata: { name: htmlSanitizeNotAnHtmlElementAtRuntime }
 source: ./__fixtures__/sanitize-policy/not-an-html-element-app.yaml
-expect:
-  errors: []
-  runFails: "HTML_SANITIZE_NOT_AN_HTML_ELEMENT"
+expect: { errors: [], runFails: "HTML_SANITIZE_NOT_AN_HTML_ELEMENT" }
 ---
 # A URL scheme that runs script, listed in `protocols`: refused at the
 # declaration, anchored at the element's attribute map…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeScriptProtocol
+metadata: { name: htmlSanitizeScriptProtocol }
 source: ./__fixtures__/sanitize-policy/script-protocol/telo.yaml
 expect:
   errors:
@@ -184,18 +160,14 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeScriptProtocolAtRuntime
+metadata: { name: htmlSanitizeScriptProtocolAtRuntime }
 source: ./__fixtures__/sanitize-policy/script-protocol-app.yaml
-expect:
-  errors: []
-  runFails: "HTML_SANITIZE_SCRIPT_PROTOCOL"
+expect: { errors: [], runFails: "HTML_SANITIZE_SCRIPT_PROTOCOL" }
 ---
 # A `setAttributes` entry for an element the policy does not keep: refused at the
 # declaration, anchored at the entry…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeUnknownElementForced
+metadata: { name: htmlSanitizeUnknownElementForced }
 source: ./__fixtures__/sanitize-policy/unknown-element-forced/telo.yaml
 expect:
   errors:
@@ -204,18 +176,14 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeUnknownElementForcedAtRuntime
+metadata: { name: htmlSanitizeUnknownElementForcedAtRuntime }
 source: ./__fixtures__/sanitize-policy/unknown-element-forced-app.yaml
-expect:
-  errors: []
-  runFails: "HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED"
+expect: { errors: [], runFails: "HTML_SANITIZE_UNKNOWN_ELEMENT_FORCED" }
 ---
 # An event handler allowed through from the input: refused at the declaration,
 # anchored at the element's attribute map…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeEventHandler
+metadata: { name: htmlSanitizeEventHandler }
 source: ./__fixtures__/sanitize-policy/event-handler/telo.yaml
 expect:
   errors:
@@ -224,8 +192,7 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeEventHandlerAtRuntime
+metadata: { name: htmlSanitizeEventHandlerAtRuntime }
 source: ./__fixtures__/sanitize-policy/event-handler-app.yaml
 expect:
   errors: []
@@ -234,8 +201,7 @@ expect:
 # An event handler forced onto every kept element: refused at the declaration,
 # anchored at the element's entry…
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeEventHandlerForced
+metadata: { name: htmlSanitizeEventHandlerForced }
 source: ./__fixtures__/sanitize-policy/event-handler-forced/telo.yaml
 expect:
   errors:
@@ -244,9 +210,6 @@ expect:
 ---
 # …and by the controller at creation, from a consumer whose check is silent.
 kind: Assert.Manifest
-metadata:
-  name: htmlSanitizeEventHandlerForcedAtRuntime
+metadata: { name: htmlSanitizeEventHandlerForcedAtRuntime }
 source: ./__fixtures__/sanitize-policy/event-handler-forced-app.yaml
-expect:
-  errors: []
-  runFails: "HTML_SANITIZE_EVENT_HANDLER_FORCED"
+expect: { errors: [], runFails: "HTML_SANITIZE_EVENT_HANDLER_FORCED" }

@@ -31,13 +31,10 @@ metadata: { name: test }
 steps:
   - name: write
     invoke: !ref put
-    inputs:
-      key: "greeting"
-      value: { hello: "world" }
+    inputs: { key: "greeting", value: { hello: "world" } }
   - name: read
     invoke: !ref get
-    inputs:
-      key: "greeting"
+    inputs: { key: "greeting" }
   - name: assertFresh
     inputs:
       state: !cel "steps.read.result.state"
@@ -47,20 +44,13 @@ steps:
       schema:
         type: object
         required: [state, hello]
-        properties:
-          state: { const: "fresh" }
-          hello: { const: "world" }
+        properties: { state: { const: "fresh" }, hello: { const: "world" } }
   - name: readAbsent
     invoke: !ref get
-    inputs:
-      key: "nope"
+    inputs: { key: "nope" }
   - name: assertMiss
     inputs:
       state: !cel "steps.readAbsent.result.state"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        required: [state]
-        properties:
-          state: { const: "miss" }
+      schema: { type: object, required: [state], properties: { state: { const: "miss" } } }

@@ -31,9 +31,7 @@ routes:
   - request:
       path: /upload
       method: PUT
-      schema:
-        body:
-          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
     handler:
       kind: Fs.FileWrite
       cwd: !module-path ./__fixtures__
@@ -59,12 +57,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8965
+    listen: { address: 127.0.0.1, port: 8965 }
     contentTypeParsers:
-      - contentType: application/octet-stream
-        stream: true
+      - { contentType: application/octet-stream, stream: true }
     mounts:
       - path: /
         mount: !ref uploads
@@ -93,11 +88,9 @@ steps:
     inputs:
       url: http://127.0.0.1:8965/upload
       method: PUT
-      headers:
-        content-type: application/octet-stream
+      headers: { content-type: application/octet-stream }
       body: !cel "bytesFromBase64(steps.payload.result)"
-    invoke:
-      kind: HttpClient.Request
+    invoke: { kind: HttpClient.Request }
   - name: stored
     inputs: { path: scratch-upload/upload.bin, encoding: base64 }
     invoke: !ref read
@@ -120,11 +113,9 @@ steps:
     inputs:
       url: http://127.0.0.1:8965/upload
       method: PUT
-      headers:
-        content-type: application/octet-stream
+      headers: { content-type: application/octet-stream }
       body: !cel "bytesFromBase64(steps.payload.result + 'AP8Q')"
-    invoke:
-      kind: HttpClient.Request
+    invoke: { kind: HttpClient.Request }
   - name: kept
     inputs: { path: scratch-upload/upload.bin, encoding: base64 }
     invoke: !ref read

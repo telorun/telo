@@ -36,18 +36,15 @@ steps:
         - !cel "bytesFromBase64('aWQ6IDQyCmV2ZW50OiB0aWNrCmRhdGE6IHsiYSI6MX0NCg==')"
         - !cel "bytesFromBase64('Cg==')"
         - !cel "bytesFromBase64('ZXZlbnQ6IG5vZGF0YQoKZGF0YTogW0RPTkVdCgo=')"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: decode
     inputs:
       input: !cel "steps.bytes.result.output"
-    invoke:
-      kind: Sse.Decoder
+    invoke: { kind: Sse.Decoder }
   - name: collect
     inputs:
       input: !cel "steps.decode.result.records"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertRecords
     inputs:
       actual: !cel "steps.collect.result.items"
@@ -69,18 +66,15 @@ steps:
   - name: encode
     inputs:
       input: !cel "steps.records.result.output"
-    invoke:
-      kind: Sse.Encoder
+    invoke: { kind: Sse.Encoder }
   - name: decodeRoundTrip
     inputs:
       input: !cel "steps.encode.result.output"
-    invoke:
-      kind: Sse.Decoder
+    invoke: { kind: Sse.Decoder }
   - name: collectRoundTrip
     inputs:
       input: !cel "steps.decodeRoundTrip.result.records"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertRoundTrip
     inputs:
       # The encoder JSON-encodes the non-`type` fields into `data`, so what comes
@@ -96,14 +90,11 @@ steps:
   - name: notAStream
     try:
       - name: notAStreamValue
-        invoke:
-          kind: Run.Value
-          value: { text: not a stream }
+        invoke: { kind: Run.Value, value: { text: not a stream } }
       - name: call
         inputs:
           input: !cel "steps.notAStreamValue.result.text"
-        invoke:
-          kind: Sse.Decoder
+        invoke: { kind: Sse.Decoder }
     catch:
       - name: assertRefused
         inputs:

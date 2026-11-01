@@ -1,9 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: TypeStaticAnalysisTest
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: TypeStaticAnalysisTest, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testBadFieldAccess
   - !ref testValidFieldAccess
@@ -14,45 +11,37 @@ targets:
 ---
 # Bad field access on typed output — should produce CEL_UNKNOWN_FIELD
 kind: Assert.Manifest
-metadata:
-  name: testBadFieldAccess
+metadata: { name: testBadFieldAccess }
 source: ./__fixtures__/bad-type-access.yaml
 expect:
   errors:
-    - code: CEL_UNKNOWN_FIELD
-      message: nonExistent
+    - { code: CEL_UNKNOWN_FIELD, message: nonExistent }
 ---
 # Valid field access on typed output — should produce zero errors
 kind: Assert.Manifest
-metadata:
-  name: testValidFieldAccess
+metadata: { name: testValidFieldAccess }
 source: ./__fixtures__/valid-type-access.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # Untyped step result — any access allowed, no false positives
 kind: Assert.Manifest
-metadata:
-  name: testUntypedStepAccess
+metadata: { name: testUntypedStepAccess }
 source: ./__fixtures__/untyped-step-access.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # `.slice(int)` is not a CEL method. `slice` IS a registered function — it takes
 # a sequence and two indices — so the rejection is a call-form/arity mismatch
 # rather than an unknown name, and the audit answers it from the registry by
 # listing the signatures that do exist.
 kind: Assert.Manifest
-metadata:
-  name: testBadCelOverload
+metadata: { name: testBadCelOverload }
 source: ./__fixtures__/bad-cel-overload.yaml
 expect:
   errors:
     # The engine decides each verdict where the cause is KNOWN: `x.slice(1)` names a
     # function no receiver form declares, which is the call written in the other form
     # rather than an argument of the wrong type.
-    - code: CEL_WRONG_CALL_FORM
-      message: '"slice" is called without a receiver'
+    - { code: CEL_WRONG_CALL_FORM, message: '"slice" is called without a receiver' }
     # The listing is derived from the registry, so the real signatures appear in
     # it without anyone writing them down — the regression this guards is the
     # listing going empty or unfiltered.
@@ -63,19 +52,15 @@ expect:
 # merge parent schemas exactly like the runtime, so an inherited field is known
 # and produces zero errors (regression: previously a false CEL_UNKNOWN_FIELD).
 kind: Assert.Manifest
-metadata:
-  name: testExtendsInheritedAccess
+metadata: { name: testExtendsInheritedAccess }
 source: ./__fixtures__/extends-inherited-access.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # Merging `extends` must not turn a strict child into an open object — a field
 # that is neither own nor inherited is still caught.
 kind: Assert.Manifest
-metadata:
-  name: testExtendsUnknownAccess
+metadata: { name: testExtendsUnknownAccess }
 source: ./__fixtures__/extends-unknown-access.yaml
 expect:
   errors:
-    - code: CEL_UNKNOWN_FIELD
-      message: bogus
+    - { code: CEL_UNKNOWN_FIELD, message: bogus }

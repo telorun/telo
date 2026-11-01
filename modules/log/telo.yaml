@@ -11,11 +11,7 @@ metadata:
     severity with a message and typed attributes, through the application's logging
     pipeline — thresholds, redaction, trace correlation and every configured
     destination apply as they do to the runtime's own records.
-exports:
-  kinds:
-    - Emit
-  resources:
-    - emit
+exports: { kinds: [Emit], resources: [emit] }
 ---
 kind: Telo.Definition
 metadata:
@@ -26,8 +22,7 @@ metadata:
     call. Returns an empty object; a record below the configured threshold is
     dropped, never an error.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/log.mjs&local_path=./nodejs/src/index.ts#Emit
+controllers: [pkg:telo/local/js?path=./nodejs/log.mjs&local_path=./nodejs/src/index.ts#Emit]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -43,9 +38,7 @@ inputType:
         type: string
         enum: [ trace, debug, info, warn, error, fatal ]
         description: Severity of the record.
-      message:
-        type: string
-        description: The record's human-readable headline.
+      message: { type: string, description: The record's human-readable headline. }
       attributes:
         type: object
         description: >-
@@ -55,23 +48,15 @@ inputType:
     $defs:
       AnyValue:
         anyOf:
-          - type: string
-          - type: boolean
-          - type: integer
-          - type: number
-          - type: "null"
-          - type: array
-            items: { $ref: "#/$defs/AnyValue" }
-          - type: object
-            additionalProperties: { $ref: "#/$defs/AnyValue" }
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    type: object
-    additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+          - { type: string }
+          - { type: boolean }
+          - { type: integer }
+          - { type: number }
+          - { type: "null" }
+          - { type: array, items: { $ref: "#/$defs/AnyValue" } }
+          - { type: object, additionalProperties: { $ref: "#/$defs/AnyValue" } }
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+schema: { type: object, additionalProperties: false }
 ---
 # Emitting takes no configuration, so one shared instance is all a consumer needs.
 kind: Self.Emit

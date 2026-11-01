@@ -9,8 +9,7 @@ metadata:
   name: GraphLayersSqlRevisionedStaticRefusals
   version: 1.0.0
   description: The revisioned store's structural rules, refused statically and at creation.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref bookkeepingNotInSchema
   - !ref bookkeepingNotInSchemaAtRuntime
@@ -34,9 +33,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: bookkeepingNotInSchemaAtRuntime }
 source: ./__fixtures__/revisioned-rules/bookkeeping-not-in-schema-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: basesNotInSchema }
@@ -49,9 +46,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: basesNotInSchemaAtRuntime }
 source: ./__fixtures__/revisioned-rules/bases-not-in-schema-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableNotInSchema }
@@ -64,9 +59,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/revisioned-rules/table-not-in-schema-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -79,9 +72,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/revisioned-rules/schema-connection-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableShared }
@@ -94,6 +85,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableSharedAtRuntime }
 source: ./__fixtures__/revisioned-rules/table-shared-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_SHARED"
+expect: { errors: [], runFails: "GRAPH_TABLE_SHARED" }

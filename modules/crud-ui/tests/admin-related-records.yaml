@@ -72,9 +72,7 @@ schema:
   type: object
   additionalProperties: false
   required: [id, status]
-  properties:
-    id: { type: integer }
-    status: { enum: [draft, review, published] }
+  properties: { id: { type: integer }, status: { enum: [draft, review, published] } }
 ---
 kind: Crud.Collection
 metadata: { name: authors }

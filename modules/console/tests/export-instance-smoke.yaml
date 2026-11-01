@@ -13,14 +13,11 @@ metadata:
     `equals` singleton (`!ref Assert.equals`) — so this whole application
     declares NO local resources, referencing only cross-module exports.
     `steps.Print.result` (the writeLine return value) confirms the invoke ran.
-imports:
-  Console: ../
-  Assert: ../../assert
+imports: { Console: ../, Assert: ../../assert }
 targets:
   - name: print
     invoke: !ref Console.writeLine
-    inputs:
-      output: "exported singleton works"
+    inputs: { output: "exported singleton works" }
   - name: check
     invoke: !ref Assert.equals
     inputs:

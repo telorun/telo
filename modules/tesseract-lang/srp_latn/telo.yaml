@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - srp_latn
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [srp_latn] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: srp_latn, member: package/4.0.0_best_int/srp_latn.traineddata.gz, sha256: db283bbbb4802a2f9c271bf00c15eec71c8a8cf045297f5b172a8dfcd3fbedd9, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: srp_latn
-  description: Serbian, Latin script
+metadata: { name: srp_latn, description: "Serbian, Latin script" }
 code: srp_latn
 data: !module-path ./tessdata/srp_latn.traineddata.gz

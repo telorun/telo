@@ -16,11 +16,8 @@ requires:
   # source reads the instance, so the body's forms and listing get no `model`
   # (ERR_RESOURCE_SCHEMA_VALIDATION_FAILED). Verified by execution.
   telo: ">=0.126.0"
-imports:
-  Crud: ../crud
-  UiKit: ../ui
-exports:
-  kinds: [CollectionSource, Admin]
+imports: { Crud: ../crud, UiKit: ../ui }
+exports: { kinds: [CollectionSource, Admin] }
 ---
 kind: Telo.Definition
 metadata:

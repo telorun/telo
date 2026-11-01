@@ -78,12 +78,10 @@ metadata: { name: seed }
 steps:
   - name: dropIndex
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: DROP INDEX IF EXISTS topk_vectors_embedding_idx
+    inputs: { sql: DROP INDEX IF EXISTS topk_vectors_embedding_idx }
   - name: empty
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: TRUNCATE topk_vectors
+    inputs: { sql: TRUNCATE topk_vectors }
   - name: load
     invoke: { kind: Sql.Command, connection: !ref db }
     inputs:
@@ -117,8 +115,7 @@ with:
 steps:
   - name: analyze
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: ANALYZE topk_vectors
+    inputs: { sql: ANALYZE topk_vectors }
   # The statement a filtered match runs, with the query vector inlined.
   - name: plan
     invoke: { kind: Sql.Query, connection: !ref db }
@@ -130,18 +127,13 @@ steps:
         ORDER BY embedding <=> '[1,0,0]'::vector LIMIT 50
   - name: filtered
     invoke: !ref indexMatch
-    inputs:
-      vector: [1.0, 0.0, 0.0]
-      metadataFilter:
-        kind: { $in: [wanted] }
+    inputs: { vector: [1.0, 0.0, 0.0], metadataFilter: { kind: { $in: [wanted] } } }
   - name: unfiltered
     invoke: !ref indexMatch
-    inputs:
-      vector: [1.0, 0.0, 0.0]
+    inputs: { vector: [1.0, 0.0, 0.0] }
   - name: rows
     invoke: { kind: Sql.Query, connection: !ref db }
-    inputs:
-      sql: SELECT id, embedding::real[] AS vector, metadata FROM topk_vectors
+    inputs: { sql: "SELECT id, embedding::real[] AS vector, metadata FROM topk_vectors" }
   - name: loadMemory
     invoke: { kind: VectorStore.Record, store: !ref memory }
     inputs:
@@ -149,10 +141,7 @@ steps:
         steps.rows.result.rows.map(r, {'id': r.id, 'vector': r.vector, 'metadata': r.metadata})
   - name: inMemory
     invoke: { kind: VectorStore.Match, store: !ref memory, topK: 50 }
-    inputs:
-      vector: [1.0, 0.0, 0.0]
-      metadataFilter:
-        kind: { $in: [wanted] }
+    inputs: { vector: [1.0, 0.0, 0.0], metadataFilter: { kind: { $in: [wanted] } } }
   - name: assert
     inputs:
       actual:
@@ -183,14 +172,10 @@ metadata: { name: noLeak }
 steps:
   - name: match
     invoke: { kind: VectorStore.Match, store: !ref singleIndex, topK: 5 }
-    inputs:
-      vector: [1.0, 0.0, 0.0]
-      metadataFilter:
-        kind: { $in: [wanted] }
+    inputs: { vector: [1.0, 0.0, 0.0], metadataFilter: { kind: { $in: [wanted] } } }
   - name: afterMatch
     invoke: { kind: Sql.Query, connection: !ref singleDb }
-    inputs:
-      sql: SELECT current_setting('hnsw.iterative_scan') AS setting
+    inputs: { sql: SELECT current_setting('hnsw.iterative_scan') AS setting }
   # Inside a caller's transaction the match joins it — on a one-connection pool a
   # transaction of its own would wait for a connection forever.
   - name: inTransaction
@@ -202,14 +187,10 @@ steps:
         steps:
           - name: match
             invoke: { kind: VectorStore.Match, store: !ref singleIndex, topK: 5 }
-            inputs:
-              vector: [1.0, 0.0, 0.0]
-              metadataFilter:
-                kind: { $in: [wanted] }
+            inputs: { vector: [1.0, 0.0, 0.0], metadataFilter: { kind: { $in: [wanted] } } }
           - name: setting
             invoke: { kind: Sql.Query, connection: !ref singleDb }
-            inputs:
-              sql: SELECT current_setting('hnsw.iterative_scan') AS setting
+            inputs: { sql: SELECT current_setting('hnsw.iterative_scan') AS setting }
         outputs:
           matches: !cel "steps.match.result.matches.map(m, m.id)"
           setting: !cel "steps.setting.result.rows[0].setting"
@@ -222,7 +203,5 @@ steps:
       expected:
         matches: [w0001, w0002, w0003, w0004, w0005]
         afterMatch: "off"
-        inTransaction:
-          matches: [w0001, w0002, w0003, w0004, w0005]
-          setting: "off"
+        inTransaction: { matches: [w0001, w0002, w0003, w0004, w0005], setting: "off" }
     invoke: { kind: Assert.Equals }

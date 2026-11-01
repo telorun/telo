@@ -49,8 +49,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_revisions_equal_by_type CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_revisions_equal_by_type CASCADE }
 ---
 kind: Layers.NodeTable
 metadata: { name: people }

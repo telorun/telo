@@ -19,18 +19,8 @@ requires:
   # chart dies at creation with a TypeError naming this module. Verified by
   # execution: the published 0.107.0 tarball exports neither name.
   telo: ">=0.108.0"
-imports:
-  Font: ../font
-exports:
-  kinds:
-    - Chart
-    - Cartesian
-    - Pie
-    - Donut
-    - Bar
-    - Line
-    - Area
-    - Scatter
+imports: { Font: ../font }
+exports: { kinds: [Chart, Cartesian, Pie, Donut, Bar, Line, Area, Scatter] }
 ---
 # SvgChart.Chart — what every chart has, declared once.
 #
@@ -71,14 +61,8 @@ outputType:
         description: >-
           The chart as standalone SVG markup. Static by design — no script, no hover, no
           animation — so it renders identically in a PDF, an email and a page.
-      width:
-        title: Width
-        type: number
-        description: The canvas width it was drawn at.
-      height:
-        title: Height
-        type: number
-        description: The canvas height it was drawn at.
+      width: { title: Width, type: number, description: The canvas width it was drawn at. }
+      height: { title: Height, type: number, description: The canvas height it was drawn at. }
       mediaType:
         title: Media type
         type: string
@@ -95,19 +79,14 @@ schema:
         encoding expression is checked against the row shape — a misspelled column is a
         startup error rather than an empty chart — and every call site is validated
         against the parameter list. Omitted, the row stays untyped.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     rows:
       title: Rows
       description: >-
         The rows to draw, one row per mark — never pre-grouped. A stacked bar takes one
         row per (category, series) pair; aggregate upstream with `Collection.GroupBy`.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     title:
       title: Title
       type: string
@@ -177,9 +156,7 @@ schema:
             Measures the text this chart will draw, in one call, and names the family the
             markup selects by. Point it at the same `Font.Family` the document embeds or
             the page serves, and the layout is computed against the type that renders.
-          x-telo-ref:
-            kind: Font.Measure
-            use: call
+          x-telo-ref: { kind: Font.Measure, use: call }
     legend:
       title: Legend
       type: object
@@ -234,9 +211,7 @@ schema:
           index: { type: integer }
           rows: { type: array }
       properties:
-        value:
-          title: Value
-          description: What this row's horizontal position is read from.
+        value: { title: Value, description: What this row's horizontal position is read from. }
         scale:
           title: Scale
           type: string
@@ -253,12 +228,8 @@ schema:
           description: >-
             Pins the ends of a continuous scale. Either end may be left out, in which case
             it comes from the data.
-          properties:
-            min: { type: number }
-            max: { type: number }
-        title:
-          title: Axis title
-          type: string
+          properties: { min: { type: number }, max: { type: number } }
+        title: { title: Axis title, type: string }
         tickFormat:
           title: Tick format
           type: string
@@ -285,9 +256,7 @@ schema:
           index: { type: integer }
           rows: { type: array }
       properties:
-        value:
-          title: Value
-          description: What this row's vertical position is read from.
+        value: { title: Value, description: What this row's vertical position is read from. }
         scale:
           title: Scale
           type: string
@@ -297,19 +266,10 @@ schema:
           title: Domain
           type: object
           additionalProperties: false
-          properties:
-            min: { type: number }
-            max: { type: number }
-        title:
-          title: Axis title
-          type: string
-        tickFormat:
-          title: Tick format
-          type: string
-        ticks:
-          title: Ticks
-          type: integer
-          minimum: 0
+          properties: { min: { type: number }, max: { type: number } }
+        title: { title: Axis title, type: string }
+        tickFormat: { title: Tick format, type: string }
+        ticks: { title: Ticks, type: integer, minimum: 0 }
     series:
       title: Series
       description: >-
@@ -327,9 +287,7 @@ schema:
       type: object
       additionalProperties: false
       description: Rules drawn across the plot at the tick positions.
-      properties:
-        x: { type: boolean, default: false }
-        y: { type: boolean, default: false }
+      properties: { x: { type: boolean, default: false }, y: { type: boolean, default: false } }
 ---
 kind: Telo.Definition
 metadata:
@@ -340,8 +298,7 @@ metadata:
     a pie draws one slice per category, so it means the rows were not aggregated.
 capability: Telo.Invocable
 extends: Self.Chart
-controllers:
-  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#PieController
+controllers: [pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#PieController]
 throws:
   codes:
     ERR_CHART_DATA_INVALID:
@@ -403,8 +360,7 @@ metadata:
     rows sharing a category is an error, because a ring draws one slice per category.
 capability: Telo.Invocable
 extends: Self.Pie
-controllers:
-  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#DonutController
+controllers: [pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#DonutController]
 # Restated rather than inherited: the throws union is not walked along `extends`,
 # so a kind that declares nothing declares an EMPTY union — and a `catches:` at a
 # donut call site would be told it names a code the target cannot throw, while
@@ -437,8 +393,7 @@ metadata:
     two rows sharing a pair is an error rather than a silent sum.
 capability: Telo.Invocable
 extends: Self.Cartesian
-controllers:
-  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#BarController
+controllers: [pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#BarController]
 throws:
   codes:
     ERR_CHART_DATA_INVALID:
@@ -496,8 +451,7 @@ metadata:
     line has one value per position.
 capability: Telo.Invocable
 extends: Self.Cartesian
-controllers:
-  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#LineController
+controllers: [pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#LineController]
 throws:
   codes:
     ERR_CHART_DATA_INVALID:
@@ -558,8 +512,7 @@ metadata:
     error, since a band has one value per position.
 capability: Telo.Invocable
 extends: Self.Cartesian
-controllers:
-  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#AreaController
+controllers: [pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#AreaController]
 throws:
   codes:
     ERR_CHART_DATA_INVALID:
@@ -598,8 +551,7 @@ metadata:
     — a cloud of points is what this chart is for.
 capability: Telo.Invocable
 extends: Self.Cartesian
-controllers:
-  - pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#ScatterController
+controllers: [pkg:telo/local/js?path=./nodejs/svg-chart.mjs&local_path=./nodejs/src/index.ts#ScatterController]
 throws:
   codes:
     ERR_CHART_DATA_INVALID:
@@ -624,9 +576,7 @@ schema:
           index: { type: integer }
           rows: { type: array }
       properties:
-        value:
-          title: Value
-          description: What this row's point size is read from.
+        value: { title: Value, description: What this row's point size is read from. }
         range:
           title: Range
           type: array

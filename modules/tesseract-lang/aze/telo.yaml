@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - aze
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [aze] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: aze, member: package/4.0.0_best_int/aze.traineddata.gz, sha256: 2652f2c25d74582f4dce0dec6fe6f9c4f0ce445c931642cc69db707af04de8a3, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: aze
-  description: Azerbaijani, Latin script
+metadata: { name: aze, description: "Azerbaijani, Latin script" }
 code: aze
 data: !module-path ./tessdata/aze.traineddata.gz

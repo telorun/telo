@@ -12,40 +12,23 @@ metadata:
     expected to produce. A failed check aborts the run and reports actual against
     expected.
 exports:
-  kinds:
-    - ModuleContext
-    - Schema
-    - Events
-    - Manifest
-    - Equals
-    - Matches
-    - Contains
+  kinds: [ModuleContext, Schema, Events, Manifest, Equals, Matches, Contains]
   # Ready-made singletons for the config-free assertions, so tests reference
   # `!ref Assert.equals` etc. instead of declaring their own instance. The
   # config-bearing kinds (ModuleContext/Schema/Events/Manifest) stay
   # instance-per-use and are not exported as resources.
-  resources:
-    - equals
-    - matches
-    - contains
+  resources: [equals, matches, contains]
 ---
 kind: Telo.Definition
 metadata:
   name: ModuleContext
   description: Asserts on the state of a named module's evaluation context during a test.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#ModuleContext
+controllers: [pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#ModuleContext]
 schema:
   type: object
   properties:
-    metadata:
-      type: object
-      properties:
-        name:
-          type: string
-      required:
-        - name
+    metadata: { type: object, properties: { name: { type: string } }, required: [name] }
     resources:
       title: Resources
       description: Per-import expectations, keyed by the import alias.
@@ -53,12 +36,8 @@ schema:
       additionalProperties:
         type: object
         properties:
-          variables:
-            type: object
-            additionalProperties: true
-          secrets:
-            type: object
-            additionalProperties: true
+          variables: { type: object, additionalProperties: true }
+          secrets: { type: object, additionalProperties: true }
         additionalProperties: false
     variables:
       title: Variables
@@ -70,46 +49,32 @@ schema:
       description: Expected secret values in the named module's evaluation context.
       type: object
       additionalProperties: true
-  required:
-    - metadata
+  required: [metadata]
 ---
 kind: Telo.Definition
 metadata:
   name: Schema
   description: Asserts that a value conforms to the given JSON Schema.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Schema
+controllers: [pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Schema]
 schema:
   type: object
   examples:
     - schema:
         type: object
-        properties:
-          code: { const: "ERR_ASSERTION_FAILED" }
+        properties: { code: { const: "ERR_ASSERTION_FAILED" } }
         required: [code]
   properties:
-    metadata:
-      type: object
-      properties:
-        name:
-          type: string
-      required:
-        - name
-    schema:
-      title: Schema
-      description: Value to assert (can be any type or expression)
-  required:
-    - metadata
-    - schema
+    metadata: { type: object, properties: { name: { type: string } }, required: [name] }
+    schema: { title: Schema, description: Value to assert (can be any type or expression) }
+  required: [metadata, schema]
 ---
 kind: Telo.Definition
 metadata:
   name: Events
   description: Asserts emitted events match an ordered sequence of expected patterns and payloads.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Events
+controllers: [pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Events]
 schema:
   type: object
   properties:
@@ -120,12 +85,8 @@ schema:
       items:
         type: object
         properties:
-          type:
-            title: Type
-            description: Event type pattern to include.
-            type: string
-        required:
-          - type
+          type: { title: Type, description: Event type pattern to include., type: string }
+        required: [type]
     expect:
       title: Expect
       type: array
@@ -156,24 +117,19 @@ schema:
               entries can sit in one list without either changing what the other means.
               `times: 0` asserts the event never happened, which the ordered form cannot
               express because absence is its failure rather than its success.
-        required:
-          - event
-  required:
-    - expect
+        required: [event]
+  required: [expect]
 ---
 kind: Telo.Definition
 metadata:
   name: Manifest
   description: Analyzes a manifest file and asserts its expected diagnostics or load failure.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Manifest
+controllers: [pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Manifest]
 schema:
   type: object
   properties:
-    source:
-      type: string
-      description: Relative path to the manifest file to analyze
+    source: { type: string, description: Relative path to the manifest file to analyze }
     expect:
       type: object
       properties:
@@ -183,12 +139,8 @@ schema:
           items:
             type: object
             properties:
-              code:
-                type: string
-                description: Diagnostic code (e.g. CEL_UNKNOWN_FIELD)
-              message:
-                type: string
-                description: Substring to match in the diagnostic message
+              code: { type: string, description: Diagnostic code (e.g. CEL_UNKNOWN_FIELD) }
+              message: { type: string, description: Substring to match in the diagnostic message }
               fix:
                 type: string
                 description: >-
@@ -201,12 +153,8 @@ schema:
           items:
             type: object
             properties:
-              code:
-                type: string
-                description: Diagnostic code (e.g. CAPABILITY_SHADOWS_EXTENDS)
-              message:
-                type: string
-                description: Substring to match in the diagnostic message
+              code: { type: string, description: Diagnostic code (e.g. CAPABILITY_SHADOWS_EXTENDS) }
+              message: { type: string, description: Substring to match in the diagnostic message }
               fix:
                 type: string
                 description: Substring to match in the diagnostic's suggested replacement
@@ -248,26 +196,20 @@ metadata:
   name: Equals
   description: Asserts that a value deep-equals an expected value.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Equals
+controllers: [pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Equals]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     examples:
-      - actual: 42
-        expected: 42
+      - { actual: 42, expected: 42 }
     properties:
       actual:
         title: Actual
         description: Value to check; typically a `!cel` read of a step's result (`steps.X.result.y`).
-      expected:
-        title: Expected
-        description: Value `actual` must deep-equal.
+      expected: { title: Expected, description: Value `actual` must deep-equal. }
     required: [actual, expected]
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Regex-match assertion for strings. Compare via step inputs:
 #   - name: Check
@@ -282,21 +224,15 @@ metadata:
   name: Matches
   description: Asserts that a string matches a JavaScript regular expression pattern.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Matches
+controllers: [pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Matches]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     examples:
-      - actual: "HELLO"
-        pattern: "^hello$"
-        flags: "i"
+      - { actual: "HELLO", pattern: "^hello$", flags: "i" }
     properties:
-      actual:
-        title: Actual
-        description: String to test against `pattern`.
-        type: string
+      actual: { title: Actual, description: String to test against `pattern`., type: string }
       pattern:
         title: Pattern
         description: JavaScript regular expression source (without delimiters).
@@ -306,9 +242,7 @@ inputType:
         description: Optional regex flags (`i`, `m`, `s`, `u`, …).
         type: string
     required: [actual, pattern]
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Substring-or-membership assertion. When `actual` is a string, checks
 # that it contains `value` as a substring. When `actual` is an array,
@@ -319,15 +253,13 @@ metadata:
   name: Contains
   description: Asserts that a string contains a substring or an array contains an element.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Contains
+controllers: [pkg:telo/local/js?path=./nodejs/assert.mjs&local_path=./nodejs/src/index.ts#Contains]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     examples:
-      - actual: [1, 2, 3]
-        value: 2
+      - { actual: [1, 2, 3], value: 2 }
     properties:
       actual:
         title: Actual
@@ -336,9 +268,7 @@ inputType:
         title: Value
         description: Substring (when `actual` is string) or element (when `actual` is array).
     required: [actual, value]
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Ready-made singleton instances exported via `exports.resources`. The config-free
 # assertions carry no per-instance state — the comparison args arrive at invoke time —

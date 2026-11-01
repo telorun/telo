@@ -5,8 +5,7 @@ metadata:
   description: >-
     An extraction's selectors and attribute names may be computed at every depth;
     the keys that decide its result type may not.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref computedAtEveryDepth
   - !ref typeIsLiteral
@@ -17,17 +16,14 @@ targets:
 kind: Assert.Manifest
 metadata: { name: computedAtEveryDepth }
 source: ./__fixtures__/computed-selectors.yaml
-expect:
-  errors: []
-  runs: true
+expect: { errors: [], runs: true }
 ---
 kind: Assert.Manifest
 metadata: { name: typeIsLiteral }
 source: ./__fixtures__/computed-type.yaml
 expect:
   errors:
-    - code: CEL_IN_NON_EVAL_FIELD
-      message: "fields.a.type"
+    - { code: CEL_IN_NON_EVAL_FIELD, message: "fields.a.type" }
 ---
 kind: Assert.Manifest
 metadata: { name: malformedComputedSelector }

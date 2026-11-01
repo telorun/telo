@@ -12,21 +12,9 @@ metadata:
     completions, token streaming, tool calling, image and document input, reasoning
     that survives a tool loop, prompt-to-picture generation and editing, and text
     vectors.
-imports:
-  Ai: ../ai
-  Embedding: ../embedding
-  Http: ../http-client
+imports: { Ai: ../ai, Embedding: ../embedding, Http: ../http-client }
 exports:
-  kinds:
-    - Client
-    - ChatModel
-    - ChatModelStream
-    - Model
-    - ModelStream
-    - ResponsesModel
-    - ResponsesModelStream
-    - ImageModel
-    - EmbeddingModel
+  kinds: [Client, ChatModel, ChatModelStream, Model, ModelStream, ResponsesModel, ResponsesModelStream, ImageModel, EmbeddingModel]
 ---
 # The account as an Http.Client: OpenAI's endpoint and a timeout sized for
 # inference. A complete answer arrives in one response, so the HTTP client's own
@@ -49,9 +37,7 @@ schema:
       description: >-
         Authenticates every call — an `Http.BearerToken` holding the API key. A
         self-hosted server that asks for no key takes none.
-      x-telo-ref:
-        kind: Http.Credential
-        use: call
+      x-telo-ref: { kind: Http.Credential, use: call }
     baseUrl:
       title: Base URL
       type: string
@@ -68,8 +54,7 @@ schema:
     headers:
       title: Headers
       type: object
-      additionalProperties:
-        type: string
+      additionalProperties: { type: string }
       description: Headers added to every call (an organization or project id, a gateway's own).
 base:
   baseUrl: !cel "self.?baseUrl.orValue('https://api.openai.com/v1')"
@@ -88,8 +73,7 @@ metadata:
     serves this API and not the responses one.
 capability: Telo.Invocable
 extends: Ai.Model
-controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelController
+controllers: [pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelController]
 # Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
 # throwing nothing, and a code outside the list is refused.
 throws:
@@ -205,17 +189,13 @@ throws:
         type: object
         required: [partType]
         properties:
-          partType:
-            type: string
-            description: The `type` of the content part that was refused.
+          partType: { type: string, description: The `type` of the content part that was refused. }
           scheme:
             type: string
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-          mediaType:
-            type: string
-            description: The part's media type, when it has one.
+          mediaType: { type: string, description: "The part's media type, when it has one." }
     ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
         The model asked for a tool with arguments that are not a JSON object.
@@ -225,9 +205,7 @@ throws:
         type: object
         required: [tool]
         properties:
-          tool:
-            type: string
-            description: The name of the tool the model asked for.
+          tool: { type: string, description: The name of the tool the model asked for. }
     ERR_MODEL_RESPONSE_INVALID:
       description: >-
         The endpoint reported success but the answer cannot be read: a body that
@@ -258,9 +236,7 @@ schema:
         re-acquire-and-retry is inherited rather than re-implemented here. Point it at
         a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
         gateway's).
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     options:
       title: Options
       description: >-
@@ -281,9 +257,7 @@ schema:
       request: !ref openaiRequest
     - model: gpt-4o
       request: !ref openaiRequest
-      options:
-        temperature: 0.2
-        maxTokens: 512
+      options: { temperature: 0.2, maxTokens: 512 }
 ---
 kind: Telo.Definition
 metadata:
@@ -296,8 +270,7 @@ metadata:
     call the endpoint leaves unnamed gets a unique generated id.
 capability: Telo.Invocable
 extends: Ai.ModelStream
-controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelStreamController
+controllers: [pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ChatModelStreamController]
 # Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
 # throwing nothing, and a code outside the list is refused.
 throws:
@@ -413,17 +386,13 @@ throws:
         type: object
         required: [partType]
         properties:
-          partType:
-            type: string
-            description: The `type` of the content part that was refused.
+          partType: { type: string, description: The `type` of the content part that was refused. }
           scheme:
             type: string
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-          mediaType:
-            type: string
-            description: The part's media type, when it has one.
+          mediaType: { type: string, description: "The part's media type, when it has one." }
     ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
         The model asked for a tool with arguments that are not a JSON object.
@@ -433,9 +402,7 @@ throws:
         type: object
         required: [tool]
         properties:
-          tool:
-            type: string
-            description: The name of the tool the model asked for.
+          tool: { type: string, description: The name of the tool the model asked for. }
     ERR_MODEL_RESPONSE_INVALID:
       description: >-
         The endpoint reported success but the answer cannot be read: a body that
@@ -466,9 +433,7 @@ schema:
         re-acquire-and-retry is inherited rather than re-implemented here. Point it at
         a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
         gateway's).
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     options:
       title: Options
       description: >-
@@ -489,9 +454,7 @@ schema:
       request: !ref openaiRequest
     - model: gpt-4o
       request: !ref openaiRequest
-      options:
-        temperature: 0.2
-        maxTokens: 512
+      options: { temperature: 0.2, maxTokens: 512 }
 ---
 # The pre-rename names, kept for ONE release as deprecated aliases.
 #
@@ -546,8 +509,7 @@ metadata:
     Reasoning survives a tool loop, which the completions API cannot do.
 capability: Telo.Invocable
 extends: Ai.Model
-controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelController
+controllers: [pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelController]
 # Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
 # throwing nothing, and a code outside the list is refused.
 throws:
@@ -663,17 +625,13 @@ throws:
         type: object
         required: [partType]
         properties:
-          partType:
-            type: string
-            description: The `type` of the content part that was refused.
+          partType: { type: string, description: The `type` of the content part that was refused. }
           scheme:
             type: string
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-          mediaType:
-            type: string
-            description: The part's media type, when it has one.
+          mediaType: { type: string, description: "The part's media type, when it has one." }
     ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
         The model asked for a tool with arguments that are not a JSON object.
@@ -683,9 +641,7 @@ throws:
         type: object
         required: [tool]
         properties:
-          tool:
-            type: string
-            description: The name of the tool the model asked for.
+          tool: { type: string, description: The name of the tool the model asked for. }
     ERR_MODEL_RESPONSE_INVALID:
       description: >-
         The endpoint reported success but the answer cannot be read: a body that
@@ -715,9 +671,7 @@ schema:
         and the credential, so an account is declared once and the 401
         re-acquire-and-retry is inherited rather than re-implemented here. Point it at
         a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`).
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     reasoning:
       title: Reasoning
       description: >-
@@ -728,12 +682,8 @@ schema:
       type: object
       additionalProperties: false
       properties:
-        effort:
-          type: string
-          enum: [ minimal, low, medium, high ]
-        summary:
-          type: string
-          enum: [ auto, concise, detailed ]
+        effort: { type: string, enum: [minimal, low, medium, high] }
+        summary: { type: string, enum: [auto, concise, detailed] }
       x-telo-eval: compile
     options:
       title: Options
@@ -757,8 +707,7 @@ schema:
     - model: gpt-5.2
       request: !ref openaiRequest
       reasoning: { effort: medium }
-      options:
-        maxOutputTokens: 2048
+      options: { maxOutputTokens: 2048 }
 ---
 kind: Telo.Definition
 metadata:
@@ -770,8 +719,7 @@ metadata:
     options as the buffered kind.
 capability: Telo.Invocable
 extends: Ai.ModelStream
-controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelStreamController
+controllers: [pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ResponsesModelStreamController]
 # Ai.Model's whole failure list, restated: a kind with no `throws:` is read as
 # throwing nothing, and a code outside the list is refused.
 throws:
@@ -887,17 +835,13 @@ throws:
         type: object
         required: [partType]
         properties:
-          partType:
-            type: string
-            description: The `type` of the content part that was refused.
+          partType: { type: string, description: The `type` of the content part that was refused. }
           scheme:
             type: string
             description: >-
               The scheme of the part's `uri`, lowercased, when the scheme is why
               it was refused.
-          mediaType:
-            type: string
-            description: The part's media type, when it has one.
+          mediaType: { type: string, description: "The part's media type, when it has one." }
     ERR_MODEL_TOOL_ARGUMENTS_INVALID:
       description: >-
         The model asked for a tool with arguments that are not a JSON object.
@@ -907,9 +851,7 @@ throws:
         type: object
         required: [tool]
         properties:
-          tool:
-            type: string
-            description: The name of the tool the model asked for.
+          tool: { type: string, description: The name of the tool the model asked for. }
     ERR_MODEL_RESPONSE_INVALID:
       description: >-
         The endpoint reported success but the answer cannot be read: a body that
@@ -935,9 +877,7 @@ schema:
         and the credential, so an account is declared once and the 401
         re-acquire-and-retry is inherited rather than re-implemented here. Point it at
         a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`).
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     reasoning:
       title: Reasoning
       description: >-
@@ -948,12 +888,8 @@ schema:
       type: object
       additionalProperties: false
       properties:
-        effort:
-          type: string
-          enum: [ minimal, low, medium, high ]
-        summary:
-          type: string
-          enum: [ auto, concise, detailed ]
+        effort: { type: string, enum: [minimal, low, medium, high] }
+        summary: { type: string, enum: [auto, concise, detailed] }
       x-telo-eval: compile
     options:
       title: Options
@@ -995,8 +931,7 @@ metadata:
     inpainting and variations.
 capability: Telo.Provider
 extends: Ai.ImageModel
-controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ImageModelController
+controllers: [pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#ImageModelController]
 schema:
   type: object
   properties:
@@ -1012,9 +947,7 @@ schema:
         re-acquire-and-retry is inherited rather than re-implemented here. Point it at
         a client whose `baseUrl` is the endpoint (`https://api.openai.com/v1`, or a
         gateway's).
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     options:
       title: Options
       description: >-
@@ -1030,20 +963,14 @@ schema:
     # /images/edits, variation to /images/variations. Style and structure
     # conditioning have no route here, so they are absent rather than accepted and
     # rejected later.
-    Intent:
-      title: Intent
-      type: string
-      enum: [ edit, inpaint, variation ]
+    Intent: { title: Intent, type: string, enum: [edit, inpaint, variation] }
   examples:
     - model: gpt-image-1
       request: !ref openaiRequest
-      options:
-        size: 1024x1024
-        quality: low
+      options: { size: 1024x1024, quality: low }
     - model: dall-e-3
       request: !ref openaiRequest
-      options:
-        size: 1024x1024
+      options: { size: 1024x1024 }
 ---
 # The embeddings endpoint, which was its own module until the merge. One module
 # per SYSTEM rather than per endpoint: moderation, audio, batch and files arrive
@@ -1057,8 +984,7 @@ metadata:
     credential — and an optional output dimensionality.
 capability: Telo.Provider
 extends: Embedding.Model
-controllers:
-  - pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#EmbeddingModelController
+controllers: [pkg:telo/local/js?path=./nodejs/openai.mjs&local_path=./nodejs/src/index.ts#EmbeddingModelController]
 schema:
   type: object
   required: [model, request]
@@ -1074,9 +1000,7 @@ schema:
         The HTTP request every call is made through. Its client carries the base URL
         and the credential, so an account is declared once and the 401
         re-acquire-and-retry is inherited rather than re-implemented here.
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     dimensions:
       title: Dimensions
       description: Output dimensionality. v3 models support truncating to fewer dimensions.

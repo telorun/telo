@@ -14,21 +14,15 @@ targets:
   - !ref testPlainToolResult
 ---
 kind: Run.Sequence
-metadata:
-  name: testPlainToolResult
+metadata: { name: testPlainToolResult }
 steps:
   # Echo emits one tool call on the first turn, then echoes the tool result's
   # content as its final answer.
   - name: invoke
-    inputs:
-      prompt: "estimate the job"
+    inputs: { prompt: "estimate the job" }
     invoke:
       kind: Ai.Agent
-      model:
-        kind: AiEcho.EchoModel
-        emitToolCall:
-          name: estimate
-          arguments: {}
+      model: { kind: AiEcho.EchoModel, emitToolCall: { name: estimate, arguments: {} } }
       toolProviders:
         - provider:
             kind: Ai.Tools
@@ -39,11 +33,9 @@ steps:
                     took: !cel "duration('1h30m')"
                 name: estimate
                 description: How long the job takes.
-                parameters:
-                  type: object
+                parameters: { type: object }
   - name: assertText
     inputs:
       actual: !cel "steps.invoke.result.text"
       expected: '{"took":"5400s"}'
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

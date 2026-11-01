@@ -28,9 +28,7 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.LayersTable
 metadata: { name: graphLayers }
@@ -123,8 +121,7 @@ steps:
         value: !cel "error.code"
   - name: afterRefusals
     invoke: !ref layers
-    inputs:
-      sql: "SELECT COUNT(*) AS n FROM graph_layers"
+    inputs: { sql: "SELECT COUNT(*) AS n FROM graph_layers" }
   # A pin move that changes the base list registers the layer. `base` is
   # registered first, by a write of its own: only a registered layer is pinned.
   - name: writeBase
@@ -135,8 +132,7 @@ steps:
     inputs: { bases: [{ layer: base }] }
   - name: afterPin
     invoke: !ref layers
-    inputs:
-      sql: "SELECT name FROM graph_layers ORDER BY name"
+    inputs: { sql: "SELECT name FROM graph_layers ORDER BY name" }
   - name: revisions
     invoke: { kind: GraphLayers.ListRevisions, store: !ref top }
     inputs: {}

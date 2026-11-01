@@ -11,8 +11,7 @@ metadata:
     sides in a single call.
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
-include:
-  - ./__fixtures__/suite-model.yaml
+include: [./__fixtures__/suite-model.yaml]
 imports:
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
@@ -101,8 +100,7 @@ steps:
     invoke:
       kind: Sql.Command
       connection: !ref db
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_revisions_layered_suite CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_revisions_layered_suite CASCADE }
 ---
 kind: Postgres.Schema
 metadata: { name: appSchema }

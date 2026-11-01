@@ -1,9 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: TextRejectsNonModelRefTest
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: TextRejectsNonModelRefTest, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testAnalyzerRejectsNonModelRef
 ---
@@ -11,9 +8,8 @@ targets:
 # whose kind is NOT an Ai.Model implementation. The x-telo-ref on Ai.Text.model
 # is typed as `std/ai#Model`, so only definitions extending that abstract are accepted.
 kind: Assert.Manifest
-metadata:
-  name: testAnalyzerRejectsNonModelRef
+metadata: { name: testAnalyzerRejectsNonModelRef }
 source: ./__fixtures__/text-wrong-model-kind.yaml
 expect:
   errors:
-    - code: REFERENCE_KIND_MISMATCH
+    - { code: REFERENCE_KIND_MISMATCH }

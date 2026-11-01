@@ -16,9 +16,7 @@ requires:
   # must fall within. 0.98.0's `telo check` accepts the key, but its kernel
   # refuses the abstract at boot.
   telo: ">=0.99.0"
-exports:
-  kinds:
-    - Recognizer
+exports: { kinds: [Recognizer] }
 ---
 # The engine-neutral contract. Anything that should accept any OCR engine types
 # its slot against this abstract; an engine module extends it and is chosen where
@@ -80,9 +78,7 @@ inputType:
     required: [image]
     additionalProperties: false
     properties:
-      image:
-        description: The encoded image to read.
-        x-telo-type: Telo.Bytes
+      image: { description: The encoded image to read., x-telo-type: Telo.Bytes }
       region:
         description: >-
           Only this rectangle is read, in pixels from the image's top-left corner.
@@ -112,14 +108,8 @@ outputType:
         type: number
         minimum: 0
         maximum: 1
-      width:
-        description: The input image's width in pixels.
-        type: integer
-        minimum: 1
-      height:
-        description: The input image's height in pixels.
-        type: integer
-        minimum: 1
+      width: { description: The input image's width in pixels., type: integer, minimum: 1 }
+      height: { description: The input image's height in pixels., type: integer, minimum: 1 }
       blocks:
         description: Every text block, in reading order.
         type: array
@@ -150,9 +140,7 @@ outputType:
                 type: object
                 required: [x, y]
                 additionalProperties: false
-                properties:
-                  x: { type: integer, minimum: 0 }
-                  y: { type: integer, minimum: 0 }
+                properties: { x: { type: integer, minimum: 0 }, y: { type: integer, minimum: 0 } }
       lines:
         description: Every text line, in reading order.
         type: array
@@ -183,9 +171,7 @@ outputType:
                 type: object
                 required: [x, y]
                 additionalProperties: false
-                properties:
-                  x: { type: integer, minimum: 0 }
-                  y: { type: integer, minimum: 0 }
+                properties: { x: { type: integer, minimum: 0 }, y: { type: integer, minimum: 0 } }
             block:
               description: Index into `blocks` of the block this line belongs to.
               type: integer
@@ -220,9 +206,7 @@ outputType:
                 type: object
                 required: [x, y]
                 additionalProperties: false
-                properties:
-                  x: { type: integer, minimum: 0 }
-                  y: { type: integer, minimum: 0 }
+                properties: { x: { type: integer, minimum: 0 }, y: { type: integer, minimum: 0 } }
             line:
               description: Index into `lines` of the line this word belongs to.
               type: integer

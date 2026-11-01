@@ -16,8 +16,7 @@ metadata:
     the listing its body generates is judged against that listing's
     collection, and a layout of another module, extending the component
     layout, is judged by its own rules and refused by ui's when it is read.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref layoutRules
   - !ref propertyUnknownAtRuntime
@@ -35,8 +34,7 @@ targets:
   - !ref layoutExtensionAtRuntime
 ---
 kind: Assert.Manifest
-metadata:
-  name: layoutRules
+metadata: { name: layoutRules }
 source: ./__fixtures__/invalid/layouts/telo.yaml
 expect:
   errors:
@@ -64,88 +62,77 @@ expect:
       message: "Ui.Listing/moveReadsUnknown: !cel: 'to.state' is not defined"
 ---
 kind: Assert.Manifest
-metadata:
-  name: propertyUnknownAtRuntime
+metadata: { name: propertyUnknownAtRuntime }
 source: ./__fixtures__/invalid/layout-property-unknown/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'propertyUnknown': 'layout' names a property the listing's model does not declare in 'groups.property' ('assigneeId')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: groupUnsupportedAtRuntime
+metadata: { name: groupUnsupportedAtRuntime }
 source: ./__fixtures__/invalid/layout-group-unsupported/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'groupUnsupported': 'layout' groups records by a property that does not hold one plain value ('status')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: groupNotFilterableAtRuntime
+metadata: { name: groupNotFilterableAtRuntime }
 source: ./__fixtures__/invalid/layout-group-not-filterable/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'groupNotFilterable': 'layout' groups records by a property the collection does not accept an equality on ('priority')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: groupsNotFacetedAtRuntime
+metadata: { name: groupsNotFacetedAtRuntime }
 source: ./__fixtures__/invalid/layout-groups-not-faceted/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'groupsNotFaceted': 'layout' draws only the groups present for a property the collection does not facet ('category')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: groupsNotEnumerableAtRuntime
+metadata: { name: groupsNotEnumerableAtRuntime }
 source: ./__fixtures__/invalid/layout-groups-not-enumerable/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'groupsNotEnumerable': 'layout' draws every group of a property whose values cannot be listed ('title')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: spanNotDateAtRuntime
+metadata: { name: spanNotDateAtRuntime }
 source: ./__fixtures__/invalid/layout-span-not-date/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'spanNotDate': 'layout' spans records by a property that is not a 'date' or 'date-time' string, or by a start and an end of different formats ('title')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: spanNotFilterableAtRuntime
+metadata: { name: spanNotFilterableAtRuntime }
 source: ./__fixtures__/invalid/layout-span-not-filterable/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'spanNotFilterable': 'layout' spans records by bounds the collection does not accept"
 ---
 kind: Assert.Manifest
-metadata:
-  name: parentNotSelfRelationAtRuntime
+metadata: { name: parentNotSelfRelationAtRuntime }
 source: ./__fixtures__/invalid/layout-parent-not-self-relation/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'parentNotSelfRelation': 'layout' nests records under a property with no relation to the listing's own collection ('assigneeId')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: parentNotFilterableAtRuntime
+metadata: { name: parentNotFilterableAtRuntime }
 source: ./__fixtures__/invalid/layout-parent-not-filterable/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'parentNotFilterable': 'layout' nests records under a property the collection cannot read roots and children by ('managerId')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: moveInputsAtRuntime
+metadata: { name: moveInputsAtRuntime }
 source: ./__fixtures__/invalid/layout-move-inputs-unbound/telo.yaml
 expect:
   errors: []
   runFails: "Ui.BoardLayout 'moveInputsUnbound_layout': 'move.inputs' cannot make a record of the action's input model: required input 'status' is not bound"
 ---
 kind: Assert.Manifest
-metadata:
-  name: layoutForwarded
+metadata: { name: layoutForwarded }
 source: ./__fixtures__/invalid/layout-forwarded/telo.yaml
 expect:
   errors:
@@ -153,8 +140,7 @@ expect:
       message: "Admin.Admin/byPriority: 'layout' is forwarded into the Ui.Listing entry 'listing' as 'layout', which checks it as its own field — the Ui.Listing entry 'listing' at 'layout': required by Ui.BoardLayout — groups records by a property the collection does not accept an equality on"
 ---
 kind: Assert.Manifest
-metadata:
-  name: layoutExtension
+metadata: { name: layoutExtension }
 source: ./__fixtures__/invalid/layout-extension/lib/telo.yaml
 expect:
   errors:
@@ -162,8 +148,7 @@ expect:
       message: "Ui.Listing/plan at 'layout': required by Rooms.RoomPlan — lays bookings out by a room property the collection does not accept an equality on"
 ---
 kind: Assert.Manifest
-metadata:
-  name: layoutExtensionAtRuntime
+metadata: { name: layoutExtensionAtRuntime }
 source: ./__fixtures__/invalid/layout-extension/telo.yaml
 expect:
   errors: []

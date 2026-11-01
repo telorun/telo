@@ -8,9 +8,7 @@ metadata:
     surplus items, at most ten lines, long values cut, keys in sorted order.
     A step after each failing assertion throws, so an assertion that passes is
     caught as a wrong message.
-imports:
-  Assert: ../
-  Run: ../../run
+imports: { Assert: ../, Run: ../../run }
 targets: [!ref changedValue, !ref missingAndUnexpectedKeys, !ref arrayLength, !ref cappedLines, !ref longValue, !ref integerAndSortedKeys]
 ---
 kind: Run.Sequence
@@ -38,9 +36,7 @@ steps:
     try:
       - name: differs
         invoke: !ref Assert.equals
-        inputs:
-          actual: { c: 2, b: 1 }
-          expected: { b: 1, a: 0 }
+        inputs: { actual: { c: 2, b: 1 }, expected: { b: 1, a: 0 } }
       - { name: unreached, throw: { code: UNREACHED } }
     catch:
       - name: reported
@@ -56,9 +52,7 @@ steps:
     try:
       - name: differs
         invoke: !ref Assert.equals
-        inputs:
-          actual: { rows: [1, 2, 3, 4] }
-          expected: { rows: [1, 9] }
+        inputs: { actual: { rows: [1, 2, 3, 4] }, expected: { rows: [1, 9] } }
       - { name: unreached, throw: { code: UNREACHED } }
     catch:
       - name: reported

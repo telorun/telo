@@ -10,13 +10,8 @@ metadata:
     results with title, URL, snippet and page age for a query, with country,
     language, recency and safe-search settings, paging with an opaque cursor.
     Authenticated with a subscription token on a configurable HTTP client.
-imports:
-  WebSearch: ../web-search
-  Http: ../http-client
-  Run: ../run
-exports:
-  kinds:
-    - WebSearchEngine
+imports: { WebSearch: ../web-search, Http: ../http-client, Run: ../run }
+exports: { kinds: [WebSearchEngine] }
 ---
 # A templated engine over `GET /res/v1/web/search`. Every request asks for 20
 # results at an `offset` counted in pages of 20 (0–9); a position is
@@ -42,8 +37,7 @@ throws:
         different query, language, country or freshness.
     ERR_SEARCH_ACCESS_DENIED:
       description: Brave rejected the subscription token (SUBSCRIPTION_TOKEN_INVALID).
-    ERR_SEARCH_RATE_LIMITED:
-      description: Brave answered 429 RATE_LIMITED.
+    ERR_SEARCH_RATE_LIMITED: { description: Brave answered 429 RATE_LIMITED. }
     ERR_SEARCH_QUOTA_EXCEEDED:
       description: Brave answered QUOTA_LIMITED — the plan's monthly quota is used up.
     ERR_SEARCH_FAILED:
@@ -61,9 +55,7 @@ schema:
         The HTTP request Brave is reached through. Its client's `baseUrl` is
         `https://api.search.brave.com`, and its credential an `Http.ApiKeyHeader`
         with header `X-Subscription-Token`.
-      x-telo-ref:
-        kind: Http.Request
-        use: call
+      x-telo-ref: { kind: Http.Request, use: call }
     safeSearch:
       title: Safe search
       description: Brave's explicit-content filter, sent as `safesearch`.
@@ -72,8 +64,7 @@ schema:
       default: moderate
 resources:
   - kind: Run.Sequence
-    metadata:
-      name: search
+    metadata: { name: search }
     inputType: !ref WebSearch.Query
     outputType: !ref WebSearch.Results
     steps:
@@ -223,27 +214,21 @@ resources:
   # One request, mapped onto the contract's result shape plus Brave's "more
   # results" flag; every failure is raised here as a contract code.
   - kind: Run.Sequence
-    metadata:
-      name: page
+    metadata: { name: page }
     inputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [params]
         additionalProperties: false
-        properties:
-          params:
-            type: object
-            additionalProperties: { type: string }
+        properties: { params: { type: object, additionalProperties: { type: string } } }
     outputType:
       kind: Telo.JsonSchema
       schema:
         type: object
         required: [results, more]
         additionalProperties: false
-        properties:
-          results: { type: array }
-          more: { type: boolean }
+        properties: { results: { type: array }, more: { type: boolean } }
     steps:
       - name: fetch
         try:

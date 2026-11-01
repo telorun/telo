@@ -25,9 +25,7 @@ tables: [!ref employees]
 kind: SQLite.Table
 metadata: { name: employees }
 table: employees
-columns:
-  id: { type: integer, primaryKey: true }
-  managerId: { type: integer }
+columns: { id: { type: integer, primaryKey: true }, managerId: { type: integer } }
 foreignKeys:
   manager:
     columns: [managerId]

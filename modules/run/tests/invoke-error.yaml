@@ -1,10 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: InvokeErrorTests
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: InvokeErrorTests, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testCaught
 ---
@@ -12,17 +8,12 @@ targets:
 # The enclosing try/catch binds it to `error` — we verify every field is
 # surfaced (code, message, data, step).
 kind: Run.Sequence
-metadata:
-  name: testCaught
+metadata: { name: testCaught }
 steps:
   - name: outer
     try:
       - name: boom
-        throw:
-          code: "UNAUTHORIZED"
-          message: "bad token"
-          data:
-            reason: "expired"
+        throw: { code: "UNAUTHORIZED", message: "bad token", data: { reason: "expired" } }
     catch:
       - name: checkFields
         invoke:

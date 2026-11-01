@@ -45,8 +45,7 @@ outputType:
     type: object
     required: [approvedBy]
     additionalProperties: false
-    properties:
-      approvedBy: { type: string }
+    properties: { approvedBy: { type: string } }
 ---
 kind: Telo.Definition
 metadata: { name: Pipeline }
@@ -57,18 +56,10 @@ schema:
   properties:
     jobs:
       type: object
-      additionalProperties:
-        type: object
-        required: [label]
-        properties:
-          label: { type: string }
+      additionalProperties: { type: object, required: [label], properties: { label: { type: string } } }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [ticket]
-    properties:
-      ticket: { type: string }
+  schema: { type: object, required: [ticket], properties: { ticket: { type: string } } }
 resources:
   - !for-each
     metadata: { name: tasks }
@@ -100,9 +91,7 @@ inputs:
 ---
 kind: Self.Pipeline
 metadata: { name: pipeline }
-jobs:
-  a: { label: first }
-  b: { label: second }
+jobs: { a: { label: first }, b: { label: second } }
 ---
 kind: Local.Status
 metadata: { name: status }
@@ -113,8 +102,7 @@ metadata: { name: approve }
 journal: !ref journal
 await: !ref approval
 token: !cel "'approve:' + inputs.ticket"
-payload:
-  approvedBy: ada
+payload: { approvedBy: ada }
 ---
 kind: Local.Result
 metadata: { name: outcome }
@@ -124,16 +112,13 @@ wait: 15s
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "tasks['a'].Invoked"
-  - type: "tasks['b'].Invoked"
-  - type: "closing.Invoked"
+  - { type: "tasks['a'].Invoked" }
+  - { type: "tasks['b'].Invoked" }
+  - { type: "closing.Invoked" }
 expect:
-  - event: "tasks['a'].Invoked"
-    times: 1
-  - event: "tasks['b'].Invoked"
-    times: 1
-  - event: closing.Invoked
-    times: 1
+  - { event: "tasks['a'].Invoked", times: 1 }
+  - { event: "tasks['b'].Invoked", times: 1 }
+  - { event: closing.Invoked, times: 1 }
 ---
 kind: Run.Sequence
 metadata: { name: test }

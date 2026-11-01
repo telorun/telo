@@ -58,9 +58,7 @@ condition: !cel "resources.writer.status.exitCode == null"
 # 120s for a child kernel to boot, write once and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: reader }
@@ -75,9 +73,7 @@ condition: !cel "resources.reader.status.exitCode == null"
 # 120s for a child kernel to boot, read once and exit.
 maxIterations: 6000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: Run.Sequence
 metadata: { name: verdict }

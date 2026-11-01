@@ -17,16 +17,7 @@ requires:
   # an older analyzer refuses it as an unknown key. Forward-declared: the
   # release carrying it is pending.
   telo: ">=0.103.0"
-exports:
-  kinds:
-    - Of
-    - Collect
-    - Chunk
-    - Map
-    - Scan
-    - FlatMap
-    - Tap
-    - Concat
+exports: { kinds: [Of, Collect, Chunk, Map, Scan, FlatMap, Tap, Concat] }
 ---
 # Emit a list of items as a stream, in order — declared statically or supplied
 # at invoke time.
@@ -49,8 +40,7 @@ metadata:
     declaration or supplied at the call site, which lets a stored or computed value be
     replayed into a streaming consumer.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#OfController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#OfController]
 schema:
   type: object
   properties:
@@ -94,8 +84,7 @@ metadata:
     it drives whatever produces the stream, and the collected list can then be
     inspected or aggregated. Buffered, so it needs a finite stream.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#CollectController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#CollectController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -111,14 +100,10 @@ outputType:
   schema:
     type: object
     properties:
-      items:
-        type: array
-        description: Every item observed on `input`, in order.
+      items: { type: array, description: "Every item observed on `input`, in order." }
     required: [ items ]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Stream.Chunk — re-frames a byte stream into fixed-size pieces.
 #
@@ -142,17 +127,14 @@ metadata:
     numbers can be built at the point of use. Only the last piece is short, an empty
     source yields nothing, and one piece is held in memory at a time.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ChunkController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ChunkController]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     properties:
       input:
-        x-telo-type:
-          name: Telo.Stream
-          of: Telo.Bytes
+        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
         description: Byte stream to re-frame.
       size:
         type: integer
@@ -175,15 +157,11 @@ outputType:
             additionalProperties: false
             required: [bytes, offset, length, index, last]
             properties:
-              bytes:
-                x-telo-type: Telo.Bytes
-                description: This piece's bytes.
+              bytes: { x-telo-type: Telo.Bytes, description: This piece's bytes. }
               offset:
                 type: integer
                 description: Byte offset of this piece from the start of the stream.
-              length:
-                type: integer
-                description: Number of bytes in this piece.
+              length: { type: integer, description: Number of bytes in this piece. }
               index:
                 type: integer
                 description: Zero-based position of this piece in the sequence.
@@ -225,12 +203,10 @@ metadata:
     record can be reshaped into whatever the next stage expects without buffering the
     stream.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#MapController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#MapController]
 throws:
   codes:
-    ERR_INVALID_INPUT:
-      description: "`input` did not resolve to an async iterable."
+    ERR_INVALID_INPUT: { description: "`input` did not resolve to an async iterable." }
     ERR_INVALID_VALUE:
       description: >-
         `value` was written blank. Raised per call rather than at load — a key with no
@@ -242,9 +218,7 @@ inputType:
     additionalProperties: false
     required: [input]
     properties:
-      input:
-        x-telo-type: Telo.Stream
-        description: Stream whose values are transformed.
+      input: { x-telo-type: Telo.Stream, description: Stream whose values are transformed. }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -266,19 +240,13 @@ schema:
         The contract each produced value satisfies — a named type reference or an inline
         type definition. Declaring it holds `value` to that shape at analysis time, so a
         stage that drops a field the next one reads is an error before it runs.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     value:
       title: Value
       description: >-
         Each output value, evaluated once per element — a CEL expression, a structure
         with `!cel` leaves, or a literal. Sees item and index.
-      x-telo-context:
-        type: object
-        properties:
-          item: {}
-          index: { type: integer }
+      x-telo-context: { type: object, properties: { item: {}, index: { type: integer } } }
       x-telo-value-schema-from: elementType
 ---
 kind: Telo.Definition
@@ -290,24 +258,18 @@ metadata:
     deltas is the usual case: the accumulated value is what a reader wants, and it has
     to arrive per value rather than at the end.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ScanController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ScanController]
 throws:
   codes:
-    ERR_INVALID_INPUT:
-      description: "`input` did not resolve to an async iterable."
-    ERR_INVALID_VALUE:
-      description: "`accumulate` was written blank."
+    ERR_INVALID_INPUT: { description: "`input` did not resolve to an async iterable." }
+    ERR_INVALID_VALUE: { description: "`accumulate` was written blank." }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [input]
-    properties:
-      input:
-        x-telo-type: Telo.Stream
-        description: Stream to accumulate over.
+    properties: { input: { x-telo-type: Telo.Stream, description: Stream to accumulate over. } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -329,15 +291,11 @@ schema:
         The running state's contract — a named type reference or an inline type
         definition. Declaring it types `acc` inside `accumulate` and `emit`, and holds
         both the seed and the step to that shape at analysis time.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     initial:
       title: Initial
       description: The starting accumulator, evaluated once before the first value.
-      x-telo-context:
-        type: object
-        properties: {}
+      x-telo-context: { type: object, properties: {} }
       x-telo-value-schema-from: accType
     accumulate:
       title: Accumulate
@@ -374,12 +332,10 @@ metadata:
     carries none, so emitting a list — empty to drop the value — is what lets a stage
     change how many values flow through it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#FlatMapController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#FlatMapController]
 throws:
   codes:
-    ERR_INVALID_INPUT:
-      description: "`input` did not resolve to an async iterable."
+    ERR_INVALID_INPUT: { description: "`input` did not resolve to an async iterable." }
     ERR_INVALID_VALUE:
       description: >-
         `values` was written blank, or evaluated to something other than an array. A
@@ -392,9 +348,7 @@ inputType:
     additionalProperties: false
     required: [input]
     properties:
-      input:
-        x-telo-type: Telo.Stream
-        description: Stream whose values are expanded.
+      input: { x-telo-type: Telo.Stream, description: Stream whose values are expanded. }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -416,20 +370,14 @@ schema:
         The contract each produced value satisfies — a named type reference or an inline
         type definition. Declaring it holds every element of `values` to that shape at
         analysis time.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     values:
       title: Values
       description: >-
         The values this element expands to, evaluated once per element. Must be an
         array; emit [] to drop the element. Sees item and index.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          item: {}
-          index: { type: integer }
+      x-telo-context: { type: object, properties: { item: {}, index: { type: integer } } }
 ---
 # Stream.Tap — observes a stream without holding it.
 #
@@ -451,13 +399,11 @@ metadata:
     stage holding any value. A handler failure stops the stream with the handler's own
     error.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#TapController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#TapController]
 throws:
   inherit: true
   codes:
-    ERR_INVALID_INPUT:
-      description: "`input` did not resolve to an async iterable."
+    ERR_INVALID_INPUT: { description: "`input` did not resolve to an async iterable." }
     ERR_INVALID_VALUE:
       description: >-
         `when` evaluated to something other than a boolean for a value. Raised as the
@@ -469,9 +415,7 @@ inputType:
     additionalProperties: false
     required: [input]
     properties:
-      input:
-        x-telo-type: Telo.Stream
-        description: Stream whose values are observed.
+      input: { x-telo-type: Telo.Stream, description: Stream whose values are observed. }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -494,10 +438,7 @@ schema:
         Its result is discarded — a returned stream is never drained — and its
         failure rejects the drain of this stage's output.
       type: object
-      x-telo-ref:
-        kind: Telo.Executable
-        use: trigger.consumer
-        inputs: /inputs
+      x-telo-ref: { kind: Telo.Executable, use: trigger.consumer, inputs: /inputs }
     inputs:
       title: Inputs
       description: >-
@@ -505,11 +446,7 @@ schema:
         and index. Omitted, the handler is called with no arguments.
       type: object
       additionalProperties: true
-      x-telo-context:
-        type: object
-        properties:
-          item: {}
-          index: { type: integer }
+      x-telo-context: { type: object, properties: { item: {}, index: { type: integer } } }
     when:
       title: When
       description: >-
@@ -517,11 +454,7 @@ schema:
         skips the dispatch and never the delivery. Omitted, every value is dispatched.
         Sees item and index.
       type: boolean
-      x-telo-context:
-        type: object
-        properties:
-          item: {}
-          index: { type: integer }
+      x-telo-context: { type: object, properties: { item: {}, index: { type: integer } } }
 ---
 # Stream.Concat — several producers read as one stream, lazily.
 #
@@ -543,8 +476,7 @@ metadata:
     with that error and nothing after it runs; a reader stopping early or a
     cancellation stops the current producer and starts no further one.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ConcatController
+controllers: [pkg:telo/local/js?path=./nodejs/stream.mjs&local_path=./nodejs/src/index.ts#ConcatController]
 throws:
   inherit: true
   codes:
@@ -611,8 +543,7 @@ schema:
               outputType:
                 type: object
                 required: [output]
-                properties:
-                  output: { x-telo-type: Telo.Stream }
+                properties: { output: { x-telo-type: Telo.Stream } }
           inputs:
             title: Inputs
             description: >-

@@ -11,11 +11,7 @@ metadata:
     metadata filter. The retrieval half of a RAG pipeline — the embedding itself
     happens upstream.
 exports:
-  kinds:
-    - Store
-    - Record
-    - Match
-    - Removal
+  kinds: [Store, Record, Match, Removal]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/vector-store` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -42,11 +38,10 @@ schema:
   type: object
   minProperties: 1
   $defs:
-    Scalar:
-      type: [string, number, boolean, "null"]
+    Scalar: { type: [string, number, boolean, "null"] }
     Condition:
       oneOf:
-        - $ref: "#/$defs/Scalar"
+        - { $ref: "#/$defs/Scalar" }
         - type: object
           minProperties: 1
           additionalProperties: false
@@ -89,8 +84,7 @@ metadata:
     Writes a batch of vectors into the index, each with an id and optional metadata,
     replacing any entry that already has that id. Returns the ids written, in order.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Record
+controllers: [pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Record]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -128,9 +122,7 @@ schema:
     store:
       title: Store
       description: Reference to the backing vector store.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
   examples:
     - store: !ref knowledgeBase
 ---
@@ -146,8 +138,7 @@ metadata:
     scores and metadata, limited to a chosen number and optionally narrowed by a
     metadata filter first.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Match
+controllers: [pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Match]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -185,9 +176,7 @@ schema:
     store:
       title: Store
       description: Reference to the backing vector store.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     topK:
       title: Top K
       description: Maximum matches to return.
@@ -211,8 +200,7 @@ metadata:
     Deletes entries from the index by id, by a metadata filter, or both, and reports
     how many were removed.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Removal
+controllers: [pkg:telo/local/js?path=./nodejs/vector-store.mjs&local_path=./nodejs/src/index.ts#Removal]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -220,10 +208,7 @@ inputType:
     additionalProperties: false
     minProperties: 1
     properties:
-      ids:
-        type: array
-        minItems: 1
-        items: { type: string }
+      ids: { type: array, minItems: 1, items: { type: string } }
       metadataFilter:
         description: MongoDB-style metadata filter.
         $ref: "telo://Self/MetadataFilter"
@@ -234,10 +219,7 @@ outputType:
     required: [removed]
     additionalProperties: false
     properties:
-      removed:
-        description: Count of entries deleted.
-        type: integer
-        minimum: 0
+      removed: { description: Count of entries deleted., type: integer, minimum: 0 }
 schema:
   type: object
   required: [store]
@@ -246,8 +228,6 @@ schema:
     store:
       title: Store
       description: Reference to the backing vector store.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
   examples:
     - store: !ref knowledgeBase

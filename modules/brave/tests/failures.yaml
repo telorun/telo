@@ -6,9 +6,7 @@
 # unreachable API are ERR_SEARCH_FAILED. A client with `throwOnHttpError` maps
 # the same way.
 kind: Telo.Application
-metadata:
-  name: BraveFailuresTest
-  version: 1.0.0
+metadata: { name: BraveFailuresTest, version: 1.0.0 }
 imports:
   Brave: ..
   Http: ../../http-client
@@ -55,8 +53,7 @@ with:
       - request:
           path: /res/v1/web/search
           method: GET
-          schema:
-            query: { type: object, additionalProperties: true }
+          schema: { query: { type: object, additionalProperties: true } }
         handler: !ref errors
         returns:
           - status: 422
@@ -79,18 +76,13 @@ with:
                 body: !cel "{'type': 'ErrorResponse', 'error': result.broken}"
           - status: 200
             when: !cel "request.query.q == 'html'"
-            content:
-              text/html:
-                body: "<html><body>results</body></html>"
+            content: { text/html: { body: "<html><body>results</body></html>" } }
           - status: 200
             content:
-              application/json:
-                schema: { type: object, additionalProperties: true }
-                body: { type: search }
+              application/json: { schema: { type: object, additionalProperties: true }, body: { type: search } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18850
+    listen: { port: 18850 }
     mounts:
       - path: /
         mount: !ref FakeBrave
@@ -166,5 +158,4 @@ steps:
           message: "Brave asks the caller to slow down: Request rate limit exceeded for plan."
         - code: ERR_SEARCH_FAILED
           message: "Brave answered HTTP 500: INTERNAL Something went wrong."
-        - code: ERR_SEARCH_FAILED
-          message: "The request to Brave failed: …"
+        - { code: ERR_SEARCH_FAILED, message: "The request to Brave failed: …" }

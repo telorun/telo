@@ -7,49 +7,37 @@ metadata:
     non-zero exit code (rather than throwing), honors shell features (pipes),
     merges the host's base env with the per-call overlay, and takes a `timeoutMs`
     an expression computes.
-imports:
-  Shell: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Shell: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref test
 ---
 kind: Shell.LocalHost
-metadata:
-  name: local
-env:
-  GREETING: hi
+metadata: { name: local }
+env: { GREETING: hi }
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 steps:
   - name: echo
-    inputs:
-      command: "printf hello"
+    inputs: { command: "printf hello" }
     invoke:
       kind: Shell.Command
       host: !ref local
 
   - name: fail
-    inputs:
-      command: "exit 3"
+    inputs: { command: "exit 3" }
     invoke:
       kind: Shell.Command
       host: !ref local
 
   - name: pipe
-    inputs:
-      command: "printf X | cat"
+    inputs: { command: "printf X | cat" }
     invoke:
       kind: Shell.Command
       host: !ref local
 
   - name: env
-    inputs:
-      command: 'printf %s "$GREETING-$NAME"'
-      env:
-        NAME: world
+    inputs: { command: 'printf %s "$GREETING-$NAME"', env: { NAME: world } }
     invoke:
       kind: Shell.Command
       host: !ref local
@@ -79,5 +67,4 @@ steps:
         pipeOut: X
         envOut: hi-world
         timedOut: timed
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

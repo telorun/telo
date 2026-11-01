@@ -12,18 +12,8 @@ metadata:
     input, denied access, rate limits, exhausted quota and engine failures, so
     callers never depend on one provider.
 exports:
-  kinds:
-    - Engine
-  resources:
-    - Query
-    - Results
-    - sealCursor
-    - openCursor
-    - resolveHint
-    - freshnessStart
-    - windowRequest
-    - windowSlice
-    - readPublishedAt
+  kinds: [Engine]
+  resources: [Query, Results, sealCursor, openCursor, resolveHint, freshnessStart, windowRequest, windowSlice, readPublishedAt]
 ---
 # The engine-neutral contract. Anything that should accept any web search engine
 # types its slot against this abstract; an engine module extends it and is chosen
@@ -135,8 +125,7 @@ schema:
         required: [title, url, snippet]
         additionalProperties: false
         properties:
-          title:
-            type: string
+          title: { type: string }
           url:
             type: string
             description: >-
@@ -165,8 +154,7 @@ metadata:
 params:
   - name: query
     schema: !ref Query
-returns:
-  schema: { type: string, pattern: "^[0-9a-f]{16}$" }
+returns: { schema: { type: string, pattern: "^[0-9a-f]{16}$" } }
 body: !cel >-
   sha256(
     string(size(query.query)) + ':' + query.query +
@@ -184,14 +172,11 @@ metadata:
     Pair it with the cursor opener, which checks all three when the cursor comes
     back.
 params:
-  - name: engine
-    schema: { type: string, pattern: "^[a-z][a-z0-9]*$" }
+  - { name: engine, schema: { type: string, pattern: "^[a-z][a-z0-9]*$" } }
   - name: query
     schema: !ref Query
-  - name: position
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: position, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel "engine + '.' + Self.queryDigest(query) + '.' + position"
 ---
 kind: Telo.Function
@@ -203,14 +188,11 @@ metadata:
     inputs, and holds a position the engine's anchored pattern accepts; when not,
     returns valid false with a message naming the cause for the engine to raise.
 params:
-  - name: engine
-    schema: { type: string, pattern: "^[a-z][a-z0-9]*$" }
+  - { name: engine, schema: { type: string, pattern: "^[a-z][a-z0-9]*$" } }
   - name: query
     schema: !ref Query
-  - name: positionPattern
-    schema: { type: string, format: regex }
-  - name: start
-    schema: { type: string }
+  - { name: positionPattern, schema: { type: string, format: regex } }
+  - { name: start, schema: { type: string } }
 returns:
   schema:
     type: object
@@ -240,13 +222,9 @@ metadata:
     case. Returns null for no hint or no match, so the engine leaves the
     parameter out rather than sending a value it does not understand.
 params:
-  - name: hint
-    schema: { type: string }
-    nullable: true
+  - { name: hint, schema: { type: string }, nullable: true }
   - name: table
-    schema:
-      type: object
-      additionalProperties: { type: string }
+    schema: { type: object, additionalProperties: { type: string } }
 # The nullable result is written as a union: the kernel refuses a function whose
 # top-level result schema is `nullable: true` or a `type` list.
 returns:
@@ -269,12 +247,9 @@ metadata:
     or 366 days, so the window always covers the whole calendar period. For an
     engine whose recency filter takes a start date; pass the current time.
 params:
-  - name: freshness
-    schema: { type: string, enum: [day, week, month, year] }
-  - name: at
-    schema: { x-telo-type: Telo.Timestamp }
-returns:
-  schema: { x-telo-type: Telo.Timestamp }
+  - { name: freshness, schema: { type: string, enum: [day, week, month, year] } }
+  - { name: at, schema: { x-telo-type: Telo.Timestamp } }
+returns: { schema: { x-telo-type: Telo.Timestamp } }
 body: !cel "at - duration({'day': '24h', 'week': '168h', 'month': '744h', 'year': '8784h'}[freshness])"
 ---
 kind: Telo.Function
@@ -285,14 +260,10 @@ metadata:
     request and cannot page: enough to cover the slice plus one more that reveals
     whether anything follows, capped at the engine's per-request maximum.
 params:
-  - name: offset
-    schema: { type: integer, minimum: 0 }
-  - name: count
-    schema: { type: integer, minimum: 1 }
-  - name: window
-    schema: { type: integer, minimum: 1 }
-returns:
-  schema: { type: integer }
+  - { name: offset, schema: { type: integer, minimum: 0 } }
+  - { name: count, schema: { type: integer, minimum: 1 } }
+  - { name: window, schema: { type: integer, minimum: 1 } }
+returns: { schema: { type: integer } }
 body: !cel "offset + count + 1 < window ? offset + count + 1 : window"
 ---
 kind: Telo.Function
@@ -303,20 +274,15 @@ metadata:
     offset of the next item when one exists beyond the slice, or null when the
     slice reaches the end. An offset past the end yields an empty slice.
 params:
-  - name: items
-    schema: { type: array }
-  - name: offset
-    schema: { type: integer, minimum: 0 }
-  - name: count
-    schema: { type: integer, minimum: 1 }
+  - { name: items, schema: { type: array } }
+  - { name: offset, schema: { type: integer, minimum: 0 } }
+  - { name: count, schema: { type: integer, minimum: 1 } }
 returns:
   schema:
     type: object
     required: [items, next]
     additionalProperties: false
-    properties:
-      items: { type: array }
-      next: { type: [integer, "null"] }
+    properties: { items: { type: array }, next: { type: [integer, "null"] } }
 body: !cel >-
   cel.bind(from, offset < size(items) ? offset : size(items),
     cel.bind(to, from + count < size(items) ? from + count : size(items),
@@ -332,9 +298,7 @@ metadata:
     an instant outside the representable range, so an engine leaves the date out
     rather than failing the call.
 params:
-  - name: text
-    schema: { type: string }
-    nullable: true
+  - { name: text, schema: { type: string }, nullable: true }
 # The nullable result is written as a union: the kernel refuses a function whose
 # top-level result schema is `nullable: true` or a `type` list.
 returns:

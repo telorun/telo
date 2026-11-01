@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: CanInsertAndSelect
-  version: 1.0.0
+metadata: { name: CanInsertAndSelect, version: 1.0.0 }
 imports:
   Sql: ../
   SQLite: ../../sqlite
@@ -11,13 +9,11 @@ targets:
   - !ref testInsertAndSelect
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: Run.Sequence
-metadata:
-  name: testInsertAndSelect
+metadata: { name: testInsertAndSelect }
 steps:
   - name: createTable
     inputs:
@@ -27,15 +23,13 @@ steps:
       connection: !ref db
 
   - name: insertRow
-    inputs:
-      sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)"
+    inputs: { sql: "INSERT INTO users (id, name, age) VALUES (1, 'Alice', 30)" }
     invoke:
       kind: Sql.Command
       connection: !ref db
 
   - name: selectRow
-    inputs:
-      sql: "SELECT id, name, age FROM users WHERE id = 1"
+    inputs: { sql: "SELECT id, name, age FROM users WHERE id = 1" }
     invoke:
       kind: Sql.Query
       connection: !ref db
@@ -54,10 +48,4 @@ steps:
             maxItems: 1
             items:
               type: object
-              properties:
-                id:
-                  const: 1
-                name:
-                  const: Alice
-                age:
-                  const: 30
+              properties: { id: { const: 1 }, name: { const: Alice }, age: { const: 30 } }

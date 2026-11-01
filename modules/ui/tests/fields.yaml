@@ -22,8 +22,7 @@ targets:
   - !ref ratingRefusedAtRuntime
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Task
+metadata: { name: Task }
 schema:
   type: object
   required: [title]
@@ -33,15 +32,12 @@ schema:
     watchers: { type: array, items: { type: string } }
     period:
       type: object
-      properties:
-        from: { type: string, format: date }
-        to: { type: string, format: date }
+      properties: { from: { type: string, format: date }, to: { type: string, format: date } }
     secret: { type: string, writeOnly: true }
     stars: { type: integer, minimum: 1, maximum: 5 }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Person
+metadata: { name: Person }
 schema:
   type: object
   required: [id]
@@ -52,8 +48,7 @@ schema:
     page: { type: string, format: uri-reference }
 ---
 kind: Ui.CollectionOptions
-metadata:
-  name: people
+metadata: { name: people }
 model: !ref Person
 value: !cel "row.id"
 label: !cel "row.name"
@@ -85,23 +80,20 @@ source:
     query: { filters: [], sort: [] }
 ---
 kind: Ui.Form
-metadata:
-  name: bare
+metadata: { name: bare }
 model: !ref Task
 presentation: !ref tasks
 fields: [title]
 ---
 kind: Ui.Form
-metadata:
-  name: kinded
+metadata: { name: kinded }
 model: !ref Task
 presentation: !ref tasks
 fields:
   - { kind: Ui.InputField, property: title }
 ---
 kind: Ui.Form
-metadata:
-  name: full
+metadata: { name: full }
 model: !ref Task
 presentation: !ref tasks
 groups:
@@ -126,8 +118,7 @@ fields:
 state: { key: task, address: true }
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: bare
     invoke: { kind: Probe.Read, source: !ref bare }
@@ -206,8 +197,7 @@ steps:
           fields: [title, owner, watchers, period, stars]
 ---
 kind: Assert.Manifest
-metadata:
-  name: ratingRefused
+metadata: { name: ratingRefused }
 source: ./__fixtures__/invalid/rating/telo.yaml
 expect:
   errors:
@@ -215,8 +205,7 @@ expect:
       message: "Ui.Form/rated at 'fields[0]': required by Stars.Rating — rates a property that is not a number declaring `minimum` and `maximum`"
 ---
 kind: Assert.Manifest
-metadata:
-  name: ratingRefusedAtRuntime
+metadata: { name: ratingRefusedAtRuntime }
 source: ./__fixtures__/invalid/rating-at-runtime/telo.yaml
 expect:
   errors: []

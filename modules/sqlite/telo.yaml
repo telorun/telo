@@ -25,10 +25,8 @@ requires:
   # 0.121.0: `Connection.file`'s host-path branch declares `entry: file`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
   telo: ">=0.121.0"
-imports:
-  Sql: ../sql
-exports:
-  kinds: [Connection, Table, Enum, Schema]
+imports: { Sql: ../sql }
+exports: { kinds: [Connection, Table, Enum, Schema] }
 # better-sqlite3's addon for every tuple its upstream release publishes, at the
 # Node ABIs the CLI supports. Bun runs `bun:sqlite` and reads none of them.
 # better-sqlite3 rather than `node:sqlite`, which Node 24 marks experimental and
@@ -116,8 +114,7 @@ metadata:
     start-up and shared by every operation that references it.
 capability: Telo.Provider
 extends: Sql.Connection
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#ConnectionController
+controllers: [pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#ConnectionController]
 schema:
   type: object
   examples:
@@ -150,8 +147,7 @@ metadata:
     rather than executed.
 capability: Telo.Provider
 extends: Sql.Table
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#TableController
+controllers: [pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#TableController]
 x-telo-schema-projection:
   entries: /columns
   key: type
@@ -160,10 +156,7 @@ x-telo-schema-projection:
   # SQLite has no named types, so a referenced enum has no base of its own: the
   # declaration names a storage class and THIS kind's own map resolves it. Same
   # declaration, same projected node as PostgreSQL, two engine-native renderings.
-  reference:
-    from: values
-    keyword: enum
-    baseFrom: baseType
+  reference: { from: values, keyword: enum, baseFrom: baseType }
 schema:
   type: object
   additionalProperties: false
@@ -277,14 +270,8 @@ schema:
               Whether the column admits NULL. Omitted, it is false on a primary
               key or an identity column and true on any other.
             type: boolean
-          primaryKey:
-            title: Primary Key
-            type: boolean
-            default: false
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+          primaryKey: { title: Primary Key, type: boolean, default: false }
+          unique: { title: Unique, type: boolean, default: false }
           identity:
             title: Identity
             description: >-
@@ -338,10 +325,7 @@ schema:
             type: array
             minItems: 1
             items: { type: string }
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+          unique: { title: Unique, type: boolean, default: false }
           where:
             title: Where
             description: Partial-index predicate.
@@ -473,16 +457,13 @@ metadata:
     that does have one.
 capability: Telo.Provider
 extends: Sql.Enum
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#EnumController
+controllers: [pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#EnumController]
 schema:
   type: object
   additionalProperties: false
   required: [typeName, baseType, values]
   examples:
-    - typeName: message_role
-      baseType: text
-      values: [system, user, assistant]
+    - { typeName: message_role, baseType: text, values: [system, user, assistant] }
   properties:
     typeName:
       title: Type Name
@@ -529,8 +510,7 @@ metadata:
     passed.
 capability: Telo.Runnable
 extends: Sql.Schema
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#SchemaController
+controllers: [pkg:telo/local/js?path=./nodejs/sqlite.mjs&local_path=./nodejs/src/index.ts#SchemaController]
 schema:
   type: object
   additionalProperties: false

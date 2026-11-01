@@ -43,7 +43,7 @@ fonts:
   Brand: !ref brand
 defaultStyle: { font: Brand, fontSize: 12 }
 content:
-  - text: Hello from the brand face.
+  - { text: Hello from the brand face. }
 ---
 # Declared inside a scope rather than at the top level: at the top level this
 # document would fail at boot — correctly — and take the whole test with it.
@@ -56,7 +56,7 @@ with:
       Web: !ref websafe
     defaultStyle: { font: Web }
     content:
-      - text: This cannot render.
+      - { text: This cannot render. }
 steps:
   - name: render
     invoke: !ref unembeddable

@@ -13,8 +13,7 @@ metadata:
   name: RecordStreamStaticRefusalsTest
   version: 1.0.0
   description: Each journal refusal is pinned statically and at runtime.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref journalNeedsStoreAndRetention
   - !ref writerTimeoutPositive
@@ -41,8 +40,7 @@ metadata: { name: journalNeedsStoreAndRetention }
 source: ./__fixtures__/journal-without-store.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "is missing required property 'store'"
+    - { code: SCHEMA_VIOLATION, message: "is missing required property 'store'" }
     - code: RESOURCE_RULE_VIOLATED
       message: "sets neither `retention` nor `markerRetention`"
 ---
@@ -57,24 +55,19 @@ expect:
 kind: Assert.Manifest
 metadata: { name: writerTimeoutPositiveAtRuntime }
 source: ./__fixtures__/writer-timeout-zero-app.yaml
-expect:
-  errors: []
-  runFails: "RECORD_STREAM_WRITER_TIMEOUT_NOT_POSITIVE"
+expect: { errors: [], runFails: "RECORD_STREAM_WRITER_TIMEOUT_NOT_POSITIVE" }
 ---
 kind: Assert.Manifest
 metadata: { name: retentionNotNegative }
 source: ./__fixtures__/retention-negative/telo.yaml
 expect:
   errors:
-    - code: RESOURCE_RULE_VIOLATED
-      message: "sets a negative `retention`"
+    - { code: RESOURCE_RULE_VIOLATED, message: "sets a negative `retention`" }
 ---
 kind: Assert.Manifest
 metadata: { name: retentionNotNegativeAtRuntime }
 source: ./__fixtures__/retention-negative-app.yaml
-expect:
-  errors: []
-  runFails: "RECORD_STREAM_RETENTION_NEGATIVE"
+expect: { errors: [], runFails: "RECORD_STREAM_RETENTION_NEGATIVE" }
 ---
 kind: Assert.Manifest
 metadata: { name: retentionRequired }
@@ -87,24 +80,19 @@ expect:
 kind: Assert.Manifest
 metadata: { name: retentionRequiredAtRuntime }
 source: ./__fixtures__/retention-missing-app.yaml
-expect:
-  errors: []
-  runFails: "RECORD_STREAM_RETENTION_MISSING"
+expect: { errors: [], runFails: "RECORD_STREAM_RETENTION_MISSING" }
 ---
 kind: Assert.Manifest
 metadata: { name: markerRetentionNotNegative }
 source: ./__fixtures__/marker-retention-negative/telo.yaml
 expect:
   errors:
-    - code: RESOURCE_RULE_VIOLATED
-      message: "sets a negative `markerRetention`"
+    - { code: RESOURCE_RULE_VIOLATED, message: "sets a negative `markerRetention`" }
 ---
 kind: Assert.Manifest
 metadata: { name: markerRetentionNotNegativeAtRuntime }
 source: ./__fixtures__/marker-retention-negative-app.yaml
-expect:
-  errors: []
-  runFails: "RECORD_STREAM_MARKER_RETENTION_NEGATIVE"
+expect: { errors: [], runFails: "RECORD_STREAM_MARKER_RETENTION_NEGATIVE" }
 ---
 # The only code a read raises from the call is a removal at open, so catching it
 # alone leaves nothing uncovered.
@@ -119,8 +107,7 @@ metadata: { name: sourceCatchesStreamCode }
 source: ./__fixtures__/source-catches/writer-lost.yaml
 expect:
   errors:
-    - code: UNDECLARED_THROW_CODE
-      message: ERR_JOURNAL_WRITER_LOST
+    - { code: UNDECLARED_THROW_CODE, message: ERR_JOURNAL_WRITER_LOST }
 ---
 kind: Assert.Manifest
 metadata: { name: onCompleteDeprecated }
@@ -128,22 +115,19 @@ source: ./__fixtures__/on-complete-deprecated.yaml
 expect:
   errors: []
   warnings:
-    - code: DEPRECATED_KIND
-      message: "Use 'RecordStream.EndHandler' instead"
+    - { code: DEPRECATED_KIND, message: "Use 'RecordStream.EndHandler' instead" }
 ---
 kind: Assert.Manifest
 metadata: { name: outcomeFieldMisspelled }
 source: ./__fixtures__/end-handler-outcome/typo.yaml
 expect:
   errors:
-    - code: CEL_UNKNOWN_FIELD
-      message: "'inputs.outcome.stat' is not defined"
+    - { code: CEL_UNKNOWN_FIELD, message: "'inputs.outcome.stat' is not defined" }
 ---
 kind: Assert.Manifest
 metadata: { name: outcomeFieldsTyped }
 source: ./__fixtures__/end-handler-outcome/typed.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: handlerInputMissing }
@@ -158,29 +142,25 @@ metadata: { name: handlerInputRejected }
 source: ./__fixtures__/end-handler-inputs/rejected-key.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'records' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'records' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: outcomeBindingMisspelled }
 source: ./__fixtures__/end-handler-inputs/outcome-typo.yaml
 expect:
   errors:
-    - code: CEL_UNKNOWN_FIELD
-      message: "'outcome.stat' is not defined"
+    - { code: CEL_UNKNOWN_FIELD, message: "'outcome.stat' is not defined" }
 ---
 kind: Assert.Manifest
 metadata: { name: outcomeErrorUnguarded }
 source: ./__fixtures__/end-handler-inputs/unguarded-error.yaml
 expect:
   errors:
-    - code: CEL_NULLABLE_ACCESS
-      message: "'outcome.error' may be null"
+    - { code: CEL_NULLABLE_ACCESS, message: "'outcome.error' may be null" }
 ---
 kind: Assert.Manifest
 metadata: { name: handlerInputsRequired }
 source: ./__fixtures__/end-handler-inputs/no-inputs.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "is missing required property 'inputs'"
+    - { code: SCHEMA_VIOLATION, message: "is missing required property 'inputs'" }

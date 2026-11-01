@@ -9,8 +9,7 @@ metadata:
   name: ToolApprovalRefusalsTest
   version: 1.0.0
   description: Tool approval is type-checked where it is written, and its name rule holds at check and at creation.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref gateRefused
   - !ref gateTyped
@@ -35,18 +34,15 @@ metadata: { name: gateRefused }
 source: ./__fixtures__/tool-approval-typing/gate-refused.yaml
 expect:
   errors:
-    - code: CEL_UNKNOWN_FIELD
-      message: "'arguments.amout' is not defined"
+    - { code: CEL_UNKNOWN_FIELD, message: "'arguments.amout' is not defined" }
     - code: CEL_TYPE_ERROR
       message: "CEL at 'tools[1].approval' reads 'arguments.amount'"
-    - code: CEL_UNKNOWN_FIELD
-      message: "'context.trusted' is not defined"
+    - { code: CEL_UNKNOWN_FIELD, message: "'context.trusted' is not defined" }
 ---
 kind: Assert.Manifest
 metadata: { name: gateTyped }
 source: ./__fixtures__/tool-approval-typing/gate-typed.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: approverRefused }
@@ -72,23 +68,20 @@ expect:
 kind: Assert.Manifest
 metadata: { name: approverTyped }
 source: ./__fixtures__/tool-approval-typing/approver-typed.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # The approver's own code is part of the agent's union: a route names it.
 kind: Assert.Manifest
 metadata: { name: approverCodeCovered }
 source: ./__fixtures__/tool-approval-typing/approver-throws-covered.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: approverCodeUncovered }
 source: ./__fixtures__/tool-approval-typing/approver-throws-uncovered.yaml
 expect:
   errors:
-    - code: UNCOVERED_THROW_CODE
-      message: "'ERR_REVIEW_UNAVAILABLE'"
+    - { code: UNCOVERED_THROW_CODE, message: "'ERR_REVIEW_UNAVAILABLE'" }
 ---
 kind: Assert.Manifest
 metadata: { name: nameFiltered }
@@ -135,8 +128,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nameAccepted }
 source: ./__fixtures__/approval-unknown-tool/accepted.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 # The entry's own filter removes the name, so that rule is the one reporting it.
 kind: Assert.Manifest

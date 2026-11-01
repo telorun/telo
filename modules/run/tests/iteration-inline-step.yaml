@@ -14,15 +14,12 @@ metadata:
     The collection is read as `inputs.rows` and NOT as `steps.rows.result`: the
     nested kind is its own resource, so the enclosing sequence's `steps` scope is
     not bound inside it.
-imports:
-  Run: ../../run
-  Assert: ../../assert
+imports: { Run: ../../run, Assert: ../../assert }
 targets:
   - !ref main
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: rows
     value:
@@ -49,8 +46,7 @@ steps:
       expected:
         - { line: "ada 1d 30m" }
         - { line: "linus 7h 30m" }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # The shape the iteration guide documents: an inline `Run.Iteration` driving a
   # step per element for its effects. Held here so the guide's example cannot
@@ -65,7 +61,6 @@ steps:
           inputs:
             actual: !cel "has(item.user) && has(item.minutes)"
             expected: true
-          invoke:
-            kind: Assert.Equals
+          invoke: { kind: Assert.Equals }
     inputs:
       rows: !cel "steps.rows.result"

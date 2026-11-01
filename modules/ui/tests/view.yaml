@@ -19,23 +19,15 @@ targets:
   - !ref main
 ---
 kind: Ui.View
-metadata:
-  name: inner
-content:
-  type: text
-  text: Inner
+metadata: { name: inner }
+content: { type: text, text: Inner }
 ---
 kind: Ui.View
-metadata:
-  name: switchedOff
-content:
-  type: text
-  text: Never shown
-  when: false
+metadata: { name: switchedOff }
+content: { type: text, text: Never shown, when: false }
 ---
 kind: Ui.View
-metadata:
-  name: page
+metadata: { name: page }
 content:
   type: stack
   style: [strong]
@@ -70,8 +62,7 @@ content:
             content: { type: text, text: !cel "'v' + module.version" }
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: read
     invoke: { kind: Probe.Read, source: !ref page }

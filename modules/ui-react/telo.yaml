@@ -23,10 +23,7 @@ requires:
   # (`/navigation/items(/*/items)*`), which 0.120.1 reads as a field this kind
   # does not declare (RESOURCE_RULE_INVALID).
   telo: ">=0.121.0"
-imports:
-  Ui: ../ui
-  I18n: ../i18n
-  SseCodec: ../sse-codec
+imports: { Ui: ../ui, I18n: ../i18n, SseCodec: ../sse-codec }
 exports:
   kinds: [App, Theme, Controls]
   resources: [defaultTheme]
@@ -112,8 +109,7 @@ metadata:
     descriptions, scripts, stylesheets and fonts under one mount, and can vary
     what a page shows per request — by a header such as a role or a tenant.
 capability: Telo.Mount
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#AppController
+controllers: [pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#AppController]
 schema:
   type: object
   additionalProperties: false
@@ -140,9 +136,7 @@ schema:
           request:
             type: object
             properties:
-              headers:
-                type: object
-                additionalProperties: { type: string }
+              headers: { type: object, additionalProperties: { type: string } }
               ip: { type: string }
     translator:
       title: Translator
@@ -173,15 +167,14 @@ schema:
         `when` holds for the request is used, and with none the theme's own
         values apply.
       anyOf:
-        - x-telo-ref: { kind: Ui.DesignTokens, use: dependency }
+        - { x-telo-ref: { kind: Ui.DesignTokens, use: dependency } }
         - type: array
           items:
             type: object
             additionalProperties: false
             required: [tokens]
             properties:
-              tokens:
-                x-telo-ref: { kind: Ui.DesignTokens, use: dependency }
+              tokens: { x-telo-ref: { kind: Ui.DesignTokens, use: dependency } }
               when:
                 type: boolean
                 default: true
@@ -191,16 +184,13 @@ schema:
                     request:
                       type: object
                       properties:
-                        headers:
-                          type: object
-                          additionalProperties: { type: string }
+                        headers: { type: object, additionalProperties: { type: string } }
                         ip: { type: string }
     stylesheets:
       title: Stylesheets
       description: Stylesheets of the application's own, applied after everything else.
       type: array
-      items:
-        x-telo-type: Telo.HostPath
+      items: { x-telo-type: Telo.HostPath }
     compactBelow:
       title: Compact below
       description: >-
@@ -249,9 +239,7 @@ schema:
                 x-telo-context-eval: runtime
                 type: object
                 properties:
-                  headers:
-                    type: object
-                    additionalProperties: { type: string }
+                  headers: { type: object, additionalProperties: { type: string } }
                   ip: { type: string }
         end:
           title: End
@@ -265,9 +253,7 @@ schema:
                 x-telo-context-eval: runtime
                 type: object
                 properties:
-                  headers:
-                    type: object
-                    additionalProperties: { type: string }
+                  headers: { type: object, additionalProperties: { type: string } }
                   ip: { type: string }
     pages:
       title: Pages
@@ -277,8 +263,7 @@ schema:
         may share a path.
       type: array
       minItems: 1
-      items:
-        x-telo-ref: { kind: Ui.Page, use: call }
+      items: { x-telo-ref: { kind: Ui.Page, use: call } }
     navigation:
       title: Navigation
       description: >-
@@ -319,8 +304,7 @@ metadata:
     date pickers. Picked by an application with one reference, so swapping it
     restyles every screen while the brand stays.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ThemeController
+controllers: [pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ThemeController]
 schema:
   type: object
   additionalProperties: false
@@ -336,8 +320,7 @@ schema:
       description: >-
         The theme's look, in order, written against the styling contract.
       type: array
-      items:
-        x-telo-type: Telo.HostPath
+      items: { x-telo-type: Telo.HostPath }
     controls:
       title: Controls
       description: >-
@@ -346,8 +329,7 @@ schema:
         aliases included; a control no entry implements is the built-in.
       type: array
       uniqueItems: true
-      items:
-        x-telo-ref: { kind: Self.Controls, use: dependency }
+      items: { x-telo-ref: { kind: Self.Controls, use: dependency } }
   # Entries are counted, never compared: the same declaration reached twice is
   # two entries, as it is for the theme's controller.
   x-telo-resource-rules:
@@ -374,8 +356,7 @@ metadata:
     module and drawn in place of the built-in ones by any theme listing it.
     Checked against the controls contract before the application starts.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ControlsController
+controllers: [pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#ControlsController]
 schema:
   type: object
   additionalProperties: false
@@ -423,7 +404,6 @@ schema:
 # The built-in look: one stylesheet styling every part, with every token's
 # default and its dark-scheme value. It replaces no control.
 kind: Self.Theme
-metadata:
-  name: defaultTheme
+metadata: { name: defaultTheme }
 stylesheets:
   - !module-path ./themes/default/default-theme.css

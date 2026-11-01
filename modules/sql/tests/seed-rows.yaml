@@ -4,11 +4,8 @@
 # the wrong type is an error on the row's own line rather than a boot failure
 # against a real database.
 kind: Telo.Application
-metadata:
-  name: SeedRowChecks
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: SeedRowChecks, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testPartial
   - !ref testMisspelled
@@ -19,36 +16,29 @@ targets:
 # A row omitting a NON-key column passes: the projection emits no `required`, so
 # the insert takes the column default and an update leaves it alone.
 kind: Assert.Manifest
-metadata:
-  name: testPartial
+metadata: { name: testPartial }
 source: ./__fixtures__/seed-rows/partial.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
-metadata:
-  name: testMisspelled
+metadata: { name: testMisspelled }
 source: ./__fixtures__/seed-rows/misspelled.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "'lable' is not allowed"
+    - { code: SCHEMA_VIOLATION, message: "'lable' is not allowed" }
 ---
 kind: Assert.Manifest
-metadata:
-  name: testWrongType
+metadata: { name: testWrongType }
 source: ./__fixtures__/seed-rows/wrong-type.yaml
 expect:
   errors:
-    - code: SCHEMA_VIOLATION
-      message: "must be integer"
+    - { code: SCHEMA_VIOLATION, message: "must be integer" }
 ---
 # The seed key and the rows are checked against the table's own columns too, so
 # both invariants the controller enforces at boot are decidable at `telo check` —
 # the position `SQL_INDEX_UNKNOWN_COLUMN` already takes one field over.
 kind: Assert.Manifest
-metadata:
-  name: testUnknownKey
+metadata: { name: testUnknownKey }
 source: ./__fixtures__/seed-rows/unknown-key.yaml
 expect:
   errors:
@@ -56,8 +46,7 @@ expect:
       message: "names a column this table does not declare"
 ---
 kind: Assert.Manifest
-metadata:
-  name: testNoIdentity
+metadata: { name: testNoIdentity }
 source: ./__fixtures__/seed-rows/no-identity.yaml
 expect:
   errors:

@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: CanUseCrud
-  version: 1.0.0
+metadata: { name: CanUseCrud, version: 1.0.0 }
 imports:
   Sql: ../../sql
   SQLite: ../../sqlite
@@ -13,56 +11,46 @@ targets:
   - !ref testCrud
 ---
 kind: SQLite.Connection
-metadata:
-  name: db
+metadata: { name: db }
 file: ":memory:"
 ---
 kind: SQLite.Table
-metadata:
-  name: users
+metadata: { name: users }
 table: users
 columns:
   id: { type: integer, primaryKey: true, identity: always }
   name: { type: text, nullable: false }
 ---
 kind: SQLite.Schema
-metadata:
-  name: appSchema
+metadata: { name: appSchema }
 connection: !ref db
 version: !cel "module.version"
 tables: [!ref users]
 ---
 kind: SqlRepository.Create
-metadata:
-  name: insertUser
+metadata: { name: insertUser }
 connection: !ref db
 table: !ref users
 ---
 kind: SqlRepository.Read
-metadata:
-  name: getUsers
+metadata: { name: getUsers }
 connection: !ref db
 table: !ref users
 ---
 kind: SqlRepository.Delete
-metadata:
-  name: deleteUser
+metadata: { name: deleteUser }
 connection: !ref db
 table: !ref users
 ---
 kind: Run.Sequence
-metadata:
-  name: testCrud
+metadata: { name: testCrud }
 steps:
   - name: insert
-    inputs:
-      data:
-        name: Alice
+    inputs: { data: { name: Alice } }
     invoke: !ref insertUser
 
   - name: read
-    inputs:
-      filters: {}
+    inputs: { filters: {} }
     invoke: !ref getUsers
 
   - name: assertRead
@@ -76,21 +64,14 @@ steps:
           rows:
             type: array
             minItems: 1
-            items:
-              type: object
-              properties:
-                name:
-                  const: Alice
+            items: { type: object, properties: { name: { const: Alice } } }
 
   - name: delete
-    inputs:
-      filters:
-        name: Alice
+    inputs: { filters: { name: Alice } }
     invoke: !ref deleteUser
 
   - name: readAfterDelete
-    inputs:
-      filters: {}
+    inputs: { filters: {} }
     invoke: !ref getUsers
 
   - name: assertEmpty
@@ -98,9 +79,4 @@ steps:
       rows: !cel "steps.readAfterDelete.result.rows"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          rows:
-            type: array
-            maxItems: 0
+      schema: { type: object, properties: { rows: { type: array, maxItems: 0 } } }

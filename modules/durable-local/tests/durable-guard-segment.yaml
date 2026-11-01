@@ -47,8 +47,7 @@ steps:
           invoke:
             kind: Run.Sequence
             steps:
-              - name: when
-                invoke: { kind: Run.Value, value: { said: hello } }
+              - { name: when, invoke: { kind: Run.Value, value: { said: hello } } }
             outputs:
               got: !cel "steps.when.result"
     inputs:
@@ -67,7 +66,4 @@ steps:
         status: !cel "steps.finished.result.status"
         got: !cel "steps.finished.result.result.steps.outer.result.got"
         replayedSteps: !cel "steps.finished.result.replayedSteps"
-      expected:
-        status: completed
-        got: { said: hello }
-        replayedSteps: 0
+      expected: { status: completed, got: { said: hello }, replayedSteps: 0 }

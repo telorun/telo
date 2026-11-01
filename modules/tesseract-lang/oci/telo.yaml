@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - oci
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [oci] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: oci, member: package/4.0.0_best_int/oci.traineddata.gz, sha256: 1221f848173d4626711a2a16179ce427e06488795001e8dde6a2c11e40b46eca, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: oci
-  description: Occitan, Latin script
+metadata: { name: oci, description: "Occitan, Latin script" }
 code: oci
 data: !module-path ./tessdata/oci.traineddata.gz

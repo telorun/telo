@@ -17,11 +17,8 @@ requires:
   # 0.121.0: `Journal.directory` declares `entry: directory`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
   telo: ">=0.121.0"
-imports:
-  DurableLocal: ../durable-local
-exports:
-  kinds:
-    - Journal
+imports: { DurableLocal: ../durable-local }
+exports: { kinds: [Journal] }
 ---
 # A file journal, and NOT a memory one.
 #
@@ -45,8 +42,7 @@ metadata:
     store when several machines record to one place.
 capability: Telo.Provider
 extends: DurableLocal.Journal
-controllers:
-  - pkg:telo/local/js?path=./nodejs/durable-journal-file.mjs&local_path=./nodejs/src/index.ts#journal
+controllers: [pkg:telo/local/js?path=./nodejs/durable-journal-file.mjs&local_path=./nodejs/src/index.ts#journal]
 schema:
   type: object
   required: [directory]

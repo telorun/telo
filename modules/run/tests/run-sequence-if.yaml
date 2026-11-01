@@ -1,31 +1,21 @@
 kind: Telo.Application
-metadata:
-  name: RunSequenceIf
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunSequenceIf, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testIfBranches
 ---
 kind: Run.Sequence
-metadata:
-  name: testIfBranches
+metadata: { name: testIfBranches }
 steps:
   # --- if/then: condition true, then branch executes ---
   - name: trueCondition
     if: !cel "true"
     then:
       - name: thenRan
-        inputs:
-          branch: "then"
+        inputs: { branch: "then" }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              branch:
-                const: "then"
+          schema: { type: object, properties: { branch: { const: "then" } } }
 
   # Verify then branch produced a result (Assert.Schema returns true on pass).
   - name: verifyThenRan
@@ -33,11 +23,7 @@ steps:
       result: !cel "steps.thenRan.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- if/then/else: condition false, else branch executes ---
   - name: falseCondition
@@ -45,44 +31,27 @@ steps:
     then:
       # If this ran, assertion would fail (1 != 0).
       - name: wrongBranch
-        inputs:
-          x: 1
+        inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              x:
-                const: 0
+          schema: { type: object, properties: { x: { const: 0 } } }
     else:
       - name: elseRan
-        inputs:
-          branch: "else"
+        inputs: { branch: "else" }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              branch:
-                const: "else"
+          schema: { type: object, properties: { branch: { const: "else" } } }
 
   - name: verifyElseRan
     inputs:
       result: !cel "steps.elseRan.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- data-driven condition: branch chosen by a prior step result ---
   - name: setup
-    invoke:
-      kind: Run.Value
-      value:
-        value: 42
+    invoke: { kind: Run.Value, value: { value: 42 } }
 
   - name: dataDrivenIf
     if: !cel "steps.setup.result.value == 42"
@@ -92,34 +61,21 @@ steps:
           value: !cel "steps.setup.result.value"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              value:
-                const: 42
+          schema: { type: object, properties: { value: { const: 42 } } }
     else:
       # Would fail if reached.
       - name: wrongValueBranch
-        inputs:
-          x: 1
+        inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              x:
-                const: 0
+          schema: { type: object, properties: { x: { const: 0 } } }
 
   - name: verifyDataBranch
     inputs:
       result: !cel "steps.correctBranch.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- if/elseif: first elseif branch matches ---
   - name: elseIfFirstMatches
@@ -127,52 +83,33 @@ steps:
     then:
       # Would fail if reached.
       - name: wrongIfBranch
-        inputs:
-          x: 1
+        inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              x:
-                const: 0
+          schema: { type: object, properties: { x: { const: 0 } } }
     elseif:
       - if: !cel "true"
         then:
           - name: firstElseIfRan
-            inputs:
-              branch: "elseif-1"
+            inputs: { branch: "elseif-1" }
             invoke:
               kind: Assert.Schema
-              schema:
-                type: object
-                properties:
-                  branch:
-                    const: "elseif-1"
+              schema: { type: object, properties: { branch: { const: "elseif-1" } } }
       - if: !cel "true"
         then:
           # Would fail if reached — first matching elseif must short-circuit.
           - name: secondElseIfWrong
-            inputs:
-              x: 1
+            inputs: { x: 1 }
             invoke:
               kind: Assert.Schema
-              schema:
-                type: object
-                properties:
-                  x:
-                    const: 0
+              schema: { type: object, properties: { x: { const: 0 } } }
 
   - name: verifyFirstElseIf
     inputs:
       result: !cel "steps.firstElseIfRan.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- if/elseif: later elseif branch matches after earlier ones fail ---
   - name: elseIfLaterMatches
@@ -194,26 +131,17 @@ steps:
       - if: !cel "true"
         then:
           - name: secondElseIfRan
-            inputs:
-              branch: "elseif-2"
+            inputs: { branch: "elseif-2" }
             invoke:
               kind: Assert.Schema
-              schema:
-                type: object
-                properties:
-                  branch:
-                    const: "elseif-2"
+              schema: { type: object, properties: { branch: { const: "elseif-2" } } }
 
   - name: verifySecondElseIf
     inputs:
       result: !cel "steps.secondElseIfRan.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- if/elseif/else: no elseif matches, fall through to else ---
   - name: elseIfFallsThroughToElse
@@ -234,33 +162,21 @@ steps:
               schema: { type: object, properties: { x: { const: 0 } } }
     else:
       - name: elseRanAfterElseIf
-        inputs:
-          branch: "else-after-elseif"
+        inputs: { branch: "else-after-elseif" }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              branch:
-                const: "else-after-elseif"
+          schema: { type: object, properties: { branch: { const: "else-after-elseif" } } }
 
   - name: verifyElseAfterElseIf
     inputs:
       result: !cel "steps.elseRanAfterElseIf.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- if/elseif: data-driven dispatch via a prior step ---
   - name: setupRole
-    invoke:
-      kind: Run.Value
-      value:
-        role: "editor"
+    invoke: { kind: Run.Value, value: { role: "editor" } }
 
   - name: elseIfDataDriven
     if: !cel "steps.setupRole.result.role == 'admin'"
@@ -278,11 +194,7 @@ steps:
               role: !cel "steps.setupRole.result.role"
             invoke:
               kind: Assert.Schema
-              schema:
-                type: object
-                properties:
-                  role:
-                    const: "editor"
+              schema: { type: object, properties: { role: { const: "editor" } } }
       - if: !cel "steps.setupRole.result.role == 'viewer'"
         then:
           - name: viewerBranch
@@ -302,8 +214,4 @@ steps:
       result: !cel "steps.editorBranch.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }

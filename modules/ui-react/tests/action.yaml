@@ -19,14 +19,12 @@ targets:
   - !ref test
 ---
 kind: Run.Sequence
-metadata:
-  name: test
+metadata: { name: test }
 with:
   - kind: App.Instance
     metadata: { name: fixture }
     source: ./__fixtures__/action/telo.yaml
-    ports:
-      http: 19331
+    ports: { http: 19331 }
 targets:
   - !ref fixture
 steps:
@@ -98,9 +96,7 @@ steps:
         listing: listing
         rowActions:
           - action: [ /api/archive, { lang: und, message: [Archive] }, { type: value, value: { root: result, path: [ archived ] }, labels: [], present: { type: boolean } } ]
-            inputs:
-              id: { root: row, path: [id] }
-              status: { value: archived }
+            inputs: { id: { root: row, path: [id] }, status: { value: archived } }
             confirm: { lang: und, message: [Archive this task?] }
             enabled:
               at: { root: row, path: [text] }
@@ -114,8 +110,7 @@ steps:
             - { header: { lang: und, message: [Month] }, labels: [], value: { root: row, path: [] }, present: { type: string } }
           rowActions:
             - action: !cel "steps.page.result.body.children[0]"
-              inputs:
-                month: { root: row, path: [] }
+              inputs: { month: { root: row, path: [] } }
 
   - name: run
     invoke:
@@ -168,6 +163,4 @@ steps:
             data:
               issues:
                 - { pointer: /body/month, keyword: pattern, params: { pattern: "^[0-9]{4}-[0-9]{2}$" } }
-        archive:
-          status: 200
-          body: { archived: true }
+        archive: { status: 200, body: { archived: true } }

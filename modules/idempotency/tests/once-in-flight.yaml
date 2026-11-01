@@ -43,8 +43,7 @@ store: !ref counters
 ---
 # A body slow enough that the second call lands while its claim is still held.
 kind: Run.Sequence
-metadata:
-  name: slowBody
+metadata: { name: slowBody }
 steps:
   - name: read
     invoke: !ref get
@@ -56,13 +55,10 @@ steps:
       value: !cel "steps.read.result.state == 'miss' ? 1 : steps.read.result.value + 1"
   - name: linger
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "600ms"
-      value: {}
+    inputs: { duration: "600ms", value: {} }
 ---
 kind: Idempotency.Once
-metadata:
-  name: slowOnce
+metadata: { name: slowOnce }
 store: !ref store
 claimTtl: "30s"
 ttl: "60s"
@@ -75,8 +71,7 @@ metadata: { name: startDetached }
 invoke: !ref slowOnce
 ---
 kind: Run.Sequence
-metadata:
-  name: testInFlight
+metadata: { name: testInFlight }
 steps:
   - name: first
     invoke: !ref startDetached
@@ -84,9 +79,7 @@ steps:
   # Let the detached call claim the key before racing it.
   - name: settle
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "150ms"
-      value: {}
+    inputs: { duration: "150ms", value: {} }
   - name: second
     invoke: !ref slowOnce
     inputs: { key: "collide" }
@@ -118,8 +111,7 @@ steps:
     invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
-metadata:
-  name: testEmptyKey
+metadata: { name: testEmptyKey }
 steps:
   - name: attempt
     try:

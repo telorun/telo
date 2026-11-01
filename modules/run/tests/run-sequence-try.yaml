@@ -1,17 +1,11 @@
 kind: Telo.Application
-metadata:
-  name: RunSequenceTry
-  version: 1.0.0
-imports:
-  Run: ../
-  JavaScript: ../../javascript
-  Assert: ../../assert
+metadata: { name: RunSequenceTry, version: 1.0.0 }
+imports: { Run: ../, JavaScript: ../../javascript, Assert: ../../assert }
 targets:
   - !ref testTryBlocks
 ---
 kind: Run.Sequence
-metadata:
-  name: testTryBlocks
+metadata: { name: testTryBlocks }
 steps:
   # --- try/catch: error is thrown, caught, swallowed; sequence continues ---
   - name: catchError
@@ -32,26 +26,18 @@ steps:
           schema:
             type: object
             properties:
-              msg:
-                type: string
-              step:
-                type: string
+              msg: { type: string }
+              step: { type: string }
               # A plain Error (not an InvokeError) gets the INTERNAL_ERROR code,
               # so error.code is never null inside a catch.
-              code:
-                const: "INTERNAL_ERROR"
+              code: { const: "INTERNAL_ERROR" }
 
   # Error was swallowed — sequence continues here.
   - name: afterCatch
-    inputs:
-      continued: true
+    inputs: { continued: true }
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          continued:
-            const: true
+      schema: { type: object, properties: { continued: { const: true } } }
 
   # --- try/finally: success path, finally always runs with error==null ---
   - name: trySuccess
@@ -67,22 +53,14 @@ steps:
           done: !cel "steps.workDone.result.done"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              done:
-                const: true
+          schema: { type: object, properties: { done: { const: true } } }
 
   - name: verifyFinallyRan
     inputs:
       result: !cel "steps.finallyOnSuccess.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- try/catch/finally: error thrown, catch runs, finally always runs ---
   - name: fullTryCatchFinally
@@ -98,44 +76,27 @@ steps:
           msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              msg:
-                const: "boom"
+          schema: { type: object, properties: { msg: { const: "boom" } } }
     finally:
       - name: finallyRan
-        inputs:
-          x: 1
+        inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              x:
-                const: 1
+          schema: { type: object, properties: { x: { const: 1 } } }
 
   - name: verifyCatchRan
     inputs:
       result: !cel "steps.catchRan.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   - name: verifyFinallyAfterCatch
     inputs:
       result: !cel "steps.finallyRan.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- try: when guard skips entire block ---
   - name: skippedTry
@@ -143,15 +104,10 @@ steps:
     try:
       # Would fail if reached.
       - name: tryShouldNotRun
-        inputs:
-          x: 1
+        inputs: { x: 1 }
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            properties:
-              x:
-                const: 0
+          schema: { type: object, properties: { x: { const: 0 } } }
 
   # --- try/catch nested inside if ---
   - name: nestedTryCatch
@@ -170,22 +126,14 @@ steps:
               msg: !cel "error.message"
             invoke:
               kind: Assert.Schema
-              schema:
-                type: object
-                properties:
-                  msg:
-                    const: "inner"
+              schema: { type: object, properties: { msg: { const: "inner" } } }
 
   - name: verifyNestedCatch
     inputs:
       result: !cel "steps.innerCaught.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          result:
-            const: true
+      schema: { type: object, properties: { result: { const: true } } }
 
   # --- rethrow of a plain error's code: must propagate INTERNAL_ERROR, not
   # fail with INVALID_THROW_STEP (the bug this guards against). ---
@@ -203,8 +151,7 @@ steps:
                   code: |
                     function main() { throw new Error("deep") }
             catch:
-              - name: again
-                rethrow: {}
+              - { name: again, rethrow: {} }
         catch:
           - name: caughtUnchanged
             invoke: { kind: Assert.Equals }
@@ -212,9 +159,7 @@ steps:
               actual:
                 code: !cel "error.code"
                 message: !cel "error.message"
-              expected:
-                code: INTERNAL_ERROR
-                message: deep
+              expected: { code: INTERNAL_ERROR, message: deep }
           - name: reraise
             throw:
               code: !cel "error.code"
@@ -228,8 +173,4 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code:
-                const: "INTERNAL_ERROR"
-              msg:
-                const: "deep"
+            properties: { code: { const: "INTERNAL_ERROR" }, msg: { const: "deep" } }

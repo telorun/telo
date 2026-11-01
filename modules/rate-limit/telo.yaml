@@ -11,12 +11,8 @@ metadata:
     tokens, bytes, any metered spend — reserving up front and settling to the actual
     amount. Both return a verdict with what remains and when to retry, rather than
     raising.
-imports:
-  Cache: ../cache
-exports:
-  kinds:
-    - Guard
-    - Budget
+imports: { Cache: ../cache }
+exports: { kinds: [Guard, Budget] }
 ---
 kind: Telo.Definition
 metadata:
@@ -26,8 +22,7 @@ metadata:
     within a sliding window. Returns whether this one is allowed, how many remain and
     how long until the window frees, instead of raising.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/rate-limit.mjs&local_path=./nodejs/src/index.ts#GuardController
+controllers: [pkg:telo/local/js?path=./nodejs/rate-limit.mjs&local_path=./nodejs/src/index.ts#GuardController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -47,9 +42,7 @@ outputType:
     required: [allowed, remaining, retryAfter]
     additionalProperties: false
     properties:
-      allowed:
-        type: boolean
-        description: Whether this request is within the limit.
+      allowed: { type: boolean, description: Whether this request is within the limit. }
       remaining:
         type: integer
         description: Requests remaining in the current window (0 when denied).
@@ -64,9 +57,7 @@ schema:
     store:
       title: Store
       description: Reference to the Cache.Store holding the rate-limit counters.
-      x-telo-ref:
-        kind: Cache.Store
-        use: dependency
+      x-telo-ref: { kind: Cache.Store, use: dependency }
     limit:
       title: Limit
       type: integer
@@ -96,8 +87,7 @@ metadata:
     so concurrent callers can never overshoot the ceiling and abandoned work cannot
     leak budget.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/rate-limit.mjs&local_path=./nodejs/src/index.ts#BudgetController
+controllers: [pkg:telo/local/js?path=./nodejs/rate-limit.mjs&local_path=./nodejs/src/index.ts#BudgetController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -161,9 +151,7 @@ schema:
     store:
       title: Store
       description: Reference to the Cache.Store holding the budget counters.
-      x-telo-ref:
-        kind: Cache.Store
-        use: dependency
+      x-telo-ref: { kind: Cache.Store, use: dependency }
     limit:
       title: Limit
       type: integer

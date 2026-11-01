@@ -49,8 +49,7 @@ metadata: { name: test }
 steps:
   - name: readSeeded
     invoke: !ref query
-    inputs:
-      sql: "SELECT name, label, rank FROM roles ORDER BY name"
+    inputs: { sql: "SELECT name, label, rank FROM roles ORDER BY name" }
   - name: assertSeeded
     invoke: !ref assertSeeded
     inputs:

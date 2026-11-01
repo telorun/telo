@@ -33,8 +33,7 @@ metadata: { name: slow }
 steps:
   - name: wait
     invoke: !ref pause
-    inputs:
-      duration: 30s
+    inputs: { duration: 30s }
 ---
 kind: Timer.Delay
 metadata: { name: pause }
@@ -44,46 +43,28 @@ metadata: { name: test }
 steps:
   - name: start
     invoke: !ref turn
-    inputs:
-      key: c1
-      holder: T1
-      inputs: {}
+    inputs: { key: c1, holder: T1, inputs: {} }
   - name: cancelWrongHolder
     invoke: !ref turn
-    inputs:
-      op: cancel
-      key: c1
-      holder: OTHER
+    inputs: { op: cancel, key: c1, holder: OTHER }
   - name: cancel
     invoke: !ref turn
-    inputs:
-      op: cancel
-      key: c1
-      holder: T1
+    inputs: { op: cancel, key: c1, holder: T1 }
   - name: cancelIdleKey
     invoke: !ref turn
-    inputs:
-      op: cancel
-      key: never-started
+    inputs: { op: cancel, key: never-started }
   # The cancelled body's terminal (release) lands within a few microtasks; give
   # it a beat before proving the key is free again.
   - name: settle
     invoke: !ref pause
-    inputs:
-      duration: 300ms
+    inputs: { duration: 300ms }
   - name: reacquire
     invoke: !ref turn
-    inputs:
-      key: c1
-      holder: T2
-      inputs: {}
+    inputs: { key: c1, holder: T2, inputs: {} }
   # Don't leave the reacquired 30s body running past the test.
   - name: cleanup
     invoke: !ref turn
-    inputs:
-      op: cancel
-      key: c1
-      holder: T2
+    inputs: { op: cancel, key: c1, holder: T2 }
   - name: assert
     inputs:
       actual:

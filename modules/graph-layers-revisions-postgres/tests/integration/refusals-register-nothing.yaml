@@ -50,16 +50,13 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_revisions_fresh_refusals CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_revisions_fresh_refusals CASCADE }
 ---
 kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.LayersTable
 metadata: { name: graphLayers }

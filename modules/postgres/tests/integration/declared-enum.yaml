@@ -29,8 +29,7 @@ targets:
 ---
 kind: Test.Suite
 metadata: { name: boots }
-include:
-  - "__fixtures__/enum-boots/*.yaml"
+include: ["__fixtures__/enum-boots/*.yaml"]
 # These fixtures ARE the test, so the default fixture exclusion is dropped.
 exclude: []
 # Ordering is the point — discovery sorts by path, and one at a time keeps it.

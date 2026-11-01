@@ -62,10 +62,7 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      url: { type: string }
-      prompt: { type: string }
-      accept: { type: string }
+    properties: { url: { type: string }, prompt: { type: string }, accept: { type: string } }
     required: [ url, prompt ]
 outputType:
   kind: Telo.JsonSchema
@@ -85,11 +82,7 @@ routes:
       path: /ndjson
       method: POST
       schema:
-        body:
-          type: object
-          properties:
-            prompt: { type: string }
-          required: [ prompt ]
+        body: { type: object, properties: { prompt: { type: string } }, required: [prompt] }
     handler: !ref chatStream
     inputs:
       prompt: !cel "request.body.prompt"
@@ -105,22 +98,14 @@ routes:
       - status: 500
         content:
           application/json:
-            schema:
-              type: object
-              required: [error]
-              properties:
-                error: { type: string }
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
             body:
               error: !cel "error.code"
   - request:
       path: /sse
       method: POST
       schema:
-        body:
-          type: object
-          properties:
-            prompt: { type: string }
-          required: [ prompt ]
+        body: { type: object, properties: { prompt: { type: string } }, required: [prompt] }
     handler: !ref chatStream
     inputs:
       prompt: !cel "request.body.prompt"
@@ -136,22 +121,14 @@ routes:
       - status: 500
         content:
           application/json:
-            schema:
-              type: object
-              required: [error]
-              properties:
-                error: { type: string }
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
             body:
               error: !cel "error.code"
   - request:
       path: /plain
       method: POST
       schema:
-        body:
-          type: object
-          properties:
-            prompt: { type: string }
-          required: [ prompt ]
+        body: { type: object, properties: { prompt: { type: string } }, required: [prompt] }
     handler: !ref chatStream
     inputs:
       prompt: !cel "request.body.prompt"
@@ -167,11 +144,7 @@ routes:
       - status: 500
         content:
           application/json:
-            schema:
-              type: object
-              required: [error]
-              properties:
-                error: { type: string }
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
             body:
               error: !cel "error.code"
 
@@ -180,11 +153,7 @@ routes:
       path: /chat
       method: POST
       schema:
-        body:
-          type: object
-          properties:
-            prompt: { type: string }
-          required: [ prompt ]
+        body: { type: object, properties: { prompt: { type: string } }, required: [prompt] }
     handler: !ref chatStream
     inputs:
       prompt: !cel "request.body.prompt"
@@ -204,11 +173,7 @@ routes:
       - status: 500
         content:
           application/json:
-            schema:
-              type: object
-              required: [error]
-              properties:
-                error: { type: string }
+            schema: { type: object, required: [error], properties: { error: { type: string } } }
             body:
               error: !cel "error.code"
 ---
@@ -217,13 +182,8 @@ metadata: { name: testAllFormats }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8946
-    openapi:
-      info:
-        title: TextStream via HTTP test
-        version: 1.0.0
+    listen: { address: 127.0.0.1, port: 8946 }
+    openapi: { info: { title: TextStream via HTTP test, version: 1.0.0 } }
     mounts:
       - path: /
         mount: !ref api
@@ -231,9 +191,7 @@ targets:
   - !ref Server
 steps:
   - name: hitNdjson
-    inputs:
-      url: http://127.0.0.1:8946/ndjson
-      prompt: "hi"
+    inputs: { url: http://127.0.0.1:8946/ndjson, prompt: "hi" }
     invoke: !ref fetchAndDrain
   - name: assertNdjson
     inputs:
@@ -255,9 +213,7 @@ steps:
         required: [ status, contentType, body ]
 
   - name: hitSse
-    inputs:
-      url: http://127.0.0.1:8946/sse
-      prompt: "hi"
+    inputs: { url: http://127.0.0.1:8946/sse, prompt: "hi" }
     invoke: !ref fetchAndDrain
   - name: assertSse
     inputs:
@@ -276,9 +232,7 @@ steps:
         required: [ status, contentType, body ]
 
   - name: hitPlain
-    inputs:
-      url: http://127.0.0.1:8946/plain
-      prompt: "hi"
+    inputs: { url: http://127.0.0.1:8946/plain, prompt: "hi" }
     invoke: !ref fetchAndDrain
   - name: assertPlain
     inputs:
@@ -309,16 +263,12 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          contentType: { const: "application/x-ndjson" }
+        properties: { contentType: { const: "application/x-ndjson" } }
         required: [ contentType ]
 
   # Accept: text/event-stream picks SSE.
   - name: negotiateSse
-    inputs:
-      url: http://127.0.0.1:8946/chat
-      prompt: "hi"
-      accept: "text/event-stream"
+    inputs: { url: http://127.0.0.1:8946/chat, prompt: "hi", accept: "text/event-stream" }
     invoke: !ref fetchAndDrain
   - name: assertNegotiateSse
     inputs:
@@ -327,16 +277,12 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          contentType: { const: "text/event-stream" }
+        properties: { contentType: { const: "text/event-stream" } }
         required: [ contentType ]
 
   # No Accept (or */*) — first declared key wins (NDJSON, by declaration order).
   - name: negotiateDefault
-    inputs:
-      url: http://127.0.0.1:8946/chat
-      prompt: "hi"
-      accept: "*/*"
+    inputs: { url: http://127.0.0.1:8946/chat, prompt: "hi", accept: "*/*" }
     invoke: !ref fetchAndDrain
   - name: assertNegotiateDefault
     inputs:
@@ -345,24 +291,16 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          contentType: { const: "application/x-ndjson" }
+        properties: { contentType: { const: "application/x-ndjson" } }
         required: [ contentType ]
 
   # No matching Accept → 406.
   - name: notAcceptable
-    inputs:
-      url: http://127.0.0.1:8946/chat
-      prompt: "hi"
-      accept: "image/png"
+    inputs: { url: http://127.0.0.1:8946/chat, prompt: "hi", accept: "image/png" }
     invoke: !ref fetchAndDrain
   - name: assert406
     inputs:
       status: !cel "steps.notAcceptable.result.status"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          status: { const: 406 }
-        required: [ status ]
+      schema: { type: object, properties: { status: { const: 406 } }, required: [status] }

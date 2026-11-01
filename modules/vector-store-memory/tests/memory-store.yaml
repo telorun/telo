@@ -56,8 +56,7 @@ steps:
         - { id: d, vector: [4, 0], metadata: { tier: 4, kind: note } }
   - name: searchAll
     invoke: !ref search
-    inputs:
-      vector: [1, 0]
+    inputs: { vector: [1, 0] }
   - name: assertEviction
     inputs:
       ok: !cel "size(steps.searchAll.result.matches) == 3"
@@ -67,16 +66,10 @@ steps:
       schema:
         type: object
         required: [ok, top]
-        properties:
-          ok: { const: true }
-          top: { const: "d" }
+        properties: { ok: { const: true }, top: { const: "d" } }
   - name: searchFiltered
     invoke: !ref search
-    inputs:
-      vector: [1, 0]
-      metadataFilter:
-        kind: { $in: [note] }
-        tier: { $gte: 4 }
+    inputs: { vector: [1, 0], metadataFilter: { kind: { $in: [note] }, tier: { $gte: 4 } } }
   - name: assertFiltered
     inputs:
       ok: !cel "size(steps.searchFiltered.result.matches) == 1"
@@ -86,9 +79,7 @@ steps:
       schema:
         type: object
         required: [ok, top]
-        properties:
-          ok: { const: true }
-          top: { const: "d" }
+        properties: { ok: { const: true }, top: { const: "d" } }
   - name: dropByFilter
     invoke: !ref drop
     inputs:
@@ -101,11 +92,7 @@ steps:
       removed: !cel "steps.dropByFilter.result.removed"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        required: [removed]
-        properties:
-          removed: { const: 3 }
+      schema: { type: object, required: [removed], properties: { removed: { const: 3 } } }
   - name: rejectBadDim
     try:
       - name: badWrite
@@ -119,21 +106,13 @@ steps:
           msg: !cel "error.message"
         invoke:
           kind: Assert.Schema
-          schema:
-            type: object
-            required: [msg]
-            properties:
-              msg: { type: string }
+          schema: { type: object, required: [msg], properties: { msg: { type: string } } }
   - name: verifyRejected
     inputs:
       result: !cel "steps.assertRejected.result"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        required: [result]
-        properties:
-          result: { const: true }
+      schema: { type: object, required: [result], properties: { result: { const: true } } }
   - name: computedWrite
     invoke: { kind: VectorStore.Record, store: !ref computedIndex }
     inputs:

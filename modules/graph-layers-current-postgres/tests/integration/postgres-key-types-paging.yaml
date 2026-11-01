@@ -58,56 +58,43 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_layers_key_types CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_layers_key_types CASCADE }
 ---
 kind: Layers.NodeTable
 metadata: { name: identifiedTable }
 table: identified
 key: id
-columns:
-  id: { type: uuid, nullable: false }
-  note: { type: text }
+columns: { id: { type: uuid, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: flaggedTable }
 table: flagged
 key: id
-columns:
-  id: { type: boolean, nullable: false }
-  note: { type: text }
+columns: { id: { type: boolean, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: packedTable }
 table: packed
 key: id
-columns:
-  id: { type: bytea, nullable: false }
-  note: { type: text }
+columns: { id: { type: bytea, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: measuredTable }
 table: measured
 key: id
-columns:
-  id: { type: doublePrecision, nullable: false }
-  note: { type: text }
+columns: { id: { type: doublePrecision, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: shapedTable }
 table: shaped
 key: id
-columns:
-  id: { type: jsonb, nullable: false }
-  note: { type: text }
+columns: { id: { type: jsonb, nullable: false }, note: { type: text } }
 ---
 kind: Layers.NodeTable
 metadata: { name: listedTable }
 table: listed
 key: id
-columns:
-  id: { type: integer, array: true, nullable: false }
-  note: { type: text }
+columns: { id: { type: integer, array: true, nullable: false }, note: { type: text } }
 ---
 kind: Layers.RelationshipTable
 metadata: { name: joinsTable }
@@ -179,11 +166,7 @@ kind: Run.Value
 metadata: { name: gathered }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [items]
-    properties:
-      items: { type: array }
+  schema: { type: object, required: [items], properties: { items: { type: array } } }
 value:
   items: !cel "inputs.items"
 ---
@@ -236,29 +219,19 @@ metadata: { name: populate }
 steps:
   - name: identified0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref identified }
-    inputs:
-      key: 2b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0002
-      properties: { note: n0 }
+    inputs: { key: 2b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0002, properties: { note: n0 } }
   - name: identified1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref identified }
-    inputs:
-      key: 0b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0001
-      properties: { note: n1 }
+    inputs: { key: 0b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0001, properties: { note: n1 } }
   - name: identified2
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref identified }
-    inputs:
-      key: 9b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0003
-      properties: { note: n2 }
+    inputs: { key: 9b6f0cc9-0a52-4c5e-9d0e-3f3b6f1a0003, properties: { note: n2 } }
   - name: flagged0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref flagged }
-    inputs:
-      key: true
-      properties: { note: n0 }
+    inputs: { key: true, properties: { note: n0 } }
   - name: flagged1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref flagged }
-    inputs:
-      key: false
-      properties: { note: n1 }
+    inputs: { key: false, properties: { note: n1 } }
   - name: packed0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref packed }
     inputs:
@@ -276,49 +249,31 @@ steps:
       properties: { note: n2 }
   - name: measured0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
-    inputs:
-      key: 1.5
-      properties: { note: n0 }
+    inputs: { key: 1.5, properties: { note: n0 } }
   - name: measured1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
-    inputs:
-      key: -0.25
-      properties: { note: n1 }
+    inputs: { key: -0.25, properties: { note: n1 } }
   - name: measured2
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref measured }
-    inputs:
-      key: 10.75
-      properties: { note: n2 }
+    inputs: { key: 10.75, properties: { note: n2 } }
   - name: shaped0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref shaped }
-    inputs:
-      key: { a: 2 }
-      properties: { note: n0 }
+    inputs: { key: { a: 2 }, properties: { note: n0 } }
   - name: shaped1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref shaped }
-    inputs:
-      key: { a: 1 }
-      properties: { note: n1 }
+    inputs: { key: { a: 1 }, properties: { note: n1 } }
   - name: shaped2
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref shaped }
-    inputs:
-      key: { b: 0 }
-      properties: { note: n2 }
+    inputs: { key: { b: 0 }, properties: { note: n2 } }
   - name: listed0
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref listed }
-    inputs:
-      key: [1, 3]
-      properties: { note: n0 }
+    inputs: { key: [1, 3], properties: { note: n0 } }
   - name: listed1
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref listed }
-    inputs:
-      key: [1, 2]
-      properties: { note: n1 }
+    inputs: { key: [1, 2], properties: { note: n1 } }
   - name: listed2
     invoke: { kind: Graph.CreateNode, store: !ref kb, node: !ref listed }
-    inputs:
-      key: [2, 0]
-      properties: { note: n2 }
+    inputs: { key: [2, 0], properties: { note: n2 } }
   - name: joins0
     invoke: { kind: Graph.CreateRelationship, store: !ref kb, relationship: !ref joins }
     inputs:

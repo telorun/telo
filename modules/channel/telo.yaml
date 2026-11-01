@@ -15,12 +15,7 @@ requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
-exports:
-  kinds:
-    - Text
-    - SendLine
-    - ReadUntil
-    - End
+exports: { kinds: [Text, SendLine, ReadUntil, End] }
 ---
 # Channel.Text — what something on the other end of a text conversation IS.
 #
@@ -45,8 +40,7 @@ metadata:
     newline that ends it. Fails if the input side has been closed or the program
     has already exited, rather than discarding what was written.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#SendLine
+controllers: [pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#SendLine]
 throws:
   codes:
     ERR_CHANNEL_NOT_STARTED:
@@ -65,9 +59,7 @@ schema:
     channel:
       title: Channel
       description: The program this writes to.
-      x-telo-ref:
-        kind: Self.Text
-        use: dependency
+      x-telo-ref: { kind: Self.Text, use: dependency }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -93,8 +85,7 @@ metadata:
     fails with the text that arrived instead, and a program that exits mid-read
     fails with its exit code rather than returning what it had.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#ReadUntil
+controllers: [pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#ReadUntil]
 throws:
   codes:
     ERR_CHANNEL_READ_TIMEOUT:
@@ -125,9 +116,7 @@ schema:
         The program this reads. Reading is what makes the channel retain output at
         all, so a channel no reader names costs no memory — and one channel has at
         most one reader, because two would take each other's text.
-      x-telo-ref:
-        kind: Self.Text
-        use: dependency
+      x-telo-ref: { kind: Self.Text, use: dependency }
     timeout:
       title: Timeout
       description: >-
@@ -172,8 +161,7 @@ metadata:
     that exits cleanly once its input ends is exactly what a caller wants to
     observe. Doing it twice is not an error.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#End
+controllers: [pkg:telo/local/js?path=./nodejs/channel.mjs&local_path=./nodejs/src/index.ts#End]
 schema:
   type: object
   required: [channel]
@@ -182,6 +170,4 @@ schema:
     channel:
       title: Channel
       description: The program whose input is closed.
-      x-telo-ref:
-        kind: Self.Text
-        use: dependency
+      x-telo-ref: { kind: Self.Text, use: dependency }

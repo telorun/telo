@@ -23,12 +23,7 @@ requires:
   # creation with a TypeError naming this module. Verified by execution: the
   # published 0.107.0 tarball exports neither name.
   telo: ">=0.108.0"
-exports:
-  kinds:
-    - Wait
-    - Publish
-    - Store
-    - MemoryStore
+exports: { kinds: [Wait, Publish, Store, MemoryStore] }
 ---
 # Watch.Store — where topic versions and their waiters live. A Telo.Provider: a
 # configured store, referenced by Watch.Wait / Watch.Publish through `store:`.
@@ -62,8 +57,7 @@ metadata:
     tests. Beyond a configurable number of topics nobody waits on, the least
     recently raised are forgotten.
 extends: Self.Store
-controllers:
-  - pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#MemoryStore
+controllers: [pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#MemoryStore]
 schema:
   type: object
   additionalProperties: false
@@ -89,8 +83,7 @@ metadata:
     wait, capped per resource. Returns whether the version changed and the version now
     known; running out of time is a normal result, never an error.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#Wait
+controllers: [pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#Wait]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -98,9 +91,7 @@ inputType:
     additionalProperties: false
     required: [topic, after, timeout]
     examples:
-      - topic: "plan:42"
-        after: 7
-        timeout: "25s"
+      - { topic: "plan:42", after: 7, timeout: "25s" }
     properties:
       topic:
         title: Topic
@@ -151,9 +142,7 @@ schema:
     store:
       title: Store
       description: The store holding topic versions and their waiters.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
     maxTimeout:
       title: Max timeout
       x-telo-type: Telo.Duration
@@ -175,8 +164,7 @@ metadata:
     changes nothing, so publishing out of order is harmless. Call it after the change
     the version describes is committed.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#Publish
+controllers: [pkg:telo/local/js?path=./nodejs/watch.mjs&local_path=./nodejs/src/index.ts#Publish]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -184,8 +172,7 @@ inputType:
     additionalProperties: false
     required: [topic, version]
     examples:
-      - topic: "plan:42"
-        version: 8
+      - { topic: "plan:42", version: 8 }
     properties:
       topic:
         title: Topic
@@ -206,8 +193,6 @@ schema:
     store:
       title: Store
       description: The store holding topic versions and their waiters.
-      x-telo-ref:
-        kind: Self.Store
-        use: dependency
+      x-telo-ref: { kind: Self.Store, use: dependency }
   examples:
     - store: !ref watchStore

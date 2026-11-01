@@ -6,8 +6,7 @@ metadata:
     What a form field refuses — a property the model does not declare or lists
     twice, a control that does not fit it, a group declared twice or split, kept
     state no field shows — statically and again when the form is first read.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref fieldRules
   - !ref fieldActionInputControlAtRuntime
@@ -25,8 +24,7 @@ targets:
 ---
 # Field kinds, groups, kept state and option sources, each refused where it is written.
 kind: Assert.Manifest
-metadata:
-  name: fieldRules
+metadata: { name: fieldRules }
 source: ./__fixtures__/invalid/fields/telo.yaml
 expect:
   errors:
@@ -78,96 +76,84 @@ expect:
       message: "Ui.Form/rangeDefault at 'fields[0]': required by Ui.DateRangeField — starts at a preset while the model gives the property a `default` too"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldActionInputControlAtRuntime
+metadata: { name: fieldActionInputControlAtRuntime }
 source: ./__fixtures__/invalid/field-action-input-control/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Action 'actionInputControl': 'fields[0]' asks for a control its property cannot be entered with ('slider' for 'isDone')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldChoiceControlAtRuntime
+metadata: { name: fieldChoiceControlAtRuntime }
 source: ./__fixtures__/invalid/field-choice-control/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'choiceControl': 'fields[0]' asks for a control a choice cannot be drawn with, or for a property no choice can enter ('tags' for 'owner')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldChoiceMismatchAtRuntime
+metadata: { name: fieldChoiceMismatchAtRuntime }
 source: ./__fixtures__/invalid/field-choice-mismatch/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'choiceMismatch': 'fields[0]' offers options whose value is of another type than the property holds, or than its items hold for a list ('count')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldDuplicateAtRuntime
+metadata: { name: fieldDuplicateAtRuntime }
 source: ./__fixtures__/invalid/field-duplicate/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'fieldDuplicate': 'fields[1]' enters a property another field enters too ('text')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldFiltersStateFieldUnknownAtRuntime
+metadata: { name: fieldFiltersStateFieldUnknownAtRuntime }
 source: ./__fixtures__/invalid/field-filters-state-field-unknown/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Filters 'filtersStateFieldUnknown': 'policy.state.fields[0]' keeps a property no filter shows ('count')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldGroupDuplicateAtRuntime
+metadata: { name: fieldGroupDuplicateAtRuntime }
 source: ./__fixtures__/invalid/field-group-duplicate/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'groupDuplicate': 'groups[1]' has the name of another group ('main')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldGroupSplitAtRuntime
+metadata: { name: fieldGroupSplitAtRuntime }
 source: ./__fixtures__/invalid/field-group-split/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'groupSplit': 'groups[0]' is named by fields that are not listed one after another ('main')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldGroupUnknownAtRuntime
+metadata: { name: fieldGroupUnknownAtRuntime }
 source: ./__fixtures__/invalid/field-group-unknown/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'groupUnknown': 'fields[0]' names a group 'groups' does not declare ('details')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldInputControlAtRuntime
+metadata: { name: fieldInputControlAtRuntime }
 source: ./__fixtures__/invalid/field-input-control/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'inputControl': 'fields[0]' asks for a control its property cannot be entered with ('toggle' for 'text')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldRequiredNotEnteredAtRuntime
+metadata: { name: fieldRequiredNotEnteredAtRuntime }
 source: ./__fixtures__/invalid/field-required-not-entered/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'requiredNotEntered': leaves a property the model requires with no field ('owner')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldStateFieldUnknownAtRuntime
+metadata: { name: fieldStateFieldUnknownAtRuntime }
 source: ./__fixtures__/invalid/field-state-field-unknown/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Form 'stateFieldUnknown': 'state.fields[0]' keeps a property no field shows ('count')"
 ---
 kind: Assert.Manifest
-metadata:
-  name: fieldUnknownAtRuntime
+metadata: { name: fieldUnknownAtRuntime }
 source: ./__fixtures__/invalid/field-unknown/telo.yaml
 expect:
   errors: []

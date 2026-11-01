@@ -15,13 +15,9 @@ imports:
   JS: ../../javascript
   Run: ../../run
   Assert: ../../assert
-include:
-  - __fixtures__/fake-authorization-server.yaml
+include: [__fixtures__/fake-authorization-server.yaml]
 variables:
-  issuer:
-    env: OAUTH_TEST_ISSUER
-    type: string
-    default: http://127.0.0.1:8991
+  issuer: { env: OAUTH_TEST_ISSUER, type: string, default: http://127.0.0.1:8991 }
 targets:
   - !ref test
 ---
@@ -132,8 +128,7 @@ path: /NEVER
 kind: Run.Sequence
 metadata: { name: consoleLogin }
 with:
-  - kind: OAuth.RedirectListener
-    metadata: { name: loopback }
+  - { kind: OAuth.RedirectListener, metadata: { name: loopback } }
   - kind: OAuth.RedirectAwait
     metadata: { name: AwaitRedirect }
     listener: !ref loopback
@@ -239,9 +234,7 @@ steps:
       actual:
         iss: !cel "steps.redirect.result.iss"
         refused: !cel "has(steps.refused) ? steps.refused.result : {'exchanged': true}"
-      expected:
-        iss: null
-        refused: { byInputContract: false, issuerMissing: true }
+      expected: { iss: null, refused: { byInputContract: false, issuerMissing: true } }
 ---
 kind: Assert.Equals
 metadata: { name: assertEquals }
@@ -254,11 +247,9 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: FakeServer8991 }
-    listen:
-      address: 127.0.0.1
-      port: 8991
+    listen: { address: 127.0.0.1, port: 8991 }
     contentTypeParsers:
-      - contentType: application/x-www-form-urlencoded
+      - { contentType: application/x-www-form-urlencoded }
     mounts:
       - path: /
         mount: !ref fakeServerApi
@@ -299,9 +290,7 @@ steps:
   # ---- The credential authenticates an ordinary request --------------------
   - name: authorizedCall
     invoke: !ref callProtected
-    inputs:
-      method: GET
-      url: /resource
+    inputs: { method: GET, url: /resource }
   - name: assertAuthorized
     invoke: !ref assertEquals
     inputs:
@@ -323,9 +312,7 @@ steps:
         scope: read write
   - name: retriedCall
     invoke: !ref callProtected
-    inputs:
-      method: GET
-      url: /resource
+    inputs: { method: GET, url: /resource }
   - name: assertRetried
     invoke: !ref assertEquals
     inputs:
@@ -338,25 +325,17 @@ steps:
   # drops — and the body then arrives unparsed.
   - name: credentialedPost
     invoke: !ref callProtected
-    inputs:
-      method: POST
-      url: /echo
-      body:
-        hello: world
+    inputs: { method: POST, url: /echo, body: { hello: world } }
   - name: assertContentTypeKept
     invoke: !ref assertEquals
     inputs:
       actual: !cel "steps.credentialedPost.result.body"
-      expected:
-        contentType: application/json
-        parsedBody: { hello: world }
+      expected: { contentType: application/json, parsedBody: { hello: world } }
 
   # ---- Browser-served callback ---------------------------------------------
   - name: browserAuth
     invoke: !ref authorize
-    inputs:
-      redirectUri: http://127.0.0.1:8991/callback
-      key: web-user
+    inputs: { redirectUri: http://127.0.0.1:8991/callback, key: web-user }
   # The server advertises that it sends `iss`, so a callback without one is refused
   # rather than skipped — the case a mix-up attack produces.
   - name: callbackNoIss
@@ -371,9 +350,7 @@ steps:
       expected: issuer_missing
   - name: browserAuth2
     invoke: !ref authorize
-    inputs:
-      redirectUri: http://127.0.0.1:8991/callback
-      key: web-user
+    inputs: { redirectUri: http://127.0.0.1:8991/callback, key: web-user }
   - name: callbackWrongIss
     invoke: !ref handleCallback
     inputs:
@@ -387,9 +364,7 @@ steps:
       expected: issuer_mismatch
   - name: browserAuth3
     invoke: !ref authorize
-    inputs:
-      redirectUri: http://127.0.0.1:8991/callback
-      key: web-user
+    inputs: { redirectUri: http://127.0.0.1:8991/callback, key: web-user }
   - name: callbackOk
     invoke: !ref handleCallback
     inputs:
@@ -415,8 +390,7 @@ steps:
       expected: { ok: false, reason: unknown_state, key: null, scope: null }
   - name: callbackDenied
     invoke: !ref handleCallback
-    inputs:
-      error: access_denied
+    inputs: { error: access_denied }
   - name: assertDenied
     invoke: !ref assertEquals
     inputs:

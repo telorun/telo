@@ -1,9 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: ImageRejectsUnsupportedIntentTest
-  version: 1.0.0
-imports:
-  Assert: ../../assert
+metadata: { name: ImageRejectsUnsupportedIntentTest, version: 1.0.0 }
+imports: { Assert: ../../assert }
 targets:
   - !ref testAnalyzerRejectsUnsupportedIntent
 ---
@@ -13,9 +10,8 @@ targets:
 # to passing check, the failure moves to dispatch — which is the design this
 # replaced.
 kind: Assert.Manifest
-metadata:
-  name: testAnalyzerRejectsUnsupportedIntent
+metadata: { name: testAnalyzerRejectsUnsupportedIntent }
 source: ./__fixtures__/image-unsupported-intent.yaml
 expect:
   errors:
-    - code: DEPENDENT_SCHEMA_MISMATCH
+    - { code: DEPENDENT_SCHEMA_MISMATCH }

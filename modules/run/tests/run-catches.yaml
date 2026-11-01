@@ -1,10 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: RunCatches
-  version: 1.0.0
-imports:
-  Run: ../
-  Assert: ../../assert
+metadata: { name: RunCatches, version: 1.0.0 }
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref verifyCatches
 ---
@@ -12,28 +8,19 @@ targets:
 # the kind-level `catches`; an unmatched throw would propagate (fail-fast). The
 # fallback is the projection's result, so it is an array like any other.
 kind: Run.Projection
-metadata:
-  name: mightFail
+metadata: { name: mightFail }
 collection: !cel "[1, 2, 3]"
 steps:
   - name: guard
     if: !cel "item == 2"
     then:
-      - name: boom
-        throw:
-          code: BAD_ITEM
-          message: "item 2 is bad"
+      - { name: boom, throw: { code: BAD_ITEM, message: "item 2 is bad" } }
   - name: keep
     inputs:
       n: !cel "item"
     invoke:
       kind: Run.Value
-      inputType:
-        kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            n: {}
+      inputType: { kind: Telo.JsonSchema, schema: { type: object, properties: { n: {} } } }
       value:
         ok: !cel "double(inputs.n)"
 outputs:
@@ -45,8 +32,7 @@ catches:
         failedWith: !cel "error.code"
 ---
 kind: Run.Sequence
-metadata:
-  name: verifyCatches
+metadata: { name: verifyCatches }
 steps:
   - name: project
     invoke: !ref mightFail
@@ -55,5 +41,4 @@ steps:
       actual: !cel "steps.project.result"
       expected:
         - { fallback: true, failedWith: BAD_ITEM }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

@@ -70,8 +70,7 @@ with:
       - request:
           path: /responses
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           - status: 200
@@ -141,11 +140,8 @@ with:
                   data: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":11,"output_tokens":5,"total_tokens":16}}}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      address: 127.0.0.1
-      port: 8878
-    openapi:
-      info: { title: Fake Responses API, version: 1.0.0 }
+    listen: { address: 127.0.0.1, port: 8878 }
+    openapi: { info: { title: Fake Responses API, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref FakeApi
@@ -161,8 +157,7 @@ steps:
   - name: parts
     inputs:
       input: !cel "steps.call.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
 
   - name: assertParts
     inputs:
@@ -177,10 +172,7 @@ steps:
         # `call_id`, not the item's own `id` — that is what a later
         # `function_call_output` answers.
         - type: tool-call
-          toolCall:
-            id: call_xyz
-            name: get_weather
-            arguments: { city: Paris }
+          toolCall: { id: call_xyz, name: get_weather, arguments: { city: Paris } }
         # Tagged, so a transcript replayed against another model or dialect is
         # dropped rather than sent on.
         - type: provider-state
@@ -195,8 +187,7 @@ steps:
         - type: finish
           usage: { promptTokens: 11, completionTokens: 5, totalTokens: 16 }
           finishReason: tool-calls
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   # A stream whose bytes stop with no `response.completed` is an INTERRUPTED
   # answer. Reporting `finish` would render it as a clean stop with zero usage —
@@ -212,8 +203,7 @@ steps:
       - name: truncDrain
         inputs:
           input: !cel "steps.truncCall.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       - name: truncUnreachable
         throw: { code: TEST_FAILED, message: a truncated stream reported a clean finish }
     catch:
@@ -223,8 +213,7 @@ steps:
             code: !cel "error.code"
             saysIncomplete: !cel "error.message.contains('incomplete')"
           expected: { code: ERR_MODEL_RESPONSE_INVALID, saysIncomplete: true }
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }
 
   - name: midStreamFailure
     try:
@@ -238,8 +227,7 @@ steps:
       - name: failDrain
         inputs:
           input: !cel "steps.failCall.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       - name: unreachable
         throw: { code: TEST_FAILED, message: the stream did not reject }
     catch:
@@ -249,5 +237,4 @@ steps:
             code: !cel "error.code"
             carriesMessage: !cel "error.message.contains('overheated')"
           expected: { code: ERR_MODEL_UNAVAILABLE, carriesMessage: true }
-        invoke:
-          kind: Assert.Equals
+        invoke: { kind: Assert.Equals }

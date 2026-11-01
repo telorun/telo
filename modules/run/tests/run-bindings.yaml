@@ -7,9 +7,7 @@ metadata:
     one it reads (order is derived, not declared), a binding shared by several
     decision rows, and one that would throw if it were evaluated — proving a
     binding nothing reads is never computed.
-imports:
-  Run: ../
-  Assert: ../../assert
+imports: { Run: ../, Assert: ../../assert }
 targets:
   - !ref testValueBindings
   - !ref testChoiceBindings
@@ -47,9 +45,7 @@ inputType:
   schema:
     type: object
     required: [grams, zero]
-    properties:
-      grams: { type: number }
-      zero: { type: integer }
+    properties: { grams: { type: number }, zero: { type: integer } }
 bindings:
   weight: !cel "inputs.grams / 1000.0"
   poison: !cel "1 / inputs.zero"
@@ -58,8 +54,7 @@ choices:
     value: { tier: freight, kg: !cel "poison" }
   - when: !cel "weight > 2.0"
     value: { tier: parcel, kg: !cel "weight" }
-default:
-  value: { tier: letter, kg: 0.0 }
+default: { value: { tier: letter, kg: 0.0 } }
 ---
 kind: Run.Sequence
 metadata: { name: testValueBindings }
@@ -71,8 +66,7 @@ steps:
     inputs:
       actual: !cel "steps.price.result"
       expected: { gross: 20.0, net: 18.0, tax: 9.0 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: testChoiceBindings }
@@ -84,5 +78,4 @@ steps:
     inputs:
       actual: !cel "steps.tier.result"
       expected: { tier: parcel, kg: 5.0 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

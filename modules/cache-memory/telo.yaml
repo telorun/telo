@@ -10,11 +10,8 @@ metadata:
     usual fresh and stale windows, bounded by a maximum entry count. Needs no
     external service, so it suits single-instance deployments, local development
     and tests.
-imports:
-  Cache: ../cache
-exports:
-  kinds:
-    - Store
+imports: { Cache: ../cache }
+exports: { kinds: [Store] }
 ---
 kind: Telo.Definition
 metadata:
@@ -25,8 +22,7 @@ metadata:
     survives a restart.
 capability: Telo.Provider
 extends: Cache.Store
-controllers:
-  - pkg:telo/local/js?path=./nodejs/cache-memory.mjs&local_path=./nodejs/src/index.ts#StoreController
+controllers: [pkg:telo/local/js?path=./nodejs/cache-memory.mjs&local_path=./nodejs/src/index.ts#StoreController]
 schema:
   type: object
   additionalProperties: false

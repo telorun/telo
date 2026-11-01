@@ -64,15 +64,12 @@ with:
     metadata: { name: app }
     source: ./__fixtures__/request-trace-app/telo.yaml
     ports: { http: 18520 }
-    variables:
-      otlpEndpoint: http://127.0.0.1:18521
+    variables: { otlpEndpoint: http://127.0.0.1:18521 }
 targets: [ !ref collector, !ref app ]
 steps:
   - name: allowed
     invoke: !ref call
-    inputs:
-      url: /api/items
-      headers: { authorization: Bearer good }
+    inputs: { url: /api/items, headers: { authorization: Bearer good } }
   - name: refused
     invoke: !ref call
     inputs: { url: /api/items }
@@ -122,37 +119,20 @@ steps:
           - name: GET /api/items
             parent: ""
             upstreamTrace: false
-            attrs:
-              - http.request.method=GET
-              - http.response.status_code=200
-              - http.route=/api/items
-              - telo.span.outcome=ok
+            attrs: [http.request.method=GET, http.response.status_code=200, http.route=/api/items, telo.span.outcome=ok]
             children: [ invoke server_mounts_0_guard_invoke, invoke api_routes_0_handler ]
           - name: GET /api/items
             parent: ""
             upstreamTrace: false
-            attrs:
-              - error.type=ERR_UNAUTHENTICATED
-              - http.request.method=GET
-              - http.response.status_code=401
-              - http.route=/api/items
-              - telo.span.outcome=rejected
+            attrs: [error.type=ERR_UNAUTHENTICATED, http.request.method=GET, http.response.status_code=401, http.route=/api/items, telo.span.outcome=rejected]
             children: [ invoke server_mounts_0_guard_invoke ]
           - name: GET /probes/ready
             parent: ""
             upstreamTrace: false
-            attrs:
-              - http.request.method=GET
-              - http.response.status_code=200
-              - http.route=/probes/ready
-              - telo.span.outcome=ok
+            attrs: [http.request.method=GET, http.response.status_code=200, http.route=/probes/ready, telo.span.outcome=ok]
             children: [ invoke probes_routes_0_handler ]
           - name: GET /probes/ready
             parent: 00f067aa0ba902b7
             upstreamTrace: true
-            attrs:
-              - http.request.method=GET
-              - http.response.status_code=200
-              - http.route=/probes/ready
-              - telo.span.outcome=ok
+            attrs: [http.request.method=GET, http.response.status_code=200, http.route=/probes/ready, telo.span.outcome=ok]
             children: [ invoke probes_routes_0_handler ]

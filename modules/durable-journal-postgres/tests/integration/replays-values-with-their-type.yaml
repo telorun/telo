@@ -66,8 +66,7 @@ kind: Run.Iteration
 metadata: { name: noop }
 collection: []
 steps:
-  - name: never
-    value: unreachable
+  - { name: never, value: unreachable }
 ---
 kind: Durable.Await
 metadata: { name: approval }
@@ -78,8 +77,7 @@ outputType:
     type: object
     required: [ok]
     additionalProperties: false
-    properties:
-      ok: { type: boolean }
+    properties: { ok: { type: boolean } }
 ---
 kind: Local.Workflow
 metadata: { name: record }
@@ -142,8 +140,7 @@ metadata: { name: approve }
 journal: !ref journal
 await: !ref approval
 token: !cel "'pgvalues:' + inputs.ticket"
-payload:
-  ok: true
+payload: { ok: true }
 ---
 kind: Local.Result
 metadata: { name: outcome }
@@ -153,12 +150,11 @@ wait: 20s
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "noop.Invoked"
+  - { type: "noop.Invoked" }
 expect:
   # ONCE across both executions. The step recorded no value — it produced none —
   # and the entry is still what says it completed, so the resume replays it.
-  - event: noop.Invoked
-    times: 1
+  - { event: noop.Invoked, times: 1 }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -186,10 +182,7 @@ steps:
         inputs:
           run: !cel "steps.start.result.runId"
 
-  - name: gap
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 200ms
+  - { name: gap, invoke: { kind: Timer.Delay }, inputs: { duration: 200ms } }
   - name: deliver
     invoke: !ref approve
     inputs:
@@ -208,9 +201,7 @@ steps:
       actual:
         status: !cel "steps.finished.result.status"
         replayed: !cel "steps.finished.result.replayed"
-      expected:
-        status: completed
-        replayed: true
+      expected: { status: completed, replayed: true }
     invoke: { kind: Assert.Equals }
 
   - name: assertValues
@@ -236,7 +227,5 @@ steps:
       actual:
         instant: !cel "steps.finished.result.result.steps.t.result == timestamp('2026-01-15T09:30:00.250Z')"
         intExact: !cel "steps.finished.result.result.steps.i.result == 9007199254740993"
-      expected:
-        instant: true
-        intExact: true
+      expected: { instant: true, intExact: true }
     invoke: { kind: Assert.Equals }

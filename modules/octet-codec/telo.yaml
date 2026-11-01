@@ -9,12 +9,8 @@ metadata:
     Raw binary on the wire: bytes pass through untouched on the way out, and on the
     way in every chunk is collected into one contiguous buffer. The codec to use for
     files, images and any payload that is already in its final byte form.
-imports:
-  Codec: ../codec
-exports:
-  kinds:
-    - Encoder
-    - Decoder
+imports: { Codec: ../codec }
+exports: { kinds: [Encoder, Decoder] }
 ---
 # Encoder: byte stream → byte stream (identity).
 kind: Telo.Definition
@@ -25,11 +21,8 @@ metadata:
     final form and need no serialization.
 capability: Telo.Invocable
 extends: Codec.Encoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/octet-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/octet-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController]
+schema: { type: object, additionalProperties: false }
 ---
 # Decoder: byte stream → single Uint8Array (collect).
 kind: Telo.Definition
@@ -40,8 +33,7 @@ metadata:
     payload has to be held whole rather than consumed incrementally.
 capability: Telo.Invocable
 extends: Codec.Decoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/octet-codec.mjs&local_path=./nodejs/src/index.ts#DecoderController
+controllers: [pkg:telo/local/js?path=./nodejs/octet-codec.mjs&local_path=./nodejs/src/index.ts#DecoderController]
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -52,6 +44,4 @@ outputType:
         description: Every chunk in `input`, concatenated into one run of bytes.
     required: [ bytes ]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }

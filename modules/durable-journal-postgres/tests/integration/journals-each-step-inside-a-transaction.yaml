@@ -75,12 +75,10 @@ metadata: { name: insideTransaction }
 steps:
   - name: first
     invoke: !ref probe
-    inputs:
-      sql: SELECT 1 AS ok
+    inputs: { sql: SELECT 1 AS ok }
   - name: second
     invoke: !ref probe
-    inputs:
-      sql: SELECT 2 AS ok
+    inputs: { sql: SELECT 2 AS ok }
 ---
 kind: Sql.Transaction
 metadata: { name: transaction }

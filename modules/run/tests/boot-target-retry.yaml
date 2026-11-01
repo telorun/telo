@@ -10,18 +10,13 @@ metadata:
     the shape was hand-restated per composer, and the boot copy never grew
     `retry:` — so this manifest was a schema error one line away from working
     inside a `Run.Sequence`, for no reason anyone decided about boot.
-imports:
-  JS: ../../javascript
-  Assert: ../../assert
+imports: { JS: ../../javascript, Assert: ../../assert }
 targets:
   # Fails twice, then succeeds — `attempt: 3` is the assertion that the boot
   # runner re-issued it rather than merely not raising.
   - name: recovers
     invoke: !ref flakyTwice
-    retry:
-      attempts: 2
-      initialDelay: 1
-      jitter: none
+    retry: { attempts: 2, initialDelay: 1, jitter: none }
   - name: check
     invoke: !ref checkEquals
     inputs:
@@ -35,8 +30,7 @@ outputType:
   schema:
     type: object
     required: [attempt]
-    properties:
-      attempt: { type: integer }
+    properties: { attempt: { type: integer } }
 code: |
   function main() {
     globalThis.__bootFlaky = (globalThis.__bootFlaky ?? 0) + 1;

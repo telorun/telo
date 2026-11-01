@@ -18,8 +18,7 @@ metadata:
     exactly one: the other is refused GRAPH_REVISION_LABEL_EXISTS.
 
     NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
-include:
-  - ./__fixtures__/stack-processes/model.yaml
+include: [./__fixtures__/stack-processes/model.yaml]
 imports:
   Pg:
     source: ../../../postgres/tests/__fixtures__/container
@@ -84,8 +83,7 @@ metadata: { name: reset }
 steps:
   - name: drop
     invoke: { kind: Sql.Command, connection: !ref db }
-    inputs:
-      sql: DROP SCHEMA IF EXISTS graph_revisions_stack_processes CASCADE
+    inputs: { sql: DROP SCHEMA IF EXISTS graph_revisions_stack_processes CASCADE }
 ---
 # Every layer is registered, and each layer to pin has a revision, before any
 # child starts: the children race on `top` rather than on a layer's first
@@ -131,9 +129,7 @@ condition: !cel "resources.pinnerLeft.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: pinnerRight }
@@ -151,9 +147,7 @@ condition: !cel "resources.pinnerRight.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 # Both moves were applied, one after the other.
 kind: Run.Sequence
@@ -226,9 +220,7 @@ condition: !cel "resources.publisher.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: writer }
@@ -245,9 +237,7 @@ condition: !cel "resources.writer.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 # Whichever reached the layer first, the history is one of the two the order
 # allows. The publish first: revision 3 holds the third pin and the write is
@@ -308,9 +298,7 @@ condition: !cel "resources.labellerOne.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 kind: App.Instance
 metadata: { name: labellerTwo }
@@ -328,9 +316,7 @@ condition: !cel "resources.labellerTwo.status.exitCode == null"
 # 60s for a child kernel to boot, work and exit.
 maxIterations: 3000
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs: { duration: 20ms }
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
 # One label names one revision: whichever asked second was refused.
 kind: Run.Sequence

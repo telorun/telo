@@ -10,20 +10,14 @@ metadata:
     schema-checked values a manifest can reference. Deprecated in favour of declaring
     variables and secrets directly on the application with env bindings; kept for
     backwards compatibility.
-exports:
-  kinds:
-    - EnvironmentVariableStore
-    - Variables
-    - Secrets
-    - Env
+exports: { kinds: [EnvironmentVariableStore, Variables, Secrets, Env] }
 ---
 kind: "Telo.Definition"
 metadata:
   name: "EnvironmentVariableStore"
   description: Provides a schema-typed store of configuration values sourced from environment variables.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#EnvVariableStoreController
+controllers: [pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#EnvVariableStoreController]
 schema:
   type: "object"
   properties:
@@ -31,8 +25,7 @@ schema:
       title: Schema
       description: Variable schema loaded from the environment variable store.
       type: "object"
-      additionalProperties:
-        type: "object"
+      additionalProperties: { type: "object" }
   required: ["schema"]
   additionalProperties: true
 ---
@@ -41,8 +34,7 @@ metadata:
   name: "Variables"
   description: Provides non-secret configuration values mapped from keys in a referenced environment variable store.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#VariablesController
+controllers: [pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#VariablesController]
 schema:
   type: "object"
   properties:
@@ -61,8 +53,7 @@ schema:
       title: Keys
       description: Mapping of target variable names to source store keys.
       type: "object"
-      additionalProperties:
-        type: "string"
+      additionalProperties: { type: "string" }
   required: ["storeRef", "keys"]
   additionalProperties: true
 ---
@@ -71,8 +62,7 @@ metadata:
   name: "Secrets"
   description: Provides secret configuration values mapped from keys in a referenced environment variable store.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#SecretsController
+controllers: [pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#SecretsController]
 schema:
   type: "object"
   properties:
@@ -91,8 +81,7 @@ schema:
       title: Keys
       description: Mapping of target secret names to source store keys.
       type: "object"
-      additionalProperties:
-        type: "string"
+      additionalProperties: { type: "string" }
   required: ["storeRef", "keys"]
   additionalProperties: true
 ---
@@ -105,8 +94,7 @@ metadata:
     with env bindings instead, which lands the same values without an intermediate
     resource.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#EnvController
+controllers: [pkg:telo/local/js?path=./nodejs/config.mjs&local_path=./nodejs/src/index.ts#EnvController]
 schema:
   type: object
   properties:

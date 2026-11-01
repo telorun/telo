@@ -6,10 +6,7 @@ metadata:
     A page turned 90 degrees clockwise is detected as such, in Latin script, and
     still reads correctly. The fixture is committed because neither the PDF
     renderer nor the rasterizer can rotate a page.
-imports:
-  Tesseract: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Tesseract: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref detectsTheRotation
 ---

@@ -20,16 +20,8 @@ requires:
   # Verified by execution (`run` of the layered suite) against 0.104.0; 0.105.0
   # and 0.113.0 run it whole.
   telo: ">=0.105.0"
-imports:
-  GraphLayersSql: ../graph-layers-sql
-  Postgres: ../postgres
-exports:
-  kinds:
-    - NodeTable
-    - RelationshipTable
-    - Node
-    - Relationship
-    - Store
+imports: { GraphLayersSql: ../graph-layers-sql, Postgres: ../postgres }
+exports: { kinds: [NodeTable, RelationshipTable, Node, Relationship, Store] }
 ---
 # GraphLayersCurrentPostgres.NodeTable — a `Postgres.Table` whose rows are node statements,
 # one per layer and key. The author declares the node's own columns in the
@@ -51,10 +43,7 @@ x-telo-schema-projection:
   key: type
   nullable: nullable
   array: array
-  reference:
-    from: values
-    keyword: enum
-    base: { type: string }
+  reference: { from: values, keyword: enum, base: { type: string } }
 schema:
   type: object
   additionalProperties: false
@@ -62,9 +51,7 @@ schema:
   examples:
     - table: people
       key: id
-      columns:
-        id: { type: text, nullable: false }
-        name: { type: text }
+      columns: { id: { type: text, nullable: false }, name: { type: text } }
   properties:
     table:
       title: Table
@@ -87,52 +74,26 @@ schema:
       type: object
       minProperties: 1
       # `graph_` is the table's own: the bookkeeping columns `base:` adds.
-      propertyNames:
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        not:
-          pattern: "^graph_"
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$", not: { pattern: "^graph_" } }
       additionalProperties:
         type: object
         additionalProperties: false
-        required:
-          - type
-        not:
-          required:
-            - default
-            - defaultExpression
+        required: [type]
+        not: { required: [default, defaultExpression] }
         allOf:
           - if:
-              required:
-                - nullable
-              properties:
-                nullable:
-                  const: true
+              required: [nullable]
+              properties: { nullable: { const: true } }
               anyOf:
-                - required:
-                    - primaryKey
-                  properties:
-                    primaryKey:
-                      const: true
-                - required:
-                    - identity
+                - { required: [primaryKey], properties: { primaryKey: { const: true } } }
+                - { required: [identity] }
             then: false
           - if:
               anyOf:
-                - required:
-                    - primaryKey
-                  properties:
-                    primaryKey:
-                      const: true
-                - required:
-                    - identity
-            then:
-              properties:
-                nullable:
-                  default: false
-            else:
-              properties:
-                nullable:
-                  default: true
+                - { required: [primaryKey], properties: { primaryKey: { const: true } } }
+                - { required: [identity] }
+            then: { properties: { nullable: { default: false } } }
+            else: { properties: { nullable: { default: true } } }
         properties:
           type:
             title: Type
@@ -142,87 +103,39 @@ schema:
             oneOf:
               - title: Storage class
                 type: string
-                enum:
-                  - text
-                  - varchar
-                  - char
-                  - citext
-                  - uuid
-                  - json
-                  - jsonb
-                  - boolean
-                  - smallint
-                  - integer
-                  - bigint
-                  - numeric
-                  - real
-                  - doublePrecision
-                  - date
-                  - time
-                  - timestamp
-                  - timestamptz
-                  - interval
-                  - bytea
-                  - inet
-                  - cidr
-                  - macaddr
-                  - tsvector
+                enum: [text, varchar, char, citext, uuid, json, jsonb, boolean, smallint, integer, bigint, numeric, real, doublePrecision, date, time, timestamp, timestamptz, interval, bytea, inet, cidr, macaddr, tsvector]
                 x-telo-schema-map:
-                  text:
-                    type: string
-                  varchar:
-                    type: string
-                  char:
-                    type: string
-                  citext:
-                    type: string
-                  uuid:
-                    type: string
+                  text: { type: string }
+                  varchar: { type: string }
+                  char: { type: string }
+                  citext: { type: string }
+                  uuid: { type: string }
                   json: {}
                   jsonb: {}
-                  boolean:
-                    type: boolean
-                  smallint:
-                    type: integer
-                  integer:
-                    type: integer
-                  bigint:
-                    type: integer
-                  numeric:
-                    type: number
-                  real:
-                    type: number
-                  doublePrecision:
-                    type: number
-                  date:
-                    type: string
-                  time:
-                    type: string
-                  timestamp:
-                    type: string
-                  timestamptz:
-                    type: string
-                  interval:
-                    type: string
-                  bytea:
-                    x-telo-type: Telo.Bytes
-                  inet:
-                    type: string
-                  cidr:
-                    type: string
-                  macaddr:
-                    type: string
-                  tsvector:
-                    type: string
+                  boolean: { type: boolean }
+                  smallint: { type: integer }
+                  integer: { type: integer }
+                  bigint: { type: integer }
+                  numeric: { type: number }
+                  real: { type: number }
+                  doublePrecision: { type: number }
+                  date: { type: string }
+                  time: { type: string }
+                  timestamp: { type: string }
+                  timestamptz: { type: string }
+                  interval: { type: string }
+                  bytea: { x-telo-type: Telo.Bytes }
+                  inet: { type: string }
+                  cidr: { type: string }
+                  macaddr: { type: string }
+                  tsvector: { type: string }
               - title: Enum type
                 description: "A `!ref` to an enum this schema declares. `use: schema` for the reason a
                   foreign key's target table takes it: what the reconciler needs is the physical
                   name, which the declaration carries, so nothing here requires the type to be
                   constructed first."
                 type: object
-                x-telo-ref:
-                  kind: Postgres.Enum
-                  use: schema
+                x-telo-ref: { kind: Postgres.Enum, use: schema }
           length:
             title: Length
             description: Character length for `varchar` / `char`.
@@ -249,22 +162,14 @@ schema:
             description: Whether the column admits NULL. Omitted, it is false on a primary key or an
               identity column and true on any other.
             type: boolean
-          primaryKey:
-            title: Primary Key
-            type: boolean
-            default: false
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+          primaryKey: { title: Primary Key, type: boolean, default: false }
+          unique: { title: Unique, type: boolean, default: false }
           identity:
             title: Identity
             description: Makes the column `GENERATED … AS IDENTITY`. `always` refuses a
               caller-supplied value; `by default` allows one.
             type: string
-            enum:
-              - always
-              - by default
+            enum: [always, by default]
           default:
             title: Default
             description: "A typed literal, checkable against the column's own type. Mutually
@@ -291,36 +196,23 @@ schema:
         indexes; an index may name the bookkeeping columns `graph_layer` and
         `graph_effect`.
       type: object
-      propertyNames:
-        not:
-          pattern: "^graph_"
+      propertyNames: { not: { pattern: "^graph_" } }
       additionalProperties:
         type: object
         additionalProperties: false
-        required:
-          - columns
+        required: [columns]
         properties:
           columns:
             title: Columns
             type: array
             minItems: 1
-            items:
-              type: string
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+            items: { type: string }
+          unique: { title: Unique, type: boolean, default: false }
           method:
             title: Method
             description: Index method (`btree`, `gin`, `gist`, `hash`, `brin`).
             type: string
-            enum:
-              - btree
-              - gin
-              - gist
-              - hash
-              - brin
-              - spgist
+            enum: [btree, gin, gist, hash, brin, spgist]
           where:
             title: Where
             description: Partial-index predicate.
@@ -333,13 +225,11 @@ schema:
         Named table-level predicates in PostgreSQL's own SQL, keyed by constraint
         name. A predicate holds for every row, whichever layer states it.
       type: object
-      propertyNames:
-        pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       additionalProperties:
         type: object
         additionalProperties: false
-        required:
-          - expression
+        required: [expression]
         properties:
           expression:
             title: Expression
@@ -353,9 +243,7 @@ schema:
               keeps adding a constraint to a large table from holding a lock while every row
               is read."
             type: string
-            enum:
-              - immediate
-              - deferred
+            enum: [immediate, deferred]
             default: immediate
     renamedFrom:
       title: Renamed From
@@ -459,10 +347,7 @@ x-telo-schema-projection:
   key: type
   nullable: nullable
   array: array
-  reference:
-    from: values
-    keyword: enum
-    base: { type: string }
+  reference: { from: values, keyword: enum, base: { type: string } }
 schema:
   type: object
   additionalProperties: false
@@ -499,52 +384,26 @@ schema:
       type: object
       minProperties: 1
       # `graph_` is the table's own: the bookkeeping columns `base:` adds.
-      propertyNames:
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
-        not:
-          pattern: "^graph_"
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$", not: { pattern: "^graph_" } }
       additionalProperties:
         type: object
         additionalProperties: false
-        required:
-          - type
-        not:
-          required:
-            - default
-            - defaultExpression
+        required: [type]
+        not: { required: [default, defaultExpression] }
         allOf:
           - if:
-              required:
-                - nullable
-              properties:
-                nullable:
-                  const: true
+              required: [nullable]
+              properties: { nullable: { const: true } }
               anyOf:
-                - required:
-                    - primaryKey
-                  properties:
-                    primaryKey:
-                      const: true
-                - required:
-                    - identity
+                - { required: [primaryKey], properties: { primaryKey: { const: true } } }
+                - { required: [identity] }
             then: false
           - if:
               anyOf:
-                - required:
-                    - primaryKey
-                  properties:
-                    primaryKey:
-                      const: true
-                - required:
-                    - identity
-            then:
-              properties:
-                nullable:
-                  default: false
-            else:
-              properties:
-                nullable:
-                  default: true
+                - { required: [primaryKey], properties: { primaryKey: { const: true } } }
+                - { required: [identity] }
+            then: { properties: { nullable: { default: false } } }
+            else: { properties: { nullable: { default: true } } }
         properties:
           type:
             title: Type
@@ -554,87 +413,39 @@ schema:
             oneOf:
               - title: Storage class
                 type: string
-                enum:
-                  - text
-                  - varchar
-                  - char
-                  - citext
-                  - uuid
-                  - json
-                  - jsonb
-                  - boolean
-                  - smallint
-                  - integer
-                  - bigint
-                  - numeric
-                  - real
-                  - doublePrecision
-                  - date
-                  - time
-                  - timestamp
-                  - timestamptz
-                  - interval
-                  - bytea
-                  - inet
-                  - cidr
-                  - macaddr
-                  - tsvector
+                enum: [text, varchar, char, citext, uuid, json, jsonb, boolean, smallint, integer, bigint, numeric, real, doublePrecision, date, time, timestamp, timestamptz, interval, bytea, inet, cidr, macaddr, tsvector]
                 x-telo-schema-map:
-                  text:
-                    type: string
-                  varchar:
-                    type: string
-                  char:
-                    type: string
-                  citext:
-                    type: string
-                  uuid:
-                    type: string
+                  text: { type: string }
+                  varchar: { type: string }
+                  char: { type: string }
+                  citext: { type: string }
+                  uuid: { type: string }
                   json: {}
                   jsonb: {}
-                  boolean:
-                    type: boolean
-                  smallint:
-                    type: integer
-                  integer:
-                    type: integer
-                  bigint:
-                    type: integer
-                  numeric:
-                    type: number
-                  real:
-                    type: number
-                  doublePrecision:
-                    type: number
-                  date:
-                    type: string
-                  time:
-                    type: string
-                  timestamp:
-                    type: string
-                  timestamptz:
-                    type: string
-                  interval:
-                    type: string
-                  bytea:
-                    x-telo-type: Telo.Bytes
-                  inet:
-                    type: string
-                  cidr:
-                    type: string
-                  macaddr:
-                    type: string
-                  tsvector:
-                    type: string
+                  boolean: { type: boolean }
+                  smallint: { type: integer }
+                  integer: { type: integer }
+                  bigint: { type: integer }
+                  numeric: { type: number }
+                  real: { type: number }
+                  doublePrecision: { type: number }
+                  date: { type: string }
+                  time: { type: string }
+                  timestamp: { type: string }
+                  timestamptz: { type: string }
+                  interval: { type: string }
+                  bytea: { x-telo-type: Telo.Bytes }
+                  inet: { type: string }
+                  cidr: { type: string }
+                  macaddr: { type: string }
+                  tsvector: { type: string }
               - title: Enum type
                 description: "A `!ref` to an enum this schema declares. `use: schema` for the reason a
                   foreign key's target table takes it: what the reconciler needs is the physical
                   name, which the declaration carries, so nothing here requires the type to be
                   constructed first."
                 type: object
-                x-telo-ref:
-                  kind: Postgres.Enum
-                  use: schema
+                x-telo-ref: { kind: Postgres.Enum, use: schema }
           length:
             title: Length
             description: Character length for `varchar` / `char`.
@@ -661,22 +472,14 @@ schema:
             description: Whether the column admits NULL. Omitted, it is false on a primary key or an
               identity column and true on any other.
             type: boolean
-          primaryKey:
-            title: Primary Key
-            type: boolean
-            default: false
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+          primaryKey: { title: Primary Key, type: boolean, default: false }
+          unique: { title: Unique, type: boolean, default: false }
           identity:
             title: Identity
             description: Makes the column `GENERATED … AS IDENTITY`. `always` refuses a
               caller-supplied value; `by default` allows one.
             type: string
-            enum:
-              - always
-              - by default
+            enum: [always, by default]
           default:
             title: Default
             description: "A typed literal, checkable against the column's own type. Mutually
@@ -703,36 +506,23 @@ schema:
         indexes; an index may name the bookkeeping columns `graph_layer` and
         `graph_effect`.
       type: object
-      propertyNames:
-        not:
-          pattern: "^graph_"
+      propertyNames: { not: { pattern: "^graph_" } }
       additionalProperties:
         type: object
         additionalProperties: false
-        required:
-          - columns
+        required: [columns]
         properties:
           columns:
             title: Columns
             type: array
             minItems: 1
-            items:
-              type: string
-          unique:
-            title: Unique
-            type: boolean
-            default: false
+            items: { type: string }
+          unique: { title: Unique, type: boolean, default: false }
           method:
             title: Method
             description: Index method (`btree`, `gin`, `gist`, `hash`, `brin`).
             type: string
-            enum:
-              - btree
-              - gin
-              - gist
-              - hash
-              - brin
-              - spgist
+            enum: [btree, gin, gist, hash, brin, spgist]
           where:
             title: Where
             description: Partial-index predicate.
@@ -745,13 +535,11 @@ schema:
         Named table-level predicates in PostgreSQL's own SQL, keyed by constraint
         name. A predicate holds for every row, whichever layer states it.
       type: object
-      propertyNames:
-        pattern: ^[A-Za-z_][A-Za-z0-9_]*$
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       additionalProperties:
         type: object
         additionalProperties: false
-        required:
-          - expression
+        required: [expression]
         properties:
           expression:
             title: Expression
@@ -765,9 +553,7 @@ schema:
               keeps adding a constraint to a large table from holding a lock while every row
               is read."
             type: string
-            enum:
-              - immediate
-              - deferred
+            enum: [immediate, deferred]
             default: immediate
     renamedFrom:
       title: Renamed From
@@ -868,8 +654,7 @@ metadata:
     layer may state the same key once.
 capability: Telo.Provider
 extends: GraphLayersSql.Node
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Node
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Node]
 x-telo-schema-projection-from: /table
 schema:
   type: object
@@ -882,9 +667,7 @@ schema:
     table:
       title: Table
       description: The layered table holding the nodes, listed in the PostgreSQL schema.
-      x-telo-ref:
-        kind: Self.NodeTable
-        use: dependency
+      x-telo-ref: { kind: Self.NodeTable, use: dependency }
     key:
       title: Key
       description: The table's own key column.
@@ -900,8 +683,7 @@ metadata:
     property of the link, and each layer may state the same ordered pair once.
 capability: Telo.Provider
 extends: GraphLayersSql.Relationship
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Relationship
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Relationship]
 x-telo-schema-projection-from: { from: /table, omit: [/sourceColumn, /targetColumn] }
 schema:
   type: object
@@ -917,21 +699,15 @@ schema:
     table:
       title: Table
       description: The layered table holding the relationships, listed in the PostgreSQL schema.
-      x-telo-ref:
-        kind: Self.RelationshipTable
-        use: dependency
+      x-telo-ref: { kind: Self.RelationshipTable, use: dependency }
     source:
       title: Source
       description: The node type a relationship starts at.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
     target:
       title: Target
       description: The node type a relationship ends at. May be the source's type.
-      x-telo-ref:
-        kind: Self.Node
-        use: dependency
+      x-telo-ref: { kind: Self.Node, use: dependency }
     sourceColumn:
       title: Source Column
       description: The table's own source column.
@@ -956,8 +732,7 @@ metadata:
     effect at once, joins an open transaction, and no history is kept.
 capability: Telo.Provider
 extends: GraphLayersSql.CurrentStore
-controllers:
-  - pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Store
+controllers: [pkg:telo/local/js?path=./nodejs/graph-layers-current-postgres.mjs&local_path=./nodejs/src/index.ts#Store]
 schema:
   type: object
   required: [connection, schema, layer, nodes]
@@ -973,17 +748,13 @@ schema:
     connection:
       title: Connection
       description: The connection every statement runs on.
-      x-telo-ref:
-        kind: Postgres.Connection
-        use: dependency
+      x-telo-ref: { kind: Postgres.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The schema that declares every table this graph uses, on the same
         connection. It creates and migrates them; the graph issues no DDL.
-      x-telo-ref:
-        kind: Postgres.Schema
-        use: dependency
+      x-telo-ref: { kind: Postgres.Schema, use: dependency }
     layer:
       title: Layer
       description: >-
@@ -999,24 +770,15 @@ schema:
         layer two bases share has one place, the lowest. The first statement
         found for a key wins.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Store
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Store, use: dependency } }
     nodes:
       title: Nodes
       description: The node types this graph holds.
       type: array
       minItems: 1
-      items:
-        x-telo-ref:
-          kind: Self.Node
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Node, use: dependency } }
     relationships:
       title: Relationships
       description: The relationship types this graph holds.
       type: array
-      items:
-        x-telo-ref:
-          kind: Self.Relationship
-          use: dependency
+      items: { x-telo-ref: { kind: Self.Relationship, use: dependency } }

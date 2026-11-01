@@ -3,9 +3,7 @@
 # (`throws: { inherit: true }`), so `telo check` accepts the entry naming the
 # code, and the row written before the throw is gone.
 kind: Telo.Application
-metadata:
-  name: TransactionThrowReachesCatches
-  version: 1.0.0
+metadata: { name: TransactionThrowReachesCatches, version: 1.0.0 }
 imports:
   Sql: ../
   SQLite: ../../sqlite
@@ -31,16 +29,14 @@ routes:
         kind: Run.Sequence
         steps:
           - name: insert
-            inputs:
-              sql: "INSERT INTO accounts (email) VALUES ('ada@example.com')"
+            inputs: { sql: "INSERT INTO accounts (email) VALUES ('ada@example.com')" }
             invoke:
               kind: Sql.Command
               connection: !ref db
           - name: reject
             throw: { code: ACCOUNT_REJECTED, message: "the account was refused after it was written" }
     returns:
-      - status: 201
-        content: { application/json: { body: { ok: true } } }
+      - { status: 201, content: { application/json: { body: { ok: true } } } }
     catches:
       - when: !cel "error.code == 'ACCOUNT_REJECTED'"
         status: 409
@@ -54,17 +50,14 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 18720
+    listen: { address: 127.0.0.1, port: 18720 }
     mounts:
       - mount: !ref accountsApi
 targets:
   - !ref server
 steps:
   - name: createTable
-    inputs:
-      sql: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL)"
+    inputs: { sql: "CREATE TABLE accounts (id INTEGER PRIMARY KEY, email TEXT NOT NULL)" }
     invoke:
       kind: Sql.Command
       connection: !ref db
@@ -74,8 +67,7 @@ steps:
       kind: HttpClient.Request
       client: { kind: HttpClient.Client, throwOnHttpError: false }
   - name: count
-    inputs:
-      sql: "SELECT COUNT(*) AS n FROM accounts"
+    inputs: { sql: "SELECT COUNT(*) AS n FROM accounts" }
     invoke:
       kind: Sql.Query
       connection: !ref db

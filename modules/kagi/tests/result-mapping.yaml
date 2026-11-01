@@ -4,9 +4,7 @@
 # failing the call. A result without a URL is dropped, a URL is returned exactly
 # as reported, and a response with no `search` list has no results.
 kind: Telo.Application
-metadata:
-  name: KagiResultMappingTest
-  version: 1.0.0
+metadata: { name: KagiResultMappingTest, version: 1.0.0 }
 imports:
   Kagi: ..
   Http: ../../http-client
@@ -48,8 +46,7 @@ with:
       - request:
           path: /api/v1/search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref canned
         returns:
           - status: 200
@@ -65,8 +62,7 @@ with:
                 body: { meta: { id: test }, data: {} }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18853
+    listen: { port: 18853 }
     mounts:
       - path: /
         mount: !ref FakeKagi
@@ -102,4 +98,4 @@ steps:
             - { title: IRI, url: "https://de.wikipedia.org/wiki/Straße", snippet: iri }
             - { title: Space, url: "https://example.com/a b", snippet: space }
           more: false
-        - results: []
+        - { results: [] }

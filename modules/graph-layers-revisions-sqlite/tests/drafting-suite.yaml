@@ -8,8 +8,7 @@ metadata:
     built on no other: sessions, publish and discard, staleness and
     rebase, the five conflict classes and their resolution, automated deciding,
     a draft closed under a running session, and cursors bound to a draft.
-include:
-  - ./__fixtures__/suite-model.yaml
+include: [./__fixtures__/suite-model.yaml]
 imports:
   Suite:
     source: ../../graph-layers/tests/__fixtures__/drafting-suite

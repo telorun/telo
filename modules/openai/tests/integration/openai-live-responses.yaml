@@ -14,8 +14,7 @@ metadata:
 
     Skips silently when OPENAI_API_KEY is unset (locally: drop a .env.local in
     this directory; CI: secret on the workflow).
-secrets:
-  openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" }
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string, default: "" } }
 imports:
   OpenAI: ../../
   Http: ../../../http-client
@@ -61,8 +60,7 @@ tools:
       type: object
       additionalProperties: false
       required: [ device ]
-      properties:
-        device: { type: string }
+      properties: { device: { type: string } }
 ---
 kind: Ai.Agent
 metadata: { name: agent }
@@ -126,8 +124,7 @@ steps:
       - name: drain
         inputs:
           input: !cel "steps.invokeStream.result.output"
-        invoke:
-          kind: Stream.Collect
+        invoke: { kind: Stream.Collect }
       - name: assertStream
         inputs:
           toolCalls: !cel "size(steps.drain.result.items.filter(p, p.type == 'tool-call'))"

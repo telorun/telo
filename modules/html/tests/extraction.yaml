@@ -3,10 +3,7 @@ metadata:
   name: HtmlExtractionTest
   version: 1.0.0
   description: Every extraction mode, nested records, and every failure code.
-imports:
-  Html: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Html: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref everyMode
   - !ref missingField
@@ -74,11 +71,7 @@ steps:
       - name: run
         invoke:
           kind: Html.Extraction
-          fields:
-            page:
-              selector: body
-              fields:
-                title: { selector: h1, type: text }
+          fields: { page: { selector: body, fields: { title: { selector: h1, type: text } } } }
         inputs: { document: !cel "steps.parse.result" }
       - name: failIfReached
         throw: { code: TEST_FAILED, message: Expected ERR_HTML_FIELD_MISSING. }
@@ -103,10 +96,7 @@ steps:
   - name: extract
     try:
       - name: run
-        invoke:
-          kind: Html.Extraction
-          fields:
-            count: { selector: span, type: integer }
+        invoke: { kind: Html.Extraction, fields: { count: { selector: span, type: integer } } }
         inputs: { document: !cel "steps.parse.result" }
       - name: failIfReached
         throw: { code: TEST_FAILED, message: Expected ERR_HTML_FIELD_CONVERSION. }
@@ -125,10 +115,7 @@ steps:
   - name: extract
     try:
       - name: run
-        invoke:
-          kind: Html.Extraction
-          fields:
-            image: { selector: img, type: html }
+        invoke: { kind: Html.Extraction, fields: { image: { selector: img, type: html } } }
         inputs:
           document:
             nodes:
@@ -159,9 +146,7 @@ steps:
 kind: Run.Sequence
 metadata: { name: inheritedAttributeName }
 steps:
-  - name: parse
-    invoke: { kind: Html.JsonTree }
-    inputs: { html: <p>text</p> }
+  - { name: parse, invoke: { kind: Html.JsonTree }, inputs: { html: <p>text</p> } }
   - name: extract
     invoke:
       kind: Html.Extraction

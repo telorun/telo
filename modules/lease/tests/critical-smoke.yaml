@@ -32,10 +32,7 @@ metadata: { name: body }
 steps:
   - name: reenter
     invoke: !ref lock
-    inputs:
-      key: k1
-      holder: B
-      inputs: {}
+    inputs: { key: k1, holder: B, inputs: {} }
 outputs:
   reenterAcquired: !cel "steps.reenter.result.acquired"
   reenterHolder: !cel "steps.reenter.result.holder"
@@ -48,29 +45,21 @@ invoke: !ref constant
 ---
 kind: Run.Value
 metadata: { name: constant }
-value:
-  ok: 1
+value: { ok: 1 }
 ---
 kind: Run.Sequence
 metadata: { name: test }
 steps:
   - name: conflict
     invoke: !ref lock
-    inputs:
-      key: k1
-      holder: A
-      inputs: {}
+    inputs: { key: k1, holder: A, inputs: {} }
   - name: happy1
     invoke: !ref plain
-    inputs:
-      key: k2
-      inputs: {}
+    inputs: { key: k2, inputs: {} }
   # Released after Happy1 returned, so the same key acquires again.
   - name: happy2
     invoke: !ref plain
-    inputs:
-      key: k2
-      inputs: {}
+    inputs: { key: k2, inputs: {} }
   - name: assert
     inputs:
       actual:

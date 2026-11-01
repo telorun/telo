@@ -1,11 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: JavaScriptInlineTypeTest
-  version: 1.0.0
-imports:
-  JavaScript: ..
-  Run: ../../run
-  Assert: ../../assert
+metadata: { name: JavaScriptInlineTypeTest, version: 1.0.0 }
+imports: { JavaScript: .., Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testInlineInputOutputType
 ---
@@ -14,34 +9,23 @@ targets:
 # must resolve the resulting {kind, name} ref to the registered schema
 # instead of trying to compile it as a JSON Schema literal.
 kind: JavaScript.Script
-metadata:
-  name: greet
+metadata: { name: greet }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [ name ]
-    properties:
-      name: { type: string }
+  schema: { type: object, required: [name], properties: { name: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [ message ]
-    properties:
-      message: { type: string }
+  schema: { type: object, required: [message], properties: { message: { type: string } } }
 code: |
   function main({ name }) {
     return { message: `Hello ${name}!` }
   }
 ---
 kind: Run.Sequence
-metadata:
-  name: testInlineInputOutputType
+metadata: { name: testInlineInputOutputType }
 steps:
   - name: call
-    inputs:
-      name: "World"
+    inputs: { name: "World" }
     invoke: !ref greet
   - name: verifyMessage
     inputs:
@@ -50,7 +34,4 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          message:
-            type: string
-            const: "Hello World!"
+        properties: { message: { type: string, const: "Hello World!" } }

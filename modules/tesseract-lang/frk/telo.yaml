@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - frk
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [frk] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: frk, member: package/4.0.0_best_int/frk.traineddata.gz, sha256: 22186f9eae55cdc13846ea4d586f24f9fe64765c5400c41c2c46e55a8bb735be, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: frk
-  description: German Fraktur, Fraktur script
+metadata: { name: frk, description: "German Fraktur, Fraktur script" }
 code: frk
 data: !module-path ./tessdata/frk.traineddata.gz

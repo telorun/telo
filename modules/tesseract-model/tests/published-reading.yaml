@@ -1,11 +1,6 @@
 kind: Telo.Application
-metadata:
-  name: TesseractModelPublishedReadingTest
-  version: 1.0.0
-imports:
-  Assert: ../../assert
-  Run: ../../run
-  TesseractModel: ../
+metadata: { name: TesseractModelPublishedReadingTest, version: 1.0.0 }
+imports: { Assert: ../../assert, Run: ../../run, TesseractModel: ../ }
 targets:
   - !ref readingIsPublished
 ---

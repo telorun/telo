@@ -67,9 +67,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 19321
+    listen: { address: 127.0.0.1, port: 19321 }
     mounts:
       - path: /tasks
         mount:
@@ -199,7 +197,5 @@ steps:
           body: !cel "steps.readOne.result.body"
         bareFilter: !cel "steps.bareFilter.result.status"
       expected:
-        readOne:
-          status: 200
-          body: { id: 3, text: Ship, isDone: false }
+        readOne: { status: 200, body: { id: 3, text: Ship, isDone: false } }
         bareFilter: 400

@@ -7,8 +7,7 @@ metadata:
   name: GraphSqlStaticRefusals
   version: 1.0.0
   description: The graph-sql model rules, refused statically and at creation.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref nodeKeyUnknownColumn
   - !ref nodeKeyUnknownColumnAtRuntime
@@ -38,9 +37,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/node-key-unknown-column-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN"
+expect: { errors: [], runFails: "GRAPH_NODE_KEY_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: nodeKeyInvalid }
@@ -53,9 +50,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: nodeKeyInvalidAtRuntime }
 source: ./__fixtures__/rules/node-key-invalid-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_NODE_KEY_INVALID"
+expect: { errors: [], runFails: "GRAPH_NODE_KEY_INVALID" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumn }
@@ -68,9 +63,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointUnknownColumnAtRuntime }
 source: ./__fixtures__/rules/endpoint-unknown-column-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_UNKNOWN_COLUMN" }
 ---
 kind: Assert.Manifest
 metadata: { name: endpointForeignKeyMissing }
@@ -83,9 +76,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: endpointForeignKeyMissingAtRuntime }
 source: ./__fixtures__/rules/endpoint-foreign-key-missing-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_ENDPOINT_FOREIGN_KEY_MISSING"
+expect: { errors: [], runFails: "GRAPH_ENDPOINT_FOREIGN_KEY_MISSING" }
 ---
 kind: Assert.Manifest
 metadata: { name: relationshipNotUnique }
@@ -98,9 +89,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: relationshipNotUniqueAtRuntime }
 source: ./__fixtures__/rules/relationship-not-unique-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_RELATIONSHIP_NOT_UNIQUE"
+expect: { errors: [], runFails: "GRAPH_RELATIONSHIP_NOT_UNIQUE" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableNotInSchema }
@@ -113,9 +102,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableNotInSchemaAtRuntime }
 source: ./__fixtures__/rules/table-not-in-schema-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_NOT_IN_SCHEMA"
+expect: { errors: [], runFails: "GRAPH_TABLE_NOT_IN_SCHEMA" }
 ---
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatch }
@@ -128,9 +115,7 @@ expect:
 kind: Assert.Manifest
 metadata: { name: schemaConnectionMismatchAtRuntime }
 source: ./__fixtures__/rules/schema-connection-mismatch-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH"
+expect: { errors: [], runFails: "GRAPH_SCHEMA_CONNECTION_MISMATCH" }
 ---
 kind: Assert.Manifest
 metadata: { name: tableShared }
@@ -143,6 +128,4 @@ expect:
 kind: Assert.Manifest
 metadata: { name: tableSharedAtRuntime }
 source: ./__fixtures__/rules/table-shared-app.yaml
-expect:
-  errors: []
-  runFails: "GRAPH_TABLE_SHARED"
+expect: { errors: [], runFails: "GRAPH_TABLE_SHARED" }

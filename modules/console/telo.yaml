@@ -12,16 +12,8 @@ metadata:
     stream produces its first item. Styling renders as ANSI on a terminal and strips
     to plain text when piped.
 exports:
-  kinds:
-    - WriteLine
-    - Write
-    - ReadLine
-    - WriteStream
-    - StreamWait
-  resources:
-    - writeLine
-    - write
-    - readLine
+  kinds: [WriteLine, Write, ReadLine, WriteStream, StreamWait]
+  resources: [writeLine, write, readLine]
 ---
 kind: Telo.Definition
 metadata:
@@ -34,15 +26,13 @@ capability: Telo.Invocable
 # The JS controller is listed first so the Node.js kernel's default `auto`
 # policy keeps resolving to it; the Rust kernel's native type is `pkg:cargo`,
 # so it prefers the second entry from the same declaration.
-controllers:
-  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritelineController
-  - pkg:cargo/telorun-console?local_path=./rust#writeline_controller
+controllers: [pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritelineController, pkg:cargo/telorun-console?local_path=./rust#writeline_controller]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     examples:
-      - output: "Hello {green world}"
+      - { output: "Hello {green world}" }
     properties:
       output:
         title: Output
@@ -52,9 +42,7 @@ inputType:
         type: string
     required: [output]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 kind: Telo.Definition
 metadata:
@@ -67,9 +55,7 @@ metadata:
 capability: Telo.Invocable
 # JS first so the Node.js kernel's default policy keeps it; the Rust controller
 # writes text only, since the Rust kernel's manifest values have no bytes.
-controllers:
-  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WriteController
-  - pkg:cargo/telorun-console?local_path=./rust#write_controller
+controllers: [pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WriteController, pkg:cargo/telorun-console?local_path=./rust#write_controller]
 throws:
   codes:
     ERR_OUTPUT_NOT_TEXT:
@@ -83,7 +69,7 @@ inputType:
   schema:
     type: object
     examples:
-      - output: "raw text, {braces} and \\backslashes\\ kept as written"
+      - { output: "raw text, {braces} and \\backslashes\\ kept as written" }
     properties:
       output:
         title: Output
@@ -93,13 +79,11 @@ inputType:
         # anyOf, not oneOf: the byte branch is an instance type, which a reader
         # unaware of `x-telo-type` sees as an empty schema matching everything.
         anyOf:
-          - type: string
-          - x-telo-type: Telo.Bytes
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
     required: [output]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 kind: Telo.Definition
 metadata:
@@ -109,15 +93,13 @@ metadata:
     entered. The prompt is written exactly as given, with no suffix added, and its
     `{style content}` markup renders as ANSI on a terminal. Takes no configuration.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#ReadlineController
-  - pkg:cargo/telorun-console?local_path=./rust#readline_controller
+controllers: [pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#ReadlineController, pkg:cargo/telorun-console?local_path=./rust#readline_controller]
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     examples:
-      - prompt: "Name: "
+      - { prompt: "Name: " }
     properties:
       prompt:
         title: Prompt
@@ -129,9 +111,7 @@ inputType:
         type: string
     required: [prompt]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Drain a `Stream<string | Uint8Array>` to stdout. Strings use Node's native
 # UTF-8 path; Uint8Array chunks pass through unchanged. No newline policy —
@@ -145,8 +125,7 @@ metadata:
     pipeline. Bytes pass through unchanged and no newlines are added, so the producer
     controls framing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritestreamController
+controllers: [pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#WritestreamController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -157,9 +136,7 @@ inputType:
         description: Async iterable of strings or Uint8Array chunks to write to stdout.
     required: [input]
     additionalProperties: false
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }
 ---
 # Animate a single-cell frame sequence on stdout while waiting for the
 # first item from an input stream, then clear the cell and forward every
@@ -174,8 +151,7 @@ metadata:
     and a sink: the prefix, animation frames and clear sequence ride in the head of
     the forwarded stream, so the sink does the writing.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#StreamwaitController
+controllers: [pkg:telo/local/js?path=./nodejs/console.mjs&local_path=./nodejs/src/index.ts#StreamwaitController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -219,10 +195,7 @@ schema:
         spinner cycle.
       type: array
       minItems: 1
-      items:
-        type: string
-        minLength: 1
-        maxLength: 1
+      items: { type: string, minLength: 1, maxLength: 1 }
       default: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     intervalMs:
       title: Interval (ms)

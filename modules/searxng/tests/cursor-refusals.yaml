@@ -3,9 +3,7 @@
 # for different inputs, and a position that is not numeric or overflows the
 # bounds a position may name.
 kind: Telo.Application
-metadata:
-  name: SearxngCursorRefusalsTest
-  version: 1.0.0
+metadata: { name: SearxngCursorRefusalsTest, version: 1.0.0 }
 imports:
   SearXNG: ..
   WebSearch: ../../web-search

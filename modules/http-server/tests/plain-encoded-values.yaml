@@ -40,12 +40,9 @@ routes:
       schema:
         body:
           type: object
-          properties:
-            at: { x-telo-type: Telo.Timestamp }
+          properties: { at: { x-telo-type: Telo.Timestamp } }
           required: [at]
-    handler:
-      kind: Run.Value
-      value: {}
+    handler: { kind: Run.Value, value: {} }
     returns:
       - status: 200
         content:
@@ -58,9 +55,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8983
+    listen: { address: 127.0.0.1, port: 8983 }
     mounts:
       - path: /
         mount: !ref api
@@ -68,19 +63,12 @@ targets:
   - !ref Server
 steps:
   - name: read
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8983/values
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8983/values, method: GET }
   - name: assertPlainForms
     inputs:
       actual: !cel "steps.read.result.body"
-      expected:
-        at: "2026-01-15T07:30:00Z"
-        took: "5400s"
-        raw: "AQL_"
-    invoke:
-      kind: Assert.Equals
+      expected: { at: "2026-01-15T07:30:00Z", took: "5400s", raw: "AQL_" }
+    invoke: { kind: Assert.Equals }
   - name: send
     invoke:
       kind: HttpClient.Request
@@ -91,8 +79,7 @@ steps:
     inputs:
       actual: !cel "steps.send.result.body"
       expected: { later: "2026-01-15T08:30:00Z" }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
   - name: sendOutOfRange
     invoke:
       kind: HttpClient.Request
@@ -107,5 +94,4 @@ steps:
       expected:
         status: 400
         issues: [{ pointer: /body/at, keyword: format, params: { format: Telo.Timestamp } }]
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

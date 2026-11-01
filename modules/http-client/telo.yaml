@@ -16,14 +16,7 @@ requires:
   # as X_TELO_TYPE_UNKNOWN (recorded by http-server's own floor of the same
   # type); the client controller also returns its effect chain from `init()`.
   telo: ">=0.98.0"
-exports:
-  kinds:
-    - ApiKeyHeader
-    - BearerToken
-    - Client
-    - Credential
-    - QueryKey
-    - Request
+exports: { kinds: [ApiKeyHeader, BearerToken, Client, Credential, QueryKey, Request] }
 ---
 # Http.Credential — how a client authenticates the requests made through it.
 #
@@ -69,10 +62,7 @@ inputType:
             # per-module `apiKey` field used to put its material. Marked on the
             # way IN for the same reason the result is marked on the way out.
             x-telo-sensitive: true
-          query:
-            type: object
-            additionalProperties: { type: string }
-            x-telo-sensitive: true
+          query: { type: object, additionalProperties: { type: string }, x-telo-sensitive: true }
       forceRefresh:
         type: boolean
         default: false
@@ -125,8 +115,7 @@ metadata:
     secret, and is reused unchanged for every request.
 capability: Telo.Invocable
 extends: Self.Credential
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#BearerTokenController
+controllers: [pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#BearerTokenController]
 throws:
   codes:
     ERR_INVALID_CREDENTIAL:
@@ -163,8 +152,7 @@ metadata:
     serves every API that keys a header rather than the Authorization scheme.
 capability: Telo.Invocable
 extends: Self.Credential
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#ApiKeyHeaderController
+controllers: [pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#ApiKeyHeaderController]
 throws:
   codes:
     ERR_INVALID_CREDENTIAL:
@@ -205,8 +193,7 @@ metadata:
     service accepts one.
 capability: Telo.Invocable
 extends: Self.Credential
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#QueryKeyController
+controllers: [pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#QueryKeyController]
 throws:
   codes:
     ERR_INVALID_CREDENTIAL:
@@ -242,14 +229,12 @@ metadata:
     inherit these defaults, resolving their relative paths against the base URL
     and merging their own headers over the client's.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#HttpClientController
+controllers: [pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#HttpClientController]
 schema:
   type: "object"
   examples:
     - baseUrl: https://jsonplaceholder.typicode.com
-      headers:
-        Authorization: Bearer token
+      headers: { Authorization: Bearer token }
       timeout: 10000
     # Mutual TLS against a service with a private CA.
     - baseUrl: https://api.internal.example:6443
@@ -268,8 +253,7 @@ schema:
     headers:
       title: Headers
       type: "object"
-      additionalProperties:
-        type: "string"
+      additionalProperties: { type: "string" }
       description: "Default headers applied to all requests (e.g., Authorization)"
     timeout:
       title: Timeout
@@ -306,10 +290,7 @@ schema:
       title: TLS
       type: object
       additionalProperties: false
-      dependencies:
-        cert: [key]
-        key: [cert]
-        passphrase: [key]
+      dependencies: { cert: [key], key: [cert], passphrase: [key] }
       description: >-
         TLS settings for every request made through this client — a private or
         corporate CA, a client certificate for mutual TLS, a server name override.
@@ -371,9 +352,7 @@ schema:
             only. A warning is logged each time the client starts with it set.
     credential:
       title: Credential
-      x-telo-ref:
-        kind: Self.Credential
-        use: call
+      x-telo-ref: { kind: Self.Credential, use: call }
       description: >-
         Authenticates every request made through this client. The credential is
         consulted once per request; what it returns overrides the client's own
@@ -386,16 +365,14 @@ schema:
       additionalProperties: false
       description: PEM text, given inline or as a file on the host. Exactly one of the two.
       properties:
-        pem:
-          type: string
-          description: The PEM text.
+        pem: { type: string, description: The PEM text. }
         file:
           type: string
           x-telo-type: Telo.HostPath
           description: Absolute path of a file holding the PEM text.
       oneOf:
-        - required: [pem]
-        - required: [file]
+        - { required: [pem] }
+        - { required: [file] }
 ---
 kind: "Telo.Definition"
 metadata:
@@ -426,9 +403,7 @@ inputType:
       url:
         type: string
         description: Absolute URL, or a path resolved against the client's base URL.
-      method:
-        type: string
-        description: HTTP method. Defaults to GET.
+      method: { type: string, description: HTTP method. Defaults to GET. }
       query:
         type: object
         additionalProperties: { type: string }
@@ -452,12 +427,10 @@ inputType:
           sees the byte and stream branches as empty schemas matching anything, so
           under `oneOf` a plain string would match several branches and fail.
         anyOf:
-          - type: string
-          - type: object
-          - x-telo-type: Telo.Bytes
-          - x-telo-type:
-              name: Telo.Stream
-              of: Telo.Bytes
+          - { type: string }
+          - { type: object }
+          - { x-telo-type: Telo.Bytes }
+          - { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
       bodyEncoding:
         type: string
         enum: [utf8, base64]
@@ -476,8 +449,7 @@ inputType:
           `bytes` buffers the body as raw bytes, which is what a binary payload
           needs — reading one as text corrupts it; `stream` returns a byte stream
           without buffering. Chosen per call, unlike the deprecated `mode`.
-controllers:
-  - pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#HttpRequestController
+controllers: [pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#HttpRequestController]
 throws:
   codes:
     ERR_HTTP_STATUS:
@@ -501,9 +473,7 @@ outputType:
     additionalProperties: false
     required: [status, headers, body]
     properties:
-      status:
-        type: integer
-        description: HTTP response status code.
+      status: { type: integer, description: HTTP response status code. }
       headers:
         type: object
         additionalProperties: { type: string }
@@ -523,9 +493,7 @@ schema:
   properties:
     client:
       title: Client
-      x-telo-ref:
-        kind: Self.Client
-        use: dependency
+      x-telo-ref: { kind: Self.Client, use: dependency }
       description: "Reference to an Http.Client resource. Injected as a live instance at runtime; its baseUrl, headers, and timeout supply per-request defaults."
     timeout:
       title: Timeout
@@ -551,20 +519,16 @@ schema:
         `body` is null when the response is streamed, so a predicate reading it
         must guard for null — the analyzer requires the guard.
       anyOf:
-        - type: array
-          items: { type: integer }
-        - type: boolean
+        - { type: array, items: { type: integer } }
+        - { type: boolean }
       x-telo-eval: runtime
       x-telo-context:
         type: object
         properties:
           inputs: {}
           status: { type: integer }
-          headers:
-            type: object
-            additionalProperties: { type: string }
-          body:
-            type: ["object", "array", "string", "number", "boolean", "null"]
+          headers: { type: object, additionalProperties: { type: string } }
+          body: { type: ["object", "array", "string", "number", "boolean", "null"] }
     retryOn:
       title: Retry On
       description: >-
@@ -574,20 +538,16 @@ schema:
         when `retry.attempts` is non-zero. A predicate is what expresses a failure
         whose meaning is in the body rather than the status.
       anyOf:
-        - type: array
-          items: { type: integer }
-        - type: boolean
+        - { type: array, items: { type: integer } }
+        - { type: boolean }
       x-telo-eval: runtime
       x-telo-context:
         type: object
         properties:
           inputs: {}
           status: { type: integer }
-          headers:
-            type: object
-            additionalProperties: { type: string }
-          body:
-            type: ["object", "array", "string", "number", "boolean", "null"]
+          headers: { type: object, additionalProperties: { type: string } }
+          body: { type: ["object", "array", "string", "number", "boolean", "null"] }
     retry:
       title: Retry
       # The shared policy plus the one field only a RESPONSE can supply. Merging
@@ -632,14 +592,10 @@ schema:
         different things — this is what the instance supplies, that is what a
         caller may pass — and nothing merges them before the contract is validated.
       examples:
-        - url: https://jsonplaceholder.typicode.com/todos/1
-          method: GET
+        - { url: https://jsonplaceholder.typicode.com/todos/1, method: GET }
         - url: https://jsonplaceholder.typicode.com/posts
           method: POST
-          body:
-            title: Hello
-            body: World
-            userId: 1
+          body: { title: Hello, body: World, userId: 1 }
       properties:
         url:
           title: URL
@@ -654,26 +610,22 @@ schema:
           title: Query
           type: "object"
           description: "Query parameters to be appended to the URL"
-          additionalProperties:
-            type: "string"
+          additionalProperties: { type: "string" }
         headers:
           title: Headers
           type: "object"
           description: "Request-specific headers (merges with client headers)"
-          additionalProperties:
-            type: "string"
+          additionalProperties: { type: "string" }
         body:
           title: Body
           description: >-
             Payload to send. Same shape and same reason for `anyOf` as the `inputType`
             contract's `body`.
           anyOf:
-            - type: "string"
-            - type: "object"
-            - x-telo-type: Telo.Bytes
-            - x-telo-type:
-                name: Telo.Stream
-                of: Telo.Bytes
+            - { type: "string" }
+            - { type: "object" }
+            - { x-telo-type: Telo.Bytes }
+            - { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
         bodyEncoding:
           title: Body Encoding
           type: string

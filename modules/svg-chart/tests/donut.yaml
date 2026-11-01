@@ -32,9 +32,7 @@ schema:
         type: object
         required: [employee, hours]
         additionalProperties: false
-        properties:
-          employee: { type: string }
-          hours: { type: number }
+        properties: { employee: { type: string }, hours: { type: number } }
 ---
 kind: Font.Family
 metadata: { name: brand }
@@ -70,8 +68,7 @@ inputType:
     type: object
     required: [svg]
     additionalProperties: false
-    properties:
-      svg: { type: string }
+    properties: { svg: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:

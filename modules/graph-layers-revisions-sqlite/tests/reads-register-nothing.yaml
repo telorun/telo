@@ -29,9 +29,7 @@ kind: Layers.NodeTable
 metadata: { name: people }
 table: people
 key: id
-columns:
-  id: { type: text, nullable: false }
-  name: { type: text, nullable: false }
+columns: { id: { type: text, nullable: false }, name: { type: text, nullable: false } }
 ---
 kind: Layers.LayersTable
 metadata: { name: graphLayers }
@@ -101,16 +99,14 @@ steps:
     inputs: {}
   - name: afterReads
     invoke: !ref layers
-    inputs:
-      sql: "SELECT COUNT(*) AS n FROM graph_layers"
+    inputs: { sql: "SELECT COUNT(*) AS n FROM graph_layers" }
   # The first write registers the layer it writes, and no other.
   - name: write
     invoke: { kind: Graph.CreateNode, store: !ref top, node: !ref person }
     inputs: { key: a, properties: { name: Alice } }
   - name: afterWrite
     invoke: !ref layers
-    inputs:
-      sql: "SELECT name FROM graph_layers ORDER BY name"
+    inputs: { sql: "SELECT name FROM graph_layers ORDER BY name" }
   - name: foundAfterWrite
     invoke: !ref findPeople
     inputs: {}

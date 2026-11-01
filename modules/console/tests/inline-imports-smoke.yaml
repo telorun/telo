@@ -12,10 +12,7 @@ metadata:
     manifests on both the analysis and runtime loads), a green run proves inline
     imports are not just analyzable but actually materialize and execute —
     `Console.WriteLine` runs and the boot sequence reaches its final assertion.
-imports:
-  Console: ../
-  Assert: ../../assert
-  Run: ../../run
+imports: { Console: ../, Assert: ../../assert, Run: ../../run }
 targets:
   - !ref printAndCheck
 ---
@@ -27,8 +24,7 @@ metadata: { name: printAndCheck }
 steps:
   - name: print
     invoke: !ref greet
-    inputs:
-      output: "inline imports work"
+    inputs: { output: "inline imports work" }
   - name: check
     invoke: { kind: Assert.Equals }
     inputs: { actual: true, expected: true }

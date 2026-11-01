@@ -16,14 +16,11 @@ targets:
   - !ref main
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    text: { type: string }
+  properties: { id: { type: integer }, text: { type: string } }
 ---
 kind: Ui.CollectionPresentation
 metadata: { name: todos }
@@ -37,8 +34,7 @@ source:
 ---
 # show × controls × apply × summary, each under the four placement kinds.
 kind: Ui.View
-metadata:
-  name: every
+metadata: { name: every }
 content:
   type: stack
   children:
@@ -140,8 +136,7 @@ content:
     - { type: composite, ref: { kind: Ui.Filters, presentation: !ref todos, content: { type: text, text: Todos }, policy: { show: chosen, controls: chips, apply: button, summary: chips, placement: { kind: Ui.OverlayPlacement, surface: { kind: Ui.Popover } } } } }
 ---
 kind: Run.Sequence
-metadata:
-  name: main
+metadata: { name: main }
 steps:
   - name: read
     invoke: { kind: Probe.Read, source: !ref every }
@@ -151,6 +146,4 @@ steps:
       actual:
         bars: !cel "size(steps.read.result.node.children)"
         distinct: !cel "size(steps.read.result.node.children.map(c, c.show + ' ' + c.controls + ' ' + c.apply + ' ' + c.summary + ' ' + c.placement.type).filter(k, steps.read.result.node.children.exists_one(c, c.show + ' ' + c.controls + ' ' + c.apply + ' ' + c.summary + ' ' + c.placement.type == k)))"
-      expected:
-        bars: 96
-        distinct: 96
+      expected: { bars: 96, distinct: 96 }

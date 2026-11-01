@@ -33,9 +33,7 @@ inputType:
   schema:
     type: object
     required: [language]
-    properties:
-      language: { type: string }
-      focus: { type: string }
+    properties: { language: { type: string }, focus: { type: string } }
 value:
   text: !cel "'Review this ' + inputs.language + ' code for ' + inputs.focus + '.'"
 ---
@@ -47,12 +45,9 @@ value:
 kind: Run.Sequence
 metadata: { name: renderRetired }
 throws:
-  - code: retired
+  - { code: retired }
 steps:
-  - name: bail
-    throw:
-      code: retired
-      message: "this prompt was retired"
+  - { name: bail, throw: { code: retired, message: "this prompt was retired" } }
 ---
 kind: Mcp.Prompts
 metadata: { name: AppPrompts }
@@ -63,7 +58,7 @@ entries:
       - name: language
         description: Language the code is written in.
         required: true
-      - name: focus
+      - { name: focus }
     handler: !ref renderReview
     inputs:
       language: !cel "request.arguments.language"
@@ -77,8 +72,7 @@ entries:
             text: !cel "result.text"
   - name: toString
     arguments:
-      - name: toString
-        required: true
+      - { name: toString, required: true }
     handler: !ref renderPixel
     inputs: {}
     result:
@@ -97,8 +91,7 @@ entries:
   - name: retired
     handler: !ref renderRetired
     inputs: {}
-    result:
-      messages: []
+    result: { messages: [] }
     catches:
       - code: retired
         error:
@@ -115,9 +108,7 @@ metadata: { name: testRun }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8967
+    listen: { address: 127.0.0.1, port: 8967 }
     mounts:
       - { path: /mcp, mount: !ref mcpHttp }
 targets: [ !ref Server ]
@@ -141,8 +132,7 @@ steps:
 
   - name: list
     invoke: !ref rpc
-    inputs:
-      body: { jsonrpc: "2.0", id: 2, method: prompts/list }
+    inputs: { body: { jsonrpc: "2.0", id: 2, method: prompts/list } }
   - name: assertList
     invoke: { kind: Assert.Equals }
     inputs:
@@ -154,13 +144,11 @@ steps:
             - name: language
               description: Language the code is written in.
               required: true
-            - name: focus
+            - { name: focus }
         - name: toString
           arguments:
-            - name: toString
-              required: true
-        - name: retired
-          arguments: []
+            - { name: toString, required: true }
+        - { name: retired, arguments: [] }
 
   - name: get
     invoke: !ref rpc
@@ -178,9 +166,7 @@ steps:
         description: Code review
         messages:
           - role: user
-            content:
-              type: text
-              text: Review this Rust code for correctness.
+            content: { type: text, text: Review this Rust code for correctness. }
 
   - name: getMissingArgument
     invoke: !ref rpc
@@ -220,12 +206,9 @@ steps:
     inputs:
       actual: !cel "parseJson(steps.getBytes.result.body.split('data: ')[1]).result.messages"
       expected:
+        - { role: user, content: { type: image, mimeType: image/png, data: "//4=" } }
         - role: user
-          content: { type: image, mimeType: image/png, data: "//4=" }
-        - role: user
-          content:
-            type: resource
-            resource: { uri: asset://pixel, blob: "//4=" }
+          content: { type: resource, resource: { uri: asset://pixel, blob: "//4=" } }
 
   - name: getUnknown
     invoke: !ref rpc
@@ -237,9 +220,7 @@ steps:
       actual:
         isInvalidParams: !cel "parseJson(steps.getUnknown.result.body.split('data: ')[1]).error.code == -32602.0"
         message: !cel "parseJson(steps.getUnknown.result.body.split('data: ')[1]).error.message"
-      expected:
-        isInvalidParams: true
-        message: "Mcp: unknown prompt 'nope'"
+      expected: { isInvalidParams: true, message: "Mcp: unknown prompt 'nope'" }
 
   - name: getRetired
     invoke: !ref rpc
@@ -251,6 +232,4 @@ steps:
       actual:
         isMapped: !cel "parseJson(steps.getRetired.result.body.split('data: ')[1]).error.code == -32051.0"
         message: !cel "parseJson(steps.getRetired.result.body.split('data: ')[1]).error.message"
-      expected:
-        isMapped: true
-        message: this prompt was retired
+      expected: { isMapped: true, message: this prompt was retired }

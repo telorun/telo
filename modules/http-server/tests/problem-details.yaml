@@ -28,8 +28,7 @@ metadata: { name: unguardedProblemMember }
 source: ./__fixtures__/problem-nullable-member.yaml
 expect:
   errors:
-    - code: CEL_NULLABLE_ACCESS
-      message: "'problem.data' may be null"
+    - { code: CEL_NULLABLE_ACCESS, message: "'problem.data' may be null" }
 ---
 kind: Run.Sequence
 metadata: { name: failBare }
@@ -41,11 +40,7 @@ kind: Run.Sequence
 metadata: { name: findOrder }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [id]
-    properties:
-      id: { type: string }
+  schema: { type: object, required: [id], properties: { id: { type: string } } }
 steps:
   - name: missing
     throw:
@@ -107,8 +102,7 @@ routes:
   - request: { path: /html, method: GET }
     handler: { kind: Run.Value, value: {} }
     returns:
-      - status: 200
-        content: { text/html: { body: "<p>hello</p>" } }
+      - { status: 200, content: { text/html: { body: "<p>hello</p>" } } }
 
   # The only entry needs `ok`, which the handler never returns: no entry matches,
   # and the server is left with a failure that carries no code.
@@ -119,15 +113,10 @@ routes:
         when: !cel "result.ok == true"
         content: { application/json: { body: { ok: true } } }
 
-  - request:
-      path: /documents
-      method: POST
-      schema:
-        body: { type: object }
+  - request: { path: /documents, method: POST, schema: { body: { type: object } } }
     handler: { kind: Run.Value, value: {} }
     returns:
-      - status: 201
-        content: { application/json: { body: { ok: true } } }
+      - { status: 201, content: { application/json: { body: { ok: true } } } }
 ---
 kind: HttpClient.Client
 metadata: { name: client }
@@ -143,9 +132,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8981
+    listen: { address: 127.0.0.1, port: 8981 }
     mounts:
       - mount: !ref ordersApi
 targets:
@@ -153,9 +140,7 @@ targets:
 steps:
   - name: notFound
     invoke: !ref call
-    inputs:
-      url: /orders/42
-      headers: { accept: application/json }
+    inputs: { url: /orders/42, headers: { accept: application/json } }
   - name: reshaped
     invoke: !ref call
     inputs: { url: /reshaped/42 }
@@ -164,9 +149,7 @@ steps:
     inputs: { url: /bare }
   - name: notAcceptable
     invoke: !ref call
-    inputs:
-      url: /html
-      headers: { accept: application/json }
+    inputs: { url: /html, headers: { accept: application/json } }
   - name: crash
     invoke: !ref call
     inputs: { url: /crash }
@@ -222,9 +205,7 @@ steps:
             status: 404
             source: "Order {$id} does not exist."
             lang: en
-        bare:
-          status: 599
-          body: { title: null, detail: null, data: null }
+        bare: { status: 599, body: { title: null, detail: null, data: null } }
         notAcceptable:
           status: 406
           contentType: application/problem+json; charset=utf-8

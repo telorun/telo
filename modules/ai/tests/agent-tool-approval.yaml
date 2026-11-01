@@ -32,38 +32,28 @@ tools:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            amount: { type: integer }
+        schema: { type: object, properties: { amount: { type: integer } } }
       value:
         sent: !cel "inputs.amount"
     parameters:
       type: object
       additionalProperties: false
       required: [amount]
-      properties:
-        amount: { type: integer }
+      properties: { amount: { type: integer } }
     approval: !cel "arguments.amount > 100"
   - name: multiply
     tool:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          properties:
-            a: { type: integer }
-            b: { type: integer }
+        schema: { type: object, properties: { a: { type: integer }, b: { type: integer } } }
       value:
         product: !cel "inputs.a * inputs.b"
     parameters:
       type: object
       additionalProperties: false
       required: [a, b]
-      properties:
-        a: { type: integer }
-        b: { type: integer }
+      properties: { a: { type: integer }, b: { type: integer } }
 ---
 # Answers with the conversation it was given, so a test sees each tool message
 # and the order they arrived in.
@@ -102,8 +92,7 @@ steps:
         - provider: !ref bankTools
     inputs: { prompt: "pay" }
   - name: parts
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
     inputs: { input: !cel "steps.run.result.output" }
   - name: check
     invoke: !ref Assert.equals

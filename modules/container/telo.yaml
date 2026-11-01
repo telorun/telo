@@ -19,12 +19,7 @@ requires:
   # ERR_OBSERVED_STATE_BEFORE_START.
   telo: ">=0.116.0"
 exports:
-  kinds:
-    - Engine
-    - Instance
-    - Port
-    - Readiness
-    - LogReady
+  kinds: [Engine, Instance, Port, Readiness, LogReady]
   # The entry point an engine's or a readiness kind's controller bundle resolves
   # `@telorun/container` to: the two contracts and their guards. Optional for an
   # implementation — an engine and a readiness check are recognised by their
@@ -73,8 +68,7 @@ metadata:
     a startup deadline. It is force-removed with its volumes on shutdown or on a
     failed start, and carries an expiry after which any later start sweeps it.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#Instance
+controllers: [pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#Instance]
 schema:
   type: object
   additionalProperties: false
@@ -83,9 +77,7 @@ schema:
     engine:
       title: Engine
       description: The engine the container runs on.
-      x-telo-ref:
-        kind: Self.Engine
-        use: dependency
+      x-telo-ref: { kind: Self.Engine, use: dependency }
     image:
       title: Image
       description: >-
@@ -137,9 +129,7 @@ schema:
       description: >-
         When the started container counts as ready. Omitted: as soon as it is
         running.
-      x-telo-ref:
-        kind: Self.Readiness
-        use: dependency
+      x-telo-ref: { kind: Self.Readiness, use: dependency }
     startupTimeout:
       title: Startup timeout
       description: >-
@@ -174,8 +164,7 @@ metadata:
     connection string or a client in any startup field can be built from it.
     Naming a port the container does not publish is refused.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#Port
+controllers: [pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#Port]
 schema:
   type: object
   additionalProperties: false
@@ -184,9 +173,7 @@ schema:
     container:
       title: Container
       description: The container whose port this is.
-      x-telo-ref:
-        kind: Self.Instance
-        use: dependency
+      x-telo-ref: { kind: Self.Instance, use: dependency }
     port:
       title: Port
       description: The container port, one the container lists under `ports`.
@@ -228,8 +215,7 @@ metadata:
     over standard output and standard error together.
 capability: Telo.Provider
 extends: Self.Readiness
-controllers:
-  - pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#LogReady
+controllers: [pkg:telo/local/js?path=./nodejs/container.mjs&local_path=./nodejs/src/index.ts#LogReady]
 schema:
   type: object
   additionalProperties: false
@@ -251,5 +237,4 @@ schema:
       minimum: 1
       default: 1
   examples:
-    - text: database system is ready to accept connections
-      times: 2
+    - { text: database system is ready to accept connections, times: 2 }

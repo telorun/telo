@@ -12,10 +12,7 @@ metadata:
     searching with another quietly ruins recall. Single texts or batches, in and out
     in order.
 exports:
-  kinds:
-    - Model
-    - Query
-    - Passage
+  kinds: [Model, Query, Passage]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/embedding` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -56,8 +53,7 @@ schema:
         symmetric models that take raw text.
       type: string
       x-telo-eval: compile
-      examples:
-        - "task: search result | query: {text}"
+      examples: ["task: search result | query: {text}"]
     passagePrompt:
       title: Passage Prompt
       description: >-
@@ -66,8 +62,7 @@ schema:
         symmetric models that take raw text.
       type: string
       x-telo-eval: compile
-      examples:
-        - "title: none | text: {text}"
+      examples: ["title: none | text: {text}"]
 ---
 # Embedding.Query — embeds search queries. The controller passes the retrieval
 # intent `query` to the backend (mapped to the vendor's search_query /
@@ -81,8 +76,7 @@ metadata:
     model's query-side wrapping. Returns one vector per input in order, with the
     vector dimension and token usage.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/embedding.mjs&local_path=./nodejs/src/index.ts#QueryController
+controllers: [pkg:telo/local/js?path=./nodejs/embedding.mjs&local_path=./nodejs/src/index.ts#QueryController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -93,10 +87,8 @@ inputType:
       input:
         description: A single query, or a batch of queries, to embed.
         oneOf:
-          - type: string
-          - type: array
-            minItems: 1
-            items: { type: string }
+          - { type: string }
+          - { type: array, minItems: 1, items: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -108,9 +100,7 @@ outputType:
         description: One vector per input, in input order.
         type: array
         items: { type: array, items: { type: number } }
-      dimensions:
-        type: integer
-        minimum: 1
+      dimensions: { type: integer, minimum: 1 }
       usage:
         type: object
         required: [promptTokens, totalTokens]
@@ -151,8 +141,7 @@ metadata:
     model's document-side wrapping. Returns one vector per input in order, with the
     vector dimension and token usage.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/embedding.mjs&local_path=./nodejs/src/index.ts#PassageController
+controllers: [pkg:telo/local/js?path=./nodejs/embedding.mjs&local_path=./nodejs/src/index.ts#PassageController]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -163,10 +152,8 @@ inputType:
       input:
         description: A single passage, or a batch of passages, to embed.
         oneOf:
-          - type: string
-          - type: array
-            minItems: 1
-            items: { type: string }
+          - { type: string }
+          - { type: array, minItems: 1, items: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -178,9 +165,7 @@ outputType:
         description: One vector per input, in input order.
         type: array
         items: { type: array, items: { type: number } }
-      dimensions:
-        type: integer
-        minimum: 1
+      dimensions: { type: integer, minimum: 1 }
       usage:
         type: object
         required: [promptTokens, totalTokens]

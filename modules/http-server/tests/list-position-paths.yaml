@@ -30,26 +30,17 @@ routes:
               type: array
               items:
                 type: object
-                properties:
-                  name: { type: string, maxLength: 3 }
-                  at: { x-telo-type: Telo.Timestamp }
-    handler:
-      kind: Run.Value
-      value: {}
+                properties: { name: { type: string, maxLength: 3 }, at: { x-telo-type: Telo.Timestamp } }
+    handler: { kind: Run.Value, value: {} }
     returns:
-      - status: 200
-        content:
-          application/json:
-            body: { ok: true }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
 kind: Run.Sequence
 metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8997
+    listen: { address: 127.0.0.1, port: 8997 }
     mounts:
       - path: /
         mount: !ref api
@@ -104,5 +95,4 @@ steps:
             data:
               issues:
                 - { pointer: /body/items/0/at, keyword: format, params: { format: Telo.Timestamp } }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

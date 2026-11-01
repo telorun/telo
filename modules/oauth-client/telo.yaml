@@ -16,28 +16,9 @@ requires:
   # Controllers return their effects from `init()` / `run()`; a runtime that does
   # not execute a returned chain allocates nothing and undoes nothing.
   telo: ">=0.82.0"
-imports:
-  Http: ../http-client
-  KvStore: ../kv-store
+imports: { Http: ../http-client, KvStore: ../kv-store }
 exports:
-  kinds:
-    - AccessToken
-    - Authorization
-    - AuthorizationServer
-    - Callback
-    - Client
-    - ClientCredentials
-    - Credential
-    - DeviceAuthorization
-    - DeviceToken
-    - GrantClear
-    - GrantRead
-    - GrantWrite
-    - RedirectAwait
-    - RedirectListener
-    - TokenExchange
-    - TokenRefresh
-    - TokenSource
+  kinds: [AccessToken, Authorization, AuthorizationServer, Callback, Client, ClientCredentials, Credential, DeviceAuthorization, DeviceToken, GrantClear, GrantRead, GrantWrite, RedirectAwait, RedirectListener, TokenExchange, TokenRefresh, TokenSource]
 ---
 # TokenSet — what a token endpoint hands back, declared once and referenced via
 # `$ref: "telo://Self/TokenSet"`. It is the value that flows from an exchange or a
@@ -92,8 +73,7 @@ metadata:
     the RFC 8414 fallback — so any compliant provider is configured by naming it.
     Endpoints given explicitly are used as-is and suppress discovery.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#authorizationServer
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#authorizationServer]
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -164,8 +144,7 @@ metadata:
     token endpoint. Enables PKCE by default so an intercepted authorization code is
     useless on its own.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#client
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#client]
 schema:
   type: object
   additionalProperties: false
@@ -174,9 +153,7 @@ schema:
     authorizationServer:
       title: Authorization Server
       description: The server this application is registered at.
-      x-telo-ref:
-        kind: Self.AuthorizationServer
-        use: dependency
+      x-telo-ref: { kind: Self.AuthorizationServer, use: dependency }
     clientId:
       title: Client ID
       type: string
@@ -232,8 +209,7 @@ metadata:
     grants are kept, and which grant to use when a caller names none. Every stored
     grant is addressed by a key, so one source serves many accounts or users.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenSource
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenSource]
 schema:
   type: object
   additionalProperties: false
@@ -242,18 +218,14 @@ schema:
     client:
       title: Client
       description: The registration whose grants this source holds.
-      x-telo-ref:
-        kind: Self.Client
-        use: dependency
+      x-telo-ref: { kind: Self.Client, use: dependency }
     store:
       title: Store
       description: >-
         Durable storage for grants and for the short-lived records a pending
         authorization and an in-flight refresh write. Refresh tokens are long-lived
         credentials — use a store that outlives the process.
-      x-telo-ref:
-        kind: KvStore.Store
-        use: dependency
+      x-telo-ref: { kind: KvStore.Store, use: dependency }
     key:
       title: Key
       type: string
@@ -302,8 +274,7 @@ metadata:
     pending request so the matching callback can be recognized and completed exactly
     once.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#authorization
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#authorization]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -360,9 +331,7 @@ schema:
     source:
       title: Source
       description: The token source whose client asks for consent and whose store holds the pending record.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
     pendingTtl:
       title: Pending TTL
       type: string
@@ -389,8 +358,7 @@ metadata:
     address it bound while running, so the redirect URL can be built from it. Closes
     when the surrounding scope ends.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#redirectListener
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#redirectListener]
 status:
   type: object
   properties:
@@ -442,8 +410,7 @@ metadata:
     the one-time value from the request it belongs to, so a stray or replayed
     callback is ignored rather than accepted.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#redirectAwait
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#redirectAwait]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -464,9 +431,7 @@ outputType:
       code:
         type: [string, "null"]
         description: The authorization code to exchange; null when the user refused.
-      state:
-        type: string
-        description: The matched one-time value.
+      state: { type: string, description: The matched one-time value. }
       iss:
         type: [string, "null"]
         description: >-
@@ -487,9 +452,7 @@ schema:
     listener:
       title: Listener
       description: The local listener to wait on.
-      x-telo-ref:
-        kind: Self.RedirectListener
-        use: dependency
+      x-telo-ref: { kind: Self.RedirectListener, use: dependency }
     timeout:
       title: Timeout
       type: string
@@ -514,8 +477,7 @@ metadata:
     Returns whether it succeeded and why not — a refusal, an unrecognized or expired
     request — so the page can be rendered accordingly.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#callback
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#callback]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -544,9 +506,7 @@ outputType:
     additionalProperties: false
     required: [ok, reason, key, scope]
     properties:
-      ok:
-        type: boolean
-        description: Whether a grant was stored.
+      ok: { type: boolean, description: Whether a grant was stored. }
       reason:
         type: [string, "null"]
         description: >-
@@ -555,9 +515,7 @@ outputType:
           too long), `issuer_mismatch` (the response came from a different server),
           `issuer_missing` (the server states it identifies itself and did not).
           Null on success.
-      key:
-        type: [string, "null"]
-        description: The grant key written, on success.
+      key: { type: [string, "null"], description: "The grant key written, on success." }
       scope:
         type: [string, "null"]
         description: The scopes actually granted, which may be narrower than those asked for.
@@ -572,9 +530,7 @@ schema:
         The authorization this callback completes. Its store, client and key space
         are read through this reference, so the two halves of the flow cannot be
         pointed at different stores.
-      x-telo-ref:
-        kind: Self.Authorization
-        use: dependency
+      x-telo-ref: { kind: Self.Authorization, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -585,8 +541,7 @@ metadata:
     access token, its lifetime, and the refresh token when the server issued one.
     Does not store anything.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenExchange
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenExchange]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -609,10 +564,7 @@ inputType:
           advertises that it sends the parameter — a missing one there is refused
           rather than silently skipped, since a missing `iss` is exactly what a
           mix-up attack produces.
-outputType:
-  kind: Telo.JsonSchema
-  schema:
-    $ref: "telo://Self/TokenSet"
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo://Self/TokenSet" } }
 schema:
   type: object
   additionalProperties: false
@@ -621,9 +573,7 @@ schema:
     source:
       title: Source
       description: The token source whose client performs the exchange.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -633,8 +583,7 @@ metadata:
     the refresh token too when the server rotates it. Only one refresh per grant key
     runs at a time, so a rotated token is never presented twice.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenRefresh
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#tokenRefresh]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -666,9 +615,7 @@ schema:
     source:
       title: Source
       description: The token source holding the grant to refresh.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -678,8 +625,7 @@ metadata:
     use for service-to-service calls. Stores the result like any other grant, so the
     same access-token and credential resources serve it.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#clientCredentials
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#clientCredentials]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -711,9 +657,7 @@ schema:
     source:
       title: Source
       description: The token source whose client authenticates and whose store holds the result.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -723,8 +667,7 @@ metadata:
     address where the user types it on another device. Pair it with the polling
     operation, which waits for them to finish.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#deviceAuthorization
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#deviceAuthorization]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -745,12 +688,8 @@ outputType:
       deviceCode:
         type: string
         description: The value the polling operation presents. Not shown to the user.
-      userCode:
-        type: string
-        description: The short code the user types.
-      verificationUri:
-        type: string
-        description: Where the user goes to type it.
+      userCode: { type: string, description: The short code the user types. }
+      verificationUri: { type: string, description: Where the user goes to type it. }
       verificationUriComplete:
         type: [string, "null"]
         description: The same address with the code already filled in, when the server offers one — usually rendered as a QR code.
@@ -768,9 +707,7 @@ schema:
     source:
       title: Source
       description: The token source whose client starts the device grant.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -780,8 +717,7 @@ metadata:
     asks for and backing off when told to slow down. Stores the grant once they
     approve. A refusal or an expired code is returned as an outcome, not raised.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#deviceToken
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#deviceToken]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -815,9 +751,7 @@ schema:
     source:
       title: Source
       description: The token source whose client polls and whose store holds the result.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 # OAuthClient.AccessToken — a currently-valid token, refreshed inside a skew window.
 #
@@ -833,8 +767,7 @@ metadata:
     connection string — since HTTP calls are better served by attaching a credential
     to the client.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#accessToken
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#accessToken]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -865,9 +798,7 @@ schema:
     source:
       title: Source
       description: The token source to read and refresh through.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -877,8 +808,7 @@ metadata:
     it covers, and when it expires — without refreshing anything. Use it to decide
     whether to prompt someone to sign in.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantRead
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantRead]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -911,9 +841,7 @@ schema:
     source:
       title: Source
       description: The token source whose store is read.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -923,8 +851,7 @@ metadata:
     sign-in assembled step by step, where the exchange returned tokens that now need
     keeping.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantWrite
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantWrite]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -944,8 +871,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [key]
-    properties:
-      key: { type: string, description: The grant key written. }
+    properties: { key: { type: string, description: The grant key written. } }
 schema:
   type: object
   additionalProperties: false
@@ -954,9 +880,7 @@ schema:
     source:
       title: Source
       description: The token source whose store is written.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 kind: Telo.Definition
 metadata:
@@ -966,8 +890,7 @@ metadata:
     asked to sign in again. Local only — it does not tell the server to revoke
     anything.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantClear
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#grantClear]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -991,9 +914,7 @@ schema:
     source:
       title: Source
       description: The token source whose store is cleared.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
 ---
 # OAuthClient.Credential — attach to an Http.Client and every request through it is
 # authenticated by construction. No request wrapper exists, so no unauthenticated
@@ -1008,8 +929,7 @@ metadata:
     that lands mid-flight is invisible to the caller.
 capability: Telo.Invocable
 extends: Http.Credential
-controllers:
-  - pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#credential
+controllers: [pkg:telo/local/js?path=./nodejs/oauth-client.mjs&local_path=./nodejs/src/index.ts#credential]
 schema:
   type: object
   additionalProperties: false
@@ -1018,9 +938,7 @@ schema:
     source:
       title: Source
       description: The token source to draw tokens from.
-      x-telo-ref:
-        kind: Self.TokenSource
-        use: dependency
+      x-telo-ref: { kind: Self.TokenSource, use: dependency }
     key:
       title: Key
       type: string

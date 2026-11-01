@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: TextErrorPropagationTest
-  version: 1.0.0
+metadata: { name: TextErrorPropagationTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -26,14 +24,12 @@ model: !ref echo
 # When the provider (Echo) throws, the completion controller must surface the
 # error unchanged — same code, same message, no retry, no swallowing, no wrapping.
 kind: Run.Sequence
-metadata:
-  name: testProviderErrorSurfacesUnchanged
+metadata: { name: testProviderErrorSurfacesUnchanged }
 steps:
   - name: try
     try:
       - name: invoke
-        inputs:
-          prompt: TRIGGER_FAILURE
+        inputs: { prompt: TRIGGER_FAILURE }
         invoke: !ref c
     catch:
       - name: assertPassthrough

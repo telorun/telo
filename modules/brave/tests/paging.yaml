@@ -4,9 +4,7 @@
 # else for the next offset when Brave reports more results — never past offset
 # 9. The cursor stays valid under any `count`.
 kind: Telo.Application
-metadata:
-  name: BravePagingTest
-  version: 1.0.0
+metadata: { name: BravePagingTest, version: 1.0.0 }
 imports:
   Brave: ..
   WebSearch: ../../web-search
@@ -40,8 +38,7 @@ with:
       - request:
           path: /res/v1/web/search
           method: GET
-          schema:
-            query: { type: object, additionalProperties: true }
+          schema: { query: { type: object, additionalProperties: true } }
         handler: !ref canned
         returns:
           - status: 200
@@ -56,8 +53,7 @@ with:
                     : {'query': {'more_results_available': false}}
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18848
+    listen: { port: 18848 }
     mounts:
       - path: /
         mount: !ref FakeBrave

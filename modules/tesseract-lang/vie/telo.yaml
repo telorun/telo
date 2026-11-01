@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - vie
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [vie] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: vie, member: package/4.0.0_best_int/vie.traineddata.gz, sha256: 2284f610f262a1b19ec8df9f196b9ff6ce38ddb4a66329e998941df4b8961c8d, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: vie
-  description: Vietnamese, Latin script
+metadata: { name: vie, description: "Vietnamese, Latin script" }
 code: vie
 data: !module-path ./tessdata/vie.traineddata.gz

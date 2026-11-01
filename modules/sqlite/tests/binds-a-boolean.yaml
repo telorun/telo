@@ -33,8 +33,7 @@ steps:
     invoke:
       kind: Sql.Command
       connection: !ref db
-    inputs:
-      sql: "CREATE TABLE flags (id INTEGER PRIMARY KEY, done INTEGER NOT NULL)"
+    inputs: { sql: "CREATE TABLE flags (id INTEGER PRIMARY KEY, done INTEGER NOT NULL)" }
 
   - name: insert
     invoke:
@@ -46,8 +45,7 @@ steps:
 
   - name: read
     invoke: !ref query
-    inputs:
-      sql: "SELECT id, done FROM flags ORDER BY id"
+    inputs: { sql: "SELECT id, done FROM flags ORDER BY id" }
   - name: verifyStored
     invoke: { kind: Assert.Equals }
     inputs:

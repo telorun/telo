@@ -56,9 +56,7 @@ steps:
       actual:
         regional: !cel "Self.t('Rate not found for {$user}', 'pl-PL', {'user': 'Ala'})"
         unknown: !cel "Self.t({'plural': 'n', 'cases': {'one': '{$n} file', 'other': '{$n} files'}}, 'de', {'n': 1})"
-      expected:
-        regional: Nie znaleziono stawki dla Ala
-        unknown: 1 file
+      expected: { regional: Nie znaleziono stawki dla Ala, unknown: 1 file }
     invoke: !ref Assert.equals
 
   - name: assertContexts

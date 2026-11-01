@@ -7,8 +7,7 @@ metadata:
     stores sharing one set of tables: pinning by number, label and head, what a
     stack resolves, a moved pin merged and its conflicts resolved, the diamond
     upgraded in one call, permanent labels, and cursors over a pinned stack.
-include:
-  - ./__fixtures__/suite-model.yaml
+include: [./__fixtures__/suite-model.yaml]
 imports:
   Suite:
     source: ../../graph-layers/tests/__fixtures__/stacking-suite

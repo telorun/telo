@@ -3,9 +3,7 @@
 # for different inputs, and a position that is not numeric or lies beyond the
 # 100 results Exa returns.
 kind: Telo.Application
-metadata:
-  name: ExaCursorRefusalsTest
-  version: 1.0.0
+metadata: { name: ExaCursorRefusalsTest, version: 1.0.0 }
 imports:
   Exa: ..
   WebSearch: ../../web-search

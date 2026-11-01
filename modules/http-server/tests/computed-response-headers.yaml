@@ -21,13 +21,8 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8938
-    openapi:
-      info:
-        title: Computed headers
-        version: 1.0.0
+    listen: { address: 127.0.0.1, port: 8938 }
+    openapi: { info: { title: Computed headers, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref api
@@ -35,19 +30,14 @@ targets:
   - !ref server
 steps:
   - name: call
-    invoke:
-      kind: HttpClient.Request
-      url: http://127.0.0.1:8938/v1/limited
-      method: GET
+    invoke: { kind: HttpClient.Request, url: http://127.0.0.1:8938/v1/limited, method: GET }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         status: !cel "steps.call.result.status"
         retryAfter: !cel "steps.call.result.headers['retry-after']"
-      expected:
-        status: 429
-        retryAfter: "30"
+      expected: { status: 429, retryAfter: "30" }
 
   # A header CEL can produce anything; a header on the wire is text. An object
   # says so here, naming the header and the entry, rather than failing inside the
@@ -66,33 +56,23 @@ steps:
 kind: Http.Api
 metadata: { name: api }
 routes:
-  - request:
-      path: /limited
-      method: GET
+  - request: { path: /limited, method: GET }
     handler: !ref limit
     inputs: {}
     returns:
       - status: 429
         headers:
           Retry-After: !cel "string(result.retryAfter)"
-        content:
-          application/json:
-            body:
-              error: rate_limited
-  - request:
-      path: /bad-header
-      method: GET
+        content: { application/json: { body: { error: rate_limited } } }
+  - request: { path: /bad-header, method: GET }
     handler: !ref limit
     inputs: {}
     returns:
       - status: 200
         headers:
           X-Nonsense: !cel "result"
-        content:
-          application/json:
-            body: { ok: true }
+        content: { application/json: { body: { ok: true } } }
 ---
 kind: Run.Value
 metadata: { name: limit }
-value:
-  retryAfter: 30
+value: { retryAfter: 30 }

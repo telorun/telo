@@ -16,8 +16,7 @@ targets:
   - !ref served
 ---
 kind: Assert.Manifest
-metadata:
-  name: unknownName
+metadata: { name: unknownName }
 source: ./__fixtures__/unknown-name/telo.yaml
 expect:
   errors:
@@ -25,14 +24,12 @@ expect:
       message: "UiLucide.Icon/home: /name must be one of 1943 allowed values; did you mean 'house'?"
 ---
 kind: Run.Sequence
-metadata:
-  name: served
+metadata: { name: served }
 with:
   - kind: App.Instance
     metadata: { name: fixture }
     source: ./__fixtures__/app/telo.yaml
-    ports:
-      http: 19341
+    ports: { http: 19341 }
 targets:
   - !ref fixture
 steps:

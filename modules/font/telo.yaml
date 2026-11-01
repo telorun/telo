@@ -11,9 +11,7 @@ metadata:
     bytes a renderer embeds or serves. Measure how wide a run of text will be at a
     given size, so a caption, a legend or a column lands where it was laid out.
 exports:
-  kinds:
-    - Family
-    - Measure
+  kinds: [Family, Measure]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/font` to, so this module's code is one module scope across every
   # consumer instead of a copy inlined into each of their bundles.
@@ -55,8 +53,7 @@ metadata:
     was computed against is the name that renders. A family with no face bytes is a
     valid declaration of a typeface supplied elsewhere.
 capability: Telo.Provider
-controllers:
-  - pkg:telo/local/js?path=./nodejs/font.mjs&local_path=./nodejs/src/index.ts#FamilyController
+controllers: [pkg:telo/local/js?path=./nodejs/font.mjs&local_path=./nodejs/src/index.ts#FamilyController]
 schema:
   type: object
   required: [family]
@@ -79,18 +76,10 @@ schema:
         estimated rather than exact. A consumer asking for a face that was not declared
         falls back to `normal`.
       properties:
-        normal:
-          title: Normal
-          x-telo-type: Telo.Bytes
-        bold:
-          title: Bold
-          x-telo-type: Telo.Bytes
-        italic:
-          title: Italic
-          x-telo-type: Telo.Bytes
-        boldItalic:
-          title: Bold italic
-          x-telo-type: Telo.Bytes
+        normal: { title: Normal, x-telo-type: Telo.Bytes }
+        bold: { title: Bold, x-telo-type: Telo.Bytes }
+        italic: { title: Italic, x-telo-type: Telo.Bytes }
+        boldItalic: { title: Bold italic, x-telo-type: Telo.Bytes }
 ---
 # Font.Measure — how wide will this text be?
 #
@@ -115,8 +104,7 @@ metadata:
     declares its bytes, and estimated from average character widths when it does not;
     the result says which it was.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/font.mjs&local_path=./nodejs/src/index.ts#MeasureController
+controllers: [pkg:telo/local/js?path=./nodejs/font.mjs&local_path=./nodejs/src/index.ts#MeasureController]
 throws:
   codes:
     ERR_FONT_UNREADABLE:
@@ -190,9 +178,7 @@ schema:
     family:
       title: Family
       description: The typeface to measure in.
-      x-telo-ref:
-        kind: Self.Family
-        use: dependency
+      x-telo-ref: { kind: Self.Family, use: dependency }
     size:
       title: Size
       type: number

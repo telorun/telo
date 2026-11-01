@@ -11,10 +11,7 @@ metadata:
     protection — the content expressions filling in from `inputs`, the
     declarative table layout, and the per-row style that stands in for
     pdfmake's row callbacks.
-imports:
-  PdfMake: ../
-  Pdf: ../../pdf
-  Assert: ../../assert
+imports: { PdfMake: ../, Pdf: ../../pdf, Assert: ../../assert }
 targets:
   - name: render
     invoke: !ref customerReport
@@ -59,9 +56,7 @@ inputType:
     type: object
     required: [customer, rows]
     additionalProperties: false
-    properties:
-      customer: { type: string }
-      rows: { type: array }
+    properties: { customer: { type: string }, rows: { type: array } }
 pageSize: A4
 pageMargins: [40, 60, 40, 60]
 defaultStyle: { fontSize: 10 }
@@ -70,9 +65,7 @@ styles:
   tableHeader: { bold: true, color: "#FFFFFF" }
   totalsRow: { bold: true, color: "#1B36C4" }
 header:
-  - text: Invoice
-    style: heading
-    margin: [40, 20, 40, 0]
+  - { text: Invoice, style: heading, margin: [40, 20, 40, 0] }
 content:
   - text: !cel "'Customer: ' + inputs.customer"
     style: heading
@@ -87,8 +80,8 @@ content:
       paddingBottom: 4
       headerFillColor: "#1B36C4"
   - ul:
-      - text: Payment due within 30 days.
-      - text: Questions to billing@example.com.
+      - { text: Payment due within 30 days. }
+      - { text: Questions to billing@example.com. }
 ---
 kind: Pdf.Text
 metadata: { name: readText }

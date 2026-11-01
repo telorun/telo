@@ -5,9 +5,7 @@
 # Kagi's search response, and an unreachable API are ERR_SEARCH_FAILED. A client
 # with `throwOnHttpError` maps the same way.
 kind: Telo.Application
-metadata:
-  name: KagiFailuresTest
-  version: 1.0.0
+metadata: { name: KagiFailuresTest, version: 1.0.0 }
 imports:
   Kagi: ..
   Http: ../../http-client
@@ -55,8 +53,7 @@ with:
       - request:
           path: /api/v1/search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref errors
         returns:
           - status: 400
@@ -91,9 +88,7 @@ with:
                 body: !cel "{'errors': [result.broken]}"
           - status: 200
             when: !cel "request.body.query == 'html'"
-            content:
-              text/html:
-                body: "<html><body>results</body></html>"
+            content: { text/html: { body: "<html><body>results</body></html>" } }
           - status: 200
             content:
               application/json:
@@ -101,8 +96,7 @@ with:
                 body: { meta: { id: test } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18856
+    listen: { port: 18856 }
     mounts:
       - path: /
         mount: !ref FakeKagi
@@ -178,5 +172,4 @@ steps:
           message: "Kagi answered 429: the request rate or the account usage is over its limit: Too many requests."
         - code: ERR_SEARCH_FAILED
           message: "Kagi answered HTTP 400: search.invalid_filter Invalid filter."
-        - code: ERR_SEARCH_FAILED
-          message: "The request to Kagi failed: …"
+        - { code: ERR_SEARCH_FAILED, message: "The request to Kagi failed: …" }

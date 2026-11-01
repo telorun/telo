@@ -98,9 +98,7 @@ steps:
           actual:
             code: !cel "error.code"
             ownGuard: !cel "error.message.contains('not a string')"
-          expected:
-            code: ERR_MCP_PROTOCOL
-            ownGuard: true
+          expected: { code: ERR_MCP_PROTOCOL, ownGuard: true }
   - name: cursorRepeated
     try:
       - name: run
@@ -121,9 +119,7 @@ steps:
           actual:
             code: !cel "error.code"
             ownGuard: !cel "error.message.contains('a second time')"
-          expected:
-            code: ERR_MCP_PROTOCOL
-            ownGuard: true
+          expected: { code: ERR_MCP_PROTOCOL, ownGuard: true }
   - name: cursorsEndless
     try:
       - name: run
@@ -148,9 +144,7 @@ steps:
       - name: run
         invoke:
           kind: Ai.Agent
-          model:
-            kind: AiEcho.EchoModel
-            emitToolCall: { name: summary }
+          model: { kind: AiEcho.EchoModel, emitToolCall: { name: summary } }
           onToolError: throw
           toolProviders:
             - provider:
@@ -170,9 +164,7 @@ steps:
       - name: run
         invoke:
           kind: Ai.Agent
-          model:
-            kind: AiEcho.EchoModel
-            emitToolCall: { name: summary }
+          model: { kind: AiEcho.EchoModel, emitToolCall: { name: summary } }
           onToolError: throw
           toolProviders:
             - provider:

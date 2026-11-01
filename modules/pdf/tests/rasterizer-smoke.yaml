@@ -73,11 +73,7 @@ steps:
       magic: !cel "steps.detect.result.magic"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          magic: { const: png }
-        required: [ magic ]
+      schema: { type: object, properties: { magic: { const: png } }, required: [magic] }
 ---
 kind: Run.Sequence
 metadata: { name: testJpegFormat }
@@ -103,9 +99,7 @@ steps:
       kind: Assert.Schema
       schema:
         type: object
-        properties:
-          mediaType: { const: image/jpeg }
-          magic: { const: jpeg }
+        properties: { mediaType: { const: image/jpeg }, magic: { const: jpeg } }
         required: [ mediaType, magic ]
 ---
 kind: Run.Sequence
@@ -128,8 +122,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
 kind: Run.Sequence
@@ -154,8 +147,7 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INPUT_INVALID }
+            properties: { code: { const: ERR_INPUT_INVALID } }
             required: [ code ]
 ---
 # A value that is not bytes is refused by the input contract, before the

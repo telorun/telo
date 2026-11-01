@@ -62,8 +62,7 @@ with:
       - request:
           path: /chat/completions
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref noop
         returns:
           # Selected by model id, buffered first: the two entries answer the same
@@ -76,8 +75,7 @@ with:
                 schema: { type: object, additionalProperties: true }
                 body:
                   choices:
-                    - message: { content: pong }
-                      finish_reason: stop
+                    - { message: { content: pong }, finish_reason: stop }
                   usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 }
           - status: 200
             content:
@@ -91,10 +89,8 @@ with:
                   data: [DONE]
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 8879
-    openapi:
-      info: { title: Fake Chat API, version: 1.0.0 }
+    listen: { port: 8879 }
+    openapi: { info: { title: Fake Chat API, version: 1.0.0 } }
     mounts:
       - path: /v1
         mount: !ref FakeApi
@@ -111,8 +107,7 @@ steps:
     inputs:
       actual: !cel "steps.control.result.text"
       expected: pong
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: buffered
     inputs:
@@ -130,8 +125,7 @@ steps:
         text: pong
         finishReason: stop
         usage: { promptTokens: 2, completionTokens: 1, totalTokens: 3 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 
   - name: streaming
     inputs:
@@ -142,8 +136,7 @@ steps:
   - name: drain
     inputs:
       input: !cel "steps.streaming.result.output"
-    invoke:
-      kind: Stream.Collect
+    invoke: { kind: Stream.Collect }
   - name: assertStreaming
     inputs:
       actual: !cel "steps.drain.result.items"
@@ -152,5 +145,4 @@ steps:
         - type: finish
           usage: { promptTokens: 2, completionTokens: 1, totalTokens: 3 }
           finishReason: stop
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

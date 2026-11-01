@@ -52,9 +52,7 @@ with:
             body: { type: object, additionalProperties: true }
             headers:
               type: object
-              properties:
-                x-api-key: { type: string }
-                x-extra: { type: string }
+              properties: { x-api-key: { type: string }, x-extra: { type: string } }
         handler: !ref noop
         returns:
           - status: 200
@@ -79,8 +77,7 @@ with:
                   error: { type: authentication_error, message: invalid x-api-key }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 8976
+    listen: { port: 8976 }
     mounts:
       - path: /v1
         mount: !ref MessagesApi

@@ -4,9 +4,7 @@
 # whole window is covered. No language and no `limit` are ever sent. The mock
 # echoes the body it received as the title.
 kind: Telo.Application
-metadata:
-  name: KagiRequestMappingTest
-  version: 1.0.0
+metadata: { name: KagiRequestMappingTest, version: 1.0.0 }
 imports:
   Kagi: ..
   Http: ../../http-client
@@ -42,8 +40,7 @@ with:
       - request:
           path: /api/v1/search
           method: POST
-          schema:
-            body: { type: object, additionalProperties: true }
+          schema: { body: { type: object, additionalProperties: true } }
         handler: !ref echo
         returns:
           - status: 200
@@ -64,8 +61,7 @@ with:
                 body: { data: { search: [] } }
   - kind: Server.Server
     metadata: { name: FakeServer }
-    listen:
-      port: 18852
+    listen: { port: 18852 }
     mounts:
       - path: /
         mount: !ref FakeKagi

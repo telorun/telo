@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - heb
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [heb] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: heb, member: package/4.0.0_best_int/heb.traineddata.gz, sha256: 9c70b524200dae77fb25e3567566eee600ccbcae9aeb89722990ccae0e84e805, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: heb
-  description: Hebrew, Hebrew script
+metadata: { name: heb, description: "Hebrew, Hebrew script" }
 code: heb
 data: !module-path ./tessdata/heb.traineddata.gz

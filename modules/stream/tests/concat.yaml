@@ -9,10 +9,7 @@ metadata:
     union; a source whose declared output is not `{ output: <stream> }` is
     refused by `telo check`, and one declaring no output contract is refused by
     the join as it is drained.
-imports:
-  Stream: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Stream: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref joinsInOrder
   - !ref sourceInputsChecked
@@ -29,7 +26,7 @@ steps:
       sources:
         - invoke: { kind: Stream.Of }
           inputs: { items: !cel "[context.first]" }
-        - invoke: { kind: Stream.Of, items: [b, c] }
+        - { invoke: { kind: Stream.Of, items: [b, c] } }
     inputs: { context: { first: a } }
   - name: collected
     invoke: { kind: Stream.Collect }
@@ -45,14 +42,12 @@ metadata: { name: sourceInputsChecked }
 source: ./__fixtures__/concat/mistyped-inputs.yaml
 expect:
   errors:
-    - code: CONTRACT_INPUTS_MISMATCH
-      message: "'itemz' is not allowed"
+    - { code: CONTRACT_INPUTS_MISMATCH, message: "'itemz' is not allowed" }
 ---
 kind: Assert.Manifest
 metadata: { name: sourceCodesInherited }
 source: ./__fixtures__/concat/source-code-caught.yaml
-expect:
-  errors: []
+expect: { errors: [] }
 ---
 kind: Assert.Manifest
 metadata: { name: sourceOutputChecked }

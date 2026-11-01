@@ -8,10 +8,7 @@ metadata:
     consuming the one that would overdraw), a scalar running total that shows
     the accumulator need not be an object, and a fold with no `value:` that
     returns the accumulator itself.
-imports:
-  Collection: ../
-  Run: ../../run
-  Assert: ../../assert
+imports: { Collection: ../, Run: ../../run, Assert: ../../assert }
 targets:
   - !ref testAllocate
   - !ref testRunningTotal
@@ -26,9 +23,7 @@ accType:
     type: object
     additionalProperties: false
     required: [remaining, allocations]
-    properties:
-      remaining: { type: number }
-      allocations: { type: array }
+    properties: { remaining: { type: number }, allocations: { type: array } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -36,9 +31,7 @@ outputType:
     items:
       type: object
       required: [invoice, applied]
-      properties:
-        invoice: { type: string }
-        applied: { type: number }
+      properties: { invoice: { type: string }, applied: { type: number } }
 initial:
   remaining: !cel "inputs.amount"
   allocations: []
@@ -53,9 +46,7 @@ value: !cel "acc.allocations"
 kind: Collection.Fold
 metadata: { name: runningTotal }
 collection: !cel "inputs.amounts"
-accType:
-  kind: Telo.JsonSchema
-  schema: { type: number }
+accType: { kind: Telo.JsonSchema, schema: { type: number } }
 initial: 0.0
 accumulate: !cel "acc + item"
 value: !cel "acc"
@@ -87,33 +78,28 @@ steps:
       expected:
         - { invoice: a, applied: 10.0 }
         - { invoice: b, applied: 15.0 }
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: testRunningTotal }
 steps:
   - name: total
     invoke: !ref runningTotal
-    inputs:
-      amounts: [1.5, 2.5, 6.0]
+    inputs: { amounts: [1.5, 2.5, 6.0] }
   - name: assert
     inputs:
       actual: !cel "steps.total.result"
       expected: 10.0
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }
 ---
 kind: Run.Sequence
 metadata: { name: testNoProjection }
 steps:
   - name: longest
     invoke: !ref longestWord
-    inputs:
-      words: [ox, telo, manifest, cel]
+    inputs: { words: [ox, telo, manifest, cel] }
   - name: assert
     inputs:
       actual: !cel "steps.longest.result"
       expected: manifest
-    invoke:
-      kind: Assert.Equals
+    invoke: { kind: Assert.Equals }

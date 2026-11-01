@@ -21,27 +21,20 @@ metadata: { name: guardedApi }
 routes:
   - request: { path: /who, method: GET }
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
   - request:
       path: /echo
       method: POST
-      schema:
-        body:
-          type: object
-          properties:
-            text: { type: string }
+      schema: { body: { type: object, properties: { text: { type: string } } } }
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
 kind: Http.Api
 metadata: { name: openApi }
 routes:
   - request: { path: /ping, method: GET }
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
 kind: HttpClient.Client
 metadata: { name: client }
@@ -57,9 +50,7 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: server }
-    listen:
-      address: 127.0.0.1
-      port: 8966
+    listen: { address: 127.0.0.1, port: 8966 }
     cors:
       origin: "*"
       methods: [ GET, POST, OPTIONS ]
@@ -91,8 +82,7 @@ with:
           catches:
             - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
               status: 401
-              headers:
-                WWW-Authenticate: Bearer
+              headers: { WWW-Authenticate: Bearer }
               content:
                 application/json:
                   body: { code: !cel "error.code", path: !cel "request.path" }
@@ -112,9 +102,7 @@ steps:
       body: "{not json"
   - name: admitted
     invoke: !ref call
-    inputs:
-      url: /api/who
-      headers: { authorization: Bearer good }
+    inputs: { url: /api/who, headers: { authorization: Bearer good } }
   - name: unclaimed
     invoke: !ref call
     inputs:
@@ -163,9 +151,7 @@ steps:
           status: 401
           wwwAuthenticate: Bearer
           body: { code: ERR_UNAUTHENTICATED, path: /api/echo }
-        admitted:
-          status: 200
-          body: { ok: true }
+        admitted: { status: 200, body: { ok: true } }
         unclaimed:
           status: 500
           body:
@@ -175,9 +161,7 @@ steps:
             detail: The request is not valid.
             code: ERR_INPUT_INVALID
         preflightStatus: 204
-        sibling:
-          status: 200
-          body: { ok: true }
+        sibling: { status: 200, body: { ok: true } }
         # No notFoundHandler: the bare 404 problem.
         unmatched:
           status: 404

@@ -22,8 +22,7 @@ file: ":memory:"
 kind: SQLite.Table
 metadata: { name: authors }
 table: authors
-columns:
-  id: { type: integer, primaryKey: true }
+columns: { id: { type: integer, primaryKey: true } }
 ---
 kind: SQLite.Table
 metadata: { name: posts }
@@ -50,8 +49,7 @@ steps:
     try:
       - name: attemptOrphan
         invoke: !ref command
-        inputs:
-          sql: "INSERT INTO posts (id, authorId) VALUES (1, 99)"
+        inputs: { sql: "INSERT INTO posts (id, authorId) VALUES (1, 99)" }
     catch:
       - name: orphanRefused
         value: !cel "error.message.contains('FOREIGN KEY constraint failed')"
@@ -62,22 +60,18 @@ steps:
       expected: true
   - name: insertAuthor
     invoke: !ref command
-    inputs:
-      sql: "INSERT INTO authors (id) VALUES (1)"
+    inputs: { sql: "INSERT INTO authors (id) VALUES (1)" }
   - name: insertPost
     invoke: !ref command
-    inputs:
-      sql: "INSERT INTO posts (id, authorId) VALUES (2, 1)"
+    inputs: { sql: "INSERT INTO posts (id, authorId) VALUES (2, 1)" }
   - name: deleteAuthor
     invoke: !ref command
-    inputs:
-      sql: "DELETE FROM authors WHERE id = 1"
+    inputs: { sql: "DELETE FROM authors WHERE id = 1" }
   - name: readPosts
     invoke:
       kind: Sql.Query
       connection: !ref db
-    inputs:
-      sql: "SELECT id FROM posts"
+    inputs: { sql: "SELECT id FROM posts" }
   - name: assertCascaded
     invoke: { kind: Assert.Equals }
     inputs:

@@ -10,12 +10,9 @@ metadata:
     a browser's EventSource reads, one named event per record. The usual way to push
     live updates — model tokens, progress, notifications — to a web client over plain
     HTTP, and the reader that parses those frames back into records as they arrive.
-imports:
-  Codec: ../codec
+imports: { Codec: ../codec }
 exports:
-  kinds:
-    - Decoder
-    - Encoder
+  kinds: [Decoder, Encoder]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/sse-codec` to: the frame and comment writers, so a transport that
   # writes its own event stream formats a frame exactly as the encoder does, and
@@ -39,11 +36,8 @@ metadata:
     delivered as a final error event.
 capability: Telo.Invocable
 extends: Codec.Encoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sse-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController
-schema:
-  type: object
-  additionalProperties: false
+controllers: [pkg:telo/local/js?path=./nodejs/sse-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController]
+schema: { type: object, additionalProperties: false }
 ---
 # Decoder: SSE frame bytes → one record per frame, emitted as they arrive.
 #
@@ -65,8 +59,7 @@ metadata:
     at the end. Comments and keep-alives are skipped, and multi-line payloads are joined.
 capability: Telo.Invocable
 extends: Codec.Decoder
-controllers:
-  - pkg:telo/local/js?path=./nodejs/sse-codec.mjs&local_path=./nodejs/src/index.ts#DecoderController
+controllers: [pkg:telo/local/js?path=./nodejs/sse-codec.mjs&local_path=./nodejs/src/index.ts#DecoderController]
 throws:
   codes:
     ERR_INVALID_INPUT:
@@ -104,6 +97,4 @@ outputType:
               retry:
                 type: integer
                 description: The reconnection delay in milliseconds, when the server sent one.
-schema:
-  type: object
-  additionalProperties: false
+schema: { type: object, additionalProperties: false }

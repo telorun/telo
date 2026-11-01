@@ -7,9 +7,7 @@
 # pins made every handler reading the query string answer 500 with no handler code
 # involved at all.
 kind: Telo.Application
-metadata:
-  name: HttpServerRequestBindingTest
-  version: 1.0.0
+metadata: { name: HttpServerRequestBindingTest, version: 1.0.0 }
 imports:
   Server: ../
   Http: ../../http-client
@@ -34,15 +32,8 @@ with:
           schema:
             query: { type: object, additionalProperties: true }
             body: { type: object, additionalProperties: true }
-            params:
-              type: object
-              properties:
-                tenant: { type: string }
-              required: [tenant]
-            headers:
-              type: object
-              properties:
-                x-probe: { type: string }
+            params: { type: object, properties: { tenant: { type: string } }, required: [tenant] }
+            headers: { type: object, properties: { x-probe: { type: string } } }
         returns:
           - status: 200
             content:
@@ -62,8 +53,7 @@ with:
                   computed: !cel "{'echo': request.query.page}"
   - kind: Server.Server
     metadata: { name: Srv }
-    listen:
-      port: 8993
+    listen: { port: 8993 }
     mounts:
       - path: /
         mount: !ref Api

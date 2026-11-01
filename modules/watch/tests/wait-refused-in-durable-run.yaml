@@ -6,8 +6,7 @@ metadata:
     A wait lives only in the call that opened it, so a durable body — which is
     replayed after a restart — cannot hold one. `telo check` refuses the
     placement and points at durable waiting instead.
-imports:
-  Assert: ../../assert
+imports: { Assert: ../../assert }
 targets:
   - !ref test
 ---

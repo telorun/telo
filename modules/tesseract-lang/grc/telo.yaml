@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - grc
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [grc] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: grc, member: package/4.0.0_best_int/grc.traineddata.gz, sha256: 5900b2bf126da1d98f3d5aabeea871f3e7386323ee6292be069bc7ed2b6a15cf, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: grc
-  description: Ancient Greek, Greek script
+metadata: { name: grc, description: "Ancient Greek, Greek script" }
 code: grc
 data: !module-path ./tessdata/grc.traineddata.gz

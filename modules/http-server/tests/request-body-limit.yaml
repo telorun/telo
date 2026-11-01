@@ -24,10 +24,7 @@ imports:
   Run: ../../run
   Assert: ../../assert
 variables:
-  raisedLimit:
-    env: HTTP_BODY_LIMIT_TEST_RAISED
-    type: integer
-    default: 256
+  raisedLimit: { env: HTTP_BODY_LIMIT_TEST_RAISED, type: integer, default: 256 }
 targets:
   - !ref test
   - !ref dispatches
@@ -56,9 +53,7 @@ inputType:
   schema:
     type: object
     required: [body]
-    properties:
-      body:
-        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+    properties: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
 steps:
   - name: sink
     try:
@@ -78,50 +73,38 @@ routes:
   - request: { path: /buffered, method: POST }
     handler: !ref bufferedHandler
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
   - request: { path: /raised, method: POST }
     maxBodyBytes: !cel "variables.raisedLimit"
-    handler:
-      kind: Run.Value
-      value: { handled: true }
+    handler: { kind: Run.Value, value: { handled: true } }
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
   - request: { path: /lowered, method: POST }
     maxBodyBytes: 8
     handler: !ref bufferedHandler
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
   - request:
       path: /streamed
       method: POST
-      schema:
-        body:
-          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
     inputs:
       body: !cel "request.body"
     handler: !ref guardedSink
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
     # A catch-all, which would claim any throw the route's handler made.
     catches:
-      - status: 418
-        content: { application/json: { body: { caught: true } } }
+      - { status: 418, content: { application/json: { body: { caught: true } } } }
   - request:
       path: /form
       method: POST
-      schema:
-        body:
-          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
     inputs:
       input: !cel "request.body"
     handler: !ref drain
     returns:
-      - status: 200
-        content: { application/json: { body: { ok: true } } }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
 kind: Mcp.HttpEndpoint
 metadata: { name: mcpHttp }
@@ -132,14 +115,11 @@ tools:
       - name: noop
         description: Does nothing.
         argumentsSchema: { type: object }
-        handler:
-          kind: Run.Value
-          value: {}
+        handler: { kind: Run.Value, value: {} }
         inputs: {}
         result:
           content:
-            - type: text
-              text: done
+            - { type: text, text: done }
 ---
 # One client for every call; a 413 is an answer to read, not a failure.
 kind: HttpClient.Request
@@ -150,13 +130,10 @@ metadata: { name: test }
 with:
   - kind: Http.Server
     metadata: { name: Server }
-    listen:
-      address: 127.0.0.1
-      port: 8972
+    listen: { address: 127.0.0.1, port: 8972 }
     maxBodyBytes: 64
     contentTypeParsers:
-      - contentType: application/octet-stream
-        stream: true
+      - { contentType: application/octet-stream, stream: true }
     mounts:
       - path: /api
         mount: !ref api
@@ -222,9 +199,7 @@ steps:
       actual:
         status: !cel "steps.lowered.result.status"
         data: !cel "steps.lowered.result.body.data"
-      expected:
-        status: 413
-        data: { maxBodyBytes: 8, contentLength: 20 }
+      expected: { status: 413, data: { maxBodyBytes: 8, contentLength: 20 } }
     invoke: !ref Assert.equals
 
   # A byte stream has no declared length, so it is sent chunked and the limit is
@@ -232,8 +207,7 @@ steps:
   - name: chunks
     inputs:
       items: !cel "[bytes(steps.document.result)]"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: streamed
     inputs:
       url: http://127.0.0.1:8972/api/streamed
@@ -265,8 +239,7 @@ steps:
   - name: formChunks
     inputs:
       items: !cel "[bytes('--b\\r\\nContent-Disposition: form-data; name=\"file\"\\r\\n\\r\\n' + steps.document.result + '\\r\\n--b--\\r\\n')]"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: form
     inputs:
       url: http://127.0.0.1:8972/api/form
@@ -279,9 +252,7 @@ steps:
       actual:
         status: !cel "steps.form.result.status"
         code: !cel "steps.form.result.body.code"
-      expected:
-        status: 413
-        code: ERR_REQUEST_BODY_TOO_LARGE
+      expected: { status: 413, code: ERR_REQUEST_BODY_TOO_LARGE }
     invoke: !ref Assert.equals
 
   # A mount that is not an Http.Api is held to the server's limit all the same.
@@ -313,19 +284,16 @@ steps:
 kind: Assert.Events
 metadata: { name: dispatches }
 filter:
-  - type: "bufferedHandler.Invoked"
-  - type: "guardedSink.*"
-  - type: "caughtInTry.Invoked"
-  - type: "afterSink.Invoked"
+  - { type: "bufferedHandler.Invoked" }
+  - { type: "guardedSink.*" }
+  - { type: "caughtInTry.Invoked" }
+  - { type: "afterSink.Invoked" }
 expect:
   # Refused before the handler: by declared length, twice.
-  - event: bufferedHandler.Invoked
-    times: 0
+  - { event: bufferedHandler.Invoked, times: 0 }
   # The streamed route's handler did run, and was cancelled by the refusal —
   # past its own `try:`, with no step after it.
   - event: guardedSink.InvokeCancelled
     times: 1
-  - event: caughtInTry.Invoked
-    times: 0
-  - event: afterSink.Invoked
-    times: 0
+  - { event: caughtInTry.Invoked, times: 0 }
+  - { event: afterSink.Invoked, times: 0 }

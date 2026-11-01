@@ -27,11 +27,7 @@ kind: Run.Value
 metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      a: { type: integer }
-      b: { type: integer }
+  schema: { type: object, properties: { a: { type: integer }, b: { type: integer } } }
 value:
   product: !cel "inputs.a * inputs.b"
 ---
@@ -44,9 +40,7 @@ tools:
       type: object
       additionalProperties: false
       required: [ a, b ]
-      properties:
-        a: { type: integer }
-        b: { type: integer }
+      properties: { a: { type: integer }, b: { type: integer } }
     result: !cel "string(result.product)"
 ---
 kind: Stream.Collect
@@ -100,8 +94,7 @@ steps:
         - type: step-finish
           usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12, unit: tokens, total: 12 }
           finishReason: stop
-        - type: message
-          message: { role: assistant, content: "42" }
+        - { type: message, message: { role: assistant, content: "42" } }
         - type: finish
           usage: { promptTokens: 20, completionTokens: 4, totalTokens: 24, unit: tokens, total: 24 }
           finishReason: stop
@@ -129,8 +122,8 @@ steps:
     inputs:
       actual: !cel "steps.parts.result.items.filter(p, p.type == 'provider-state').map(p, p.providerState)"
       expected:
-        - received: { resume: token-1 }
-        - received: { received: { resume: token-1 } }
+        - { received: { resume: token-1 } }
+        - { received: { received: { resume: token-1 } } }
 ---
 # The deltas of a call join to its argument JSON, and carry the id the call and
 # its result carry.
@@ -190,15 +183,4 @@ steps:
     invoke: !ref Assert.equals
     inputs:
       actual: !cel "steps.parts.result.items.map(p, p.type)"
-      expected:
-        - tool-call-delta
-        - tool-call-delta
-        - tool-call
-        - step-finish
-        - message
-        - tool-result
-        - message
-        - text-delta
-        - step-finish
-        - message
-        - finish
+      expected: [tool-call-delta, tool-call-delta, tool-call, step-finish, message, tool-result, message, text-delta, step-finish, message, finish]

@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - fry
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [fry] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: fry, member: package/4.0.0_best_int/fry.traineddata.gz, sha256: 6f7780fb411199451ed95e8a0e4bf77c879402e55f3ff8ac6607d7241cc22a01, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: fry
-  description: Western Frisian, Latin script
+metadata: { name: fry, description: "Western Frisian, Latin script" }
 code: fry
 data: !module-path ./tessdata/fry.traineddata.gz

@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - fao
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [fao] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: fao, member: package/4.0.0_best_int/fao.traineddata.gz, sha256: 074c9a917520412ec00a34593805c55f5e75bab5b1a8ea519e0cb360ae11079f, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: fao
-  description: Faroese, Latin script
+metadata: { name: fao, description: "Faroese, Latin script" }
 code: fao
 data: !module-path ./tessdata/fao.traineddata.gz

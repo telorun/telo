@@ -44,51 +44,34 @@ steps:
         - { id: c, vector: [0, 0, 1], metadata: { lang: en } }
   - name: search
     invoke: !ref search
-    inputs:
-      vector: [0.9, 0.1, 0]
+    inputs: { vector: [0.9, 0.1, 0] }
   - name: assertTop
     inputs:
       ok: !cel "steps.search.result.matches[0].id == 'a' && size(steps.search.result.matches) == 3"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        required: [ok]
-        properties:
-          ok: { const: true }
+      schema: { type: object, required: [ok], properties: { ok: { const: true } } }
   - name: searchFiltered
     invoke: !ref search
-    inputs:
-      vector: [0.9, 0.1, 0]
-      metadataFilter: { lang: en }
+    inputs: { vector: [0.9, 0.1, 0], metadataFilter: { lang: en } }
   - name: assertFiltered
     inputs:
       ok: !cel "size(steps.searchFiltered.result.matches) == 2"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        required: [ok]
-        properties:
-          ok: { const: true }
+      schema: { type: object, required: [ok], properties: { ok: { const: true } } }
   - name: drop
     invoke: !ref drop
-    inputs:
-      ids: [a]
+    inputs: { ids: [a] }
   - name: assertRemoved
     inputs:
       removed: !cel "steps.drop.result.removed"
     invoke:
       kind: Assert.Schema
-      schema:
-        type: object
-        required: [removed]
-        properties:
-          removed: { const: 1 }
+      schema: { type: object, required: [removed], properties: { removed: { const: 1 } } }
   - name: searchAgain
     invoke: !ref search
-    inputs:
-      vector: [0.9, 0.1, 0]
+    inputs: { vector: [0.9, 0.1, 0] }
   - name: assertGone
     inputs:
       top: !cel "steps.searchAgain.result.matches[0].id"
@@ -98,6 +81,4 @@ steps:
       schema:
         type: object
         required: [top, ok]
-        properties:
-          top: { enum: [b, c] }
-          ok: { const: true }
+        properties: { top: { enum: [b, c] }, ok: { const: true } }

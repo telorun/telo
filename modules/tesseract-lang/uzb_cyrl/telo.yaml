@@ -17,13 +17,9 @@ requires:
   # 0.100.0: `!module-path` naming a `sources:`-staged model counts as present,
   # in `telo check` and in release planning from pins.
   telo: ">=0.100.0"
-imports:
-  TesseractModel: ../../tesseract-model
-exports:
-  resources:
-    - uzb_cyrl
-assets:
-  - ./tessdata/
+imports: { TesseractModel: ../../tesseract-model }
+exports: { resources: [uzb_cyrl] }
+assets: [./tessdata/]
 sources:
   # The package carries no notice of its own; the checked-in one is the Apache-2.0
   # notice of tesseract-ocr/tessdata.
@@ -37,8 +33,6 @@ sources:
         { upstream: uzb_cyrl, member: package/4.0.0_best_int/uzb_cyrl.traineddata.gz, sha256: 800d22c59b525b715015e1bf3aba49e98a0d6309305e245490f67698685f8842, executable: false }
 ---
 kind: TesseractModel.Language
-metadata:
-  name: uzb_cyrl
-  description: Uzbek, Cyrillic script
+metadata: { name: uzb_cyrl, description: "Uzbek, Cyrillic script" }
 code: uzb_cyrl
 data: !module-path ./tessdata/uzb_cyrl.traineddata.gz

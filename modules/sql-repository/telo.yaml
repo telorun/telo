@@ -10,14 +10,8 @@ metadata:
     the shape of the call: filters become a WHERE clause, a data object becomes the
     column list. Values always bind as parameters, so a domain operation maps to a
     table without hand-written statements.
-exports:
-  kinds:
-    - Read
-    - Create
-    - Update
-    - Delete
-imports:
-  Sql: ../sql
+exports: { kinds: [Read, Create, Update, Delete] }
+imports: { Sql: ../sql }
 ---
 kind: Telo.Definition
 metadata:
@@ -31,30 +25,22 @@ schema:
   type: object
   required: [connection, table]
   examples:
-    - connection:
-        kind: SQLite.Connection
-        name: Db
-      table: users
+    - { connection: { kind: SQLite.Connection, name: Db }, table: users }
   properties:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     table:
       title: Table
       description: >-
         The table this repository reads and writes. A reference rather than a name,
         so the declared columns type this kind's call signature: a misspelled filter
         or a column that does not exist fails `telo check` instead of the query.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
 resources:
   - kind: Sql.Query
-    metadata:
-      name: query
+    metadata: { name: query }
     connection: !cel "self.connection"
 inputs:
   sql: !cel "'SELECT * FROM ' + self.table.table + (keys(inputs.filters).size() > 0 ? ' WHERE ' + join(keys(inputs.filters).map(k, k + ' = ?'), ' AND ') : '')"
@@ -76,11 +62,8 @@ outputType:
       title: Rows
       description: The matching rows, typed from the referenced table's declaration.
       type: array
-      items:
-        x-telo-schema-projection-from: /table
-    rowCount:
-      title: Row Count
-      type: integer
+      items: { x-telo-schema-projection-from: /table }
+    rowCount: { title: Row Count, type: integer }
 
 ---
 kind: Telo.Definition
@@ -95,30 +78,22 @@ schema:
   type: object
   required: [connection, table]
   examples:
-    - connection:
-        kind: SQLite.Connection
-        name: Db
-      table: users
+    - { connection: { kind: SQLite.Connection, name: Db }, table: users }
   properties:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     table:
       title: Table
       description: >-
         The table this repository reads and writes. A reference rather than a name,
         so the declared columns type this kind's call signature: a misspelled filter
         or a column that does not exist fails `telo check` instead of the query.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
 resources:
   - kind: Sql.Command
-    metadata:
-      name: exec
+    metadata: { name: exec }
     connection: !cel "self.connection"
 invoke: !ref exec
 inputs:
@@ -147,30 +122,22 @@ schema:
   type: object
   required: [connection, table]
   examples:
-    - connection:
-        kind: SQLite.Connection
-        name: Db
-      table: users
+    - { connection: { kind: SQLite.Connection, name: Db }, table: users }
   properties:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     table:
       title: Table
       description: >-
         The table this repository reads and writes. A reference rather than a name,
         so the declared columns type this kind's call signature: a misspelled filter
         or a column that does not exist fails `telo check` instead of the query.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
 resources:
   - kind: Sql.Command
-    metadata:
-      name: exec
+    metadata: { name: exec }
     connection: !cel "self.connection"
 invoke: !ref exec
 inputs:
@@ -201,30 +168,22 @@ schema:
   type: object
   required: [connection, table]
   examples:
-    - connection:
-        kind: SQLite.Connection
-        name: Db
-      table: users
+    - { connection: { kind: SQLite.Connection, name: Db }, table: users }
   properties:
     connection:
       title: Connection
       description: Reference to the SQL connection resource.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     table:
       title: Table
       description: >-
         The table this repository reads and writes. A reference rather than a name,
         so the declared columns type this kind's call signature: a misspelled filter
         or a column that does not exist fails `telo check` instead of the query.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
 resources:
   - kind: Sql.Command
-    metadata:
-      name: exec
+    metadata: { name: exec }
     connection: !cel "self.connection"
 invoke: !ref exec
 inputs:

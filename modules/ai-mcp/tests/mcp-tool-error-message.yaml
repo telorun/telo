@@ -17,21 +17,14 @@ targets:
   - !ref testToolErrorMessage
 ---
 kind: Ai.Agent
-metadata:
-  name: assistant
-model:
-  kind: AiEcho.EchoModel
-  emitToolCall:
-    name: fail_with_message
+metadata: { name: assistant }
+model: { kind: AiEcho.EchoModel, emitToolCall: { name: fail_with_message } }
 onToolError: throw
 toolProviders:
-  - provider:
-      kind: AiMcp.ToolProvider
-      client: { kind: Stub.StubClient }
+  - { provider: { kind: AiMcp.ToolProvider, client: { kind: Stub.StubClient } } }
 ---
 kind: Run.Sequence
-metadata:
-  name: testToolErrorMessage
+metadata: { name: testToolErrorMessage }
 steps:
   - name: call
     try:

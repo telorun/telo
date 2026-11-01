@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: AiMcpMixedToolsTest
-  version: 1.0.0
+metadata: { name: AiMcpMixedToolsTest, version: 1.0.0 }
 imports:
   Ai: ../../ai
   AiMcp: ../
@@ -17,30 +15,22 @@ targets:
 # Ai.Tools (extends: Self.ToolProvider) while ai-mcp also implements Ai.ToolProvider must
 # resolve cleanly (both are valid Ai.ToolProvider implementations).
 kind: Stub.StubClient
-metadata:
-  name: mcpServer
+metadata: { name: mcpServer }
 ---
 kind: AiMcp.ToolProvider
-metadata:
-  name: serverTools
+metadata: { name: serverTools }
 client: !ref mcpServer
 ---
 kind: Run.Value
-metadata:
-  name: multiplier
+metadata: { name: multiplier }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      a: { type: number }
-      b: { type: number }
+  schema: { type: object, properties: { a: { type: number }, b: { type: number } } }
 value:
   product: !cel "inputs.a * inputs.b"
 ---
 kind: Ai.Tools
-metadata:
-  name: localTools
+metadata: { name: localTools }
 tools:
   - tool: !ref multiplier
     name: multiply
@@ -49,34 +39,26 @@ tools:
       type: object
       additionalProperties: false
       required: [ a, b ]
-      properties:
-        a: { type: number }
-        b: { type: number }
+      properties: { a: { type: number }, b: { type: number } }
 ---
 # Echo calls the static `multiply` tool (the MCP `echo_text` tool is also discovered and
 # advertised, exercising tool assembly across both providers).
 kind: AiEcho.EchoModel
-metadata:
-  name: echo
-emitToolCall:
-  name: multiply
-  arguments: { a: 6, b: 7 }
+metadata: { name: echo }
+emitToolCall: { name: multiply, arguments: { a: 6, b: 7 } }
 ---
 kind: Ai.Agent
-metadata:
-  name: assistant
+metadata: { name: assistant }
 model: !ref echo
 toolProviders:
   - provider: !ref localTools
   - provider: !ref serverTools
 ---
 kind: Run.Sequence
-metadata:
-  name: testMixed
+metadata: { name: testMixed }
 steps:
   - name: invoke
-    inputs:
-      prompt: "multiply 6 and 7"
+    inputs: { prompt: "multiply 6 and 7" }
     invoke: !ref assistant
   - name: assertText
     inputs:

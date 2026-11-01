@@ -9,9 +9,7 @@ metadata:
     Finds test manifests by glob pattern and runs each one in its own fresh runtime,
     several at a time, reporting pass and failure per test. The entry point for a
     project's test suite.
-exports:
-  kinds:
-    - Suite
+exports: { kinds: [Suite] }
 ---
 kind: Telo.Definition
 metadata:
@@ -20,30 +18,21 @@ metadata:
     Discovers test manifests by include and exclude globs, optionally narrowed by a
     substring filter, and runs them with a bounded number in flight at once.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/test.mjs&local_path=./nodejs/src/index.ts#Suite
+controllers: [pkg:telo/local/js?path=./nodejs/test.mjs&local_path=./nodejs/src/index.ts#Suite]
 schema:
   type: object
   properties:
-    metadata:
-      type: object
-      properties:
-        name:
-          type: string
-      required:
-        - name
+    metadata: { type: object, properties: { name: { type: string } }, required: [name] }
     include:
       type: array
-      items:
-        type: string
+      items: { type: string }
       x-telo-eval: compile
       description: >
         Glob patterns to discover test manifests, resolved relative to this
         manifest's directory.
     exclude:
       type: array
-      items:
-        type: string
+      items: { type: string }
       x-telo-eval: compile
       description: >
         Glob patterns to exclude from discovery. Defaults to ["**/__fixtures__/**"].
@@ -68,13 +57,11 @@ schema:
         finds nothing fails, so a mistyped include or filter cannot pass as green.
     env:
       type: object
-      additionalProperties:
-        type: string
+      additionalProperties: { type: string }
       x-telo-eval: compile
       description: >
         Environment variables every test manifest runs with, winning over the
         host environment the suite forwards and over the tests' .env files.
         Evaluated at startup, so a value may be computed from another
         resource — the address of a database the suite started for its tests.
-  required:
-    - metadata
+  required: [metadata]

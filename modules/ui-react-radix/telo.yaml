@@ -11,13 +11,9 @@ metadata:
     popovers, confirmations, menus, navigation menus, tabs, tooltips and icons
     drawn by Radix's accessible primitives. Picked by one theme reference; a theme of another
     module can take its controls whole and give them a look of its own.
-imports:
-  Ui: ../ui
-  UiReact: ../ui-react
+imports: { Ui: ../ui, UiReact: ../ui-react }
 exports:
-  resources:
-    - controls
-    - theme
+  resources: [controls, theme]
   # The thirteen controls, on one copy of the primitives: every layer a page
   # opens is drawn by it, so its layers compose among themselves.
   browser:
@@ -33,8 +29,7 @@ exports:
         ]
 ---
 kind: UiReact.Controls
-metadata:
-  name: controls
+metadata: { name: controls }
 entry: "@telorun/ui-react-radix"
 implements:
   [
@@ -45,8 +40,7 @@ implements:
 # Every part styled over the renderer's part names, light and dark, with the
 # brand's defaults below; an application's own tokens apply over them.
 kind: UiReact.Theme
-metadata:
-  name: theme
+metadata: { name: theme }
 tokens:
   kind: Ui.DesignTokens
   color.background: oklch(0.985 0 0)

@@ -51,11 +51,7 @@ schema:
 kind: Telo.JsonSchema
 metadata: { name: TaskRecord }
 extends: Task
-schema:
-  type: object
-  required: [id]
-  properties:
-    id: { type: integer }
+schema: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 # A row of the list: no priority and no status.
 kind: Telo.JsonSchema
@@ -211,12 +207,8 @@ with:
                       show: chosen
                       summary: chips
                       state: { key: tasks, address: true, store: { kind: Ui.LocalStore } }
-                    create:
-                      surface: { kind: Ui.Drawer, side: end }
-                      afterSubmit: again
-                    edit:
-                      surface: { kind: Ui.Panel, address: { name: task } }
-                      unsaved: confirm
+                    create: { surface: { kind: Ui.Drawer, side: end }, afterSubmit: again }
+                    edit: { surface: { kind: Ui.Panel, address: { name: task } }, unsaved: confirm }
                     paging: more
                     layout:
                       kind: Ui.TableLayout

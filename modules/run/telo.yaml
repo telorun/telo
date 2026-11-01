@@ -10,17 +10,8 @@ metadata:
     switches and error handling; iteration and mapping over collections at a chosen
     concurrency; first-match decision tables; pure value shaping with CEL; and
     background dispatch that returns without waiting.
-requires:
-  telo: ">=0.79.0"
-exports:
-  kinds:
-    - Sequence
-    - Value
-    - Choice
-    - Loop
-    - Iteration
-    - Projection
-    - Detach
+requires: { telo: ">=0.79.0" }
+exports: { kinds: [Sequence, Value, Choice, Loop, Iteration, Projection, Detach] }
 ---
 kind: Telo.Definition
 metadata:
@@ -28,10 +19,8 @@ metadata:
   description: Runs an ordered list of steps — invoke, if, while, switch, try, throw — over a typed inputs/outputs contract.
 capability: Telo.Runnable
 topology: Sequence
-controllers:
-  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Sequence
-throws:
-  inherit: true
+controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Sequence]
+throws: { inherit: true }
 schema:
   type: object
   properties:
@@ -49,19 +38,15 @@ schema:
       items:
         title: Target
         description: A with-resource to run before steps — write it as a `!ref`.
-        x-telo-ref:
-          kind: [Telo.Runnable, Telo.Service]
-          use: call
+        x-telo-ref: { kind: [Telo.Runnable, Telo.Service], use: call }
         # Structural constraint alongside the annotation, mirroring the builtin
         # Application `targets` items: admit the `!ref` string and the resolved
         # `{kind, name}` shape so AJV doesn't reject a resolved ref.
         anyOf:
-          - type: string
+          - { type: string }
           - type: object
             required: [kind, name]
-            properties:
-              kind: { type: string }
-              name: { type: string }
+            properties: { kind: { type: string }, name: { type: string } }
             additionalProperties: true
     inputType:
       title: Input Type
@@ -70,9 +55,7 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: >-
@@ -80,9 +63,7 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputs:
       title: Outputs
       type: object
@@ -92,29 +73,22 @@ schema:
         `result` — what a caller sees, e.g. an `Http.Api` route's `returns:`.
         Omit it to return the raw step-results map.
       additionalProperties: true
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
       x-telo-value-schema-from: outputType
     steps:
       title: Steps
       description: Ordered sequence of steps to execute.
       x-telo-topology-role: steps
       type: array
-      items:
-        $ref: "telo://manifest#/$defs/Step"
-  required:
-    - steps
+      items: { $ref: "telo://manifest#/$defs/Step" }
+  required: [steps]
   examples:
     - inputType:
         kind: Telo.JsonSchema
         schema:
           type: object
           required: [userId]
-          properties:
-            userId: {}
-            limit: { type: integer }
+          properties: { userId: {}, limit: { type: integer } }
       steps:
         - name: fetchUser
           invoke: !ref GetUser
@@ -136,8 +110,7 @@ metadata:
   name: Value
   description: Evaluates a CEL expression over typed inputs and returns the shaped value — a declarative value-only script.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Value
+controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Value]
 schema:
   type: object
   properties:
@@ -148,9 +121,7 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: >-
@@ -158,9 +129,7 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     bindings:
       title: Bindings
       description: >-
@@ -173,15 +142,11 @@ schema:
       additionalProperties: true
       # The name IS the interface — bindings are read bare in CEL — so a name
       # that does not lex as an identifier could never be referenced.
-      propertyNames:
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       x-telo-context:
         type: object
         x-telo-bindings-from: bindings
-        properties:
-          inputs:
-            type: object
-            x-telo-context-from: "inputType"
+        properties: { inputs: { type: object, x-telo-context-from: "inputType" } }
     value:
       title: Value
       description: >-
@@ -193,22 +158,16 @@ schema:
       x-telo-context:
         type: object
         x-telo-bindings-from: bindings
-        properties:
-          inputs:
-            type: object
-            x-telo-context-from: "inputType"
+        properties: { inputs: { type: object, x-telo-context-from: "inputType" } }
       x-telo-value-schema-from: outputType
-  required:
-    - value
+  required: [value]
   examples:
     - inputType:
         kind: Telo.JsonSchema
         schema:
           type: object
           required: [a, b]
-          properties:
-            a: { type: number }
-            b: { type: number }
+          properties: { a: { type: number }, b: { type: number } }
       value:
         product: !cel "inputs.a * inputs.b"
     - value:
@@ -227,14 +186,11 @@ metadata:
   name: Choice
   description: First-match decision table — returns the value of the first choice whose predicate holds, or a declared default.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Choice
+controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Choice]
 throws:
   codes:
-    ERR_NO_MATCH:
-      description: No choice matched and no `default` is declared.
-    ERR_INVALID_PREDICATE:
-      description: A choice's `when` evaluated to something other than a boolean.
+    ERR_NO_MATCH: { description: No choice matched and no `default` is declared. }
+    ERR_INVALID_PREDICATE: { description: A choice's `when` evaluated to something other than a boolean. }
     # A row whose `value` does not satisfy `outputType` raises the kernel's
     # ambient ERR_OUTPUT_INVALID — the contract is enforced once, where every
     # kind's is. It stays catchable by name; it is simply not this kind's to
@@ -242,8 +198,7 @@ throws:
 schema:
   type: object
   additionalProperties: false
-  required:
-    - choices
+  required: [choices]
   properties:
     inputType:
       title: Input Type
@@ -252,18 +207,14 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: >-
         Named type reference or inline type definition every row's `value` must
         satisfy. Optional; declaring it is what gives the table one shared
         result contract and lets a caller's `steps.<name>.result` type-check.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     bindings:
       title: Bindings
       description: >-
@@ -276,15 +227,11 @@ schema:
       additionalProperties: true
       # The name IS the interface — bindings are read bare in CEL — so a name
       # that does not lex as an identifier could never be referenced.
-      propertyNames:
-        pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      propertyNames: { pattern: "^[A-Za-z_][A-Za-z0-9_]*$" }
       x-telo-context:
         type: object
         x-telo-bindings-from: bindings
-        properties:
-          inputs:
-            type: object
-            x-telo-context-from: "inputType"
+        properties: { inputs: { type: object, x-telo-context-from: "inputType" } }
     choices:
       title: Choices
       description: >-
@@ -297,17 +244,12 @@ schema:
       x-telo-context:
         type: object
         x-telo-bindings-from: bindings
-        properties:
-          inputs:
-            type: object
-            x-telo-context-from: "inputType"
+        properties: { inputs: { type: object, x-telo-context-from: "inputType" } }
       items:
         title: Choice
         type: object
         additionalProperties: false
-        required:
-          - when
-          - value
+        required: [when, value]
         properties:
           when:
             title: When
@@ -332,15 +274,11 @@ schema:
         table an error (ERR_NO_MATCH) instead of a silent null.
       type: object
       additionalProperties: false
-      required:
-        - value
+      required: [value]
       x-telo-context:
         type: object
         x-telo-bindings-from: bindings
-        properties:
-          inputs:
-            type: object
-            x-telo-context-from: "inputType"
+        properties: { inputs: { type: object, x-telo-context-from: "inputType" } }
       properties:
         value:
           title: Value
@@ -349,34 +287,23 @@ schema:
   examples:
     - inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [order]
-          properties:
-            order: {}
+        schema: { type: object, required: [order], properties: { order: {} } }
       choices:
         - when: !cel "inputs.order.total >= 100"
-          value:
-            tier: free
-            cost: 0
+          value: { tier: free, cost: 0 }
         - when: !cel "inputs.order.weight > 20"
           value:
             tier: freight
             cost: !cel "inputs.order.weight * 2"
-      default:
-        value:
-          tier: standard
-          cost: 10
+      default: { value: { tier: standard, cost: 10 } }
 ---
 kind: Telo.Definition
 metadata:
   name: Iteration
   description: Runs a step body once per collection element with configurable concurrency and whole-operation error catches.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Iteration
-throws:
-  inherit: true
+controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Iteration]
+throws: { inherit: true }
 schema:
   type: object
   properties:
@@ -387,9 +314,7 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: >-
@@ -397,9 +322,7 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     collection:
       title: Collection
       description: >-
@@ -410,12 +333,9 @@ schema:
         `x-telo-type` sees the stream branch as an empty schema matching anything,
         so under `oneOf` an array would match both branches and fail.
       anyOf:
-        - type: array
-        - x-telo-type: Telo.Stream
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+        - { type: array }
+        - { x-telo-type: Telo.Stream }
+      x-telo-context: { type: object, properties: { inputs: {} } }
     concurrency:
       title: Concurrency
       description: >-
@@ -424,10 +344,7 @@ schema:
       type: integer
       minimum: 1
       default: 1
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     catches:
       title: Catches
       description: >-
@@ -440,24 +357,16 @@ schema:
           code:
             description: Structured error code; INTERNAL_ERROR for plain errors.
             type: string
-          message:
-            description: Human-readable error message.
-            type: string
-          step:
-            description: Name of the step that threw.
-            type: string
-          data:
-            description: Structured payload from an InvokeError, else undefined.
+          message: { description: Human-readable error message., type: string }
+          step: { description: Name of the step that threw., type: string }
+          data: { description: "Structured payload from an InvokeError, else undefined." }
           displayMessage:
             description: The text a person is shown for the failure, as its record; null when it carries none.
             anyOf:
-              - $ref: "telo://manifest#/$defs/TextRecord"
-              - type: "null"
+              - { $ref: "telo://manifest#/$defs/TextRecord" }
+              - { type: "null" }
         additionalProperties: false
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
       type: array
       items:
         title: Catch Entry
@@ -467,9 +376,7 @@ schema:
             title: When
             description: CEL condition selecting this entry (sees error and inputs).
             type: boolean
-          value:
-            title: Value
-            description: Fallback result returned when this entry matches.
+          value: { title: Value, description: Fallback result returned when this entry matches. }
     steps:
       title: Steps
       description: >-
@@ -486,11 +393,8 @@ schema:
           index: { type: integer }
           items: { x-telo-context-collection-from: "collection" }
       type: array
-      items:
-        $ref: "telo://manifest#/$defs/Step"
-  required:
-    - collection
-    - steps
+      items: { $ref: "telo://manifest#/$defs/Step" }
+  required: [collection, steps]
   examples:
     - collection: !cel "inputs.users"
       concurrency: 5
@@ -505,16 +409,11 @@ metadata:
   name: Projection
   description: Maps each collection element through a step body and CEL outputs into a result array, with configurable concurrency.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Projection
-throws:
-  inherit: true
+controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Projection]
+throws: { inherit: true }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: array
-    items:
-      x-telo-value-schema-from: elementType
+  schema: { type: array, items: { x-telo-value-schema-from: elementType } }
 schema:
   type: object
   properties:
@@ -525,9 +424,7 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: >-
@@ -535,9 +432,7 @@ schema:
         inline type definition. Declaring it replaces the default contract (an
         array of `elementType`), types `steps.<name>.result` for callers, and has
         the produced array validated at dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     elementType:
       title: Element Type
       description: >-
@@ -545,17 +440,12 @@ schema:
         an inline type definition. Declaring it holds `outputs` to that shape at
         analysis time, types each element of `steps.<name>.result` for callers,
         and has every element validated at dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     collection:
       title: Collection
       description: CEL expression resolving to the array projected over.
       type: array
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     concurrency:
       title: Concurrency
       description: >-
@@ -564,10 +454,7 @@ schema:
       type: integer
       minimum: 1
       default: 1
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     catches:
       title: Catches
       description: >-
@@ -582,24 +469,16 @@ schema:
           code:
             description: Structured error code; INTERNAL_ERROR for plain errors.
             type: string
-          message:
-            description: Human-readable error message.
-            type: string
-          step:
-            description: Name of the step that threw.
-            type: string
-          data:
-            description: Structured payload from an InvokeError, else undefined.
+          message: { description: Human-readable error message., type: string }
+          step: { description: Name of the step that threw., type: string }
+          data: { description: "Structured payload from an InvokeError, else undefined." }
           displayMessage:
             description: The text a person is shown for the failure, as its record; null when it carries none.
             anyOf:
-              - $ref: "telo://manifest#/$defs/TextRecord"
-              - type: "null"
+              - { $ref: "telo://manifest#/$defs/TextRecord" }
+              - { type: "null" }
         additionalProperties: false
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
       type: array
       items:
         title: Catch Entry
@@ -624,8 +503,7 @@ schema:
           index: { type: integer }
           items: { type: array }
       type: array
-      items:
-        $ref: "telo://manifest#/$defs/Step"
+      items: { $ref: "telo://manifest#/$defs/Step" }
     outputs:
       title: Outputs
       description: >-
@@ -643,9 +521,7 @@ schema:
           index: { type: integer }
           items: { type: array }
       x-telo-value-schema-from: elementType
-  required:
-    - collection
-    - steps
+  required: [collection, steps]
   examples:
     - collection: !cel "inputs.ids"
       concurrency: 8
@@ -663,10 +539,8 @@ metadata:
   name: Loop
   description: Repeats a step body while a CEL condition holds or up to maxIterations, seeing iteration count and previous result.
 capability: Telo.Runnable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Loop
-throws:
-  inherit: true
+controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Loop]
+throws: { inherit: true }
 schema:
   type: object
   properties:
@@ -677,9 +551,7 @@ schema:
         time and the body reads them as `!cel "inputs.<name>"`. The kernel binds
         this contract to the resource: declared defaults are filled and every
         call is validated against it before dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     outputType:
       title: Output Type
       description: >-
@@ -687,9 +559,7 @@ schema:
         `steps.<name>.result` for callers, has every result slot checked
         statically by `x-telo-value-schema-from`, and has the produced value
         validated at dispatch.
-      x-telo-ref:
-        kind: Telo.Type
-        use: schema
+      x-telo-ref: { kind: Telo.Type, use: schema }
     condition:
       title: Condition
       description: >-
@@ -699,18 +569,12 @@ schema:
       type: boolean
       x-telo-context:
         type: object
-        properties:
-          inputs: {}
-          iteration: { type: integer }
-          previous: {}
+        properties: { inputs: {}, iteration: { type: integer }, previous: {} }
     maxIterations:
       title: Max Iterations
       description: CEL integer cap on the number of iterations. At least one of condition or maxIterations is required.
       type: integer
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
     catches:
       title: Catches
       description: >-
@@ -723,24 +587,16 @@ schema:
           code:
             description: Structured error code; INTERNAL_ERROR for plain errors.
             type: string
-          message:
-            description: Human-readable error message.
-            type: string
-          step:
-            description: Name of the step that threw.
-            type: string
-          data:
-            description: Structured payload from an InvokeError, else undefined.
+          message: { description: Human-readable error message., type: string }
+          step: { description: Name of the step that threw., type: string }
+          data: { description: "Structured payload from an InvokeError, else undefined." }
           displayMessage:
             description: The text a person is shown for the failure, as its record; null when it carries none.
             anyOf:
-              - $ref: "telo://manifest#/$defs/TextRecord"
-              - type: "null"
+              - { $ref: "telo://manifest#/$defs/TextRecord" }
+              - { type: "null" }
         additionalProperties: false
-      x-telo-context:
-        type: object
-        properties:
-          inputs: {}
+      x-telo-context: { type: object, properties: { inputs: {} } }
       type: array
       items:
         title: Catch Entry
@@ -750,22 +606,16 @@ schema:
             title: When
             description: CEL condition selecting this entry (sees error and inputs).
             type: boolean
-          value:
-            title: Value
-            description: Fallback result returned when this entry matches.
+          value: { title: Value, description: Fallback result returned when this entry matches. }
     steps:
       title: Steps
       description: Body run each iteration. Sees iteration and previous.
       x-telo-topology-role: steps
       x-telo-context:
         type: object
-        properties:
-          inputs: {}
-          iteration: { type: integer }
-          previous: {}
+        properties: { inputs: {}, iteration: { type: integer }, previous: {} }
       type: array
-      items:
-        $ref: "telo://manifest#/$defs/Step"
+      items: { $ref: "telo://manifest#/$defs/Step" }
     outputs:
       title: Outputs
       description: >-
@@ -776,13 +626,9 @@ schema:
       additionalProperties: true
       x-telo-context:
         type: object
-        properties:
-          inputs: {}
-          iteration: { type: integer }
-          previous: {}
+        properties: { inputs: {}, iteration: { type: integer }, previous: {} }
       x-telo-value-schema-from: outputType
-  required:
-    - steps
+  required: [steps]
   examples:
     - condition: !cel "previous == null || !previous.check.result.ready"
       maxIterations: 10
@@ -801,8 +647,7 @@ metadata:
   name: Detach
   description: Dispatches a wrapped invocable in the background and returns immediately, off the caller's response path.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Detach
+controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Detach]
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -827,6 +672,4 @@ schema:
       title: Invoke
       description: The invocable dispatched in the background.
       type: object
-      x-telo-ref:
-        kind: Telo.Invocable
-        use: detached
+      x-telo-ref: { kind: Telo.Invocable, use: detached }

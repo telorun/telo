@@ -34,8 +34,7 @@ steps:
     invoke: !ref detect
   - name: drained
     inputs: { input: !cel "steps.detected.result.output" }
-    invoke:
-      kind: Octet.Decoder
+    invoke: { kind: Octet.Decoder }
   - name: assertMislabelled
     inputs:
       actual:
@@ -66,8 +65,7 @@ steps:
   - name: source
     inputs:
       items: !cel "'plain words'.split('').map(c, bytes(c))"
-    invoke:
-      kind: Stream.Of
+    invoke: { kind: Stream.Of }
   - name: streamed
     inputs:
       input: !cel "steps.source.result.output"
@@ -75,16 +73,12 @@ steps:
     invoke: !ref detect
   - name: streamDrained
     inputs: { input: !cel "steps.streamed.result.output" }
-    invoke:
-      kind: Octet.Decoder
+    invoke: { kind: Octet.Decoder }
   - name: assertStreamed
     inputs:
       actual:
         mediaType: !cel "steps.streamed.result.mediaType"
         mislabelled: !cel "steps.streamed.result.mislabelled"
         output: !cel "string(steps.streamDrained.result.bytes)"
-      expected:
-        mediaType: text/plain
-        mislabelled: false
-        output: plain words
+      expected: { mediaType: text/plain, mislabelled: false, output: plain words }
     invoke: { kind: Assert.Equals }

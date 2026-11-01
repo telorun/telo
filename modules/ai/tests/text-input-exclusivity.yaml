@@ -1,7 +1,5 @@
 kind: Telo.Application
-metadata:
-  name: TextInputExclusivityTest
-  version: 1.0.0
+metadata: { name: TextInputExclusivityTest, version: 1.0.0 }
 imports:
   Ai: ../
   AiEcho: ./__fixtures__/ai-echo.yaml
@@ -20,8 +18,7 @@ model: !ref echo
 ---
 # Both prompt AND messages → throws.
 kind: Run.Sequence
-metadata:
-  name: testBothPromptAndMessagesRejected
+metadata: { name: testBothPromptAndMessagesRejected }
 steps:
   - name: try
     try:
@@ -44,14 +41,12 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
 ---
 # Neither prompt NOR messages → throws.
 kind: Run.Sequence
-metadata:
-  name: testNeitherPromptNorMessagesRejected
+metadata: { name: testNeitherPromptNorMessagesRejected }
 steps:
   - name: try
     try:
@@ -71,6 +66,5 @@ steps:
           kind: Assert.Schema
           schema:
             type: object
-            properties:
-              code: { const: ERR_INVALID_INPUT }
+            properties: { code: { const: ERR_INVALID_INPUT } }
             required: [ code ]
