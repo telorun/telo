@@ -16,6 +16,7 @@ import { changedCommand } from "./commands/changed.js";
 import { checkCommand } from "./commands/check.js";
 import { describeCommand } from "./commands/describe.js";
 import { envCommand } from "./commands/env.js";
+import { formatCommand } from "./commands/format.js";
 import { installCommand } from "./commands/install.js";
 import { migrateCommand } from "./commands/migrate.js";
 import { moduleCommand } from "./commands/module.js";
@@ -41,6 +42,7 @@ const COMMANDS: Record<string, (yargs: Argv) => Argv> = {
   check: checkCommand,
   describe: describeCommand,
   env: envCommand,
+  format: formatCommand,
   install: installCommand,
   migrate: migrateCommand,
   module: moduleCommand,

@@ -114,6 +114,12 @@
           "description": "Base URL of the Telo hub used for federated import-source autocomplete (ref search and version lists)."
         }
       }
+    },
+    "configurationDefaults": {
+      "[telo]": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "telorun.telo-vscode"
+      }
     }
   },
   "scripts": {

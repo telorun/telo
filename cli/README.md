@@ -1,6 +1,6 @@
 # Telo CLI
 
-The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and lists the built-in vocabulary with `telo builtins`, selects the files a change reaches with `telo changed`, plans module version bumps with `telo release`, and publishes module artifacts to an OCI registry with `telo publish`.
+The Telo CLI is the command-line interface for the Telo kernel. It loads and runs YAML manifests on your local machine, watches them for changes during development, statically validates them with `telo check`, pre-installs controllers with `telo install`, refreshes `imports:` pins with `telo upgrade`, rewrites legacy spellings with `telo migrate`, formats manifests with `telo format`, lists what an application reads from the environment with `telo needs report`, writes its `.env` / `.env.local` with `telo env template`, ships an application as a single executable with `telo package`, and lists the built-in vocabulary with `telo builtins`, selects the files a change reaches with `telo changed`, plans module version bumps with `telo release`, and publishes module artifacts to an OCI registry with `telo publish`.
 
 For installation and a first run, see the [getting started guide](/learn/getting-started).
 
@@ -240,6 +240,36 @@ Upgrading apps/my-app/telo.yaml
 3 upgraded, 1 already current, 2 skipped
 ```
 
+
+---
+
+### `telo format [paths..]`
+
+Rewrites manifests to the canonical layout. Layout only — the parsed data, tags included, is identical before and after.
+
+- A list of plain scalars is written on one line: `enum: [as, break, const]`.
+- A map of at most three entries whose values are plain scalars, scalar lists or such maps is written in flow style when it fits in 80 columns: `not: { enum: [a] }`.
+- A collection holding a tag (`!cel`, `!ref`, …), a comment or a multi-line string stays block style, as does every document's top level.
+- Comments, key order, quoting and blank lines are kept; only the text of the collections that change is rewritten.
+
+```bash
+telo format                       # every manifest under the current directory
+telo format modules/http-server   # a directory
+telo format 'modules/*/telo.yaml' # a glob
+telo format --check               # write nothing; exit 1 when any file would change
+```
+
+A directory or glob search skips `node_modules`, `dist`, `.git`, `.telo` and `__fixtures__/`, and skips YAML whose first document has no dotted `kind` (workflows, lockfiles, Kubernetes manifests). A file named explicitly is always considered: inside `__fixtures__/` it is formatted, and a non-manifest is refused. A file that does not parse is reported with its line and column and the run exits 2; the other files are still processed. Exit status: 0 done (or nothing to change), 1 `--check` found files to change, 2 a refused or unparseable file.
+
+Editors format the same way: the language server answers document formatting, and the VS Code extension formats every Telo manifest on save — any YAML file whose `kind:` names a dotted kind, whatever its filename.
+
+**Example output:**
+
+```text
+formatted  modules/mine/telo.yaml
+
+1 file formatted.
+```
 
 ---
 

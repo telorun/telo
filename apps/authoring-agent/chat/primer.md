@@ -17,6 +17,15 @@ has a top-level `kind:` and a `metadata:` block (`name`, plus `version` on the
 root doc). Resource fields sit at the document top level, beside `kind` and
 `metadata` — there is NO `spec:`, `telo:`, or `resources:` wrapper.
 
+LAYOUT: write short leaves in YAML flow style — a list of plain scalars on one
+line (`enum: [as, break, const]`), a small map of at most three scalar entries
+(`not: { enum: [a] }`, `requires: { telo: ">=0.122.0" }`). A collection holding a
+`!cel` / `!ref` / `!interpolate` / `!include-*` tag, a comment or a multi-line
+string stays block style, and so does every document's top level. Quote scalars
+YAML would read as another type (`"true"`, `"null"`). `telo format <file>`
+rewrites a manifest to exactly this layout and `telo format --check` verifies it;
+run it on every manifest you write.
+
 THE BUILT-IN KINDS ARE DATA — READ THEIR FIELDS, DO NOT RECALL THEM. Every kind
 that needs no import (`Telo.Application`, `Telo.Library`, `Telo.Definition`,
 `Telo.Abstract`, `Telo.Import`, `Telo.NeedType`, `Telo.JsonSchema`,

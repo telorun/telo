@@ -1254,3 +1254,5 @@ export * from "./release/index.js";
 // The workspace's env files — the walk, the format and the sensitive mark —
 // shared by the CLI, a packaged application and Studio.
 export * from "./workspace-env/index.js";
+export { formatManifestText, isManifestText } from "./manifest-format.js";
+export type { ManifestFormatFailure, ManifestFormatResult } from "./manifest-format.js";

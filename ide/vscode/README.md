@@ -60,6 +60,10 @@ A lens only ever offers a version the telo you are editing against can run. Each
 
 Version lookups and compatibility answers are memoized so lens resolution stays off the keystroke path. Run **Telo: Check Imports for Updates** to drop the memo and re-check. Hub failures go to the `Telo` output channel.
 
+### Formatting
+
+Saving a manifest formats it with `telo format`'s engine, from the telo version the module is edited against — any YAML file whose `kind:` names a dotted kind, whatever its filename. **Format Document** does the same on demand. A file that does not parse is left unchanged; its diagnostics say why. YAML that is not a manifest is not touched. To turn it off, set `"[telo]": { "editor.formatOnSave": false }`.
+
 ### Syntax highlighting
 
 `telo.yaml` and `*.telo.yaml` get a dedicated grammar plus semantic tokens, so `!ref` targets and `!cel` expressions are highlighted as references and code rather than plain strings.
