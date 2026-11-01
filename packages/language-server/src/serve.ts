@@ -24,6 +24,7 @@ import type { ClientSupport, FeatureContext } from "./features/context.js";
 import { registerDefinition } from "./features/definition.js";
 import { registerHover } from "./features/hover.js";
 import { registerImportUpgrades } from "./features/import-upgrades.js";
+import { registerFormatting } from "./features/formatting.js";
 import { registerRename } from "./features/rename.js";
 import { SEMANTIC_TOKENS_LEGEND, registerSemanticTokens } from "./features/semantic-tokens.js";
 import { SIGNATURE_HELP_TRIGGERS, registerSignatureHelp } from "./features/signature-help.js";
@@ -95,6 +96,7 @@ export function serve(port: EnginePort): void {
         hoverProvider: true,
         definitionProvider: true,
         renameProvider: { prepareProvider: true },
+        documentFormattingProvider: true,
         signatureHelpProvider: { triggerCharacters: SIGNATURE_HELP_TRIGGERS },
         semanticTokensProvider: { legend: SEMANTIC_TOKENS_LEGEND, full: true },
         codeActionProvider: { codeActionKinds: [CodeActionKind.QuickFix] },
@@ -132,6 +134,7 @@ export function serve(port: EnginePort): void {
   registerHover(context);
   registerDefinition(context);
   registerRename(context);
+  registerFormatting(context);
   registerSignatureHelp(context);
   registerSemanticTokens(context);
   registerCodeActions(context);

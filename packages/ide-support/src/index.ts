@@ -5,6 +5,7 @@ export * from "./hover/index.js";
 export * from "./semantic-tokens/index.js";
 export * from "./definition/index.js";
 export * from "./rename/index.js";
+export * from "./formatting/index.js";
 export * from "./signature-help/index.js";
 export * from "./import-upgrades/index.js";
 export * from "./workspace/index.js";

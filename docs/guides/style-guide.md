@@ -134,7 +134,21 @@ Never write a plain string holding `${{ … }}`. It is not evaluated — loading
 reads it as a deprecated spelling (`DEPRECATED_UNTAGGED_INTERPOLATION`) and
 `telo migrate` rewrites it.
 
-## 5. Putting it all together
+## 5. Layout is `telo format`'s
+
+Short leaves are written in flow style — a list of plain scalars on one line, a
+map of at most three scalar entries when it fits in 80 columns — and a
+collection holding a tag, a comment or a multi-line string stays block style:
+
+```yaml
+enum: [as, break, const]
+not: { enum: [as] }
+```
+
+Run `telo format` on a manifest you edit; `telo format --check` fails when any
+file is not in this layout, and the editor extension formats on save.
+
+## 6. Putting it all together
 
 A complete manifest applying every rule above:
 
