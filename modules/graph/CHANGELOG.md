@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.4.1 - 2026-11-01
 ### Fixed
 * The store contract states that a relationship kind's rules are added to its parent's, never replacing one.

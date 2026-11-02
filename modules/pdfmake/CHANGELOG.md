@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.4.1 - 2026-10-23
 ### Fixed
 * PdfMake.Document lays out a table's 'headerRows', 'keepWithHeaderRows', a cell's 'colSpan' / 'rowSpan' and an ordered list's 'start' supplied as a 64-bit integer — what any !cel integer expression produces — as it does the same literal, instead of failing with a BigInt arithmetic error or numbering the list from 1.

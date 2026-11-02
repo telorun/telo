@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.5.0 - 2026-11-01
 ### Added
 * The theme styles a listing's parts and the Load more button and a list's empty cell. Breaking: its rules for the table's toolbar, create button, main area, empty and loading cells now select listing-toolbar, listing-create, listing-main, listing-empty, listing-loading and list-empty, and the panel beside the records sits in listing.

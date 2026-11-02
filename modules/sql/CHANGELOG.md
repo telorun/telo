@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.29.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.29.0 - 2026-11-01
 ### Added
 * A Table's foreignKeys entry is typed on the Sql.Table abstract — { columns, references: { table, columns }, onDelete?, onUpdate? }, with references.table a reference to a table of any engine — so something reading foreign keys through a Sql.Table reference needs no knowledge of the backend; the entry is documented.

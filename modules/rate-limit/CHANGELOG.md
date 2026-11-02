@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.13.1 - 2026-10-23
 ### Fixed
 * RateLimit.Guard and RateLimit.Budget accept a 'limit' supplied as a 64-bit integer — what any !cel integer expression produces — instead of failing with a BigInt arithmetic error on the first call.

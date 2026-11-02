@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.31.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.31.0 - 2026-11-01
 ### Added
 * Run.Sequence, Run.Iteration, Run.Loop and Run.Projection tell each step's dispatch where that step's inputs are written in the resource, so a failure inside them can be traced to its place in the manifest.

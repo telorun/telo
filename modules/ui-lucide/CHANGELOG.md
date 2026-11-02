@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.2.0 - 2026-10-23
 ### Added
 * An icon used once is declared inline where the entry names it, as icon: { kind: UiLucide.Icon, name: house } — name is the kind's own field, so the object is a declaration — on a runtime from telo 0.121.0.

@@ -14,7 +14,7 @@
 kind: Telo.Library
 metadata:
   name: Type
-  version: "0.13.0"
+  version: "0.13.1"
   repository: https://github.com/telorun/telo
   license: MIT
   categories: [Data]

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.12.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.12.0 - 2026-11-01
 ### Fixed
 * A table whose foreign key references itself boots, and the slot's schema comment says why.

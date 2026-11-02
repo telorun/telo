@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.2 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.7.1 - 2026-10-23
 ### Fixed
 * OTLP Sink and TraceSink accept a computed (`!cel`) integer `buffer` and bound the buffer as the same literal does; before, the sink was refused at start with a JavaScript type error. A value no number holds exactly is refused, naming the sink.

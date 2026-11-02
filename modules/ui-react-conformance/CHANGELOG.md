@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.1 - 2026-11-01
+### Fixed
+* Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.
+
 ## 0.3.0 - 2026-10-23
 ### Added
 * `CheckTheme` counts a token the renderer itself reads (the contract's `rendererTokens`) as read, still asking the theme for its default, and treats `padding`, `padding-left`, `padding-right`, `padding-inline-start` / `-end` as setting a reserved `padding-inline`, `margin`, `margin-left`, `margin-right`, `margin-inline-start` / `-end` as setting a reserved `margin-inline`, `grid-area` and `grid-column-start` / `-end` as setting a reserved `grid-column`, and `max-inline-size` as setting a reserved `max-width`.
