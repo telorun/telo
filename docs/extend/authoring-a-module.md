@@ -6,7 +6,7 @@ description: Add new resource kinds to Telo — declare a Telo.Definition, imple
 
 # Authoring a module
 
-Everything Telo runs is a resource of some *kind* — `Http.Server`, `Run.Sequence`, `Console.WriteLine`. A module adds new kinds to the runtime. Each kind has two halves:
+Everything Telo runs is a resource of some *kind* — `Http.Server`, `Telo.Sequence`, `Console.WriteLine`. A module adds new kinds to the runtime. Each kind has two halves:
 
 1. **Declaration** — one `Telo.Definition` document per kind in the module's `telo.yaml`. It registers the kind, names its [capability](/reference/kernel/capabilities), points at a controller, and declares the typed input/output schemas.
 2. **Implementation** — a *controller* package (Node.js, Rust, …) that exports a `create()` function returning an instance which implements the capability's method.

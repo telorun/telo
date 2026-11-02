@@ -8,7 +8,8 @@ import { refSentinelTarget, type RefSentinelTarget } from "./ref-sentinel-target
 import type { DefinitionRegistry } from "./definition-registry.js";
 import type { DefResolver } from "./extends-resolution.js";
 import { isInjectedDeclaration } from "./resource-input.js";
-import { dispatchesThrows, kindThrowsDeclarer } from "./throws-ceiling.js";
+import { dispatchesThrows, effectiveThrows, kindThrowsDeclarer } from "./throws-ceiling.js";
+import { controllerConfiguration, type ControllerConfiguration } from "./controller-configuration.js";
 import {
   hasDeclaredUse,
   possibleUses,
@@ -246,7 +247,7 @@ function defResolverFor(ctx: ResolveCtx): DefResolver {
 function codesFromDefinition(definition: ResourceDefinition, ctx: ResolveCtx): Map<string, ThrowsCodeMeta> {
   const out = new Map<string, ThrowsCodeMeta>();
   if (!dispatchesThrows(definition, defResolverFor(ctx))) return out;
-  const raw = definition.throws?.codes ?? {};
+  const raw = effectiveThrows(definition, defResolverFor(ctx))?.codes ?? {};
   for (const [code, meta] of Object.entries(raw)) {
     out.set(code, { data: (meta as { data?: Record<string, any> }).data });
   }
@@ -298,7 +299,7 @@ export function resolveThrowsUnion(
     return u;
   }
 
-  const throws = definition.throws;
+  const throws = effectiveThrows(definition, defResolverFor(ctx));
   if (!throws) {
     const u = emptyUnion();
     if (name) ctx.memo.set(name, u);
@@ -375,10 +376,12 @@ function resolveInherited(
   ctx: ResolveCtx,
 ): ThrowsUnion {
   const result: ThrowsUnion = { codes: new Map(), unbounded: false };
-  const schema = definition.schema as Record<string, any> | undefined;
+  const configured = receivedConfiguration(manifest, definition, ctx);
+  if (configured.computedAboveSlot) result.unbounded = true;
+  const received = configured.data as ResourceManifest;
 
-  forEachDrivenSlot(schema, manifest, (driven) => {
-    const origin = refOrigin(manifest, driven.path);
+  forEachDrivenSlot(configured.schema, received, (driven) => {
+    const origin = drivenOrigin(manifest, configured, driven.data, driven.path);
     if (driven.kind === "step") {
       unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, origin));
       return;
@@ -386,7 +389,7 @@ function resolveInherited(
     // Several slots at one site are the branches declaring it; any one that
     // hands a failure back counts, since a branch not applying can only add codes.
     const handsBack = driven.slots.some(({ slot, ref }) =>
-      throwsUses(slot, resolveSlotUseAt(slot, manifest, ref, driven.path).use).some(
+      throwsUses(slot, resolveSlotUseAt(slot, received, ref, driven.path).use).some(
         handsFailureBack,
       ),
     );
@@ -423,9 +426,11 @@ export function resolveScopeUnion(
   const result: ThrowsUnion = { codes: new Map(), unbounded: false };
   if (seen.has(manifest)) return result;
   seen.add(manifest);
+  const configured = receivedConfiguration(manifest, definition, ctx);
+  if (configured.computedAboveSlot) result.unbounded = true;
 
-  forEachDrivenSlot(definition.schema, manifest, (driven) => {
-    const origin = refOrigin(manifest, driven.path);
+  forEachDrivenSlot(configured.schema, configured.data, (driven) => {
+    const origin = drivenOrigin(manifest, configured, driven.data, driven.path);
     if (driven.kind === "step") {
       unionInto(result, stepSiteThrows(driven.data, driven.slots, ctx, origin));
       return;
@@ -453,6 +458,40 @@ export function resolveScopeUnion(
   });
 
   return result;
+}
+
+/** The `throws:` block that governs `definition` — the nearest declaration
+ *  along `extends`, itself first. */
+export function throwsBlockOf(definition: ResourceDefinition, ctx: ResolveCtx) {
+  return effectiveThrows(definition, defResolverFor(ctx));
+}
+
+/**
+ * The configuration `manifest`'s controller receives — what every walk of what
+ * it drives reads, rather than the declaration or the definition's own schema:
+ * an inheriting kind's is its author schema over the declaration, or what its
+ * `base:` mapping builds.
+ */
+export function receivedConfiguration(
+  manifest: ResourceManifest,
+  definition: ResourceDefinition,
+  ctx: ResolveCtx,
+): ControllerConfiguration {
+  return controllerConfiguration(manifest, definition, defResolverFor(ctx), (def) =>
+    ctx.defs.effectiveSchemaOf(def),
+  );
+}
+
+/** Where a name at a driven site is read: the module of the mapping that wrote
+ *  it, else the declaration's own place. */
+function drivenOrigin(
+  manifest: ResourceManifest,
+  configured: ControllerConfiguration,
+  data: unknown,
+  path: string,
+): RefOrigin {
+  const writer = configured.writerOf(data);
+  return writer !== undefined ? { module: writer } : refOrigin(manifest, path);
 }
 
 /** The union a step-body site reaches — once per distinct invoke field, since
@@ -651,7 +690,8 @@ function resolveRefTargetThrows(
   const definition = definitionFor(invokedKind, ctx.defs, ctx.aliases, scopeResolver);
   if (!definition) return { codes: new Map(), unbounded: true };
 
-  if (definition.throws?.passthrough) {
+  const block = effectiveThrows(definition, defResolverFor(ctx));
+  if (block?.passthrough) {
     return onPassthrough ? onPassthrough() : { codes: new Map(), unbounded: true };
   }
 
@@ -663,8 +703,7 @@ function resolveRefTargetThrows(
   // definition depends on call-site or transitive resolution we couldn't
   // perform (no specific target manifest to recurse into).
   const codes = codesFromDefinition(definition, ctx);
-  const unbounded =
-    definition.throws?.inherit === true || definition.throws?.passthrough === true;
+  const unbounded = block?.inherit === true || block?.passthrough === true;
   return { codes, unbounded };
 }
 

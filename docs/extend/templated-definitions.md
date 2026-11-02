@@ -36,7 +36,7 @@ A templated definition omits `controllers:` and instead supplies:
 | `result` | top-level sibling — post-call mapping applied to the target's output |
 | `extends` | the `Telo.Abstract` this kind implements (optional) |
 
-The dispatch field, `inputs`, and `result` are **top-level siblings** on the definition — the same `{ name, inputs, invoke }` factoring used by `Run.Sequence` steps.
+The dispatch field, `inputs`, and `result` are **top-level siblings** on the definition — the same `{ name, inputs, invoke }` factoring used by `Telo.Sequence` steps.
 
 A body is not fixed text: `!for-each` turns the consumer's list or map into list items, map entries, named resources or steps, and `!if` / `!switch` choose a value, an item or a resource's kind from what the consumer wrote ([below](#repeats-and-choices-inside-a-body)).
 
@@ -429,7 +429,7 @@ Write each entry exactly as you would write the same resource at the top level. 
 
 ```yaml
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: body }
     inputType:
       kind: Telo.JsonSchema
@@ -450,7 +450,7 @@ resources:
         value: !cel "item.body"        # the ITERATION's element
 ```
 
-An entry is checked as that resource would be: against its kind's schema, with every `!ref` — including a step's `invoke:` — naming a sibling entry or a resource of the declaring module, and no two entries under one name. A resource used once inside an entry can be declared inline where it is used (a route's `handler: { kind: Run.Sequence, … }`); it is created with the rest of the body, and its CEL is typed by its own kind.
+An entry is checked as that resource would be: against its kind's schema, with every `!ref` — including a step's `invoke:` — naming a sibling entry or a resource of the declaring module, and no two entries under one name. A resource used once inside an entry can be declared inline where it is used (a route's `handler: { kind: Telo.Sequence, … }`); it is created with the rest of the body, and its CEL is typed by its own kind.
 
 A body is not limited to one dispatch. `inputs` inside a nested body types from **that entry's own `inputType:`**, never the enclosing definition's — the template reaches its body through a mapping free to rename or narrow, so typing against the outer contract would accept names the body never receives.
 

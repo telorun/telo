@@ -1,13 +1,11 @@
 kind: Telo.Application
 metadata: { name: MissingKey }
-imports:
-  Run: ../../../../modules/run
 variables:
   mode: { env: MODE, type: string, enum: [fast, slow], default: fast }
 targets:
   - !if { then: !ref main }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: pick

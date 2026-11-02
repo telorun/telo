@@ -7,7 +7,6 @@ decided; the endpoints, the wait and its recovery come with the blueprint.
 ```yaml
 imports:
   ApprovalApp: oci://ghcr.io/telorun/blueprints/approval-app@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref approvals
 ---
@@ -23,10 +22,10 @@ request:
     amountCents: { type: integer }
 autoApprove: !cel "request.body.amountCents < 10000"
 onApproved:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps: [ … pay it … ]
 onRejected:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps: [ … tell the requester … ]
 ```
 

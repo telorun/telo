@@ -29,8 +29,8 @@ metadata:
         curl -s -XPOST localhost:8106/api/sync
 # Module `lang:` — the language this application's texts are written in — and
 # `UiReact.App.words` are read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 lang: en
 # `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
@@ -54,11 +54,7 @@ targets:
     when: !cel "variables.syncAtBoot"
   - !ref server
   - !ref poller
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8106
+ports: { http: { env: PORT, protocol: tcp, default: 8106 } }
 variables:
   upstreamBaseUrl:
     env: UPSTREAM_BASE_URL
@@ -81,10 +77,7 @@ variables:
     arg: sync-every
     type: string
     default: "15m"
-  syncAtBoot:
-    env: SYNC_AT_BOOT
-    type: boolean
-    default: true
+  syncAtBoot: { env: SYNC_AT_BOOT, type: boolean, default: true }
   manualSyncsPerMinute:
     env: MANUAL_SYNCS_PER_MINUTE
     type: integer
@@ -103,8 +96,7 @@ variables:
 kind: HttpClient.Client
 metadata: { name: upstream }
 baseUrl: !cel "variables.upstreamBaseUrl"
-headers:
-  accept: application/json
+headers: { accept: application/json }
 timeout: 10000
 retry:
   attempts: 3
@@ -194,7 +186,7 @@ steps:
 ---
 # The pull itself: ask for a page, store it, ask for the next, until one comes
 # back empty or the page bound is reached.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sync }
 steps:
   - name: page
@@ -233,7 +225,7 @@ outputs:
   records: !cel "steps.records.result"
 ---
 # What every trigger runs: the sync, and a row saying how it went.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: recordedSync }
 steps:
   - name: attempt
@@ -307,7 +299,7 @@ outputType:
             records: { type: integer }
             detail: { type: string }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: syncOnDemand }
 inputType:
   kind: Telo.JsonSchema
@@ -315,8 +307,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ client ]
-    properties:
-      client: { type: string }
+    properties: { client: { type: string } }
 steps:
   - name: limit
     invoke: !ref manualSyncLimit
@@ -355,10 +346,7 @@ outputType:
         items:
           type: object
           required: [ id, userId, title ]
-          properties:
-            id: { type: integer }
-            userId: { type: integer }
-            title: { type: string }
+          properties: { id: { type: integer }, userId: { type: integer }, title: { type: string } }
 ---
 # Read-through: a fresh entry is served without touching the database, and a
 # miss runs the query and remembers what it returned. A list is at most this
@@ -376,10 +364,7 @@ routes:
       path: /posts
       method: GET
       schema:
-        query:
-          type: object
-          properties:
-            userId: { type: integer, minimum: 1 }
+        query: { type: object, properties: { userId: { type: integer, minimum: 1 } } }
     handler: !ref cachedPosts
     # Everything here is forwarded to the query on a miss; `key` is what the
     # cache files the answer under, so each user's list is its own entry.
@@ -399,9 +384,7 @@ routes:
           application/json:
             body: !cel "result.value.rows"
 
-  - request:
-      path: /sync
-      method: POST
+  - request: { path: /sync, method: POST }
     handler: !ref syncOnDemand
     inputs:
       client: !cel "request.ip"
@@ -410,10 +393,7 @@ routes:
         when: !cel "!result.allowed"
         headers:
           Retry-After: !cel "string(result.retryAfter)"
-        content:
-          application/json:
-            body:
-              error: rate_limited
+        content: { application/json: { body: { error: rate_limited } } }
       - status: 200
         content:
           application/json:
@@ -439,8 +419,7 @@ routes:
         body:
           type: object
           additionalProperties: false
-          properties:
-            userId: { type: integer, minimum: 1 }
+          properties: { userId: { type: integer, minimum: 1 } }
     handler: !ref listPosts
     inputs:
       sql: >-
@@ -456,9 +435,7 @@ routes:
             body:
               posts: !cel "result.rows"
 
-  - request:
-      path: /status
-      method: GET
+  - request: { path: /status, method: GET }
     handler: !ref recentRuns
     inputs:
       sql: >-
@@ -498,8 +475,7 @@ metadata: { name: PostSearch }
 schema:
   type: object
   additionalProperties: false
-  properties:
-    userId: { type: integer, title: User id, minimum: 1 }
+  properties: { userId: { type: integer, title: User id, minimum: 1 } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: PostList }
@@ -575,10 +551,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: API sync
-    version: 1.0.0
+openapi: { info: { title: API sync, version: 1.0.0 } }
 mounts:
   - path: /api
     mount: !ref syncRoutes

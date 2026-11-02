@@ -26,7 +26,7 @@ inside a controller class.
 | A `/healthz` route you wrote by hand | still a route you write — see [Running in production](/deploy/production) |
 
 **Where does my business logic go?** In a resource — and more of it is
-declarable than the YAML suggests. Orchestration is a `Run.Sequence`. A decision
+declarable than the YAML suggests. Orchestration is a `Telo.Sequence`. A decision
 is a `Run.Choice`. Shaping a value is a `Run.Value`, whose `bindings:` let you
 name the steps of a calculation without a resource each, and whose expressions
 reach a CEL library that already covers hashing, UUIDs, timestamps, regex
@@ -77,7 +77,7 @@ resolves references and type-checks expressions without running anything.
 
 ## Questions this raises
 
-**Is this a workflow engine?** No, though it can host durable work. `Run.Sequence`
+**Is this a workflow engine?** No, though it can host durable work. `Telo.Sequence`
 is in-process control flow — it does not persist state across a crash. When you
 need work that survives a restart (retries across a crash, waits of days, an
 order that must not be charged twice), a durable run records each step as it
@@ -86,7 +86,7 @@ completes and continues where it stopped. It ships today; see
 
 **Do I have to write YAML for everything?** No — and the declarative surface is
 wider than "wiring". Structure is declared (what exists, what it connects to,
-what runs), and so is most of what happens between: a `Run.Sequence` orders
+what runs), and so is most of what happens between: a `Telo.Sequence` orders
 steps and handles errors, a `Run.Choice` decides, `Run.Projection` maps, `!cel`
 computes. The line is not logic-versus-wiring, because those are logic. It is
 **what the analyzer can see**: everything above is type-checked, rendered in the

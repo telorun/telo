@@ -350,7 +350,7 @@ export function validateThrowsCoverage(
     if (!manifest.kind || !manifest.metadata?.name) continue;
     if (isKindDocument(manifest)) continue;
     const definition = ladder.definitionOf(manifest);
-    if (!definition?.schema) continue;
+    if (!definition) continue;
     // A scoped declaration is reported against the document it is WRITTEN in —
     // its owner's — at its own position inside that owner's scope array.
     const enclosing = ladder.scopedBy.get(manifest);
@@ -361,7 +361,7 @@ export function validateThrowsCoverage(
     const filePath = (anchor.metadata as { source?: string } | undefined)?.source;
     collectOutcomeLists(
       manifest,
-      definition.schema,
+      defs.effectiveSchemaOf(definition),
       (entries, arrayPath) => {
         if (bodyWroteWhole?.(manifest, arrayPath)) return;
         diagnostics.push(

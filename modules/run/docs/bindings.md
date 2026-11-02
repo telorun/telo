@@ -7,7 +7,7 @@ sidebar_label: Bindings & pure steps
 
 > Examples below assume this module is imported with an `imports:` entry under alias `Run`. Kind references (`Run.Value`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
-A calculation with intermediate values used to have no declarative form. Four derived values meant one nested unreadable expression, or four `Run.Value` resources chained through a `Run.Sequence` — four dispatches, four spans, four topology nodes, four names in module scope, for arithmetic. Two constructs close that, one per place the intermediates live.
+A calculation with intermediate values used to have no declarative form. Four derived values meant one nested unreadable expression, or four `Run.Value` resources chained through a `Telo.Sequence` — four dispatches, four spans, four topology nodes, four names in module scope, for arithmetic. Two constructs close that, one per place the intermediates live.
 
 ## `bindings:` — inside a pure expression kind
 
@@ -64,7 +64,7 @@ default:
 Bindings are evaluated before any step runs, so they cannot see `steps.*`. For an intermediate derived from a step's result, a step carries `value:` instead of `invoke:`:
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: Checkout }
 steps:
   - name: cart
@@ -79,7 +79,7 @@ steps:
       customer: !cel "steps.cart.result.customerId"
 ```
 
-`total` publishes `steps.total.result` exactly as an invoke step does, so nothing downstream can tell how the value was produced — but it dispatches nothing: no resource, no span, no topology node. The step form is part of the shared step grammar, so it works in `Run.Sequence`, `Run.Loop`, `Run.Iteration` and `Run.Projection`, and inside their `if` / `switch` / `try` branches. In a body kind it also sees that kind's scope (`item`, `index`, `items`, `iteration`, `previous`).
+`total` publishes `steps.total.result` exactly as an invoke step does, so nothing downstream can tell how the value was produced — but it dispatches nothing: no resource, no span, no topology node. The step form is part of the shared step grammar, so it works in `Telo.Sequence`, `Run.Loop`, `Run.Iteration` and `Run.Projection`, and inside their `if` / `switch` / `try` branches. In a body kind it also sees that kind's scope (`item`, `index`, `items`, `iteration`, `previous`).
 
 Its result is typed permissively — there is no dispatch target whose contract could describe it — so read it into a step whose `inputType` declares the shape when you want it checked.
 

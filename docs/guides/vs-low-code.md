@@ -131,7 +131,7 @@ first-class path to your own.
 - **Modules publish as OCI artifacts** with semver, imports pinned by digest,
   and discovery through the [hub](https://hub.telo.run). Reuse is a versioned
   dependency, not a copied template.
-- **Composition is the point.** `Run.Sequence`, `Run.Choice`, `Run.Projection`
+- **Composition is the point.** `Telo.Sequence`, `Run.Choice`, `Run.Projection`
   and `!cel` compose the primitives you have, so the catalogue does not need an
   entry for every combination.
 

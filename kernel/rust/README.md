@@ -29,7 +29,7 @@ The first run builds `modules/console/rust`; later runs hit Cargo's incremental 
 | Host paths     | `Telo.HostPath` slots: a relative path, or one existing as the other kind of entry than the slot's `entry: file \| directory`, refused when the resource is created (the vectors in `analyzer/host-path-conformance/`) |
 | Controllers    | `pkg:cargo/<crate>?local_path=<dir>#<entry>`, `pkg:telo/local/dylib?path=<file>&os=…&arch=…[&libc=…]&abi=telo-<ABI>#<entry>` |
 
-Not supported, each failing with a message that names what is missing rather than degrading quietly: CEL and `!cel`, `variables` / `secrets` / `ports`, transports other than local paths and `oci://` (`https://` imports), private OCI registries, nested libraries (a relative import inside an `oci://` module is refused with `ERR_UNSUPPORTED_MANIFEST_FEATURE`, never fetched; the `oci://h/r@sha256:<hex>/<path>` identity is not parsed — the text after `@` is read as the reference), streams, `extends`, template-backed definitions, `Run.Sequence`, every capability other than `Telo.Invocable`, and static analysis.
+Not supported, each failing with a message that names what is missing rather than degrading quietly: CEL and `!cel`, `variables` / `secrets` / `ports`, transports other than local paths and `oci://` (`https://` imports), private OCI registries, nested libraries (a relative import inside an `oci://` module is refused with `ERR_UNSUPPORTED_MANIFEST_FEATURE`, never fetched; the `oci://h/r@sha256:<hex>/<path>` identity is not parsed — the text after `@` is read as the reference), streams, `extends`, template-backed definitions, `Telo.Sequence`, `Run.Sequence`, every capability other than `Telo.Invocable`, and static analysis.
 
 ## Reading a published module
 

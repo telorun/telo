@@ -1,6 +1,6 @@
 # Testing
 
-Telo tests are themselves Telo manifests: a `Run.Sequence` (or top-level `Assert.Events` / `Assert.Manifest`) drives the test, and the `Telo.Application`'s `targets:` list invokes it. A top-level `test-suite.yaml` orchestrates discovery via `Test.Suite`, globbing `**/tests/*.yaml` and excluding `**/__fixtures__/**`.
+Telo tests are themselves Telo manifests: a `Telo.Sequence` (or top-level `Assert.Events` / `Assert.Manifest`) drives the test, and the `Telo.Application`'s `targets:` list invokes it. A top-level `test-suite.yaml` orchestrates discovery via `Test.Suite`, globbing `**/tests/*.yaml` and excluding `**/__fixtures__/**`.
 
 ## Where tests live
 
@@ -27,13 +27,12 @@ metadata:
   name: AddTwoNumbers
   version: 1.0.0
 imports:
-  Run: ../../run
   JavaScript: ../../javascript
   Assert: ../../assert
 targets:
   - TestAdd
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: TestAdd
 steps:

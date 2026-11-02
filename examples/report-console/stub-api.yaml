@@ -11,10 +11,8 @@ metadata:
   name: signedIn
   description: Whether a Cookie header holds the console's session.
 params:
-  - name: cookie
-    schema: { type: string }
-returns:
-  schema: { type: boolean }
+  - { name: cookie, schema: { type: string } }
+returns: { schema: { type: boolean } }
 body: !cel "cookie.matches('(^|;[ ]*)report_session=signed-in([ ]*;|$)')"
 ---
 kind: Telo.Function
@@ -22,10 +20,8 @@ metadata:
   name: signinFailure
   description: Why the last sign-in did not complete, read from a Cookie header; empty when it did.
 params:
-  - name: cookie
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: cookie, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel "cel.bind(found, regexGroups(cookie, '(?:^|;[ ]*)report_signin=(denied|expired)'), size(found) > 0 ? found[0] : '')"
 ---
 # One page of a listing under the collection contract: `cursor` is the offset
@@ -35,12 +31,9 @@ metadata:
   name: page
   description: One page of rows from an offset cursor, with the total and the next cursor.
 params:
-  - name: rows
-    schema: { type: array }
-  - name: limit
-    schema: { type: integer }
-  - name: cursor
-    schema: { type: string }
+  - { name: rows, schema: { type: array } }
+  - { name: limit, schema: { type: integer } }
+  - { name: cursor, schema: { type: string } }
 returns:
   schema:
     type: object
@@ -55,9 +48,7 @@ body: !cel >-
   {'rows': slice(rows, start, end), 'total': size(rows), 'next': end < size(rows) ? dyn(string(end)) : dyn(null)}))
 ---
 kind: Telo.Function
-metadata:
-  name: driveFiles
-  description: The Drive's files, as the stub serves them.
+metadata: { name: driveFiles, description: "The Drive's files, as the stub serves them." }
 returns:
   schema: { type: array, items: !ref DriveFile }
 body: !cel >-
@@ -107,9 +98,7 @@ returns:
           items:
             type: object
             required: [ person, hours ]
-            properties:
-              person: { type: string }
-              hours: { type: number }
+            properties: { person: { type: string }, hours: { type: number } }
 body: !cel >-
   [
     {'projectId': 'atlas', 'month': '2026-09', 'hours': 42.5, 'amount': 8500.0, 'currency': 'PLN', 'unpriced': []},
@@ -142,8 +131,7 @@ body: !cel >-
 # The sign-in check, connecting, the consent stand-in and signing out. Not
 # guarded: they are what a visitor with no session reaches.
 kind: Http.Api
-metadata:
-  name: authApi
+metadata: { name: authApi }
 routes:
   - request: { method: GET, path: / }
     inputs:
@@ -152,11 +140,7 @@ routes:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [ cookie ]
-          properties:
-            cookie: { type: string }
+        schema: { type: object, required: [cookie], properties: { cookie: { type: string } } }
       outputType: !ref Auth
       value: !cel "compact({'authorized': Self.signedIn(inputs.cookie), 'failure': Self.signedIn(inputs.cookie) ? '' : Self.signinFailure(inputs.cookie)})"
     returns:
@@ -169,8 +153,7 @@ routes:
   - request:
       method: POST
       path: /connect
-      schema:
-        body: { type: object, additionalProperties: false, properties: {} }
+      schema: { body: { type: object, additionalProperties: false, properties: {} } }
     handler:
       kind: Run.Value
       outputType: !ref ConsentLink
@@ -195,11 +178,7 @@ routes:
       kind: Run.Value
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [ outcome ]
-          properties:
-            outcome: { type: string }
+        schema: { type: object, required: [outcome], properties: { outcome: { type: string } } }
       value: { outcome: !cel "inputs.outcome" }
     returns:
       - status: 302
@@ -214,24 +193,17 @@ routes:
   - request:
       method: POST
       path: /signout
-      schema:
-        body: { type: object, additionalProperties: false, properties: {} }
-    handler:
-      kind: Run.Value
-      value: {}
+      schema: { body: { type: object, additionalProperties: false, properties: {} } }
+    handler: { kind: Run.Value, value: {} }
     returns:
       - status: 200
-        headers:
-          Set-Cookie: report_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax
-        content:
-          application/json:
-            body: {}
+        headers: { Set-Cookie: report_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax }
+        content: { application/json: { body: {} } }
 ---
 # Everything a signed-in console calls. The server's guard on this mount
 # answers 401 to a request without a session.
 kind: Http.Api
-metadata:
-  name: consoleApi
+metadata: { name: consoleApi }
 routes:
   - request: { method: GET, path: /auth/user }
     handler:
@@ -339,9 +311,7 @@ routes:
             period:
               type: object
               required: [ from, to ]
-              properties:
-                from: { type: string, format: date }
-                to: { type: string, format: date }
+              properties: { from: { type: string, format: date }, to: { type: string, format: date } }
             projects: { type: array, uniqueItems: true, items: { type: string } }
             columns:
               type: array
@@ -353,7 +323,7 @@ routes:
             chart: { type: boolean }
     inputs: !cel "request.body"
     handler:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType: !ref ReportRequest
       outputType: !ref ReportAnswer
       steps:
@@ -426,16 +396,13 @@ routes:
     catches:
       - when: !cel "error.code == 'SHEET_UNKNOWN'"
         status: 404
-        content:
-          application/problem+json: {}
+        content: { application/problem+json: {} }
       - when: !cel "error.code == 'SHEET_CLOSED'"
         status: 409
-        content:
-          application/problem+json: {}
+        content: { application/problem+json: {} }
       - when: !cel "error.code == 'PERIOD_REVERSED'"
         status: 400
-        content:
-          application/problem+json: {}
+        content: { application/problem+json: {} }
 
   - request:
       method: POST
@@ -477,7 +444,7 @@ routes:
             to: { type: string, format: date }
     inputs: !cel "request.body"
     handler:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType: !ref UploadRequest
       outputType: !ref UploadAnswer
       steps:
@@ -499,8 +466,7 @@ routes:
     catches:
       - when: !cel "error.code == 'FOLDER_UNKNOWN'"
         status: 404
-        content:
-          application/problem+json: {}
+        content: { application/problem+json: {} }
 
   - request:
       method: POST

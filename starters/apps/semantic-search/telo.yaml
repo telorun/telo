@@ -34,8 +34,8 @@ metadata:
           -d '{"title":"VPN access","text":"Request VPN access from the IT desk; it is granted per project."}'
 # Module `lang:` — the language this application's texts are written in — and
 # `UiReact.App.words` are read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 lang: en
 # Every module comes from this repository while the error responses of
 # `http-server` are unreleased, since a published module beside a workspace
@@ -56,25 +56,15 @@ imports:
 targets:
   - !ref indexCorpus
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8104
-secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
-    type: string
+ports: { http: { env: PORT, protocol: tcp, default: 8104 } }
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 variables:
   openaiBaseUrl:
     env: OPENAI_BASE_URL
     type: string
     default: https://api.openai.com/v1
     description: Any OpenAI-compatible endpoint.
-  embeddingModel:
-    env: EMBEDDING_MODEL
-    type: string
-    default: text-embedding-3-small
+  embeddingModel: { env: EMBEDDING_MODEL, type: string, default: text-embedding-3-small }
   answerModel:
     env: ANSWER_MODEL
     arg: { flag: model, short: m }
@@ -179,7 +169,7 @@ topK: 3
 # with the text alongside them as metadata — so a match carries what it matched,
 # and answering needs no second lookup. A document indexed again under the same
 # id replaces the one before.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: indexDocuments }
 inputType:
   kind: Telo.JsonSchema
@@ -193,10 +183,7 @@ inputType:
         items:
           type: object
           required: [ id, title, text ]
-          properties:
-            id: { type: string }
-            title: { type: string }
-            text: { type: string }
+          properties: { id: { type: string }, title: { type: string }, text: { type: string } }
 steps:
   - name: vectors
     invoke: !ref embedPassages
@@ -219,7 +206,7 @@ outputs:
   ids: !cel "steps.store.result.ids"
   dimensions: !cel "steps.vectors.result.dimensions"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: indexCorpus }
 steps:
   - name: docs
@@ -239,7 +226,7 @@ steps:
 # Retrieval on its own, so it can be inspected without a model in the way.
 # What scores below the threshold is left out: a passage that is merely the
 # least irrelevant one is not context.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: search }
 inputType:
   kind: Telo.JsonSchema
@@ -247,8 +234,7 @@ inputType:
     type: object
     required: [ q ]
     additionalProperties: false
-    properties:
-      q: { type: string }
+    properties: { q: { type: string } }
 steps:
   - name: queryVector
     invoke: !ref embedQuery
@@ -273,7 +259,7 @@ system: >-
   Answer using only the context provided. If the context does not contain the
   answer, say so plainly rather than guessing. Keep it to two sentences.
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ask }
 inputType:
   kind: Telo.JsonSchema
@@ -281,8 +267,7 @@ inputType:
     type: object
     required: [ q ]
     additionalProperties: false
-    properties:
-      q: { type: string }
+    properties: { q: { type: string } }
 steps:
   - name: retrieved
     invoke: !ref search
@@ -325,8 +310,7 @@ schema:
   type: object
   additionalProperties: false
   required: [ q ]
-  properties:
-    q: { type: string, title: Question, minLength: 1 }
+  properties: { q: { type: string, title: Question, minLength: 1 } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Matches }
@@ -365,8 +349,7 @@ schema:
       items:
         type: object
         required: [ answer ]
-        properties:
-          answer: { type: string, title: Answer }
+        properties: { answer: { type: string, title: Answer } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Document }
@@ -390,8 +373,7 @@ schema:
       items:
         type: object
         required: [ id ]
-        properties:
-          id: { type: string, title: Indexed }
+        properties: { id: { type: string, title: Indexed } }
 ---
 kind: Http.Api
 metadata: { name: searchRoutes }
@@ -404,8 +386,7 @@ routes:
           type: object
           additionalProperties: false
           required: [ q ]
-          properties:
-            q: { type: string, minLength: 1 }
+          properties: { q: { type: string, minLength: 1 } }
     handler: !ref search
     inputs:
       q: !cel "request.body.q"
@@ -419,9 +400,7 @@ routes:
       # `telo check` knows what the handler can throw — here, everything the
       # embedding and the model declare — and refuses a route that leaves a
       # code unrendered. A provider outage is a 502 rather than an unhandled 500.
-      - status: 502
-        content:
-          application/problem+json: {}
+      - { status: 502, content: { application/problem+json: {} } }
 
   - request:
       path: /ask
@@ -472,11 +451,7 @@ routes:
       path: /documents/{id}
       method: DELETE
       schema:
-        params:
-          type: object
-          required: [ id ]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     handler:
       kind: VectorStore.Removal
       store: !ref knowledgeBase
@@ -486,11 +461,8 @@ routes:
     returns:
       - status: 404
         when: !cel "result.removed == 0"
-        content:
-          application/json:
-            body:
-              error: not_found
-      - status: 204
+        content: { application/json: { body: { error: not_found } } }
+      - { status: 204 }
 ---
 # The whole frontend. An action is a form built from its input shape, a button
 # that sends one POST, and tables drawn from what comes back. What crosses to
@@ -572,10 +544,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Semantic search
-    version: 1.0.0
+openapi: { info: { title: Semantic search, version: 1.0.0 } }
 mounts:
   - path: /api
     mount: !ref searchRoutes

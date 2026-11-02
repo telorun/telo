@@ -30,7 +30,8 @@ metadata:
 requires:
   # 0.98.0: the database file is a host path, and 0.97.0 refuses the
   # expression at the in-repo sqlite's `file`.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Multipart: oci://ghcr.io/telorun/multipart@0.4.0#sha256-RjPcqJs2rTd4hWLUbQ-SGcqkhYW3GIDCgWbi_bk8kt0
@@ -43,11 +44,7 @@ imports:
 targets:
   - !ref migrate
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8080
+ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
 variables:
   dbFile:
     env: DB_FILE
@@ -86,11 +83,7 @@ outputType:
     properties:
       rows:
         type: array
-        items:
-          type: object
-          properties:
-            name: { type: string }
-            plan: { type: string }
+        items: { type: object, properties: { name: { type: string }, plan: { type: string } } }
 ---
 # The parts of an uploaded body, as a resource.
 #
@@ -118,7 +111,7 @@ kind: Stream.Of
 metadata: { name: asStream }
 ---
 # Ingest: decode the upload, split the text into lines, insert one row per line.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: importAccounts }
 inputType:
   kind: Telo.JsonSchema
@@ -127,10 +120,7 @@ inputType:
     required: [ body, contentType ]
     additionalProperties: false
     properties:
-      body:
-        x-telo-type:
-          name: Telo.Stream
-          of: Telo.Bytes
+      body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
       contentType: { type: string }
 steps:
   - name: parts
@@ -160,8 +150,7 @@ inputType:
     type: object
     required: [ text ]
     additionalProperties: false
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
 # A block scalar, because a double-quoted YAML scalar decodes `\n` into a real
 # newline before CEL ever sees it — and CEL rejects a newline inside a
 # single-quoted string.
@@ -177,10 +166,7 @@ inputType:
     type: object
     required: [ lines ]
     additionalProperties: false
-    properties:
-      lines:
-        type: array
-        items: { type: string }
+    properties: { lines: { type: array, items: { type: string } } }
 collection: !cel "inputs.lines"
 steps:
   - name: upsert
@@ -193,14 +179,12 @@ steps:
 ---
 # Export: read the rows, hand them back as a stream. Nothing here names a wire
 # format — that is the route's decision.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: exportRows }
 steps:
   - name: rows
     invoke: !ref query
-    inputs:
-      sql: "SELECT name, plan FROM accounts ORDER BY name"
-      bindings: []
+    inputs: { sql: "SELECT name, plan FROM accounts ORDER BY name", bindings: [] }
   - name: stream
     invoke: !ref asStream
     inputs:
@@ -212,10 +196,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Streaming export
-    version: 1.0.0
+openapi: { info: { title: Streaming export, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref routes
@@ -230,10 +211,7 @@ routes:
         # Raw bytes, not text: this is what lets a multipart body reach the
         # decoder intact, and it is declared rather than configured on the
         # server.
-        body:
-          x-telo-type:
-            name: Telo.Stream
-            of: Telo.Bytes
+        body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
     handler: !ref importAccounts
     inputs:
       body: !cel "request.body"
@@ -260,9 +238,7 @@ routes:
               error: !cel "error.code"
               message: !cel "error.message"
 
-  - request:
-      path: /export
-      method: GET
+  - request: { path: /export, method: GET }
     handler: !ref exportRows
     inputs: {}
     returns:

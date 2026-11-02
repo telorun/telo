@@ -1,6 +1,8 @@
 import { isCompiledValue } from "@telorun/sdk";
 import { describe, expect, it } from "vitest";
-import { createInheritedController } from "../src/controllers/resource-definition/resource-inherited-controller.js";
+import { buildCelEnvironment, compileExpression } from "@telorun/templating";
+import { EvaluationContext } from "../src/evaluation-context.js";
+import { expandMapping } from "../src/inherited-mapping.js";
 import { createTemplateController } from "../src/controllers/resource-definition/resource-template-controller.js";
 
 /**
@@ -62,7 +64,7 @@ describe("template body expansion of a step's `value:`", () => {
       getDefinition: definitionOf,
     };
     const controller = createTemplateController({
-      metadata: { name: "Scale" },
+      metadata: { name: "Scale", module: "Lib" },
       schema: { type: "object", properties: { ratio: { type: "number" } } },
       resources: [
         {
@@ -87,7 +89,10 @@ describe("template body expansion of a step's `value:`", () => {
 
     const instance = await controller.create!(
       { kind: "Lib.Scale", metadata: { name: "scale" }, ratio: 3 } as any,
-      { moduleContext: { resolveKindScope: () => definingContext }, ownerPrefix: "" } as any,
+      {
+        moduleContext: { resolveKindScope: () => definingContext, resolveKind: () => "Lib.Scale" },
+        ownerPrefix: "",
+      } as any,
     );
     await instance!.init!({ effect: (reason: string, body: () => unknown) => body() } as any);
 
@@ -101,41 +106,43 @@ describe("template body expansion of a step's `value:`", () => {
 });
 
 describe("`base:` expansion of a step's `value:`", () => {
-  it("leaves an expression in a `value:` slot compiled, reading the instance's `self` when evaluated", async () => {
-    let parent: any;
-    const definingContext = {
+  it("leaves an expression in a `value:` slot compiled, bound to the mapping's scope and the instance's `self`", () => {
+    const self = { ratio: 3 };
+    const bound: Array<{ value: unknown; bindings: Record<string, unknown> }> = [];
+    const context = {
       expandWith: (value: any, scope: Record<string, unknown>) => value.call(scope),
+      boundExpression: (value: unknown, bindings: Record<string, unknown>) => {
+        bound.push({ value, bindings });
+        return value;
+      },
     };
-    const controller = createInheritedController(
-      {
-        kind: "Telo.Definition",
-        metadata: { name: "Scale" },
-        extends: "Lib.Sequence",
-        schema: { type: "object", properties: { ratio: { type: "number" } } },
-        base: {
-          label: selfRatio(),
-          steps: [{ name: "whole", value: selfRatio() }],
-        },
-      } as any,
-      definitionOf as any,
+    const kept = selfRatio();
+    const mapped = expandMapping(
+      { label: selfRatio(), steps: [{ name: "whole", value: kept }] },
+      { context: context as any, bindings: { self }, forward: (keys) => (self as any)[keys[0]!], owner: "Lib.Scale", kept: ["base.steps[0].value"] },
+      "base",
+    ) as any;
+
+    expect(mapped.label).toBe(3);
+    expect(isCompiledValue(mapped.steps[0].value)).toBe(true);
+    expect(bound).toEqual([{ value: kept, bindings: { self } }]);
+  });
+
+  it("evaluates a kept expression against the writer's globals and `self`, not the caller's globals", () => {
+    const writer = new EvaluationContext(
+      "writer",
+      { variables: { who: "writer" } },
+      async () => null,
+      new Set(),
+      async () => {},
+    );
+    const kept = compileExpression(
+      "variables.who + '/' + string(self.n) + '/' + steps.s",
+      buildCelEnvironment(),
     );
 
-    await controller.create!(
-      { kind: "Lib.Scale", metadata: { name: "scale" }, ratio: 3 },
-      {
-        moduleContext: { resolveKindScope: () => definingContext },
-        createInheritedInstance: async (_: unknown, resource: unknown) => {
-          parent = resource;
-          return {};
-        },
-      } as any,
-    );
+    const bound = writer.boundExpression(kept, { self: { n: 3 } }, "base.steps[0].value of Lib.Scale");
 
-    expect(parent.label).toBe(3);
-    const value = parent.steps[0].value;
-    expect(isCompiledValue(value)).toBe(true);
-    const activation: Record<string, unknown> = { self: "the parent's own" };
-    expect(value.call(activation)).toBe(3);
-    expect(activation.self).toBe("the parent's own");
+    expect(bound.call({ variables: { who: "caller" }, steps: { s: "call-local" } })).toBe("writer/3/call-local");
   });
 });

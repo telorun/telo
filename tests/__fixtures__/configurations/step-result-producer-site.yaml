@@ -3,23 +3,17 @@
 # it is the message's length, an int. A step outside the `try:` reads the result.
 # The result is typed where the step is written, never where it is read.
 kind: Telo.Application
-metadata:
-  name: StepResultProducerSite
-imports:
-  Run: ../../../modules/run
-variables:
-  flag1: { env: FLAG_1, type: boolean, default: false }
+metadata: { name: StepResultProducerSite }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
 targets:
   - !ref main
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: attempt
     try:
-      - name: fail
-        throw: { code: BOOM }
+      - { name: fail, throw: { code: BOOM } }
     catch:
       - !if
         if: !cel "variables.flag1"

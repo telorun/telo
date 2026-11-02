@@ -1,0 +1,12 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedSequence
+  version: 1.0.0
+  description: |
+    Declares a step sequence. This kernel runs no step grammar, so the load must
+    fail naming the kind rather than as an unknown built-in.
+---
+kind: Telo.Sequence
+metadata: { name: greet }
+steps:
+  - { name: hello, value: hello }

@@ -675,7 +675,7 @@ carry the page's same-origin credentials; protect the routes with a guard.
 ## Testing a screen
 
 Start the application with `App.Instance` (module `app`) in a
-`Run.Sequence`'s `with:` and request its documents with an HTTP client:
+`Telo.Sequence`'s `with:` and request its documents with an HTTP client:
 
 - `<mount>/_telo/ui/app` is the application document (title, pages,
   navigation, stylesheets); `<mount>/_telo/ui/page?path=<page path>` is one page's
@@ -689,7 +689,7 @@ Start the application with `App.Instance` (module `app`) in a
   including the 400 problem for a refused record.
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: servesTheTaskScreen }
 with:
   - { kind: App.Instance, metadata: { name: app }, source: ../telo.yaml, ports: { http: 19412 } }

@@ -175,7 +175,7 @@ access: !ref databaseAccess
 ```
 
 **Declare the engine, the container and the port at the top level of a file,
-or import them — never inside a `Run.Sequence`'s `with:`.** A scoped
+or import them — never inside a `Telo.Sequence`'s `with:`.** A scoped
 resource's startup fields cannot read a scoped sibling's status, so a
 connection beside a container in one `with:` cannot learn its address.
 
@@ -276,7 +276,6 @@ imports:
     resources: { connection: !ref db }
   Sql: oci://ghcr.io/telorun/sql@<version>#<pin>
   Postgres: oci://ghcr.io/telorun/postgres@<version>#<pin>
-  Run: oci://ghcr.io/telorun/run@<version>#<pin>
   Assert: oci://ghcr.io/telorun/assert@<version>#<pin>
 variables:
   engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
@@ -289,7 +288,7 @@ kind: Postgres.Connection
 metadata: { name: db }
 access: !ref Pg.databaseAccess
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: placesAnOrder }
 steps:
   - name: schema
@@ -328,11 +327,11 @@ The service's address is known only once its container is up, so it is passed
 on, never written down:
 
 - **An application under test** — run it with `App.Instance` in a
-  `Run.Sequence`'s `with:` and supply the address through the child's own
+  `Telo.Sequence`'s `with:` and supply the address through the child's own
   declared `variables:` (by the names it declares, never env spellings):
 
   ```yaml
-  kind: Run.Sequence
+  kind: Telo.Sequence
   metadata: { name: servesOrders }
   with:
     - kind: App.Instance

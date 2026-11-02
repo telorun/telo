@@ -2,23 +2,19 @@
 # invokes: the step's result is typed from that target, as the configuration
 # reaching the choice holds it with the branch taken.
 kind: Telo.Application
-metadata:
-  name: DeadBranchTarget
-  version: 1.0.0
-imports:
-  Run: ../../../modules/run
+metadata: { name: DeadBranchTarget, version: 1.0.0 }
+imports: { Run: ../../../modules/run }
 targets:
   - !ref main
 --- !if
 metadata: { name: main }
 if: !cel "module.version == '1.0.0'"
 then:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   steps:
-    - name: idle
-      value: 1
+    - { name: idle, value: 1 }
 else:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   with:
     - kind: Run.Value
       metadata: { name: target }
@@ -27,8 +23,7 @@ else:
         schema:
           type: object
           additionalProperties: false
-          properties:
-            x: { type: integer }
+          properties: { x: { type: integer } }
       value: { x: 1 }
   steps:
     - name: call

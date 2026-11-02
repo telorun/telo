@@ -28,7 +28,8 @@ metadata:
     moment later it is "processed".
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
@@ -36,22 +37,13 @@ imports:
   Idempotency: oci://ghcr.io/telorun/idempotency@0.11.0#sha256-hd4NvqYA6OioV89wn7SNk7BXrHIFYzv0cNL68Cscgd4
   KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.15.0#sha256-PS7VTBaOLuEirlk9FgfFA7WeDwyoVS1c3PDVn7c07to
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate
   - !ref server
   - !ref sweeper
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8047
-secrets:
-  webhookToken:
-    env: WEBHOOK_TOKEN
-    type: string
-    default: local-dev-token
+ports: { http: { env: PORT, protocol: tcp, default: 8047 } }
+secrets: { webhookToken: { env: WEBHOOK_TOKEN, type: string, default: local-dev-token } }
 variables:
   dbFile:
     env: DB_FILE
@@ -96,7 +88,7 @@ connection: !ref db
 table: webhook_claims
 ---
 # The body that must run at most once per delivery id.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: recordEvent }
 inputType:
   kind: Telo.JsonSchema
@@ -132,7 +124,7 @@ invoke: !ref recordEvent
 ---
 # The slow half, off the request path. `RETURNING` hands back exactly the rows
 # this pass claimed, so what is reported is what was done.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: processPending }
 steps:
   - name: processed
@@ -150,9 +142,7 @@ steps:
               items:
                 type: object
                 required: [ deliveryId, subject ]
-                properties:
-                  deliveryId: { type: string }
-                  subject: { type: string }
+                properties: { deliveryId: { type: string }, subject: { type: string } }
     inputs:
       sql: >-
         UPDATE events SET status = 'processed', processed_at = datetime('now')
@@ -173,7 +163,7 @@ metadata: { name: sweeper }
 every: !cel "variables.sweepEvery"
 invoke: !ref processPending
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requireToken }
 inputType:
   kind: Telo.JsonSchema
@@ -181,16 +171,13 @@ inputType:
     type: object
     additionalProperties: false
     required: [ authorization ]
-    properties:
-      authorization: { type: string, x-telo-sensitive: true }
+    properties: { authorization: { type: string, x-telo-sensitive: true } }
 steps:
   - name: check
     if: !cel "inputs.authorization != 'Bearer ' + secrets.webhookToken"
     then:
       - name: deny
-        throw:
-          code: ERR_WEBHOOK_UNAUTHORIZED
-          message: bad or missing webhook token
+        throw: { code: ERR_WEBHOOK_UNAUTHORIZED, message: bad or missing webhook token }
 ---
 kind: Http.Api
 metadata: { name: webhookRoutes }
@@ -228,21 +215,15 @@ routes:
       # 5xx is the honest answer: it tells the provider to send it again.
       - when: !cel "error.code == 'ERR_CLAIM_LOST'"
         status: 503
-        headers:
-          Retry-After: "5"
-        content:
-          application/json:
-            body:
-              error: retry_later
+        headers: { Retry-After: "5" }
+        content: { application/json: { body: { error: retry_later } } }
       - status: 500
         content:
           application/json:
             body:
               error: !cel "error.code"
 
-  - request:
-      path: /events
-      method: GET
+  - request: { path: /events, method: GET }
     handler:
       kind: Sql.Query
       connection: !ref db
@@ -277,10 +258,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Webhook receiver
-    version: 1.0.0
+openapi: { info: { title: Webhook receiver, version: 1.0.0 } }
 mounts:
   - path: /webhooks
     mount: !ref webhookRoutes
@@ -293,7 +271,4 @@ mounts:
       catches:
         - when: !cel "error.code == 'ERR_WEBHOOK_UNAUTHORIZED'"
           status: 401
-          content:
-            application/json:
-              body:
-                error: unauthorized
+          content: { application/json: { body: { error: unauthorized } } }

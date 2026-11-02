@@ -21,10 +21,11 @@ metadata:
 
         telo run ./examples/local-modules
         telo run ./examples/local-modules "any text" --difficulty 22
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   PowTs: ./pow-ts
   PowRust: ./pow-rust
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 variables:
   text:
@@ -42,7 +43,7 @@ variables:
 targets:
   - !ref race
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: race }
 steps:
   - name: typescript

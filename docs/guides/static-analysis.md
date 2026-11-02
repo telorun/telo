@@ -13,7 +13,7 @@ telo check ./manifest.yaml
 ```
 
 ```
-manifest.yaml:19:20  error  Run.Sequence/Main: CEL at 'steps[1].inputs.output':
+manifest.yaml:19:20  error  Telo.Sequence/Main: CEL at 'steps[1].inputs.output':
                             'steps.Make.result.mesage' is not defined (available: message)  CEL_UNKNOWN_FIELD
 
 1 error

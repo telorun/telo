@@ -25,7 +25,7 @@ describe("`self` in a template body", () => {
     };
     const controller = createTemplateController(
       {
-        metadata: { name: "Scale" },
+        metadata: { name: "Scale", module: "Lib" },
         schema: { type: "object", properties: { factor: { type: "integer" } } },
         resources: [
           {
@@ -49,7 +49,10 @@ describe("`self` in a template body", () => {
 
     const instance = await controller.create!(
       { kind: "Lib.Scale", metadata: { name: "scale" }, factor: 3 } as any,
-      { moduleContext: { resolveKindScope: () => definingContext }, ownerPrefix: "" } as any,
+      {
+        moduleContext: { resolveKindScope: () => definingContext, resolveKind: () => "Lib.Scale" },
+        ownerPrefix: "",
+      } as any,
     );
     await instance!.init!({ effect: (reason: string, body: () => unknown) => body() } as any);
 

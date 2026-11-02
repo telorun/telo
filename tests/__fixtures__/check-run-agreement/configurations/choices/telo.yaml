@@ -3,25 +3,15 @@
 # selector a value of its domain matches no case of, and a declaration branch
 # that is a list.
 kind: Telo.Library
-metadata:
-  name: ChoicesLib
-imports:
-  Run: ../../../../../modules/run
+metadata: { name: ChoicesLib }
+imports: { Run: ../../../../../modules/run }
 variables:
-  name:
-    type: string
-    default: x
-  mode:
-    type: string
-    enum: [a, b]
-    default: a
-  flag:
-    type: boolean
-    default: false
+  name: { type: string, default: x }
+  mode: { type: string, enum: [a, b], default: a }
+  flag: { type: boolean, default: false }
 ---
-kind: Run.Sequence
-metadata:
-  name: sequence
+kind: Telo.Sequence
+metadata: { name: sequence }
 steps:
   - name: open
     value: !if
@@ -36,15 +26,11 @@ steps:
   - name: badKey
     value: !switch
       switch: !cel "variables.flag"
-      cases:
-        "yes": 1
-        "true": 2
-        "false": 3
+      cases: { "yes": 1, "true": 2, "false": 3 }
   - name: partial
     value: !switch
       switch: !cel "variables.mode"
-      cases:
-        a: 1
+      cases: { a: 1 }
 --- !if
 metadata: { name: listed }
 if: !cel "variables.flag"

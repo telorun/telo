@@ -6,7 +6,6 @@ one is served over HTTP at its own endpoint.
 ```yaml
 imports:
   WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 targets:
   - !ref app
 ---
@@ -19,7 +18,7 @@ workflows:
     inputs:
       name: !cel "request.body.name"
     handler:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       steps:
         - name: greeting
           value: !cel "'Hello, ' + inputs.name + '!'"
@@ -40,7 +39,7 @@ workflows:
 | `title` | Title of the generated OpenAPI document (default `Workflows`). |
 | `workflows[].request` | `path`, `method`, and an optional `schema:` (`params`, `query`, `body`, `headers`) that validates the request and types `request.*` in `inputs`. A request failing it is answered `400`. |
 | `workflows[].inputs` | CEL mapping from the request onto the workflow's inputs. |
-| `workflows[].handler` | The workflow: a `Run.Sequence`, a durable workflow, or any invocable, declared inline or as `!ref`. |
+| `workflows[].handler` | The workflow: a `Telo.Sequence`, a durable workflow, or any invocable, declared inline or as `!ref`. |
 | `workflows[].returns` | How the result is rendered — the `Http.Api` route `returns:` list. |
 
 A workflow item is exactly an `Http.Api` route: the kind forwards the list to

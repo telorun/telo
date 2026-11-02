@@ -12,20 +12,15 @@ metadata:
           -d '{"items":[{"price":12,"quantity":2},{"price":5,"quantity":1}]}'
         curl -X POST localhost:8848/greet -H 'content-type: application/json' \
           -d '{"name":"Ada"}'
-imports:
-  WorkflowApp: ..
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
+imports: { WorkflowApp: .. }
 targets:
   - !ref app
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8848
+ports: { http: { env: PORT, protocol: tcp, default: 8848 } }
 ---
 kind: WorkflowApp.App
-metadata:
-  name: app
+metadata: { name: app }
 port: !cel "ports.http"
 title: Orders
 workflows:
@@ -48,7 +43,7 @@ workflows:
     inputs:
       items: !cel "request.body.items"
     handler:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
         schema:
@@ -59,9 +54,7 @@ workflows:
               type: array
               items:
                 type: object
-                properties:
-                  price: { type: integer }
-                  quantity: { type: integer }
+                properties: { price: { type: integer }, quantity: { type: integer } }
       steps:
         # `sum` is a double; `int(...)` brings it into the integer domain the
         # shipping rule and the total are written in.
@@ -83,22 +76,14 @@ workflows:
       path: /greet
       method: POST
       schema:
-        body:
-          type: object
-          required: [name]
-          properties:
-            name: { type: string }
+        body: { type: object, required: [name], properties: { name: { type: string } } }
     inputs:
       name: !cel "request.body.name"
     handler:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [name]
-          properties:
-            name: { type: string }
+        schema: { type: object, required: [name], properties: { name: { type: string } } }
       steps:
         - name: greeting
           value: !cel "'Hello, ' + inputs.name + '!'"

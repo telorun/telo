@@ -22,6 +22,8 @@ metadata:
   categories: [ AI, Transport ]
   version: 1.0.0
   description: HTTP API where an AI vision agent draws shapes on a canvas and returns an S3 link.
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Ai: oci://ghcr.io/telorun/ai@0.32.0#sha256-wFl0WwbqZ9Nq6-N2Y18VePWibYUwNKJs2pu6d5_0Zcc
@@ -32,67 +34,40 @@ imports:
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 targets:
   - !ref server
-ports:
-  http:
-    env: PORT
-    default: 8080
+ports: { http: { env: PORT, default: 8080 } }
 variables:
-  modelId:
-    env: MODEL
-    type: string
-    default: gpt-5.2
-  s3Bucket:
-    env: S3_BUCKET
-    type: string
-    default: telo-draw
-  s3Endpoint:
-    env: S3_ENDPOINT
-    type: string
-    default: http://localhost:9000
-  s3ForcePathStyle:
-    env: S3_FORCE_PATH_STYLE
-    type: boolean
-    default: true
+  modelId: { env: MODEL, type: string, default: gpt-5.2 }
+  s3Bucket: { env: S3_BUCKET, type: string, default: telo-draw }
+  s3Endpoint: { env: S3_ENDPOINT, type: string, default: http://localhost:9000 }
+  s3ForcePathStyle: { env: S3_FORCE_PATH_STYLE, type: boolean, default: true }
 secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
-    type: string
-  s3AccessKeyId:
-    env: S3_ACCESS_KEY_ID
-    type: string
-  s3SecretAccessKey:
-    env: S3_SECRET_ACCESS_KEY
-    type: string
+  openaiApiKey: { env: OPENAI_API_KEY, type: string }
+  s3AccessKeyId: { env: S3_ACCESS_KEY_ID, type: string }
+  s3SecretAccessKey: { env: S3_SECRET_ACCESS_KEY, type: string }
 ---
 # The account: base URL and credential on the client, so the model kind carries
 # no key and inherits the 401 re-acquire-and-retry from `http-client`.
 kind: HttpClient.BearerToken
-metadata:
-  name: openaiKey
+metadata: { name: openaiKey }
 token: !cel "secrets.openaiApiKey"
 ---
 kind: HttpClient.Client
-metadata:
-  name: openaiClient
+metadata: { name: openaiClient }
 baseUrl: https://api.openai.com/v1
 credential: !ref openaiKey
 ---
 kind: HttpClient.Request
-metadata:
-  name: openaiRequest
+metadata: { name: openaiRequest }
 client: !ref openaiClient
 ---
 kind: OpenAI.ChatModel
-metadata:
-  name: visionModel
+metadata: { name: visionModel }
 model: !cel "variables.modelId"
 request: !ref openaiRequest
-options:
-  temperature: 0.2
+options: { temperature: 0.2 }
 ---
 kind: S3.Bucket
-metadata:
-  name: store
+metadata: { name: store }
 bucketName: !cel "variables.s3Bucket"
 endpoint: !cel "variables.s3Endpoint"
 accessKeyId: !cel "secrets.s3AccessKeyId"
@@ -103,29 +78,20 @@ createIfMissing: true
 # Blank canvas seed — regenerated deterministically on every draw, so the field set
 # (the shapes) is the only state that changes between turns.
 kind: Image.Blank
-metadata:
-  name: canvas
+metadata: { name: canvas }
 color: "#FFFFFF"
 ---
 kind: Image.Overlay
-metadata:
-  name: drawBoxes
-stroke:
-  color: "#1D4ED8"
-  width: 3
-label:
-  color: "#FFFFFF"
-  background: "#1D4ED8"
-  placement: top-left
+metadata: { name: drawBoxes }
+stroke: { color: "#1D4ED8", width: 3 }
+label: { color: "#FFFFFF", background: "#1D4ED8", placement: top-left }
 ---
 kind: S3.Put
-metadata:
-  name: putObject
+metadata: { name: putObject }
 bucketRef: !ref store
 ---
 kind: S3.PresignedUrl
-metadata:
-  name: presignGet
+metadata: { name: presignGet }
 bucketRef: !ref store
 operation: get
 expiresIn: 3600
@@ -134,22 +100,17 @@ expiresIn: 3600
 # randomness; the script only shapes it into a key, captured as a step result so the
 # handler can hand the SAME id to the agent and later presign it.
 kind: Run.Value
-metadata:
-  name: makeId
+metadata: { name: makeId }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      seed: { type: string }
+  schema: { type: object, properties: { seed: { type: string } } }
 value:
   documentId: !cel "'drawings/' + inputs.seed + '.png'"
 ---
 # The composite tool the agent calls: render shapes → store → return the image. A
-# Run.Sequence (a Telo.Runnable) wrapped as a single tool — the widened Ai.Tools slot.
-kind: Run.Sequence
-metadata:
-  name: drawTool
+# Telo.Sequence (a Telo.Runnable) wrapped as a single tool — the widened Ai.Tools slot.
+kind: Telo.Sequence
+metadata: { name: drawTool }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -171,9 +132,7 @@ inputType:
 steps:
   - name: blank
     invoke: !ref canvas
-    inputs:
-      width: 1024
-      height: 768
+    inputs: { width: 1024, height: 768 }
   - name: mark
     invoke: !ref drawBoxes
     inputs:
@@ -193,23 +152,20 @@ outputs:
 # rendered image (in a multimodal user message) and the original request, and judges
 # whether they match — a second opinion the drawing agent must satisfy before finishing.
 kind: Ai.Text
-metadata:
-  name: critic
+metadata: { name: critic }
 model: !ref visionModel
 system: |
   You are a strict visual QA reviewer. You are given a drawing request and the
   rendered image. If the image satisfies the request, reply with exactly: PASS
   Otherwise reply with: FAIL — followed by a short, concrete list of what to change
   (box positions, sizes, missing or extra boxes, labels, colors).
-options:
-  temperature: 0
+options: { temperature: 0 }
 ---
 # The `validate` tool: re-render the current shapes and have the `critic` review the
 # image against the request. Re-rendering from the same shapes is deterministic, so
 # the reviewed image is identical to what `draw` stored.
-kind: Run.Sequence
-metadata:
-  name: validateTool
+kind: Telo.Sequence
+metadata: { name: validateTool }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -231,9 +187,7 @@ inputType:
 steps:
   - name: blank
     invoke: !ref canvas
-    inputs:
-      width: 1024
-      height: 768
+    inputs: { width: 1024, height: 768 }
   - name: mark
     invoke: !ref drawBoxes
     inputs:
@@ -254,8 +208,7 @@ outputs:
   verdict: !cel "steps.review.result.text"
 ---
 kind: Ai.Tools
-metadata:
-  name: drawTools
+metadata: { name: drawTools }
 tools:
   - tool: !ref drawTool
     name: draw
@@ -302,9 +255,7 @@ tools:
       additionalProperties: false
       required: [request, shapes]
       properties:
-        request:
-          type: string
-          description: The original drawing request, verbatim.
+        request: { type: string, description: "The original drawing request, verbatim." }
         shapes:
           type: array
           minItems: 1
@@ -322,8 +273,7 @@ tools:
     result: !cel "result.verdict"
 ---
 kind: Ai.Agent
-metadata:
-  name: shapeArtist
+metadata: { name: shapeArtist }
 model: !ref visionModel
 system: |
   You place rectangles on a 1024×768 canvas to satisfy a drawing request.
@@ -344,15 +294,11 @@ toolProviders:
   - provider: !ref drawTools
 ---
 # HTTP handler: mint an id → run the agent (id carried in the prompt) → presign the key.
-kind: Run.Sequence
-metadata:
-  name: handleDraw
+kind: Telo.Sequence
+metadata: { name: handleDraw }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      prompt: { type: string }
+  schema: { type: object, properties: { prompt: { type: string } } }
 steps:
   - name: genId
     invoke: !ref makeId
@@ -372,21 +318,16 @@ outputs:
   summary: !cel "steps.draw.result.text"
 ---
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Draw Shapes Agent
-    version: 1.0.0
+openapi: { info: { title: Draw Shapes Agent, version: 1.0.0 } }
 mounts:
   - path: /v1
     mount: !ref drawRoutes
 ---
 kind: Http.Api
-metadata:
-  name: drawRoutes
+metadata: { name: drawRoutes }
 routes:
   - request:
       path: /drawings
@@ -394,10 +335,7 @@ routes:
       schema:
         body:
           type: object
-          properties:
-            prompt:
-              type: string
-              minLength: 1
+          properties: { prompt: { type: string, minLength: 1 } }
           required: [prompt]
     handler: !ref handleDraw
     inputs:

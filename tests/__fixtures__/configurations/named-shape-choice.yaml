@@ -2,18 +2,14 @@
 # contract is a named shape with a member a choice decides: the read is refused
 # only where the member is left out.
 kind: Telo.Application
-metadata:
-  name: NamedShapeChoice
-imports:
-  Run: ../../../modules/run
-variables:
-  flag1: { env: FLAG_1, type: boolean, default: false }
+metadata: { name: NamedShapeChoice }
+imports: { Run: ../../../modules/run }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
 targets:
   - !ref main
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Result
+metadata: { name: Result }
 schema:
   type: object
   additionalProperties: false
@@ -23,14 +19,12 @@ schema:
       then: { type: integer }
 ---
 kind: Run.Value
-metadata:
-  name: target
+metadata: { name: target }
 outputType: !ref Result
 value: { x: 1 }
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: call
     invoke: !ref target

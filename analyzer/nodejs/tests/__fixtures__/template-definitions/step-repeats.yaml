@@ -3,8 +3,6 @@
 kind: Telo.Library
 metadata:
   name: StepRepeats
-imports:
-  Run: ../../../../../modules/run
 exports:
   kinds: [Pipeline]
 ---
@@ -24,7 +22,7 @@ schema:
       type: array
       items: { type: string }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: pipeline }
     steps:
       - !for-each

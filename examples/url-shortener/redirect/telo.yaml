@@ -11,12 +11,12 @@ metadata:
 requires:
   # 0.118.0: `site` is a `Telo.PublicUrl` need, a kind an older analyzer does not
   # declare.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 needs:
   # The address the short links are served at, which the importing application
   # forwards from its own root need.
-  site:
-    kind: Telo.PublicUrl
+  site: { kind: Telo.PublicUrl }
 variables:
   dbFile:
     type: string
@@ -34,9 +34,7 @@ imports:
     source: ../database
     variables:
       dbFile: !cel "variables.dbFile"
-exports:
-  resources:
-    - routes
+exports: { resources: [routes] }
 ---
 kind: CacheMemory.Store
 metadata: { name: mem }
@@ -78,16 +76,13 @@ kind: Run.Detach
 metadata: { name: recordClick }
 invoke: !ref insertClick
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: createLink }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      code: { type: string }
-      url: { type: string }
-      ip: { type: string }
+    properties: { code: { type: string }, url: { type: string }, ip: { type: string } }
 steps:
   - name: guard
     invoke: !ref limit
@@ -111,15 +106,11 @@ outputs:
     string(resources.site.url) + (string(resources.site.url).endsWith('/') ? '' : '/') +
     inputs.code
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resolveAndRedirect }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      code: { type: string }
-      ip: { type: string }
+  schema: { type: object, properties: { code: { type: string }, ip: { type: string } } }
 steps:
   - name: guard
     invoke: !ref limit
@@ -159,9 +150,7 @@ routes:
         body:
           type: object
           required: [code, url]
-          properties:
-            code: { type: string, minLength: 1 }
-            url: { type: string, minLength: 1 }
+          properties: { code: { type: string, minLength: 1 }, url: { type: string, minLength: 1 } }
     handler: !ref createLink
     inputs:
       code: !cel "request.body.code"
@@ -172,9 +161,7 @@ routes:
         when: !cel "!result.allowed"
         headers:
           Retry-After: !cel "string(result.retryAfter)"
-        content:
-          application/json:
-            body: { ok: false, message: "Rate limit exceeded" }
+        content: { application/json: { body: { ok: false, message: "Rate limit exceeded" } } }
       - status: 201
         content:
           application/json:
@@ -187,11 +174,7 @@ routes:
       path: /{code}
       method: GET
       schema:
-        params:
-          type: object
-          required: [code]
-          properties:
-            code: { type: string }
+        params: { type: object, required: [code], properties: { code: { type: string } } }
     handler: !ref resolveAndRedirect
     inputs:
       code: !cel "request.params.code"
@@ -201,14 +184,10 @@ routes:
         when: !cel "!result.allowed"
         headers:
           Retry-After: !cel "string(result.retryAfter)"
-        content:
-          application/json:
-            body: { ok: false, message: "Rate limit exceeded" }
+        content: { application/json: { body: { ok: false, message: "Rate limit exceeded" } } }
       - status: 302
         when: !cel "result.found"
         headers:
           Location: !cel "result.target"
       - status: 404
-        content:
-          application/json:
-            body: { ok: false, message: "Unknown short code" }
+        content: { application/json: { body: { ok: false, message: "Unknown short code" } } }

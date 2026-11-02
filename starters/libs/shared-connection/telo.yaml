@@ -26,18 +26,15 @@ metadata:
 # `sql` and `run` come from this repository while the error responses of
 # `http-server`, which its test fixture serves beside them, are unreleased;
 # `telo upgrade --pin-local` pins them again once they ship.
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 resources:
   connection:
     kind: Sql.Connection
     description: The database the audit trail is written to — the importer's own.
-exports:
-  resources:
-    - install
-    - record
-    - recent
+exports: { resources: [install, record, recent] }
 ---
 # Inside the library the input is an ordinary name: `!ref connection` resolves
 # exactly as it would for a resource declared here.
@@ -46,7 +43,7 @@ metadata: { name: exec }
 connection: !ref connection
 ---
 # Plain SQL every engine accepts, so the library needs no engine's table kind.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: install }
 steps:
   - name: createTable
@@ -62,7 +59,7 @@ steps:
         )
       bindings: []
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: record }
 inputType:
   kind: Telo.JsonSchema
@@ -92,7 +89,7 @@ steps:
 outputs:
   id: !cel "steps.entry.result.id"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: recent }
 inputType:
   kind: Telo.JsonSchema

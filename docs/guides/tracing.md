@@ -32,7 +32,7 @@ tracing:
 your logs already go — the console, a file, a collector — with no extra setup:
 
 ```
-{"msg":"invoke writeFile","event_name":"telo.span","trace_id":"cd41…","span_id":"fb03…","attributes":{"telo.span.outcome":"ok","telo.span.duration_ms":4,"telo.span.parent_span_id":"fb03…","telo.resource.kind":"Run.Sequence","telo.resource.name":"writeFile"}}
+{"msg":"invoke writeFile","event_name":"telo.span","trace_id":"cd41…","span_id":"fb03…","attributes":{"telo.span.outcome":"ok","telo.span.duration_ms":4,"telo.span.parent_span_id":"fb03…","telo.resource.kind":"Telo.Sequence","telo.resource.name":"writeFile"}}
 ```
 
 The record carries the span's own trace and span ids, the same ones on every log
@@ -105,7 +105,7 @@ To see a value of the call on its span — a conversation id, an exit code — m
 the property in the resource's contract with `x-telo-span-attribute`:
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: checkFile
 inputType:

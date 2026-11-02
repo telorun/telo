@@ -372,7 +372,7 @@ variables:
 targets:
   - !ref main
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 with:
   - kind: Run.Value
@@ -403,7 +403,7 @@ describe("a step invoking a member of its own scope", () => {
       [
         "CEL_UNKNOWN_FIELD",
         "steps[1].value",
-        "Run.Sequence/main: !cel: 'steps.call.result.y' is not defined (available: x) (when variables.flag1 is false)",
+        "Telo.Sequence/main: !cel: 'steps.call.result.y' is not defined (available: x) (when variables.flag1 is false)",
       ],
     ]);
   }, 120_000);

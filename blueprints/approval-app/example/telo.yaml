@@ -18,18 +18,14 @@ metadata:
         curl -s localhost:8850/requests/<id>                  # completed, approved
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   ApprovalApp: ..
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref approvals
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8850
+ports: { http: { env: PORT, protocol: tcp, default: 8850 } }
 variables:
   journal:
     env: EXPENSES_JOURNAL
@@ -43,8 +39,7 @@ variables:
     description: How long a claim waits for a manager before it is rejected.
 ---
 kind: ApprovalApp.App
-metadata:
-  name: approvals
+metadata: { name: approvals }
 port: !cel "ports.http"
 title: Expense claims
 journal: !cel "variables.journal"
@@ -59,7 +54,7 @@ request:
 autoApprove: !cel "request.body.amountCents < 10000"
 timeout: !cel "variables.reviewDeadline"
 onApproved:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType: &decided
     kind: Telo.JsonSchema
     schema:
@@ -83,7 +78,7 @@ onApproved:
           '{green paid} ' + string(inputs.request.amountCents) + ' cents to ' +
           inputs.request.employee + ', approved by ' + inputs.decidedBy
 onRejected:
-  kind: Run.Sequence
+  kind: Telo.Sequence
   inputType: *decided
   steps:
     - name: notify

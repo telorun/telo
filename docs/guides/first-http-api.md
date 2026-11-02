@@ -292,7 +292,7 @@ but nothing serves it.
 
 ## What to do next
 
-- **Real logic in the handler** — a `Run.Sequence` when the work is several
+- **Real logic in the handler** — a `Telo.Sequence` (built in, no import) when the work is several
   steps, a `Run.Choice` when it is a decision, and `bindings:` on a `Run.Value`
   to name the intermediate values of a calculation instead of nesting one
   unreadable expression: [Composing behaviour](/learn/composing-behaviour).

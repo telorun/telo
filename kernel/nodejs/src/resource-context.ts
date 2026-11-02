@@ -1081,17 +1081,16 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   /**
-   * Run the create phase for an inherited (concrete-`extends`) definition's
-   * parent kind, returning the native parent instance (or null when the parent
-   * controller isn't registered yet — a retry). A typed internal seam for the
-   * inherited-controller delegation; off the public SDK `ResourceContext`
-   * surface, like `registerLazyController`.
+   * Register, deferred, the controller an inheriting kind delegates to — its
+   * nearest ancestor's — under the inheriting kind, with the declaring module's
+   * policy. A typed internal seam for the definition meta-controller, off the
+   * public SDK `ResourceContext` surface, like `registerLazyController`.
    */
-  createInheritedInstance(
-    evalContext: IEvaluationContext,
-    resource: Record<string, unknown>,
-  ): Promise<ResourceInstance | null> {
-    return this.kernel.createInheritedInstance(evalContext, resource as ResourceManifest);
+  registerDelegatedController(moduleName: string, kindName: string, ancestorKind: string): void {
+    const fingerprint = policyFingerprint(this.moduleContext.getControllerPolicy());
+    this.kernel.registerLazyController(moduleName, kindName, fingerprint, () =>
+      this.kernel.delegateController(moduleName, kindName, ancestorKind, fingerprint),
+    );
   }
 
   /**

@@ -5,7 +5,7 @@ sidebar_label: Step retry
 
 # Retrying a step
 
-Any dispatch site can carry a `retry:` policy — a step in `Run.Sequence`, `Run.Iteration`, `Run.Loop` or `Run.Projection`, **and an entry in an Application's `targets:`**. They are one kernel-owned shape (`telo://manifest#/$defs/InvokeStep`), so `{ invoke, inputs, when, retry }` means the same thing wherever a target is named:
+Any dispatch site can carry a `retry:` policy — a step in `Telo.Sequence`, `Run.Iteration`, `Run.Loop` or `Run.Projection`, **and an entry in an Application's `targets:`**. They are one kernel-owned shape (`telo://manifest#/$defs/InvokeStep`), so `{ invoke, inputs, when, retry }` means the same thing wherever a target is named:
 
 ```yaml
 steps:

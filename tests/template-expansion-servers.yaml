@@ -69,7 +69,7 @@ targets:
       mounts:
         - { path: /, mount: !cel "self.admin" }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: Self.Service
@@ -110,9 +110,7 @@ steps:
 kind: Assert.Events
 metadata: { name: serversStarted }
 filter:
-  - type: "*.Run"
+  - { type: "*.Run" }
 expect:
-  - event: "targets_0.Run"
-    times: 2
-  - event: "targets_1_then.Run"
-    times: 1
+  - { event: "targets_0.Run", times: 2 }
+  - { event: "targets_1_then.Run", times: 1 }

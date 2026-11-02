@@ -35,16 +35,15 @@ variables:
 # `http-server` comes from this repository while its error responses are
 # unreleased, and `run` with it; `telo upgrade --pin-local` pins them again
 # once they ship.
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-exports:
-  resources:
-    - api
+exports: { resources: [api] }
 ---
 kind: Http.Api
-metadata:
-  name: api
+metadata: { name: api }
 routes:
   - request:
       path: /hello
@@ -66,21 +65,16 @@ routes:
           application/json:
             schema:
               type: object
-              properties:
-                greeting: { type: string }
+              properties: { greeting: { type: string } }
               required: [ greeting ]
               additionalProperties: false
             body:
               greeting: !cel "result.message"
     # The handler's one refusal, rendered for the caller.
     catches:
-      - status: 422
-        content:
-          application/problem+json: {}
+      - { status: 422, content: { application/problem+json: {} } }
 
-  - request:
-      path: /info
-      method: GET
+  - request: { path: /info, method: GET }
     handler:
       kind: Run.Value
       value:
@@ -93,35 +87,28 @@ routes:
           application/json:
             schema:
               type: object
-              properties:
-                service: { type: string }
-                greeting: { type: string }
+              properties: { service: { type: string }, greeting: { type: string } }
               required: [ service, greeting ]
               additionalProperties: false
             body: !cel "result"
 ---
 # Not exported, so it is the library's own: an importer sees the route, never
 # the handler, and this can be rewritten without breaking one.
-kind: Run.Sequence
-metadata:
-  name: sayHello
+kind: Telo.Sequence
+metadata: { name: sayHello }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [ name, shout ]
-    properties:
-      name: { type: string }
-      shout: { type: boolean }
+    properties: { name: { type: string }, shout: { type: boolean } }
 steps:
   - name: digitsOnly
     if: !cel "regexExtract(inputs.name, '^[0-9]+$') != ''"
     then:
       - name: refuse
-        throw:
-          code: ERR_NAME_REFUSED
-          displayMessage: A name is not a number.
+        throw: { code: ERR_NAME_REFUSED, displayMessage: A name is not a number. }
   - name: line
     value: !cel "variables.greeting + ', ' + inputs.name + '!'"
 outputs:

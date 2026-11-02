@@ -6,17 +6,22 @@ metadata:
   license: MIT
   categories: [Compute]
   description: >-
-    Control flow for manifests: ordered sequences of steps with conditionals, loops,
-    switches and error handling; iteration and mapping over collections at a chosen
-    concurrency; first-match decision tables; pure value shaping with CEL; and
-    background dispatch that returns without waiting.
-requires: { telo: ">=0.79.0" }
+    Control flow for manifests: iteration and mapping over collections at a chosen
+    concurrency; loops that repeat a step body while a condition holds;
+    first-match decision tables; pure value shaping with CEL; and background
+    dispatch that returns without waiting.
+requires: { telo: ">=0.128.0" }
 exports: { kinds: [Sequence, Value, Choice, Loop, Iteration, Projection, Detach] }
 ---
 kind: Telo.Definition
 metadata:
   name: Sequence
-  description: Runs an ordered list of steps — invoke, if, while, switch, try, throw — over a typed inputs/outputs contract.
+  description: >-
+    Runs an ordered list of steps — invoke, if, while, switch, try, throw — over
+    a typed inputs/outputs contract.
+  deprecated:
+    reason: Identical to the kernel built-in Telo.Sequence, which needs no import.
+    replacedBy: Telo.Sequence
 capability: Telo.Runnable
 topology: Sequence
 controllers: [pkg:telo/local/js?path=./nodejs/run.mjs&local_path=./nodejs/src/index.ts#Sequence]
@@ -177,7 +182,7 @@ schema:
 # Run.Choice — a first-match decision table. Rows are evaluated in manifest
 # order; the first `when` that is true contributes its `value` as the invoke
 # result. Where Run.Value shapes ONE value (branching only via nested CEL
-# ternaries, unreadable past two arms) and Run.Sequence's `switch` matches
+# ternaries, unreadable past two arms) and Telo.Sequence's `switch` matches
 # equality keys, Choice takes arbitrary predicates and stays a pure value — no
 # steps, no side effects. Declare `outputType` to give every row one shared
 # result contract and to type `steps.<name>.result` for callers.

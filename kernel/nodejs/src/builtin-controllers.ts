@@ -36,6 +36,9 @@ const BUILTIN_CONTROLLERS: Readonly<Record<string, () => Promise<ControllerInsta
   // A function written in CEL, built in for the same reason: declaring one must
   // not require importing a module that provides the kind.
   "Telo.Function": () => import("./controllers/function/function-controller.js"),
+  // The step grammar is core, so the kind that runs a list of steps needs no
+  // import either.
+  "Telo.Sequence": () => import("./controllers/sequence/sequence-controller.js"),
 };
 
 /** Every controller entry this kernel registers at boot. */

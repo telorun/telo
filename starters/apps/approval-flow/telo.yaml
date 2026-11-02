@@ -36,8 +36,8 @@ metadata:
         curl -s localhost:8102/api/requests/<id>              # completed, approved
 # Module `lang:` — the language this application's texts are written in — and
 # `UiReact.App.words` are read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 lang: en
 # `data-model`, `ui` and `ui-react` come from this repository while their
 # changes are unreleased, with `http-server`, which `ui-react` reaches through
@@ -47,7 +47,6 @@ imports:
   DataModel: oci://ghcr.io/telorun/data-model@0.2.0#sha256-rxGXii0Db-DcSJY0MUEY1KzbklXN15tLwKwK93z3AHg
   Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
   UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
   Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.1#sha256-9g3_fiv6_tyQd_YOzwfA_T1fobtK9u_s3KFHMELpI7Y
@@ -58,11 +57,7 @@ targets:
   - !ref migrate
   - !ref resumer
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8102
+ports: { http: { env: PORT, protocol: tcp, default: 8102 } }
 variables:
   journal:
     env: APPROVALS_JOURNAL
@@ -154,8 +149,7 @@ steps:
   - name: review
     if: !cel "inputs.autoApproved"
     then:
-      - name: automatic
-        value: { approved: true, decidedBy: policy, note: "" }
+      - { name: automatic, value: { approved: true, decidedBy: policy, note: "" } }
     else:
       - name: reviewed
         try:
@@ -210,7 +204,7 @@ interval: 500ms
 ---
 # Delivers a decision and answers once the request has settled, so the page
 # that sent it reloads a ledger that already holds the outcome.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decide }
 inputType:
   kind: Telo.JsonSchema
@@ -253,7 +247,7 @@ outputs:
   delivered: !cel "steps.deliver.result.delivered"
 ---
 # One page of the ledger, newest first, as the page's listings read it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listRequests }
 inputType:
   kind: Telo.JsonSchema
@@ -390,7 +384,7 @@ routes:
     # The run is dispatched detached, so a request that waits answers at once;
     # one the rule approves is waited for, so its row is settled when it answers.
     handler:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType:
         kind: Telo.JsonSchema
         schema:
@@ -471,11 +465,7 @@ routes:
       path: /requests/{id}
       method: GET
       schema:
-        params:
-          type: object
-          required: [ id ]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     summary: Where a request stands, and its decision once there is one.
     inputs:
       run: !cel "request.params.id"
@@ -485,9 +475,7 @@ routes:
     returns:
       - status: 404
         when: !cel "result.status == 'unknown'"
-        content:
-          application/json:
-            body: { error: No such request. }
+        content: { application/json: { body: { error: No such request. } } }
       - status: 200
         content:
           application/json:
@@ -525,12 +513,8 @@ routes:
       - status: 409
         when: !cel "!result.delivered"
         content:
-          application/json:
-            body: { error: The request is not waiting for a decision. }
-      - status: 200
-        content:
-          application/json:
-            body: { delivered: true }
+          application/json: { body: { error: The request is not waiting for a decision. } }
+      - { status: 200, content: { application/json: { body: { delivered: true } } } }
 
   - request:
       path: /reject
@@ -555,12 +539,8 @@ routes:
       - status: 409
         when: !cel "!result.delivered"
         content:
-          application/json:
-            body: { error: The request is not waiting for a decision. }
-      - status: 200
-        content:
-          application/json:
-            body: { delivered: true }
+          application/json: { body: { error: The request is not waiting for a decision. } }
+      - { status: 200, content: { application/json: { body: { delivered: true } } } }
 ---
 # What the list route accepts: one status, and no sorting.
 kind: DataModel.Collection
@@ -641,10 +621,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Purchase requests
-    version: 1.0.0
+openapi: { info: { title: Purchase requests, version: 1.0.0 } }
 mounts:
   - path: /api
     mount: !ref api

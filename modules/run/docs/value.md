@@ -7,7 +7,7 @@ sidebar_label: Run.Value
 
 > Examples below assume this module is imported with an `imports:` entry under alias `Run`. Kind references (`Run.Value`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
 
-`Run.Value` is a `Telo.Invocable` whose result is a CEL expression — or a structure with CEL leaves, or a plain constant — evaluated over the caller's `inputs`. It is how a handler **shapes a value**: string concatenation, field mapping, arithmetic, or returning a fixed literal. No I/O, no branching, no Node API — those belong in `Run.Choice`, a `Run.Sequence`, or a purpose-built resource kind.
+`Run.Value` is a `Telo.Invocable` whose result is a CEL expression — or a structure with CEL leaves, or a plain constant — evaluated over the caller's `inputs`. It is how a handler **shapes a value**: string concatenation, field mapping, arithmetic, or returning a fixed literal. No I/O, no branching, no Node API — those belong in `Run.Choice`, a `Telo.Sequence`, or a purpose-built resource kind.
 
 ## Why it exists
 
@@ -34,7 +34,7 @@ value:
 | `bindings` | Optional named intermediate values, readable by bare name inside `value` and by each other. Order is derived from what each one references; each is computed at most once per call, and only if something reads it. See [Bindings and pure steps](./bindings.md). |
 | `value` | A CEL expression, a structure (map / array) with CEL leaves, or a plain literal. Evaluated at invoke time over `inputs` and any `bindings`; the result is what callers receive and may be any shape (object, array, scalar). |
 
-Like `Run.Sequence`, the `inputs:` field is the contract (what the resource accepts), distinct from the `inputs:` a caller passes at invoke time (the values).
+Like `Telo.Sequence`, the `inputs:` field is the contract (what the resource accepts), distinct from the `inputs:` a caller passes at invoke time (the values).
 
 ## Shaping a value (object result)
 
@@ -66,7 +66,7 @@ value:
 
 ## As a tool, a step, or a handler
 
-Because it is a plain `Telo.Invocable`, `Run.Value` composes anywhere an invocable is accepted — an `Ai.Tools` entry, a `Run.Sequence` step, an `Http.Api` handler:
+Because it is a plain `Telo.Invocable`, `Run.Value` composes anywhere an invocable is accepted — an `Ai.Tools` entry, a `Telo.Sequence` step, an `Http.Api` handler:
 
 ```yaml
 kind: Ai.Tools

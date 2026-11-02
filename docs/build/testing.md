@@ -1,12 +1,12 @@
 ---
 sidebar_label: Testing your manifests
 slug: /build/testing
-description: Test Telo manifests with Telo manifests — Run.Sequence drives the test, Assert.* checks the result, and the telo CLI runs it.
+description: Test Telo manifests with Telo manifests — Telo.Sequence drives the test, Assert.* checks the result, and the telo CLI runs it.
 ---
 
 # Testing your manifests
 
-Telo tests are themselves Telo manifests: a `Run.Sequence` (or a top-level `Assert.Events` / `Assert.Manifest`) drives the test, and the `Telo.Application`'s `targets:` list invokes it. Because a test runs on the same kernel you deploy, the behaviour you assert in development is the behaviour you get in production.
+Telo tests are themselves Telo manifests: a `Telo.Sequence` (or a top-level `Assert.Events` / `Assert.Manifest`) drives the test, and the `Telo.Application`'s `targets:` list invokes it. Because a test runs on the same kernel you deploy, the behaviour you assert in development is the behaviour you get in production.
 
 Run a single test manifest with the [`telo` CLI](/learn/telo-cli):
 
@@ -54,7 +54,7 @@ outputType:
 value:
   sum: !cel "inputs.a + inputs.b"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: testAdd
 steps:
@@ -76,7 +76,7 @@ rather than fall back to a permissive shape.
 ## Testing an HTTP API
 
 An application that serves requests is tested through its own front door. Declare
-it with `App.Instance` in a `Run.Sequence`'s `with:` block, and call it with
+it with `App.Instance` in a `Telo.Sequence`'s `with:` block, and call it with
 `HttpClient.Request`. The child is listening before the first step, so the call
 needs no retry, and it is gone after the last step, so the port is free again.
 This test runs the finished application from [Your first HTTP API](/learn/first-http-api),
@@ -88,14 +88,13 @@ metadata:
   name: GreetingApiTest
   version: 1.0.0
 imports:
-  Run: oci://ghcr.io/telorun/run@<version>
   App: oci://ghcr.io/telorun/app@<version>
   HttpClient: oci://ghcr.io/telorun/http-client@<version>
   Assert: oci://ghcr.io/telorun/assert@<version>
 targets:
   - !ref test
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -151,7 +150,7 @@ variables:
 and the test's child is started with `variables: { dbFile: ":memory:" }` on another port:
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 with:
   - kind: App.Instance
@@ -245,7 +244,7 @@ The position is the node inside the failing step's `inputs:` the failure is abou
 
 ## Step shapes
 
-A test drives its assertions with the ordinary `Run.Sequence` grammar — invoke,
+A test drives its assertions with the ordinary `Telo.Sequence` grammar (a built-in kind, no import) — invoke,
 `if`/`then`/`else`, `while`/`do`, `switch`/`cases`, `try`/`catch`/`finally`,
 `throw`, and the `when:` guard. All of it is documented once, in
 [Composing behaviour](/learn/composing-behaviour); none of it is test-specific.
@@ -331,5 +330,5 @@ Two shapes:
 ## See also
 
 - [`Test.Suite` reference on the hub](https://hub.telo.run/?q=Test.Suite) — discovery, isolation, and CLI flags.
-- [`Run.Sequence` reference on the hub](https://hub.telo.run/?q=Run.Sequence) — the full step grammar.
+- [`Telo.Sequence` reference on the hub](https://hub.telo.run/?q=Telo.Sequence) — the full step grammar.
 - [Telo CLI](/learn/telo-cli) — running and watching manifests with `telo`.

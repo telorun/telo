@@ -37,6 +37,7 @@ const ENTRY_FILES: &[(&str, &str)] = &[
     ("PublicHostPattern.json", include_str!("../../../sdk/builtins/PublicHostPattern.json")),
     ("PublicUrl.json", include_str!("../../../sdk/builtins/PublicUrl.json")),
     ("Runnable.json", include_str!("../../../sdk/builtins/Runnable.json")),
+    ("Sequence.json", include_str!("../../../sdk/builtins/Sequence.json")),
     ("Service.json", include_str!("../../../sdk/builtins/Service.json")),
     ("Sink.json", include_str!("../../../sdk/builtins/Sink.json")),
     ("Template.json", include_str!("../../../sdk/builtins/Template.json")),

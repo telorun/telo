@@ -184,7 +184,7 @@ result:
   `outputType`) in `result:`.
 - **Each `resources:` entry is an ordinary declaration of its own kind.**
   Write it exactly as at the top level; every name that kind binds is in
-  scope where it binds it — `inputs` inside a `Run.Sequence`'s steps (its
+  scope where it binds it — `inputs` inside a `Telo.Sequence`'s steps (its
   own `inputType`, never the template's), `item` in an iteration, `request`
   in an `Http.Api` route, `error` in a `catch:`. A body may hold as many
   entries and dispatches as the work needs.
@@ -518,7 +518,6 @@ imports:
     resources: { connection: !ref db }
   Sql: oci://ghcr.io/telorun/sql@<version>#<pin>
   SQLite: oci://ghcr.io/telorun/sqlite@<version>#<pin>
-  Run: oci://ghcr.io/telorun/run@<version>#<pin>
   Assert: oci://ghcr.io/telorun/assert@<version>#<pin>
 targets:
   - !ref placesAnOrder
@@ -527,7 +526,7 @@ kind: SQLite.Connection
 metadata: { name: db }
 file: ":memory:"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: placesAnOrder }
 steps:
   - name: schema

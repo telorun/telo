@@ -20,12 +20,21 @@ expects a `Client`, and any operation that expects one can point at it.
 A child that `extends` a concrete kind and declares **no** own `controllers:` /
 template body inherits, by delegation:
 
-- **The controller.** The kernel resolves the controller-bearing ancestor,
-  evaluates the child's [`base:`](#base--the-super-mapping) mapping, calls the
-  ancestor controller's `create()` with the mapped config, and **returns that
-  instance verbatim**. The child instance therefore *is* a parent instance — it
-  duck-types identically (e.g. it has the `Client`'s `.snapshot()`), so consumers
-  and reference injection need no awareness of the subclass.
+- **The controller.** A resource of the child is **one instance**, created by
+  the controller of the nearest ancestor that has one, in the context that owns
+  the resource. Without `base:` that controller receives the resource itself, so
+  everything the consumer wrote in it — a step's `invoke: !ref`, a `variables`
+  read, a `with:` scope — resolves in the consumer's module, exactly as for a
+  resource of the ancestor. With [`base:`](#base--the-super-mapping), it receives
+  the configuration the mapping builds. Each part of the definition chain
+  resolves in the module that wrote it: a `base:`, `inputs:` or `result:` mapping
+  and a template body run in the scope of the module holding them (a `!ref` a
+  mapping writes names that module's resource), and the controller's own files
+  (`ctx.resolveControllerFile`, `ctx.resolveNativeFile`,
+  `ctx.resolveControllerBrowserEntry`) are those of the module that declares the
+  controller. The instance duck-types as its ancestor (it has the `Client`'s
+  `.snapshot()`), so consumers and reference injection need no awareness of the
+  subclass.
 - **The capability — immutably.** Omit `capability` to inherit the ancestor's, or
   restate it identically. Declaring a *different* capability than an ancestor is a
   hard error (`EXTENDS_CAPABILITY_MISMATCH`). Inheritance never changes a kind's
@@ -63,6 +72,15 @@ template body inherits, by delegation:
   and it *fully replaces* the ancestor's. Config merges because construction is
   additive; a call signature is not — merging a child's required inputs into its
   parent's would produce a union no caller could satisfy.
+- **The errors it throws — by replacement, not merge.** `throws:` resolves to
+  the nearest declaration along the chain, the child first: a child declaring
+  none throws what its ancestor declares, and one declaring a block replaces the
+  ancestor's. An `inherit: true` block reads what the controller receives — the
+  resource as written, or what `base:` builds from it, a verbatim
+  `self.<path>` standing for what the resource holds there — so a mapping
+  invoking a throwing target presents that target's codes, and one forwarding
+  `steps: !cel "self.steps"` presents the consumer's. A mapping computing what
+  it drives makes the union unbounded.
 
 A child is **Liskov-substitutable** for every ancestor at any `!ref` slot,
 transitively — a `GithubClient` satisfies any slot typed
@@ -125,7 +143,7 @@ result, and the mapped result against the child's `outputType`.
 slot whose consumer builds the arguments itself from the slot's declared kind
 alone — it would send the parent's shape to something that accepts the child's,
 so `telo check` rejects it (`CONTRACT_SLOT_INPUTS_UNSATISFIABLE`). At a slot that
-takes a paired author `inputs:` — a `Run.Sequence` step, an inline target step —
+takes a paired author `inputs:` — a `Telo.Sequence` step, an inline target step —
 the author supplies the arguments and the call site is checked instead.
 
 ## `base:` — the super mapping
@@ -167,7 +185,7 @@ field that wrote it — `in base.headers of GoogleAuth.GoogleClient (<source>)` 
 not only the resource being created.
 
 **A step body `base:` builds keeps its `value:` expressions.** When `base:`
-writes the parent's step body (`Run.Sequence`'s `steps:`), an expression inside a
+writes the parent's step body (`Telo.Sequence`'s `steps:`), an expression inside a
 step's `value:` is not evaluated at creation: the parent receives it as an
 expression reading this instance's `self` and evaluates it when the step runs.
 So a number `self` supplies stays what its field declares — `value: !cel

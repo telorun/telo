@@ -76,7 +76,7 @@ positional argument filters by path). A starter is copied verbatim by whoever
 starts from it, so each thing its description promises is asserted from the
 outside.
 
-- **An application is stood up with `App.Instance`** in a `Run.Sequence`'s
+- **An application is stood up with `App.Instance`** in a `Telo.Sequence`'s
   `with:` and called over whatever it serves. Inputs are supplied by the
   starter's own names (`variables:`, `secrets:`, `ports:`), never by editing it.
 - **An interactive application is a conversation**: `Channel.ReadUntil` /

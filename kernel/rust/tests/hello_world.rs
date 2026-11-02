@@ -84,6 +84,17 @@ fn refuses_a_need_type_document() {
     assert!(err.message.contains("`Telo.NeedType` 'SigningKey'"), "{err}");
 }
 
+/// The step grammar is not hosted here: a sequence is refused by name.
+#[test]
+fn refuses_a_sequence() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-sequence"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("'greet' declares `Telo.Sequence`"), "{err}");
+}
+
 /// Text records are not built here: a controller of a kind holding a `Text` would
 /// receive a raw message where the Node kernel hands it a record.
 #[test]

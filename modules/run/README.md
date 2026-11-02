@@ -1,6 +1,8 @@
 # Run
 
-Sequential control flow for Telo manifests — `Run.Sequence` chains invocable steps with `if`, `while`, `switch`, and `try`/`catch` blocks.
+Control flow for Telo manifests beyond a plain list of steps: iteration and mapping over collections, loops, decision tables, value shaping and background dispatch.
+
+An ordered list of steps — `if`, `while`, `switch`, `try`/`catch` over invocable steps — is the built-in `Telo.Sequence`, which needs no import. `Run.Sequence` is deprecated: it behaves identically and reports `DEPRECATED_KIND` naming `Telo.Sequence`. Write `kind: Telo.Sequence`, and drop the `run` import when nothing else uses it.
 
 ## Why use this
 
@@ -13,7 +15,7 @@ Sequential control flow for Telo manifests — `Run.Sequence` chains invocable s
 
 | Kind | Purpose |
 | --- | --- |
-| `Run.Sequence` | Run an ordered list of invocable steps with control-flow blocks. |
+| `Run.Sequence` | **Deprecated** — identical to the built-in `Telo.Sequence`, which needs no import. |
 | `Run.Value` | A pure value/binding invocable — shape a CEL value (or a constant) with no `JS.Script`. See [Run.Value](docs/value.md). |
 | `Run.Choice` | A first-match decision table — pick one typed value from ordered `when → value` rows. See [Run.Choice](docs/choice.md). |
 
@@ -23,7 +25,6 @@ Sequential control flow for Telo manifests — `Run.Sequence` chains invocable s
 kind: Telo.Application
 metadata: { name: pipeline, version: 1.0.0 }
 imports:
-  Run: oci://ghcr.io/telorun/run@0.13.0
   Http: oci://ghcr.io/telorun/http-client@0.11.0
   Console: oci://ghcr.io/telorun/console@0.12.0
 targets:
@@ -32,7 +33,7 @@ targets:
 kind: Http.Request
 metadata: { name: GetUser }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: Pipeline }
 steps:
   - name: fetch
@@ -45,9 +46,9 @@ steps:
       output: !cel "'Hello, ' + string(steps.fetch.result.body)"
 ```
 
-## Run.Sequence as an HTTP handler
+## A sequence as an HTTP handler
 
-A `Run.Sequence` is a `Telo.Runnable`, so it can be a route handler. The data flow has three seams:
+A `Telo.Sequence` is a `Telo.Runnable`, so it can be a route handler. The data flow has three seams:
 
 1. The route's `inputs:` is a CEL map over the request — its result is passed to the handler's `invoke()`.
 2. The sequence's `inputType:` **declares the input contract** — a `Telo.JsonSchema` shape, a named type reference, or an inline schema. Steps read the values as `!cel "inputs.<name>"`, and the kernel fills declared defaults and validates every call against it.
@@ -74,7 +75,7 @@ routes:
           application/json:
             body: !cel "result"            # sequence outputs → response
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: GetUser }
 inputType:
   kind: Telo.JsonSchema
@@ -103,7 +104,7 @@ A sequence can stand up its own resources for the duration of its run — a data
 - **`targets:`** names which of those `with:` resources to `run()` first (e.g. start a server / run migrations) before the steps execute.
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: IntegrationCheck }
 with:
   - kind: SQLite.Connection
@@ -123,7 +124,7 @@ steps:
     inputs: { sql: !sql "INSERT INTO users (name) VALUES (${{ 'Ada' }})" }
 ```
 
-`targets:` is **not** Application-only — both `Telo.Application` and `Run.Sequence` have it. The difference is lifetime: an Application's targets/resources live for the process; a sequence's `with:` resources live only for that run. So yes, a `Run.Sequence` can start an `Http.Server` (put it in `with:`, list it in `targets:`) — useful for self-contained integration tests.
+`targets:` is **not** Application-only — both `Telo.Application` and `Telo.Sequence` have it. The difference is lifetime: an Application's targets/resources live for the process; a sequence's `with:` resources live only for that run. So a `Telo.Sequence` can start an `Http.Server` (put it in `with:`, list it in `targets:`) — useful for self-contained integration tests.
 
 ## Naming intermediate values
 

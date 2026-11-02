@@ -389,7 +389,7 @@ schema:
 ### Example
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: DataSync
   module: MyApp
@@ -665,9 +665,9 @@ If a topological sort of the DAG fails, a circular dependency exists. Boot halts
 
 ```text
 Circular dependency detected:
-  Run.Sequence "DataSync"
+  Telo.Sequence "DataSync"
     → Http.Server "Api"
-    → Run.Sequence "DataSync"
+    → Telo.Sequence "DataSync"
 ```
 
 ### Phase 5 — Ordered initialization & injection

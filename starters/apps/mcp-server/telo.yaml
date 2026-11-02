@@ -28,21 +28,17 @@ metadata:
         curl -s 'localhost:8067/api/notes?q=milk' -H 'authorization: Bearer local-dev-token'
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Mcp: oci://ghcr.io/telorun/mcp-server@0.20.1#sha256-2YBL3hfynm7V9HDH_lJQSgmjOajlSA7dp8b3oMobRwA
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 targets:
   - !ref migrate
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8067
+ports: { http: { env: PORT, protocol: tcp, default: 8067 } }
 secrets:
   apiToken:
     env: API_TOKEN
@@ -65,8 +61,7 @@ variables:
 logging:
   level: !cel "variables.logLevel"
   sinks:
-    - kind: Telo.ConsoleSink
-      encoding: auto
+    - { kind: Telo.ConsoleSink, encoding: auto }
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -101,10 +96,7 @@ outputType:
         items:
           type: object
           required: [ id, title, body ]
-          properties:
-            id: { type: integer }
-            title: { type: string }
-            body: { type: string }
+          properties: { id: { type: integer }, title: { type: string }, body: { type: string } }
 ---
 # `RETURNING` makes the insert a read, so the new id can be reported back to the
 # model — `Sql.Command` reports only how many rows it affected.
@@ -119,23 +111,15 @@ outputType:
     properties:
       rows:
         type: array
-        items:
-          type: object
-          required: [ id ]
-          properties:
-            id: { type: integer }
+        items: { type: object, required: [id], properties: { id: { type: integer } } }
 ---
 # A delete that affects nothing is a caller's mistake, so it throws — and each
 # transport decides how that code is shown.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deleteNote }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [ id ]
-    properties:
-      id: { type: integer }
+  schema: { type: object, required: [id], properties: { id: { type: integer } } }
 steps:
   - name: removed
     invoke:
@@ -166,10 +150,7 @@ entries:
       type: object
       additionalProperties: false
       required: [ query ]
-      properties:
-        query:
-          type: string
-          description: Text to look for in the title or body.
+      properties: { query: { type: string, description: Text to look for in the title or body. } }
     handler: !ref searchNotes
     inputs:
       sql: "SELECT id, title, body FROM notes WHERE title LIKE ? OR body LIKE ? ORDER BY id"
@@ -193,8 +174,7 @@ entries:
       type: object
       additionalProperties: false
       required: [ id ]
-      properties:
-        id: { type: integer, description: The note's id. }
+      properties: { id: { type: integer, description: The note's id. } }
     handler: !ref searchNotes
     inputs:
       sql: "SELECT id, title, body FROM notes WHERE id = ?"
@@ -234,8 +214,7 @@ entries:
       type: object
       additionalProperties: false
       required: [ id ]
-      properties:
-        id: { type: integer, description: The note's id. }
+      properties: { id: { type: integer, description: The note's id. } }
     handler: !ref deleteNote
     inputs:
       id: !cel "request.arguments.id"
@@ -271,11 +250,7 @@ routes:
   - request:
       path: /notes
       method: GET
-      schema:
-        query:
-          type: object
-          properties:
-            q: { type: string }
+      schema: { query: { type: object, properties: { q: { type: string } } } }
     handler: !ref searchNotes
     inputs:
       sql: "SELECT id, title, body FROM notes WHERE title LIKE ? OR body LIKE ? ORDER BY id"
@@ -290,7 +265,7 @@ routes:
 ---
 # One check for both transports: a throw refuses the request before its body is
 # read; a normal return lets it through.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requireToken }
 inputType:
   kind: Telo.JsonSchema
@@ -298,35 +273,25 @@ inputType:
     type: object
     additionalProperties: false
     required: [ authorization ]
-    properties:
-      authorization: { type: string, x-telo-sensitive: true }
+    properties: { authorization: { type: string, x-telo-sensitive: true } }
 steps:
   - name: check
     if: !cel "inputs.authorization != 'Bearer ' + secrets.apiToken"
     then:
       - name: refuse
-        throw:
-          code: ERR_UNAUTHENTICATED
-          message: a bearer token is required
+        throw: { code: ERR_UNAUTHENTICATED, message: a bearer token is required }
 ---
 kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Notes MCP server
-    version: 1.0.0
+openapi: { info: { title: Notes MCP server, version: 1.0.0 } }
 # Declared once on the server, so every guarded mount renders the refusal alike.
 catches:
   - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
     status: 401
-    headers:
-      WWW-Authenticate: Bearer
-    content:
-      application/json:
-        body:
-          error: unauthenticated
+    headers: { WWW-Authenticate: Bearer }
+    content: { application/json: { body: { error: unauthenticated } } }
 mounts:
   - path: /mcp
     mount: !ref mcpEndpoint

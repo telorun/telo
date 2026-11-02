@@ -1,0 +1,75 @@
+kind: Telo.Application
+metadata:
+  name: TeloSequenceTest
+  version: 1.0.0
+  description: >-
+    The built-in sequence needs no import: one is called with inputs and returns
+    its declared outputs, and one starts a resource of its `with:` scope from its
+    `targets:` before its steps.
+targets:
+  - !ref verify
+---
+kind: Telo.Sequence
+metadata: { name: greet }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [name]
+    properties: { name: { type: string }, shout: { type: boolean, default: false } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [text]
+    properties: { text: { type: string } }
+steps:
+  - name: text
+    if: !cel "inputs.shout"
+    then:
+      - name: loud
+        value: !cel "'HELLO ' + inputs.name"
+    else:
+      - name: quiet
+        value: !cel "'hello ' + inputs.name"
+outputs:
+  text: !cel "inputs.shout ? steps.loud.result : steps.quiet.result"
+---
+# Its `targets:` start `starter`, a resource of its own scope, before the steps:
+# the run fails with the starter's code, never with the steps' own.
+kind: Telo.Sequence
+metadata: { name: startsTarget }
+with:
+  - kind: Telo.Sequence
+    metadata: { name: starter }
+    steps:
+      - { name: started, throw: { code: TARGET_STARTED } }
+targets:
+  - !ref starter
+steps:
+  - { name: unreached, throw: { code: STEPS_RAN_FIRST } }
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: called
+    invoke: !ref greet
+    inputs: { name: telo, shout: true }
+  - name: checkCalled
+    if: !cel "steps.called.result.text != 'HELLO telo'"
+    then:
+      - name: wrongResult
+        throw: { code: WRONG_RESULT, message: !cel "steps.called.result.text" }
+  - name: started
+    try:
+      - name: run
+        invoke: !ref startsTarget
+      - { name: nothingThrown, throw: { code: NOTHING_THROWN } }
+    catch:
+      - name: checkStarted
+        if: !cel "error.code != 'TARGET_STARTED'"
+        then:
+          - name: targetNotStarted
+            throw: { code: TARGET_NOT_STARTED, message: !cel "error.code" }

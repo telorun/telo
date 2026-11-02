@@ -9,24 +9,22 @@ metadata:
     expression and the work it runs.
 
         telo run ./blueprints/scheduled-jobs-app/example/telo.yaml
-requires:
-  telo: ">=0.126.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   ScheduledJobs: ..
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref jobs
 ---
 kind: ScheduledJobs.App
-metadata:
-  name: jobs
+metadata: { name: jobs }
 jobs:
   nightlyReport:
     cron: "0 2 * * *"
     timezone: Europe/Warsaw
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       steps:
         - name: report
           invoke: { kind: Console.WriteLine }
@@ -34,7 +32,7 @@ jobs:
   hourlyCleanup:
     cron: "0 * * * *"
     invoke:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       steps:
         - name: cleanup
           invoke: { kind: Console.WriteLine }

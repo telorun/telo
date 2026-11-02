@@ -1,19 +1,14 @@
 # Holds a license key when its supervisor hands one over, and checks that it
 # holds one exactly when it was told it would.
 kind: Telo.Application
-metadata:
-  name: Worker
-imports:
-  Assert: ../../../../../modules/assert
-  Run: ../../../../../modules/run
-secrets:
-  licenseKey: { env: WORKER_LICENSE_KEY, type: string, default: null }
-variables:
-  licensed: { env: WORKER_LICENSED, type: boolean, default: false }
+metadata: { name: Worker }
+imports: { Assert: ../../../../../modules/assert }
+secrets: { licenseKey: { env: WORKER_LICENSE_KEY, type: string, default: null } }
+variables: { licensed: { env: WORKER_LICENSED, type: boolean, default: false } }
 targets:
   - !ref check
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: check }
 steps:
   - name: holdsKey

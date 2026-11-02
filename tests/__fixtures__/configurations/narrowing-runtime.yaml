@@ -1,10 +1,8 @@
 # The same chain at a field evaluated per call: judged as the literal all the
 # same, and a field nothing evaluates is still reported as one.
 kind: Telo.Application
-metadata:
-  name: NarrowingRuntime
-imports:
-  Run: ../../../modules/run
+metadata: { name: NarrowingRuntime }
+imports: { Run: ../../../modules/run }
 variables:
   dialect:
     env: DIALECT
@@ -15,39 +13,29 @@ targets:
   - !ref main
 ---
 kind: Telo.Definition
-metadata:
-  name: Store
+metadata: { name: Store }
 capability: Telo.Invocable
 schema:
   type: object
   properties:
-    dialect:
-      type: string
-      enum: [postgres, sqlite]
-      x-telo-eval: runtime
-    note:
-      type: string
+    dialect: { type: string, enum: [postgres, sqlite], x-telo-eval: runtime }
+    note: { type: string }
 invoke: !ref echo
 resources:
-  - kind: Run.Value
-    metadata: { name: echo }
-    value: 1
+  - { kind: Run.Value, metadata: { name: echo }, value: 1 }
 ---
 kind: Self.Store
-metadata:
-  name: store
+metadata: { name: store }
 dialect: !cel "variables.dialect"
 note: !cel "variables.dialect"
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: pick
     value: !switch
       switch: !cel "variables.dialect"
-      cases:
-        postgres: 1
+      cases: { postgres: 1 }
       default: 2
   - name: call
     invoke: !ref store

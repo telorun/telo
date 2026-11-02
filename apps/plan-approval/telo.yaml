@@ -15,7 +15,8 @@ requires:
   # A `Telo.HostPath` variable at `SQLite.Connection.file` is refused before
   # 0.98.0.
   # 0.123.0: a `throw` step's `displayMessage`, which 0.122.0 drops at dispatch.
-  telo: ">=0.123.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Plans:
     source: ./plans
@@ -26,11 +27,7 @@ imports:
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Scheduler: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-ports:
-  http:
-    env: PORT
-    default: 8080
+ports: { http: { env: PORT, default: 8080 } }
 variables:
   dbFile:
     env: DB_FILE
@@ -38,10 +35,7 @@ variables:
     x-telo-type: Telo.HostPath
     default: plan-approval.sqlite
   # The built review UI. Required: the server has no UI of its own to fall back to.
-  uiDir:
-    env: UI_DIR
-    type: string
-    x-telo-type: Telo.HostPath
+  uiDir: { env: UI_DIR, type: string, x-telo-type: Telo.HostPath }
   # The longest a long poll holds a request, whatever its `wait` asks for.
   longPollCap:
     env: LONG_POLL_CAP
@@ -66,7 +60,7 @@ invoke: !ref Plans.flushOutbox
 # Refuses a browser request made from another site: an Origin header that is
 # present and names a different host than the request itself. A request with no
 # Origin (a CLI, an agent, a server) passes. Not authentication — see README.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sameOrigin }
 inputType:
   kind: Telo.JsonSchema
@@ -187,10 +181,7 @@ routes:
       path: /plans/{id}/revisions
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         body:
           type: object
           additionalProperties: false
@@ -217,10 +208,7 @@ routes:
       path: /plans/{id}/withdraw
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     handler: !ref Plans.withdrawPlan
     inputs:
       planId: !cel "request.params.id"
@@ -231,10 +219,7 @@ routes:
       path: /plans/{id}
       method: GET
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     handler: !ref Plans.agentPlan
     inputs:
       planId: !cel "request.params.id"
@@ -247,10 +232,7 @@ routes:
       path: /plans/{id}/events
       method: GET
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         query:
           type: object
           properties:
@@ -269,10 +251,7 @@ routes:
       path: /plans/{id}/reports
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         body:
           type: object
           additionalProperties: false
@@ -295,10 +274,7 @@ routes:
       path: /plans/{id}/links
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         body:
           type: object
           required: [type, url, status]
@@ -307,15 +283,11 @@ routes:
             url: { type: string, format: uri }
             status: { type: string }
           oneOf:
-            - properties:
-                type: { const: branch }
-                status: { enum: [open, merged, deleted] }
+            - properties: { type: { const: branch }, status: { enum: [open, merged, deleted] } }
             - properties:
                 type: { const: pull-request }
                 status: { enum: [draft, open, merged, closed] }
-            - properties:
-                type: { const: commit }
-                status: { enum: [local, pushed] }
+            - { properties: { type: { const: commit }, status: { enum: [local, pushed] } } }
     handler: !ref Plans.upsertLink
     inputs:
       planId: !cel "request.params.id"
@@ -342,9 +314,7 @@ routes:
           required: [instance, repos, sessions]
           properties:
             instance: { type: string, format: uuid }
-            repos:
-              type: array
-              items: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" }
+            repos: { type: array, items: { type: string, pattern: "^[a-z0-9][a-z0-9-]*$" } }
             sessions:
               type: array
               items:
@@ -368,10 +338,7 @@ routes:
       path: /runners/{name}/commands
       method: GET
       schema:
-        params:
-          type: object
-          required: [name]
-          properties: { name: { type: string } }
+        params: { type: object, required: [name], properties: { name: { type: string } } }
         query:
           type: object
           required: [instance]
@@ -398,9 +365,7 @@ routes:
         params:
           type: object
           required: [name, seq]
-          properties:
-            name: { type: string }
-            seq: { type: integer, minimum: 1 }
+          properties: { name: { type: string }, seq: { type: integer, minimum: 1 } }
         body:
           type: object
           required: [instance, state]
@@ -412,21 +377,13 @@ routes:
               type: object
               additionalProperties: false
               required: [code, message]
-              properties:
-                code: { type: string }
-                message: { type: string }
+              properties: { code: { type: string }, message: { type: string } }
           oneOf:
             - additionalProperties: false
-              properties:
-                instance: {}
-                state: { const: done }
-                session: {}
+              properties: { instance: {}, state: { const: done }, session: {} }
             - additionalProperties: false
               required: [error]
-              properties:
-                instance: {}
-                state: { const: failed }
-                error: {}
+              properties: { instance: {}, state: { const: failed }, error: {} }
     handler: !ref Plans.commandOutcome
     inputs:
       name: !cel "request.params.name"
@@ -482,9 +439,7 @@ routes:
     returns:
       - status: 201
         content: { application/json: { body: !cel "result.product" } }
-  - request:
-      path: /products
-      method: GET
+  - request: { path: /products, method: GET }
     handler: !ref Plans.listProducts
     returns:
       - status: 200
@@ -494,10 +449,7 @@ routes:
       path: /products/{slug}
       method: PUT
       schema:
-        params:
-          type: object
-          required: [slug]
-          properties: { slug: { type: string } }
+        params: { type: object, required: [slug], properties: { slug: { type: string } } }
         body:
           type: object
           additionalProperties: false
@@ -523,10 +475,7 @@ routes:
       path: /products/{slug}/history
       method: GET
       schema:
-        params:
-          type: object
-          required: [slug]
-          properties: { slug: { type: string } }
+        params: { type: object, required: [slug], properties: { slug: { type: string } } }
     handler: !ref Plans.productHistory
     inputs:
       slug: !cel "request.params.slug"
@@ -557,9 +506,7 @@ routes:
     returns:
       - status: 201
         content: { application/json: { body: !cel "result.repo" } }
-  - request:
-      path: /repos
-      method: GET
+  - request: { path: /repos, method: GET }
     handler: !ref Plans.listRepos
     returns:
       - status: 200
@@ -591,10 +538,7 @@ routes:
       path: /plans/{id}
       method: GET
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     handler: !ref Plans.planDetail
     inputs:
       planId: !cel "request.params.id"
@@ -605,10 +549,7 @@ routes:
       path: /plans/{id}/history
       method: GET
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     handler: !ref Plans.planHistory
     inputs:
       planId: !cel "request.params.id"
@@ -619,10 +560,7 @@ routes:
       path: /plans/{id}/comments
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         body:
           type: object
           additionalProperties: false
@@ -647,10 +585,7 @@ routes:
       path: /plans/{id}/decisions
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties: { id: { type: string } }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         body:
           type: object
           additionalProperties: false
@@ -661,10 +596,8 @@ routes:
             revision: { type: integer, minimum: 1 }
             hash: { type: string, pattern: "^[0-9a-f]{64}$" }
             note: { type: string, minLength: 1, maxLength: 20000 }
-          if:
-            properties: { decision: { const: request_changes } }
-          then:
-            required: [note]
+          if: { properties: { decision: { const: request_changes } } }
+          then: { required: [note] }
     handler: !ref Plans.decidePlan
     inputs:
       planId: !cel "request.params.id"
@@ -676,9 +609,7 @@ routes:
     returns:
       - status: 201
         content: { application/json: { body: !cel "result" } }
-  - request:
-      path: /runners
-      method: GET
+  - request: { path: /runners, method: GET }
     handler: !ref Plans.listRunners
     returns:
       - status: 200
@@ -687,10 +618,7 @@ routes:
       path: /runners/{name}/sessions
       method: GET
       schema:
-        params:
-          type: object
-          required: [name]
-          properties: { name: { type: string } }
+        params: { type: object, required: [name], properties: { name: { type: string } } }
         query:
           type: object
           properties:
@@ -714,10 +642,7 @@ routes:
       path: /runners/{name}/commands
       method: GET
       schema:
-        params:
-          type: object
-          required: [name]
-          properties: { name: { type: string } }
+        params: { type: object, required: [name], properties: { name: { type: string } } }
         query:
           type: object
           properties:
@@ -741,10 +666,7 @@ routes:
       path: /runners/{name}/commands
       method: POST
       schema:
-        params:
-          type: object
-          required: [name]
-          properties: { name: { type: string } }
+        params: { type: object, required: [name], properties: { name: { type: string } } }
         body:
           type: object
           required: [author, type]
@@ -764,10 +686,7 @@ routes:
                 prompt: {}
             - additionalProperties: false
               required: [session]
-              properties:
-                author: {}
-                type: { const: stop }
-                session: {}
+              properties: { author: {}, type: { const: stop }, session: {} }
     handler: !ref Plans.createRunnerCommand
     inputs:
       name: !cel "request.params.name"

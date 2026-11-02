@@ -4,10 +4,7 @@
 # read is refused everywhere, listing the step names each configuration
 # declares; the read of `first` depends on flag1 alone.
 kind: Telo.Application
-metadata:
-  name: StepNameMiss
-imports:
-  Run: ../../../modules/run
+metadata: { name: StepNameMiss }
 variables:
   flag1: { env: FLAG_1, type: boolean, default: false }
   flag2: { env: FLAG_2, type: boolean, default: false }
@@ -15,9 +12,8 @@ variables:
 targets:
   - !ref main
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - !if
     if: !cel "variables.flag1"

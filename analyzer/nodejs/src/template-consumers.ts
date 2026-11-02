@@ -22,6 +22,7 @@ import { controllerBearingAncestor, hasOwnControllerOrTemplate } from "./extends
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
+import { isKindDocumentOrImport } from "./system-kinds.js";
 import { namedShapeReading } from "./named-shape-reading.js";
 import { isResolvedReference } from "./resolved-reference.js";
 import { isInjectedDeclaration } from "./resource-input.js";
@@ -156,7 +157,7 @@ export function readTemplateConsumers(inputs: TemplateConsumerInputs): TemplateC
 
 function isConsumer(m: ResourceManifest, consumerModules: ReadonlySet<string>): boolean {
   if (typeof m.kind !== "string" || typeof m.metadata?.name !== "string") return false;
-  if (isModuleKind(m.kind) || m.kind.startsWith("Telo.")) return false;
+  if (isModuleKind(m.kind) || isKindDocumentOrImport(m)) return false;
   if (isForwardedDeclaration(m) || isInjectedDeclaration(m)) return false;
   const module = (m.metadata as { module?: unknown }).module;
   return typeof module !== "string" || consumerModules.has(module);

@@ -12,6 +12,7 @@ import {
   effectiveAuthorSchema,
   publishedOwnFields,
   effectiveStatusSchema,
+  effectiveThrows,
   hasOwnControllerOrTemplate,
   inheritedCapability,
   nearestName,
@@ -31,7 +32,6 @@ import { stampDeclaredDisplayMessages } from "../../declared-display-messages.js
 import { refuseInvalidObserves } from "./observes-guard.js";
 import { createTemplateController, type TemplateHost } from "./resource-template-controller.js";
 import type { RefPositionHost } from "../../refuse-computed-ref-slots.js";
-import { createInheritedController } from "./resource-inherited-controller.js";
 import {
   forgetRegisteredDefinition,
   recordRegisteredDefinition,
@@ -166,6 +166,12 @@ class ResourceDefinition implements ResourceInstance {
         this.resource as ResourceDefinitionManifest,
         resolveDef,
       );
+      // And the `throws:` block, which resolves to the nearest declaration along
+      // `extends` rather than merging — what the dispatch exit judges a code by.
+      if ((this.resource as { throws?: unknown }).throws === undefined) {
+        const inherited = effectiveThrows(this.resource as ResourceDefinitionManifest, resolveDef);
+        if (inherited) (this.resource as { throws?: unknown }).throws = inherited;
+      }
     }
 
     // `telo check`'s twin is `VALUE_SCHEMA_FROM_INVALID`, through the same
@@ -215,19 +221,13 @@ class ResourceDefinition implements ResourceInstance {
     }
 
     // Inherited-controller delegation: a definition that `extends` a concrete
-    // kind, declares no own `controllers:` / template body, inherits the parent
-    // controller by delegation and maps its config via `base:`.
+    // kind and declares no own `controllers:` / template body is served by the
+    // controller of its nearest ancestor that has one, registered under its own
+    // kind and loaded on first use. A resource of it is one instance, created by
+    // that controller in the context that owns the resource.
     if (this.resource.extends && !hasOwnControllerOrTemplate(this.resource as ResourceDefinitionManifest)) {
-      const parentDef = resolveDef(this.resource.extends);
-      if (!parentDef) {
-        // The parent's Telo.Definition (and thus its controller) isn't loaded
-        // yet — defer; the multi-pass init loop retries once its import resolves.
-        throw new RuntimeError(
-          "ERR_LOCAL_REF_PENDING",
-          `Telo.Definition '${this.resource.metadata.name}': 'extends' target '${this.resource.extends}' is not loaded yet.`,
-        );
-      }
-      if (controllerBearingAncestor(this.resource as ResourceDefinitionManifest, resolveDef)) {
+      const ancestor = controllerBearingAncestor(this.resource as ResourceDefinitionManifest, resolveDef);
+      if (ancestor) {
         // Capability is inherited and immutable — stamp the resolved capability
         // so every consumer that reads `definition.capability` (compile-CEL eval
         // paths, `capabilityOf`, lifecycle role) sees the effective role without
@@ -236,15 +236,11 @@ class ResourceDefinition implements ResourceInstance {
           const inherited = inheritedCapability(this.resource as ResourceDefinitionManifest, resolveDef);
           if (inherited) this.resource.capability = inherited;
         }
-        const controllerInstance = createInheritedController(
-          this.resource as ResourceDefinitionManifest,
-          resolveDef,
-        );
         register();
-        await ctx.registerController(
-          this.resource.metadata.module,
+        kernelContext(ctx).registerDelegatedController(
+          this.resource.metadata.module!,
           this.resource.metadata.name,
-          controllerInstance,
+          `${ancestor.metadata.module}.${ancestor.metadata.name}`,
         );
         recordRegisteredDefinition(ctx.moduleContext, this.resource, ctx.getControllerPolicy());
         return;
@@ -392,6 +388,7 @@ interface KernelResourceContext {
     kindName: string,
     load: () => Promise<void>,
   ): void;
+  registerDelegatedController(moduleName: string, kindName: string, ancestorKind: string): void;
 }
 
 /** Narrow a `ResourceContext` to the kernel-internal surface its concrete

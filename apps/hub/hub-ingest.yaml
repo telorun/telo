@@ -22,7 +22,8 @@ metadata:
     and re-embeds the latest version.
 requires:
   # `resources:` inputs on a library.
-  telo: ">=0.83.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   Postgres: oci://ghcr.io/telorun/postgres@0.10.0#sha256-eob7bBkouibe1-MDGizDVWE9_r8yLMN8kjiDW7BQGtc
@@ -85,42 +86,30 @@ variables:
   # the dimensions it is keyed by, and a `default` only where one is declared.
   # 11 records a member dimension's `member` with its dimension, which a reader
   # no longer splits out of the key.
-  ingestRev:
-    type: integer
-    default: 11
+  ingestRev: { type: integer, default: 11 }
   # The one ref whose `Telo.Builtins` root is indexed — the built-in vocabulary
   # every `Telo.<Kind>` names. Registration is open, so at any other ref such a
   # root is refused: nobody else may publish "built-in" kinds.
-  builtinsRef:
-    type: string
-    default: oci://ghcr.io/telorun/telo
-exports:
-  resources:
-    - ingestVersion
-    - scheduleIngest
-    - scheduleDueVersions
+  builtinsRef: { type: string, default: oci://ghcr.io/telorun/telo }
+exports: { resources: [ingestVersion, scheduleIngest, scheduleDueVersions] }
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref connection
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref connection
 ---
 kind: Console.WriteLine
-metadata:
-  name: logLine
+metadata: { name: logLine }
 ---
 # Runs and their step records, in this same database. Sharing the connection the
 # ingest writes through is what makes the record of a step land inside the same
 # transaction as the step's own writes — so a rollback discards both, and the
 # region is journaled per step rather than collapsed.
 kind: Journal.Journal
-metadata:
-  name: journal
+metadata: { name: journal }
 connection: !ref connection
 ---
 # ONE version, ingested durably.
@@ -129,8 +118,7 @@ connection: !ref connection
 # minted by the claim statement. A fresh attempt is a fresh id, so a retry is
 # never blocked by the id of the attempt that failed.
 kind: Durable.Workflow
-metadata:
-  name: ingestVersion
+metadata: { name: ingestVersion }
 journal: !ref journal
 runId: !cel "'ingest:' + inputs.moduleId + ':' + inputs.version + ':' + string(inputs.attempt)"
 inputs:
@@ -155,10 +143,7 @@ steps:
         inputs:
           ref: !cel "inputs.ref"
           version: !cel "inputs.version"
-        retry:
-          attempts: 6
-          initialDelay: 2000
-          maxDelay: 300000
+        retry: { attempts: 6, initialDelay: 2000, maxDelay: 300000 }
       - name: manifestGate
         if: !cel "!steps.manifest.result.ok"
         then:
@@ -252,10 +237,7 @@ steps:
               moduleId: !cel "inputs.moduleId"
               version: !cel "inputs.version"
               docs: !cel "steps.manifest.result.docs"
-            retry:
-              attempts: 4
-              initialDelay: 2000
-              maxDelay: 120000
+            retry: { attempts: 4, initialDelay: 2000, maxDelay: 120000 }
     catch:
       - name: log
         invoke: !ref logLine
@@ -278,8 +260,7 @@ steps:
 # derived from the claim, and two derivations of one identity would eventually
 # disagree about which attempt a run is.
 kind: Durable.Schedule
-metadata:
-  name: scheduleIngest
+metadata: { name: scheduleIngest }
 workflow: !ref ingestVersion
 after: 0s
 runId: !cel "'ingest:' + inputs.moduleId + ':' + inputs.version + ':' + string(inputs.attempt)"
@@ -297,8 +278,7 @@ inputs:
 # step — which is what turns the region from one collapsed record into a
 # per-step one, and is the only way exactly-once is reachable at all.
 kind: Sql.Transaction
-metadata:
-  name: ingestTransaction
+metadata: { name: ingestTransaction }
 connection: !ref connection
 steps: !ref writeVersionRows
 inputs:
@@ -311,9 +291,8 @@ inputs:
   payload: !cel "inputs.payload"
   docs: !cel "inputs.docs"
 ---
-kind: Run.Sequence
-metadata:
-  name: writeVersionRows
+kind: Telo.Sequence
+metadata: { name: writeVersionRows }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -812,17 +791,13 @@ steps:
 ---
 # The vector half, outside the transaction: a different backend, so it cannot
 # join one, and a replay after the commit re-runs exactly these steps.
-kind: Run.Sequence
-metadata:
-  name: embedVersion
+kind: Telo.Sequence
+metadata: { name: embedVersion }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      moduleId: { type: string }
-      version: { type: string }
-      docs: { type: array }
+    properties: { moduleId: { type: string }, version: { type: string }, docs: { type: array } }
 steps:
   # Read back the just-inserted entries — every exported kind, instance and
   # application, as search ranks them — for their ids: the vector id is the
@@ -880,21 +855,18 @@ steps:
 #
 # None of this is inside a run. It is cheap, idempotent and re-runnable, and a
 # tick that dies part-way costs the next tick nothing.
-kind: Run.Sequence
-metadata:
-  name: scheduleDueVersions
+kind: Telo.Sequence
+metadata: { name: scheduleDueVersions }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      modules: { type: integer }
+    properties: { modules: { type: integer } }
     required: [modules]
 steps:
   - name: modules
     invoke: !ref query
-    inputs:
-      sql: SELECT id, ref FROM modules ORDER BY id
+    inputs: { sql: "SELECT id, ref FROM modules ORDER BY id" }
   - name: each
     invoke: !ref scheduleEachModule
     inputs:
@@ -903,14 +875,10 @@ outputs:
   modules: !cel "steps.modules.result.rows.size()"
 ---
 kind: Run.Iteration
-metadata:
-  name: scheduleEachModule
+metadata: { name: scheduleEachModule }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      modules: { type: array }
+  schema: { type: object, properties: { modules: { type: array } } }
 collection: !cel "inputs.modules"
 concurrency: 2
 steps:
@@ -933,16 +901,13 @@ steps:
             - !cel "item.id"
             - !cel "error.code + ': ' + error.message"
 ---
-kind: Run.Sequence
-metadata:
-  name: scheduleModule
+kind: Telo.Sequence
+metadata: { name: scheduleModule }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      moduleId: { type: string }
-      ref: { type: string }
+    properties: { moduleId: { type: string }, ref: { type: string } }
 steps:
   - name: versions
     invoke: !ref Origin.moduleVersions
@@ -974,8 +939,7 @@ steps:
       latestVersion: !cel "steps.versions.result.latest"
 ---
 kind: Run.Iteration
-metadata:
-  name: scheduleEachVersion
+metadata: { name: scheduleEachVersion }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -987,10 +951,7 @@ inputType:
         type: array
         items:
           type: object
-          properties:
-            version: { type: string }
-            digest: { type: string }
-            error: { type: string }
+          properties: { version: { type: string }, digest: { type: string }, error: { type: string } }
           required: [version, digest, error]
       latestVersion: { type: string }
 collection: !cel "inputs.versions"
@@ -1010,9 +971,8 @@ steps:
 # only: nothing durable is created for a version that has not moved. A version
 # whose digest could not be read fails here, after every newer version has been
 # claimed, so one unreadable tag never blocks the versions published after it.
-kind: Run.Sequence
-metadata:
-  name: claimAndSchedule
+kind: Telo.Sequence
+metadata: { name: claimAndSchedule }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1028,9 +988,7 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      claimed: { type: boolean }
-      runId: { type: string }
+    properties: { claimed: { type: boolean }, runId: { type: string } }
     required: [claimed, runId]
 steps:
   - name: gate

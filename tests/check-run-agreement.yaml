@@ -121,6 +121,8 @@ targets:
   - !ref loopSeedAdvanceAtRuntime
   - !ref templateValueStepNumber
   - !ref baseValueStepNumber
+  - !ref inheritedConsumerScope
+  - !ref inheritedMappingScope
   - !ref templateInputsCel
   - !ref templateInputsCelAtRuntime
   - !ref hostPathInterpolated
@@ -2775,6 +2777,27 @@ kind: Assert.Manifest
 metadata:
   name: baseValueStepNumber
 source: ./__fixtures__/check-run-agreement/base-value-step-number.yaml
+expect:
+  errors: []
+  runs: true
+---
+# A kind inheriting its controller from another module is created where the
+# resource is declared: a step target and a `variables` read the consumer writes
+# in it are the consumer's…
+kind: Assert.Manifest
+metadata:
+  name: inheritedConsumerScope
+source: ./__fixtures__/check-run-agreement/inherited-scopes/telo.yaml
+expect:
+  errors: []
+  runs: true
+---
+# …while a reference the kind's own `base:` writes is the library's, though the
+# consumer declares a resource of the same name.
+kind: Assert.Manifest
+metadata:
+  name: inheritedMappingScope
+source: ./__fixtures__/check-run-agreement/inherited-scopes/library-ref.yaml
 expect:
   errors: []
   runs: true
@@ -6086,7 +6109,7 @@ metadata:
 source: ./__fixtures__/check-run-agreement/expansion/branch-shape/app.yaml
 expect:
   errors: []
-  runFails: "[BRANCH_SHAPE_INVALID] Run.Sequence/sequence: '!if' at a declaration position (an 'x-telo-scope' member)"
+  runFails: "[BRANCH_SHAPE_INVALID] Telo.Sequence/sequence: '!if' at a declaration position (an 'x-telo-scope' member)"
 ---
 # `!for-each` and `...` where no repeat stands, and a repeat's `key:` off a
 # splice…
@@ -6223,7 +6246,7 @@ metadata:
 source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
 expect:
   errors: []
-  runFails: "[BRANCH_UNDECIDABLE] Run.Sequence/sequence: The condition of '!if' is decided before boot, but 'variables.name'"
+  runFails: "[BRANCH_UNDECIDABLE] Telo.Sequence/sequence: The condition of '!if' is decided before boot, but 'variables.name'"
 ---
 kind: Assert.Manifest
 metadata:
@@ -6231,7 +6254,7 @@ metadata:
 source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
 expect:
   errors: []
-  runFails: "[BRANCH_CONDITION_INVALID] Run.Sequence/sequence: The condition of '!if' is a 'string'"
+  runFails: "[BRANCH_CONDITION_INVALID] Telo.Sequence/sequence: The condition of '!if' is a 'string'"
 ---
 kind: Assert.Manifest
 metadata:
@@ -6239,7 +6262,7 @@ metadata:
 source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
 expect:
   errors: []
-  runFails: "[BRANCH_CASE_KEY_INVALID] Run.Sequence/sequence: Case 'yes' of '!switch'"
+  runFails: "[BRANCH_CASE_KEY_INVALID] Telo.Sequence/sequence: Case 'yes' of '!switch'"
 ---
 kind: Assert.Manifest
 metadata:
@@ -6247,7 +6270,7 @@ metadata:
 source: ./__fixtures__/check-run-agreement/configurations/choices/app.yaml
 expect:
   errors: []
-  runFails: "[BRANCH_NOT_EXHAUSTIVE] Run.Sequence/sequence: '!switch' selects no case for 'b'"
+  runFails: "[BRANCH_NOT_EXHAUSTIVE] Telo.Sequence/sequence: '!switch' selects no case for 'b'"
 ---
 kind: Assert.Manifest
 metadata:

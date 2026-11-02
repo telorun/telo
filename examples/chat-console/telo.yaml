@@ -13,7 +13,8 @@ metadata:
     The CLI loads `.env.local` from the manifest's directory automatically.
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   OpenAI: oci://ghcr.io/telorun/openai@0.18.0#sha256-t1cBMD7FMjIAOEAs76SSKy-YB40ozm8S6jwdBG9z08Q
   Http: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
@@ -21,16 +22,12 @@ imports:
   RecordStream: oci://ghcr.io/telorun/record-stream@0.20.0#sha256-hRwLGfhayzKJ27aKx8vp_hZoX3LTYNMsMNoMlAbWnBs
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.0#sha256-V8zjIxeI89VhzVcKOrOTqLq7AdsNh2n51k2avdcOh-k
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
 targets:
   - !ref initSchema
   - !ref chatLoop
-secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
-    type: string
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 variables:
   historyFile:
     env: HISTORY_FILE
@@ -118,15 +115,14 @@ kind: PlainText.Decoder
 metadata: { name: assistantText }
 ---
 # --- REPL ------------------------------------------------------------------
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: chatLoop }
 steps:
   # do-while via shared step name `read`: pre-loop initializes; the in-body
   # `read` overwrites it each iteration. Pattern matches modules/run/tests/run-sequence-while.yaml.
   - name: read
     invoke: !ref Console.readLine
-    inputs:
-      prompt: "{cyan.bold you} › "
+    inputs: { prompt: "{cyan.bold you} › " }
   - name: converse
     while: !cel "steps.read.result.value != '/exit'"
     do:
@@ -142,8 +138,7 @@ steps:
           kind: Sql.Command
           connection: !ref chatDb
       - name: readHistory
-        inputs:
-          sql: "SELECT role, content FROM messages ORDER BY id ASC"
+        inputs: { sql: "SELECT role, content FROM messages ORDER BY id ASC" }
         invoke:
           kind: Sql.Query
           connection: !ref chatDb
@@ -185,9 +180,7 @@ steps:
       # the moment we ask for the next user input).
       - name: newline
         invoke: !ref Console.writeLine
-        inputs:
-          output: ""
+        inputs: { output: "" }
       - name: read
         invoke: !ref Console.readLine
-        inputs:
-          prompt: "{cyan.bold you} › "
+        inputs: { prompt: "{cyan.bold you} › " }

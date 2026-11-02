@@ -116,7 +116,7 @@ the single most useful table on the page:
 | `resources.<n>.<field>` | anywhere, after that resource publishes | what its author configured |
 | `resources.<n>.status.<field>` | only in fields that resolve *after* it has run | what it observed at runtime |
 | `inputs.<n>` | inside a callable's body | the values passed at the call site |
-| `steps.<n>.result` | inside a `Run.Sequence` | an earlier step's result |
+| `steps.<n>.result` | inside a `Telo.Sequence` | an earlier step's result |
 | `request.*` | inside an HTTP handler's `inputs:` / `returns:` | query, body, params, headers, path, method |
 | `result.*` | inside a `returns:` block | what the handler returned |
 | `error.*` | inside `catch:` / `finally:` / `catches:` | the caught failure: `code`, `message`, `step`, `data` |

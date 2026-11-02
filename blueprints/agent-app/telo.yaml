@@ -19,17 +19,16 @@ metadata:
 requires:
   # 0.121.0: `history` declares `entry: file`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Ai: oci://ghcr.io/telorun/ai@0.32.0#sha256-wFl0WwbqZ9Nq6-N2Y18VePWibYUwNKJs2pu6d5_0Zcc
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
-exports:
-  kinds: [App]
+exports: { kinds: [App] }
 ---
 kind: Telo.Definition
 metadata:
@@ -57,9 +56,7 @@ schema:
     model:
       title: Model
       description: The language model that answers — any Ai.Model implementation.
-      x-telo-ref:
-        kind: Ai.Model
-        use: call
+      x-telo-ref: { kind: Ai.Model, use: call }
     system:
       title: System prompt
       description: What the assistant is told before every conversation.
@@ -85,9 +82,7 @@ schema:
           tool:
             title: Resource
             description: The invocable the tool runs.
-            x-telo-ref:
-              kind: Telo.Executable
-              use: call
+            x-telo-ref: { kind: Telo.Executable, use: call }
           parameters:
             title: Parameters
             description: JSON Schema of the arguments the model must produce.
@@ -156,14 +151,12 @@ resources:
             params: &conversationParams
               type: object
               required: [id]
-              properties:
-                id: { type: string, minLength: 1 }
+              properties: { id: { type: string, minLength: 1 } }
             body:
               type: object
               additionalProperties: false
               required: [message]
-              properties:
-                message: { type: string, minLength: 1 }
+              properties: { message: { type: string, minLength: 1 } }
         summary: Send a message and get the assistant's reply.
         inputs:
           conversation: !cel "request.params.id"
@@ -171,15 +164,13 @@ resources:
         # One turn: store the message, answer from the whole conversation, store
         # the answer.
         handler:
-          kind: Run.Sequence
+          kind: Telo.Sequence
           inputType:
             kind: Telo.JsonSchema
             schema:
               type: object
               required: [conversation, message]
-              properties:
-                conversation: { type: string }
-                message: { type: string }
+              properties: { conversation: { type: string }, message: { type: string } }
           steps:
             - name: storeMessage
               invoke:

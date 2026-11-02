@@ -1,0 +1,36 @@
+# A kind inheriting its controller across a module boundary: what the consumer
+# writes in a resource of it — a step target, a `variables` read — resolves in
+# the consumer's module.
+kind: Telo.Application
+metadata: { name: InheritedConsumerScope }
+imports: { Lib: ./lib, Assert: ../../../../modules/assert }
+variables:
+  greeting: { env: INHERITED_SCOPES_GREETING, type: string, default: consumer greeting }
+targets:
+  - !ref verify
+---
+kind: Telo.Sequence
+metadata: { name: helper }
+steps:
+  - { name: who, value: consumer }
+---
+kind: Lib.Steps
+metadata: { name: consumerSteps }
+steps:
+  - name: call
+    invoke: !ref helper
+  - name: greeting
+    value: !cel "variables.greeting"
+---
+kind: Telo.Sequence
+metadata: { name: verify }
+steps:
+  - name: consumer
+    invoke: !ref consumerSteps
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        target: !cel "steps.consumer.result.call.result.who.result"
+        variable: !cel "steps.consumer.result.greeting.result"
+      expected: { target: consumer, variable: consumer greeting }

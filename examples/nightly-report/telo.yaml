@@ -17,6 +17,8 @@ metadata:
     (default 03:00 daily). To watch it tick:
         REPORT_CRON='*/10 * * * * *' telo ./examples/nightly-report
     The report lands in ./reports/orders.csv.
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
@@ -24,23 +26,14 @@ imports:
   Collection: oci://ghcr.io/telorun/collection@0.9.0#sha256-Fpb3ikCM8ANNwrM6069WEB-QjA3UofvUqMvYrgBW9sw
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
   Fs: oci://ghcr.io/telorun/fs@0.15.0#sha256-H4NxPag-G5AFKLIAZBTxxx1u2KgmmF2v4gqJnfCM9CQ
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate
   - !ref buildReport
   - !ref nightly
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8044
-variables:
-  reportCron:
-    env: REPORT_CRON
-    type: string
-    default: "0 3 * * *"
+ports: { http: { env: PORT, protocol: tcp, default: 8044 } }
+variables: { reportCron: { env: REPORT_CRON, type: string, default: "0 3 * * *" } }
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -64,24 +57,16 @@ tables:
 # reconciliation pass, once the table exists.
 migrations:
   0001_seed_orders:
-    statements:
-      - "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'paid', 12000)"
-      - "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'paid', 4500)"
-      - "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'refunded', 4500)"
-      - "INSERT INTO orders (region, status, total_cents) VALUES ('amer', 'paid', 99000)"
-      - "INSERT INTO orders (region, status, total_cents) VALUES ('amer', 'pending', 2500)"
-      - "INSERT INTO orders (region, status, total_cents) VALUES ('apac', 'paid', 30500)"
+    statements: ["INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'paid', 12000)", "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'paid', 4500)", "INSERT INTO orders (region, status, total_cents) VALUES ('emea', 'refunded', 4500)", "INSERT INTO orders (region, status, total_cents) VALUES ('amer', 'paid', 99000)", "INSERT INTO orders (region, status, total_cents) VALUES ('amer', 'pending', 2500)", "INSERT INTO orders (region, status, total_cents) VALUES ('apac', 'paid', 30500)"]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: buildReport }
 steps:
   - name: orders
     invoke:
       kind: Sql.Query
       connection: !ref db
-    inputs:
-      sql: "SELECT region, status, total_cents FROM orders"
-      bindings: []
+    inputs: { sql: "SELECT region, status, total_cents FROM orders", bindings: [] }
 
   # The rollup. `key:` names the group, `aggregate:` reduces each group's rows —
   # both plain CEL over the records, so the report's shape is readable here
@@ -130,10 +115,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Nightly report
-    version: 1.0.0
+openapi: { info: { title: Nightly report, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref reportRoutes
@@ -141,9 +123,7 @@ mounts:
 kind: Http.Api
 metadata: { name: reportRoutes }
 routes:
-  - request:
-      path: /report
-      method: GET
+  - request: { path: /report, method: GET }
     handler: !ref buildReport
     inputs: {}
     returns:

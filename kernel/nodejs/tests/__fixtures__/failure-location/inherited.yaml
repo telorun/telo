@@ -1,15 +1,14 @@
-# The failing step runs in the parent instance an inherited kind builds from
-# its consumer's configuration, not in the declaration written here.
+# The failing step runs in the one instance an inherited kind is, created from
+# the declaration written here.
 kind: Telo.Application
 metadata: { name: FailureInherited }
 imports:
   Assert: ../../../../../modules/assert
-  Run: ../../../../../modules/run
 targets: [!ref compare]
 ---
 kind: Telo.Definition
 metadata: { name: Checks }
-extends: Run.Sequence
+extends: Telo.Sequence
 schema: { type: object }
 ---
 kind: Self.Checks

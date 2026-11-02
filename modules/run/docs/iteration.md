@@ -27,7 +27,7 @@ Inside `steps`, these variables are bound in addition to `inputs`:
 - `index` — the element's 0-based position. A CEL integer is an int64, so it composes with integer literals directly: `!cel "index + 1"` needs no cast.
 - `items` — the whole collection. Bound **only when the collection is an array** (see below).
 
-`item` is **typed automatically** from `collection`'s element type when it is statically known — e.g. a `collection` of `!cel "inputs.users"` where the `inputs` contract types `users` as an array makes `item.<unknownField>` a static error. A stream is typed the same way, from the `of` argument of its `Telo.Stream` annotation. When the element type can't be inferred (a list literal, a computed expression), `item` is permissive. `steps.<name>.result` is statically typed from each step's invoked resource, exactly as in `Run.Sequence`.
+`item` is **typed automatically** from `collection`'s element type when it is statically known — e.g. a `collection` of `!cel "inputs.users"` where the `inputs` contract types `users` as an array makes `item.<unknownField>` a static error. A stream is typed the same way, from the `of` argument of its `Telo.Stream` annotation. When the element type can't be inferred (a list literal, a computed expression), `item` is permissive. `steps.<name>.result` is statically typed from each step's invoked resource, exactly as in `Telo.Sequence`.
 
 ```yaml
 kind: Run.Iteration

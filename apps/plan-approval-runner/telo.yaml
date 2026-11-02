@@ -12,7 +12,8 @@ metadata:
     own; a restart re-reads every pending command.
 requires:
   # `Telo.Function` is read from 0.92.0.
-  telo: ">=0.92.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   RunnerProtocol: ../plan-approval-runner-protocol
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
@@ -35,9 +36,7 @@ variables:
     type: object
     minProperties: 1
     propertyNames: { pattern: "^[a-z0-9][a-z0-9-]*$" }
-    additionalProperties:
-      type: string
-      x-telo-type: Telo.HostPath
+    additionalProperties: { type: string, x-telo-type: Telo.HostPath }
     description: >-
       The repositories this runner serves, as a JSON object from the slug the
       server knows each by to its directory on this machine — a real path, as
@@ -70,7 +69,7 @@ client: !ref server
 ---
 # GET /api/agent/runners/{name}/commands — typed as the protocol's page, so a
 # malformed page fails here (ERR_OUTPUT_INVALID) rather than in what reads it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: feed }
 inputType:
   kind: Telo.JsonSchema
@@ -100,7 +99,7 @@ outputs:
 # ERR_INVALID_TRANSITION means the command was settled while it ran here (a
 # newer decision superseded the wake): the outcome is not recorded, and that is
 # not a failure. Any other refusal is ERR_HTTP_STATUS and ends the runner.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: outcome }
 inputType:
   kind: Telo.JsonSchema
@@ -141,7 +140,7 @@ outputs: !cel >-
 ---
 # One Claude CLI call. A non-zero exit is ERR_CLAUDE_FAILED, carrying the start
 # of what it printed, stderr first.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: claude }
 inputType:
   kind: Telo.JsonSchema
@@ -160,8 +159,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [stdout]
-    properties:
-      stdout: { type: string }
+    properties: { stdout: { type: string } }
 steps:
   - name: exec
     invoke: { kind: Shell.Command, host: { kind: Shell.LocalHost } }
@@ -185,7 +183,7 @@ outputs:
 # session in a git worktree would be missed. Each entry is reduced to the
 # fields the runner reads, so a field claude adds later changes nothing and one
 # it stops sending fails here rather than in what reads it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listAgents }
 inputType:
   kind: Telo.JsonSchema
@@ -193,8 +191,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [all]
-    properties:
-      all: { type: boolean }
+    properties: { all: { type: boolean } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -242,10 +239,8 @@ metadata:
 params:
   - name: repos
     schema: { type: array, items: { type: array, items: { type: string } } }
-  - name: path
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: path, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   (repos.filter(r, path == r[1] || path.startsWith(r[1].endsWith('/') ? r[1] : r[1] + '/'))
     .filter(r, repos.filter(o, path == o[1] || path.startsWith(o[1].endsWith('/') ? o[1] : o[1] + '/'))
@@ -256,7 +251,7 @@ body: !cel >-
 # which stays pending for the next cycle. The post sits after the claude calls
 # and outside their `try:`, so a failed post is never mistaken for a failed
 # command.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: execute }
 inputType:
   kind: Telo.JsonSchema
@@ -299,7 +294,7 @@ steps:
               repo: !cel "inputs.command.repo"
               prompt: !cel "inputs.command.prompt"
             invoke:
-                  kind: Run.Sequence
+                  kind: Telo.Sequence
                   inputType:
                     kind: Telo.JsonSchema
                     schema:
@@ -316,8 +311,7 @@ steps:
                       type: object
                       additionalProperties: false
                       required: [session]
-                      properties:
-                        session: { type: string }
+                      properties: { session: { type: string } }
                   steps:
                     - name: before
                       invoke: !ref listAgents
@@ -366,7 +360,7 @@ steps:
               planSeq: !cel "inputs.command.planSeq"
               decision: !cel "inputs.command.decision"
             invoke:
-                  kind: Run.Sequence
+                  kind: Telo.Sequence
                   inputType:
                     kind: Telo.JsonSchema
                     schema:
@@ -385,8 +379,7 @@ steps:
                       type: object
                       additionalProperties: false
                       required: [deferred]
-                      properties:
-                        deferred: { type: boolean }
+                      properties: { deferred: { type: boolean } }
                   steps:
                     - name: listing
                       invoke: !ref listAgents
@@ -486,15 +479,14 @@ steps:
             when: !cel "inputs.command.type == 'stop'"
             inputs: { session: !cel "inputs.command.session" }
             invoke:
-                  kind: Run.Sequence
+                  kind: Telo.Sequence
                   inputType:
                     kind: Telo.JsonSchema
                     schema:
                       type: object
                       additionalProperties: false
                       required: [session]
-                      properties:
-                        session: { type: string }
+                      properties: { session: { type: string } }
                   steps:
                     - name: listing
                       invoke: !ref listAgents
@@ -589,7 +581,7 @@ steps:
 # report, retry what is still pending, long-poll for what is new. A failed
 # server call or a failed session listing ends the runner with that error; an
 # outcome the server no longer takes for a settled command is logged instead.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runner }
 steps:
   # Two slugs on one directory would make every session there ambiguous.
@@ -617,8 +609,7 @@ steps:
         schema:
           type: object
           required: [instance]
-          properties:
-            instance: { type: string }
+          properties: { instance: { type: string } }
       condition: !cel "true"
       steps:
         # Running background sessions in served repositories, each once.
@@ -636,7 +627,7 @@ steps:
         # PUT /api/agent/runners/{name}
         - name: report
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType: !ref RunnerProtocol.RunnerReport
             steps:
               - name: put
