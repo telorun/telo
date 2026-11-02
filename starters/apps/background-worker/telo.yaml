@@ -34,8 +34,8 @@ metadata:
         curl -s localhost:8105/api/jobs
 # Module `lang:` — the language this application's texts are written in — and
 # `UiReact.App.words` are read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 lang: en
 # `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
@@ -55,11 +55,7 @@ targets:
   - !ref migrate
   - !ref worker
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8105
+ports: { http: { env: PORT, protocol: tcp, default: 8105 } }
 variables:
   instanceId:
     env: INSTANCE_ID
@@ -74,10 +70,7 @@ variables:
     x-telo-type: { name: Telo.HostPath, entry: file }
     default: ./worker-queue.db
     description: The queue every replica shares.
-  tickEvery:
-    env: TICK_EVERY
-    type: string
-    default: "1s"
+  tickEvery: { env: TICK_EVERY, type: string, default: "1s" }
   batchSize:
     env: BATCH_SIZE
     type: integer
@@ -137,7 +130,7 @@ connection: !ref db
 # Stands in for the real work — an upstream call, a render, a payment. It takes
 # a moment, and a payload starting with `fail` fails, so the retry path can be
 # watched. Replace it; everything around it stays.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: doWork }
 inputType:
   kind: Telo.JsonSchema
@@ -145,14 +138,11 @@ inputType:
     type: object
     additionalProperties: false
     required: [ payload ]
-    properties:
-      payload: { type: string }
+    properties: { payload: { type: string } }
 steps:
   - name: takeTime
     invoke: { kind: Timer.Delay }
-    inputs:
-      duration: "100ms"
-      value: {}
+    inputs: { duration: "100ms", value: {} }
   - name: broken
     if: !cel "inputs.payload.startsWith('fail')"
     then:
@@ -214,7 +204,7 @@ steps:
 # Read, work, then write — the gap between the read and the write is exactly
 # what two replicas must not be inside at once. Nothing here mentions a lease,
 # which is what lets the same body run unguarded in a single-replica deployment.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainQueue }
 steps:
   - name: claim
@@ -278,7 +268,7 @@ outputType:
 ---
 # Enqueue, and answer with the queue as it now stands — which is what the page
 # draws under its form.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: enqueue }
 inputType:
   kind: Telo.JsonSchema
@@ -286,8 +276,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ payload ]
-    properties:
-      payload: { type: string }
+    properties: { payload: { type: string } }
 steps:
   # `RETURNING` makes the insert a read, so the caller gets the job's id.
   - name: inserted
@@ -315,8 +304,7 @@ schema:
   type: object
   additionalProperties: false
   required: [ payload ]
-  properties:
-    payload: { type: string, title: Payload, minLength: 1 }
+  properties: { payload: { type: string, title: Payload, minLength: 1 } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: Queue }
@@ -348,8 +336,7 @@ routes:
           type: object
           additionalProperties: false
           required: [ payload ]
-          properties:
-            payload: { type: string, minLength: 1 }
+          properties: { payload: { type: string, minLength: 1 } }
     handler: !ref enqueue
     inputs:
       payload: !cel "request.body.payload"
@@ -360,9 +347,7 @@ routes:
           application/json:
             body: !cel "result"
 
-  - request:
-      path: /jobs
-      method: GET
+  - request: { path: /jobs, method: GET }
     handler: !ref listJobs
     inputs: &queueQuery
       sql: >-
@@ -376,9 +361,7 @@ routes:
             body: !cel "result.rows"
 
   # The same list as an operation a page can run: a button sends a POST.
-  - request:
-      path: /jobs/recent
-      method: POST
+  - request: { path: /jobs/recent, method: POST }
     handler: !ref listJobs
     inputs: *queueQuery
     returns:
@@ -388,9 +371,7 @@ routes:
             body:
               jobs: !cel "result.rows"
 
-  - request:
-      path: /status
-      method: GET
+  - request: { path: /status, method: GET }
     handler: !ref query
     inputs:
       sql: "SELECT status, COUNT(*) AS jobs FROM jobs GROUP BY status ORDER BY status"
@@ -454,10 +435,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Background worker
-    version: 1.0.0
+openapi: { info: { title: Background worker, version: 1.0.0 } }
 mounts:
   - path: /api
     mount: !ref queueRoutes

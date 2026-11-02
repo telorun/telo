@@ -1,18 +1,14 @@
 # A step passes an argument its target's input contract declares only where a
 # choice says so: the call is refused only where the member is left out.
 kind: Telo.Application
-metadata:
-  name: StepInputsChoice
-imports:
-  Run: ../../../modules/run
-variables:
-  flag1: { env: FLAG_1, type: boolean, default: false }
+metadata: { name: StepInputsChoice }
+imports: { Run: ../../../modules/run }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
 targets:
   - !ref main
 ---
 kind: Run.Value
-metadata:
-  name: target
+metadata: { name: target }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -24,9 +20,8 @@ inputType:
         then: { type: integer }
 value: 1
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: call
     invoke: !ref target

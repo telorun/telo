@@ -32,7 +32,8 @@ metadata:
     wedging the queue.
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
@@ -41,30 +42,16 @@ imports:
   Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
   Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate
   - !ref worker
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8051
+ports: { http: { env: PORT, protocol: tcp, default: 8051 } }
 variables:
-  instanceId:
-    env: INSTANCE_ID
-    type: string
-    default: a
-  tickEvery:
-    env: TICK_EVERY
-    type: string
-    default: "500ms"
-  leaseTtl:
-    env: LEASE_TTL
-    type: string
-    default: "10s"
+  instanceId: { env: INSTANCE_ID, type: string, default: a }
+  tickEvery: { env: TICK_EVERY, type: string, default: "500ms" }
+  leaseTtl: { env: LEASE_TTL, type: string, default: "10s" }
   dbFile:
     env: DB_FILE
     type: string
@@ -97,8 +84,7 @@ tables:
 # reconciliation pass, once the table exists.
 migrations:
   0001_seed_jobs:
-    statements:
-      - "INSERT OR IGNORE INTO jobs (id, payload) VALUES (1, 'invoice-1001'), (2, 'invoice-1002'), (3, 'invoice-1003'), (4, 'invoice-1004'), (5, 'invoice-1005'), (6, 'invoice-1006'), (7, 'invoice-1007'), (8, 'invoice-1008'), (9, 'invoice-1009'), (10, 'invoice-1010'), (11, 'invoice-1011'), (12, 'invoice-1012')"
+    statements: ["INSERT OR IGNORE INTO jobs (id, payload) VALUES (1, 'invoice-1001'), (2, 'invoice-1002'), (3, 'invoice-1003'), (4, 'invoice-1004'), (5, 'invoice-1005'), (6, 'invoice-1006'), (7, 'invoice-1007'), (8, 'invoice-1008'), (9, 'invoice-1009'), (10, 'invoice-1010'), (11, 'invoice-1011'), (12, 'invoice-1012')"]
 ---
 # The lease lives in the database, so a second process sees the same claim. This
 # one line is what decides how far exclusion reaches.
@@ -119,7 +105,7 @@ connection: !ref db
 # exactly what two replicas must not be inside at once. Nothing here mentions a
 # lease, which is what lets the same body run unguarded in a single-replica
 # deployment.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: drainQueue }
 steps:
   - name: claim
@@ -134,9 +120,7 @@ steps:
       # It is what makes the critical section long enough to collide.
       - name: takeTime
         invoke: { kind: Timer.Delay }
-        inputs:
-          duration: "600ms"
-          value: {}
+        inputs: { duration: "600ms", value: {} }
       - name: markDone
         invoke: !ref exec
         inputs:
@@ -161,7 +145,7 @@ invoke: !ref drainQueue
 ---
 # What every replica fires. Losing is not an error: `acquired: false` with the
 # current holder is the normal outcome for every replica but one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: tick }
 steps:
   - name: attempt
@@ -185,7 +169,7 @@ metadata: { name: worker }
 every: !cel "variables.tickEvery"
 invoke: !ref tick
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: status }
 steps:
   - name: perWorker
@@ -207,10 +191,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Exclusive worker
-    version: 1.0.0
+openapi: { info: { title: Exclusive worker, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref statusRoutes
@@ -218,9 +199,7 @@ mounts:
 kind: Http.Api
 metadata: { name: statusRoutes }
 routes:
-  - request:
-      path: /status
-      method: GET
+  - request: { path: /status, method: GET }
     handler: !ref status
     inputs: {}
     returns:

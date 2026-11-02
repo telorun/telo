@@ -1,0 +1,43 @@
+# Inheriting kinds whose resource names a declaration-read shape declared later.
+kind: Telo.Application
+metadata: { name: InheritedLayers, version: 1.0.0 }
+targets: []
+---
+kind: Telo.Definition
+metadata: { name: Base }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./probe.mjs#Base]
+schema:
+  type: object
+  properties: { inputType: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+---
+kind: Telo.Definition
+metadata: { name: Merged }
+extends: Self.Base
+schema: { type: object, properties: {} }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, properties: { value: { type: integer } } }
+inputs:
+  n: !cel "inputs.value"
+---
+kind: Telo.Definition
+metadata: { name: Mapped }
+extends: Self.Base
+schema:
+  type: object
+  properties: { inputType: { x-telo-ref: { kind: Telo.Type, use: schema } } }
+base:
+  inputType: !cel "self.inputType"
+---
+kind: Self.Merged
+metadata: { name: merged }
+inputType: !ref Shape
+---
+kind: Self.Mapped
+metadata: { name: mapped }
+inputType: !ref Shape
+---
+kind: Telo.JsonSchema
+metadata: { name: Shape }
+schema: { type: object }

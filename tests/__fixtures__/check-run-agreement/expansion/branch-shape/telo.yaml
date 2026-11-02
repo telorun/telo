@@ -1,14 +1,11 @@
 # A tag's mapping that does not fit its position: a `with:` member chosen
 # without the declaration's `metadata`, and `metadata` on a value-position tag.
 kind: Telo.Library
-metadata:
-  name: BranchShapeLib
-imports:
-  Run: ../../../../../modules/run
+metadata: { name: BranchShapeLib }
+imports: { Run: ../../../../../modules/run }
 ---
-kind: Run.Sequence
-metadata:
-  name: sequence
+kind: Telo.Sequence
+metadata: { name: sequence }
 with:
   - !if
     if: true
@@ -18,5 +15,4 @@ steps:
     value: !switch
       metadata: { name: oops }
       switch: a
-      cases:
-        a: 1
+      cases: { a: 1 }

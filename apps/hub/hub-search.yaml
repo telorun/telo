@@ -30,16 +30,15 @@ requires:
   # slots that require it. An older runtime reports `!ref connection` as a kind
   # mismatch against `Sql.Connection` itself.
   # 0.123.0: a `throw` step's `displayMessage`, which 0.122.0 drops at dispatch.
-  telo: ">=0.123.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Embedding: oci://ghcr.io/telorun/embedding@0.12.0#sha256-lQqgopkTtGP1RyYmoryM-mr1fv_Ey_xbMZsj3vlLEeM
   VectorStore: oci://ghcr.io/telorun/vector-store@0.11.0#sha256-lmCK8i7SQuTRupTSY-s5l89wUwQuikXpjJOxI5vbNwI
 resources:
-  connection:
-    kind: Sql.Connection
-    description: The database holding the indexed rows.
+  connection: { kind: Sql.Connection, description: The database holding the indexed rows. }
   embedQuery:
     kind: Embedding.Query
     description: Embeds the search text for the semantic arm.
@@ -63,20 +62,12 @@ variables:
   # PINNED TO THE EMBEDDING MODEL, exactly as the stored vectors are: a
   # different model puts its similarities on a different scale, so changing the
   # model means re-tuning this alongside the re-embed.
-  minScore:
-    type: number
-    default: 0.3
+  minScore: { type: number, default: 0.3 }
 exports:
-  resources:
-    - categoryVocabulary
-    - publisherFacet
-    - searchResources
-    - searchMany
-    - searchModules
+  resources: [categoryVocabulary, publisherFacet, searchResources, searchMany, searchModules]
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref connection
 ---
 # The category vocabulary, and the guard over it — ONE query owns "what slugs
@@ -98,9 +89,8 @@ connection: !ref connection
 # wrote, ties broken lexicographically — deterministic, so a dropdown does not
 # reshuffle between requests — falling back to the kind-level label for a slug
 # no module declares.
-kind: Run.Sequence
-metadata:
-  name: categoryVocabulary
+kind: Telo.Sequence
+metadata: { name: categoryVocabulary }
 throws:
   - code: ERR_UNKNOWN_ENTRY_TYPE
     description: The `entry` argument is empty or names an unknown entry type.
@@ -194,9 +184,8 @@ outputs:
 # passes a constant '' and therefore cannot trip it — is not made to catch an
 # unreachable throw. Every search goes through this one; the vocabulary is
 # forwarded so the caller still gets the facet from the same call.
-kind: Run.Sequence
-metadata:
-  name: requireKnownCategory
+kind: Telo.Sequence
+metadata: { name: requireKnownCategory }
 throws:
   - code: ERR_UNKNOWN_CATEGORY
     description: The `category` argument names no slug in the declared vocabulary.
@@ -214,8 +203,7 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      categories: { type: array, items: { type: object } }
+    properties: { categories: { type: array, items: { type: object } } }
     required: [categories]
 steps:
   - name: vocabulary
@@ -248,9 +236,8 @@ outputs:
 # the HTTP routes refuse it from their query schema, and a caller that reaches
 # this without one (an MCP tool, whose arguments are not validated against its
 # schema) is refused here.
-kind: Run.Sequence
-metadata:
-  name: requireKnownEntries
+kind: Telo.Sequence
+metadata: { name: requireKnownEntries }
 throws:
   - code: ERR_UNKNOWN_ENTRY_TYPE
     description: The `entry` argument is empty or names a type other than `kind`, `instance`, `application`.
@@ -258,8 +245,7 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      entry: { type: array, items: { type: string } }
+    properties: { entry: { type: array, items: { type: string } } }
 steps:
   - name: known
     if: !cel >-
@@ -276,9 +262,8 @@ steps:
 # hub does not index — so a runtime filter over applications could only answer
 # with a guess, and is refused rather than silently matching nothing or
 # everything.
-kind: Run.Sequence
-metadata:
-  name: requireIndexedRuntime
+kind: Telo.Sequence
+metadata: { name: requireIndexedRuntime }
 throws:
   - code: ERR_RUNTIME_FILTER_UNSUPPORTED
     description: A `runtime` filter was combined with `application` in `entry`.
@@ -304,9 +289,8 @@ steps:
 # under, with how many modules each holds. Derived from refs by the one rule
 # `module.publisher` is (`module_publisher`), so a value read here selects
 # exactly the modules that report it.
-kind: Run.Sequence
-metadata:
-  name: publisherFacet
+kind: Telo.Sequence
+metadata: { name: publisherFacet }
 throws:
   - code: ERR_UNKNOWN_ENTRY_TYPE
     description: The `entry` argument is empty or names an unknown entry type.
@@ -314,8 +298,7 @@ inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      entry: { type: array, items: { type: string }, default: [kind, instance] }
+    properties: { entry: { type: array, items: { type: string }, default: [kind, instance] } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -325,9 +308,7 @@ outputType:
         type: array
         items:
           type: object
-          properties:
-            publisher: { type: string }
-            modules: { type: integer }
+          properties: { publisher: { type: string }, modules: { type: integer } }
           required: [publisher, modules]
     required: [publishers]
 steps:
@@ -351,9 +332,8 @@ steps:
 outputs:
   publishers: !cel "steps.rows.result.rows.map(r, {'publisher': r.publisher, 'modules': r.modules})"
 ---
-kind: Run.Sequence
-metadata:
-  name: searchResources
+kind: Telo.Sequence
+metadata: { name: searchResources }
 throws:
   - code: ERR_UNKNOWN_CATEGORY
     description: The `category` argument names no slug in the declared vocabulary.
@@ -708,8 +688,7 @@ outputs:
 # round trip per need; the answers stay separate because a hit's rank means
 # something only within its own query.
 kind: Run.Projection
-metadata:
-  name: searchMany
+metadata: { name: searchMany }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -741,9 +720,8 @@ outputs:
 ---
 # Module-first projection: the same fused hits grouped by owning module, with
 # every exported kind included so a module card needs no second manifest fetch.
-kind: Run.Sequence
-metadata:
-  name: searchModules
+kind: Telo.Sequence
+metadata: { name: searchModules }
 throws:
   - code: ERR_UNKNOWN_CATEGORY
     description: The `category` argument names no slug in the declared vocabulary.

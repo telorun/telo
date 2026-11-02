@@ -1,12 +1,8 @@
 # A reference in a kind's template body is no attachment: the sink stays
 # unattached in the configuration that declares the application's job as well.
 kind: Telo.Application
-metadata:
-  name: SinkAttachmentDefinitionBody
-imports:
-  Run: ../../../modules/run
-variables:
-  flag1: { env: FLAG_1, type: boolean, default: false }
+metadata: { name: SinkAttachmentDefinitionBody }
+variables: { flag1: { env: FLAG_1, type: boolean, default: false } }
 targets:
   - !if
     if: !cel "variables.flag1"
@@ -17,7 +13,7 @@ metadata: { name: Job }
 capability: Telo.Runnable
 schema: { type: object }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: seq }
     steps:
       - name: a

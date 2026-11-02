@@ -16,9 +16,10 @@ metadata:
         telo .
         telo . Ada --greeting Welcome
         telo . --help
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 variables:
   name:
     type: string
@@ -36,7 +37,7 @@ variables:
 targets:
   - !ref session
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: session }
 steps:
   - name: askName
@@ -44,8 +45,7 @@ steps:
     then:
       - name: asked
         invoke: !ref Console.readLine
-        inputs:
-          prompt: "What's your name? "
+        inputs: { prompt: "What's your name? " }
   - name: who
     value: !cel "variables.name == '' ? trim(steps.asked.result.value) : variables.name"
   - name: greet
@@ -55,8 +55,7 @@ steps:
 
   - name: read
     invoke: !ref Console.readLine
-    inputs:
-      prompt: "> "
+    inputs: { prompt: "> " }
   - name: turns
     while: !cel "trim(steps.read.result.value) != 'quit'"
     do:
@@ -83,8 +82,7 @@ steps:
           help:
             - name: helped
               invoke: !ref Console.writeLine
-              inputs:
-                output: "shout <text> | count <text> | help | quit"
+              inputs: { output: "shout <text> | count <text> | help | quit" }
         default:
           - name: unknown
             invoke: !ref Console.writeLine
@@ -92,8 +90,7 @@ steps:
               output: !cel "'{red unknown command:} ' + steps.line.result.command + ' — try help'"
       - name: read
         invoke: !ref Console.readLine
-        inputs:
-          prompt: "> "
+        inputs: { prompt: "> " }
 
   - name: bye
     invoke: !ref Console.writeLine

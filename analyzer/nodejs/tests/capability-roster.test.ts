@@ -73,6 +73,7 @@ describe("the roster", () => {
         "LogTraceSink",
         "PublicHostPattern",
         "PublicUrl",
+        "Sequence",
       ].sort(),
     );
   });

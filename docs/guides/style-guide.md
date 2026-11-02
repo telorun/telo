@@ -171,8 +171,8 @@ variables:
 targets:
   - !ref announceStartup
 ---
-# Kind: PascalCase, prefixed by the import alias
-kind: Run.Sequence
+# Kind: PascalCase, prefixed by the import alias (Telo for a built-in)
+kind: Telo.Sequence
 metadata:
   # Instance name: camelCase — it names a value, read as resources.announceStartup
   name: announceStartup

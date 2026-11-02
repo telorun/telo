@@ -155,8 +155,8 @@ A table with no matching row and no `default` throws `ERR_NO_MATCH`. It never re
 | --- | --- |
 | `Run.Choice` | A pure first-match **value** from arbitrary predicates. |
 | `Run.Value` | One value with no branching (or a single ternary). |
-| `Run.Sequence` `switch` | Matching one value against equality **keys**, then running steps. |
-| `Run.Sequence` `if` / `elseif` | Arbitrary predicates that select **steps to execute** (side effects), not a value. |
+| `Telo.Sequence` `switch` | Matching one value against equality **keys**, then running steps. |
+| `Telo.Sequence` `if` / `elseif` | Arbitrary predicates that select **steps to execute** (side effects), not a value. |
 
 ## Numbers: int vs double
 

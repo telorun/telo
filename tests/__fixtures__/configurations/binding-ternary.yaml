@@ -1,9 +1,7 @@
 # The library's choice decided by the importer's `enum` variable, through a ternary.
 kind: Telo.Application
-metadata:
-  name: BindingTernary
+metadata: { name: BindingTernary }
 imports:
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
   Lib:
     source: ./binding-lib
@@ -18,9 +16,8 @@ variables:
 targets:
   - !ref main
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: read
     invoke: !ref Lib.store

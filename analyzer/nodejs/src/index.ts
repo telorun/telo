@@ -248,7 +248,7 @@ export {
 } from "./template-targets.js";
 export { nearestName } from "./nearest-name.js";
 // An ancestor's `throws:` as a ceiling, read once for `telo check` and the kernel.
-export { codesOutsideCeiling, dispatchesThrows, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
+export { codesOutsideCeiling, dispatchesThrows, effectiveThrows, throwsNotSubstitutableMessage } from "./throws-ceiling.js";
 export { builtinDocumentSchema } from "./builtins.js";
 // The closed capability roster, read from the built-in entries for `telo check`,
 // the kernel and the editor support alike.

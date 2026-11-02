@@ -53,7 +53,7 @@ handlers:
 ```
 
 A handler's `handler:` slot takes any `Telo.Invocable` or `Telo.Runnable`, so
-the work itself is ordinary Telo — a `Run.Sequence`, a `Run.Value`, a `Crud`
+the work itself is ordinary Telo — a `Telo.Sequence`, a `Run.Value`, a `Crud`
 resource — and is not Lambda-specific.
 
 ## Packaging

@@ -2,23 +2,14 @@
 # application's environment: its presence is this application's dimension,
 # keyed by its need path.
 kind: Telo.Application
-metadata:
-  name: NeedPresenceLibrary
-imports:
-  Assert: ../../../../modules/assert
-  Run: ../../../../modules/run
-  Orders: ./orders
-variables:
-  expected:
-    env: EXPECTED_LABEL
-    type: string
-    default: fallback
+metadata: { name: NeedPresenceLibrary }
+imports: { Assert: ../../../../modules/assert, Orders: ./orders }
+variables: { expected: { env: EXPECTED_LABEL, type: string, default: fallback } }
 targets:
   - !ref main
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: check
     invoke: { kind: Assert.Equals }

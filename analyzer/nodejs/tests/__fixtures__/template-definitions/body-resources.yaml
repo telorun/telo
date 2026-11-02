@@ -4,7 +4,6 @@ kind: Telo.Library
 metadata:
   name: BodyResources
 imports:
-  Run: ../../../../../modules/run
   Config: ../../../../../modules/config
   Kinds: ../../../../../tests/__fixtures__/check-run-agreement/scope-members/kinds
 exports:
@@ -33,7 +32,7 @@ resources:
     storeRef: { name: nothing }
     keys:
       runs: !cel "string(resources.tally.status.runs)"
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: pipeline }
     steps:
       - !for-each
@@ -64,7 +63,7 @@ resources:
       kind: Kinds.Counter
 invoke: !ref pipeline
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: outside }
 steps:
   - name: read

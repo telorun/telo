@@ -46,11 +46,11 @@ metadata:
     because it is meant to be copied.
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref appSchema
@@ -107,16 +107,14 @@ reclaim:
   # first impression for a manifest you are meant to copy.
   afterDuration: 1ms
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: report }
 steps:
   - name: rows
     invoke:
       kind: Sql.Query
       connection: !ref db
-    inputs:
-      sql: "SELECT id, contactEmail, plan FROM accounts ORDER BY id"
-      bindings: []
+    inputs: { sql: "SELECT id, contactEmail, plan FROM accounts ORDER BY id", bindings: [] }
   # `status` is observed state — what this boot actually did, reported by the
   # resource once it has run. It is not readable at start-up, because nothing
   # has been observed yet.

@@ -29,8 +29,8 @@ metadata:
         JOB_CRON='*/10 * * * * *' telo .
 # Module `lang:` — the language this application's texts are written in — and
 # `UiReact.App.words` are read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 lang: en
 # Every module comes from this repository while the error responses of
 # `http-server` are unreleased, since a published module beside a workspace
@@ -52,11 +52,7 @@ targets:
   - !ref migrate
   - !ref server
   - !ref nightly
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8046
+ports: { http: { env: PORT, protocol: tcp, default: 8046 } }
 variables:
   jobCron:
     env: JOB_CRON
@@ -116,21 +112,20 @@ connection: !ref db
 ---
 # The job itself: nothing in it knows which trigger started it, that it is
 # leased, or that it is recorded. Replace the steps; leave the shape.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runJob }
 steps:
   - name: list
     invoke:
       kind: Fs.DirectoryListing
       cwd: !cel "variables.scanPath"
-    inputs:
-      exclude: [ node_modules, .git, .telo ]
+    inputs: { exclude: [node_modules, .git, .telo] }
 outputs:
   files: !cel "size(steps.list.result.entries.filter(e, e.type == 'file'))"
   bytes: !cel "int(sum(steps.list.result.entries.map(e, e.size)))"
 ---
 # One run, recorded whichever way it ends.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: recordedRun }
 steps:
   - name: started
@@ -191,10 +186,7 @@ cron: !cel "variables.jobCron"
 timezone: UTC
 when: !cel "variables.scheduleEnabled"
 invoke: !ref runExclusively
-inputs:
-  key: scheduled-job
-  holder: schedule
-  inputs: {}
+inputs: { key: scheduled-job, holder: schedule, inputs: {} }
 ---
 kind: Sql.Query
 metadata: { name: recentRuns }
@@ -219,7 +211,7 @@ outputType:
 ---
 # What the on-demand trigger answers with: the run it made — or who is already
 # running — and the history including it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runOnDemand }
 inputType:
   kind: Telo.JsonSchema
@@ -227,8 +219,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ holder ]
-    properties:
-      holder: { type: string }
+    properties: { holder: { type: string } }
 steps:
   - name: attempt
     invoke: !ref runExclusively
@@ -273,9 +264,7 @@ kind: Http.Api
 metadata: { name: jobRoutes }
 routes:
   # The on-demand trigger: the same leased resource the schedule fires.
-  - request:
-      path: /run
-      method: POST
+  - request: { path: /run, method: POST }
     handler: !ref runOnDemand
     inputs:
       holder: !cel "'manual-' + request.ip"
@@ -295,13 +284,9 @@ routes:
               bytes: !cel "result.bytes"
               runs: !cel "result.runs"
     catches:
-      - status: 500
-        content:
-          application/problem+json: {}
+      - { status: 500, content: { application/problem+json: {} } }
 
-  - request:
-      path: /runs
-      method: GET
+  - request: { path: /runs, method: GET }
     handler: !ref recentRuns
     inputs: &recentRunsQuery
       sql: >-
@@ -315,9 +300,7 @@ routes:
             body: !cel "result.rows"
 
   # The same history as an operation a page can run: a button sends a POST.
-  - request:
-      path: /runs/recent
-      method: POST
+  - request: { path: /runs/recent, method: POST }
     handler: !ref recentRuns
     inputs: *recentRunsQuery
     returns:
@@ -327,13 +310,8 @@ routes:
             body:
               runs: !cel "result.rows"
 
-  - request:
-      path: /healthz
-      method: GET
-    handler:
-      kind: Run.Value
-      value:
-        status: ok
+  - request: { path: /healthz, method: GET }
+    handler: { kind: Run.Value, value: { status: ok } }
     inputs: {}
     returns:
       - status: 200
@@ -391,10 +369,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Scheduled job
-    version: 1.0.0
+openapi: { info: { title: Scheduled job, version: 1.0.0 } }
 mounts:
   - path: /api
     mount: !ref jobRoutes

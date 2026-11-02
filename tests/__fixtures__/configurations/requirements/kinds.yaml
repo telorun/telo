@@ -2,22 +2,17 @@
 # reads its own secret, so each secret is required only where its kind is
 # instantiated.
 kind: Telo.Application
-metadata:
-  name: KindChoice
-imports:
-  Run: ../../../../modules/run
+metadata: { name: KindChoice }
 variables:
   provider: { env: PROVIDER, type: string, enum: [x, y], default: x }
-secrets:
-  xKey: { env: X_KEY, type: string }
-  yKey: { env: Y_KEY, type: string }
+secrets: { xKey: { env: X_KEY, type: string }, yKey: { env: Y_KEY, type: string } }
 ---
 kind: Telo.Definition
 metadata: { name: XClient }
 capability: Telo.Runnable
 schema: { type: object, additionalProperties: false, properties: {} }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: inner }
     steps:
       - name: key
@@ -29,7 +24,7 @@ metadata: { name: YClient }
 capability: Telo.Runnable
 schema: { type: object, additionalProperties: false, properties: {} }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: inner }
     steps:
       - name: key

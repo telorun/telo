@@ -86,7 +86,7 @@ server under a path prefix with the server's `mounts:` list. See
 
 ### Step
 
-One entry of a step body (`Run.Sequence`'s `steps:`): an `invoke`, a `value`, a
+One entry of a step body (`Telo.Sequence`'s `steps:`; `Telo.Sequence` is built in and needs no import): an `invoke`, a `value`, a
 conditional, a loop, a `switch`, a `try`, a `throw`. Its result is read by later
 steps as `steps.<name>.result`. See [Composing behaviour](/learn/composing-behaviour).
 
@@ -158,7 +158,7 @@ always **schemas**. No exceptions anywhere in Telo.
 ### Scope
 
 A region where resources exist only for the duration of a run — a
-`Run.Sequence`'s `with:` block, for instance. Scoped resources are created on
+`Telo.Sequence`'s `with:` block, for instance. Scoped resources are created on
 entry, torn down on exit, and fresh per run.
 
 ### Init loop

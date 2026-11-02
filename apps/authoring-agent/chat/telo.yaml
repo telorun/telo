@@ -39,8 +39,8 @@ metadata:
 # needs one from the checkout, the whole set moves to the checkout together.
 # A caught failure is re-raised with `rethrow: {}`, a step an older runtime's
 # grammar does not hold.
-requires:
-  telo: ">=0.123.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Ai: oci://ghcr.io/telorun/ai@0.32.0#sha256-wFl0WwbqZ9Nq6-N2Y18VePWibYUwNKJs2pu6d5_0Zcc
   Anthropic: oci://ghcr.io/telorun/anthropic@0.7.0#sha256-3U4hWqGiQGp5GHLQvjW9Nfd29wyZv-fi-CFbiUudHEw
@@ -84,12 +84,8 @@ resources:
 # refuses a path inside it, wherever it lies. One writer at a time, which
 # SQLite relies on.
 needs:
-  agentState:
-    kind: Telo.DurableDirectory
-    parameters: { access: single-writer }
-secrets:
-  anthropicApiKey:
-    type: string
+  agentState: { kind: Telo.DurableDirectory, parameters: { access: single-writer } }
+secrets: { anthropicApiKey: { type: string } }
 variables:
   # Directory every file tool and every spawned command is rooted at. Configurable
   # because a co-resident agent edits the SESSION's shared workspace volume, which
@@ -97,9 +93,7 @@ variables:
   # volume beside the application containers, not the owner of a directory inside
   # its own container. A host path the importer supplies absolute: the standalone
   # default lives on the Application, which is where a relative path is anchored.
-  workspaceDir:
-    type: string
-    x-telo-type: Telo.HostPath
+  workspaceDir: { type: string, x-telo-type: Telo.HostPath }
   model:
     type: string
     # THE model this agent runs on — declared once, here, and inherited by every
@@ -111,9 +105,7 @@ variables:
     type: integer
     # Max total tokens spent across all turns per window (operator spend cap).
     default: 6000000
-  budgetWindow:
-    type: string
-    default: "1h"
+  budgetWindow: { type: string, default: "1h" }
   reservePerTurn:
     type: integer
     # Worst-case tokens debited at turn start; settled to actual on completion.
@@ -122,9 +114,7 @@ variables:
     type: integer
     # Max turns started per client IP per window (coarse per-abuser throttle).
     default: 20
-  ipWindow:
-    type: string
-    default: "1m"
+  ipWindow: { type: string, default: "1m" }
   teloProgram:
     type: array
     items: { type: string }
@@ -275,43 +265,7 @@ variables:
     # spends the budget concludes with what it has found.
     default: 6
 exports:
-  resources:
-    - ensureWorkspace
-    - initSchema
-    - chatStart
-    - createConversation
-    - listConversations
-    - getConversation
-    - updateConversation
-    - deleteConversation
-    - truncateConversation
-    - branchConversation
-    - catchUpProjections
-    - abortTurn
-    - continueTurn
-    - releaseAttempt
-    - journalSource
-    - turnEvents
-    - conversationRecords
-    - rebuildProjection
-    - retentionSweep
-    - turnChanges
-    - revertTurn
-    - author
-    - findKinds
-    - libraryIndex
-    - readWorkspaceFile
-    - runTelo
-    - runManifest
-    - treeSnapshot
-    - syncWorkspace
-    - readiness
-    - promptIdentity
-    - storeAttachment
-    - readAttachment
-    - attachmentTypes
-    - messageAttachmentLimit
-    - CheckReport
+  resources: [ensureWorkspace, initSchema, chatStart, createConversation, listConversations, getConversation, updateConversation, deleteConversation, truncateConversation, branchConversation, catchUpProjections, abortTurn, continueTurn, releaseAttempt, journalSource, turnEvents, conversationRecords, rebuildProjection, retentionSweep, turnChanges, revertTurn, author, findKinds, libraryIndex, readWorkspaceFile, runTelo, runManifest, treeSnapshot, syncWorkspace, readiness, promptIdentity, storeAttachment, readAttachment, attachmentTypes, messageAttachmentLimit, CheckReport]
 ---
 kind: SQLite.Connection
 metadata: { name: chatDb }
@@ -380,8 +334,7 @@ migrations:
   # When a user's abort cancelled the turn. What tells an aborted turn from one a
   # shutdown cancelled: both fail with ERR_INVOKE_CANCELLED, and only the first
   # is a deliberate ending that cannot be continued.
-  projection_4_aborted_at:
-    statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT
+  projection_4_aborted_at: { statement: ALTER TABLE turns ADD COLUMN aborted_at TEXT }
   # Conversations become the agent's own: a row per conversation holding only
   # what nothing else determines — its title, archive flag, timestamps, a change
   # counter and a deletion tombstone. Every legacy conversation keeps its id.
@@ -501,8 +454,7 @@ migrations:
   # rather than a part of this library's own shape. Clearing the projection
   # makes every live turn's unprojected, so `catchUpProjections` folds each one
   # again from the journal at boot, and its `messages` rows are rewritten.
-  projection_8_attachment_references:
-    statement: DELETE FROM turn_projections
+  projection_8_attachment_references: { statement: DELETE FROM turn_projections }
 ---
 # The account credential is sent in Anthropic's required x-api-key header.
 kind: HttpClient.ApiKeyHeader
@@ -571,10 +523,8 @@ metadata:
   name: callUsages
   description: The usage of every model call a turn's journal records.
 params:
-  - name: records
-    schema: { type: array }
-returns:
-  schema: { type: array }
+  - { name: records, schema: { type: array } }
+returns: { schema: { type: array } }
 body: !cel >-
   records.filter(r, r.type == 'step-finish'
       || (r.type in ['conversation-title', 'context-summary'] && has(r.usage))).map(r, r.usage)
@@ -616,14 +566,10 @@ metadata:
   name: outsideWorkspace
   description: Whether a path the agent or a client supplied would leave the workspace root or enter the agent's state directory.
 params:
-  - name: path
-    schema: { type: string }
-  - name: workspaceDir
-    schema: { type: string }
-  - name: stateDir
-    schema: { type: string }
-returns:
-  schema: { type: boolean }
+  - { name: path, schema: { type: string } }
+  - { name: workspaceDir, schema: { type: string } }
+  - { name: stateDir, schema: { type: string } }
+returns: { schema: { type: boolean } }
 body: !cel >-
   path.startsWith('/') || path.contains('\\') || path.split('/')[0].matches('^[A-Za-z]:')
     || path.split('/').exists(segment, segment == '..')
@@ -638,10 +584,8 @@ metadata:
   name: normalPath
   description: A workspace-relative path without empty or `.` segments.
 params:
-  - name: path
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: path, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel "join(path.split('/').filter(segment, segment != '' && segment != '.'), '/')"
 ---
 kind: Telo.Function
@@ -649,10 +593,8 @@ metadata:
   name: outsideWorkspaceMessage
   description: The refusal for a path outside the workspace, naming the path and restating the rule.
 params:
-  - name: path
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: path, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   'ERR_PATH_OUTSIDE_WORKSPACE: the path "' + path + '" is outside the workspace. A path is relative to the workspace root: '
     + 'never absolute, no backslash, no drive letter, no ".." segment, and never inside the agent\'s own state directory.'
@@ -666,14 +608,10 @@ metadata:
   name: unremovable
   description: Whether a path is the workspace root or a directory holding the agent's state directory.
 params:
-  - name: path
-    schema: { type: string }
-  - name: workspaceDir
-    schema: { type: string }
-  - name: stateDir
-    schema: { type: string }
-returns:
-  schema: { type: boolean }
+  - { name: path, schema: { type: string } }
+  - { name: workspaceDir, schema: { type: string } }
+  - { name: stateDir, schema: { type: string } }
+returns: { schema: { type: boolean } }
 body: !cel >-
   cel.bind(target, Self.normalPath(path),
     target == '' || (stateDir.startsWith(workspaceDir + '/')
@@ -684,10 +622,8 @@ metadata:
   name: unremovableMessage
   description: The refusal for a removal naming the workspace root or a directory holding the agent's state directory.
 params:
-  - name: path
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: path, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   'ERR_PATH_OUTSIDE_WORKSPACE: refused to delete "' + path + '": it is the workspace root or holds the agent\'s own '
     + 'state directory, which is never workspace content. Nothing was removed. Delete the entries inside it one by one.'
@@ -726,15 +662,12 @@ metadata:
   name: renderCheck
   description: Renders a check report and the checker's stderr as the lines a tool result carries.
 params:
-  - name: exitCode
-    schema: { type: integer }
+  - { name: exitCode, schema: { type: integer } }
   - name: report
     schema: !ref CheckReport
     nullable: true
-  - name: messages
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: messages, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   (report != null && size(report.diagnostics) > 0
     ? join(report.diagnostics.map(d,
@@ -750,14 +683,10 @@ metadata:
   name: renderRun
   description: Renders a command's exit code, stdout and stderr as the text a tool result carries.
 params:
-  - name: exitCode
-    schema: { type: integer }
-  - name: output
-    schema: { type: string }
-  - name: messages
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: exitCode, schema: { type: integer } }
+  - { name: output, schema: { type: string } }
+  - { name: messages, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   output
     + (exitCode == 0 ? '' : (output == '' || output.endsWith('\n') ? '' : '\n') + 'exit ' + string(exitCode))
@@ -772,20 +701,15 @@ metadata:
   name: secretMessage
   description: The refusal for a write whose content carries a credential, naming each line and rule and the repair.
 params:
-  - name: path
-    schema: { type: string }
+  - { name: path, schema: { type: string } }
   - name: findings
     schema:
       type: array
       items:
         type: object
         required: [rule, line, column]
-        properties:
-          rule: { type: string }
-          line: { type: integer }
-          column: { type: integer }
-returns:
-  schema: { type: string }
+        properties: { rule: { type: string }, line: { type: integer }, column: { type: integer } }
+returns: { schema: { type: string } }
 body: !cel >-
   'ERR_SECRET_IN_MANIFEST: refused to write "' + path + '": it would contain a credential at '
     + join(findings.map(f, 'line ' + string(f.line) + ' (' + f.rule + ')'), ', ')
@@ -793,7 +717,7 @@ body: !cel >-
     + 'and read it with !cel "secrets.<name>", then write the file again.'
 ---
 # read_file, and GET /workspace/file: the file's contents, confined.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readWorkspaceFile }
 inputType:
   kind: Telo.JsonSchema
@@ -801,17 +725,14 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [content, size]
-    properties:
-      content: { type: string }
-      size: { type: integer }
+    properties: { content: { type: string }, size: { type: integer } }
 steps:
   - name: confine
     if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
@@ -831,7 +752,7 @@ outputs:
 # list_dir: a directory's entries, confined. The exclude set is fixed here rather
 # than offered as a parameter: a recursive listing of a workspace is otherwise
 # mostly `.telo` cache paths, and a set the model can pass is a set it can drop.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listWorkspaceDir }
 inputType:
   kind: Telo.JsonSchema
@@ -839,9 +760,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path, recursive]
-    properties:
-      path: { type: string }
-      recursive: { type: boolean }
+    properties: { path: { type: string }, recursive: { type: boolean } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -854,9 +773,7 @@ outputType:
         items:
           type: object
           required: [path, type]
-          properties:
-            path: { type: string }
-            type: { type: string }
+          properties: { path: { type: string }, type: { type: string } }
 steps:
   - name: confine
     if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
@@ -877,7 +794,7 @@ outputs:
 # read_file: the file whole, or the lines [offset, offset + limit) under a
 # header naming them. A range is how a file past the tool-result bound is read
 # at all — whole, it is cut at the bound, and every later step re-sends it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readWorkspaceLines }
 inputType:
   kind: Telo.JsonSchema
@@ -895,8 +812,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [text]
-    properties:
-      text: { type: string }
+    properties: { text: { type: string } }
 steps:
   - name: file
     invoke: !ref readWorkspaceFile
@@ -919,7 +835,7 @@ outputs:
 # expression in it. The exclude set is list_dir's; a file past `maxSearchFileBytes`
 # is passed over and counted, never read, and the answer stops at
 # `maxSearchMatches` lines, saying so.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: searchWorkspace }
 inputType:
   kind: Telo.JsonSchema
@@ -927,9 +843,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [pattern, path]
-    properties:
-      pattern: { type: string, minLength: 1 }
-      path: { type: string }
+    properties: { pattern: { type: string, minLength: 1 }, path: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -942,14 +856,9 @@ outputType:
         items:
           type: object
           required: [path, line, text]
-          properties:
-            path: { type: string }
-            line: { type: integer }
-            text: { type: string }
+          properties: { path: { type: string }, line: { type: integer }, text: { type: string } }
       truncated: { type: boolean }
-      skipped:
-        type: array
-        items: { type: string }
+      skipped: { type: array, items: { type: string } }
 steps:
   - name: confine
     if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
@@ -997,7 +906,7 @@ outputs:
 # delete_file, confined — the workspace root and a directory holding the
 # agent's state directory are never removed — then checkpointed and applied
 # under the workspace lease. `changes` is one Change per file the call deleted.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deleteWorkspaceFile }
 inputType:
   kind: Telo.JsonSchema
@@ -1017,9 +926,7 @@ outputType:
     required: [path, changes]
     properties:
       path: { type: string }
-      changes:
-        type: array
-        items: { $ref: "telo://Self/Change" }
+      changes: { type: array, items: { $ref: "telo://Self/Change" } }
 steps:
   - name: confine
     if: !cel "Self.outsideWorkspace(inputs.path, string(variables.workspaceDir), string(resources.agentState.path))"
@@ -1084,15 +991,13 @@ metadata:
   name: blobText
   description: The UTF-8 text of base64 content whose digest is known, or null when the content is not UTF-8 text.
 params:
-  - name: content
-    schema: { type: string }
-  - name: digest
-    schema: { type: string }
+  - { name: content, schema: { type: string } }
+  - { name: digest, schema: { type: string } }
 returns:
   schema:
     anyOf:
-      - type: string
-      - type: "null"
+      - { type: string }
+      - { type: "null" }
 body: !cel "cel.bind(text, base64Decode(content), sha256(text) == digest ? dyn(text) : null)"
 ---
 # A file's change with its line diff. A side that does not exist is the empty
@@ -1104,20 +1009,11 @@ metadata:
   name: fileChange
   description: A file's change between two digests, with its line counts, hunks and the line its first hunk starts at.
 params:
-  - name: path
-    schema: { type: string }
-  - name: before
-    schema: { type: string }
-    nullable: true
-  - name: after
-    schema: { type: string }
-    nullable: true
-  - name: beforeText
-    schema: { type: string }
-    nullable: true
-  - name: afterText
-    schema: { type: string }
-    nullable: true
+  - { name: path, schema: { type: string } }
+  - { name: before, schema: { type: string }, nullable: true }
+  - { name: after, schema: { type: string }, nullable: true }
+  - { name: beforeText, schema: { type: string }, nullable: true }
+  - { name: afterText, schema: { type: string }, nullable: true }
 returns:
   schema:
     type: object
@@ -1148,16 +1044,11 @@ metadata:
   name: checkpointTooLargeMessage
   description: The refusal for a tool call whose checkpoint would pass a bound, naming the path, what was reached and the bound.
 params:
-  - name: path
-    schema: { type: string }
-  - name: reached
-    schema: { type: integer }
-  - name: bound
-    schema: { type: integer }
-  - name: unit
-    schema: { type: string, enum: [bytes, files] }
-returns:
-  schema: { type: string }
+  - { name: path, schema: { type: string } }
+  - { name: reached, schema: { type: integer } }
+  - { name: bound, schema: { type: integer } }
+  - { name: unit, schema: { type: string, enum: [bytes, files] } }
+returns: { schema: { type: string } }
 body: !cel >-
   'ERR_CHECKPOINT_TOO_LARGE: refused to change "' + path + '": the call would capture ' + string(reached) + ' ' + unit
     + ' into the turn\'s checkpoint, over the ' + string(bound) + ' ' + unit + ' one call may capture. '
@@ -1196,7 +1087,7 @@ cwd: !cel "resources.agentState.path.joinPath('checkpoints')"
 # there, as a directory or anything else, could simply not be listed, and that
 # first listing's error is raised as it was — as is any listing that fails on
 # the way down. A path that could not be listed is never given a state.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: pathStates }
 inputType:
   kind: Telo.JsonSchema
@@ -1204,10 +1095,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [paths]
-    properties:
-      paths:
-        type: array
-        items: { type: string }
+    properties: { paths: { type: array, items: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -1307,7 +1195,7 @@ outputs:
 # file is read — once, bounded by its listed size — only when that size equals
 # one of the sizes given for it; a file of any other size, or one that grew
 # past its listed size before the read, has no digest and counts as changed.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: sizedDigest }
 inputType:
   kind: Telo.JsonSchema
@@ -1319,9 +1207,7 @@ inputType:
       path: { type: string }
       state: { type: string, enum: [file, directory, other, absent] }
       size: { type: integer }
-      sizes:
-        type: array
-        items: { type: integer }
+      sizes: { type: array, items: { type: integer } }
 steps:
   - name: candidate
     if: !cel "inputs.state == 'file' && inputs.sizes.exists(s, int(s) == int(inputs.size))"
@@ -1338,14 +1224,13 @@ steps:
           - name: failed
             if: !cel "error.code != 'ERR_FILE_TOO_LARGE'"
             then:
-              - name: reraise
-                rethrow: {}
+              - { name: reraise, rethrow: {} }
 outputs:
   hash: !cel "has(steps.read) ? dyn(steps.read.result.sha256) : null"
 ---
 # What the workspace holds at each path: its kind from one metadata pass over
 # the paths, and its digest where `sizedDigest` reads it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: currentDigests }
 inputType:
   kind: Telo.JsonSchema
@@ -1360,11 +1245,7 @@ inputType:
           type: object
           additionalProperties: false
           required: [path, sizes]
-          properties:
-            path: { type: string }
-            sizes:
-              type: array
-              items: { type: integer }
+          properties: { path: { type: string }, sizes: { type: array, items: { type: integer } } }
 steps:
   - name: at
     invoke: !ref pathStates
@@ -1399,7 +1280,7 @@ outputs:
 ---
 # One capture read: a workspace file whole, as base64, refused before any of it
 # is read when it is larger than what the call's byte bound has left.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: captureRead }
 inputType:
   kind: Telo.JsonSchema
@@ -1419,10 +1300,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [content, sha256, size]
-    properties:
-      content: { type: string }
-      sha256: { type: string }
-      size: { type: integer }
+    properties: { content: { type: string }, sha256: { type: string }, size: { type: integer } }
 steps:
   - name: bounded
     try:
@@ -1442,8 +1320,7 @@ steps:
               message: !cel >-
                 Self.checkpointTooLargeMessage(inputs.subject, int(inputs.spent) + int(error.data.size),
                   int(variables.maxCheckpointBytes), 'bytes')
-      - name: reraise
-        rethrow: {}
+      - { name: reraise, rethrow: {} }
 outputs:
   content: !cel "steps.read.result.content"
   sha256: !cel "steps.read.result.sha256"
@@ -1454,7 +1331,7 @@ outputs:
 # marked removed. A call for a turn that is gone removes the copies it stored —
 # the turn's directory — before it is refused, so copies exist only under live
 # turns.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: recordEntries }
 inputType:
   kind: Telo.JsonSchema
@@ -1509,7 +1386,7 @@ steps:
 # entries when it fails after recording them (`callId`) — a cancelled call
 # cannot, and leaves them to its turn's ending — what a turn's ending runs on
 # that turn's leftovers (`turnId`), and what boot runs on every one (neither).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: settleEntries }
 inputType:
   kind: Telo.JsonSchema
@@ -1517,9 +1394,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [callId, turnId]
-    properties:
-      callId: { type: [string, "null"] }
-      turnId: { type: [string, "null"] }
+    properties: { callId: { type: [string, "null"] }, turnId: { type: [string, "null"] } }
 steps:
   - name: pending
     invoke: !ref historyRows
@@ -1586,10 +1461,8 @@ metadata:
   name: notFileMessage
   description: The refusal for a path that exists but is not a regular file, or a tree holding such an entry.
 params:
-  - name: path
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: path, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   'ERR_PATH_NOT_A_FILE: refused to change "' + path + '": it is not a regular file (a directory where a file is '
     + 'expected, a symbolic link, a device), so its content cannot be checkpointed. Nothing was changed.'
@@ -1609,10 +1482,7 @@ schema:
       type: object
       additionalProperties: false
       required: [turnId, path, content]
-      properties:
-        turnId: { type: string }
-        path: { type: string }
-        content: { type: string }
+      properties: { turnId: { type: string }, path: { type: string }, content: { type: string } }
     edit:
       type: object
       additionalProperties: false
@@ -1644,9 +1514,7 @@ schema:
               path: { type: string }
               content: { type: string }
               encoding: { type: string, enum: [utf8, base64] }
-        delete:
-          type: array
-          items: { type: string }
+        delete: { type: array, items: { type: string } }
     # One batch of a revert, in path order.
     revert:
       type: object
@@ -1667,9 +1535,7 @@ schema:
               before: { type: [string, "null"] }
               after: { type: [string, "null"] }
               # The sizes of the turn's "before" and "after" copies of the path.
-              sizes:
-                type: array
-                items: { type: integer }
+              sizes: { type: array, items: { type: integer } }
 ---
 # One attempt at the workspace write lease: one holder at a time for the whole
 # workspace, over the store the per-conversation turn lease uses. What the
@@ -1691,7 +1557,7 @@ schema:
 # recorded, the change, the entries confirmed. A change that fails after its
 # entries were recorded settles them from the files they name before it is
 # raised.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: acquireWorkspace }
 inputType:
   kind: Telo.JsonSchema
@@ -1708,7 +1574,7 @@ steps:
       store: !ref leaseStore
       ttl: 10m
       invoke:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType: !ref WorkspaceOperation
         steps:
           - name: attempt
@@ -1721,17 +1587,14 @@ steps:
                   # file is written and the entry confirmed.
                   - name: written
                     invoke:
-                      kind: Run.Sequence
+                      kind: Telo.Sequence
                       inputType:
                         kind: Telo.JsonSchema
                         schema:
                           type: object
                           additionalProperties: false
                           required: [turnId, path, content]
-                          properties:
-                            turnId: { type: string }
-                            path: { type: string }
-                            content: { type: string }
+                          properties: { turnId: { type: string }, path: { type: string }, content: { type: string } }
                       steps:
                         - name: call
                           value: !cel "uuidv4()"
@@ -1808,8 +1671,7 @@ steps:
                               inputs:
                                 callId: !cel "steps.call.result"
                                 turnId: null
-                            - name: reraise
-                              rethrow: {}
+                            - { name: reraise, rethrow: {} }
                         - name: confirm
                           invoke: !ref checkpointCommand
                           inputs:
@@ -1835,7 +1697,7 @@ steps:
                       # checkpointed and the edit itself refuses.
                       - name: edited
                         invoke:
-                          kind: Run.Sequence
+                          kind: Telo.Sequence
                           inputType:
                             kind: Telo.JsonSchema
                             schema:
@@ -1945,8 +1807,7 @@ steps:
                                   inputs:
                                     callId: !cel "steps.call.result"
                                     turnId: null
-                                - name: reraise
-                                  rethrow: {}
+                                - { name: reraise, rethrow: {} }
                             - name: confirm
                               invoke: !ref checkpointCommand
                               inputs:
@@ -1978,7 +1839,7 @@ steps:
                       # already removed.
                       - name: removed
                         invoke:
-                          kind: Run.Sequence
+                          kind: Telo.Sequence
                           inputType:
                             kind: Telo.JsonSchema
                             schema:
@@ -2063,8 +1924,7 @@ steps:
                                     message: !cel >-
                                       Self.checkpointTooLargeMessage(inputs.path, int(sum(steps.listed.result.map(e, e.size))),
                                         int(variables.maxCheckpointBytes), 'bytes')
-                            - name: captured
-                              value: []
+                            - { name: captured, value: [] }
                             - name: spent
                               value: !cel "0"
                             - name: capture
@@ -2109,8 +1969,7 @@ steps:
                                   inputs:
                                     callId: !cel "steps.call.result"
                                     turnId: null
-                                - name: reraise
-                                  rethrow: {}
+                                - { name: reraise, rethrow: {} }
                             - name: confirm
                               invoke: !ref checkpointCommand
                               inputs:
@@ -2148,7 +2007,7 @@ steps:
                       # the paths ahead of it stay replaced and recorded.
                       - name: reverted
                         invoke:
-                          kind: Run.Sequence
+                          kind: Telo.Sequence
                           inputType:
                             kind: Telo.JsonSchema
                             schema:
@@ -2168,9 +2027,7 @@ steps:
                                       status: { type: string, enum: [created, modified, deleted] }
                                       before: { type: [string, "null"] }
                                       after: { type: [string, "null"] }
-                                      sizes:
-                                        type: array
-                                        items: { type: integer }
+                                      sizes: { type: array, items: { type: integer } }
                           steps:
                             - name: at
                               invoke: !ref pathStates
@@ -2301,7 +2158,7 @@ outputs:
 # One workspace operation under the lease. Acquisition is retried here — the
 # one layer that retries — and ERR_WORKSPACE_BUSY is raised when the retries
 # are spent. The operation's own failure is raised as it was.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: leasedWorkspace }
 inputType:
   kind: Telo.JsonSchema
@@ -2343,7 +2200,7 @@ outputs:
 # holding the agent's state directory — and the whole apply is one hold of the
 # workspace lease. Not scanned for secrets, and not
 # checkpointed: this is the user's own editor writing the user's own files.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: syncWorkspace }
 inputType:
   kind: Telo.JsonSchema
@@ -2361,18 +2218,14 @@ inputType:
             path: { type: string }
             content: { type: string }
             encoding: { type: string, enum: [utf8, base64] }
-      delete:
-        type: array
-        items: { type: string }
+      delete: { type: array, items: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
     required: [written, deleted]
-    properties:
-      written: { type: integer }
-      deleted: { type: integer }
+    properties: { written: { type: integer }, deleted: { type: integer } }
 steps:
   - name: outside
     value: !cel >-
@@ -2416,7 +2269,7 @@ outputs:
 # directory, which no listing or sync shows). An empty list is ready. Each
 # message is fixed — the route is unguarded, so a failure's own text (a database
 # error, an absolute path) goes to the log instead.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readiness }
 outputType:
   kind: Telo.JsonSchema
@@ -2439,9 +2292,7 @@ steps:
     try:
       - name: schemaRead
         invoke: !ref historyRows
-        inputs:
-          sql: "SELECT COUNT(*) AS n FROM turns"
-          bindings: []
+        inputs: { sql: "SELECT COUNT(*) AS n FROM turns", bindings: [] }
     # The cause goes to the operator's log; the unguarded route says only
     # which check failed.
     catch:
@@ -2456,14 +2307,10 @@ steps:
     try:
       - name: probeWrite
         invoke: !ref writeFile
-        inputs:
-          path: .telo/agent-ready-probe
-          content: ready
-          createParents: true
+        inputs: { path: .telo/agent-ready-probe, content: ready, createParents: true }
       - name: probeRemove
         invoke: !ref removeFile
-        inputs:
-          path: .telo/agent-ready-probe
+        inputs: { path: .telo/agent-ready-probe }
     catch:
       - name: workspaceFailure
         invoke: !ref Log.emit
@@ -2483,7 +2330,7 @@ outputs:
 ---
 # The agent's prompt identity: the lowercase hex SHA-256 of the primer it runs
 # with, read from the same file `author` embeds, so the two cannot disagree.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: promptIdentity }
 outputType:
   kind: Telo.JsonSchema
@@ -2491,8 +2338,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [id]
-    properties:
-      id: { type: string }
+    properties: { id: { type: string } }
 steps:
   - name: primer
     value: !include-text ./primer.md
@@ -2532,7 +2378,7 @@ journal: !ref turnJournal
 # finished one ends, a failed one raises its recorded error (the encoder turns
 # that into an `event: error` frame), and a turn removed mid-read raises
 # ERR_JOURNAL_KEY_REMOVED the same way.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turnEvents }
 inputType:
   kind: Telo.JsonSchema
@@ -2540,9 +2386,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId, fromId]
-    properties:
-      turnId: { type: string }
-      fromId: { type: integer, minimum: 0 }
+    properties: { turnId: { type: string }, fromId: { type: integer, minimum: 0 } }
 steps:
   - name: header
     invoke: !ref journalRead
@@ -2581,7 +2425,7 @@ outputs:
 # (turn, record id). The page is planned from one snapshot of each turn's
 # header first, so `limit` bounds the records read, not only the records
 # returned, and each turn's status and error are that snapshot's.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: conversationRecords }
 inputType:
   kind: Telo.JsonSchema
@@ -2742,12 +2586,9 @@ metadata:
   name: turnSummary
   description: A turn's summary from its row joined with its projection and its projected file changes.
 params:
-  - name: row
-    schema: { type: object }
-  - name: changes
-    schema: { type: array }
-returns:
-  schema: { type: object }
+  - { name: row, schema: { type: object } }
+  - { name: changes, schema: { type: array } }
+returns: { schema: { type: object } }
 body: !cel >-
   cel.bind(codes, changes.filter(c, c.status != 'deleted').map(c, c.check_exit_code),
     {
@@ -2777,16 +2618,13 @@ metadata:
   name: revertOutcome
   description: A turn's recorded revert — when, and each path's outcome — or null when it was never reverted.
 params:
-  - name: revertedAt
-    schema: { type: string }
-    nullable: true
-  - name: rows
-    schema: { type: array }
+  - { name: revertedAt, schema: { type: string }, nullable: true }
+  - { name: rows, schema: { type: array } }
 returns:
   schema:
     anyOf:
-      - type: object
-      - type: "null"
+      - { type: object }
+      - { type: "null" }
 body: !cel >-
   revertedAt == null ? null : dyn({
     'revertedAt': revertedAt,
@@ -2796,7 +2634,7 @@ body: !cel >-
 # A turn's checkpoint, one row per path, from its CONFIRMED entries only: the
 # digest the path held before the turn first changed it, the digest its last
 # entry left, and the size of each of those copies (null for an absent side).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkpointPaths }
 inputType:
   kind: Telo.JsonSchema
@@ -2804,8 +2642,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: paths
     invoke: !ref historyRows
@@ -2847,7 +2684,7 @@ outputs:
 # the budget has left; one that does not fit is not read and carries no counts,
 # hunks or first line, and a later, smaller one may still fit. Whether a side
 # that was read is comparable is `TextDiff.lineDiff`'s answer alone.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: netChanges }
 inputType:
   kind: Telo.JsonSchema
@@ -2855,8 +2692,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: checkpoint
     invoke: !ref checkpointPaths
@@ -2920,7 +2756,7 @@ outputs:
 # The refusals the changes and revert routes share, from one snapshot of the
 # turn's key and its row: removed (410 ERR_JOURNAL_KEY_REMOVED), never started
 # (404 ERR_TURN_NOT_FOUND).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requireTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -2928,8 +2764,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: header
     invoke: !ref journalRead
@@ -2985,7 +2820,7 @@ outputs:
 # checkpoints existed answers `files: null` and `revert: null`. Refused for a
 # removed turn (410), an unknown one (404) and a conversation unknown or
 # deleted (404 / 410).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turnChanges }
 inputType:
   kind: Telo.JsonSchema
@@ -2993,8 +2828,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: turn
     invoke: !ref requireTurn
@@ -3092,7 +2926,7 @@ outputs:
 # first — and when the turn's first revert runs to its end, whatever it
 # restored. A revert refused or failed before any outcome was written moves
 # neither.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: revertTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -3100,8 +2934,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: turn
     invoke: !ref requireTurn
@@ -3161,10 +2994,7 @@ steps:
           - name: yield
             if: !cel "steps.next.result > 0"
             then:
-              - name: pause
-                invoke: { kind: Timer.Delay }
-                inputs:
-                  duration: 100ms
+              - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 100ms } }
           - name: batch
             invoke: !ref leasedWorkspace
             inputs:
@@ -3199,16 +3029,14 @@ steps:
               kind: Sql.Transaction
               connection: !ref chatDb
               steps:
-                kind: Run.Sequence
+                kind: Telo.Sequence
                 inputType:
                   kind: Telo.JsonSchema
                   schema:
                     type: object
                     additionalProperties: false
                     required: [conversationId, turnId]
-                    properties:
-                      conversationId: { type: string }
-                      turnId: { type: string }
+                    properties: { conversationId: { type: string }, turnId: { type: string } }
                 steps:
                   - name: turn
                     invoke: !ref checkpointCommand
@@ -3274,10 +3102,8 @@ metadata:
   name: turnMessages
   description: Folds one turn's journal records into the model messages that replay it.
 params:
-  - name: records
-    schema: { type: array }
-returns:
-  schema: { type: array }
+  - { name: records, schema: { type: array } }
+returns: { schema: { type: array } }
 body: !cel >-
   cel.bind(ends, enumerate(records).filter(e, e.value.type in ['step-finish', 'turn-continued']).map(e, e.index),
     cel.bind(answered, records.filter(r, r.type == 'tool-result').map(r, r.toolResult.toolCallId),
@@ -3311,12 +3137,9 @@ metadata:
   name: turnStatus
   description: A turn's status from its journal key's state, its recorded error and when a user aborted it.
 params:
-  - name: state
-    schema: { type: string }
-  - name: failure
-    schema: { type: [object, "null"] }
-  - name: abortedAt
-    schema: { type: [string, "null"] }
+  - { name: state, schema: { type: string } }
+  - { name: failure, schema: { type: [object, "null"] } }
+  - { name: abortedAt, schema: { type: [string, "null"] } }
 returns:
   schema: { type: string, enum: [unknown, removed, running, finished, failed, aborted] }
 body: !cel >-
@@ -3352,8 +3175,7 @@ metadata:
   name: conversationOf
   description: A conversation's wire shape, from its row in `conversation_view`.
 params:
-  - name: row
-    schema: { type: object }
+  - { name: row, schema: { type: object } }
 returns:
   schema: !ref Conversation
 body: !cel >-
@@ -3367,10 +3189,8 @@ metadata:
   name: contentText
   description: The text of a message's content, whether a string or a list of content parts.
 params:
-  - name: content
-    schema: {}
-returns:
-  schema: { type: string }
+  - { name: content, schema: {} }
+returns: { schema: { type: string } }
 body: !cel >-
   type(content) == type('') ? content
     : type(content) == type([])
@@ -3387,10 +3207,8 @@ metadata:
   name: titleOf
   description: Sanitizes a model's reply into a conversation title.
 params:
-  - name: reply
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: reply, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   cel.bind(lines, reply.split('\n').map(l, l.trim()).filter(l, l != ''),
     size(lines) == 0 ? ''
@@ -3408,10 +3226,8 @@ metadata:
   name: branchTitle
   description: The title a branch of a conversation carries, from its source's title.
 params:
-  - name: title
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: title, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
   size(title) + size(' (branch)') <= 200 ? title + ' (branch)'
     : regexReplace(regexExtract(title, '(?s)^.{0,190}'), '[\\s\\p{Z}]+$', '') + '… (branch)'
@@ -3424,9 +3240,7 @@ metadata:
   name: transcriptOf
   description: Renders a previous summary and projected message rows as the transcript a summary call reads.
 params:
-  - name: previous
-    schema: { type: string }
-    nullable: true
+  - { name: previous, schema: { type: string }, nullable: true }
   - name: rows
     schema:
       type: array
@@ -3437,8 +3251,7 @@ params:
           role: { type: string }
           content: { type: string }
           tool_calls: { type: [string, "null"] }
-returns:
-  schema: { type: string }
+returns: { schema: { type: string } }
 body: !cel >-
   (previous == null ? '' : 'EARLIER SUMMARY:\n' + previous + '\n\n')
     + join(rows.map(r,
@@ -3457,12 +3270,9 @@ metadata:
   name: interruptionNote
   description: Tells the model how the previous attempt of a turn ended and which of its tool calls have no recorded result.
 params:
-  - name: records
-    schema: { type: array }
-  - name: failure
-    schema: { type: [object, "null"] }
-returns:
-  schema: { type: string }
+  - { name: records, schema: { type: array } }
+  - { name: failure, schema: { type: [object, "null"] } }
+returns: { schema: { type: string } }
 body: !cel >-
   cel.bind(leads, enumerate(records).filter(e, e.value.type in ['user-message', 'turn-continued']).map(e, e.index),
     cel.bind(attempt, size(leads) == 0 ? records : slice(records, leads[size(leads) - 1] + 1, size(records)),
@@ -3487,7 +3297,7 @@ body: !cel >-
 # rebuilt from the journal and the checkpoint at any time. `ending` says the
 # projection is the turn's last: its end handler passes it, since the key is
 # still open while that handler runs.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: projectTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -3530,29 +3340,13 @@ steps:
       kind: Sql.Transaction
       connection: !ref chatDb
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
             type: object
             additionalProperties: false
-            required:
-              - conversationId
-              - turnId
-              - messages
-              - throughId
-              - providerState
-              - providerModel
-              - tokens
-              - model
-              - contextTokens
-              - summary
-              - summaryThrough
-              - changes
-              - promptTokens
-              - completionTokens
-              - runs
-              - ended
+            required: [conversationId, turnId, messages, throughId, providerState, providerModel, tokens, model, contextTokens, summary, summaryThrough, changes, promptTokens, completionTokens, runs, ended]
             properties:
               conversationId: { type: string }
               turnId: { type: string }
@@ -3730,7 +3524,7 @@ steps:
 # holds records the projection has not seen — the step every history read goes
 # through first, so a turn that ended without its own projection (a process that
 # died mid-turn) is caught up before the model sees its history.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: catchUpProjection }
 inputType:
   kind: Telo.JsonSchema
@@ -3738,8 +3532,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: turns
     invoke: !ref historyRows
@@ -3779,7 +3572,7 @@ steps:
 # Rebuild a conversation's whole projection from the journal: every turn is
 # projected again, whatever its rows say. What an operation that changes
 # history runs afterwards, and what proves the projection is disposable.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: rebuildProjection }
 inputType:
   kind: Telo.JsonSchema
@@ -3787,8 +3580,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: turns
     invoke: !ref historyRows
@@ -3816,14 +3608,12 @@ steps:
 # `turn_projections`, every conversation — or one whose projection was not
 # taken at its ending is caught up: a turn a crash cut off, whose summary is
 # projected here.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: catchUpProjections }
 steps:
   - name: settle
     invoke: !ref settleEntries
-    inputs:
-      callId: null
-      turnId: null
+    inputs: { callId: null, turnId: null }
   - name: behind
     invoke: !ref historyRows
     inputs:
@@ -3851,7 +3641,7 @@ outputs:
 # row: 404 ERR_CONVERSATION_NOT_FOUND for an id this agent never minted (or
 # whose tombstone outlived the retention window), 410 ERR_CONVERSATION_REMOVED
 # for a deleted one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requireConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -3859,8 +3649,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: found
     invoke: !ref historyRows
@@ -3891,7 +3680,7 @@ outputs:
   archived: !cel "int(steps.found.result.rows[0].archived) != 0"
 ---
 # The refusal for a turn-starting request on an archived conversation.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requireWritableConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -3899,8 +3688,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: conversation
     invoke: !ref requireConversation
@@ -3921,7 +3709,7 @@ outputs:
 # Why a conditional write on a conversation changed nothing — the same codes
 # `requireWritableConversation` answers, decided from the row as it is now.
 # Run inside the transaction whose write missed, so it reads that snapshot.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: refuseConversationWrite }
 inputType:
   kind: Telo.JsonSchema
@@ -3929,8 +3717,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: current
     invoke: { kind: Sql.Query, connection: !ref chatDb }
@@ -3963,7 +3750,7 @@ steps:
         conversationId: !cel "inputs.conversationId"
 ---
 # POST /conversations. The agent mints every conversation id.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: createConversation }
 steps:
   - name: id
@@ -3981,7 +3768,7 @@ outputs:
   conversation: !cel "steps.read.result.conversation"
 ---
 # GET /conversations/{id}.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: getConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -3989,8 +3776,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: read
     invoke: !ref requireConversation
@@ -4004,7 +3790,7 @@ outputs:
 # substring of the title or of the TEXT of a user or assistant message (never
 # a tool call or result, reasoning or a summary). A page is cut at `limit`;
 # `next` is the cursor of the following one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listConversations }
 inputType:
   kind: Telo.JsonSchema
@@ -4066,7 +3852,7 @@ outputs:
 ---
 # PATCH /conversations/{id}: rename and/or (un)archive. A title is stored
 # trimmed and never reset to null.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: updateConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -4107,7 +3893,7 @@ outputs:
 # answering 410 for the journal's marker retention), then its checkpoint
 # directory (one that is not there is not an error), then its rows. Each step
 # is safe to repeat, so a cascade a crash cut short is finished by the next one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cascadeTurns }
 inputType:
   kind: Telo.JsonSchema
@@ -4115,10 +3901,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnIds]
-    properties:
-      turnIds:
-        type: array
-        items: { type: string }
+    properties: { turnIds: { type: array, items: { type: string } } }
 steps:
   - name: each
     invoke:
@@ -4140,15 +3923,14 @@ steps:
             kind: Sql.Transaction
             connection: !ref chatDb
             steps:
-              kind: Run.Sequence
+              kind: Telo.Sequence
               inputType:
                 kind: Telo.JsonSchema
                 schema:
                   type: object
                   additionalProperties: false
                   required: [turnId]
-                  properties:
-                    turnId: { type: string }
+                  properties: { turnId: { type: string } }
               steps:
                 - name: messages
                   invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -4187,7 +3969,7 @@ steps:
     inputs:
       turnIds: !cel "inputs.turnIds"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: cascadeConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -4195,8 +3977,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: marked
     invoke: !ref historyRows
@@ -4247,7 +4028,7 @@ steps:
 # admitted since is caught by the revision its admission bumped. A hidden
 # (`assembling`) conversation is `missing` to a client and a conversation like
 # any other to the sweep (`includeHidden`).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: tombstoneConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -4255,9 +4036,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, includeHidden]
-    properties:
-      conversationId: { type: string }
-      includeHidden: { type: boolean }
+    properties: { conversationId: { type: string }, includeHidden: { type: boolean } }
 steps:
   - name: row
     invoke: !ref historyRows
@@ -4292,24 +4071,21 @@ steps:
           kind: Sql.Transaction
           connection: !ref chatDb
           steps:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
               schema:
                 type: object
                 additionalProperties: false
                 required: [conversationId, revision]
-                properties:
-                  conversationId: { type: string }
-                  revision: { type: integer }
+                properties: { conversationId: { type: string }, revision: { type: integer } }
             outputType:
               kind: Telo.JsonSchema
               schema:
                 type: object
                 additionalProperties: false
                 required: [tombstoned]
-                properties:
-                  tombstoned: { type: boolean }
+                properties: { tombstoned: { type: boolean } }
             steps:
               - name: stamp
                 invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -4363,7 +4139,7 @@ outputs:
 # new revision for as long as the conversation changes under it; refused while
 # its latest turn runs; then every marked turn's key and rows are removed.
 # Repeating it on a tombstone finishes the removal and answers 204 again.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deleteConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -4371,8 +4147,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: attempt
     invoke: !ref tombstoneConversation
@@ -4416,7 +4191,7 @@ steps:
 # (409), `from` not a live turn of it (404 ERR_TURN_NOT_FOUND), its latest turn
 # running (409 ERR_TURN_IN_PROGRESS), `revision` not the current one (409
 # ERR_CONVERSATION_CHANGED, compared inside the marking transaction).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: truncateConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -4466,7 +4241,7 @@ steps:
       kind: Sql.Transaction
       connection: !ref chatDb
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -4568,7 +4343,7 @@ outputs:
   conversation: !cel "steps.read.result.conversation"
 ---
 # Raises a recorded error as it was — what re-fails a copied turn's key.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: raiseRecorded }
 inputType:
   kind: Telo.JsonSchema
@@ -4576,10 +4351,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [code, message, data]
-    properties:
-      code: { type: string }
-      message: { type: string }
-      data: {}
+    properties: { code: { type: string }, message: { type: string }, data: {} }
 steps:
   - name: recorded
     value: !cel "inputs.data == null"
@@ -4604,7 +4376,7 @@ steps:
 # recorded error into the copy, which fails it with that error. A summary's
 # `throughTurnId` is remapped onto the copies. Refused while the source runs
 # (409 ERR_TURN_IN_PROGRESS) or once it is removed (409 ERR_CONVERSATION_CHANGED).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: copyTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -4618,12 +4390,8 @@ inputType:
       turnId: { type: string }
       startedAt: { type: string }
       abortedAt: { type: [string, "null"] }
-      sourceIds:
-        type: array
-        items: { type: string }
-      copyIds:
-        type: array
-        items: { type: string }
+      sourceIds: { type: array, items: { type: string } }
+      copyIds: { type: array, items: { type: string } }
 steps:
   - name: source
     invoke: !ref journalRead
@@ -4736,8 +4504,7 @@ steps:
           - name: unexpected
             if: !cel "steps.source.result.error == null || error.code != steps.source.result.error.code"
             then:
-              - name: reraise
-                rethrow: {}
+              - { name: reraise, rethrow: {} }
   # The copy's checkpoint: the source's entries and revert outcomes under the
   # copy's id, and its blobs as files of the copy's own directory.
   - name: entries
@@ -4803,7 +4570,7 @@ steps:
 # goes idle. A refusal once the row exists removes the partial branch (its
 # tombstone, then the shared cascade) and raises the refusal as it was. The
 # source — which may be archived — is never modified.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: branchConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -4811,9 +4578,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, throughTurnId]
-    properties:
-      conversationId: { type: string }
-      throughTurnId: { type: string }
+    properties: { conversationId: { type: string }, throughTurnId: { type: string } }
 steps:
   - name: source
     invoke: !ref requireConversation
@@ -4931,8 +4696,7 @@ steps:
         invoke: !ref discardBranch
         inputs:
           conversationId: !cel "steps.ids.result.conversation"
-      - name: reraise
-        rethrow: {}
+      - { name: reraise, rethrow: {} }
   - name: read
     invoke: !ref requireConversation
     inputs:
@@ -4944,7 +4708,7 @@ outputs:
 # tombstoned with every turn copied so far marked, then the shared cascade
 # removes their keys and rows. A key still claimed by the failed copy is
 # removed with the rest.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: discardBranch }
 inputType:
   kind: Telo.JsonSchema
@@ -4952,23 +4716,21 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId]
-    properties:
-      conversationId: { type: string }
+    properties: { conversationId: { type: string } }
 steps:
   - name: mark
     invoke:
       kind: Sql.Transaction
       connection: !ref chatDb
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
             type: object
             additionalProperties: false
             required: [conversationId]
-            properties:
-              conversationId: { type: string }
+            properties: { conversationId: { type: string } }
         steps:
           - name: tombstone
             invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -5019,29 +4781,19 @@ metadata: { name: deleteAttachment }
 store: !ref attachmentStore
 ---
 kind: Telo.Function
-metadata:
-  name: attachmentKey
-  description: The blob key of a conversation's upload.
+metadata: { name: attachmentKey, description: The blob key of a conversation's upload. }
 params:
-  - name: conversationId
-    schema: { type: string }
-  - name: id
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: conversationId, schema: { type: string } }
+  - { name: id, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel "conversationId + '/' + id"
 ---
 # A `type/*` entry accepts every subtype. Text of any kind is given to the model
 # as text; an image and a PDF as themselves.
 kind: Telo.Function
-metadata:
-  name: attachmentTypes
-  description: The media types an upload may have.
+metadata: { name: attachmentTypes, description: The media types an upload may have. }
 params: []
-returns:
-  schema:
-    type: array
-    items: { type: string }
+returns: { schema: { type: array, items: { type: string } } }
 body: !cel >-
   ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf',
    'application/json', 'application/yaml', 'application/x-yaml', 'text/*']
@@ -5051,8 +4803,7 @@ metadata:
   name: messageAttachmentLimit
   description: The most attachments one message may name.
 params: []
-returns:
-  schema: { type: integer }
+returns: { schema: { type: integer } }
 body: !cel "10"
 ---
 kind: Telo.Function
@@ -5060,10 +4811,8 @@ metadata:
   name: attachmentAccepted
   description: Whether an upload of this media type is accepted.
 params:
-  - name: mediaType
-    schema: { type: string }
-returns:
-  schema: { type: boolean }
+  - { name: mediaType, schema: { type: string } }
+returns: { schema: { type: boolean } }
 body: !cel >-
   Self.attachmentTypes().exists(t,
     t == mediaType || (t.endsWith('/*') && mediaType.startsWith(t.substring(0, size(t) - 1))))
@@ -5075,14 +4824,9 @@ metadata:
   name: turnFingerprint
   description: The digest identifying one turn request — its message and the attachments it names.
 params:
-  - name: message
-    schema: { type: string }
-  - name: attachmentIds
-    schema:
-      type: array
-      items: { type: string }
-returns:
-  schema: { type: string }
+  - { name: message, schema: { type: string } }
+  - { name: attachmentIds, schema: { type: array, items: { type: string } } }
+returns: { schema: { type: string } }
 body: !cel >-
   size(attachmentIds) == 0 ? sha256(message)
     : sha256(json({'message': message, 'attachments': attachmentIds}))
@@ -5095,19 +4839,15 @@ metadata:
   name: attachedText
   description: Renders a text attachment for the model, bounded and named.
 params:
-  - name: name
-    schema: { type: string }
-  - name: mediaType
-    schema: { type: string }
+  - { name: name, schema: { type: string } }
+  - { name: mediaType, schema: { type: string } }
   - name: text
     schema:
       anyOf:
-        - type: string
-        - type: "null"
-  - name: maxChars
-    schema: { type: integer }
-returns:
-  schema: { type: string }
+        - { type: string }
+        - { type: "null" }
+  - { name: maxChars, schema: { type: integer } }
+returns: { schema: { type: string } }
 body: !cel >-
   text == null
     ? '[attached file ' + name + ' is not UTF-8 text and was not included]'
@@ -5125,7 +4865,7 @@ body: !cel >-
 # conversation's own row, never from the reference, and the blob is read only
 # under the caller's conversation, so a reference naming another
 # conversation's upload reads nothing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: resolveAttachment }
 inputType:
   kind: Telo.JsonSchema
@@ -5177,8 +4917,7 @@ steps:
       - name: failed
         if: !cel "!(error.code in ['ERR_ATTACHMENT_NOT_FOUND', 'ERR_BLOB_NOT_FOUND'])"
         then:
-          - name: propagate
-            rethrow: {}
+          - { name: propagate, rethrow: {} }
 outputs:
   part: !cel >-
     !has(steps.bytes)
@@ -5203,11 +4942,7 @@ params:
   - name: rows
     schema:
       type: array
-      items:
-        type: object
-        required: [message]
-        properties:
-          message: { type: string }
+      items: { type: object, required: [message], properties: { message: { type: string } } }
 returns:
   schema:
     type: array
@@ -5238,8 +4973,7 @@ inputType:
               name: { type: string }
               filename: { type: string }
               contentType: { type: string }
-              content:
-                x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+              content: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
 collection: !cel "inputs.parts"
 concurrency: 1
 steps:
@@ -5317,7 +5051,7 @@ steps:
 # holding `maxConversationAttachments` files; a payload that is not one `file`
 # part; content that contradicts its declared type; a type the agent does not
 # take; a file past `maxAttachmentBytes`. A refused upload stores nothing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: storeAttachment }
 inputType:
   kind: Telo.JsonSchema
@@ -5327,8 +5061,7 @@ inputType:
     required: [conversationId, input, contentType]
     properties:
       conversationId: { type: string }
-      input:
-        x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+      input: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
       # The request's Content-Type, which carries the multipart boundary.
       contentType: { type: string }
 steps:
@@ -5386,7 +5119,7 @@ outputs:
 # GET /conversations/{id}/attachments/{attachmentId}: an upload's bytes, with
 # what it is. Unknown to this conversation, or its bytes gone, is
 # ERR_ATTACHMENT_NOT_FOUND.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readAttachment }
 inputType:
   kind: Telo.JsonSchema
@@ -5394,9 +5127,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, attachmentId]
-    properties:
-      conversationId: { type: string }
-      attachmentId: { type: string }
+    properties: { conversationId: { type: string }, attachmentId: { type: string } }
 steps:
   - name: conversation
     invoke: !ref requireConversation
@@ -5437,8 +5168,7 @@ steps:
                 attachmentIds: !cel "[inputs.attachmentId]"
                 attachmentId: !cel "inputs.attachmentId"
         else:
-          - name: reraise
-            rethrow: {}
+          - { name: reraise, rethrow: {} }
 outputs:
   output: !cel "steps.content.result.output"
   name: !cel "string(steps.row.result.rows[0].name)"
@@ -5495,7 +5225,7 @@ window: !cel "variables.ipWindow"
 kind: Fs.DirectoryCreation
 metadata: { name: createDirectory }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ensureWorkspace }
 steps:
   - name: create
@@ -5511,9 +5241,7 @@ cwd: !cel "variables.workspaceDir"
 # (the auto-`telo check`). They are read only in-process by the model controller;
 # no exposed tool executes agent content in-process, so unsetting them here means no
 # anonymous prompt can reach it through the one keyless subprocess we spawn.
-env:
-  OPENAI_API_KEY: null
-  ANTHROPIC_API_KEY: null
+env: { OPENAI_API_KEY: null, ANTHROPIC_API_KEY: null }
 ---
 kind: Shell.Command
 metadata: { name: runCommand }
@@ -5527,7 +5255,7 @@ host: !ref localHost
 # Standalone `telo check` exposed as a tool. Same fixed argv as the write/edit
 # loops — the agent supplies only the path, appended to the fixed check argv
 # and execed WITHOUT a shell — so this grants validation, not command access.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkFile }
 inputType:
   kind: Telo.JsonSchema
@@ -5535,8 +5263,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -5548,8 +5275,8 @@ outputType:
       checkExitCode: { type: integer, x-telo-span-attribute: telo.check.exit_code }
       checkReport:
         anyOf:
-          - $ref: "telo://Self/CheckReport"
-          - type: "null"
+          - { $ref: "telo://Self/CheckReport" }
+          - { type: "null" }
       checkMessages: { type: string }
 steps:
   - name: confine
@@ -5587,7 +5314,7 @@ outputs:
 # argv shape alone cannot make. Every argument is judged as a path — a flag's
 # value after its first `=` — because the CLI cannot say which ones it reads as
 # paths; the verb itself is on the allow-list and never trips the rule.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runTelo }
 inputType:
   kind: Telo.JsonSchema
@@ -5595,10 +5322,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [args]
-    properties:
-      args:
-        type: array
-        items: { type: string }
+    properties: { args: { type: array, items: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -5655,7 +5379,7 @@ outputs:
 # The verb is fixed here — the agent supplies only a path, appended to a fixed
 # argv and execed WITHOUT a shell — so this grants running a manifest, not
 # command access. `timeoutMs` bounds a manifest that never exits.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runManifest }
 inputType:
   kind: Telo.JsonSchema
@@ -5663,8 +5387,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [path]
-    properties:
-      path: { type: string }
+    properties: { path: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -5714,7 +5437,7 @@ outputs:
 # "forget" to validate — and cannot write a key into a file at all. `changes`
 # is the file's Change (none when the bytes did not change) and `hunks` the
 # call's own line diff, null when a side is not comparable text.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: writeFileChecked }
 inputType:
   kind: Telo.JsonSchema
@@ -5722,10 +5445,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId, path, content]
-    properties:
-      turnId: { type: string }
-      path: { type: string }
-      content: { type: string }
+    properties: { turnId: { type: string }, path: { type: string }, content: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -5738,12 +5458,10 @@ outputType:
       checkExitCode: { type: integer, x-telo-span-attribute: telo.check.exit_code }
       checkReport:
         anyOf:
-          - $ref: "telo://Self/CheckReport"
-          - type: "null"
+          - { $ref: "telo://Self/CheckReport" }
+          - { type: "null" }
       checkMessages: { type: string }
-      changes:
-        type: array
-        items: { $ref: "telo://Self/Change" }
+      changes: { type: array, items: { $ref: "telo://Self/Change" } }
       hunks: { type: [array, "null"] }
 steps:
   - name: confine
@@ -5789,7 +5507,7 @@ outputs:
 # The edit is scanned as the file it would leave: read under the lease, the one
 # occurrence replaced, the result scanned. When `oldString` does not occur
 # exactly once there is no result to scan — the edit itself refuses.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: editFileChecked }
 inputType:
   kind: Telo.JsonSchema
@@ -5814,12 +5532,10 @@ outputType:
       checkExitCode: { type: integer, x-telo-span-attribute: telo.check.exit_code }
       checkReport:
         anyOf:
-          - $ref: "telo://Self/CheckReport"
-          - type: "null"
+          - { $ref: "telo://Self/CheckReport" }
+          - { type: "null" }
       checkMessages: { type: string }
-      changes:
-        type: array
-        items: { $ref: "telo://Self/Change" }
+      changes: { type: array, items: { $ref: "telo://Self/Change" } }
       hunks: { type: [array, "null"] }
 steps:
   - name: confine
@@ -5860,11 +5576,7 @@ kind: Ai.Tools
 metadata: { name: workspaceTools }
 contextType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [turnId]
-    properties:
-      turnId: { type: string }
+  schema: { type: object, required: [turnId], properties: { turnId: { type: string } } }
 tools:
   - tool: !ref writeFileChecked
     name: write_file
@@ -5884,9 +5596,7 @@ tools:
       type: object
       additionalProperties: false
       required: [path, content]
-      properties:
-        path: { type: string }
-        content: { type: string }
+      properties: { path: { type: string }, content: { type: string } }
     inputs:
       turnId: !cel "context.turnId"
       path: !cel "arguments.path"
@@ -5953,9 +5663,7 @@ tools:
       type: object
       additionalProperties: false
       required: [pattern]
-      properties:
-        pattern: { type: string, minLength: 1 }
-        path: { type: string }
+      properties: { pattern: { type: string, minLength: 1 }, path: { type: string } }
     inputs:
       pattern: !cel "arguments.pattern"
       path: !cel "'path' in arguments ? arguments.path : ''"
@@ -5976,9 +5684,7 @@ tools:
     parameters:
       type: object
       additionalProperties: false
-      properties:
-        path: { type: string }
-        recursive: { type: boolean }
+      properties: { path: { type: string }, recursive: { type: boolean } }
     inputs:
       path: !cel "'path' in arguments ? arguments.path : ''"
       recursive: !cel "'recursive' in arguments ? arguments.recursive : false"
@@ -6001,9 +5707,7 @@ tools:
       type: object
       additionalProperties: false
       required: [path]
-      properties:
-        path: { type: string }
-        recursive: { type: boolean }
+      properties: { path: { type: string }, recursive: { type: boolean } }
     inputs:
       turnId: !cel "context.turnId"
       path: !cel "arguments.path"
@@ -6032,10 +5736,7 @@ tools:
       type: object
       additionalProperties: false
       required: [args]
-      properties:
-        args:
-          type: array
-          items: { type: string }
+      properties: { args: { type: array, items: { type: string } } }
     result: !cel "Self.renderRun(result.exitCode, result.output, result.messages)"
   - tool: !ref runManifest
     name: run_manifest
@@ -6054,8 +5755,7 @@ tools:
       type: object
       additionalProperties: false
       required: [path]
-      properties:
-        path: { type: string }
+      properties: { path: { type: string } }
     result: !cel "Self.renderRun(result.exitCode, result.output, result.messages)"
   - tool: !ref checkFile
     name: telo_check
@@ -6069,8 +5769,7 @@ tools:
       type: object
       additionalProperties: false
       required: [path]
-      properties:
-        path: { type: string }
+      properties: { path: { type: string } }
     result: !cel "Self.renderCheck(result.checkExitCode, result.checkReport, result.checkMessages)"
 ---
 kind: Ai.AgentStream
@@ -6116,8 +5815,7 @@ resolver:
     schema:
       type: object
       required: [conversationId]
-      properties:
-        conversationId: { type: string }
+      properties: { conversationId: { type: string } }
   invoke: !ref resolveAttachment
   inputs:
     conversationId: !cel "context.conversationId"
@@ -6153,7 +5851,7 @@ toolProviders:
 # everything the author is shown is built here, from that choice and the hub's
 # own answer. The discoverer's usage is part of the result, which is how the
 # turn's journal comes to hold it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: findKinds }
 inputType:
   kind: Telo.JsonSchema
@@ -6161,9 +5859,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [needs]
-    properties:
-      needs: { type: array, items: { type: string } }
-      runtime: { type: string }
+    properties: { needs: { type: array, items: { type: string } }, runtime: { type: string } }
 steps:
   - name: choose
     invoke: !ref discoverer
@@ -6261,10 +5957,7 @@ tools:
       additionalProperties: false
       required: [needs]
       properties:
-        needs:
-          type: array
-          minItems: 1
-          items: { type: string }
+        needs: { type: array, minItems: 1, items: { type: string } }
         runtime:
           type: string
           enum: [nodejs, rust]
@@ -6273,14 +5966,11 @@ tools:
 ---
 # The hub's one-line-per-library index of a publisher, as the text the agent is
 # shown. Read through `libraryIndex`, never directly.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readLibraryIndex }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      key: { type: string }
+  schema: { type: object, properties: { key: { type: string } } }
 steps:
   - name: list
     invoke: !ref hubCall
@@ -6319,9 +6009,7 @@ metadata: { name: lowEffortModel }
 model: !cel "variables.model"
 request: !ref anthropicRequest
 maxTokens: 24000
-options:
-  thinking: { type: disabled }
-  outputConfig: { effort: low }
+options: { thinking: { type: disabled }, outputConfig: { effort: low } }
 ---
 # What the title and summary calls run on.
 kind: Ai.Buffered
@@ -6354,7 +6042,7 @@ inputs:
       cel.bind(spent, size(calls) == 0 ? 0 : int(sum(calls)),
         outcome.state == 'completed' || spent > context.reserved ? spent : context.reserved))
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: endTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -6420,7 +6108,7 @@ steps:
 # that did land safe. The record lives on `agent.sqlite`, so it survives a
 # restart. A refused admission throws, which releases the key — a retry after a
 # 429 is a new attempt, not a replay of the refusal.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: chatStart }
 inputType:
   kind: Telo.JsonSchema
@@ -6431,9 +6119,7 @@ inputType:
       conversationId: { type: string }
       message: { type: string }
       # Ids of uploads of this conversation the message carries.
-      attachments:
-        type: array
-        items: { type: string }
+      attachments: { type: array, items: { type: string } }
       clientIp: { type: string }
       # Empty when the request carried no Idempotency-Key header.
       idempotencyKey: { type: string, maxLength: 255 }
@@ -6558,7 +6244,7 @@ outputs:
 # has the id finds a turn that exists and tails it, and a turn that fails before
 # its first record still ends with a readable error instead of a key nobody
 # ever wrote.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: admitTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -6641,16 +6327,14 @@ steps:
               kind: Sql.Transaction
               connection: !ref chatDb
               steps:
-                kind: Run.Sequence
+                kind: Telo.Sequence
                 inputType:
                   kind: Telo.JsonSchema
                   schema:
                     type: object
                     additionalProperties: false
                     required: [conversationId, turnId]
-                    properties:
-                      conversationId: { type: string }
-                      turnId: { type: string }
+                    properties: { conversationId: { type: string }, turnId: { type: string } }
                 steps:
                   - name: insert
                     invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -6769,7 +6453,7 @@ outputs:
 # completed calls cost, and the lease frees. `aborted_at` is what tells this
 # ending apart from a shutdown's cancellation: an aborted turn is not continued.
 # A turn nothing is running for answers `cancelled: false`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: abortTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -6777,8 +6461,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId]
-    properties:
-      turnId: { type: string }
+    properties: { turnId: { type: string } }
 steps:
   - name: header
     invoke: !ref journalRead
@@ -6850,7 +6533,7 @@ outputs:
 # or a turn removed since (410 / 409). The attempt reserves and settles on its
 # own. Returns the id of the last record before the attempt: the next one is
 # its `turn-continued` record.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: continueTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -6858,9 +6541,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [turnId, clientIp]
-    properties:
-      turnId: { type: string }
-      clientIp: { type: string }
+    properties: { turnId: { type: string }, clientIp: { type: string } }
 steps:
   - name: attempt
     value:
@@ -7050,16 +6731,14 @@ steps:
               kind: Sql.Transaction
               connection: !ref chatDb
               steps:
-                kind: Run.Sequence
+                kind: Telo.Sequence
                 inputType:
                   kind: Telo.JsonSchema
                   schema:
                     type: object
                     additionalProperties: false
                     required: [conversationId, turnId]
-                    properties:
-                      conversationId: { type: string }
-                      turnId: { type: string }
+                    properties: { conversationId: { type: string }, turnId: { type: string } }
                 steps:
                   - name: bump
                     invoke: { kind: Sql.Command, connection: !ref chatDb }
@@ -7184,7 +6863,7 @@ outputs:
 # `failure` — the error the takeover reported, or the removal a takeover that
 # created the key stands for — appending nothing. A key removed meanwhile is
 # already gone, which is expected too.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: releaseAttempt }
 inputType:
   kind: Telo.JsonSchema
@@ -7200,18 +6879,13 @@ inputType:
         type: object
         additionalProperties: false
         required: [message]
-        properties:
-          code: { type: string }
-          message: { type: string }
-          data: {}
+        properties: { code: { type: string }, message: { type: string }, data: {} }
 steps:
   - name: records
     invoke:
       kind: Stream.Concat
       sources:
-        - invoke: { kind: Stream.Of }
-          inputs:
-            items: []
+        - { invoke: { kind: Stream.Of }, inputs: { items: [] } }
         - invoke: !ref raiseRecorded
           inputs:
             code: !cel "context.failure.code"
@@ -7249,7 +6923,7 @@ steps:
 # (`assembling`) conversation, idle like any other, and goes the same way.
 # Every step is safe to repeat, so a sweep a crash cut short is finished by the
 # next one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: retentionSweep }
 inputType:
   kind: Telo.JsonSchema
@@ -7257,9 +6931,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [idleBefore]
-    properties:
-      idleBefore:
-        x-telo-type: Telo.Timestamp
+    properties: { idleBefore: { x-telo-type: Telo.Timestamp } }
 steps:
   - name: idle
     invoke: !ref historyRows
@@ -7323,7 +6995,7 @@ outputs:
 # handler projects the turn and settles this attempt's reservation, and the sink
 # drains all of it into the journal under the key the caller claimed — a new
 # key for a new turn, the same key taken over (`resume`) for a continued one.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turnRunner }
 inputType:
   kind: Telo.JsonSchema
@@ -7400,7 +7072,7 @@ steps:
 # with — a reply that did not end with `stop` is ERR_TITLE_INCOMPLETE, an empty
 # one ERR_TITLE_EMPTY. A failure never fails the turn and the next new turn
 # retries. A cancelled turn is not a naming failure.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nameConversation }
 inputType:
   kind: Telo.JsonSchema
@@ -7469,8 +7141,7 @@ steps:
                 the title alone: no quotes, no trailing period, nothing else.
             inputs:
               prompt: !cel "steps.message.result"
-              options:
-                maxTokens: 1024
+              options: { maxTokens: 1024 }
           # A reply cut short is not a title, however its first line reads.
           - name: incomplete
             if: !cel "steps.call.result.finishReason != 'stop'"
@@ -7487,9 +7158,7 @@ steps:
             if: !cel "steps.title.result == ''"
             then:
               - name: refuseEmpty
-                throw:
-                  code: ERR_TITLE_EMPTY
-                  message: The model's reply held no usable title.
+                throw: { code: ERR_TITLE_EMPTY, message: The model's reply held no usable title. }
           - name: apply
             invoke: { kind: Sql.Command, connection: !ref chatDb }
             inputs:
@@ -7549,7 +7218,7 @@ outputs:
 # (ERR_SUMMARY_INCOMPLETE) or is empty (ERR_SUMMARY_EMPTY) is first journaled
 # as a `context-summary` carrying `error`, `model` and `usage` and no
 # `summary`. A cancellation propagates as it is.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: compactHistory }
 inputType:
   kind: Telo.JsonSchema
@@ -7557,9 +7226,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, turnId]
-    properties:
-      conversationId: { type: string }
-      turnId: { type: string }
+    properties: { conversationId: { type: string }, turnId: { type: string } }
 steps:
   - name: catchUp
     invoke: !ref catchUpProjection
@@ -7672,9 +7339,7 @@ steps:
             if: !cel "steps.call.result.text.trim() == ''"
             then:
               - name: refuseEmpty
-                throw:
-                  code: ERR_SUMMARY_EMPTY
-                  message: The model's reply held no summary.
+                throw: { code: ERR_SUMMARY_EMPTY, message: The model's reply held no summary. }
         catch:
           - name: cancelled
             if: !cel "error.code == 'ERR_INVOKE_CANCELLED'"
@@ -7699,7 +7364,7 @@ steps:
           inputs:
             items: !cel "context.records"
         - invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
               schema:
@@ -7712,9 +7377,7 @@ steps:
                     type: object
                     additionalProperties: false
                     required: [code, message]
-                    properties:
-                      code: { type: string }
-                      message: { type: string }
+                    properties: { code: { type: string }, message: { type: string } }
             steps:
               - name: failed
                 if: !cel "inputs.failed"
@@ -7727,10 +7390,7 @@ steps:
                         cause:
                           code: !cel "inputs.cause.code"
                           message: !cel "inputs.cause.message"
-              - name: none
-                invoke: { kind: Stream.Of }
-                inputs:
-                  items: []
+              - { name: none, invoke: { kind: Stream.Of }, inputs: { items: [] } }
             outputs:
               output: !cel "steps.none.result.output"
           inputs:
@@ -7757,7 +7417,7 @@ outputs:
 # The agent's part of a turn, invoked only once the lead record is journaled:
 # catch the projection up (the lead record included), replay it as the model's
 # history, and stream the agent. Returns the agent's stream.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: agentTurn }
 inputType:
   kind: Telo.JsonSchema
@@ -7765,9 +7425,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [conversationId, turnId]
-    properties:
-      conversationId: { type: string }
-      turnId: { type: string }
+    properties: { conversationId: { type: string }, turnId: { type: string } }
 steps:
   - name: catchUp
     invoke: !ref catchUpProjection

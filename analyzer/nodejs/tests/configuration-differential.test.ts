@@ -623,12 +623,12 @@ describe("an analysis narrowed by 'within'", () => {
       [
         "CEL_TYPE_ERROR",
         "steps[2].value.then",
-        `Run.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)`,
+        `Telo.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)`,
       ],
       [
         "CEL_TYPE_ERROR",
         "steps[1].value.then",
-        `Run.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is true)`,
+        `Telo.Sequence/sequence: !cel: no "+" is declared over string, int (when variables.flag2 is true)`,
       ],
     ]);
     const narrowed = new StaticAnalyzer().analyze(loaded.manifests, {

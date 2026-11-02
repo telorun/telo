@@ -27,6 +27,10 @@ import {
   isCallableKind,
   hasOwnControllerOrTemplate,
   isInheritedDelegation,
+  controllerBearingAncestor,
+  ancestorChain,
+  resolveParent,
+  effectiveAuthorSchema,
   isModuleKind,
   moduleLangOf,
   isInjectedDeclaration,
@@ -205,11 +209,27 @@ import { refuseMistypedResults } from "./compiled-results.js";
 import {
   prepareResourceTexts,
   recordControllerCopy,
+  mappingProvenance,
   recordTextProvenance,
   settleResourceTexts,
   syncInjectedReferences,
   textProvenanceOf,
 } from "./text-records.js";
+import {
+  bindDispatchMapping,
+  expandMapping,
+  inheritedMapper,
+  mappingOwner,
+  withValueAt,
+  type InheritedLayer,
+  type SelfForward,
+} from "./inherited-mapping.js";
+import {
+  definitionScopeOf,
+  recordKindScope,
+} from "./controllers/resource-definition/declaring-context.js";
+import { forwardedValue, type WrittenScope } from "./controllers/resource-definition/reference-crossing.js";
+import { stepValueSlots } from "./controllers/resource-definition/step-value-slots.js";
 import { withListenerQuery } from "./resource-timing.js";
 import {
   computeAnalysisSignature,
@@ -2392,7 +2412,13 @@ export class Kernel implements IKernel {
 
   /** The module that declared `resolvedKind`, whose files its controller reaches. */
   private moduleDeclaringKind(resolvedKind: string | undefined): NativeFileModule | undefined {
-    const definition = resolvedKind ? this.controllers.getDefinition(resolvedKind) : undefined;
+    const declared = resolvedKind ? this.controllers.getDefinition(resolvedKind) : undefined;
+    // A kind inheriting its controller asks with its ancestor's files: the files
+    // ship with the definition that declares the controller.
+    const definition =
+      declared && isInheritedDelegation(declared, this.scopedDefResolver())
+        ? controllerBearingAncestor(declared, this.scopedDefResolver())
+        : declared;
     // Stamped by the loader on every manifest, and not on the SDK's narrower type.
     const source = (definition?.metadata as { source?: unknown } | undefined)?.source;
     return typeof source === "string" ? this.nativeFileModules.get(source) : undefined;
@@ -2625,18 +2651,27 @@ export class Kernel implements IKernel {
   private async _createInstance(
     evalContext: IEvaluationContext,
     resource: ResourceManifest,
+    /** Set for the configuration an inherited `base:` mapping built: the module
+     *  that wrote the mapping, whose aliases spell its kind, and the kind of the
+     *  declared resource. Such a configuration is part of the declared
+     *  resource's creation, never a resource of its own. */
+    mappedBy?: { writer: ModuleContext; declaredKind: string },
   ): Promise<{
     instance: ResourceInstance;
     ctx: ResourceContext;
     resource: ResourceManifest;
+    received: ResourceManifest;
   } | null> {
     const kind = resource.kind;
+    const nested = mappedBy !== undefined;
 
     // Resolve the alias-prefixed kind to its real fully-qualified kind against the
-    // declaring module's own scope. resolveKind() walks up the parent chain so root
-    // built-ins (like `Telo`) remain visible from inside imported libraries; sibling
-    // modules stay isolated because they're not in the chain.
-    const resolvedKind = (findEnclosingModule(evalContext) ?? this.rootContext).resolveKind(kind);
+    // scope that spells it — the declaring module's own, or the mapping writer's.
+    // resolveKind() walks up the parent chain so root built-ins (like `Telo`)
+    // remain visible from inside imported libraries; sibling modules stay
+    // isolated because they're not in the chain.
+    const kindModule = mappedBy?.writer ?? findEnclosingModule(evalContext) ?? this.rootContext;
+    const resolvedKind = kindModule.resolveKind(kind);
 
     // A kind document names a lifecycle role the roster holds, or nothing else
     // about it is worth reading — refused before its schema is.
@@ -2648,34 +2683,36 @@ export class Kernel implements IKernel {
 
     // Every module call the manifest makes is bound NOW, before any of its
     // expressions can evaluate: compile-eval fields expand below, and a call in a
-    // branch that never runs must still fail at boot rather than never.
-    bindModuleFunctions(
-      findEnclosingModule(evalContext) ?? this.rootContext,
-      resource,
-      this.functionResolutionHost,
-    );
+    // branch that never runs must still fail at boot rather than never. A mapped
+    // configuration holds values already evaluated, forwarded from a declaration
+    // whose calls were bound, or kept by the mapping, whose calls were bound
+    // with its definition.
+    if (!nested) {
+      bindModuleFunctions(kindModule, resource, this.functionResolutionHost);
+    }
 
     // The DEFINITION is the sole resource-config contract — a controller module
     // cannot supply or override one. Keeping the schema on the manifest is what
     // lets `telo check` see it, the validator warm bake it, and the editor render
     // it; a code-side schema was invisible to all three and free to drift.
     const definition = this.controllers.getDefinition(resolvedKind);
-    // A callable's instance is bound to its signature below. A kind inheriting its
-    // controller is not bound again: the instance IS its ancestor's, bound when
-    // that was created — and its controller needs the full context to create it.
-    // A native function — its result comes from its controller's code rather than
-    // an expression in the manifest — gets a function's context.
+    // An inheriting kind whose chain maps its configuration (`base:`) is created
+    // through the mapping: the configuration it builds is created by the
+    // ancestor's controller below, and that is the one instance.
+    const mapper = definition ? inheritedMapper(definition, this.scopedDefResolver()) : undefined;
+    // A callable's instance is bound to its signature below — once, by whichever
+    // pass hands the configuration to the controller. A native function — its
+    // result comes from its controller's code rather than an expression in the
+    // manifest — gets a function's context.
     const callable =
-      !!definition &&
-      isCallableKind(definition, this.scopedDefResolver()) &&
-      !isInheritedDelegation(definition, this.scopedDefResolver());
+      !!definition && !mapper && isCallableKind(definition, this.scopedDefResolver());
     const nativeFunction =
       callable && callableBodyField(definition!, this.scopedDefResolver()) === undefined;
     const resourceLabel = `${resolvedKind}/${(resource.metadata?.name as string | undefined) ?? "<unnamed>"}`;
 
     const fingerprint = policyFingerprint(findEnclosingPolicy(evalContext));
-    let controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
-    if (!controller) {
+    let controller = mapper ? undefined : this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
+    if (!controller && !mapper) {
       // Lazy controller loading: the kind's Telo.Definition registered a deferred
       // controller (resolved but not imported). Import + register it now, on this
       // first instantiation, then re-resolve. A kind with no lazy entry (abstract,
@@ -2695,7 +2732,7 @@ export class Kernel implements IKernel {
         controller = this.controllers.getControllerOrUndefined(resolvedKind, fingerprint);
       }
     }
-    if (!controller) {
+    if (!controller && !mapper) {
       const kindInfo =
         resolvedKind !== kind ? `'${kind}' (resolved to '${resolvedKind}')` : `'${kind}'`;
       // An abstract kind has no controller by design — it's a contract for
@@ -2715,7 +2752,7 @@ export class Kernel implements IKernel {
       );
     }
 
-    if (!controller.create) {
+    if (controller && !controller.create) {
       throw new RuntimeError(
         "ERR_CONTROLLER_INVALID",
         nativeFunction
@@ -2735,7 +2772,7 @@ export class Kernel implements IKernel {
     // Named shapes are read through the configuration view of the context that
     // declares the kind, the lookup `telo check` reads them through for that
     // configuration, so both halves see the same sites.
-    const view = this.analysisViewOf(evalContext, kind);
+    const view = this.analysisViewOf(kindModule, kind);
     const shapes = view.shapeLookup;
     const parentEval = parentDef?.schema
       ? buildEvalPaths(parentDef.schema, shapes)
@@ -2791,7 +2828,7 @@ export class Kernel implements IKernel {
     // `Uint8Array` that annotation demands.
     await resolveIncludeSentinels(
       resource,
-      this.findModuleContext(evalContext).source,
+      kindModule.source,
       this,
       this.includeCache,
     );
@@ -2859,7 +2896,7 @@ export class Kernel implements IKernel {
     const textProvenance = prepareResourceTexts(
       resource,
       textSite,
-      this.moduleLang(this.findModuleContext(evalContext).source),
+      this.moduleLang(kindModule.source),
       textProvenanceOf(resource),
     );
 
@@ -2874,7 +2911,7 @@ export class Kernel implements IKernel {
     if (compile.length || runtime.length || regions.length) {
       refuseComputedRefSlots(
         resourceLabel,
-        this.declaringViewOf(evalContext, resource).referencePositionsOf(resource),
+        this.declaringViewOf(kindModule, resource).referencePositionsOf(resource),
         { isEvaluated: (path) => evaluatedField({ compile, runtime, regions, accessor }, path) },
       );
     }
@@ -2957,12 +2994,17 @@ export class Kernel implements IKernel {
       );
     }
     // A controller that forwards its configuration (a template's, an inherited
-    // `base:` child's) hands its fields on as written, so an accessor field
+    // `base:` mapping's) hands its fields on as written, so an accessor field
     // reaches the kind that reads it as the chain, and becomes a binding there.
+    // An inheriting kind with no mapping is created by its ancestor's controller
+    // and forwards exactly when that controller does.
+    const controlling =
+      definition && isInheritedDelegation(definition, this.scopedDefResolver())
+        ? controllerBearingAncestor(definition, this.scopedDefResolver())
+        : definition;
     const forwardsConfig =
-      !!definition &&
-      ((hasOwnControllerOrTemplate(definition) && !definition.controllers?.length) ||
-        isInheritedDelegation(definition, this.scopedDefResolver()));
+      !!mapper ||
+      (!!controlling && hasOwnControllerOrTemplate(controlling) && !controlling.controllers?.length);
     // The checks above read each evaluated result against its slot; a binding
     // is not a result, so it replaces the accessor field only now.
     const processedResource = forwardsConfig
@@ -3012,7 +3054,7 @@ export class Kernel implements IKernel {
         label: resourceLabel,
         declaration: processedResource,
         base: received,
-        sites: this.referenceSitesIn(evalContext, processedResource),
+        sites: this.referenceSitesIn(kindModule, processedResource),
         resolve: (name, alias) =>
           resolveReference(
             { name, ...(alias ? { alias } : {}) },
@@ -3056,21 +3098,54 @@ export class Kernel implements IKernel {
         host: this.catalogSetHost,
       });
     }
-    const ctx = this.createResourceContext(
-      moduleCtx,
-      processedResource,
-      evalContext.ownerPrefix,
-      // Snapshot publication targets the context that OWNS the instance — for a
-      // `with:`-scoped resource that is the per-run scope child, not the module.
-      evalContext,
-      resolvedKind,
-    );
-    if (settledTexts?.late) (ctx as ResourceContextImpl).bindLateTexts(settledTexts.late);
-    const instance = await controller.create(
-      received,
-      nativeFunction ? (functionContextOf(ctx) as unknown as ResourceContext) : ctx,
-    );
-    if (!instance) return null;
+    let ctx: ResourceContext;
+    let instance: ResourceInstance | null;
+    // The layers of the chain whose `inputs:` / `result:` translate the contract
+    // the controller understands into this kind's, nearest the controller first.
+    let mappingLayers: InheritedLayer[] = [];
+    if (mapper) {
+      // The mapping builds the configuration the ancestor's controller receives;
+      // that pass creates the one instance, in this same owning context.
+      const mapped = await this.mappedConfiguration(evalContext, kindModule, processedResource, definition!, mapper);
+      if (!mapped) return null;
+      const created = await this._createInstance(evalContext, mapped.resource, {
+        writer: mapped.writer,
+        declaredKind: mappedBy?.declaredKind ?? resolvedKind,
+      });
+      if (!created) return null;
+      ({ ctx, instance } = created);
+      recordReceivedConfiguration(processedResource, created.received);
+      mappingLayers = mapped.layers;
+    } else {
+      ctx = this.createResourceContext(
+        moduleCtx,
+        processedResource,
+        evalContext.ownerPrefix,
+        // Snapshot publication targets the context that OWNS the instance — for a
+        // `with:`-scoped resource that is the per-run scope child, not the module.
+        evalContext,
+        // The declared resource's kind: what its logs name, and what its
+        // controller's own files are found through.
+        mappedBy?.declaredKind ?? resolvedKind,
+      );
+      if (settledTexts?.late) (ctx as ResourceContextImpl).bindLateTexts(settledTexts.late);
+      // A mapped configuration spells its kind in the module that wrote the
+      // mapping; the copies the pipeline made carry that too, so a template
+      // controller receiving one resolves its body's scope from there.
+      if (mappedBy) {
+        recordKindScope(processedResource, mappedBy.writer);
+        recordKindScope(received, mappedBy.writer);
+      }
+      // Resolved before create(): a deferral here must not orphan a created instance.
+      if (controlling !== definition) {
+        mappingLayers = this.inheritedLayers(evalContext, kindModule, processedResource, definition!);
+      }
+      instance = await controller!.create!(
+        received,
+        nativeFunction ? (functionContextOf(ctx) as unknown as ResourceContext) : ctx,
+      );
+      if (!instance) return null;
+    }
     if (callable) {
       bindFunction(
         instance,
@@ -3083,43 +3158,47 @@ export class Kernel implements IKernel {
       );
     }
 
-    // Mint the instance's identity here, at the single instance-production site,
-    // so an instance is never observable without a handle — the same argument
-    // that put contract binding here. First mint wins: a `base:` child IS the
-    // parent instance returned verbatim and must not be re-identified.
-    const handle = mintResourceHandle(
-      instance,
-      resolvedKind,
-      (processedResource.metadata?.name as string | undefined) ?? "<unnamed>",
-    );
-    recordInstanceDeclaration(instance, processedResource);
-    recordOutermostDeclaration(instance, processedResource);
-    recordDeclarationScope(processedResource, evalContext, resource);
-    // Stamp the DECLARATION SITE here rather than at Phase-5 injection, because
-    // this is the only point where the instance and the context that declared it
-    // are both in hand: injection sees the consumer's context, not the target's,
-    // so a module stamped there would be whoever referenced it. Without it a
-    // durable step could not name its target anywhere the instance does not
-    // exist — the whole reason `step()` takes an identity at all.
-    const originPointer = originPointerOf(processedResource);
-    stampRefIdentity(instance, resolvedKind, processedResource.metadata?.name ?? "<unnamed>", {
-      ...(moduleCtx?.source ? { module: moduleCtx.source } : {}),
-      ...(originPointer === undefined ? {} : { pointer: originPointer }),
-    });
-    (ctx as ResourceContextImpl).bindResourceIdentity(handle, resolvedKind, processedResource);
-    // The observations this instance owes the kernel: one per concrete pointer
-    // at an observing slot, due by the deadline its capability has.
-    const observing = observingPointers(this.referenceSitesIn(evalContext, processedResource));
-    if (observing.size > 0) {
-      const tracker = new NeedObservations(
-        `${resolvedKind} '${(processedResource.metadata?.name as string | undefined) ?? "<unnamed>"}'`,
-        observationDeadline(
-          definition?.capability ?? inheritedCapability(definition, this.scopedDefResolver()),
-        ),
-        observing,
+    // The configuration a mapping built is part of the declared resource's
+    // creation: the one handle, declaration record, identity and effect frames
+    // below are the declared resource's.
+    if (!nested) {
+      // Mint the instance's identity here, at the single instance-production
+      // site, so an instance is never observable without a handle — the same
+      // argument that put contract binding here.
+      const handle = mintResourceHandle(
+        instance,
+        resolvedKind,
+        (processedResource.metadata?.name as string | undefined) ?? "<unnamed>",
       );
-      (ctx as ResourceContextImpl).bindNeedObservations(tracker);
-      trackNeedObservations(instance, tracker);
+      recordInstanceDeclaration(instance, processedResource);
+      recordOutermostDeclaration(instance, processedResource);
+      recordDeclarationScope(processedResource, evalContext, resource);
+      // Stamp the DECLARATION SITE here rather than at Phase-5 injection, because
+      // this is the only point where the instance and the context that declared it
+      // are both in hand: injection sees the consumer's context, not the target's,
+      // so a module stamped there would be whoever referenced it. Without it a
+      // durable step could not name its target anywhere the instance does not
+      // exist — the whole reason `step()` takes an identity at all.
+      const originPointer = originPointerOf(processedResource);
+      stampRefIdentity(instance, resolvedKind, processedResource.metadata?.name ?? "<unnamed>", {
+        ...(moduleCtx?.source ? { module: moduleCtx.source } : {}),
+        ...(originPointer === undefined ? {} : { pointer: originPointer }),
+      });
+      (ctx as ResourceContextImpl).bindResourceIdentity(handle, resolvedKind, processedResource);
+      // The observations this instance owes the kernel: one per concrete pointer
+      // at an observing slot, due by the deadline its capability has.
+      const observing = observingPointers(this.referenceSitesIn(kindModule, processedResource));
+      if (observing.size > 0) {
+        const tracker = new NeedObservations(
+          `${resolvedKind} '${(processedResource.metadata?.name as string | undefined) ?? "<unnamed>"}'`,
+          observationDeadline(
+            definition?.capability ?? inheritedCapability(definition, this.scopedDefResolver()),
+          ),
+          observing,
+        );
+        (ctx as ResourceContextImpl).bindNeedObservations(tracker);
+        trackNeedObservations(instance, tracker);
+      }
     }
 
     // Bind the resolved invocation contract to the instance, here at the kernel's
@@ -3127,25 +3206,37 @@ export class Kernel implements IKernel {
     // enforcing instance, including the majority that read a Phase-5-injected ref
     // straight off their own config and never reach a dispatch chokepoint.
     //
-    // For a `base:` child this composes without a special case: the parent's
-    // instance was produced by a nested `_createInstance` (so it is already bound
-    // to the parent's contract), the inherited controller bound the `inputs:` /
-    // `result:` mapping onto it, and this call binds the child's own contract
-    // outermost. One dispatch then checks, in order: child inputs → mapping →
-    // parent inputs → controller → parent result → mapping → child result.
+    // An inheriting kind binds in nested order: the contract its controller
+    // understands innermost (bound by the pass that created a mapped
+    // configuration, or here), then each `inputs:` / `result:` mapping nearest
+    // that controller first, then its own outermost. One dispatch checks, in
+    // order: own inputs → mapping → controller's inputs → controller →
+    // controller's result → mapping → own result.
+    if (mappingLayers.length > 0 && !mapper && controlling) {
+      this.bindInvocationContract(
+        instance,
+        processedResource,
+        `${controlling.metadata.module}.${controlling.metadata.name}`,
+        ctx,
+      );
+    }
+    for (const layer of mappingLayers) {
+      bindDispatchMapping(instance, layer.definition, layer.context, layer.self, layer.forward);
+    }
     this.bindInvocationContract(instance, processedResource, resolvedKind, ctx);
 
-    // Record the instance's inverse accumulator here, at the single
-    // instance-production site, for the same reason the handle is minted here:
-    // the teardown cascade holds an instance and nothing else, so this is the
-    // one point where the instance and its context are both in hand. The
-    // detached drain is NOT folded into teardown any more — it waits for
-    // in-flight work rather than undoing anything, so the teardown cascade
-    // calls it directly (see `EvaluationContext.teardownResources`).
-    bindEffectOwner(instance, ctx as ResourceContextImpl);
-    await this.attachListedSink(evalContext, processedResource, definition, instance, ctx);
+    if (!nested) {
+      // Record the instance's inverse accumulator here, at the single
+      // instance-production site, for the same reason the handle is minted
+      // here: the teardown cascade holds an instance and nothing else. The
+      // detached drain is NOT folded into teardown — it waits for in-flight
+      // work rather than undoing anything, so the teardown cascade calls it
+      // directly (see `EvaluationContext.teardownResources`).
+      bindEffectOwner(instance, ctx as ResourceContextImpl);
+      await this.attachListedSink(evalContext, processedResource, definition, instance, ctx);
+    }
 
-    if (!runtime.length) return { instance, ctx, resource: processedResource };
+    if (!runtime.length) return { instance, ctx, resource: processedResource, received };
 
     // Runtime eval paths are expanded against a CALL's inputs, so they need a
     // call. `invoke` is the only entry point that takes any — `run()` and
@@ -3180,7 +3271,7 @@ export class Kernel implements IKernel {
       const expanded = evalContext.expandPaths(inputs as Record<string, unknown>, runtime);
       return (originalInvoke as (i: any, ...r: unknown[]) => Promise<unknown>)(expanded, ...rest);
     };
-    return { instance, ctx, resource: processedResource };
+    return { instance, ctx, resource: processedResource, received };
   }
 
   /** What resolving a module call reads from the kernel. */
@@ -3442,20 +3533,157 @@ export class Kernel implements IKernel {
   }
 
   /**
-   * Create phase for an inherited (concrete-`extends`) definition's parent: runs
-   * the ordinary create pipeline (controller resolution + lazy load, schema
-   * validation, compile-CEL expansion, ctx creation) for the parent-kind
-   * manifest built from `base:`, and returns the native parent instance. The
-   * inherited child's controller returns this verbatim so the child duck-types
-   * as its parent. Null means the parent controller isn't registered yet — the
-   * caller propagates it as the create-phase retry signal.
+   * Register the controller `kindName` inherits — the one of `ancestorKind`,
+   * the nearest ancestor that has one — under the inheriting kind itself, loading
+   * it first when it is still deferred. A delegating kind's resources are created
+   * by that controller directly, so the controller is the ancestor's object; its
+   * `register()` already ran for the ancestor.
    */
-  async createInheritedInstance(
+  async delegateController(
+    moduleName: string,
+    kindName: string,
+    ancestorKind: string,
+    fingerprint: string,
+  ): Promise<void> {
+    let controller = this.controllers.getControllerOrUndefined(ancestorKind, fingerprint);
+    if (!controller && (await this.controllers.takeLazyController(ancestorKind, fingerprint))) {
+      controller = this.controllers.getControllerOrUndefined(ancestorKind, fingerprint);
+    }
+    if (!controller) {
+      throw new Error(
+        `Kind '${moduleName}.${kindName}' inherits the controller of '${ancestorKind}', ` +
+          `and no controller is registered for '${ancestorKind}' (runtime fingerprint "${fingerprint}").`,
+      );
+    }
+    this.controllers.registerController(`${moduleName}.${kindName}`, controller, fingerprint);
+  }
+
+  /**
+   * The declared resource's configuration as an inheriting kind's resolution
+   * reads it — `self` — with every reference site resolved to the live instance
+   * it names, through the lookup Phase-5 injection uses. Undefined while one
+   * names a resource that does not exist yet.
+   */
+  private inheritedSelf(
     evalContext: IEvaluationContext,
-    resource: ResourceManifest,
-  ): Promise<ResourceInstance | null> {
-    const created = await this._createInstance(evalContext, resource);
-    return created?.instance ?? null;
+    kindModule: ModuleContext,
+    declared: ResourceManifest,
+  ): Record<string, unknown> | undefined {
+    const self: Record<string, unknown> = { ...declared, name: declared.metadata?.name };
+    if (!(evalContext instanceof EvaluationContext)) return self;
+    for (const site of this.referenceSitesIn(kindModule, declared)) {
+      if (
+        site.refs.length === 0 ||
+        site.scopes.length > 0 ||
+        isDeclarationReadSite(site) ||
+        !isResolvedReference(site.data)
+      ) {
+        continue;
+      }
+      const live = resolveReference(
+        site.data,
+        (name, alias) => evalContext.injectionInstance(name, alias),
+        (name) => evalContext.injectionPending(name),
+      );
+      if (!live) return undefined;
+      withValueAt(self, site.keys, live);
+    }
+    return self;
+  }
+
+  /**
+   * The configuration `mapper`'s `base:` builds from the declared resource,
+   * evaluated in the scope of the module that wrote the mapping: an expression
+   * resolves now, a bare `self.<path>` hands on what the declaration holds there,
+   * an expression the step engine evaluates later stays bound to that scope, and
+   * a reference the mapping writes becomes the live instance it names there.
+   * Null while a reference the declared resource holds is not created yet.
+   */
+  private async mappedConfiguration(
+    evalContext: IEvaluationContext,
+    kindModule: ModuleContext,
+    declared: ResourceManifest,
+    definition: ResourceDefinition,
+    mapper: ResourceDefinition,
+  ): Promise<{ resource: ResourceManifest; writer: ModuleContext; layers: InheritedLayer[] } | null> {
+    const self = this.inheritedSelf(evalContext, kindModule, declared);
+    if (!self) return null;
+    const writer = definitionScopeOf(kindModule, declared.kind, mapper, declared.metadata?.name);
+    const forward: SelfForward = (keys) =>
+      forwardedValue(self, keys, evalContext as WrittenScope, (d) => this.readAcrossReference(d));
+    const resolveDef = this.scopedDefResolver();
+    const base = (mapper as { base?: Record<string, unknown> }).base!;
+    const parentDef = resolveParent(mapper, resolveDef);
+    // A pure step's `value:` the mapping writes is evaluated by the ancestor's
+    // step engine at dispatch, which reads a number found there as written, so
+    // it stays compiled rather than becoming one `self` computed.
+    const kept = parentDef
+      ? stepValueSlots(base, effectiveAuthorSchema(parentDef, resolveDef), (kind) => {
+          const def = resolveDef(kind, mapper);
+          return def ? effectiveAuthorSchema(def, resolveDef) : undefined;
+        }).map((slot) => `base.${slot}`)
+      : [];
+    const mapped = expandMapping(
+      base,
+      { context: writer, bindings: { self }, forward, owner: mappingOwner(mapper), kept },
+      "base",
+    ) as Record<string, unknown>;
+    const resource = {
+      kind: (mapper as { extends?: string }).extends!,
+      metadata: { ...declared.metadata },
+      ...mapped,
+    } as ResourceManifest;
+    // Who wrote each value the controller receives: what `base:` forwards verbatim
+    // is the consumer's, a literal there the mapping module's, anything else computed.
+    const provenance = textProvenanceOf(declared);
+    if (provenance) recordTextProvenance(resource, mappingProvenance(base, self, provenance));
+    recordKindScope(resource, writer);
+    return {
+      resource,
+      writer,
+      layers: this.inheritedLayers(evalContext, kindModule, declared, definition, mapper, self),
+    };
+  }
+
+  /**
+   * The definitions of an inheriting kind's chain whose `inputs:` / `result:`
+   * translate a replaced contract, nearest the controller first, each with the
+   * scope of the module that wrote it — from the kind itself up to `last` (its
+   * mapping definition) or to the ancestor whose controller creates it.
+   */
+  private inheritedLayers(
+    evalContext: IEvaluationContext,
+    kindModule: ModuleContext,
+    declared: ResourceManifest,
+    definition: ResourceDefinition,
+    last?: ResourceDefinition,
+    resolvedSelf?: Record<string, unknown>,
+  ): InheritedLayer[] {
+    const resolveDef = this.scopedDefResolver();
+    const controlling = controllerBearingAncestor(definition, resolveDef);
+    const chain: ResourceDefinition[] = [];
+    for (const def of [definition, ...ancestorChain(definition, resolveDef)]) {
+      if (def === controlling) break;
+      chain.push(def);
+      if (def === last) break;
+    }
+    const mapping = chain.filter((def) => {
+      const body = def as { inputs?: unknown; result?: unknown };
+      return body.inputs != null || body.result != null;
+    });
+    if (mapping.length === 0) return [];
+    const self = resolvedSelf ?? this.inheritedSelf(evalContext, kindModule, declared) ?? {
+      ...declared,
+      name: declared.metadata?.name,
+    };
+    const forward: SelfForward = (keys) =>
+      forwardedValue(self, keys, evalContext as WrittenScope, (d) => this.readAcrossReference(d));
+    return mapping.reverse().map((def) => ({
+      definition: def,
+      context: definitionScopeOf(kindModule, declared.kind, def, declared.metadata?.name),
+      self,
+      forward,
+    }));
   }
 
   /**

@@ -37,6 +37,8 @@ use crate::controllers::module::import_controller::parse_import;
 
 /// The built-in document a need type is declared with.
 const NEED_TYPE: &str = "Telo.NeedType";
+/// The built-in kind that runs an ordered list of steps.
+const SEQUENCE: &str = "Telo.Sequence";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
@@ -632,6 +634,14 @@ fn resolve_resource_kind(
     kind: &str,
     name: &str,
 ) -> Result<Rc<crate::controller_registry::Definition>, KernelError> {
+    if kind == SEQUENCE {
+        return Err(KernelError::new(
+            "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+            format!(
+                "resource '{name}' declares `{SEQUENCE}`; this kernel does not run the step grammar yet"
+            ),
+        ));
+    }
     if kind.starts_with("Telo.") {
         return Err(KernelError::new(
             "ERR_UNSUPPORTED_MANIFEST_FEATURE",

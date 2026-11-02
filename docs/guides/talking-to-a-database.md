@@ -280,7 +280,7 @@ There is also a `crud` module that generates the whole REST surface from a table
 ## 4. All of it, or none of it
 
 Two writes that must not half-happen go inside a `Sql.Transaction`. Its `steps:`
-is a resource to run inside the transaction — usually a `Run.Sequence`:
+is a resource to run inside the transaction — usually a `Telo.Sequence`:
 
 ```yaml
 kind: Sql.Transaction
@@ -291,7 +291,7 @@ steps: !ref transferSteps
 inputs:
   amount: !cel "inputs.amount"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: transferSteps
 steps:
@@ -326,7 +326,7 @@ sequence that is not inside the transaction, and the check fails before anything
 runs:
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: oops
 steps:

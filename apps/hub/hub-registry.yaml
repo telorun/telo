@@ -16,11 +16,11 @@ metadata:
     or the built-in vocabulary at the one ref it is tracked at.
 requires:
   # `resources:` inputs on a library.
-  telo: ">=0.83.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   Postgres: oci://ghcr.io/telorun/postgres@0.10.0#sha256-eob7bBkouibe1-MDGizDVWE9_r8yLMN8kjiDW7BQGtc
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
   Shell: oci://ghcr.io/telorun/shell@0.13.1#sha256-EuLg0IyhQahI2u11cyY5gqPLbLxecA6zwofr2nRT8Ow
   RateLimit: oci://ghcr.io/telorun/rate-limit@0.13.1#sha256-DIwBfYFt1lviymf0OxCZE2i3uL1hw99bmWxrZUKpElU
@@ -59,39 +59,27 @@ variables:
     items: { type: string }
     minItems: 1
     default: [telo]
-  ingestRev:
-    type: integer
-    default: 9
+  ingestRev: { type: integer, default: 9 }
   # The one ref a `Telo.Builtins` root may be registered at — the built-in
   # vocabulary the hub tracks. Registration is open, so anywhere else such a
   # root is refused.
-  builtinsRef:
-    type: string
-    default: oci://ghcr.io/telorun/telo
+  builtinsRef: { type: string, default: oci://ghcr.io/telorun/telo }
   # Whether a `./`-relative local path may be registered through `registerModule`
   # (the seed list). A development setting: a local module is read off the hub's
   # own disk. `registerAndValidate` refuses one whatever this says.
-  allowLocalRefs:
-    type: boolean
-    default: false
-exports:
-  resources:
-    - registerModule
-    - registerAndValidate
+  allowLocalRefs: { type: boolean, default: false }
+exports: { resources: [registerModule, registerAndValidate] }
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref connection
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref connection
 ---
 kind: Console.WriteLine
-metadata:
-  name: logLine
+metadata: { name: logLine }
 ---
 # The row insert on its own — idempotent, and the only thing the curated seed
 # list needs.
@@ -100,9 +88,8 @@ metadata:
 # than recorded as one it is not. A local path is `./`-relative, confined to the
 # hub's working directory (no `..` segment), and accepted only while
 # `allowLocalRefs` is set.
-kind: Run.Sequence
-metadata:
-  name: registerModule
+kind: Telo.Sequence
+metadata: { name: registerModule }
 throws:
   - code: ERR_INVALID_MODULE_REF
     description: The ref is neither an `oci://` nor an `https://` ref, nor an accepted local path.
@@ -110,10 +97,7 @@ throws:
     description: The ref is a local path and local refs are not enabled.
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
+  schema: { type: object, properties: { ref: { type: string } } }
 steps:
   - name: local
     if: !cel "inputs.ref.startsWith('./')"
@@ -167,16 +151,13 @@ steps:
 # awaited: the row exists, the latest version is claimed, and the run is
 # scheduled — so even a scheduling failure leaves a registered module the next
 # reconcile pass picks up.
-kind: Run.Sequence
-metadata:
-  name: registerAndValidate
+kind: Telo.Sequence
+metadata: { name: registerAndValidate }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      ref: { type: string }
-      clientIp: { type: string }
+    properties: { ref: { type: string }, clientIp: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:

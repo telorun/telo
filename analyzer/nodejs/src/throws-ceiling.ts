@@ -19,7 +19,7 @@ export interface ThrowsCeiling {
   codes: ReadonlySet<string>;
 }
 
-interface ThrowsBlock {
+export interface ThrowsBlock {
   codes?: Record<string, unknown>;
   inherit?: boolean;
   passthrough?: boolean;
@@ -50,6 +50,19 @@ export function dispatchesThrows(def: ResourceDefinition, resolveDef: DefResolve
     .find((c): c is string => typeof c === "string");
   if (capability === undefined || !isCapabilityRole(capability)) return true;
   return throwsAllowedCapabilities().includes(capability);
+}
+
+/**
+ * The `throws:` block that governs `def`: the nearest declaration along
+ * `extends`, `def` first. A block replaces an ancestor's and never merges, as an
+ * invocation contract does. Undefined when nothing in the chain declares one.
+ */
+export function effectiveThrows(def: ResourceDefinition, resolveDef: DefResolver): ThrowsBlock | undefined {
+  for (const d of [def, ...ancestorChain(def, resolveDef)]) {
+    const block = throwsOf(d);
+    if (block !== undefined) return block;
+  }
+  return undefined;
 }
 
 /** The nearest ANCESTOR declaring a literal list; none bounds nothing. */

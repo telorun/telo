@@ -1,13 +1,13 @@
 ---
-description: "Run.Sequence error handling: try/catch/finally with InvokeError.code/message/displayMessage/data binding, the throw and rethrow steps"
+description: "Telo.Sequence error handling: try/catch/finally with InvokeError.code/message/displayMessage/data binding, the throw and rethrow steps"
 sidebar_label: Structured Errors
 ---
 
-# Structured Errors in `Run.Sequence`
+# Structured Errors in `Telo.Sequence`
 
-> Examples below assume this module is imported with an `imports:` entry under alias `Run`. Kind references (`Run.Sequence`) follow that alias — if you import the module under a different name, substitute your alias accordingly.
+> `Telo.Sequence` is built in and needs no import. Examples using other `run` kinds assume this module is imported under alias `Run`; substitute your alias if you import it under another name. `Run.Sequence` is deprecated and behaves identically to `Telo.Sequence`.
 
-`Run.Sequence` composes invocables and surfaces their structured failures (`InvokeError`) through `try` / `catch`. This page covers the three pieces that make that work end-to-end:
+`Telo.Sequence` composes invocables and surfaces their structured failures (`InvokeError`) through `try` / `catch`. This page covers the three pieces that make that work end-to-end:
 
 - `try:` / `catch:` step binding the `error` context
 - the `throw:` step — throws an `InvokeError` at a specific point in the sequence
@@ -29,7 +29,7 @@ These five fields are statically type-checked: a typo like `!cel "error.cdoe"` i
 Inside a `finally` block, `error` is **nullable** — it is `null` when the `try` (and any `catch`) succeeded, and the caught failure only when a failure propagates. Accessing a field without a null-guard is a static error (`CEL_NULLABLE_ACCESS`); guard first: `!cel "error == null ? 'OK' : error.code"` or `!cel "error != null && error.code == 'X'"`.
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: PublishWithAudit }
 steps:
   - name: publish
@@ -89,11 +89,11 @@ It is legal only inside a `catch:` branch, at any depth (inside an `if:` or a ne
 
 ## Where a failure was written
 
-Every step a `Run.Sequence`, `Run.Iteration`, `Run.Loop` or `Run.Projection` dispatches tells the target where that step's `inputs:` are written in the resource (`/steps/1/inputs`, `/steps/2/then/0/inputs`, `/steps/0/cases/a~1b/0/inputs` for a case key holding `/`). A target whose failure names the input it is about (`Assert.Equals` names the first differing node of `expected`) can then be located at that node of the manifest. A rethrown failure keeps the place it was first located at.
+Every step a `Telo.Sequence`, `Run.Iteration`, `Run.Loop` or `Run.Projection` dispatches tells the target where that step's `inputs:` are written in the resource (`/steps/1/inputs`, `/steps/2/then/0/inputs`, `/steps/0/cases/a~1b/0/inputs` for a case key holding `/`). A target whose failure names the input it is about (`Assert.Equals` names the first differing node of `expected`) can then be located at that node of the manifest. A rethrown failure keeps the place it was first located at.
 
 ## `throws: { inherit: true }`
 
-A definition with `inherit: true` declares that its effective throw union is the union of everything it dispatches. `Run.Sequence` uses this: its declared throws is empty at the definition level; the actual union is computed per-manifest from the steps it runs and the `targets:` it runs before them.
+A definition with `inherit: true` declares that its effective throw union is the union of everything it dispatches. A kind declaring no `throws:` takes its nearest ancestor's, so a kind extending one with `inherit: true` walks what its controller receives — its own resource, or what its `base:` builds. `Telo.Sequence` uses this: its declared throws is empty at the definition level; the actual union is computed per-manifest from the steps it runs and the `targets:` it runs before them.
 
 It is a declaration, never an inference: a kind that catches what it dispatches does not declare `inherit`, and a kind that does not declare it gains nothing from what it dispatches. Two kinds of site contribute.
 
@@ -118,7 +118,7 @@ Every `x-telo-ref` slot the definition's schema declares — at any depth: neste
 
 A `detached` or `trigger.inbound` target runs where no caller of this resource awaits it, and `dependency` / `schema` dispatch nothing, so none of those contribute. A slot declaring several uses counts when any of them is `call` or `trigger.consumer`. A slot whose use is a case map (`use: { by, cases }`) is decided by this resource's selector — the value written at `by`, else the schema default. When neither decides — the selector is a `!cel` value, a literal that matches no case, or absent with no schema default — the slot counts when any case would. A slot on the legacy bare-string form declares no use and counts as `call`: a throw union must keep the error path, so an undeclared relation is read as the one that returns a failure.
 
-The slot's target contributes its own effective union — recursing into another `inherit: true` kind, memoised and cycle-safe, exactly as a step's `invoke:` target does. An inline declaration at the slot resolves like a named one. A target that cannot be resolved makes the union unbounded, so a `catches:` rendering it needs a catch-all. `Run.Sequence.targets` is such a slot (`use: call`), which is why a failing target shows up in the sequence's union.
+The slot's target contributes its own effective union — recursing into another `inherit: true` kind, memoised and cycle-safe, exactly as a step's `invoke:` target does. An inline declaration at the slot resolves like a named one. A target that cannot be resolved makes the union unbounded, so a `catches:` rendering it needs a catch-all. `Telo.Sequence.targets` is such a slot (`use: call`), which is why a failing target shows up in the sequence's union.
 
 ### Where `inherit` is legal
 

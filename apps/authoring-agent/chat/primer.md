@@ -149,6 +149,11 @@ only that field's schema (it may narrow it): the parent still publishes its
 own reading of the field, so `resources.<child>.<field>` reads what the parent
 publishes there.
 
+A resource of a kind that extends a concrete kind is one instance: without `base:`
+everything you write in it (a step's `invoke: !ref`, a `variables` read, a `with:`
+scope) resolves in your module; a `!ref` the kind's own `base:` writes names the
+defining library's resource.
+
 A kind that wraps a REGION OF WORK (a transaction, a durable run, a batch)
 carries the work itself rather than a `!ref` to something that holds it —
 point a step array at the shared grammar and the whole step vocabulary comes
@@ -781,7 +786,7 @@ that call under `onToolError` and the tool does not run
    `denied: true`, which is not an error and ignores `onToolError`);
 2. the agent's `approver: { invoke, inputs, result }` — all three required.
    `invoke` is a `!ref` or inline declaration of any invocable or runnable
-   (an `Ai.Text` as a reviewing model, a `Run.Sequence` of rules); `inputs`
+   (an `Ai.Text` as a reviewing model, a `Telo.Sequence` of rules); `inputs`
    maps `toolCall` (`id`, `name`, `arguments`) and `tool` (`name`,
    `description`, `parameters`) — nothing else is in scope, not `context`, not
    the messages — into its input; `result` maps its output, bound as
@@ -920,6 +925,8 @@ empty list and not a non-collection. A slot whose reference names a kind it does
 not accept is already refused there (`REFERENCE_KIND_MISMATCH`), and the rule is
 not evaluated at all.
 
+A kind declaring no `throws:` throws what its nearest ancestor along `extends`
+declares; a block it declares replaces the ancestor's, never merges with it.
 An abstract's `throws:` is part of its contract and a CEILING: a
 `Telo.Abstract` may declare `throws: { codes: … }` (a literal list, never
 `inherit` / `passthrough`), and every kind extending it may declare only a
@@ -1014,7 +1021,7 @@ drained second for the whole stream.
 
 To read several producers as ONE stream, use `Stream.Concat`
 (`{ context? }` → `{ output }`) with `sources:`, a list of
-`{ invoke: <Invocable/Run.Sequence returning { output: stream }>, inputs: {…} }`.
+`{ invoke: <Invocable/Telo.Sequence returning { output: stream }>, inputs: {…} }`.
 Nothing runs when it is called: the first source is invoked on the first pull
 and each next one only when the previous stream has ended, all under the
 Concat's own invocation context. Each `inputs:` map is CEL over `context` (the
@@ -1028,7 +1035,7 @@ may name a source's code in `catches:`, and must cover them. A source MUST
 return `{ output: <stream> }`, and `telo check` verifies it: a source whose
 declared output (its `outputType`, its kind's, or the keys of its `outputs:`)
 cannot be that is `REFERENCE_OUTPUT_MISMATCH` at `sources[<i>].invoke` — so a
-`Run.Sequence` source ends with `outputs: { output: !cel "steps.<x>.result.output" }`.
+`Telo.Sequence` source ends with `outputs: { output: !cel "steps.<x>.result.output" }`.
 The usual shape is a lead record first, then the expensive work:
 
     kind: Stream.Concat
@@ -1042,7 +1049,7 @@ The usual shape is a lead record first, then the expensive work:
 To act once a stream ENDS — persist a streamed reply, settle a budget, mark
 work finished — wrap it in `RecordStream.EndHandler` (`{ input, context? }` →
 `{ output }`, every item forwarded in order) with `handler: !ref <Invocable or
-Run.Sequence>` and an `inputs:` map that builds the handler's arguments. The
+Telo.Sequence>` and an `inputs:` map that builds the handler's arguments. The
 handler runs exactly once, whichever way the stream ends; the map is CEL over
 three bindings: `records` (everything forwarded up to the ending), `context`
 (the caller's `context` input, `{}` when none) and `outcome`, a
@@ -1083,7 +1090,7 @@ object, or beside `x-telo-sensitive` — it is `SPAN_ATTRIBUTE_MISPLACED`, and a
 malformed name is `SPAN_ATTRIBUTE_INVALID` (`ERR_SPAN_ATTRIBUTE_INVALID` at
 run).
 
-A `!ref` inside a `Run.Sequence` `with:` block may name either a scope-local
+A `!ref` inside a `Telo.Sequence` `with:` block may name either a scope-local
 resource or one from the enclosing module; scope-local wins, exactly as CEL's
 `resources.<name>` layers inside a scope. So two resources declared together in
 a `with:` block may reference each other — a listener and the step that waits on
@@ -1547,7 +1554,7 @@ When you AUTHOR a durable manifest:
     right for an app whose job is recovery, and wrong for a one-shot script.
 
 When you AUTHOR a manifest using such kinds:
-  - Wire a transaction's `steps:` at a `Run.Sequence` (or any Telo.Executable),
+  - Wire a transaction's `steps:` at a `Telo.Sequence` (or any Telo.Executable),
     never directly at a statement that names that same transaction — both are
     injection sites, so that shape is an init-order cycle.
   - A statement with NO `transaction:` still joins an open transaction on its
@@ -2549,7 +2556,7 @@ guard's `inputType`, and add `authorization` to `cors.allowedHeaders`:
         mount: !ref api
         guard:
           invoke:
-            kind: Run.Sequence
+            kind: Telo.Sequence
             inputType:
               kind: Telo.JsonSchema
               schema:
@@ -2998,7 +3005,7 @@ to say.
   across types. Writing a key the layer does NOT itself
   state — even with exactly the values a base states — makes the layer state
   it (its `origin` becomes this layer and it stops following the base); to
-  leave a node following its base, do not write it. The usual shape is one `Run.Sequence`: an
+  leave a node following its base, do not write it. The usual shape is one `Telo.Sequence`: an
   `OpenDraft` step, a step invoking an INLINE `GraphLayers.DraftSession`
   with `inputs: { draft: !cel "steps.open.result.draft.id" }` on the step and
   `inputs: { draft: !cel "inputs.draft" }` in its config, then a `Publish`
@@ -3145,7 +3152,7 @@ to say.
   in the application's own database and is written by that application —
   there is no shipping or importing a layer from elsewhere, no diff / history
   / restore of a key, no separate published copy, and no compaction.
-- `with:` / `targets:` (Run.Sequence) — `with:` is a LIST of full resource
+- `with:` / `targets:` (Telo.Sequence) — `with:` is a LIST of full resource
   declarations whose lifetime is that one sequence run: created when it starts,
   torn down when it ends, referenced by `!ref` from its steps. `targets:` (the
   sequence's own, distinct from the Application's) lists which of them to
@@ -3582,7 +3589,7 @@ to say.
   directory is `dir.joinPath('app.db')`, never the directory itself.
 - CEL scopes: `variables`, `secrets` (always); `ports.X` (root app);
   `module.<field>` (always); `resources.X` (after that resource snapshots);
-  `steps.<name>.result` (inside a Run.Sequence step); `request` (inside an
+  `steps.<name>.result` (inside a Telo.Sequence step); `request` (inside an
   HTTP handler).
 - `module.<field>` is the DECLARING module doc's own `metadata`, so a manifest
   reads its own version instead of restating it: `version: !cel
@@ -3686,7 +3693,7 @@ resource DECLARES what it accepts with `inputType:`; a call site SUPPLIES
 values with `inputs:`.
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: greet }
 inputType:                      # the CONTRACT — a schema
   kind: Telo.JsonSchema         # a kernel built-in; needs no import
@@ -3725,7 +3732,7 @@ whole point of putting a friendlier schema over an existing controller.
 and it belongs at the DISPATCH SITE — right next to the reference that names
 what to call. That reference is one of:
   - `handler:` — an Http.Api route.
-  - `invoke:` — a Run.Sequence step, or an inline `targets` step.
+  - `invoke:` — a Telo.Sequence step, or an inline `targets` step.
   - `tool:` — an Ai.Tools entry.
 
 Put a resource's STATIC config (e.g. a SQL resource's `connection:`) on the
@@ -3747,7 +3754,7 @@ resource's:
     `type: [string, "null"]` where `null` is meant). A query, path or header
     value is text, so it IS read into its declared type — `?limit=5` against
     `type: integer` arrives as `5`.
-  - inside a Run.Sequence step's `inputs:`, `steps.*` and the sequence's own
+  - inside a Telo.Sequence step's `inputs:`, `steps.*` and the sequence's own
     `inputs.*` are in scope.
 A resource defined on its own has NONE of these in scope — writing
 `request.body.title` on a standalone Sql.Command never resolves, because
@@ -3858,10 +3865,15 @@ about an integer and truncates past 2^53. The kernel normalizes a value to the
 representation its `outputType` declares, so a field declared `type: integer`
 IS an integer wherever CEL reads it.
 
-The `run` module is COMPOSITION itself, and you will need it in almost every
-app — do not go looking for a kind that "loops" or "sequences" as if it were a
-third-party capability. `Run.Sequence` runs ordered steps with `if` / `while` /
-`switch` / `try`; `Run.Loop` repeats a body while a CEL condition holds, seeing
+`Telo.Sequence` is a BUILT-IN kind: it needs no import and is the default home of
+any list of steps. It runs ordered steps with `if` / `while` / `switch` / `try`
+and takes `steps`, `with`, `targets`, `inputType`, `outputType` and `outputs`.
+`Run.Sequence` is DEPRECATED (`DEPRECATED_KIND`, replaced by `Telo.Sequence`):
+never write it. A manifest declaring `Telo.Sequence` needs
+`requires: { telo: ">=0.128.0" }`. Import the `run` module only for what a
+sequence is not, and OMIT the import when the app uses none of it. The rest of
+`run` is COMPOSITION too — do not go looking for a kind that "loops" as if it
+were a third-party capability: `Run.Loop` repeats a body while a CEL condition holds, seeing
 `iteration` (0-based, an integer — `iteration + 1` needs no cast) and
 `previous`; `Run.Iteration` / `Run.Projection` walk a collection, their body
 seeing each element as `item` and its 0-based position as `index`; `Run.Value` /
@@ -3876,7 +3888,7 @@ For pure value logic in the `run` module, pick by shape: `Run.Value` shapes ONE
 value; `Run.Choice` is a first-match decision TABLE (ordered `when → value`
 rows plus an optional `default`) and is what a routing rule, pricing tier, or
 authz policy wants. Reach for it instead of nesting CEL ternaries — past one
-`? :` the ternary is the wrong tool. `Run.Sequence`'s `switch` matches equality
+`? :` the ternary is the wrong tool. `Telo.Sequence`'s `switch` matches equality
 keys and `if`/`elseif` select STEPS to execute, so neither replaces it.
 Declaring `outputType` on a `Run.Choice` makes `telo check` validate every row
 against one contract and types `steps.<name>.result` for callers.
@@ -3898,7 +3910,7 @@ for a comprehension variable and a `cel.bind` name. A cycle is
 an intermediate derived from a step's result, write a step carrying `value:`
 instead of `invoke:`. That pure step publishes `steps.<name>.result` like any
 other step but dispatches nothing (no resource, no span, no topology node), and
-it works in every step list — `Run.Sequence`, `Run.Loop`, `Run.Iteration`,
+it works in every step list — `Telo.Sequence`, `Run.Loop`, `Run.Iteration`,
 `Run.Projection`, and their `if`/`switch`/`try` branches.
 
 Reshaping a LIST of records is the `collection` module, not `run`: `GroupBy`
@@ -4191,7 +4203,6 @@ A test imports the FEATURE LIBRARY it exercises — never the application:
     metadata: { name: PlaceOrderTest, version: 1.0.0 }
     imports:
       Ordering: ../ordering.yaml                      # ← the library under test
-      Run: oci://ghcr.io/telorun/run@<version>
       Assert: oci://ghcr.io/telorun/assert@<version>
     targets:
       - !ref testPlaceOrder
@@ -4204,12 +4215,12 @@ so does the test, so the test exercises the same thing the app runs without
 standing up ports, servers or secrets. Importing `../telo.yaml` instead would
 be importing an Application, which is a hard error.
 
-Shape each test as a `Run.Sequence` in `targets:` that invokes the exported
+Shape each test as a `Telo.Sequence` in `targets:` that invokes the exported
 resource and then asserts. Prefer `Assert.Equals` — it deep-compares a whole
 result against an expected literal in one step, which reads as a plain
 expected value:
 
-    kind: Run.Sequence
+    kind: Telo.Sequence
     metadata: { name: testPlaceOrder }
     steps:
       - name: place
@@ -4251,7 +4262,7 @@ directory), so the test declares its own host-path variable with the relative
 default and passes it on under the same name
 (`dbFile: !cel "variables.dbFile"`):
 
-    kind: Run.Sequence
+    kind: Telo.Sequence
     metadata: { name: testServesGreeting }
     with:
       - kind: App.Instance
@@ -4278,7 +4289,7 @@ resources, each named, each with its own identity and port — there is no
 asserts another took over needs each to have a name. Put shared configuration
 in a kind (`extends: App.Instance` with a `base:` mapping) and declare the
 members. To stop one part-way through a test, declare it in a NESTED
-`Run.Sequence`'s `with:`; leaving that sequence tears it down.
+`Telo.Sequence`'s `with:`; leaving that sequence tears it down.
 
 Still prefer a feature library where the behaviour allows it: a library test
 needs no port and no server. `App.Instance` is for what only the assembled
@@ -4325,7 +4336,7 @@ needs:
                   required: [usd]
                   properties: { usd: { type: number } }
     ---
-    kind: Run.Sequence
+    kind: Telo.Sequence
     metadata: { name: testFetchesRate }
     with:
       - kind: Http.Server
@@ -4730,11 +4741,10 @@ not have to transcribe their own spreadsheet's headers for you.
     imports:
       Sheets: oci://ghcr.io/telorun/google/sheets@<version>
       Console: oci://ghcr.io/telorun/console@<version>
-      Run: oci://ghcr.io/telorun/run@<version>
     targets:
       - !ref probe
     ---
-    kind: Run.Sequence
+    kind: Telo.Sequence
     metadata: { name: probe }
     steps:
       - name: read

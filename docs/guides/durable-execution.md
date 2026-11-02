@@ -6,7 +6,7 @@ description: "Make a body of steps survive process death: record progress as it 
 
 Some work must not be done twice and must not be lost: charging a card, sending
 an order to a warehouse, provisioning an account across three systems. A
-`Run.Sequence` gives you the steps; what it does not give you is an answer to
+`Telo.Sequence` gives you the steps; what it does not give you is an answer to
 "what happens if the process dies between step two and step three?". Durable
 execution is that answer, and in Telo it is the **same step grammar** with a
 record kept beside it.
@@ -48,7 +48,6 @@ imports:
   Durable: oci://ghcr.io/telorun/durable@<version>
   Local: oci://ghcr.io/telorun/durable-local@<version>
   Journal: oci://ghcr.io/telorun/durable-journal-file@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
 variables:
   orderId:
     env: ORDER_ID
@@ -88,7 +87,7 @@ steps:
 ```
 
 `reserveStock`, `chargeCard` and `shipOrder` are ordinary invocables — a
-`Run.Sequence`, an `Http.Request`, a `Sql.Command` — declared exactly as they
+`Telo.Sequence`, an `Http.Request`, a `Sql.Command` — declared exactly as they
 would be anywhere else. Nothing about them knows it is inside a durable run.
 
 Three things to notice:

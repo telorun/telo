@@ -1,0 +1,103 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "Sequence",
+    "description": "An ordered list of steps behind a typed contract: call other resources, branch on conditions and switches, loop, catch and raise errors, and shape values, then return declared outputs. Runs at startup or is called as a handler, and can stand up resources that live only while it runs."
+  },
+  "capability": "Telo.Runnable",
+  "topology": "Sequence",
+  "throws": {
+    "inherit": true
+  },
+  "schema": {
+    "type": "object",
+    "properties": {
+      "with": {
+        "title": "With",
+        "description": "Resources that exist only while the sequence runs; created on entry and torn down when it ends.",
+        "x-telo-scope": [
+          "/steps",
+          "/targets"
+        ]
+      },
+      "targets": {
+        "title": "Targets",
+        "type": "array",
+        "description": "Resources of `with:` started before the steps, each written as a `!ref <name>`.",
+        "items": {
+          "title": "Target",
+          "description": "A resource of `with:` to start before the steps, written as a `!ref`.",
+          "x-telo-ref": {
+            "kind": [
+              "Telo.Runnable",
+              "Telo.Service"
+            ],
+            "use": "call"
+          },
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "object",
+              "required": [
+                "kind",
+                "name"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true
+            }
+          ]
+        }
+      },
+      "inputType": {
+        "title": "Input Type",
+        "description": "The input contract, a named type or an inline one. The steps read the values as `inputs.<name>`; declared defaults are filled and every call is validated against it.",
+        "x-telo-ref": {
+          "kind": "Telo.Type",
+          "use": "schema"
+        }
+      },
+      "outputType": {
+        "title": "Output Type",
+        "description": "The result contract, a named type or an inline one. It types the result for callers, checks `outputs:` statically, and validates the produced value at every call.",
+        "x-telo-ref": {
+          "kind": "Telo.Type",
+          "use": "schema"
+        }
+      },
+      "outputs": {
+        "title": "Outputs",
+        "type": "object",
+        "description": "The result: a map of values over `steps.*` and `inputs.*`, evaluated after the steps run. Omitted, the result is the map of step results.",
+        "additionalProperties": true,
+        "x-telo-context": {
+          "type": "object",
+          "properties": {
+            "inputs": {}
+          }
+        },
+        "x-telo-value-schema-from": "outputType"
+      },
+      "steps": {
+        "title": "Steps",
+        "description": "The steps to run, in order.",
+        "x-telo-topology-role": "steps",
+        "type": "array",
+        "items": {
+          "$ref": "telo://manifest#/$defs/Step"
+        }
+      }
+    },
+    "required": [
+      "steps"
+    ]
+  }
+}

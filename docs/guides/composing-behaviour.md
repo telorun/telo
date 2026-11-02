@@ -1,17 +1,13 @@
 ---
-description: "Orchestrate work declaratively with Run.Sequence, Run.Choice and Run.Value: steps, branching, loops, error handling, and when a script is genuinely the right answer."
+description: "Orchestrate work declaratively with Telo.Sequence, Run.Choice and Run.Value: steps, branching, loops, error handling, and when a script is genuinely the right answer."
 ---
 
 # Composing behaviour
 
 A handler that returns one value is `Run.Value`. Everything beyond that —
 calling several things in order, branching, looping, handling failure — is
-`Run.Sequence` and its siblings in the `run` module.
-
-```yaml
-imports:
-  Run: oci://ghcr.io/telorun/run@<version>
-```
+`Telo.Sequence`, a built-in kind that needs no import, and its siblings in the
+`run` module.
 
 A sequence is a `Telo.Runnable`, so it fits anywhere a runnable does: an
 application's `targets:`, an HTTP route's `handler:`, another sequence's step.
@@ -19,7 +15,7 @@ application's `targets:`, an HTTP route's `handler:`, another sequence's step.
 ## The shape of a sequence
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: placeOrder
 inputType:
@@ -204,7 +200,7 @@ they are created when the sequence starts and torn down when it ends. `targets:`
 names which of them to `run()` first:
 
 ```yaml
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: checkTheApi
 with:
@@ -235,7 +231,7 @@ in the scope, since that is where a target runs.
 
 ## The other `run` kinds
 
-`Run.Sequence` is the general case. Reach for a narrower kind when it fits — it
+`Telo.Sequence` is the general case. Reach for a narrower kind when it fits — it
 says more about intent and is easier to read:
 
 | Kind | For |

@@ -1,25 +1,16 @@
 # One library imported twice: each import's instance is its own backend, and
 # both answer.
 kind: Telo.Application
-metadata:
-  name: InstancesBoot
+metadata: { name: InstancesBoot }
 imports:
-  Run: ../../../modules/run
   Assert: ../../../modules/assert
-  A:
-    source: ./instances-lib
-    variables:
-      dialect: first
-  B:
-    source: ./instances-lib
-    variables:
-      dialect: second
+  A: { source: ./instances-lib, variables: { dialect: first } }
+  B: { source: ./instances-lib, variables: { dialect: second } }
 targets:
   - !ref main
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: first
     invoke: !ref A.db

@@ -14,10 +14,11 @@ metadata:
     `Http.Server` scoped to the run with `with:`, so it starts before the first
     notification and is torn down after the last one — which is also why the app
     exits on its own instead of hanging on a listening port.
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Notify: ./notify
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref demo
@@ -28,25 +29,19 @@ targets:
 kind: Notify.Webhook
 metadata: { name: deploys }
 url: http://127.0.0.1:8033/hooks/generic
-headers:
-  x-source: telo-example
+headers: { x-source: telo-example }
 ---
 kind: Notify.Slack
 metadata: { name: teamChat }
 webhookUrl: http://127.0.0.1:8033/hooks/slack
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: demo }
 with:
   - kind: Http.Server
     metadata: { name: Receiver }
-    listen:
-      port: 8033
-      address: 127.0.0.1
-    openapi:
-      info:
-        title: Fake webhook receiver
-        version: 1.0.0
+    listen: { port: 8033, address: 127.0.0.1 }
+    openapi: { info: { title: Fake webhook receiver, version: 1.0.0 } }
     mounts:
       - path: /hooks
         mount: !ref inbox
@@ -55,15 +50,10 @@ targets:
 steps:
   - name: generic
     invoke: !ref deploys
-    inputs:
-      payload:
-        event: deploy.finished
-        service: checkout
-        version: "2026.8.1"
+    inputs: { payload: { event: deploy.finished, service: checkout, version: "2026.8.1" } }
   - name: slack
     invoke: !ref teamChat
-    inputs:
-      text: "checkout 2026.8.1 is live"
+    inputs: { text: "checkout 2026.8.1 is live" }
   - name: report
     invoke: !ref Console.writeLine
     inputs:
@@ -76,41 +66,29 @@ steps:
 kind: Http.Api
 metadata: { name: inbox }
 routes:
-  - request:
-      path: /generic
-      method: POST
+  - request: { path: /generic, method: POST }
     handler: !ref echo
     inputs:
       label: generic
       body: !cel "request.body"
     returns:
-      - status: 200
-        content:
-          application/json:
-            body: { ok: true }
-  - request:
-      path: /slack
-      method: POST
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
+  - request: { path: /slack, method: POST }
     handler: !ref echo
     inputs:
       label: slack
       body: !cel "request.body"
     returns:
-      - status: 200
-        content:
-          application/json:
-            body: { ok: true }
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: echo }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     required: [ label, body ]
-    properties:
-      label: { type: string }
-      body: { type: object, additionalProperties: true }
+    properties: { label: { type: string }, body: { type: object, additionalProperties: true } }
 steps:
   - name: print
     invoke: !ref Console.writeLine

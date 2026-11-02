@@ -4,10 +4,8 @@
 # in the value branch, so the step is wrong where flag1 holds and where only
 # flag2 does, and right where neither does.
 kind: Telo.Application
-metadata:
-  name: StepUnionChoice
-imports:
-  Run: ../../../modules/run
+metadata: { name: StepUnionChoice }
+imports: { Run: ../../../modules/run }
 variables:
   flag1: { env: FLAG_1, type: boolean, default: false }
   flag2: { env: FLAG_2, type: boolean, default: false }
@@ -15,13 +13,11 @@ targets:
   - !ref main
 ---
 kind: Run.Value
-metadata:
-  name: target
+metadata: { name: target }
 value: 1
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: chosen
     invoke: !if

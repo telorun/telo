@@ -28,8 +28,8 @@ metadata:
         curl -s localhost:8107/api/reports/latest/csv
 # Module `lang:` — the language this application's texts are written in — and
 # `UiReact.App.words` are read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 lang: en
 # `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
@@ -45,7 +45,6 @@ imports:
   BlobFs: oci://ghcr.io/telorun/blob-fs@0.3.0#sha256-64KNO1vwB6VsYNBi9QOdsoevPOzVVCt022ONSbqX90g
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
 targets:
   - !ref migrate
@@ -54,11 +53,7 @@ targets:
     when: !cel "variables.buildAtBoot"
   - !ref server
   - !ref nightly
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8107
+ports: { http: { env: PORT, protocol: tcp, default: 8107 } }
 variables:
   title:
     env: REPORT_TITLE
@@ -70,10 +65,7 @@ variables:
     arg: cron
     type: string
     default: "0 6 * * *"
-  buildAtBoot:
-    env: BUILD_AT_BOOT
-    type: boolean
-    default: true
+  buildAtBoot: { env: BUILD_AT_BOOT, type: boolean, default: true }
   dbFile:
     env: DB_FILE
     arg: db-file
@@ -165,9 +157,7 @@ schema:
       items:
         type: object
         required: [ region, revenue ]
-        properties:
-          region: { type: string }
-          revenue: { type: number }
+        properties: { region: { type: string }, revenue: { type: number } }
 ---
 # One row per region. A donut draws one slice per category and the orders
 # carry two rows per region, so they are rolled up first.
@@ -223,7 +213,7 @@ kind: Blob.Put
 metadata: { name: saveBlob }
 store: !ref reportStore
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: buildReport }
 steps:
   - name: sales
@@ -307,7 +297,7 @@ invoke: !ref buildReport
 # Reads one stored file back as text. `latest` is resolved against the index,
 # so a link to it never goes stale; a name that was never built is a throw the
 # routes render as a 404.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readReport }
 inputType:
   kind: Telo.JsonSchema
@@ -315,9 +305,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ name, extension ]
-    properties:
-      name: { type: string }
-      extension: { type: string, enum: [ html, csv ] }
+    properties: { name: { type: string }, extension: { type: string, enum: [html, csv] } }
 steps:
   - name: found
     invoke: !ref query
@@ -351,7 +339,7 @@ outputs:
   text: !cel "string(steps.read.result.bytes)"
 ---
 # What has been built, newest first, each with where to get it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listReports }
 steps:
   - name: found
@@ -369,7 +357,7 @@ outputs:
       'csv': '/api/reports/' + string(r.name) + '/csv'
     })
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: buildAndList }
 steps:
   - name: built
@@ -404,9 +392,7 @@ schema:
 kind: Http.Api
 metadata: { name: reportRoutes }
 routes:
-  - request:
-      path: /reports
-      method: POST
+  - request: { path: /reports, method: POST }
     handler: !ref buildAndList
     inputs: {}
     returns:
@@ -429,9 +415,7 @@ routes:
               error: !cel "error.code"
               message: !cel "error.message"
 
-  - request:
-      path: /reports
-      method: GET
+  - request: { path: /reports, method: GET }
     handler: !ref listReports
     inputs: {}
     returns:
@@ -441,9 +425,7 @@ routes:
             body: !cel "result.reports"
 
   # The same list as an operation a page can run: a button sends a POST.
-  - request:
-      path: /reports/recent
-      method: POST
+  - request: { path: /reports/recent, method: POST }
     handler: !ref listReports
     inputs: {}
     returns:
@@ -460,8 +442,7 @@ routes:
         params: &reportName
           type: object
           required: [ name ]
-          properties:
-            name: { type: string }
+          properties: { name: { type: string } }
     handler: !ref readReport
     inputs:
       name: !cel "request.params.name"
@@ -554,10 +535,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Report generator
-    version: 1.0.0
+openapi: { info: { title: Report generator, version: 1.0.0 } }
 mounts:
   - path: /api
     mount: !ref reportRoutes

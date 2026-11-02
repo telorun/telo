@@ -1720,7 +1720,7 @@ const RELATION_READERS: RelationReaderTable = {
   contracts: {
     instances: (region, scope) => {
       const { identity } = region;
-      if (typeof identity.kind !== "string" || identity.kind.startsWith("Telo.") || !isEntryIdentity(identity, scope.rootModules)) {
+      if (typeof identity.kind !== "string" || isModuleKind(identity.kind) || isKindDocumentOrImport({ kind: identity.kind }) || !isEntryIdentity(identity, scope.rootModules)) {
         return [];
       }
       if (!contractDefinitionOf(identity, scope)) return [];
@@ -8930,7 +8930,7 @@ export class StaticAnalyzer {
     // (`x-telo-schema-projection-from`) that does not resolve.
     for (const m of allManifests) {
       const kind = (m as Record<string, any>).kind;
-      if (typeof kind !== "string" || kind.startsWith("Telo.") || !isEntryDeclaration(m, rootModules)) continue;
+      if (typeof kind !== "string" || isModuleKind(kind) || isKindDocumentOrImport(m) || !isEntryDeclaration(m, rootModules)) continue;
       relationGroupFindings("contracts", m);
     }
 

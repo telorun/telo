@@ -31,7 +31,8 @@ requires:
   # reports seven `CEL_IN_NON_EVAL_FIELD` errors against this file — blaming the
   # manifest for the runtime's age. The floor turns that into one message naming
   # the cause. Forward-declared: 0.82.1 is the release that carries the fix.
-  telo: ">=0.82.1"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   SvgChart: oci://ghcr.io/telorun/svg-chart@0.3.0#sha256-Dv384bDGk8HV_5kUVMaMQGK38LAurkRve54AS1h9d1c
   Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
@@ -135,9 +136,7 @@ schema:
         type: object
         required: [region, revenue]
         additionalProperties: false
-        properties:
-          region: { type: string }
-          revenue: { type: number }
+        properties: { region: { type: string }, revenue: { type: number } }
 ---
 # Revenue by region.
 kind: SvgChart.Donut
@@ -237,7 +236,7 @@ content:
 kind: Fs.FileWrite
 metadata: { name: writeReport }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: buildReport }
 steps:
   - name: sales

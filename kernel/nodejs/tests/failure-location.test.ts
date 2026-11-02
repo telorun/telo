@@ -54,6 +54,16 @@ describe("a failure leaving a dispatch is located in the caller's declaration", 
     });
   });
 
+  it("locates a failing step of an inherited kind at the consumer's declaration", async () => {
+    const { diagnostics } = await failure("inherited.yaml");
+    expect(diagnostics[0]!.location).toMatchObject({ name: "compare", pointer: "/steps/0/inputs/expected" });
+    expect(diagnostics[0]!.origin).toEqual({
+      filePath: expect.stringMatching(/failure-location\/inherited\.yaml$/),
+      resource: { kind: "Self.Checks", name: "compare" },
+      path: "steps[0].inputs.expected",
+    });
+  });
+
   it("locates a dispatch that names no written place at the calling resource", async () => {
     const { diagnostics } = await failure("no-inputs-at/telo.yaml");
     expect(diagnostics[0]!.location).not.toHaveProperty("pointer");
@@ -86,12 +96,6 @@ describe("a place that is not provably the written one is never positioned", () 
       name: "SequenceBodySteps0Inner",
       pointer: "/steps/0/inputs/expected",
     });
-    expect(diagnostics[0]!.origin).toBeUndefined();
-  });
-
-  it("names the resource and no file position for the parent an inherited kind builds", async () => {
-    const { diagnostics } = await failure("inherited.yaml");
-    expect(diagnostics[0]!.location).toMatchObject({ name: "compare", pointer: "/steps/0/inputs/expected" });
     expect(diagnostics[0]!.origin).toBeUndefined();
   });
 

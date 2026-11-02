@@ -108,6 +108,9 @@ function isResolvedRef(value: unknown): value is ResourceRef {
  *  field named `schema` on every kind) so the heuristic can't misfire. */
 const SCHEMA_AS_CONTRACT_KINDS = new Set(["Telo.Definition", "Telo.Abstract", "Telo.Type"]);
 
+/** The CEL names a module context answers, never a call. */
+const MODULE_GLOBAL_NAMES: ReadonlySet<string> = new Set(["variables", "secrets", "resources", "ports", "module"]);
+
 /**
  * Walk a resource manifest's config and collect every resolved `{kind, name,
  * alias?}` reference it points at — the outbound edges for the dependency graph.
@@ -950,8 +953,7 @@ export class EvaluationContext implements IEvaluationContext {
    * The configured values a merge-form inheriting child publishes over the
    * parent instance's reading, or undefined when the kind declares none.
    *
-   * Such a child IS the parent instance — the inherited controller returns it
-   * verbatim — so `snapshot()` is the parent's and a field the parent never
+   * Such a child is one instance created by its ancestor's controller, so `snapshot()` is the parent's and a field the parent never
    * declared would be readable from nowhere. The field NAMES come from
    * `publishedOwnFields`, stamped onto the definition at registration in the
    * scope that declared the `extends` alias; resolving the chain here would
@@ -2469,7 +2471,9 @@ export class EvaluationContext implements IEvaluationContext {
 
   private getDeclaredThrowCodes(kind: string): Set<string> | null {
     if (!this.getDefinition) return null;
-    const def = this.getDefinition(kind);
+    // The block stamped at registration: an inheriting kind's is its nearest
+    // ancestor's when it declares none.
+    const def = this.getDefinition(this.resolveKindSafe(kind)) ?? this.getDefinition(kind);
     if (!def) return null;
     const throws = def.throws;
     if (!throws) return new Set();
@@ -2824,6 +2828,31 @@ export class EvaluationContext implements IEvaluationContext {
         else delete ctx[k];
       }
     }
+  }
+
+  /**
+   * `value`, evaluated in THIS context wherever it is later called: the module
+   * globals are this context's, the call's own bindings (`inputs`, `steps`,
+   * `error`, …) are the caller's, and `bound` is added on top. A failure names
+   * where the expression was written.
+   */
+  boundExpression(value: CompiledValue, bound: Record<string, unknown>, where: string): CompiledValue {
+    return {
+      ...value,
+      call: (activation: Record<string, unknown>) => {
+        const scope: Record<string, unknown> = {};
+        for (const key of Object.keys(activation)) {
+          if (key in this._context || MODULE_GLOBAL_NAMES.has(key)) continue;
+          scope[key] = activation[key];
+        }
+        try {
+          return this.expandWith(value, { ...scope, ...bound });
+        } catch (error) {
+          if (error instanceof Error) error.message = `in ${where}: ${error.message}`;
+          throw error;
+        }
+      },
+    };
   }
 
   /**

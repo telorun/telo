@@ -13,31 +13,25 @@ metadata:
     projects in a table listing. The backend is a set of stub routes over fixture data.
 # Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
 # vocabulary are read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 lang: en
 # `http-server`, `i18n`, `data-model`, `ui` and `ui-react` come from this
 # repository while their changes are unreleased; `telo upgrade --pin-local` pins
 # them again once they ship.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
+  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
   DataModel: oci://ghcr.io/telorun/data-model@0.2.0#sha256-rxGXii0Db-DcSJY0MUEY1KzbklXN15tLwKwK93z3AHg
   Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
   UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
-include:
-  - ./stub-api.yaml
-  - ./polish.yaml
+include: [./stub-api.yaml, ./polish.yaml]
 targets:
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8140
+ports: { http: { env: PORT, protocol: tcp, default: 8140 } }
 ---
 # What the sign-in check answers: whether a session is open, and why the last
 # sign-in did not complete.
@@ -55,24 +49,19 @@ metadata: { name: Account }
 schema:
   type: object
   required: [ email ]
-  properties:
-    email: { type: string, title: Signed in as }
+  properties: { email: { type: string, title: Signed in as } }
 ---
 # A button that sends nothing: connecting and signing out.
 kind: Telo.JsonSchema
 metadata: { name: NoInput }
-schema:
-  type: object
-  additionalProperties: false
-  properties: {}
+schema: { type: object, additionalProperties: false, properties: {} }
 ---
 kind: Telo.JsonSchema
 metadata: { name: ConsentLink }
 schema:
   type: object
   required: [ url ]
-  properties:
-    url: { type: string, format: uri-reference }
+  properties: { url: { type: string, format: uri-reference } }
 ---
 # A file of the Drive the console reads timesheets from and uploads reports to.
 kind: Telo.JsonSchema
@@ -149,9 +138,7 @@ schema:
       type: object
       title: Period
       required: [ from, to ]
-      properties:
-        from: { type: string, format: date }
-        to: { type: string, format: date }
+      properties: { from: { type: string, format: date }, to: { type: string, format: date } }
     projects:
       type: array
       title: Projects
@@ -226,16 +213,13 @@ schema:
       items:
         type: object
         required: [ task, hours ]
-        properties:
-          task: { type: string, title: Task }
-          hours: { type: number, title: Hours }
+        properties: { task: { type: string, title: Task }, hours: { type: number, title: Hours } }
     noCurrency:
       type: array
       items:
         type: object
         required: [ project ]
-        properties:
-          project: { type: string, title: Project }
+        properties: { project: { type: string, title: Project } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: DraftRequest }
@@ -253,8 +237,7 @@ metadata: { name: DraftAnswer }
 schema:
   type: object
   required: [ url ]
-  properties:
-    url: { type: string, title: Draft, format: uri }
+  properties: { url: { type: string, title: Draft, format: uri } }
 ---
 kind: Telo.JsonSchema
 metadata: { name: UploadRequest }
@@ -290,11 +273,7 @@ schema:
 ---
 kind: Telo.JsonSchema
 metadata: { name: RemindAnswer }
-schema:
-  type: object
-  required: [ sentTo ]
-  properties:
-    sentTo: { type: string }
+schema: { type: object, required: [sentTo], properties: { sentTo: { type: string } } }
 ---
 # The language a request is answered in, chosen from the translator's catalogs.
 kind: I18n.Negotiator
@@ -335,8 +314,7 @@ pages:
         ref:
           kind: Ui.Data
           model: !ref Auth
-          query:
-            signin: { type: string, enum: [ denied, expired ] }
+          query: { signin: { type: string, enum: [denied, expired] } }
           source: { path: /api/auth }
           reloadOn: [ focus, unauthorized ]
           loading: { type: text, text: Checking your sign-in…, style: muted }
@@ -635,8 +613,7 @@ pages:
                   model: !ref Project
                   # The sheet is the page address's `sheet`, which the report
                   # links to; with none, the listing reads nothing.
-                  query:
-                    sheet: { type: string, minLength: 1 }
+                  query: { sheet: { type: string, minLength: 1 } }
                   filters: { spreadsheetId: !cel "query.sheet" }
                   layout:
                     kind: Ui.TableLayout
@@ -678,14 +655,13 @@ mounts:
     mount: !ref consoleApi
     guard:
       invoke:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
             type: object
             required: [ cookie ]
-            properties:
-              cookie: { type: string, x-telo-sensitive: true }
+            properties: { cookie: { type: string, x-telo-sensitive: true } }
         steps:
           - name: session
             if: !cel "!Self.signedIn(inputs.cookie)"
@@ -697,7 +673,6 @@ mounts:
       catches:
         - when: !cel "error.code == 'UNAUTHORIZED'"
           status: 401
-          content:
-            application/problem+json: {}
+          content: { application/problem+json: {} }
   - path: /
     mount: !ref console

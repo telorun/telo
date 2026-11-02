@@ -27,8 +27,10 @@ import {
   createResolveCtx,
   resolveRefManifest,
   type RefOrigin,
+  receivedConfiguration,
   resolveScopeUnion,
   resolveThrowsUnion,
+  throwsBlockOf,
   type ResolveCtx,
   type ThrowsCodeMeta,
   type ThrowsUnion,
@@ -342,20 +344,25 @@ export function answerFor(readings: readonly CatchEntryReading[], code: string |
  *  closure crosses is the edge a catch scope encloses through. */
 function buildEnclosers(
   manifests: ResourceManifest[],
-  definitionOf: (m: ResourceManifest) => { schema?: Record<string, any> } | undefined,
+  definitionOf: (m: ResourceManifest) => ResourceDefinition | undefined,
   moduleOf: (m: ResourceManifest) => string | undefined,
   ctx: ResolveCtx,
 ): Map<ResourceManifest, ResourceManifest[]> {
   const enclosers = new Map<ResourceManifest, ResourceManifest[]>();
   for (const manifest of manifests) {
     const definition = definitionOf(manifest);
-    if (!definition?.schema) continue;
-    forEachDrivenSlot(definition.schema, manifest, (driven) => {
+    if (!definition) continue;
+    const configured = receivedConfiguration(manifest, definition, ctx);
+    forEachDrivenSlot(configured.schema, configured.data, (driven) => {
       if (driven.kind !== "ref" || !driven.slots.some(({ slot }) => slot.throwsThrough)) return;
-      const target = resolveRefManifest(driven.data, ctx, {
-        module: moduleOf(manifest),
-        within: scopeReadAt(manifest, driven.path),
-      });
+      const writer = configured.writerOf(driven.data);
+      const target = resolveRefManifest(
+        driven.data,
+        ctx,
+        writer !== undefined
+          ? { module: writer }
+          : { module: moduleOf(manifest), within: scopeReadAt(manifest, driven.path) },
+      );
       if (!target || target === manifest) return;
       const list = enclosers.get(target);
       if (list) list.push(manifest);
@@ -433,7 +440,7 @@ export class CatchLadder {
       if (!manifest.kind || !manifest.metadata?.name) continue;
       if (isKindDocument(manifest)) continue;
       const definition = this.definitionOf(manifest);
-      if (!definition?.schema) continue;
+      if (!definition) continue;
       // A scoped declaration is reported against the document it is WRITTEN
       // in — its owner's — at its own position inside that owner's scope array,
       // because position lookup finds a TOP-LEVEL doc by (kind, name).
@@ -445,7 +452,7 @@ export class CatchLadder {
       const filePath = (anchor.metadata as { source?: string } | undefined)?.source;
       collectOutcomeLists(
         manifest,
-        definition.schema,
+        this.defs.effectiveSchemaOf(definition),
         () => {},
         (entries, arrayPath, siblingData, parentPath, catchesFor, listSchema) => {
           const isScope = catchesFor === "";
@@ -657,12 +664,13 @@ export class CatchLadder {
     }
     const resolved = scopeResolver?.resolveKind(handlerRef.kind) ?? ctx.aliases.resolveKind(handlerRef.kind);
     const def = ctx.defs.resolve(handlerRef.kind) ?? (resolved ? ctx.defs.resolve(resolved) : undefined);
-    if (!def?.throws) return { codes: new Map(), unbounded: false };
+    const block = def ? throwsBlockOf(def, ctx) : undefined;
+    if (!block) return { codes: new Map(), unbounded: false };
     const codes = new Map<string, ThrowsCodeMeta>();
-    for (const [c, meta] of Object.entries(def.throws.codes ?? {})) {
+    for (const [c, meta] of Object.entries(block.codes ?? {})) {
       codes.set(c, { data: (meta as { data?: Record<string, any> }).data });
     }
-    const unbounded = def.throws.passthrough === true || def.throws.inherit === true;
+    const unbounded = block.passthrough === true || block.inherit === true;
     return { codes, unbounded };
   }
 

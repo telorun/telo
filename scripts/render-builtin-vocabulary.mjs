@@ -177,8 +177,8 @@ ${fragmentTuples}
 const ROOT_DESCRIPTION =
   "Everything a Telo manifest can use without an import, for one telo release: the " +
   "documents that declare applications, libraries, kinds, imports and needs; the lifecycle " +
-  "roles a kind may take; log and trace destinations; named schema shapes and CEL " +
-  "functions; public address needs; and the schema fragments, value types, zone " +
+  "roles a kind may take; log and trace destinations; named schema shapes, CEL " +
+  "functions and ordered step sequences; public address needs; and the schema fragments, value types, zone " +
   "attributes and string formats they reference; and the error codes the runtime raises " +
   "itself, with the text a person is shown for each.";
 

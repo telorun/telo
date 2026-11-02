@@ -259,7 +259,7 @@ refPositions: RefPositionHost & TemplateHost): ControllerInstance {
   const fillsDefaults = declaresDefaults(definition.schema);
   return {
     create: async (resource: any, ctx: ResourceContext): Promise<ResourceInstance> => {
-      const definingContext = declaringContextOf(resource, ctx);
+      const definingContext = declaringContextOf(resource, ctx, definition);
       // A body entry's kind is read through the lookup `telo check` reads it
       // with, for the configuration of the module that declares the template.
       const view = definingContext.analysisView;

@@ -18,14 +18,13 @@ metadata:
   categories: [Transport]
 # Forwarding each workflow's handler reference through `self.workflows` fails at
 # boot on an older kernel, which cannot name an already-injected instance.
-requires:
-  telo: ">=0.96.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-exports:
-  kinds: [App]
+exports: { kinds: [App] }
 ---
 kind: Telo.Definition
 metadata:
@@ -81,12 +80,9 @@ schema:
             description: CEL mapping from the request onto the workflow's inputs.
           handler:
             title: Workflow
-            description: The steps the workflow runs — a Run.Sequence, a durable workflow, or any invocable.
+            description: The steps the workflow runs — a Telo.Sequence, a durable workflow, or any invocable.
             x-telo-topology-role: handler
-            x-telo-ref:
-              kind: Telo.Executable
-              use: trigger.inbound
-              inputs: /inputs
+            x-telo-ref: { kind: Telo.Executable, use: trigger.inbound, inputs: /inputs }
           returns:
             title: Response
             description: >-

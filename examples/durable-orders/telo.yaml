@@ -36,12 +36,12 @@ metadata:
     pinned `oci://` refs like every other example once they are.
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   Local: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
   Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.1#sha256-9g3_fiv6_tyQd_YOzwfA_T1fobtK9u_s3KFHMELpI7Y
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
   Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
 variables:
@@ -75,13 +75,11 @@ metadata: { name: pause }
 ---
 # Each step is slow on purpose, so there is time to interrupt it. `Timer.Delay`
 # honours cancellation, so Ctrl-C stops the wait rather than sitting it out.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reserveStock }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties: { order: { type: string } }
+  schema: { type: object, properties: { order: { type: string } } }
 steps:
   - name: announce
     invoke: !ref say
@@ -93,16 +91,13 @@ steps:
   - name: done
     invoke: !ref say
     inputs: { output: "  {green ✓ stock reserved}" }
-outputs:
-  reserved: true
+outputs: { reserved: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: chargeCard }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties: { order: { type: string } }
+  schema: { type: object, properties: { order: { type: string } } }
 steps:
   - name: announce
     invoke: !ref say
@@ -114,16 +109,13 @@ steps:
   - name: done
     invoke: !ref say
     inputs: { output: "  {green ✓ card charged}  ← the one you do not want to happen twice" }
-outputs:
-  charged: true
+outputs: { charged: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: shipOrder }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties: { order: { type: string } }
+  schema: { type: object, properties: { order: { type: string } } }
 steps:
   - name: announce
     invoke: !ref say
@@ -135,10 +127,9 @@ steps:
   - name: done
     invoke: !ref say
     inputs: { output: "  {green ✓ shipped}" }
-outputs:
-  shipped: true
+outputs: { shipped: true }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: notifyCustomer }
 steps:
   - name: announce
@@ -150,8 +141,7 @@ steps:
   - name: done
     invoke: !ref say
     inputs: { output: "  {green ✓ customer notified}" }
-outputs:
-  notified: true
+outputs: { notified: true }
 ---
 # THE DURABLE BODY.
 #
@@ -201,7 +191,7 @@ steps:
   - name: send
     invoke: !ref notifyCustomer
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: fulfil }
 steps:
   - name: intro

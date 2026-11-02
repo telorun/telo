@@ -16,14 +16,14 @@
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/configurations/choices/telo.yaml",
       "path": "steps[0].value.if",
-      "message": "Run.Sequence/sequence: The condition of '!if' is decided before boot, but 'variables.name' is not declared 'enum', 'const' or 'type: boolean', so its value is open. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
+      "message": "Telo.Sequence/sequence: The condition of '!if' is decided before boot, but 'variables.name' is not declared 'enum', 'const' or 'type: boolean', so its value is open. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
     },
     {
       "code": "BRANCH_CONDITION_INVALID",
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/configurations/choices/telo.yaml",
       "path": "steps[1].value.if",
-      "message": "Run.Sequence/sequence: The condition of '!if' is a 'string', where a condition is a boolean."
+      "message": "Telo.Sequence/sequence: The condition of '!if' is a 'string', where a condition is a boolean."
     },
     {
       "code": "BRANCH_CASE_INVALID",
@@ -37,14 +37,14 @@
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/configurations/choices/telo.yaml",
       "path": "steps[2].value.cases.yes",
-      "message": "Run.Sequence/sequence: Case 'yes' of '!switch' is not a value of the selector's type 'bool' — a boolean case is 'true' or 'false'."
+      "message": "Telo.Sequence/sequence: Case 'yes' of '!switch' is not a value of the selector's type 'bool' — a boolean case is 'true' or 'false'."
     },
     {
       "code": "BRANCH_NOT_EXHAUSTIVE",
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/configurations/choices/telo.yaml",
       "path": "steps[3].value",
-      "message": "Run.Sequence/sequence: '!switch' selects no case for 'b' and has no 'default:'. Add a case for it, or a 'default:'; absence decided by a selector is written as an enclosing '!if'. (when variables.mode is b)",
+      "message": "Telo.Sequence/sequence: '!switch' selects no case for 'b' and has no 'default:'. Add a case for it, or a 'default:'; absence decided by a selector is written as an enclosing '!if'. (when variables.mode is b)",
       "configurations": [
         {
           "variables.mode": "b"
@@ -161,14 +161,14 @@
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/expansion/branch-shape/telo.yaml",
       "path": "with[0]",
-      "message": "Run.Sequence/sequence: '!if' at a declaration position (an 'x-telo-scope' member) carries the declaration's 'metadata' — its name, written once for every branch."
+      "message": "Telo.Sequence/sequence: '!if' at a declaration position (an 'x-telo-scope' member) carries the declaration's 'metadata' — its name, written once for every branch."
     },
     {
       "code": "BRANCH_SHAPE_INVALID",
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/expansion/branch-shape/telo.yaml",
       "path": "steps[0].value",
-      "message": "Run.Sequence/sequence: '!switch' at the value of a field carries no 'metadata'; only a tag at a declaration position (a whole resource document, a template body's 'resources:' entry, an 'x-telo-scope' member) names what it declares."
+      "message": "Telo.Sequence/sequence: '!switch' at the value of a field carries no 'metadata'; only a tag at a declaration position (a whole resource document, a template body's 'resources:' entry, an 'x-telo-scope' member) names what it declares."
     }
   ],
   "tests/__fixtures__/check-run-agreement/expansion/first-document.yaml": [
@@ -211,7 +211,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/check-run-agreement/expansion/missing-key.yaml",
       "path": "steps[0].value",
-      "message": "Run.Sequence/main: '!switch' needs 'switch:'. '!switch' has no key 'on'; it takes 'switch', 'cases', 'default'."
+      "message": "Telo.Sequence/main: '!switch' needs 'switch:'. '!switch' has no key 'on'; it takes 'switch', 'cases', 'default'."
     }
   ],
   "tests/__fixtures__/check-run-agreement/expansion/on-sequence.yaml": [
@@ -330,7 +330,7 @@
       "severity": 2,
       "file": "tests/__fixtures__/configurations/calls.yaml",
       "path": "steps[1].value.else",
-      "message": "Run.Sequence/main: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
+      "message": "Telo.Sequence/main: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
     }
   ],
   "tests/__fixtures__/configurations/dead-branch-target.yaml": [
@@ -346,7 +346,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/dead-branch-target.yaml",
       "path": "else.steps[1].value",
-      "message": "Run.Sequence/main: !cel: 'steps.call.result.y' is not defined (available: x) (in a branch no configuration takes)",
+      "message": "Telo.Sequence/main: !cel: 'steps.call.result.y' is not defined (available: x) (in a branch no configuration takes)",
       "configurations": []
     }
   ],
@@ -373,28 +373,28 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[1].value.if",
-      "message": "Run.Sequence/main: The condition of '!if' is decided before boot, but 'variables.label' is not declared 'enum', 'const' or 'type: boolean', so its value is open. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
+      "message": "Telo.Sequence/main: The condition of '!if' is decided before boot, but 'variables.label' is not declared 'enum', 'const' or 'type: boolean', so its value is open. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
     },
     {
       "code": "BRANCH_UNDECIDABLE",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[2].value.if",
-      "message": "Run.Sequence/main: The condition of '!if' is decided before boot, but 'secrets.databaseUrl.host' is not a member its declaration binds to an 'enum' or 'const' argument. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
+      "message": "Telo.Sequence/main: The condition of '!if' is decided before boot, but 'secrets.databaseUrl.host' is not a member its declaration binds to an 'enum' or 'const' argument. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
     },
     {
       "code": "BRANCH_UNDECIDABLE",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[4].value.if",
-      "message": "Run.Sequence/main: The condition of '!if' is decided before boot, but 'variables.label' is not declared 'enum', 'const' or 'type: boolean', so its value is open. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
+      "message": "Telo.Sequence/main: The condition of '!if' is decided before boot, but 'variables.label' is not declared 'enum', 'const' or 'type: boolean', so its value is open. A choice reads only literals, 'module.<field>', a call to a module function written in CEL, the whole value of a 'variables:' entry declared 'enum', 'const' or 'type: boolean', a member its declaration binds to an 'enum' or 'const' argument, an input's presence ('… != null', for an entry declaring 'default: null'), the presence of an optional need or resource input ('resources.<name> != null'), or a member its need type's field binds to an 'enum' or 'const' argument."
     },
     {
       "code": "BRANCH_CONDITION_INVALID",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[8].value.if",
-      "message": "Run.Sequence/main: The condition of '!if' calls 'uuidv4()', which re-evaluates per call; a choice decided before boot must read the same value in every check."
+      "message": "Telo.Sequence/main: The condition of '!if' calls 'uuidv4()', which re-evaluates per call; a choice decided before boot must read the same value in every check."
     },
     {
       "code": "BRANCH_CASE_INVALID",
@@ -415,14 +415,14 @@
       "severity": 2,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[0].value.else",
-      "message": "Run.Sequence/main: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
+      "message": "Telo.Sequence/main: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
     },
     {
       "code": "BRANCH_NOT_EXHAUSTIVE",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[3].value",
-      "message": "Run.Sequence/main: '!switch' selects no case for 'sqlite' and has no 'default:'. Add a case for it, or a 'default:'; absence decided by a selector is written as an enclosing '!if'. (when secrets.databaseUrl.scheme is sqlite)",
+      "message": "Telo.Sequence/main: '!switch' selects no case for 'sqlite' and has no 'default:'. Add a case for it, or a 'default:'; absence decided by a selector is written as an enclosing '!if'. (when secrets.databaseUrl.scheme is sqlite)",
       "configurations": [
         {
           "secrets.databaseUrl.scheme": "sqlite"
@@ -434,21 +434,21 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[5].value.cases.yes",
-      "message": "Run.Sequence/main: Case 'yes' of '!switch' is not a value of the selector's type 'bool' — a boolean case is 'true' or 'false'."
+      "message": "Telo.Sequence/main: Case 'yes' of '!switch' is not a value of the selector's type 'bool' — a boolean case is 'true' or 'false'."
     },
     {
       "code": "BRANCH_CASE_KEY_INVALID",
       "severity": 1,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[6].value.cases.01",
-      "message": "Run.Sequence/main: Case '01' of '!switch' is not a value of the selector's type 'int' — an integer case is its decimal literal ('1', never '01')."
+      "message": "Telo.Sequence/main: Case '01' of '!switch' is not a value of the selector's type 'int' — an integer case is its decimal literal ('1', never '01')."
     },
     {
       "code": "BRANCH_CASE_UNREACHABLE",
       "severity": 2,
       "file": "tests/__fixtures__/configurations/decisions.yaml",
       "path": "steps[7].value.cases.3",
-      "message": "Run.Sequence/main: The case '3' of '!switch' is taken in no configuration — no value the selector can hold selects it. It is still checked."
+      "message": "Telo.Sequence/main: The case '3' of '!switch' is taken in no configuration — no value the selector can hold selects it. It is still checked."
     }
   ],
   "tests/__fixtures__/configurations/dialect.yaml": [
@@ -505,7 +505,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/forward-view-choice.yaml",
       "path": "more[0].value",
-      "message": "ForwardViewChoice.Wrapped/wrapped: 'more' is forwarded into the Run.Sequence entry 'chosen' as 'steps', which checks it as its own field — !cel: no \"+\" is declared over int, string (when variables.flag2 is true)",
+      "message": "ForwardViewChoice.Wrapped/wrapped: 'more' is forwarded into the Telo.Sequence entry 'chosen' as 'steps', which checks it as its own field — !cel: no \"+\" is declared over int, string (when variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag2": true
@@ -517,7 +517,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/forward-view-choice.yaml",
       "path": "steps[1].value.then",
-      "message": "ForwardViewChoice.Wrapped/wrapped: 'steps' is forwarded into the Run.Sequence entry 'sequence' as 'steps', which checks it as its own field — !cel: no \"+\" is declared over int, string (when variables.flag1 is true)",
+      "message": "ForwardViewChoice.Wrapped/wrapped: 'steps' is forwarded into the Telo.Sequence entry 'sequence' as 'steps', which checks it as its own field — !cel: no \"+\" is declared over int, string (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -559,7 +559,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/input-type-choice.yaml",
       "path": "steps[0].value",
-      "message": "Run.Sequence/sequence: !cel: 'inputs.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/sequence: !cel: 'inputs.x' is not defined (available: ) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -628,7 +628,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/named-shape-choice.yaml",
       "path": "steps[1].value",
-      "message": "Run.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: ) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -843,7 +843,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/shape-missing-key.yaml",
       "path": "steps[0].value",
-      "message": "Run.Sequence/main: '!switch' needs 'switch:'. '!switch' has no key 'on'; it takes 'switch', 'cases', 'default'."
+      "message": "Telo.Sequence/main: '!switch' needs 'switch:'. '!switch' has no key 'on'; it takes 'switch', 'cases', 'default'."
     }
   ],
   "tests/__fixtures__/configurations/shape-ref-choice.yaml": [
@@ -938,7 +938,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/sink-attachment-reference-choice.yaml",
       "path": "targets[0].then",
-      "message": "Telo.Application/SinkAttachmentReferenceChoice: reference at 'targets[0].then' → 'Telo.LogTraceSink' does not implement 'Telo.Runnable' — it declares 'Telo.Sink'; 'Telo.LogTraceSink' does not implement 'Telo.Service' — it declares 'Telo.Sink' (when variables.flag1 is true)",
+      "message": "Telo.Application/SinkAttachmentReferenceChoice: reference at 'targets[0].then' → 'Telo.LogTraceSink' does not implement 'Telo.Runnable' (known implementations: Telo.Sequence); 'Telo.LogTraceSink' does not implement 'Telo.Service' — it declares 'Telo.Sink' (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -982,7 +982,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-inputs-choice.yaml",
       "path": "steps[0].inputs",
-      "message": "Run.Sequence/main: inputs at 'steps[0].inputs' do not satisfy target's declared inputType: / must NOT have additional properties ('x' is not allowed) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/main: inputs at 'steps[0].inputs' do not satisfy target's declared inputType: / must NOT have additional properties ('x' is not allowed) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -996,7 +996,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Run.Sequence/main: !cel: \"frist\" is not declared here (declared: first, reader, misser) (when variables.flag2 is false and variables.flag3 is false)",
+      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, reader, misser) (when variables.flag2 is false and variables.flag3 is false)",
       "configurations": [
         {
           "variables.flag2": false,
@@ -1009,7 +1009,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Run.Sequence/main: !cel: \"frist\" is not declared here (declared: first, third, reader, misser) (when variables.flag2 is false and variables.flag3 is true)",
+      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, third, reader, misser) (when variables.flag2 is false and variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag2": false,
@@ -1022,7 +1022,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Run.Sequence/main: !cel: \"frist\" is not declared here (declared: first, second, reader, misser) (when variables.flag2 is true and variables.flag3 is false)",
+      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, second, reader, misser) (when variables.flag2 is true and variables.flag3 is false)",
       "configurations": [
         {
           "variables.flag2": true,
@@ -1035,7 +1035,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-name-miss.yaml",
       "path": "steps[4].value",
-      "message": "Run.Sequence/main: !cel: \"frist\" is not declared here (declared: first, second, third, reader, misser) (when variables.flag2 is true and variables.flag3 is true)",
+      "message": "Telo.Sequence/main: !cel: \"frist\" is not declared here (declared: first, second, third, reader, misser) (when variables.flag2 is true and variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag2": true,
@@ -1050,7 +1050,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-result-forward-choice.yaml",
       "path": "steps[2].value",
-      "message": "Run.Sequence/main: !cel: 'steps.fwd.result.x' is not defined (available: y) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/main: !cel: 'steps.fwd.result.x' is not defined (available: y) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -1073,7 +1073,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-result-producer-site.yaml",
       "path": "steps[1].value",
-      "message": "Run.Sequence/main: !cel: no \"+\" is declared over int, string (when variables.flag1 is false)",
+      "message": "Telo.Sequence/main: !cel: no \"+\" is declared over int, string (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -1085,7 +1085,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-result-producer-site.yaml",
       "path": "steps[0].catch[0].then.value",
-      "message": "Run.Sequence/main: !cel: no overload of \"int\" takes int(map<dyn, dyn>): int(int): int, int(uint): int, int(double): int, int(string): int, int(google.protobuf.Timestamp): int, int(google.protobuf.Duration): int, int(Telo.TcpPort): int, int(Telo.UdpPort): int (when variables.flag1 is true)",
+      "message": "Telo.Sequence/main: !cel: no overload of \"int\" takes int(map<dyn, dyn>): int(int): int, int(uint): int, int(double): int, int(string): int, int(google.protobuf.Timestamp): int, int(google.protobuf.Duration): int, int(Telo.TcpPort): int, int(Telo.UdpPort): int (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1111,7 +1111,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-target.yaml",
       "path": "steps[1].value",
-      "message": "Run.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: ) (when variables.flag1 is false)",
+      "message": "Telo.Sequence/main: !cel: 'steps.call.result.x' is not defined (available: ) (when variables.flag1 is false)",
       "configurations": [
         {
           "variables.flag1": false
@@ -1125,7 +1125,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-union-choice.yaml",
       "path": "steps[0]",
-      "message": "Run.Sequence/main: /steps/0 matches no alternative — expected one with 'invoke', or one with 'if', or one with 'then', or one with 'while', or one with 'do', or one with 'switch', or one with 'cases', or one with 'try', or one with 'throw', or one with 'rethrow', or one with 'value' (when variables.flag1 is false and variables.flag2 is true)",
+      "message": "Telo.Sequence/main: /steps/0 matches no alternative — expected one with 'invoke', or one with 'if', or one with 'then', or one with 'while', or one with 'do', or one with 'switch', or one with 'cases', or one with 'try', or one with 'throw', or one with 'rethrow', or one with 'value' (when variables.flag1 is false and variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag1": false,
@@ -1138,7 +1138,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-union-choice.yaml",
       "path": "steps[0].timeout",
-      "message": "Run.Sequence/main: /steps/0/timeout must be >= 1 (when variables.flag1 is true)",
+      "message": "Telo.Sequence/main: /steps/0/timeout must be >= 1 (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1207,7 +1207,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-1.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
+      "message": "Telo.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1234,7 +1234,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-sequence-2.yaml",
       "path": "steps[1].value.then",
-      "message": "Run.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag1 is false and variables.flag2 is true)",
+      "message": "Telo.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag1 is false and variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag1": false,
@@ -1249,7 +1249,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-2.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job2: !cel: no \"+\" is declared over bool, int (when variables.flag2 is true)",
+      "message": "Telo.Sequence/job2: !cel: no \"+\" is declared over bool, int (when variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag2": true
@@ -1261,7 +1261,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-2.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
+      "message": "Telo.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1288,7 +1288,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-sequence-3.yaml",
       "path": "steps[2].value.then",
-      "message": "Run.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)",
+      "message": "Telo.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag2": false,
@@ -1301,7 +1301,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-sequence-3.yaml",
       "path": "steps[1].value.then",
-      "message": "Run.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag1 is false and variables.flag2 is true)",
+      "message": "Telo.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag1 is false and variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag1": false,
@@ -1316,7 +1316,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-3.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job3: !cel: no \"+\" is declared over bool, int (when variables.flag3 is true)",
+      "message": "Telo.Sequence/job3: !cel: no \"+\" is declared over bool, int (when variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag3": true
@@ -1328,7 +1328,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-3.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job2: !cel: no \"+\" is declared over bool, int (when variables.flag2 is true)",
+      "message": "Telo.Sequence/job2: !cel: no \"+\" is declared over bool, int (when variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag2": true
@@ -1340,7 +1340,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-3.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
+      "message": "Telo.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1367,7 +1367,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-sequence-4.yaml",
       "path": "steps[3].value.then",
-      "message": "Run.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag3 is false and variables.flag4 is true)",
+      "message": "Telo.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag3 is false and variables.flag4 is true)",
       "configurations": [
         {
           "variables.flag3": false,
@@ -1380,7 +1380,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-sequence-4.yaml",
       "path": "steps[2].value.then",
-      "message": "Run.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)",
+      "message": "Telo.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag2 is false and variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag2": false,
@@ -1393,7 +1393,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-sequence-4.yaml",
       "path": "steps[1].value.then",
-      "message": "Run.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag1 is false and variables.flag2 is true)",
+      "message": "Telo.Sequence/sequence: !cel: no \"+\" is declared over string, int (when variables.flag1 is false and variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag1": false,
@@ -1408,7 +1408,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-4.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job4: !cel: no \"+\" is declared over bool, int (when variables.flag4 is true)",
+      "message": "Telo.Sequence/job4: !cel: no \"+\" is declared over bool, int (when variables.flag4 is true)",
       "configurations": [
         {
           "variables.flag4": true
@@ -1420,7 +1420,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-4.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job3: !cel: no \"+\" is declared over bool, int (when variables.flag3 is true)",
+      "message": "Telo.Sequence/job3: !cel: no \"+\" is declared over bool, int (when variables.flag3 is true)",
       "configurations": [
         {
           "variables.flag3": true
@@ -1432,7 +1432,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-4.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job2: !cel: no \"+\" is declared over bool, int (when variables.flag2 is true)",
+      "message": "Telo.Sequence/job2: !cel: no \"+\" is declared over bool, int (when variables.flag2 is true)",
       "configurations": [
         {
           "variables.flag2": true
@@ -1444,7 +1444,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/flag-targets-4.yaml",
       "path": "then.steps[0].throw.message",
-      "message": "Run.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
+      "message": "Telo.Sequence/job1: !cel: no \"+\" is declared over bool, int (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true
@@ -1471,14 +1471,14 @@
       "severity": 2,
       "file": "analyzer/nodejs/tests/__generated__/nested-dead-branch.yaml",
       "path": "steps[1].else.else",
-      "message": "Run.Sequence/sequence: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
+      "message": "Telo.Sequence/sequence: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
     },
     {
       "code": "SCHEMA_VIOLATION",
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/nested-dead-branch.yaml",
       "path": "steps[1].else.else.when",
-      "message": "Run.Sequence/sequence: /steps/1/else/else/when must be boolean (in a branch no configuration takes)",
+      "message": "Telo.Sequence/sequence: /steps/1/else/else/when must be boolean (in a branch no configuration takes)",
       "configurations": []
     },
     {
@@ -1486,7 +1486,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/nested-dead-branch.yaml",
       "path": "steps[1].else.else.inputs.b",
-      "message": "Run.Sequence/sequence: !cel: no \"+\" is declared over int, string (in a branch no configuration takes)",
+      "message": "Telo.Sequence/sequence: !cel: no \"+\" is declared over int, string (in a branch no configuration takes)",
       "configurations": []
     },
     {
@@ -1494,7 +1494,7 @@
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/nested-dead-branch.yaml",
       "path": "steps[1].else.else.inputs.a",
-      "message": "Run.Sequence/sequence: CEL at 'steps[1].else.else.inputs.a' returns 'int' but taker's declared inputType expects 'string'. (in a branch no configuration takes)",
+      "message": "Telo.Sequence/sequence: CEL at 'steps[1].else.else.inputs.a' returns 'int' but taker's declared inputType expects 'string'. (in a branch no configuration takes)",
       "configurations": []
     }
   ],
@@ -1516,14 +1516,14 @@
       "severity": 2,
       "file": "analyzer/nodejs/tests/__generated__/care-identity.yaml",
       "path": "steps[2].else.else",
-      "message": "Run.Sequence/sequence: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
+      "message": "Telo.Sequence/sequence: The 'else:' branch of '!if' is taken in no configuration — its condition is the same in every one. It is still checked."
     },
     {
       "code": "CEL_UNKNOWN_FIELD",
       "severity": 1,
       "file": "analyzer/nodejs/tests/__generated__/care-identity.yaml",
       "path": "steps[2].else.else.value",
-      "message": "Run.Sequence/sequence: !cel: 'steps.p.result.c' is not defined (available: a) (in a branch no configuration takes)",
+      "message": "Telo.Sequence/sequence: !cel: 'steps.p.result.c' is not defined (available: a) (in a branch no configuration takes)",
       "configurations": []
     }
   ]

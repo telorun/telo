@@ -42,23 +42,19 @@ metadata:
     become pinned `oci://` refs like every other example once they are.
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   Local: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
   Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.1#sha256-9g3_fiv6_tyQd_YOzwfA_T1fobtK9u_s3KFHMELpI7Y
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
   Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
 targets:
   - !ref server
   - !ref resumer
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8081
+ports: { http: { env: PORT, protocol: tcp, default: 8081 } }
 variables:
   autoApproveBelowCents:
     env: AUTO_APPROVE_BELOW_CENTS
@@ -95,11 +91,9 @@ outputType:
     type: object
     required: [ approvedBy ]
     additionalProperties: false
-    properties:
-      approvedBy: { type: string }
-      note: { type: string }
+    properties: { approvedBy: { type: string }, note: { type: string } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: payOut }
 inputType:
   kind: Telo.JsonSchema
@@ -122,8 +116,7 @@ steps:
   - name: done
     invoke: !ref say
     inputs: { output: "  {green ✓ paid}  ← the one you do not want to happen twice" }
-outputs:
-  paid: true
+outputs: { paid: true }
 ---
 # THE DURABLE BODY. `runId` is derived from the expense, so submitting the same
 # expense twice attaches to the live run rather than starting a second one.
@@ -158,8 +151,7 @@ steps:
     else:
       - name: autoApprove
         invoke: !ref say
-        inputs:
-          output: "  {dim under the threshold — no approval needed}"
+        inputs: { output: "  {dim under the threshold — no approval needed}" }
 
   - name: pay
     invoke: !ref payOut
@@ -185,7 +177,7 @@ interval: "2s"
 # has run. That is what lets an HTTP request start work that outlives its
 # response — and it is why this route reports where the run went, never what it
 # produced.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: submitExpense }
 inputType:
   kind: Telo.JsonSchema
@@ -216,10 +208,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Expense approvals
-    version: 1.0.0
+openapi: { info: { title: Expense approvals, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref routes
@@ -294,11 +283,7 @@ routes:
       path: /expenses/{runId}
       method: GET
       schema:
-        params:
-          type: object
-          required: [ runId ]
-          properties:
-            runId: { type: string }
+        params: { type: object, required: [runId], properties: { runId: { type: string } } }
     handler: !ref runStatus
     inputs:
       run: !cel "request.params.runId"

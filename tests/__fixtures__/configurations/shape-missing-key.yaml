@@ -1,16 +1,13 @@
 # A choice missing the key that decides it is refused once, by its shape: the
 # condition and selector are never read from a choice that has none.
 kind: Telo.Application
-metadata:
-  name: ShapeMissingKey
-imports:
-  Run: ../../../modules/run
+metadata: { name: ShapeMissingKey }
 variables:
   mode: { env: MODE, type: string, enum: [fast, slow], default: fast }
 targets:
   - !if { then: !ref main }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: main }
 steps:
   - name: pick

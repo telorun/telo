@@ -1,0 +1,4 @@
+modules:
+  apps/authoring-agent: Added
+body: Every sequence is the built-in Telo.Sequence, and the application requires telo
+  >=0.128.0.

@@ -21,6 +21,7 @@ describe("DefinitionRegistry.getByExtends", () => {
 
     const names = registry.getByExtends("Telo.Runnable").map((d) => `${d.metadata.module}.${d.metadata.name}`);
 
-    expect(names.sort()).toEqual(["SQLite.Schema", "Sql.Schema"]);
+    // The built-in runnable is registered with every registry.
+    expect(names.sort()).toEqual(["SQLite.Schema", "Sql.Schema", "Telo.Sequence"]);
   });
 });

@@ -2,21 +2,10 @@
 # scheme of `store`'s address decides which label `chosen` publishes. A
 # condition reading the address's host is undecidable.
 kind: Telo.Application
-metadata:
-  name: NeedScheme
-imports:
-  Assert: ../../../../modules/assert
-  Run: ../../../../modules/run
-  Kinds: ./kinds
-needs:
-  store:
-    kind: Kinds.Access
-    env: { url: STORE_URL }
-variables:
-  expected:
-    env: EXPECTED_LABEL
-    type: string
-    default: in-memory
+metadata: { name: NeedScheme }
+imports: { Assert: ../../../../modules/assert, Kinds: ./kinds }
+needs: { store: { kind: Kinds.Access, env: { url: STORE_URL } } }
+variables: { expected: { env: EXPECTED_LABEL, type: string, default: in-memory } }
 targets:
   - !ref main
 ---
@@ -25,13 +14,10 @@ metadata: { name: chosen }
 access: !ref store
 label: !switch
   switch: !cel "resources.store.url.scheme"
-  cases:
-    mem: in-memory
-    file: on-disk
+  cases: { mem: in-memory, file: on-disk }
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: check
     invoke: { kind: Assert.Equals }

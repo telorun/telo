@@ -6,7 +6,7 @@ Two front doors onto the same two handlers:
 Http.Server (:8066)
 ├── /api → Http.Api          ─┐
 └── /mcp → Mcp.HttpEndpoint  ─┴─► searchTickets (Sql.Query)
-                                  closeTicket   (Run.Sequence → Sql.Command)
+                                  closeTicket   (Telo.Sequence → Sql.Command)
 ```
 
 `searchTickets` and `closeTicket` are declared once. The HTTP route describes

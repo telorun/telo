@@ -2,17 +2,14 @@
 # field-value `!if` has no `else:`, so with `LICENSE_KEY` unset the child's
 # `secrets:` map has no `licenseKey` entry at all, and the child reads it absent.
 kind: Telo.Application
-metadata:
-  name: Supervisor
+metadata: { name: Supervisor }
 imports:
   App: ../../../../modules/app
   Assert: ../../../../modules/assert
   Run: ../../../../modules/run
   Timer: ../../../../modules/timer
-secrets:
-  licenseKey: { env: LICENSE_KEY, type: string, default: null }
-variables:
-  licensed: { env: LICENSED, type: boolean, default: false }
+secrets: { licenseKey: { env: LICENSE_KEY, type: string, default: null } }
+variables: { licensed: { env: LICENSED, type: boolean, default: false } }
 targets:
   - !ref worker
   - !ref test
@@ -32,12 +29,9 @@ metadata: { name: awaitWorkerExit }
 condition: !cel "resources.worker.status.exitCode == null"
 maxIterations: 200
 steps:
-  - name: wait
-    invoke: { kind: Timer.Delay }
-    inputs:
-      duration: 20ms
+  - { name: wait, invoke: { kind: Timer.Delay }, inputs: { duration: 20ms } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: awaitExit

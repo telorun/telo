@@ -1,37 +1,27 @@
 # A choice decided by a module function written in CEL: evaluated per
 # configuration, by `telo check` and by the kernel alike.
 kind: Telo.Application
-metadata:
-  name: CallChoice
-imports:
-  Run: ../../../modules/run
-  Assert: ../../../modules/assert
+metadata: { name: CallChoice }
+imports: { Assert: ../../../modules/assert }
 variables:
   env:
     env: APP_ENV
     type: string
     enum: [prod, dev]
     default: dev
-  expected:
-    env: EXPECTED_TIER
-    type: string
-    default: development
+  expected: { env: EXPECTED_TIER, type: string, default: development }
 targets:
   - !ref main
 ---
 kind: Telo.Function
-metadata:
-  name: isProd
+metadata: { name: isProd }
 params:
-  - name: env
-    schema: { type: string }
-returns:
-  schema: { type: boolean }
+  - { name: env, schema: { type: string } }
+returns: { schema: { type: boolean } }
 body: !cel "env == 'prod'"
 ---
-kind: Run.Sequence
-metadata:
-  name: main
+kind: Telo.Sequence
+metadata: { name: main }
 steps:
   - name: tier
     value: !if

@@ -76,7 +76,6 @@ metadata:
   version: 1.0.0
 imports:
   Console: oci://ghcr.io/telorun/console@<version>
-  Run: oci://ghcr.io/telorun/run@<version>
   Greetings:
     source: ./libs/greetings
     variables:
@@ -84,7 +83,7 @@ imports:
 targets:
   - !ref main
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata:
   name: main
 steps:

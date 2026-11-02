@@ -20,35 +20,27 @@ metadata:
 lifecycle: shared
 requires:
   # `resources:` inputs and `lifecycle:` on a library.
-  telo: ">=0.83.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   Postgres: oci://ghcr.io/telorun/postgres@0.10.0#sha256-eob7bBkouibe1-MDGizDVWE9_r8yLMN8kjiDW7BQGtc
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 resources:
   connection:
     kind: Postgres.Connection
     description: The database this schema is applied to and these statements run on.
-exports:
-  resources:
-    - migrations
-    - claimVersion
-    - completeVersion
-    - failVersion
+exports: { resources: [migrations, claimVersion, completeVersion, failVersion] }
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref connection
 ---
 kind: Sql.Command
-metadata:
-  name: exec
+metadata: { name: exec }
 connection: !ref connection
 ---
 kind: Postgres.Schema
-metadata:
-  name: migrations
+metadata: { name: migrations }
 connection: !ref connection
 migrations:
   "20260716120000_CreateDiscoverySchema":
@@ -153,9 +145,7 @@ migrations:
   # Nullable, with two meanings kept apart: a hash, or '' for "asked, nothing
   # could hash this ref". NULL survives only on rows that predate the column;
   # `version_ingest.ingest_rev` is what schedules their re-ingest now.
-  "20260803090000_AddVersionIntegrity":
-    statements:
-      - ALTER TABLE module_versions ADD COLUMN integrity TEXT
+  "20260803090000_AddVersionIntegrity": { statements: [ALTER TABLE module_versions ADD COLUMN integrity TEXT] }
   # Runtime reach, implementation language, and structured deprecation.
   #
   # `runtimes` answers the question a polyglot runtime cannot leave unanswered:
@@ -224,16 +214,13 @@ migrations:
   # instance doc's own `kind:` (`kind: Self.WriteLine` → `WriteLine`); both stay
   # empty for a re-export, whose declaring doc lives in another module.
   "20260803140000_AddResourceKindDetail":
-    statements:
-      - ALTER TABLE module_resources ADD COLUMN kind TEXT NOT NULL DEFAULT ''
-      - ALTER TABLE module_resources ADD COLUMN description TEXT NOT NULL DEFAULT ''
+    statements: [ALTER TABLE module_resources ADD COLUMN kind TEXT NOT NULL DEFAULT '', ALTER TABLE module_resources ADD COLUMN description TEXT NOT NULL DEFAULT '']
   # Whether the runtime block was ever ASKED FOR, recorded independently of the
   # answer. Still written on every ingest so `runtimes` NULL keeps meaning "no
   # runtime data" rather than "no kernel runs this"; it is no longer READ as a
   # re-ingest trigger, which `ingest_rev` now owns for every column at once.
   "20260803150000_AddRuntimeProbeFlag":
-    statements:
-      - ALTER TABLE module_versions ADD COLUMN runtimes_asked BOOLEAN NOT NULL DEFAULT FALSE
+    statements: [ALTER TABLE module_versions ADD COLUMN runtimes_asked BOOLEAN NOT NULL DEFAULT FALSE]
   # Newest-first version ordering, defined once.
   #
   # Two routes serve version lists (`/module/versions` and `/module`), and they
@@ -323,8 +310,7 @@ migrations:
   # local kind's categories and runtimes. Existing rows read as not own until
   # the ingest revision that writes the column re-ingests them.
   "20260917090000_AddResourceKindIsOwn":
-    statements:
-      - ALTER TABLE module_resources ADD COLUMN kind_is_own BOOLEAN NOT NULL DEFAULT FALSE
+    statements: [ALTER TABLE module_resources ADD COLUMN kind_is_own BOOLEAN NOT NULL DEFAULT FALSE]
   # The module owning an exported instance's kind, resolved at ingest the way
   # `extends_ref` is — through the declaring manifest's own `imports:` map — so
   # `(kind_ref, kind)` names the kind across module boundaries. That is the
@@ -660,9 +646,7 @@ migrations:
   # Seeded from `tracked_at`, the nearest thing the hub still knows for a
   # version it already holds.
   "20261013110000_AddFirstTrackedAt":
-    statements:
-      - ALTER TABLE module_versions ADD COLUMN first_tracked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      - UPDATE module_versions SET first_tracked_at = tracked_at
+    statements: [ALTER TABLE module_versions ADD COLUMN first_tracked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), UPDATE module_versions SET first_tracked_at = tracked_at]
   # An application's requiredness, stored as `telo module manifest --json`
   # reports it: each input's `requiredWhen` (NULL when it is required in every
   # configuration or in none), and the version's `dimensions` those are keyed by.
@@ -737,9 +721,8 @@ migrations:
 # An in-flight claim (`claimed_at` set, `completed_at` null) is never re-claimed.
 # Recovering a run whose process died is the durable resumer's job, and a lease
 # here would be a second recovery path competing with it over the same run.
-kind: Run.Sequence
-metadata:
-  name: claimVersion
+kind: Telo.Sequence
+metadata: { name: claimVersion }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -757,9 +740,7 @@ outputType:
   schema:
     type: object
     additionalProperties: false
-    properties:
-      claimed: { type: boolean }
-      attempt: { type: integer }
+    properties: { claimed: { type: boolean }, attempt: { type: integer } }
     required: [claimed, attempt]
 steps:
   - name: claim
@@ -795,9 +776,8 @@ outputs:
 # Closes a claim. Invoked from inside the ingest transaction on this same
 # connection, so it commits with the rows it certifies — a version is never
 # recorded as ingested by a transaction that rolled back.
-kind: Run.Sequence
-metadata:
-  name: completeVersion
+kind: Telo.Sequence
+metadata: { name: completeVersion }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -831,9 +811,8 @@ steps:
 # on every reconcile pass forever. Clearing the row's `ingest_rev` is the
 # operator's per-version override — clearing `last_error` alone would leave the
 # row current at the running revision and therefore not due.
-kind: Run.Sequence
-metadata:
-  name: failVersion
+kind: Telo.Sequence
+metadata: { name: failVersion }
 inputType:
   kind: Telo.JsonSchema
   schema:

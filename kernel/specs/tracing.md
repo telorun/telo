@@ -87,7 +87,7 @@ A runtime MUST produce a span for:
 | Span | Name | Opened |
 |---|---|---|
 | Every `invoke` dispatch through the kernel's chokepoint | `invoke <resource name>` | when the dispatch starts |
-| Every `run` dispatch (a boot target, a `Run.Sequence` target) | `run <resource name>` | when the dispatch starts |
+| Every `run` dispatch (a boot target, a `Telo.Sequence` target) | `run <resource name>` | when the dispatch starts |
 | The root Application's boot run | `run <application name>` | before its first target |
 | A span a controller opens (`ctx.openSpan`) | the `label` it passes, else its `ref.name` | when opened |
 

@@ -25,15 +25,13 @@ metadata:
 lifecycle: shared
 requires:
   # `resources:` inputs and `lifecycle:` on a library.
-  telo: ">=0.83.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Shell: oci://ghcr.io/telorun/shell@0.13.1#sha256-EuLg0IyhQahI2u11cyY5gqPLbLxecA6zwofr2nRT8Ow
   Yaml: oci://ghcr.io/telorun/yaml@0.11.0#sha256-KSC6vlR1yOvXgCUZzj6g4p0r_T-6SfMqQPLR_HQnktk
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-resources:
-  shellHost:
-    kind: Shell.LocalHost
-    description: Where the telo CLI runs.
+resources: { shellHost: { kind: Shell.LocalHost, description: Where the telo CLI runs. } }
 variables:
   # The command these reads run: a program and its leading arguments, to which
   # each read appends its own. `["telo"]` by default; the composition root binds
@@ -44,36 +42,27 @@ variables:
     items: { type: string }
     minItems: 1
     default: [telo]
-exports:
-  resources:
-    - pinnedRef
-    - moduleVersions
-    - moduleManifest
+exports: { resources: [pinnedRef, moduleVersions, moduleManifest] }
 ---
 kind: Shell.Command
-metadata:
-  name: teloCli
+metadata: { name: teloCli }
 host: !ref shellHost
 ---
 kind: Yaml.Parse
-metadata:
-  name: parseYaml
+metadata: { name: parseYaml }
 ---
 # How a ref pins to one version, in one place. A direct `https://` ref addresses
 # a single file at a fixed location and takes NO `@version` suffix — appending
 # one produces a 404 — and neither does a local path, which is one directory on
 # disk. Only an OCI ref pins, with `@<version>`.
 kind: Run.Value
-metadata:
-  name: pinnedRef
+metadata: { name: pinnedRef }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
-    properties:
-      ref: { type: string }
-      version: { type: string }
+    properties: { ref: { type: string }, version: { type: string } }
     required: [ref, version]
 value: !cel "inputs.ref.startsWith('oci://') ? inputs.ref + '@' + inputs.version : inputs.ref"
 ---
@@ -84,16 +73,14 @@ value: !cel "inputs.ref.startsWith('oci://') ? inputs.ref + '@' + inputs.version
 #
 # One CLI process reads every digest: the reconcile pass reads every version of
 # every tracked module, and a process per version was most of its cost.
-kind: Run.Sequence
-metadata:
-  name: moduleVersions
+kind: Telo.Sequence
+metadata: { name: moduleVersions }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
-    properties:
-      ref: { type: string }
+    properties: { ref: { type: string } }
     required: [ref]
 outputType:
   kind: Telo.JsonSchema
@@ -155,17 +142,14 @@ outputs:
 # than projected, because what a consumer wants out of it is the consumer's
 # business: this library's job ends at "the origin answered, here is what it
 # said".
-kind: Run.Sequence
-metadata:
-  name: moduleManifest
+kind: Telo.Sequence
+metadata: { name: moduleManifest }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     additionalProperties: false
-    properties:
-      ref: { type: string }
-      version: { type: string }
+    properties: { ref: { type: string }, version: { type: string } }
     required: [ref, version]
 outputType:
   kind: Telo.JsonSchema

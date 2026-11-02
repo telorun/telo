@@ -23,18 +23,15 @@ metadata:
           -d '{"tier":"gold","items":[{"price":1200,"quantity":2},{"price":500,"quantity":1}]}'
         curl -s -XPOST localhost:8101/orders -H 'content-type: application/json' \
           -d '{"tier":"standard","items":[{"price":1200,"quantity":2}]}'
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   WorkflowApp: oci://ghcr.io/telorun/blueprints/workflow-app@0.3.6#sha256-f2iOhElVN8Q-MI_qLqNoM4Di4kVnFKrVFDHVUST3y1Y
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Cache: oci://ghcr.io/telorun/cache@0.13.1#sha256-I7DgXjd5VlbhFuAmpOALY7Fbu9LvD7hBrMmE8jOWXbE
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY
 targets:
   - !ref app
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8101
+ports: { http: { env: PORT, protocol: tcp, default: 8101 } }
 variables:
   orderLimitCents:
     env: ORDER_LIMIT_CENTS
@@ -64,12 +61,10 @@ schema:
       items:
         type: object
         required: [ price, quantity ]
-        properties:
-          price: { type: integer }
-          quantity: { type: integer }
+        properties: { price: { type: integer }, quantity: { type: integer } }
 ---
 # The shared calculation: a named resource, because two workflows run it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: quote }
 inputType: !ref Basket
 steps:
@@ -105,7 +100,7 @@ metadata: { name: attempts }
 # Stands in for a payment provider that is briefly unavailable: the first two
 # attempts at an order fail, the third succeeds. Replace it with the request to
 # yours — the `retry:` on the step that calls it stays as it is.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: charge }
 inputType:
   kind: Telo.JsonSchema
@@ -113,9 +108,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ orderId, amount ]
-    properties:
-      orderId: { type: string }
-      amount: { type: integer }
+    properties: { orderId: { type: string }, amount: { type: integer } }
 steps:
   - name: seen
     invoke:
@@ -137,9 +130,7 @@ steps:
     if: !cel "steps.attempt.result < 3"
     then:
       - name: fail
-        throw:
-          code: ERR_PAYMENT_UNAVAILABLE
-          message: the payment provider did not answer
+        throw: { code: ERR_PAYMENT_UNAVAILABLE, message: the payment provider did not answer }
 outputs:
   attempts: !cel "steps.attempt.result"
   charged: !cel "inputs.amount"
@@ -190,7 +181,7 @@ workflows:
       tier: !cel "request.body.tier"
       items: !cel "request.body.items"
     handler:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       inputType: !ref Basket
       steps:
         - name: priced
@@ -215,9 +206,7 @@ workflows:
           inputs:
             orderId: !cel "steps.order.result.id"
             amount: !cel "steps.priced.result.total"
-          retry:
-            attempts: 3
-            delay: 50ms
+          retry: { attempts: 3, delay: 50ms }
       outputs:
         id: !cel "steps.order.result.id"
         total: !cel "steps.priced.result.total"

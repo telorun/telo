@@ -40,8 +40,8 @@ metadata:
 #
 # 0.125.0: the chat library ships inside this artifact; an older runtime resolves
 # the published `./chat#sha256-…` to the separate chat artifact, unpinned.
-requires:
-  telo: ">=0.125.0"
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Chat:
     source: ./chat
@@ -71,13 +71,9 @@ imports:
   Octet: oci://ghcr.io/telorun/octet-codec@0.12.0#sha256-Eg9ZpVjtXbkkmFA2CTeKg69KMHPZ5F6sNbCgpbbqyXc
   Sse: oci://ghcr.io/telorun/sse-codec@0.14.0#sha256-PBgU4RhtLU6olq9WQicRc0fL_9JzF90P2PSxGinJMH4
   Scheduler: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Log: oci://ghcr.io/telorun/log@0.3.0#sha256-zHq0Vq_G85EDj7Wfbcla8_6hvE4imxgVQoMZsxZwIwE
   Otlp: oci://ghcr.io/telorun/otlp@0.7.1#sha256-eOjL-COsSXBxMFXQLmaljfYNuIIA-DndRvz1-0rSBSE
-ports:
-  http:
-    env: PORT
-    default: 8080
+ports: { http: { env: PORT, default: 8080 } }
 # Where the agent keeps its own state: `agent.sqlite`, the turns' checkpoints
 # and the attachments. Outside the workspace, so nothing syncs it and SQLite
 # runs on the filesystem it was opened on. A host names it with
@@ -101,15 +97,9 @@ variables:
     default: ./workspace
   # The model every turn runs on. A turn's recorded reasoning is replayed only to
   # the model that produced it, so changing this drops it on the next turn.
-  model:
-    env: MODEL
-    type: string
-    default: claude-haiku-5-5
+  model: { env: MODEL, type: string, default: claude-haiku-5-5 }
   # The Anthropic Messages API endpoint, a gateway, or a local test stub.
-  modelEndpoint:
-    env: MODEL_ENDPOINT
-    type: string
-    default: https://api.anthropic.com/v1
+  modelEndpoint: { env: MODEL_ENDPOINT, type: string, default: https://api.anthropic.com/v1 }
   # Days a conversation may sit idle before it is deleted whole — swept at boot
   # and hourly — and how long its removed turns then keep answering 410 Gone
   # rather than 404.
@@ -118,10 +108,7 @@ variables:
     type: integer
     minimum: 1
     default: 30
-  budgetLimit:
-    env: BUDGET_LIMIT
-    type: integer
-    default: 4000000
+  budgetLimit: { env: BUDGET_LIMIT, type: integer, default: 4000000 }
   # The context, in tokens, a conversation may reach before its older turns are
   # summarized for the model. Below the model's own window, so a turn that
   # grows it still fits. At least 8, so the summary call's cap
@@ -169,10 +156,7 @@ variables:
   # in the user's own workspace, which already runs their manifests under
   # `telo run --watch`. Do not turn it on for an agent open to anonymous
   # callers.
-  allowManifestRuns:
-    env: ALLOW_MANIFEST_RUNS
-    type: boolean
-    default: false
+  allowManifestRuns: { env: ALLOW_MANIFEST_RUNS, type: boolean, default: false }
   # How the agent invokes the `telo` CLI — the program and any leading
   # arguments, as a JSON array — for its check loop and its `telo` tool alike.
   # The image installs `telo`; a checkout points it at its own CLI.
@@ -186,31 +170,20 @@ variables:
   # browser from READING the answer, not the request from running. A request
   # with no Origin (a CLI, a server) passes to the token check. `null` (a
   # sandboxed or file page) is refused unless listed, even under `*`.
-  allowedOrigins:
-    env: ALLOWED_ORIGINS
-    type: string
-    default: "*"
+  allowedOrigins: { env: ALLOWED_ORIGINS, type: string, default: "*" }
   # An OpenTelemetry collector's base URL. Set, traces go to `<url>/v1/traces`
   # and log records to `<url>/v1/logs`; empty, every finished span is written
   # as a log record to the console instead.
-  otlpEndpoint:
-    env: OTLP_ENDPOINT
-    type: string
-    default: ""
+  otlpEndpoint: { env: OTLP_ENDPOINT, type: string, default: "" }
 secrets:
-  anthropicApiKey:
-    env: ANTHROPIC_API_KEY
-    type: string
+  anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string }
   # The bearer token every guarded route requires. Empty leaves them open, and
   # the agent says so in one warning at boot. A runner that mints a per-session
   # token injects it here (the runner's `AGENT_TOKEN_ENV` is `AGENT_TOKEN`).
-  agentToken:
-    env: AGENT_TOKEN
-    type: string
-    default: ""
+  agentToken: { env: AGENT_TOKEN, type: string, default: "" }
 logging:
   sinks:
-    - kind: Telo.ConsoleSink
+    - { kind: Telo.ConsoleSink }
     - sink:
         kind: Otlp.Sink
         endpoint: !interpolate "${{ variables.otlpEndpoint }}/v1/logs"
@@ -228,9 +201,7 @@ tracing:
           service.version: !cel "module.version"
       when: !cel "variables.otlpEndpoint != ''"
     # `debug`: a record per span would bury the agent's own output at `info`.
-    - sink:
-        kind: Telo.LogTraceSink
-        level: debug
+    - sink: { kind: Telo.LogTraceSink, level: debug }
       when: !cel "variables.otlpEndpoint == ''"
 targets:
   - !ref Chat.ensureWorkspace
@@ -267,9 +238,7 @@ targets:
 kind: Mcp.HttpClient
 metadata: { name: hub }
 url: https://telo.sh/mcp
-clientInfo:
-  name: authoring-agent
-  version: 0.0.0
+clientInfo: { name: authoring-agent, version: 0.0.0 }
 ---
 # Retention hourly: every conversation idle for `RETENTION_DAYS` is deleted.
 kind: Scheduler.Interval
@@ -438,19 +407,13 @@ routes:
       path: /chat/{turnId}/events
       method: GET
       schema:
-        params:
-          type: object
-          required: [turnId]
-          properties:
-            turnId: { type: string }
+        params: { type: object, required: [turnId], properties: { turnId: { type: string } } }
         query:
           type: object
-          properties:
-            lastEventId: { type: string, pattern: "^[0-9]+$" }
+          properties: { lastEventId: { type: string, pattern: "^[0-9]+$" } }
         headers:
           type: object
-          properties:
-            last-event-id: { type: string, pattern: "^[0-9]+$" }
+          properties: { last-event-id: { type: string, pattern: "^[0-9]+$" } }
     handler: !ref Chat.turnEvents
     inputs:
       turnId: !cel "request.params.turnId"
@@ -491,11 +454,7 @@ routes:
       path: /chat/{turnId}/abort
       method: POST
       schema:
-        params:
-          type: object
-          required: [turnId]
-          properties:
-            turnId: { type: string }
+        params: { type: object, required: [turnId], properties: { turnId: { type: string } } }
     handler: !ref Chat.abortTurn
     inputs:
       turnId: !cel "request.params.turnId"
@@ -533,11 +492,7 @@ routes:
       path: /chat/{turnId}/continue
       method: POST
       schema:
-        params:
-          type: object
-          required: [turnId]
-          properties:
-            turnId: { type: string }
+        params: { type: object, required: [turnId], properties: { turnId: { type: string } } }
     handler: !ref Chat.continueTurn
     inputs:
       turnId: !cel "request.params.turnId"
@@ -625,11 +580,7 @@ routes:
       path: /chat/{turnId}/changes
       method: GET
       schema:
-        params:
-          type: object
-          required: [turnId]
-          properties:
-            turnId: { type: string }
+        params: { type: object, required: [turnId], properties: { turnId: { type: string } } }
     handler: !ref Chat.turnChanges
     inputs:
       turnId: !cel "request.params.turnId"
@@ -683,11 +634,7 @@ routes:
       path: /chat/{turnId}/revert
       method: POST
       schema:
-        params:
-          type: object
-          required: [turnId]
-          properties:
-            turnId: { type: string }
+        params: { type: object, required: [turnId], properties: { turnId: { type: string } } }
     handler: !ref Chat.revertTurn
     inputs:
       turnId: !cel "request.params.turnId"
@@ -772,21 +719,14 @@ routes:
       path: /conversations/{id}/records
       method: GET
       schema:
-        params:
-          type: object
-          required: [id]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         query:
           type: object
           properties:
             fromTurn:
               type: string
               description: The turn the page starts in; omitted, the conversation's first.
-            fromId:
-              type: integer
-              minimum: 0
-              description: Records of `fromTurn` after this id.
+            fromId: { type: integer, minimum: 0, description: Records of `fromTurn` after this id. }
             limit:
               type: integer
               minimum: 1
@@ -837,9 +777,7 @@ routes:
   # renamable, branchable and deletable while archived, but takes no new turn.
   # A deleted one answers 410 ERR_CONVERSATION_REMOVED on every route for
   # RETENTION_DAYS, then 404 ERR_CONVERSATION_NOT_FOUND.
-  - request:
-      path: /conversations
-      method: POST
+  - request: { path: /conversations, method: POST }
     handler: !ref Chat.createConversation
     returns:
       - status: 201
@@ -894,11 +832,7 @@ routes:
       path: /conversations/{id}
       method: GET
       schema:
-        params:
-          type: object
-          required: [id]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     handler: !ref Chat.getConversation
     inputs:
       conversationId: !cel "request.params.id"
@@ -934,11 +868,7 @@ routes:
       path: /conversations/{id}
       method: PATCH
       schema:
-        params:
-          type: object
-          required: [id]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         body:
           type: object
           additionalProperties: false
@@ -983,16 +913,12 @@ routes:
       path: /conversations/{id}
       method: DELETE
       schema:
-        params:
-          type: object
-          required: [id]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
     handler: !ref Chat.deleteConversation
     inputs:
       conversationId: !cel "request.params.id"
     returns:
-      - status: 204
+      - { status: 204 }
     catches:
       - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
         status: 404
@@ -1022,11 +948,7 @@ routes:
       path: /conversations/{id}/turns
       method: DELETE
       schema:
-        params:
-          type: object
-          required: [id]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         query:
           type: object
           required: [from, revision]
@@ -1101,11 +1023,7 @@ routes:
       path: /conversations/{id}/branch
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties:
-            id: { type: string }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
         body:
           type: object
           additionalProperties: false
@@ -1174,13 +1092,8 @@ routes:
       path: /conversations/{id}/attachments
       method: POST
       schema:
-        params:
-          type: object
-          required: [id]
-          properties:
-            id: { type: string }
-        body:
-          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+        params: { type: object, required: [id], properties: { id: { type: string } } }
+        body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }
     # The file, plus room for the part's headers and the boundaries around it.
     maxBodyBytes: !cel "int(variables.maxAttachmentBytes) + 65536"
     handler: !ref Chat.storeAttachment
@@ -1272,9 +1185,7 @@ routes:
         params:
           type: object
           required: [id, attachmentId]
-          properties:
-            id: { type: string }
-            attachmentId: { type: string }
+          properties: { id: { type: string }, attachmentId: { type: string } }
     handler: !ref Chat.readAttachment
     inputs:
       conversationId: !cel "request.params.id"
@@ -1282,9 +1193,7 @@ routes:
     returns:
       - status: 200
         mode: stream
-        content:
-          application/octet-stream:
-            encoder: { kind: Octet.Encoder }
+        content: { application/octet-stream: { encoder: { kind: Octet.Encoder } } }
     catches:
       - when: !cel "error.code == 'ERR_CONVERSATION_NOT_FOUND'"
         status: 404
@@ -1316,9 +1225,7 @@ routes:
   # Whole-workspace sync. GET returns a content-hash tree studio diffs
   # against its own files; POST applies an explicit write/delete change set;
   # GET /workspace/file returns one file's contents.
-  - request:
-      path: /workspace
-      method: GET
+  - request: { path: /workspace, method: GET }
     handler: !ref Chat.treeSnapshot
     inputs:
       # `.telo-agent` is where the agent kept its state before it had a
@@ -1353,9 +1260,7 @@ routes:
                   path: { type: string }
                   content: { type: string }
                   encoding: { type: string, enum: [utf8, base64] }
-            delete:
-              type: array
-              items: { type: string }
+            delete: { type: array, items: { type: string } }
     # Every path is judged before anything is applied: one outside the
     # workspace, or a `delete` entry naming the workspace root or a directory
     # holding the state directory, refuses the whole change set (400). The
@@ -1396,11 +1301,7 @@ routes:
       path: /workspace/file
       method: GET
       schema:
-        query:
-          type: object
-          required: [path]
-          properties:
-            path: { type: string }
+        query: { type: object, required: [path], properties: { path: { type: string } } }
     handler: !ref Chat.readWorkspaceFile
     inputs:
       path: !cel "request.query.path"
@@ -1428,9 +1329,7 @@ routes:
   # with (the SHA-256 of its primer), whether it requires a token, the
   # conversation features it serves and whether it may run manifests. Guarded
   # like every `api` route.
-  - request:
-      path: /capabilities
-      method: GET
+  - request: { path: /capabilities, method: GET }
     handler: !ref Chat.promptIdentity
     returns:
       - status: 200
@@ -1449,15 +1348,7 @@ routes:
               # `summary` on the records route, and a spent step budget ending
               # in a wrap-up reply, and files attached to a message. A client
               # ignores an entry it does not know.
-              features:
-                - conversations
-                - conversation-truncation
-                - conversation-branching
-                - turn-changes
-                - turn-revert
-                - turn-summary
-                - turn-conclusion
-                - attachments
+              features: [conversations, conversation-truncation, conversation-branching, turn-changes, turn-revert, turn-summary, turn-conclusion, attachments]
               manifestRuns: !cel "variables.allowManifestRuns"
               # What an upload may be, so a client refuses a file before sending
               # it: the largest size, how many one message may carry, and the
@@ -1472,27 +1363,15 @@ routes:
 kind: Http.Api
 metadata: { name: probes }
 routes:
-  - request:
-      path: /health
-      method: GET
+  - request: { path: /health, method: GET }
     returns:
-      - status: 200
-        content:
-          application/json:
-            body:
-              status: up
-  - request:
-      path: /ready
-      method: GET
+      - { status: 200, content: { application/json: { body: { status: up } } } }
+  - request: { path: /ready, method: GET }
     handler: !ref Chat.readiness
     returns:
       - status: 200
         when: !cel "size(result.reasons) == 0"
-        content:
-          application/json:
-            body:
-              ready: true
-              reasons: []
+        content: { application/json: { body: { ready: true, reasons: [] } } }
       - status: 503
         content:
           application/json:
@@ -1522,7 +1401,7 @@ mounts:
     mount: !ref api
     guard:
       invoke:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -1575,8 +1454,7 @@ mounts:
                 code: ERR_ORIGIN_NOT_ALLOWED
         - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
           status: 401
-          headers:
-            WWW-Authenticate: Bearer
+          headers: { WWW-Authenticate: Bearer }
           content:
             application/json:
               body:

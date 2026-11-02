@@ -8,9 +8,7 @@ metadata:
     the consumer wrote, and in a choice decided over a declaration the consumer
     references. A bare `self.<path>` forward still hands the controller the
     value as written.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   - !ref test
 ---
@@ -24,20 +22,12 @@ schema:
     factor: { type: integer }
     jobs:
       type: object
-      additionalProperties:
-        type: object
-        required: [factor]
-        properties:
-          factor: { type: integer }
+      additionalProperties: { type: object, required: [factor], properties: { factor: { type: integer } } }
     list:
       type: array
-      items:
-        type: object
-        required: [factor]
-        properties:
-          factor: { type: integer }
+      items: { type: object, required: [factor], properties: { factor: { type: integer } } }
 resources:
-  - kind: Run.Sequence
+  - kind: Telo.Sequence
     metadata: { name: seq }
     steps:
       - name: own
@@ -61,22 +51,16 @@ invoke: !ref seq
 kind: Self.Scaler
 metadata: { name: scaler }
 factor: 4
-jobs:
-  alpha: { factor: 3 }
+jobs: { alpha: { factor: 3 } }
 list:
   - { factor: 5 }
 ---
 kind: Telo.Definition
 metadata: { name: Endpoint }
 capability: Telo.Invocable
-schema:
-  type: object
-  properties:
-    port: { type: integer }
+schema: { type: object, properties: { port: { type: integer } } }
 resources:
-  - kind: Run.Value
-    metadata: { name: value }
-    value: ok
+  - { kind: Run.Value, metadata: { name: value }, value: ok }
 invoke: !ref value
 ---
 kind: Self.Endpoint
@@ -88,8 +72,7 @@ metadata: { name: Crossing }
 capability: Telo.Invocable
 schema:
   type: object
-  properties:
-    target: { x-telo-ref: { kind: Self.Endpoint, use: dependency } }
+  properties: { target: { x-telo-ref: { kind: Self.Endpoint, use: dependency } } }
 resources:
   - kind: Run.Value
     metadata: { name: value }
@@ -103,7 +86,7 @@ kind: Self.Crossing
 metadata: { name: crossing }
 target: !ref upstream
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: run
@@ -115,7 +98,5 @@ steps:
     inputs:
       actual: !cel "[steps.run.result, steps.crossed.result]"
       expected:
-        - own: 40
-          jobs: { alpha: { result: 30 } }
-          list: 50
+        - { own: 40, jobs: { alpha: { result: 30 } }, list: 50 }
         - doubled

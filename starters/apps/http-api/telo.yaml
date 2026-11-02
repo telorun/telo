@@ -28,13 +28,13 @@ metadata:
         telo . --log-level debug --write-limit 5
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 # `http-server` comes from this repository while its error responses are
 # unreleased, and the modules beside it with it; `telo upgrade --pin-local`
 # pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
   CacheMemory: oci://ghcr.io/telorun/cache-memory@0.10.1#sha256-5RPtPFtfgnRfEetd3-zKs47x8rLPlAxlTxBqQgvdEjY
@@ -42,11 +42,7 @@ imports:
 targets:
   - !ref migrate
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8845
+ports: { http: { env: PORT, protocol: tcp, default: 8845 } }
 secrets:
   apiToken:
     env: API_TOKEN
@@ -77,8 +73,7 @@ variables:
 logging:
   level: !cel "variables.logLevel"
   sinks:
-    - kind: Telo.ConsoleSink
-      encoding: auto
+    - { kind: Telo.ConsoleSink, encoding: auto }
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -129,7 +124,7 @@ connection: !ref db
 ---
 # The inbound check, run once per request on the guarded mount, before the
 # body is read. A throw refuses the request; a normal return lets it through.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: requireToken }
 inputType:
   kind: Telo.JsonSchema
@@ -137,16 +132,13 @@ inputType:
     type: object
     additionalProperties: false
     required: [ authorization ]
-    properties:
-      authorization: { type: string, x-telo-sensitive: true }
+    properties: { authorization: { type: string, x-telo-sensitive: true } }
 steps:
   - name: check
     if: !cel "inputs.authorization != 'Bearer ' + secrets.apiToken"
     then:
       - name: refuse
-        throw:
-          code: ERR_UNAUTHENTICATED
-          displayMessage: A bearer token is required.
+        throw: { code: ERR_UNAUTHENTICATED, displayMessage: A bearer token is required. }
 ---
 # Counters live in the process. Swap this one resource for cache-redis and the
 # limit is shared by every replica.
@@ -159,7 +151,7 @@ store: !ref counters
 limit: !cel "variables.writeLimit"
 window: "60s"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listBookmarks }
 inputType:
   kind: Telo.JsonSchema
@@ -167,9 +159,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ tag, limit ]
-    properties:
-      tag: { type: string }
-      limit: { type: integer }
+    properties: { tag: { type: string }, limit: { type: integer } }
 steps:
   - name: found
     invoke: !ref query
@@ -186,7 +176,7 @@ outputs:
 ---
 # The limit is a verdict, not a throw: over it, nothing is written and the
 # route answers 429 from `allowed`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: createBookmark }
 inputType:
   kind: Telo.JsonSchema
@@ -224,7 +214,7 @@ outputs:
   retryAfter: !cel "steps.limit.result.retryAfter"
   bookmarks: !cel "steps.limit.result.allowed ? steps.inserted.result.rows : []"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readBookmark }
 inputType:
   kind: Telo.JsonSchema
@@ -232,8 +222,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ id ]
-    properties:
-      id: { type: integer }
+    properties: { id: { type: integer } }
 steps:
   - name: found
     invoke: !ref query
@@ -253,7 +242,7 @@ steps:
 outputs:
   bookmark: !cel "steps.found.result.rows[0]"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: deleteBookmark }
 inputType:
   kind: Telo.JsonSchema
@@ -261,8 +250,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ id ]
-    properties:
-      id: { type: integer }
+    properties: { id: { type: integer } }
 steps:
   - name: removed
     invoke: !ref exec
@@ -338,10 +326,7 @@ routes:
         when: !cel "!result.allowed"
         headers:
           Retry-After: !cel "string(result.retryAfter)"
-        content:
-          application/json:
-            body:
-              error: rate_limited
+        content: { application/json: { body: { error: rate_limited } } }
       - status: 201
         content:
           application/json:
@@ -352,11 +337,7 @@ routes:
       path: /bookmarks/{id}
       method: GET
       schema:
-        params:
-          type: object
-          required: [ id ]
-          properties:
-            id: { type: integer }
+        params: { type: object, required: [id], properties: { id: { type: integer } } }
     handler: !ref readBookmark
     inputs:
       id: !cel "request.params.id"
@@ -369,57 +350,40 @@ routes:
     catches:
       - when: !cel "error.code == 'ERR_BOOKMARK_NOT_FOUND'"
         status: 404
-        content:
-          application/problem+json: {}
+        content: { application/problem+json: {} }
 
   - request:
       path: /bookmarks/{id}
       method: DELETE
       schema:
-        params:
-          type: object
-          required: [ id ]
-          properties:
-            id: { type: integer }
+        params: { type: object, required: [id], properties: { id: { type: integer } } }
     handler: !ref deleteBookmark
     inputs:
       id: !cel "request.params.id"
     returns:
-      - status: 204
+      - { status: 204 }
     catches:
       - when: !cel "error.code == 'ERR_BOOKMARK_NOT_FOUND'"
         status: 404
-        content:
-          application/problem+json: {}
+        content: { application/problem+json: {} }
 ---
 # Unguarded on purpose: an orchestrator's probe carries no token.
 kind: Http.Api
 metadata: { name: probeRoutes }
 routes:
-  - request:
-      path: /healthz
-      method: GET
+  - request: { path: /healthz, method: GET }
     handler:
       kind: Sql.Query
       connection: !ref db
-    inputs:
-      sql: "SELECT 1 AS ok"
-      bindings: []
+    inputs: { sql: "SELECT 1 AS ok", bindings: [] }
     returns:
-      - status: 200
-        content:
-          application/json:
-            body:
-              status: ok
+      - { status: 200, content: { application/json: { body: { status: ok } } } }
 ---
 kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Bookmarks API
-    version: 1.0.0
+openapi: { info: { title: Bookmarks API, version: 1.0.0 } }
 mounts:
   - path: /v1
     mount: !ref bookmarkRoutes
@@ -430,9 +394,7 @@ mounts:
       catches:
         - when: !cel "error.code == 'ERR_UNAUTHENTICATED'"
           status: 401
-          headers:
-            WWW-Authenticate: Bearer
-          content:
-            application/problem+json: {}
+          headers: { WWW-Authenticate: Bearer }
+          content: { application/problem+json: {} }
   - path: /
     mount: !ref probeRoutes

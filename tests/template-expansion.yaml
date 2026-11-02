@@ -8,9 +8,7 @@ metadata:
     declaration it crosses, a repeat in `targets:` starts one entry per element
     in declaration order, and an inline declaration an emitted item holds is
     created with its siblings.
-imports:
-  Run: ../modules/run
-  Assert: ../modules/assert
+imports: { Run: ../modules/run, Assert: ../modules/assert }
 targets:
   - !ref test
   - !ref pipeline
@@ -18,18 +16,14 @@ targets:
 ---
 # A splice beside a literal key, the key read off each element.
 kind: Telo.Definition
-metadata:
-  name: Columns
+metadata: { name: Columns }
 capability: Telo.Invocable
 schema:
   type: object
   properties:
     fields:
       type: object
-      additionalProperties:
-        type: object
-        properties:
-          type: { type: string, enum: [integer, text] }
+      additionalProperties: { type: object, properties: { type: { type: string, enum: [integer, text] } } }
 resources:
   - kind: Run.Value
     metadata: { name: columns }
@@ -43,24 +37,18 @@ invoke: !ref columns
 ---
 kind: Self.Columns
 metadata: { name: columns }
-fields:
-  name: { type: text }
-  age: { type: integer }
+fields: { name: { type: text }, age: { type: integer } }
 ---
 # A choice reads a value through the reference the instance holds: the
 # referenced declaration's `mode` is `y`, whatever it publishes.
 kind: Telo.Definition
-metadata:
-  name: Holder
+metadata: { name: Holder }
 capability: Telo.Invocable
 schema:
   type: object
-  properties:
-    mode: { type: string, enum: [x, y], default: x }
+  properties: { mode: { type: string, enum: [x, y], default: x } }
 resources:
-  - kind: Run.Value
-    metadata: { name: value }
-    value: ok
+  - { kind: Run.Value, metadata: { name: value }, value: ok }
 invoke: !ref value
 ---
 kind: Self.Holder
@@ -71,13 +59,11 @@ kind: Self.Holder
 metadata: { name: holderDefault }
 ---
 kind: Telo.Definition
-metadata:
-  name: Switched
+metadata: { name: Switched }
 capability: Telo.Invocable
 schema:
   type: object
-  properties:
-    target: { x-telo-ref: { kind: Self.Holder, use: dependency } }
+  properties: { target: { x-telo-ref: { kind: Self.Holder, use: dependency } } }
 resources:
   - kind: Run.Value
     metadata: { name: value }
@@ -98,31 +84,22 @@ target: !ref holderDefault
 # A repeat over a list of references crosses each into its declaration: the
 # columns each table declares, in table order.
 kind: Telo.Definition
-metadata:
-  name: Table
+metadata: { name: Table }
 capability: Telo.Invocable
 schema:
   type: object
-  properties:
-    columns:
-      type: array
-      items: { type: string }
+  properties: { columns: { type: array, items: { type: string } } }
 resources:
-  - kind: Run.Value
-    metadata: { name: value }
-    value: ok
+  - { kind: Run.Value, metadata: { name: value }, value: ok }
 invoke: !ref value
 ---
 kind: Telo.Definition
-metadata:
-  name: Catalog
+metadata: { name: Catalog }
 capability: Telo.Invocable
 schema:
   type: object
   properties:
-    tables:
-      type: array
-      items: { x-telo-ref: { kind: Self.Table, use: dependency } }
+    tables: { type: array, items: { x-telo-ref: { kind: Self.Table, use: dependency } } }
 resources:
   - kind: Run.Value
     metadata: { name: names }
@@ -153,8 +130,7 @@ tables: [!ref users, !ref posts]
 # is a child of `Run.Detach`, so what it PUBLISHES is its parent's reading, which
 # holds no `mode` — the declaration does.
 kind: Telo.Definition
-metadata:
-  name: Wrapped
+metadata: { name: Wrapped }
 extends: Run.Detach
 schema:
   type: object
@@ -171,13 +147,11 @@ target: !ref columns
 mode: y
 ---
 kind: Telo.Definition
-metadata:
-  name: Reads
+metadata: { name: Reads }
 capability: Telo.Invocable
 schema:
   type: object
-  properties:
-    wrapped: { x-telo-ref: { kind: Self.Wrapped, use: dependency } }
+  properties: { wrapped: { x-telo-ref: { kind: Self.Wrapped, use: dependency } } }
 resources:
   - kind: Run.Value
     metadata: { name: value }
@@ -194,15 +168,12 @@ wrapped: !ref wrapped
 # A splice key reads a member of the declaration each element names: `mode` is
 # declared by `wrapped`, whose published reading holds none.
 kind: Telo.Definition
-metadata:
-  name: Keyed
+metadata: { name: Keyed }
 capability: Telo.Invocable
 schema:
   type: object
   properties:
-    items:
-      type: array
-      items: { x-telo-ref: { kind: Self.Wrapped, use: dependency } }
+    items: { type: array, items: { x-telo-ref: { kind: Self.Wrapped, use: dependency } } }
 resources:
   - kind: Run.Value
     metadata: { name: value }
@@ -220,21 +191,17 @@ items: [!ref wrapped]
 ---
 # Emitted entries are started in declaration order, one per element.
 kind: Telo.Definition
-metadata:
-  name: Pipeline
+metadata: { name: Pipeline }
 capability: Telo.Runnable
 schema:
   type: object
-  properties:
-    stages:
-      type: array
-      items: { type: string }
+  properties: { stages: { type: array, items: { type: string } } }
 targets:
   - !for-each
     in: !cel "self.stages"
     as: stage
     emit:
-      kind: Run.Sequence
+      kind: Telo.Sequence
       steps:
         - name: stage
           value: !cel "stage.value"
@@ -243,7 +210,7 @@ kind: Self.Pipeline
 metadata: { name: pipeline }
 stages: [prepare, build, publish]
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: test }
 steps:
   - name: columns
@@ -279,14 +246,11 @@ steps:
 kind: Assert.Events
 metadata: { name: pipelineRuns }
 filter:
-  - type: "*.Run"
+  - { type: "*.Run" }
 expect:
-  - event: "targets_0_emit[0].Run"
-    times: 1
-  - event: "targets_0_emit[1].Run"
-    times: 1
-  - event: "targets_0_emit[2].Run"
-    times: 1
-  - event: "targets_0_emit[0].Run"
-  - event: "targets_0_emit[1].Run"
-  - event: "targets_0_emit[2].Run"
+  - { event: "targets_0_emit[0].Run", times: 1 }
+  - { event: "targets_0_emit[1].Run", times: 1 }
+  - { event: "targets_0_emit[2].Run", times: 1 }
+  - { event: "targets_0_emit[0].Run" }
+  - { event: "targets_0_emit[1].Run" }
+  - { event: "targets_0_emit[2].Run" }

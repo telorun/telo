@@ -147,8 +147,8 @@ Wiring resources together is itself declarative:
 - **`!ref`** points one resource at another. The slot declares which kinds it
   accepts, so a wrong reference is caught before anything runs.
 - **`!cel`** computes a value from what is in scope at that point.
-- **`Run.Sequence`** orders steps, with conditionals, loops, and error
-  handling — see [Composing behaviour](/learn/composing-behaviour).
+- **`Telo.Sequence`**, a built-in kind that needs no import, orders steps, with
+  conditionals, loops, and error handling — see [Composing behaviour](/learn/composing-behaviour).
 
 Both tags are covered in [`!ref` and `!cel`](/learn/refs-and-cel).
 

@@ -15,6 +15,8 @@ metadata:
     block and a per-route `catches:` mapping that turns a thrown
     `ORDER_INVALID` into a 400 with a structured body. See
     `examples/aws/lambda/README.md` for the full packaging + deploy walkthrough.
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Lambda: oci://ghcr.io/telorun/aws/lambda@0.12.0#sha256-m6AEJNfJguLIFgbZuNmO06pdUathLclu3dMHpgqXreQ
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
@@ -26,16 +28,13 @@ kind: Run.Value
 metadata: { name: greetById }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      id: { type: string }
+  schema: { type: object, properties: { id: { type: string } } }
 value:
   message: !cel "'Hello, user ' + inputs.id + '!'"
 ---
 # POST /orders → echoes the parsed JSON body; throws ORDER_INVALID on
 # missing fields so the route's catches: block can render a 400.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: placeOrder }
 inputType:
   kind: Telo.JsonSchema
@@ -45,9 +44,7 @@ inputType:
     properties:
       body:
         type: object
-        properties:
-          sku: { type: string }
-          quantity: { type: integer }
+        properties: { sku: { type: string }, quantity: { type: integer } }
 steps:
   - name: complete
     if: !cel "!has(inputs.body.sku) || !has(inputs.body.quantity)"
@@ -61,14 +58,9 @@ outputs:
 ---
 kind: Lambda.HttpApi
 metadata: { name: web }
-cors:
-  origin: "*"
-  methods: [ GET, POST ]
-  allowedHeaders: [ Content-Type ]
+cors: { origin: "*", methods: [GET, POST], allowedHeaders: [Content-Type] }
 routes:
-  - request:
-      method: GET
-      path: "/users/{id}"
+  - request: { method: GET, path: "/users/{id}" }
     handler: !ref greetById
     inputs:
       id: !cel "request.params.id"
@@ -77,9 +69,7 @@ routes:
         content:
           application/json:
             body: !cel "result"
-  - request:
-      method: POST
-      path: "/orders"
+  - request: { method: POST, path: "/orders" }
     handler: !ref placeOrder
     inputs:
       body: !cel "request.body"

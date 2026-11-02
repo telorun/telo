@@ -250,7 +250,7 @@ const SHIFTED = [
   "metadata: { name: val }",
   "value: 1",
   "---",
-  "kind: Run.Sequence",
+  "kind: Telo.Sequence",
   "metadata: { name: ok }",
   "steps:",
   "  - name: noop",
@@ -259,7 +259,7 @@ const SHIFTED = [
   "kind: Tree.Holder",
   "metadata: { name: holder }",
   "---",
-  "kind: Run.Sequence",
+  "kind: Telo.Sequence",
   "metadata: { name: stepped }",
   "steps:",
   "  - !if",
@@ -303,7 +303,7 @@ describe("a message quoting its place quotes its data.path", () => {
         ],
         [
           "REFERENCE_KIND_MISMATCH",
-          "Run.Sequence/stepped: step invoke at 'steps[1].then.invoke' → 'Tree.Holder' is a Telo.Mount and cannot be invoked in a step — it has no invoke or run method (runtime ERR_RESOURCE_NOT_INVOKABLE)",
+          "Telo.Sequence/stepped: step invoke at 'steps[1].then.invoke' → 'Tree.Holder' is a Telo.Mount and cannot be invoked in a step — it has no invoke or run method (runtime ERR_RESOURCE_NOT_INVOKABLE)",
           "steps[1].then.invoke",
         ],
         [
@@ -313,7 +313,7 @@ describe("a message quoting its place quotes its data.path", () => {
         ],
         [
           "REFERENCE_KIND_MISMATCH",
-          "Telo.Application/ShiftedFinding: reference at 'targets[2].then' → 'Run.Value' does not implement 'Telo.Runnable' (known implementations: Run.Sequence, Run.Iteration, Run.Loop); 'Run.Value' does not implement 'Telo.Service' — it declares 'Telo.Invocable'",
+          "Telo.Application/ShiftedFinding: reference at 'targets[2].then' → 'Run.Value' does not implement 'Telo.Runnable' (known implementations: Telo.Sequence, Run.Sequence, Run.Iteration, Run.Loop); 'Run.Value' does not implement 'Telo.Service' — it declares 'Telo.Invocable'",
           "targets[2].then",
         ],
       ]);

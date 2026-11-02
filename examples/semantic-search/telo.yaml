@@ -29,6 +29,8 @@ metadata:
     `/search` returns the retrieved passages and their scores — worth looking at
     before `/ask`, because a wrong answer is usually wrong retrieval rather than
     a wrong model.
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
@@ -42,15 +44,8 @@ imports:
 targets:
   - !ref indexCorpus
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8079
-secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
-    type: string
+ports: { http: { env: PORT, protocol: tcp, default: 8079 } }
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 ---
 # The account: base URL and credential on the client, so neither model kind
 # carries a key and both inherit the 401 re-acquire-and-retry.
@@ -138,7 +133,7 @@ topK: 3
 # Indexing, at boot: embed every passage in ONE batched call, then write the
 # vectors with the text alongside them as metadata — so a match carries what it
 # matched, and answering needs no second lookup.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: indexCorpus }
 steps:
   - name: docs
@@ -169,7 +164,7 @@ steps:
         ' passages at ' + string(steps.vectors.result.dimensions) + ' dimensions'
 ---
 # Retrieval on its own, so it can be inspected without a model in the way.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: search }
 inputType:
   kind: Telo.JsonSchema
@@ -177,8 +172,7 @@ inputType:
     type: object
     required: [ q ]
     additionalProperties: false
-    properties:
-      q: { type: string }
+    properties: { q: { type: string } }
 steps:
   - name: queryVector
     invoke: !ref embedQuery
@@ -201,7 +195,7 @@ system: >-
   Answer using only the context provided. If the context does not contain the
   answer, say so plainly rather than guessing. Keep it to two sentences.
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: ask }
 inputType:
   kind: Telo.JsonSchema
@@ -209,8 +203,7 @@ inputType:
     type: object
     required: [ q ]
     additionalProperties: false
-    properties:
-      q: { type: string }
+    properties: { q: { type: string } }
 steps:
   - name: retrieved
     invoke: !ref search
@@ -232,10 +225,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Semantic search
-    version: 1.0.0
+openapi: { info: { title: Semantic search, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref searchRoutes
@@ -250,8 +240,7 @@ routes:
         query:
           type: object
           required: [ q ]
-          properties:
-            q: { type: string, minLength: 1 }
+          properties: { q: { type: string, minLength: 1 } }
     handler: !ref search
     inputs:
       q: !cel "request.query.q"
@@ -268,8 +257,7 @@ routes:
         query:
           type: object
           required: [ q ]
-          properties:
-            q: { type: string, minLength: 1 }
+          properties: { q: { type: string, minLength: 1 } }
     handler: !ref ask
     inputs:
       q: !cel "request.query.q"

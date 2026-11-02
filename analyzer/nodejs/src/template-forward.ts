@@ -34,6 +34,7 @@ import {
 import { isForwardedDeclaration } from "./forwarded-declaration.js";
 import { definitionInScope, moduleAliasScope } from "./module-alias-scope.js";
 import { isModuleKind } from "./module-kinds.js";
+import { isKindDocumentOrImport } from "./system-kinds.js";
 import { namedShapeReading } from "./named-shape-reading.js";
 import { referenceValueOf } from "./peer-binding.js";
 import { cloneForMutation, normalizeInlineResources } from "./normalize-inline-resources.js";
@@ -1172,7 +1173,7 @@ function ownBodyFindings(
 /** A resource of the entry's own modules, as the per-resource checks select one. */
 function isConsumer(m: ResourceManifest, rootModules: ReadonlySet<string>): boolean {
   if (typeof m.kind !== "string" || typeof m.metadata?.name !== "string") return false;
-  if (isModuleKind(m.kind) || m.kind.startsWith("Telo.")) return false;
+  if (isModuleKind(m.kind) || isKindDocumentOrImport(m)) return false;
   if (isForwardedDeclaration(m) || isInjectedDeclaration(m)) return false;
   const module = (m.metadata as { module?: unknown }).module;
   return typeof module !== "string" || rootModules.has(module);
@@ -1769,35 +1770,58 @@ function throughBase(
   const forwarded = selfForwardPath(node);
   if (forwarded) return fromSelf(holder, forwarded, input);
   const links: { at: Segment[]; from: Segment[] }[] = [];
-  const materialize = (value: unknown, at: Segment[]): unknown => {
-    const path = selfForwardPath(value);
-    if (path) {
+  const value = readBaseMapping(node, {
+    forward: (path, at) => {
       const reached = reachedPlainly(holder, path, union);
       const forwardedNode = forwardNode(reached, union.space);
       if (!forwardedNode) return undefined;
       links.push({ at, from: path });
       return forwardedNode;
-    }
-    if (isOpaque(value)) return undefined;
-    if (Array.isArray(value)) {
-      const items = value.map((item, i) => materialize(item, [...at, i]) ?? {});
-      union.hold(items);
-      return items;
-    }
-    if (isPlainObject(value)) {
-      const out: Record<string, unknown> = {};
-      for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
-        const materialized = materialize(child, [...at, key]);
-        if (materialized !== undefined) out[key] = materialized;
-      }
-      union.hold(out);
-      return out;
-    }
-    return value;
-  };
-  const value = materialize(node, []);
+    },
+    opaque: () => undefined,
+    hold: (container) => union.hold(container),
+  });
   if (links.length === 0) return undefined;
   return { node: heldNode(value, EVERYWHERE, [], false), links };
+}
+
+/** How {@link readBaseMapping} reads each kind of node a mapping writes. */
+export interface BaseMappingReading {
+  /** What a bare `self.<path>` forward stands for, at `at` of the mapping. */
+  forward(path: string[], at: Segment[]): unknown;
+  /** What an expression, a reference or an embed stands for. */
+  opaque(value: unknown, at: Segment[]): unknown;
+  /** Each list and map the reading builds. */
+  hold?(container: object): void;
+}
+
+/**
+ * The configuration a `base:` mapping hands its inherited controller, read
+ * statically: every verbatim `self.<path>` forward replaced by what `forward`
+ * answers there, every expression, reference or embed by what `opaque` answers,
+ * and the literals the mapping writes kept. The one reading of a mapping both
+ * template forward views and the throws walk take. An entry answered
+ * `undefined` is left out of a map and is an empty map in a list.
+ */
+export function readBaseMapping(node: unknown, reading: BaseMappingReading, at: Segment[] = []): unknown {
+  const path = selfForwardPath(node);
+  if (path) return reading.forward(path, at);
+  if (isOpaque(node)) return reading.opaque(node, at);
+  if (Array.isArray(node)) {
+    const items = node.map((item, i) => readBaseMapping(item, reading, [...at, i]) ?? {});
+    reading.hold?.(items);
+    return items;
+  }
+  if (isPlainObject(node)) {
+    const out: Record<string, unknown> = {};
+    for (const [key, child] of Object.entries(node as Record<string, unknown>)) {
+      const read = readBaseMapping(child, reading, [...at, key]);
+      if (read !== undefined) out[key] = read;
+    }
+    reading.hold?.(out);
+    return out;
+  }
+  return node;
 }
 
 /** `path` read down `holder` with no reference followed, each way a choice

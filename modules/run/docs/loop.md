@@ -54,4 +54,4 @@ steps:
 
 ## Result
 
-When invoked (e.g. as a `Run.Sequence` step), a `Run.Loop` returns its `outputs` evaluated over the final state — `steps.*` (the last iteration), `iteration` (final count), `previous`, and `inputs`. With no `outputs`, it returns the last iteration's step map.
+When invoked (e.g. as a `Telo.Sequence` step), a `Run.Loop` returns its `outputs` evaluated over the final state — `steps.*` (the last iteration), `iteration` (final count), `previous`, and `inputs`. With no `outputs`, it returns the last iteration's step map.

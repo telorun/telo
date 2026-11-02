@@ -15,7 +15,8 @@ metadata:
 requires:
   # `Telo.Duration` is a value type an older analyzer does not know; 0.92.0 is
   # the first release that reads this file.
-  telo: ">=0.92.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
@@ -24,43 +25,14 @@ imports:
   HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
   RunnerProtocol: ../../plan-approval-runner-protocol
 resources:
-  connection:
-    kind: SQLite.Connection
-    description: The database every table lives in.
+  connection: { kind: SQLite.Connection, description: The database every table lives in. }
 variables:
   longPollCap:
     type: string
     x-telo-type: Telo.Duration
     description: The longest any long poll holds a request, whatever its `wait` asks for.
 exports:
-  resources:
-    - schema
-    - flushOutbox
-    - createProduct
-    - listProducts
-    - updateProduct
-    - createRepo
-    - listRepos
-    - submitPlan
-    - revisePlan
-    - withdrawPlan
-    - agentPlan
-    - planEvents
-    - reportPlan
-    - upsertLink
-    - listPlans
-    - planDetail
-    - commentPlan
-    - decidePlan
-    - planHistory
-    - productHistory
-    - reportRunner
-    - commandFeed
-    - commandOutcome
-    - listRunners
-    - runnerSessions
-    - runnerCommands
-    - createRunnerCommand
+  resources: [schema, flushOutbox, createProduct, listProducts, updateProduct, createRepo, listRepos, submitPlan, revisePlan, withdrawPlan, agentPlan, planEvents, reportPlan, upsertLink, listPlans, planDetail, commentPlan, decidePlan, planHistory, productHistory, reportRunner, commandFeed, commandOutcome, listRunners, runnerSessions, runnerCommands, createRunnerCommand]
 ---
 kind: SQLite.Table
 metadata: { name: products }
@@ -87,8 +59,7 @@ columns:
   id: { type: integer, primaryKey: true, identity: always }
   repo: { type: text, nullable: false }
   product: { type: text, nullable: false }
-indexes:
-  repo_products_key: { columns: [repo, product], unique: true }
+indexes: { repo_products_key: { columns: [repo, product], unique: true } }
 ---
 kind: SQLite.Table
 metadata: { name: plans }
@@ -146,8 +117,7 @@ columns:
   revision: { type: integer }
   data: { type: text, nullable: false }
   created_at: { type: text, nullable: false }
-indexes:
-  events_key: { columns: [plan_id, seq], unique: true }
+indexes: { events_key: { columns: [plan_id, seq], unique: true } }
 ---
 kind: SQLite.Table
 metadata: { name: links }
@@ -159,8 +129,7 @@ columns:
   url: { type: text, nullable: false }
   status: { type: text, nullable: false }
   reported_at: { type: text, nullable: false }
-indexes:
-  links_key: { columns: [plan_id, type, url], unique: true }
+indexes: { links_key: { columns: [plan_id, type, url], unique: true } }
 ---
 # Webhook deliveries still owed. A row is written in the transaction of the event
 # it announces and deleted from nothing: `delivered_at` marks it done.
@@ -178,8 +147,7 @@ columns:
   next_attempt_ms: { type: integer, nullable: false }
   delivered_at: { type: text }
   created_at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
-indexes:
-  outbox_due: { columns: [next_attempt_ms], where: "delivered_at IS NULL" }
+indexes: { outbox_due: { columns: [next_attempt_ms], where: "delivered_at IS NULL" } }
 ---
 kind: SQLite.Table
 metadata: { name: deliveryAttempts }
@@ -192,8 +160,7 @@ columns:
   status: { type: integer }
   error: { type: text }
   at: { type: text, nullable: false, defaultExpression: "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')" }
-indexes:
-  delivery_attempts_by_product: { columns: [product, id] }
+indexes: { delivery_attempts_by_product: { columns: [product, id] } }
 ---
 kind: SQLite.Table
 metadata: { name: runners }
@@ -214,8 +181,7 @@ columns:
   id: { type: integer, primaryKey: true, identity: always }
   runner: { type: text, nullable: false }
   instance: { type: text, nullable: false }
-indexes:
-  retired_instances_key: { columns: [runner, instance], unique: true }
+indexes: { retired_instances_key: { columns: [runner, instance], unique: true } }
 ---
 kind: SQLite.Table
 metadata: { name: sessions }
@@ -412,7 +378,7 @@ schema:
 # ---------------------------------------------------------------------------
 # Append one timeline entry: the plan's cursor moves by one and the entry takes
 # that value as its `seq`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: appendEvent }
 inputType:
   kind: Telo.JsonSchema
@@ -429,11 +395,7 @@ inputType:
       data: { type: object }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seq]
-    properties:
-      seq: { type: integer }
+  schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
 steps:
   - name: bump
     invoke: { kind: Sql.Query, connection: !ref connection }
@@ -453,7 +415,7 @@ outputs:
   seq: !cel "int(steps.bump.result.rows[0].cursor)"
 ---
 # At most one pending wake per plan: any newer decision or agent write retires it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: supersedeWake }
 inputType:
   kind: Telo.JsonSchema
@@ -461,8 +423,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 steps:
   - name: supersede
     invoke: { kind: Sql.Command, connection: !ref connection }
@@ -474,7 +435,7 @@ steps:
 # Queue a wake for the runner owning the plan's session, if one does. Returns the
 # runner (empty when nobody owns the session) and its new command cursor, which
 # the caller publishes after commit.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: enqueueWake }
 inputType:
   kind: Telo.JsonSchema
@@ -491,9 +452,7 @@ outputType:
   schema:
     type: object
     required: [runner, commandSeq]
-    properties:
-      runner: { type: string }
-      commandSeq: { type: integer }
+    properties: { runner: { type: string }, commandSeq: { type: integer } }
 steps:
   - name: supersede
     invoke: !ref supersedeWake
@@ -523,7 +482,7 @@ outputs:
   commandSeq: !cel "size(steps.owner.result.rows) > 0 ? steps.next.result.seq : 0"
 ---
 # The runner's command counter, moved in the transaction that writes the command.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: nextCommandSeq }
 inputType:
   kind: Telo.JsonSchema
@@ -531,15 +490,10 @@ inputType:
     type: object
     additionalProperties: false
     required: [runner]
-    properties:
-      runner: { type: string }
+    properties: { runner: { type: string } }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [seq]
-    properties:
-      seq: { type: integer }
+  schema: { type: object, required: [seq], properties: { seq: { type: integer } } }
 steps:
   - name: bump
     invoke: { kind: Sql.Query, connection: !ref connection }
@@ -552,7 +506,7 @@ outputs:
 ---
 # An outbox row for the plan's product, when it has a webhook. The payload is
 # composed here, from the rows the event's transaction just wrote.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: enqueueWebhook }
 inputType:
   kind: Telo.JsonSchema
@@ -582,7 +536,7 @@ steps:
 # approval, cursor, read-time `overdue` (submitted or revised, the product has a
 # deadline, and the latest revision is older than it), the session and the
 # runner owning it. Each filter is ignored when empty (or -1).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: queryPlans }
 inputType:
   kind: Telo.JsonSchema
@@ -636,7 +590,7 @@ steps:
 outputs:
   plans: !cel "parseJson(string(steps.query.result.rows[0].plans))"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readPlan }
 inputType:
   kind: Telo.JsonSchema
@@ -644,8 +598,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -672,7 +625,7 @@ outputs:
 ---
 # A plan's timeline after `after`, in seq order. Every entry carries its
 # `source`: `agent` or `reviewer`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readEvents }
 inputType:
   kind: Telo.JsonSchema
@@ -680,9 +633,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId, after]
-    properties:
-      planId: { type: string }
-      after: { type: integer }
+    properties: { planId: { type: string }, after: { type: integer } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -705,7 +656,7 @@ outputs:
   events: !cel "parseJson(string(steps.query.result.rows[0].events))"
 ---
 # Every revision of a plan, bodies included.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readRevisions }
 inputType:
   kind: Telo.JsonSchema
@@ -713,8 +664,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -749,10 +699,8 @@ metadata:
   name: itemIds
   description: The item IDs a plan body declares, in order of appearance.
 params:
-  - name: body
-    schema: { type: string }
-returns:
-  schema: { type: array, items: { type: string } }
+  - { name: body, schema: { type: string } }
+returns: { schema: { type: array, items: { type: string } } }
 body: !cel >-
   regexExtractAll(
     regexReplace(replace(body, '\r\n', '\n'),
@@ -774,7 +722,7 @@ body: !cel >-
 # ---------------------------------------------------------------------------
 # A product as the settings page reads it, with its latest delivery attempts
 # (newest first) — each carrying the error it failed with, or null.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readProducts }
 inputType:
   kind: Telo.JsonSchema
@@ -814,7 +762,7 @@ steps:
 outputs:
   products: !cel "parseJson(string(steps.query.result.rows[0].products))"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: createProduct }
 inputType:
   kind: Telo.JsonSchema
@@ -843,7 +791,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -888,7 +836,7 @@ outputs:
 # by moving its next attempt past the 10s request timeout in one statement, so
 # two ticks never send it together; each attempt is recorded with the error it
 # failed with, and a failure delays the row 5s × 2^(attempts−1), at most 128×.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: flushOutbox }
 steps:
   - name: claim
@@ -904,11 +852,7 @@ steps:
       kind: Run.Iteration
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [rows]
-          properties:
-            rows: { type: array }
+        schema: { type: object, required: [rows], properties: { rows: { type: array } } }
       collection: !cel "inputs.rows"
       concurrency: 4
       steps:
@@ -933,7 +877,7 @@ steps:
                 connection: !ref connection
                 inputs: !cel "inputs"
                 steps:
-                  kind: Run.Sequence
+                  kind: Telo.Sequence
                   inputType:
                     kind: Telo.JsonSchema
                     schema:
@@ -970,7 +914,7 @@ steps:
                 connection: !ref connection
                 inputs: !cel "inputs"
                 steps:
-                  kind: Run.Sequence
+                  kind: Telo.Sequence
                   inputType:
                     kind: Telo.JsonSchema
                     schema:
@@ -999,7 +943,7 @@ steps:
     inputs:
       rows: !cel "steps.claim.result.rows"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listProducts }
 outputType:
   kind: Telo.JsonSchema
@@ -1018,7 +962,7 @@ outputs:
 ---
 # A full replacement of the product's settings: an omitted deadline or webhook
 # is cleared.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: updateProduct }
 inputType:
   kind: Telo.JsonSchema
@@ -1063,7 +1007,7 @@ steps:
 outputs:
   product: !cel "steps.read.result.products[0]"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: readRepos }
 outputType:
   kind: Telo.JsonSchema
@@ -1086,7 +1030,7 @@ steps:
 outputs:
   repos: !cel "parseJson(string(steps.query.result.rows[0].repos))"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: createRepo }
 inputType:
   kind: Telo.JsonSchema
@@ -1114,7 +1058,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -1168,7 +1112,7 @@ steps:
 outputs:
   repo: !cel "steps.read.result.repos.filter(r, r.slug == inputs.slug)[0]"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listRepos }
 outputType:
   kind: Telo.JsonSchema
@@ -1204,7 +1148,7 @@ schema:
 ---
 # Submit a plan. Idempotent: a body already submitted for the same product,
 # repository and loop returns that plan and revision with `created: false`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: submitPlan }
 inputType:
   kind: Telo.JsonSchema
@@ -1229,7 +1173,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -1355,7 +1299,7 @@ outputs:
   cursor: !cel "steps.tx.result.cursor"
 ---
 # A plan's row as the write paths check it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: lockPlan }
 inputType:
   kind: Telo.JsonSchema
@@ -1363,8 +1307,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -1407,7 +1350,7 @@ outputs:
 # latest revision is a no-op; a stale `base`, a closed plan or repeated item IDs
 # are refused; a revision voids an approval (recorded) and returns the plan to
 # `revised`.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: revisePlan }
 inputType:
   kind: Telo.JsonSchema
@@ -1430,7 +1373,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -1560,12 +1503,9 @@ schema:
   type: object
   additionalProperties: false
   required: [planId, state, cursor]
-  properties:
-    planId: { type: string }
-    state: { type: string }
-    cursor: { type: integer }
+  properties: { planId: { type: string }, state: { type: string }, cursor: { type: integer } }
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: withdrawPlan }
 inputType:
   kind: Telo.JsonSchema
@@ -1573,8 +1513,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 outputType: !ref StateReceipt
 steps:
   - name: tx
@@ -1584,14 +1523,10 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
-          schema:
-            type: object
-            required: [planId]
-            properties:
-              planId: { type: string }
+          schema: { type: object, required: [planId], properties: { planId: { type: string } } }
         outputType: !ref StateReceipt
         steps:
           - name: plan
@@ -1641,7 +1576,7 @@ outputs:
 # the plan: approved → in_progress | completed | parked, in_progress →
 # in_progress | completed | parked, parked → in_progress | completed; naming the
 # plan's current state changes nothing. Any other plan refuses reports.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reportPlan }
 inputType:
   kind: Telo.JsonSchema
@@ -1667,7 +1602,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -1749,7 +1684,7 @@ outputs:
 ---
 # A branch, pull request or commit linked to the plan, keyed by type and URL.
 # An unchanged status is a no-op; every change is a timeline entry.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: upsertLink }
 inputType:
   kind: Telo.JsonSchema
@@ -1780,7 +1715,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -1845,7 +1780,7 @@ outputs:
   changed: !cel "steps.tx.result.changed"
   cursor: !cel "steps.tx.result.cursor"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: agentPlan }
 inputType:
   kind: Telo.JsonSchema
@@ -1853,8 +1788,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -1873,7 +1807,7 @@ outputs:
 # The per-plan long poll. Returns at once when the plan has events after
 # `after`; otherwise waits on the plan's topic for up to `wait` (capped), then
 # answers with whatever is there — possibly nothing.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: planEvents }
 inputType:
   kind: Telo.JsonSchema
@@ -1922,7 +1856,7 @@ outputs:
 # ---------------------------------------------------------------------------
 # Review surface.
 # ---------------------------------------------------------------------------
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listPlans }
 inputType:
   kind: Telo.JsonSchema
@@ -1957,7 +1891,7 @@ outputs:
 ---
 # The plan page: every revision in full, the timeline, links, and the highest
 # revision a reviewer has commented on or decided (the diff's default base).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: planDetail }
 inputType:
   kind: Telo.JsonSchema
@@ -1965,8 +1899,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -2020,7 +1953,7 @@ outputs:
   lastReviewedRevision: !cel "int(steps.reviewed.result.rows[0].revision)"
 ---
 # A reviewer comment on one revision, optionally on one item of it. Wakes nobody.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: commentPlan }
 inputType:
   kind: Telo.JsonSchema
@@ -2040,9 +1973,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [planId, seq]
-    properties:
-      planId: { type: string }
-      seq: { type: integer }
+    properties: { planId: { type: string }, seq: { type: integer } }
 steps:
   - name: tx
     inputs: !cel "inputs"
@@ -2051,7 +1982,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -2119,7 +2050,7 @@ outputs:
 # records the approved hash; request changes and reject clear it. The decision
 # queues a wake for the runner owning the plan's session, retiring any wake
 # still pending for the plan.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: decidePlan }
 inputType:
   kind: Telo.JsonSchema
@@ -2140,10 +2071,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [planId, state, cursor]
-    properties:
-      planId: { type: string }
-      state: { type: string }
-      cursor: { type: integer }
+    properties: { planId: { type: string }, state: { type: string }, cursor: { type: integer } }
 steps:
   - name: tx
     inputs: !cel "inputs"
@@ -2152,7 +2080,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -2167,10 +2095,7 @@ steps:
               note: { type: string }
         steps:
           - name: states
-            value:
-              approve: approved
-              request_changes: changes_requested
-              reject: rejected
+            value: { approve: approved, request_changes: changes_requested, reject: rejected }
           - name: plan
             invoke: !ref lockPlan
             inputs: { planId: !cel "inputs.planId" }
@@ -2257,7 +2182,7 @@ outputs:
 ---
 # A plan's whole record: the plan, every revision in full and every event in
 # seq order. Nothing is ever deleted, so this is the complete history.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: planHistory }
 inputType:
   kind: Telo.JsonSchema
@@ -2265,8 +2190,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [planId]
-    properties:
-      planId: { type: string }
+    properties: { planId: { type: string } }
 outputType: !ref PlanHistory
 steps:
   - name: plan
@@ -2283,7 +2207,7 @@ outputs:
   revisions: !cel "steps.revisions.result.revisions"
   events: !cel "steps.events.result.events"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: productHistory }
 inputType:
   kind: Telo.JsonSchema
@@ -2291,8 +2215,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [slug]
-    properties:
-      slug: { type: string }
+    properties: { slug: { type: string } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -2326,8 +2249,7 @@ steps:
         schema:
           type: object
           required: [ids]
-          properties:
-            ids: { type: array, items: { type: string } }
+          properties: { ids: { type: array, items: { type: string } } }
       collection: !cel "inputs.ids"
       steps:
         - name: history
@@ -2348,7 +2270,7 @@ outputs:
 # ---------------------------------------------------------------------------
 # A runner's row, and the refusals every runner call shares: an unknown name,
 # and a request from an instance that is no longer the runner's newest.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: checkRunner }
 inputType:
   kind: Telo.JsonSchema
@@ -2398,7 +2320,7 @@ outputs:
 # the first time becomes this runner's, and a plan of such a session whose
 # latest decision has no wake yet — and no agent write since — gets one. Runs
 # inside the caller's transaction.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: associateSessions }
 inputType:
   kind: Telo.JsonSchema
@@ -2413,9 +2335,7 @@ inputType:
         items:
           type: object
           required: [id, repo]
-          properties:
-            id: { type: string }
-            repo: { type: string }
+          properties: { id: { type: string }, repo: { type: string } }
 steps:
   - name: owned
     invoke: { kind: Sql.Query, connection: !ref connection }
@@ -2467,11 +2387,7 @@ steps:
       kind: Run.Iteration
       inputType:
         kind: Telo.JsonSchema
-        schema:
-          type: object
-          required: [owed]
-          properties:
-            owed: { type: array }
+        schema: { type: object, required: [owed], properties: { owed: { type: array } } }
       collection: !cel "inputs.owed"
       steps:
         - name: wake
@@ -2487,7 +2403,7 @@ steps:
 # the newest instance the runner's, marks the reported sessions active and the
 # runner's others inactive, and — for a session reported for the first time —
 # queues the wake owed for a plan decided before its session was known.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: reportRunner }
 inputType:
   kind: Telo.JsonSchema
@@ -2520,7 +2436,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -2535,9 +2451,7 @@ steps:
                 items:
                   type: object
                   required: [id, repo]
-                  properties:
-                    id: { type: string }
-                    repo: { type: string }
+                  properties: { id: { type: string }, repo: { type: string } }
         steps:
           - name: retired
             invoke: { kind: Sql.Query, connection: !ref connection }
@@ -2630,7 +2544,7 @@ outputs:
 # A runner's pending commands after `after`, oldest first, as protocol entries,
 # and the runner's command counter — read in one statement, so the counter is
 # never behind the page.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: pendingCommands }
 inputType:
   kind: Telo.JsonSchema
@@ -2638,10 +2552,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [name, after, limit]
-    properties:
-      name: { type: string }
-      after: { type: integer }
-      limit: { type: integer }
+    properties: { name: { type: string }, after: { type: integer }, limit: { type: integer } }
 outputType:
   kind: Telo.JsonSchema
   schema:
@@ -2674,7 +2585,7 @@ outputs:
 # GET /api/agent/runners/{name}/commands — the runner's long poll. Pending
 # commands after `after`; when there are none, waits on the runner's topic for
 # up to `wait` (capped). `cursor` is the highest seq the page considered.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: commandFeed }
 inputType:
   kind: Telo.JsonSchema
@@ -2722,7 +2633,7 @@ outputs:
 # POST /api/agent/runners/{name}/commands/{seq}/outcome. Settles a pending
 # command. A start's `done` names the session it started, which becomes this
 # runner's by the same rule a report follows.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: commandOutcome }
 inputType:
   kind: Telo.JsonSchema
@@ -2740,9 +2651,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [seq, state]
-    properties:
-      seq: { type: integer }
-      state: { type: string }
+    properties: { seq: { type: integer }, state: { type: string } }
 steps:
   - name: tx
     inputs:
@@ -2758,7 +2667,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:
@@ -2845,7 +2754,7 @@ outputs:
   seq: !cel "inputs.seq"
   state: !cel "inputs.outcome.state"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: listRunners }
 outputType:
   kind: Telo.JsonSchema
@@ -2870,9 +2779,7 @@ outputType:
                 type: object
                 additionalProperties: false
                 required: [id, repo]
-                properties:
-                  id: { type: string }
-                  repo: { type: string }
+                properties: { id: { type: string }, repo: { type: string } }
 steps:
   - name: query
     invoke: { kind: Sql.Query, connection: !ref connection }
@@ -2890,7 +2797,7 @@ outputs:
 # first seen): `after` and `before` bound the page exclusively, `order` picks
 # the end it starts from, and `cursor` is the last key in page order — on an
 # empty page, the request's bound in that direction (0 when it has none).
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runnerSessions }
 inputType:
   kind: Telo.JsonSchema
@@ -2978,7 +2885,7 @@ outputs:
 ---
 # A runner's command history, every state, with each outcome, a page at a time
 # in `seq` order, bounded and ordered as `runnerSessions` is.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: runnerCommands }
 inputType:
   kind: Telo.JsonSchema
@@ -3022,9 +2929,7 @@ outputType:
               type: [object, "null"]
               additionalProperties: false
               required: [code, message]
-              properties:
-                code: { type: string }
-                message: { type: string }
+              properties: { code: { type: string }, message: { type: string } }
             createdAt: { type: string }
             completedAt: { type: [string, "null"] }
       cursor: { type: integer }
@@ -3067,7 +2972,7 @@ outputs:
 # A reviewer's start or stop. `start` mints the NAME the runner starts the
 # session under; the session's ID is claude's, reported in the start's outcome.
 # Neither takes a path or a permission mode — those are the runner's own.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: createRunnerCommand }
 inputType:
   kind: Telo.JsonSchema
@@ -3101,8 +3006,7 @@ outputType:
     type: object
     additionalProperties: false
     required: [seq]
-    properties:
-      seq: { type: integer }
+    properties: { seq: { type: integer } }
 steps:
   - name: tx
     inputs: !cel "inputs"
@@ -3111,7 +3015,7 @@ steps:
       connection: !ref connection
       inputs: !cel "inputs"
       steps:
-        kind: Run.Sequence
+        kind: Telo.Sequence
         inputType:
           kind: Telo.JsonSchema
           schema:

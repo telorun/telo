@@ -21,7 +21,8 @@ requires:
   # slots that require it. An older runtime reports `!ref connection` as a kind
   # mismatch against `Sql.Connection` itself.
   # 0.123.0: a `throw` step's `displayMessage`, which 0.122.0 drops at dispatch.
-  telo: ">=0.123.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
@@ -29,40 +30,23 @@ imports:
   PlainText: oci://ghcr.io/telorun/plain-text-codec@0.11.0#sha256-V8zjIxeI89VhzVcKOrOTqLq7AdsNh2n51k2avdcOh-k
   Yaml: oci://ghcr.io/telorun/yaml@0.11.0#sha256-KSC6vlR1yOvXgCUZzj6g4p0r_T-6SfMqQPLR_HQnktk
 resources:
-  connection:
-    kind: Sql.Connection
-    description: The database holding the indexed rows.
+  connection: { kind: Sql.Connection, description: The database holding the indexed rows. }
   bucketGet:
     kind: S3.Get
     description: Reads a cached `telo.yaml` back out of the manifest bucket.
 variables:
   # The built-in vocabulary the hub tracks: the module every `Telo.<Kind>` names,
   # one version per telo release.
-  builtinsRef:
-    type: string
-    default: oci://ghcr.io/telorun/telo
+  builtinsRef: { type: string, default: oci://ghcr.io/telorun/telo }
 exports:
-  resources:
-    - moduleManifestText
-    - kindDefinitions
-    - libraryIndex
-    - trackedModules
-    - moduleDetail
-    - moduleVersionList
-    - implementations
-    - instances
-    - dependents
-    - refSuggestions
-    - registrationStatus
+  resources: [moduleManifestText, kindDefinitions, libraryIndex, trackedModules, moduleDetail, moduleVersionList, implementations, instances, dependents, refSuggestions, registrationStatus]
 ---
 kind: Sql.Query
-metadata:
-  name: query
+metadata: { name: query }
 connection: !ref connection
 ---
 kind: Yaml.Parse
-metadata:
-  name: parseYaml
+metadata: { name: parseYaml }
 ---
 # The names of the built-in vocabulary each JSON text may reach: every
 # `telo://manifest#/$defs/<Name>` reference, every string that is exactly
@@ -72,14 +56,12 @@ metadata:
 # Read off the JSON rather than the YAML so a zone annotation's attributes are
 # found by structure, whatever YAML style declared them.
 kind: Run.Value
-metadata:
-  name: vocabularyNames
+metadata: { name: vocabularyNames }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      texts: { type: array, items: { type: string } }
+    properties: { texts: { type: array, items: { type: string } } }
     required: [texts]
 value: !cel >-
   inputs.texts.map(j, distinct(
@@ -101,9 +83,8 @@ value: !cel >-
 # the entry's block — relying on the renderer's fixed layout
 # (`kernel/specs/builtin-vocabulary.md`): the sections at column 0 of the root
 # document, each entry at column 2 with its body indented further.
-kind: Run.Sequence
-metadata:
-  name: builtinVocabulary
+kind: Telo.Sequence
+metadata: { name: builtinVocabulary }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -117,8 +98,7 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      pieces: { type: array, items: { type: string } }
+    properties: { pieces: { type: array, items: { type: string } } }
     required: [pieces]
 steps:
   - name: meta
@@ -195,23 +175,16 @@ outputs:
 # The cached telo.yaml for one version. A missing row falls back to a sentinel
 # key, so the bucket's own 404 is what surfaces — one not-found path rather than
 # two that can disagree.
-kind: Run.Sequence
-metadata:
-  name: moduleManifestText
+kind: Telo.Sequence
+metadata: { name: moduleManifestText }
 inputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      ref: { type: string }
-      version: { type: string }
+    properties: { ref: { type: string }, version: { type: string } }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      text: { type: string }
-    required: [text]
+  schema: { type: object, properties: { text: { type: string } }, required: [text] }
 steps:
   - name: resolve
     invoke: !ref query
@@ -253,9 +226,8 @@ outputs:
 # vocabulary — its fragments, value types, zone attributes and formats — which
 # the caller resolves at the telo version it was asked for, since a built-in
 # reference means the telo that runs the manifest, not this module's floor.
-kind: Run.Sequence
-metadata:
-  name: moduleKindDefinitions
+kind: Telo.Sequence
+metadata: { name: moduleKindDefinitions }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -443,8 +415,7 @@ outputs:
       : []
 ---
 kind: Run.Projection
-metadata:
-  name: definitionsByModule
+metadata: { name: definitionsByModule }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -508,9 +479,8 @@ outputs:
 # hub does not track is refused, naming the ones it does.
 #
 # `text` is the whole answer as the `get_kinds` tool prints it.
-kind: Run.Sequence
-metadata:
-  name: kindDefinitions
+kind: Telo.Sequence
+metadata: { name: kindDefinitions }
 throws:
   - code: ERR_UNKNOWN_TELO_VERSION
     description: The telo version asked for is not a version of the built-in vocabulary the hub tracks.
@@ -523,10 +493,7 @@ inputType:
         type: array
         items:
           type: object
-          properties:
-            ref: { type: string }
-            kind: { type: string }
-            version: { type: string }
+          properties: { ref: { type: string }, kind: { type: string }, version: { type: string } }
           required: [ref, kind]
       # A telo version, or '' for the latest the hub tracks.
       telo: { type: string, default: "" }
@@ -694,9 +661,8 @@ outputs:
 # know what exists, so that naming a need costs no search. Applications are left
 # out: nothing here is imported from one. The built-in vocabulary is listed with
 # `builtin: true`, since its kinds are written `Telo.<Kind>` with no import.
-kind: Run.Sequence
-metadata:
-  name: libraryIndex
+kind: Telo.Sequence
+metadata: { name: libraryIndex }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -744,9 +710,8 @@ outputs:
 # row exists. `/module` and `/modules` both read it, so the listing and the keyed
 # read can never disagree about which refs exist. `seq` is the row id — assigned
 # once and never reused — so paging by it is stable while rows are added.
-kind: Run.Sequence
-metadata:
-  name: trackedModules
+kind: Telo.Sequence
+metadata: { name: trackedModules }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -798,9 +763,8 @@ outputs:
 # Everything a module page renders, in one call. Without it a page needs three
 # round trips (search by ref, versions, implementations) and still cannot address
 # a non-latest version.
-kind: Run.Sequence
-metadata:
-  name: moduleDetail
+kind: Telo.Sequence
+metadata: { name: moduleDetail }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -958,22 +922,16 @@ outputs:
 # precedence descending, then any non-numeric tags (digests, `latest`) fall to
 # the end in lexical order. Consumers (IDE version completion) rely on index 0
 # being the latest version.
-kind: Run.Sequence
-metadata:
-  name: moduleVersionList
+kind: Telo.Sequence
+metadata: { name: moduleVersionList }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
+  schema: { type: object, properties: { ref: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      found: { type: boolean }
-      versions: { type: array }
+    properties: { found: { type: boolean }, versions: { type: array } }
     required: [found, versions]
 steps:
   - name: rows
@@ -1002,22 +960,16 @@ outputs:
 # Every kind that implements a given contract, across module boundaries — the
 # derived grouping axis. A backend is discoverable from the abstract it extends
 # without the abstract's module knowing it exists.
-kind: Run.Sequence
-metadata:
-  name: implementations
+kind: Telo.Sequence
+metadata: { name: implementations }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
-      kind: { type: string }
+  schema: { type: object, properties: { ref: { type: string }, kind: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      implementations: { type: array }
+    properties: { implementations: { type: array } }
     required: [implementations]
 steps:
   - name: rows
@@ -1046,9 +998,8 @@ outputs:
 # so a page past the end still reports it. Each row carries `description` whole
 # and `summary` — its first sentence, cut at 160 characters, as `libraryIndex`
 # cuts one — so a caller that is re-sent every result takes the short form.
-kind: Run.Sequence
-metadata:
-  name: dependents
+kind: Telo.Sequence
+metadata: { name: dependents }
 inputType:
   kind: Telo.JsonSchema
   schema:
@@ -1061,9 +1012,7 @@ outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      dependents: { type: array }
-      total: { type: integer }
+    properties: { dependents: { type: array }, total: { type: integer } }
     required: [dependents, total]
 steps:
   - name: rows
@@ -1097,22 +1046,16 @@ outputs:
 # instance axis. A module that only packages ready-made instances of another
 # module's kind (a language model pack) is reached from that kind rather than
 # ranked as a search result of its own, and the kind's module never lists it.
-kind: Run.Sequence
-metadata:
-  name: instances
+kind: Telo.Sequence
+metadata: { name: instances }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
-      kind: { type: string }
+  schema: { type: object, properties: { ref: { type: string }, kind: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
-    properties:
-      instances: { type: array }
+    properties: { instances: { type: array } }
     required: [instances]
 steps:
   - name: rows
@@ -1142,22 +1085,14 @@ outputs:
 # It completes a ref to IMPORT, so a module whose latest version is recorded as
 # an application is left out. One with no ingested version, or whose root kind
 # is not recorded, stays listed.
-kind: Run.Sequence
-metadata:
-  name: refSuggestions
+kind: Telo.Sequence
+metadata: { name: refSuggestions }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      q: { type: string }
+  schema: { type: object, properties: { q: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      refs: { type: array }
-    required: [refs]
+  schema: { type: object, properties: { refs: { type: array } }, required: [refs] }
 steps:
   - name: rows
     invoke: !ref query
@@ -1191,37 +1126,24 @@ outputs:
 # `pending` and `ingesting` are kept apart because they call for different
 # patience: nothing of this module is searchable yet, versus some of it is and
 # more is arriving.
-kind: Run.Sequence
-metadata:
-  name: registrationStatus
+kind: Telo.Sequence
+metadata: { name: registrationStatus }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      ref: { type: string }
+  schema: { type: object, properties: { ref: { type: string } } }
 outputType:
   kind: Telo.JsonSchema
   schema:
     type: object
     properties:
-      status:
-        type: string
-        enum: [unknown, pending, ingesting, ready, failed]
+      status: { type: string, enum: [unknown, pending, ingesting, ready, failed] }
       ref: { type: string }
       latestVersion: { type: string }
       versionsKnown: { type: integer }
       versionsIngested: { type: integer }
       error: { type: string }
       nextAttemptAt: { type: string }
-    required:
-      - status
-      - ref
-      - latestVersion
-      - versionsKnown
-      - versionsIngested
-      - error
-      - nextAttemptAt
+    required: [status, ref, latestVersion, versionsKnown, versionsIngested, error, nextAttemptAt]
 steps:
   - name: rows
     invoke: !ref query

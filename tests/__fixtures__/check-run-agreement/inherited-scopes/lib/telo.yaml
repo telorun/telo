@@ -1,0 +1,51 @@
+kind: Telo.Library
+metadata: { name: InheritedScopesLib }
+exports: { kinds: [Steps, CallsHelper, MergedGreeter, MappedGreeter] }
+---
+# Extends the built-in without a mapping: a resource of it is written, and
+# resolves its names, in its consumer's module.
+kind: Telo.Definition
+metadata: { name: Steps }
+extends: Telo.Sequence
+---
+# A mapping writes its own reference: `helper` is this library's.
+kind: Telo.Definition
+metadata: { name: CallsHelper }
+extends: Telo.Sequence
+schema: { type: object }
+base:
+  steps:
+    - name: call
+      invoke: !ref helper
+---
+kind: Telo.Sequence
+metadata: { name: helper }
+steps:
+  - { name: who, value: library }
+---
+# A template body runs in this library: its `!ref helper` is the library's. A
+# compile-eval field makes the configuration it receives a copy.
+kind: Telo.Definition
+metadata: { name: Greeter }
+capability: Telo.Invocable
+schema: { type: object, properties: { greeting: { type: string, x-telo-eval: compile } } }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: greet }
+    steps:
+      - { name: who, invoke: !ref helper }
+    outputs:
+      who: !cel "steps.who.result.who.result"
+invoke: !ref greet
+---
+# Each extends the template through `Self.`, a spelling only this library
+# resolves: one with no mapping, one through `base:`.
+kind: Telo.Definition
+metadata: { name: MergedGreeter }
+extends: Self.Greeter
+---
+kind: Telo.Definition
+metadata: { name: MappedGreeter }
+extends: Self.Greeter
+schema: { type: object }
+base: { greeting: mapped }

@@ -21,19 +21,16 @@ metadata:
           -d '{"from":1,"to":2,"amountCents":2500}'
         curl -s -XPOST localhost:8055/transfers -H 'content-type: application/json' \
           -d '{"from":1,"to":2,"amountCents":999999}'   # 409, and nothing moved
+# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+requires: { telo: ">=0.128.0" }
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
   SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
 targets:
   - !ref migrate
   - !ref server
-ports:
-  http:
-    env: PORT
-    protocol: tcp
-    default: 8055
+ports: { http: { env: PORT, protocol: tcp, default: 8055 } }
 ---
 kind: SQLite.Connection
 metadata: { name: db }
@@ -68,7 +65,7 @@ inputs:
 # Everything in here runs inside the open transaction, including the balance
 # read — so no one can spend the same money twice between the check and the
 # debit. A throw anywhere rolls the whole thing back.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: transferWrites }
 inputType:
   kind: Telo.JsonSchema
@@ -119,9 +116,7 @@ connection: !ref db
 kind: Http.Api
 metadata: { name: bankRoutes }
 routes:
-  - request:
-      path: /accounts
-      method: GET
+  - request: { path: /accounts, method: GET }
     handler: !ref listAccounts
     inputs:
       sql: "SELECT id, owner, balance_cents FROM accounts ORDER BY id"
@@ -154,11 +149,7 @@ routes:
       # transaction committed having written nothing.
       - status: 409
         when: !cel "result.declined"
-        content:
-          application/json:
-            body:
-              ok: false
-              error: insufficient_funds
+        content: { application/json: { body: { ok: false, error: insufficient_funds } } }
       - status: 200
         content:
           application/json:
@@ -170,10 +161,7 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
-openapi:
-  info:
-    title: Money transfer
-    version: 1.0.0
+openapi: { info: { title: Money transfer, version: 1.0.0 } }
 mounts:
   - path: /
     mount: !ref bankRoutes

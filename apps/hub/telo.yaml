@@ -34,6 +34,7 @@ metadata:
     Federated discovery hub: tracks registered module refs across transports,
     caches manifests, and serves per-resource search over HTTP and MCP.
 requires:
+  # 0.128.0: the hub libraries it imports declare `Telo.Sequence`, a built-in an older analyzer reads as UNDEFINED_KIND.
   # 0.83.0: `resources:` on an import — the instances handed down to each library.
   # 0.87.0: a route's `catches:` is checked against a union the analyzer resolves
   # by following an exported entry point into its declaring library. An older
@@ -48,7 +49,7 @@ requires:
   # 0.117.0: the database is a `needs:` entry of the application, a key an older
   # analyzer refuses on a `Telo.Application`, and `postgres@0.9.0` opens a
   # connection over it.
-  telo: ">=0.117.0"
+  telo: ">=0.128.0"
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
   Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
@@ -117,10 +118,7 @@ imports:
       ingestRev: !cel "variables.ingestRev"
       allowLocalRefs: !cel "variables.allowLocalRefs"
       builtinsRef: !cel "variables.builtinsRef"
-ports:
-  http:
-    env: PORT
-    default: 8040
+ports: { http: { env: PORT, default: 8040 } }
 needs:
   # The vector index stores embeddings in pgvector, checked against the live
   # server when the connection starts.
@@ -129,59 +127,34 @@ needs:
     features: [pgvector]
     env: { url: DB_CONNECTION }
 variables:
-  bucketName:
-    env: MANIFEST_BUCKET_NAME
-    type: string
-  bucketEndpoint:
-    env: MANIFEST_BUCKET_ENDPOINT
-    type: string
-  bucketForcePathStyle:
-    env: MANIFEST_BUCKET_FORCE_PATH_STYLE
-    type: boolean
-    default: false
+  bucketName: { env: MANIFEST_BUCKET_NAME, type: string }
+  bucketEndpoint: { env: MANIFEST_BUCKET_ENDPOINT, type: string }
+  bucketForcePathStyle: { env: MANIFEST_BUCKET_FORCE_PATH_STYLE, type: boolean, default: false }
   # Curated first-party ref list, JSON array (e.g. '["oci://ghcr.io/telorun/console","oci://ghcr.io/acme/telo-s3"]').
   # Registered idempotently on boot; the reconcile pass ingests them.
-  seedRefs:
-    env: SEED_REFS
-    type: array
-    default: []
+  seedRefs: { env: SEED_REFS, type: array, default: [] }
   # Whether SEED_REFS may name a `./`-relative module directory, read off this
   # process's own disk from its working directory — how the development stack
   # indexes the repository's unpublished modules. `/register` never accepts one.
-  allowLocalRefs:
-    env: ALLOW_LOCAL_REFS
-    type: boolean
-    default: false
+  allowLocalRefs: { env: ALLOW_LOCAL_REFS, type: boolean, default: false }
   # When the reconcile pass runs. Standard 5-field cron, in UTC. Hourly: a pass
   # reads every version of every tracked module, while a registration schedules
   # its own ingest at once, so only a re-pushed tag waits for it.
-  trackCron:
-    env: TRACK_CRON
-    type: string
-    default: "0 * * * *"
+  trackCron: { env: TRACK_CRON, type: string, default: "0 * * * *" }
   # Disable the periodic reconcile (tests and one-shot ingests drive
   # `Ingest.scheduleDueVersions` directly).
-  trackEnabled:
-    env: TRACK_ENABLED
-    type: boolean
-    default: true
+  trackEnabled: { env: TRACK_ENABLED, type: boolean, default: true }
   # The revision of the ingest pipeline. Raising it makes every tracked version
   # due exactly once — the whole-registry re-ingest control, and what a change to
   # what ingest EXTRACTS is deployed with. Per-version and per-module re-ingest
   # is a write to `version_ingest.ingest_rev` instead; see the README.
-  ingestRev:
-    env: INGEST_REV
-    type: integer
-    default: 9
+  ingestRev: { env: INGEST_REV, type: integer, default: 9 }
   # Where the built-in vocabulary is published — one version per telo release,
   # the module every `Telo.<Kind>` names. Registered on every boot, so a
   # deployment tracks it whatever SEED_REFS says, and the one ref a
   # `Telo.Builtins` root is indexed at: registration is open, so nobody else may
   # publish "built-in" kinds.
-  builtinsRef:
-    env: BUILTINS_REF
-    type: string
-    default: oci://ghcr.io/telorun/telo
+  builtinsRef: { env: BUILTINS_REF, type: string, default: oci://ghcr.io/telorun/telo }
   # The command the origin reads run, as a JSON array: a program and its leading
   # arguments (e.g. '["telo"]'). It must be the telo that runs this hub, so the
   # `telo module manifest --json` contract ingest reads is this hub's own
@@ -194,18 +167,13 @@ variables:
     default: [telo]
   # An OpenAI-compatible /embeddings API: the `/v1` base URL the embedding
   # controller appends `/embeddings` to.
-  embedderBaseUrl:
-    env: EMBEDDER_BASE_URL
-    type: string
+  embedderBaseUrl: { env: EMBEDDER_BASE_URL, type: string }
   # The embedding model and everything that is a property of it. The four move
   # together: the defaults are embeddinggemma-300m's, and a different model
   # needs its own vector length and its own wrappers. Changing any of them is a
   # re-embed of the whole index — see "Changing the embedding model" in the
   # README — never an in-place swap.
-  embedderModel:
-    env: EMBEDDER_MODEL
-    type: string
-    default: embeddinggemma-300m
+  embedderModel: { env: EMBEDDER_MODEL, type: string, default: embeddinggemma-300m }
   # The length of the vectors the model returns, fixed into the vectors table
   # when it is created.
   embedderDimensions:
@@ -230,34 +198,18 @@ variables:
     default: "title: none | text: {text}"
   # Relevance floor for the semantic arm — see the note beside `minScore` in
   # hub-search.yaml, which is where it is applied.
-  vectorMinScore:
-    env: VECTOR_MIN_SCORE
-    type: number
-    default: 0.3
+  vectorMinScore: { env: VECTOR_MIN_SCORE, type: number, default: 0.3 }
   # Per-IP budget for the open /register verb. Registration is unauthenticated
   # and reads a remote origin, so it is the one endpoint that must not be free
   # to hammer.
-  registerRateLimit:
-    env: REGISTER_RATE_LIMIT
-    type: integer
-    default: 5
-  registerRateWindow:
-    env: REGISTER_RATE_WINDOW
-    type: string
-    default: 10m
+  registerRateLimit: { env: REGISTER_RATE_LIMIT, type: integer, default: 5 }
+  registerRateWindow: { env: REGISTER_RATE_WINDOW, type: string, default: 10m }
 secrets:
-  bucketAccessKeyId:
-    env: MANIFEST_BUCKET_ACCESS_KEY_ID
-    type: string
-  bucketSecretAccessKey:
-    env: MANIFEST_BUCKET_SECRET_ACCESS_KEY
-    type: string
+  bucketAccessKeyId: { env: MANIFEST_BUCKET_ACCESS_KEY_ID, type: string }
+  bucketSecretAccessKey: { env: MANIFEST_BUCKET_SECRET_ACCESS_KEY, type: string }
   # The key of an embeddings API that asks for one, sent as a bearer token.
   # Empty for a self-hosted server that takes none: no header is sent at all.
-  embedderApiKey:
-    env: EMBEDDER_API_KEY
-    type: string
-    default: ""
+  embedderApiKey: { env: EMBEDDER_API_KEY, type: string, default: "" }
 targets:
   # Migrations first: every read below and the ingest claim itself are written
   # against tables this creates.
@@ -292,8 +244,7 @@ targets:
 # and studio's read key never drift. Never artifact payloads.
 
 kind: S3.Bucket
-metadata:
-  name: manifestStore
+metadata: { name: manifestStore }
 bucketName: !cel "variables.bucketName"
 endpoint: !cel "variables.bucketEndpoint"
 forcePathStyle: !cel "variables.bucketForcePathStyle"
@@ -306,13 +257,11 @@ createIfMissing: true
 publicRead: true
 ---
 kind: S3.Put
-metadata:
-  name: putManifest
+metadata: { name: putManifest }
 bucketRef: !ref manifestStore
 ---
 kind: S3.Get
-metadata:
-  name: getManifest
+metadata: { name: getManifest }
 bucketRef: !ref manifestStore
 ---
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -321,8 +270,7 @@ bucketRef: !ref manifestStore
 # step's record commit with the step — see hub-ingest.yaml.
 
 kind: Postgres.Connection
-metadata:
-  name: db
+metadata: { name: db }
 access: !ref databaseAccess
 ---
 # ── Semantic search: embedding model + pgvector index ────────────────────────
@@ -340,86 +288,70 @@ access: !ref databaseAccess
 # means. A credential rather than a default header on the client: a client
 # publishes its headers as a reading, a credential's are marked sensitive.
 kind: Telo.Definition
-metadata:
-  name: OptionalBearerToken
+metadata: { name: OptionalBearerToken }
 capability: Telo.Invocable
 extends: HttpClient.Credential
 schema:
   type: object
   additionalProperties: false
   required: [token]
-  properties:
-    token:
-      type: string
-      x-telo-eval: compile
+  properties: { token: { type: string, x-telo-eval: compile } }
 resources:
-  - kind: Run.Value
-    metadata: { name: nothing }
-    value: {}
+  - { kind: Run.Value, metadata: { name: nothing }, value: {} }
 invoke: !ref nothing
 result:
   headers: !cel "self.token == '' ? {} : {'authorization': 'Bearer ' + self.token}"
 ---
 kind: Self.OptionalBearerToken
-metadata:
-  name: embedderCredential
+metadata: { name: embedderCredential }
 token: !cel "secrets.embedderApiKey"
 ---
 # The embedder's endpoint, declared as an account.
 kind: HttpClient.Client
-metadata:
-  name: embedderClient
+metadata: { name: embedderClient }
 baseUrl: !cel "variables.embedderBaseUrl"
 credential: !ref embedderCredential
 ---
 kind: HttpClient.Request
-metadata:
-  name: embedderRequest
+metadata: { name: embedderRequest }
 client: !ref embedderClient
 ---
 kind: OpenAI.EmbeddingModel
-metadata:
-  name: embedder
+metadata: { name: embedder }
 model: !cel "variables.embedderModel"
 request: !ref embedderRequest
 queryPrompt: !cel "variables.embedderQueryPrompt"
 passagePrompt: !cel "variables.embedderPassagePrompt"
 ---
 kind: Embedding.Passage
-metadata:
-  name: embedPassage
+metadata: { name: embedPassage }
 model: !ref embedder
 ---
 kind: Embedding.Query
-metadata:
-  name: embedQuery
+metadata: { name: embedQuery }
 model: !ref embedder
 ---
 # The vectors table (`resource_vectors`) is provisioned by this Store on init —
 # CREATE EXTENSION vector + table + HNSW index. The vector length is fixed at
 # creation: an existing table keeps the length it was created with.
 kind: VectorStorePgvector.Store
-metadata:
-  name: vectorIndex
+metadata: { name: vectorIndex }
 connection: !ref db
 dimensions: !cel "variables.embedderDimensions"
 metric: cosine
 table: resource_vectors
 ---
 kind: VectorStore.Record
-metadata:
-  name: vectorUpsert
+metadata: { name: vectorUpsert }
 store: !ref vectorIndex
 ---
 kind: VectorStore.Match
-metadata:
-  name: vectorMatch
+metadata: { name: vectorMatch }
 store: !ref vectorIndex
 topK: 50
 ---
 kind: VectorStore.Removal
-metadata:
-  name: vectorRemove
+metadata: { name: vectorRemove }
 store: !ref vectorIndex
 ---
 # ── Rate limiting (open /register verb) ──────────────────────────────────────
@@ -429,12 +361,10 @@ store: !ref vectorIndex
 # it returns a verdict and the caller maps it to a 429.
 
 kind: CacheMemory.Store
-metadata:
-  name: rateLimitCounters
+metadata: { name: rateLimitCounters }
 ---
 kind: RateLimit.Guard
-metadata:
-  name: registerRateLimit
+metadata: { name: registerRateLimit }
 store: !ref rateLimitCounters
 limit: !cel "variables.registerRateLimit"
 window: !cel "variables.registerRateWindow"
@@ -444,16 +374,14 @@ window: !cel "variables.registerRateWindow"
 # verbs — nothing here speaks OCI or the registry protocol directly.
 
 kind: Shell.LocalHost
-metadata:
-  name: localShell
+metadata: { name: localShell }
 ---
 # ── Boot and background work ─────────────────────────────────────────────────
 
 # The curated seed list: rows only. What ingests them is the reconcile pass,
 # which is also what re-ingests them when their content moves.
 kind: Run.Iteration
-metadata:
-  name: seedModules
+metadata: { name: seedModules }
 collection: !cel "variables.seedRefs"
 steps:
   - name: register
@@ -465,8 +393,7 @@ steps:
 # calendar instant rather than "an interval after whatever the last pass took",
 # and a pass that overruns does not push every later one along with it.
 kind: Scheduler.Cron
-metadata:
-  name: reconcile
+metadata: { name: reconcile }
 cron: !cel "variables.trackCron"
 invoke: !ref Ingest.scheduleDueVersions
 ---
@@ -474,8 +401,7 @@ invoke: !ref Ingest.scheduleDueVersions
 # and /register schedule — a scheduled run is admitted immediately and executed
 # here, which is what keeps the request path free of the work.
 kind: Durable.Resumer
-metadata:
-  name: resumer
+metadata: { name: resumer }
 workflow: !ref Ingest.ingestVersion
 interval: 2s
 ---
@@ -485,13 +411,10 @@ interval: 2s
 # install/run stay origin-direct and never touch this app.
 
 kind: Http.Server
-metadata:
-  name: hubServer
+metadata: { name: hubServer }
 listen:
   port: !cel "ports.http"
-cors:
-  origin: "*"
-  methods: "GET,POST,OPTIONS"
+cors: { origin: "*", methods: "GET,POST,OPTIONS" }
 openapi:
   info:
     title: Telo Hub
@@ -510,31 +433,17 @@ mounts:
     mount: !ref publicApi
 ---
 kind: Http.Api
-metadata:
-  name: health
+metadata: { name: health }
 routes:
-  - request:
-      path: /readiness
-      method: GET
+  - request: { path: /readiness, method: GET }
     returns:
-      - status: 200
-        content:
-          application/json:
-            body:
-              status: "ok"
-  - request:
-      path: /liveness
-      method: GET
+      - { status: 200, content: { application/json: { body: { status: "ok" } } } }
+  - request: { path: /liveness, method: GET }
     returns:
-      - status: 200
-        content:
-          application/json:
-            body:
-              status: "ok"
+      - { status: 200, content: { application/json: { body: { status: "ok" } } } }
 ---
 kind: Http.Api
-metadata:
-  name: publicApi
+metadata: { name: publicApi }
 routes:
   # Search and browse are ONE surface: `category` narrows the same query, and an
   # empty `q` degrades to an unranked listing, so `?q=&category=storage` browses
@@ -1037,10 +946,7 @@ routes:
       # next move is the same either way, and distinguishing them would leak
       # which refs are tracked.
       - status: 404
-        content:
-          application/json:
-            body:
-              error: Module not tracked
+        content: { application/json: { body: { error: Module not tracked } } }
 
   # The cached `telo.yaml` of one version, as text — the HTTP twin of the
   # `get_module_manifest` tool, on the same handler. One 404 for an unknown ref
@@ -1070,10 +976,7 @@ routes:
     catches:
       - status: 404
         when: !cel "error.code == 'ERR_NOT_FOUND'"
-        content:
-          application/json:
-            body:
-              error: Module not tracked
+        content: { application/json: { body: { error: Module not tracked } } }
       - status: 500
         content:
           application/json:
@@ -1087,8 +990,7 @@ routes:
       schema:
         query:
           type: object
-          properties:
-            ref: { type: string, description: "Module ref exactly as registered." }
+          properties: { ref: { type: string, description: "Module ref exactly as registered." } }
           required: [ref]
     handler: !ref Catalog.moduleVersionList
     inputs:
@@ -1102,10 +1004,7 @@ routes:
               ref: !cel "request.query.ref"
               versions: !cel "result.versions"
       - status: 404
-        content:
-          application/json:
-            body:
-              error: Module not tracked
+        content: { application/json: { body: { error: Module not tracked } } }
 
   # Open, unauthenticated self-service registration (the reader's browser on
   # hub.telo.run, served by apps/hub-web, POSTs here cross-origin). Validates
@@ -1162,10 +1061,7 @@ routes:
       # host paths or upstream detail.
       - status: 400
         when: !cel "error.code == 'ERR_PARSE_FAILED'"
-        content:
-          application/json:
-            body:
-              error: could not read module metadata
+        content: { application/json: { body: { error: could not read module metadata } } }
       - status: 500
         content:
           application/json:
@@ -1214,13 +1110,8 @@ routes:
               error: !cel "result.error"
               nextAttemptAt: !cel "result.nextAttemptAt"
 
-  - request:
-      path: /health
-      method: GET
-    handler:
-      kind: Run.Value
-      value:
-        status: ok
+  - request: { path: /health, method: GET }
+    handler: { kind: Run.Value, value: { status: ok } }
     returns:
       - status: 200
         content:
@@ -1231,8 +1122,7 @@ routes:
 # ── MCP surface ───────────────────────────────────────────────────────────────
 
 kind: Mcp.Tools
-metadata:
-  name: HubTools
+metadata: { name: HubTools }
 entries:
   # search_resources — the unit an LLM composes with is a resource kind it can
   # import, not a package. Each hit carries the kind suffix and the exact
@@ -1510,9 +1400,7 @@ entries:
           text: !cel "result.text"
     catches:
       - when: !cel "error.code == 'ERR_NOT_FOUND'"
-        error:
-          code: -32004
-          message: Module not found
+        error: { code: -32004, message: Module not found }
       - when: !cel "error.code == 'ERR_INVALID_REFERENCE' || error.code == 'ERR_INVALID_RESPONSE'"
         error:
           code: -32603
@@ -1753,8 +1641,7 @@ entries:
           text: !cel "json({'query': request.arguments.query, 'refs': result.refs})"
 ---
 kind: Mcp.HttpEndpoint
-metadata:
-  name: mcpHttp
+metadata: { name: mcpHttp }
 serverInfo:
   name: telo-hub
   version: !cel "module.version"

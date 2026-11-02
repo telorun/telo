@@ -36,7 +36,7 @@ kind: Assert.Manifest
 metadata: { name: malformedFeed }
 source: ./__fixtures__/malformed-feed/telo.yaml
 expect:
-  runFails: "Run.Sequence/feed: result do not satisfy the declared outputType"
+  runFails: "Telo.Sequence/feed: result do not satisfy the declared outputType"
 ---
 kind: Assert.Manifest
 metadata: { name: misspelledField }

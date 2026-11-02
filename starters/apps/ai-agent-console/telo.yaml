@@ -25,7 +25,8 @@ metadata:
         OPENAI_BASE_URL=http://localhost:11434/v1 telo . --model llama3.2
 requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   OpenAI: oci://ghcr.io/telorun/openai@0.18.0#sha256-t1cBMD7FMjIAOEAs76SSKy-YB40ozm8S6jwdBG9z08Q
   Ai: oci://ghcr.io/telorun/ai@0.32.0#sha256-wFl0WwbqZ9Nq6-N2Y18VePWibYUwNKJs2pu6d5_0Zcc
@@ -37,10 +38,7 @@ imports:
 targets:
   - !ref initSchema
   - !ref chatLoop
-secrets:
-  openaiApiKey:
-    env: OPENAI_API_KEY
-    type: string
+secrets: { openaiApiKey: { env: OPENAI_API_KEY, type: string } }
 variables:
   model:
     env: OPENAI_MODEL
@@ -53,10 +51,7 @@ variables:
     type: string
     default: https://api.openai.com/v1
     description: Any OpenAI-compatible endpoint.
-  weatherBaseUrl:
-    env: WEATHER_BASE_URL
-    type: string
-    default: https://api.open-meteo.com
+  weatherBaseUrl: { env: WEATHER_BASE_URL, type: string, default: https://api.open-meteo.com }
   historyFile:
     env: HISTORY_FILE
     arg: history-file
@@ -141,10 +136,7 @@ tools:
         utc: !cel "nowIso()"
     name: current_time
     description: The current date and time, in UTC.
-    parameters:
-      type: object
-      additionalProperties: false
-      properties: {}
+    parameters: { type: object, additionalProperties: false, properties: {} }
 ---
 kind: Ai.Agent
 metadata: { name: assistant }
@@ -174,13 +166,11 @@ outputType:
         items:
           type: object
           required: [ role, content ]
-          properties:
-            role: { type: string }
-            content: { type: string }
+          properties: { role: { type: string }, content: { type: string } }
 ---
 # One turn: remember what was said, ask with the whole history, remember the
 # answer. A failure leaves the question stored, so asking again retries it.
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: turn }
 inputType:
   kind: Telo.JsonSchema
@@ -188,8 +178,7 @@ inputType:
     type: object
     additionalProperties: false
     required: [ message ]
-    properties:
-      message: { type: string }
+    properties: { message: { type: string } }
 steps:
   - name: insertUser
     invoke: !ref exec
@@ -198,9 +187,7 @@ steps:
       bindings: [ "user", !cel "inputs.message" ]
   - name: history
     invoke: !ref readHistory
-    inputs:
-      sql: "SELECT role, content FROM messages ORDER BY id ASC"
-      bindings: []
+    inputs: { sql: "SELECT role, content FROM messages ORDER BY id ASC", bindings: [] }
   - name: ask
     invoke: !ref assistant
     inputs:
@@ -213,13 +200,12 @@ steps:
 outputs:
   text: !cel "steps.ask.result.text"
 ---
-kind: Run.Sequence
+kind: Telo.Sequence
 metadata: { name: chatLoop }
 steps:
   - name: read
     invoke: !ref Console.readLine
-    inputs:
-      prompt: "{cyan.bold you} › "
+    inputs: { prompt: "{cyan.bold you} › " }
   - name: converse
     while: !cel "trim(steps.read.result.value) != '/exit'"
     do:
@@ -229,9 +215,7 @@ steps:
           /clear:
             - name: forget
               invoke: !ref exec
-              inputs:
-                sql: "DELETE FROM messages"
-                bindings: []
+              inputs: { sql: "DELETE FROM messages", bindings: [] }
             - name: forgotten
               invoke: !ref Console.writeLine
               inputs:
@@ -239,9 +223,7 @@ steps:
           /history:
             - name: remembered
               invoke: !ref readHistory
-              inputs:
-                sql: "SELECT role, content FROM messages ORDER BY id ASC"
-                bindings: []
+              inputs: { sql: "SELECT role, content FROM messages ORDER BY id ASC", bindings: [] }
             - name: counted
               invoke: !ref Console.writeLine
               inputs:
@@ -264,5 +246,4 @@ steps:
                   output: !cel "'{red error} › ' + error.code + ': ' + error.message"
       - name: read
         invoke: !ref Console.readLine
-        inputs:
-          prompt: "{cyan.bold you} › "
+        inputs: { prompt: "{cyan.bold you} › " }

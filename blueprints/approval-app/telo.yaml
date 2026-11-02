@@ -20,17 +20,16 @@ metadata:
 requires:
   # 0.121.0: `journal` declares `entry: directory`, which 0.120.1 rejects as
   # X_TELO_TYPE_ARGUMENT_UNKNOWN (verified by execution).
-  telo: ">=0.121.0"
+  # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
+  telo: ">=0.128.0"
 imports:
   # Pinned rather than relative: a blueprint publishes outside `modules/`, so a
   # relative path would name a module nobody pushes.
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
   DurableLocal: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
   Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.1#sha256-9g3_fiv6_tyQd_YOzwfA_T1fobtK9u_s3KFHMELpI7Y
-exports:
-  kinds: [App]
+exports: { kinds: [App] }
 ---
 kind: Telo.Definition
 metadata:
@@ -73,8 +72,7 @@ schema:
         properties:
           request:
             type: object
-            properties:
-              body: { type: object, additionalProperties: true }
+            properties: { body: { type: object, additionalProperties: true } }
     timeout:
       title: Deadline
       description: >-
@@ -97,17 +95,13 @@ schema:
       description: >-
         Runs once a request is approved. Receives `id`, `request`, `decidedBy`
         and `note`.
-      x-telo-ref:
-        kind: Telo.Executable
-        use: call
+      x-telo-ref: { kind: Telo.Executable, use: call }
     onRejected:
       title: On rejected
       description: >-
         Runs once a request is rejected or its deadline passes. Receives `id`,
         `request`, `decidedBy` and `note`.
-      x-telo-ref:
-        kind: Telo.Executable
-        use: call
+      x-telo-ref: { kind: Telo.Executable, use: call }
 resources:
   - kind: Journal.Journal
     metadata: { name: journal }
@@ -144,8 +138,7 @@ resources:
       - name: review
         if: !cel "inputs.autoApproved"
         then:
-          - name: automatic
-            value: { approved: true, decidedBy: policy, note: "" }
+          - { name: automatic, value: { approved: true, decidedBy: policy, note: "" } }
         else:
           - name: reviewed
             try:
@@ -202,7 +195,7 @@ resources:
         # Starts the run and answers at once: the body is dispatched detached, so
         # the caller gets the id back before any step has run.
         handler:
-          kind: Run.Sequence
+          kind: Telo.Sequence
           inputType:
             kind: Telo.JsonSchema
             schema:
@@ -233,11 +226,7 @@ resources:
           path: /requests/{id}
           method: GET
           schema:
-            params:
-              type: object
-              required: [id]
-              properties:
-                id: { type: string }
+            params: { type: object, required: [id], properties: { id: { type: string } } }
         summary: Where a request stands, and its decision once there is one.
         inputs:
           run: !cel "request.params.id"
@@ -247,9 +236,7 @@ resources:
         returns:
           - status: 404
             when: !cel "result.status == 'unknown'"
-            content:
-              application/json:
-                body: { error: No such request. }
+            content: { application/json: { body: { error: No such request. } } }
           - status: 200
             content:
               application/json:
@@ -265,18 +252,12 @@ resources:
           path: /requests/{id}/approve
           method: POST
           schema:
-            params:
-              type: object
-              required: [id]
-              properties:
-                id: { type: string }
+            params: { type: object, required: [id], properties: { id: { type: string } } }
             body: &decisionBody
               type: object
               additionalProperties: false
               required: [decidedBy]
-              properties:
-                decidedBy: { type: string, minLength: 1 }
-                note: { type: string }
+              properties: { decidedBy: { type: string, minLength: 1 }, note: { type: string } }
         summary: Approve a pending request.
         inputs:
           id: !cel "request.params.id"
@@ -297,22 +278,14 @@ resources:
           - status: 409
             when: !cel "!result.delivered"
             content:
-              application/json:
-                body: { error: The request is not waiting for a decision. }
-          - status: 202
-            content:
-              application/json:
-                body: { delivered: true }
+              application/json: { body: { error: The request is not waiting for a decision. } }
+          - { status: 202, content: { application/json: { body: { delivered: true } } } }
 
       - request:
           path: /requests/{id}/reject
           method: POST
           schema:
-            params:
-              type: object
-              required: [id]
-              properties:
-                id: { type: string }
+            params: { type: object, required: [id], properties: { id: { type: string } } }
             body: *decisionBody
         summary: Reject a pending request.
         inputs:
