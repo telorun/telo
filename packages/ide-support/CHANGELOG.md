@@ -1,5 +1,18 @@
 # @telorun/ide-support
 
+## 0.127.0
+
+### Minor Changes
+
+- 614124e: Add `telo format`: rewrites manifests to the canonical layout (scalar lists and small scalar maps in flow style, everything else untouched), with `--check` for CI. The language server answers document formatting with the same engine and the VS Code extension turns format-on-save on for Telo manifests.
+
+### Patch Changes
+
+- Updated dependencies [614124e]
+  - @telorun/analyzer@0.127.0
+  - @telorun/cel@0.127.0
+  - @telorun/templating@0.127.0
+
 ## 0.126.0
 
 ### Minor Changes
