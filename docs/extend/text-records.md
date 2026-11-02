@@ -244,36 +244,31 @@ they are looked up in a catalog by their words, but reach no controller as a
 record. `x-telo-text-context: "<context>"` on a schema node gives that node's
 texts a context.
 
-## Catalog sets
+## Application translations
 
-A kind that looks texts up in several catalogs — a translator listing a base
-catalog and a language pack — marks where they are gathered with
-`x-telo-text-catalog-set: true` on a node of its `schema:`:
+An Application lists its translations once, in `translations:`:
 
 ```yaml
-schema:
-  type: object
-  properties:
-    catalogs:
-      type: array
-      x-telo-text-catalog-set: true
-      items:
-        x-telo-ref: { kind: Self.Catalog, use: dependency }
+lang: en
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: pl
+      texts:
+        - { text: "Save", translation: "Zapisz" }
 ```
 
-The catalogs at and beneath the node form one lookup set: every `TextCatalog`
-written there, and the catalogs in the configuration of each resource a
-reference there names — continuing through the catalog sets that resource's own
-kind marks. A resource reached twice is one member. Across the set, one text and
-context may be translated once per language: a duplicate — a nested plural source
-and the plain pattern its `other` cases lead to are one text, `{ $n }` and `{$n}`
-one placeholder, `pl` and `PL` one language — is refused at the reference (or the
-inline catalog) bringing in the later one, by `telo check` — for a resource
-declared at the top level, in a `with:` scope or as an entry of a template body,
-where what a consumer forwards with a bare `self.<path>` joins what the entry
-writes and is reported where the consumer wrote it — and again before your
-controller is created. The mark must be `true`, must reach a catalog or a
-reference slot, and must not sit inside another catalog set.
+Each entry is a `!ref` or an inline `Telo.Translations` resource, resolved at
+load; a Library writing the block is refused. `Telo.TextTranslations` matches by
+source text and context. The served languages are the Application's `lang:` plus
+every catalog's `lang`, and every text of the application, an imported
+library's included, is translated through this one set.
+
+Per language the catalogs layer in listed order and a later one wins, per text
+and context. A text and context translated twice within one catalog is refused
+(a nested plural source and the plain pattern its `other` cases lead to are one
+text, `{ $n }` and `{$n}` one placeholder, `pl` and `PL` one language); across
+catalogs it is an override.
 
 ## What is checked
 
@@ -286,12 +281,11 @@ reference slot, and must not sit inside another catalog set.
 | `MESSAGE_PLACEHOLDER_UNBOUND` | a message's values lack a name it reads, or it reads a name its slot's `x-telo-text-values` does not declare, or one its `x-telo-text-values-from` schema does not require |
 | `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` | a value is neither a string nor a number, or a selector's is not a number |
 | `MESSAGE_ENTRY_COMPUTED` | a catalog holds an expression, or an expression produces one |
-| `MESSAGE_ENTRY_DUPLICATE` | a catalog, or a catalog set, translates one text and context twice in one language |
+| `MESSAGE_ENTRY_DUPLICATE` | one catalog translates one text and context twice in one language |
 | `TEXT_ARGUMENT_COMPUTED` | a `Text` parameter's argument is an expression, or an expression at a text-or-record slot is not typed as a record |
 | `TEXT_VALUES_FOR_INVALID` | a values pairing names nothing, no `Text`, or a `Text` already paired |
 | `TEXT_SLOT_ACCESSOR` | a kind types a text at or beneath an accessor field |
 | `TEXT_VALUES_INVALID` | `x-telo-text-values` on a node that is no text, a value schema other than `string` / `integer` / `number`, or on a text a values pairing binds; `x-telo-text-values-from` on a node that is no text, that is no relative pointer, beside `x-telo-text-values`, or naming a sibling the object does not declare |
-| `TEXT_CATALOG_SET_INVALID` | a catalog set marks a node reaching no catalog and no reference, or sits inside another |
 | `MESSAGE_TEXT_UNUSED` (warning) | a catalog entry matches no text its module's imports show |
 | `TEXT_CONTEXT_MISPLACED` (warning) | `x-telo-text-context` where nothing reads it |
 
@@ -301,7 +295,7 @@ controller evaluates them, and for a dependency's own texts, which `telo check`
 of your application does not judge.
 
 The Rust kernel builds no text records for a resource yet, and refuses a resource
-whose kind holds a `Text` or marks a catalog set. It does read a kind's
+whose kind holds a `Text`, and `translations:`. It does read a kind's
 `throws.codes.*.displayMessage` — judged when the kind registers, with the same
 codes — and attaches it, and the built-in display messages, where an error leaves
 a dispatch.

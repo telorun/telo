@@ -17,6 +17,7 @@
     "@scalar/core": "0.3.36",
     "@scalar/openapi-parser": "0.24.6",
     "@sinclair/typebox": "^0.34.48",
+    "@telorun/cel": "workspace:*",
     "@telorun/http-dispatch": "workspace:*",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1",

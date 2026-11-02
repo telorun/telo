@@ -26,27 +26,45 @@ lang: en
 # `http-server`, `sql`, `sqlite`, `font` and `i18n`; `telo upgrade --pin-local`
 # pins them again once they ship.
 imports:
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
-  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
-  Crud: oci://ghcr.io/telorun/crud@0.33.0#sha256-8uhIx7xGju4Jg0_LArW_9OdYPIc-NF-ndT6d2_sQHBM
-  CrudUi: oci://ghcr.io/telorun/crud-ui@0.2.0#sha256-epjhcgiT_rkY86-Ef3B4E65LLEBj3sTWPu5hzeEUrdA
-  DataModel: oci://ghcr.io/telorun/data-model@0.2.0#sha256-rxGXii0Db-DcSJY0MUEY1KzbklXN15tLwKwK93z3AHg
-  Font: oci://ghcr.io/telorun/font@0.3.0#sha256-ReIjSLEuqbFqfGcX7bFGtihU50x7dwld7-ax2UDtXTw
-  I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
-  Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
-  UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
-  Radix: oci://ghcr.io/telorun/ui-react-radix@0.5.0#sha256-ACs2HwX3OnEuXIee99qjtsMPioz4YyyHYqDrDZa5ISo
-  UiLucide: oci://ghcr.io/telorun/ui-lucide@0.5.0#sha256-mOv_heEU5X2QKVNh89COQ0e_pZWJ1MzqoMZeN1jkKWQ
+  Run: ../../modules/run
+  Http: ../../modules/http-server
+  Sql: ../../modules/sql
+  SQLite: ../../modules/sqlite
+  Crud: ../../modules/crud
+  CrudUi: ../../modules/crud-ui
+  DataModel: ../../modules/data-model
+  Font: ../../modules/font
+  I18n: ../../modules/i18n
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
+  Radix: ../../modules/ui-react-radix
+  UiLucide: ../../modules/ui-lucide
   # Two libraries of the example's own: its browser components, and the theme
   # the `/brand` mount draws with.
   Components: ./components
   Brand: ./brand
-# The database, the routes crud does not give, the translator with one catalog
-# file per language, and one file per page holding the view every application
+# The database, the routes crud does not give, the translations with one file
+# per language, and one file per page holding the view every application
 # places there.
-include: [./data.yaml, ./api.yaml, ./translator.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-themes.yaml]
+include: [./data.yaml, ./api.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-themes.yaml]
+# The texts are written in English, the module's `lang`, so English has no
+# catalog.
+translations:
+  catalogs:
+    - !ref german
+    - !ref spanish
+    - !ref french
+    - !ref italian
+    - !ref dutch
+    - !ref polish
+    - !ref portuguese
+    - !ref turkish
+    - !ref russian
+    - !ref ukrainian
+    - !ref hindi
+    - !ref japanese
+    - !ref korean
+    - !ref chinese
 targets:
   - !ref migrate
   - !ref server
@@ -95,22 +113,15 @@ kind: Ui.View
 metadata: { name: logo }
 content: { type: image, src: /files/mark.svg, alt: UI showcase logo }
 ---
-# The language a request is answered in, chosen from the translator's catalogs.
-kind: I18n.Negotiator
-metadata: { name: language }
-translator: !ref t
-default: en
----
 # The showcase under the built-in look. Its brand follows the request: with the
 # `showcase-brand=acme` cookie (set by `/api/brand?set=acme`) the Acme tokens
 # apply, and with none the theme's own values do. Two pages carry nodes of
 # their own beside the shared view — the per-request nodes and the page's
 # query — because a view is resolved once at start and reads neither.
 #
-# Each of the four applications is answered in the language
-# `Self.chosenLanguage` picks — the `showcase-lang` cookie (set by
-# `/api/lang?set=pl` under its mount), else the Accept-Language header — and
-# draws the same header: the mark, then two menus, Language with the language
+# Each of the four applications is answered in the language the server
+# negotiates — the `showcase-lang` cookie (set by `/api/lang?set=pl` under its
+# mount), else the Accept-Language header — and draws the same header: the mark, then two menus, Language with the language
 # in effect marked, and Theme with the four mounts' home pages — another
 # mount's by an absolute address built from the request's `Self.origin`, since an app-relative
 # link resolves under the mount it is drawn in — and this mount marked. This
@@ -120,10 +131,6 @@ kind: UiReact.App
 metadata: { name: showcase }
 title: UI showcase
 words: !ref Ui.words
-translator: !ref t
-lang: !cel >-
-  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-  'accept-language' in request.headers ? request.headers['accept-language'] : '')
 theme: !ref UiReact.defaultTheme
 tokens:
   - when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
@@ -148,93 +155,63 @@ header:
         - type: link
           text: English
           href: "/api/lang?set=en"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+          style: !cel "request.lang == 'en' ? ['strong'] : []"
         - type: link
           text: Deutsch
           href: "/api/lang?set=de"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+          style: !cel "request.lang == 'de' ? ['strong'] : []"
         - type: link
           text: Español
           href: "/api/lang?set=es"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+          style: !cel "request.lang == 'es' ? ['strong'] : []"
         - type: link
           text: Français
           href: "/api/lang?set=fr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+          style: !cel "request.lang == 'fr' ? ['strong'] : []"
         - type: link
           text: Italiano
           href: "/api/lang?set=it"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+          style: !cel "request.lang == 'it' ? ['strong'] : []"
         - type: link
           text: Nederlands
           href: "/api/lang?set=nl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+          style: !cel "request.lang == 'nl' ? ['strong'] : []"
         - type: link
           text: Polski
           href: "/api/lang?set=pl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+          style: !cel "request.lang == 'pl' ? ['strong'] : []"
         - type: link
           text: Português
           href: "/api/lang?set=pt"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+          style: !cel "request.lang == 'pt' ? ['strong'] : []"
         - type: link
           text: Türkçe
           href: "/api/lang?set=tr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+          style: !cel "request.lang == 'tr' ? ['strong'] : []"
         - type: link
           text: Русский
           href: "/api/lang?set=ru"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+          style: !cel "request.lang == 'ru' ? ['strong'] : []"
         - type: link
           text: Українська
           href: "/api/lang?set=uk"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+          style: !cel "request.lang == 'uk' ? ['strong'] : []"
         - type: link
           text: हिन्दी
           href: "/api/lang?set=hi"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+          style: !cel "request.lang == 'hi' ? ['strong'] : []"
         - type: link
           text: 日本語
           href: "/api/lang?set=ja"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+          style: !cel "request.lang == 'ja' ? ['strong'] : []"
         - type: link
           text: 한국어
           href: "/api/lang?set=ko"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+          style: !cel "request.lang == 'ko' ? ['strong'] : []"
         - type: link
           text: 中文
           href: "/api/lang?set=zh"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
+          style: !cel "request.lang == 'zh' ? ['strong'] : []"
     - type: menu
       text: Theme
       items:
@@ -312,10 +289,10 @@ children:
       - type: text
         style: accent
         text: Your browser asked for Polish.
-        when: !cel "'accept-language' in request.headers && Self.language(request.headers['accept-language']) == 'pl'"
+        when: !cel "request.lang == 'pl'"
       - type: text
         text: Your browser did not ask for Polish.
-        when: !cel "!('accept-language' in request.headers) || Self.language(request.headers['accept-language']) != 'pl'"
+        when: !cel "request.lang != 'pl'"
       - type: badge
         style: accent
         text: The Acme brand is on.
@@ -391,10 +368,6 @@ kind: UiReact.App
 metadata: { name: radixShowcase }
 title: UI showcase — Radix
 words: !ref Ui.words
-translator: !ref t
-lang: !cel >-
-  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-  'accept-language' in request.headers ? request.headers['accept-language'] : '')
 theme: !ref Radix.theme
 compactBelow: 48rem
 header:
@@ -407,93 +380,63 @@ header:
         - type: link
           text: English
           href: "/api/lang?set=en"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+          style: !cel "request.lang == 'en' ? ['strong'] : []"
         - type: link
           text: Deutsch
           href: "/api/lang?set=de"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+          style: !cel "request.lang == 'de' ? ['strong'] : []"
         - type: link
           text: Español
           href: "/api/lang?set=es"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+          style: !cel "request.lang == 'es' ? ['strong'] : []"
         - type: link
           text: Français
           href: "/api/lang?set=fr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+          style: !cel "request.lang == 'fr' ? ['strong'] : []"
         - type: link
           text: Italiano
           href: "/api/lang?set=it"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+          style: !cel "request.lang == 'it' ? ['strong'] : []"
         - type: link
           text: Nederlands
           href: "/api/lang?set=nl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+          style: !cel "request.lang == 'nl' ? ['strong'] : []"
         - type: link
           text: Polski
           href: "/api/lang?set=pl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+          style: !cel "request.lang == 'pl' ? ['strong'] : []"
         - type: link
           text: Português
           href: "/api/lang?set=pt"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+          style: !cel "request.lang == 'pt' ? ['strong'] : []"
         - type: link
           text: Türkçe
           href: "/api/lang?set=tr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+          style: !cel "request.lang == 'tr' ? ['strong'] : []"
         - type: link
           text: Русский
           href: "/api/lang?set=ru"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+          style: !cel "request.lang == 'ru' ? ['strong'] : []"
         - type: link
           text: Українська
           href: "/api/lang?set=uk"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+          style: !cel "request.lang == 'uk' ? ['strong'] : []"
         - type: link
           text: हिन्दी
           href: "/api/lang?set=hi"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+          style: !cel "request.lang == 'hi' ? ['strong'] : []"
         - type: link
           text: 日本語
           href: "/api/lang?set=ja"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+          style: !cel "request.lang == 'ja' ? ['strong'] : []"
         - type: link
           text: 한국어
           href: "/api/lang?set=ko"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+          style: !cel "request.lang == 'ko' ? ['strong'] : []"
         - type: link
           text: 中文
           href: "/api/lang?set=zh"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
+          style: !cel "request.lang == 'zh' ? ['strong'] : []"
     - type: menu
       text: Theme
       items:
@@ -552,10 +495,6 @@ kind: UiReact.App
 metadata: { name: brandShowcase }
 title: UI showcase — brand
 words: !ref Ui.words
-translator: !ref t
-lang: !cel >-
-  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-  'accept-language' in request.headers ? request.headers['accept-language'] : '')
 theme: !ref Brand.theme
 tokens:
   kind: Ui.DesignTokens
@@ -572,93 +511,63 @@ header:
         - type: link
           text: English
           href: "/api/lang?set=en"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+          style: !cel "request.lang == 'en' ? ['strong'] : []"
         - type: link
           text: Deutsch
           href: "/api/lang?set=de"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+          style: !cel "request.lang == 'de' ? ['strong'] : []"
         - type: link
           text: Español
           href: "/api/lang?set=es"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+          style: !cel "request.lang == 'es' ? ['strong'] : []"
         - type: link
           text: Français
           href: "/api/lang?set=fr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+          style: !cel "request.lang == 'fr' ? ['strong'] : []"
         - type: link
           text: Italiano
           href: "/api/lang?set=it"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+          style: !cel "request.lang == 'it' ? ['strong'] : []"
         - type: link
           text: Nederlands
           href: "/api/lang?set=nl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+          style: !cel "request.lang == 'nl' ? ['strong'] : []"
         - type: link
           text: Polski
           href: "/api/lang?set=pl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+          style: !cel "request.lang == 'pl' ? ['strong'] : []"
         - type: link
           text: Português
           href: "/api/lang?set=pt"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+          style: !cel "request.lang == 'pt' ? ['strong'] : []"
         - type: link
           text: Türkçe
           href: "/api/lang?set=tr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+          style: !cel "request.lang == 'tr' ? ['strong'] : []"
         - type: link
           text: Русский
           href: "/api/lang?set=ru"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+          style: !cel "request.lang == 'ru' ? ['strong'] : []"
         - type: link
           text: Українська
           href: "/api/lang?set=uk"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+          style: !cel "request.lang == 'uk' ? ['strong'] : []"
         - type: link
           text: हिन्दी
           href: "/api/lang?set=hi"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+          style: !cel "request.lang == 'hi' ? ['strong'] : []"
         - type: link
           text: 日本語
           href: "/api/lang?set=ja"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+          style: !cel "request.lang == 'ja' ? ['strong'] : []"
         - type: link
           text: 한국어
           href: "/api/lang?set=ko"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+          style: !cel "request.lang == 'ko' ? ['strong'] : []"
         - type: link
           text: 中文
           href: "/api/lang?set=zh"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
+          style: !cel "request.lang == 'zh' ? ['strong'] : []"
     - type: menu
       text: Theme
       items:
@@ -719,10 +628,6 @@ kind: UiReact.App
 metadata: { name: sidebarShowcase }
 title: UI showcase — sidebar
 words: !ref Ui.words
-translator: !ref t
-lang: !cel >-
-  Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-  'accept-language' in request.headers ? request.headers['accept-language'] : '')
 theme: !ref UiReact.defaultTheme
 stylesheets:
   - !module-path ./showcase.css
@@ -738,93 +643,63 @@ header:
         - type: link
           text: English
           href: "/api/lang?set=en"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'en' ? ['strong'] : []
+          style: !cel "request.lang == 'en' ? ['strong'] : []"
         - type: link
           text: Deutsch
           href: "/api/lang?set=de"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'de' ? ['strong'] : []
+          style: !cel "request.lang == 'de' ? ['strong'] : []"
         - type: link
           text: Español
           href: "/api/lang?set=es"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'es' ? ['strong'] : []
+          style: !cel "request.lang == 'es' ? ['strong'] : []"
         - type: link
           text: Français
           href: "/api/lang?set=fr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'fr' ? ['strong'] : []
+          style: !cel "request.lang == 'fr' ? ['strong'] : []"
         - type: link
           text: Italiano
           href: "/api/lang?set=it"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'it' ? ['strong'] : []
+          style: !cel "request.lang == 'it' ? ['strong'] : []"
         - type: link
           text: Nederlands
           href: "/api/lang?set=nl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'nl' ? ['strong'] : []
+          style: !cel "request.lang == 'nl' ? ['strong'] : []"
         - type: link
           text: Polski
           href: "/api/lang?set=pl"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pl' ? ['strong'] : []
+          style: !cel "request.lang == 'pl' ? ['strong'] : []"
         - type: link
           text: Português
           href: "/api/lang?set=pt"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'pt' ? ['strong'] : []
+          style: !cel "request.lang == 'pt' ? ['strong'] : []"
         - type: link
           text: Türkçe
           href: "/api/lang?set=tr"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'tr' ? ['strong'] : []
+          style: !cel "request.lang == 'tr' ? ['strong'] : []"
         - type: link
           text: Русский
           href: "/api/lang?set=ru"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ru' ? ['strong'] : []
+          style: !cel "request.lang == 'ru' ? ['strong'] : []"
         - type: link
           text: Українська
           href: "/api/lang?set=uk"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'uk' ? ['strong'] : []
+          style: !cel "request.lang == 'uk' ? ['strong'] : []"
         - type: link
           text: हिन्दी
           href: "/api/lang?set=hi"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'hi' ? ['strong'] : []
+          style: !cel "request.lang == 'hi' ? ['strong'] : []"
         - type: link
           text: 日本語
           href: "/api/lang?set=ja"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ja' ? ['strong'] : []
+          style: !cel "request.lang == 'ja' ? ['strong'] : []"
         - type: link
           text: 한국어
           href: "/api/lang?set=ko"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'ko' ? ['strong'] : []
+          style: !cel "request.lang == 'ko' ? ['strong'] : []"
         - type: link
           text: 中文
           href: "/api/lang?set=zh"
-          style: !cel >-
-            Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-            'accept-language' in request.headers ? request.headers['accept-language'] : '') == 'zh' ? ['strong'] : []
+          style: !cel "request.lang == 'zh' ? ['strong'] : []"
     - type: menu
       text: Theme
       items:
@@ -1032,6 +907,8 @@ kind: Http.Server
 metadata: { name: server }
 listen:
   port: !cel "ports.http"
+preferredLanguages: !cel >-
+  'cookie' in request.headers ? [Self.cookie(request.headers['cookie'], 'showcase-lang')] : []
 mounts:
   - path: /api/private
     mount: !ref privateApi

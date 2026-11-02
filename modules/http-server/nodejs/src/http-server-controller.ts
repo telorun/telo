@@ -64,6 +64,8 @@ import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import { HostRoutes, publishHostRoutes } from "./host-routes.js";
 import { HostClass, hostClasses, NO_CLASS, type MountHostEntry } from "./host-precedence.js";
 import { publishRequestHost, requestHostReader, type RequestHostReader } from "./request-host.js";
+import { headerReads, type HeaderReads } from "./request-header-reads.js";
+import { acceptedLanguages, RequestLanguage, withLang } from "./request-language.js";
 import { fastifyValidationIssues, requestValidation } from "./request-validation-problem.js";
 
 /** A mounted Telo.Mount instance (Http.Api, Mcp.HttpEndpoint, …). The kernel injects the
@@ -138,6 +140,8 @@ type HttpServerResource = RuntimeResource & {
       version: string;
     };
   };
+  /** CEL over `request`: tags in preference order, evaluated per request. */
+  preferredLanguages?: unknown;
   mounts?: HttpMount[];
   catches?: CatchEntry[];
   notFoundHandler?: {
@@ -156,6 +160,8 @@ type RequestIntake = {
   bodyPulled: number;
   /** Set once the server refused the body; it then decides the span. */
   refusal?: InvokeError;
+  /** Negotiated by the span's hook, once the request span is open. */
+  language?: RequestLanguage;
 };
 
 type ResolvedHandler = {
@@ -176,6 +182,8 @@ class HttpServer implements ResourceInstance {
   /** Whether a proxy in front is trusted for the forwarded host and protocol. */
   private readonly trustsProxy: boolean;
   private readonly requestHost: RequestHostReader;
+  /** The headers `preferredLanguages` reads: what a negotiated response also varies by. */
+  private readonly preferenceReads: HeaderReads;
   /** The hosts each active mount answers, read from its `hostnames` needs at init. */
   private mountHosts = new Map<HttpMount, MountHostEntry>();
   private readonly hostRoutes: HostRoutes;
@@ -208,6 +216,7 @@ class HttpServer implements ResourceInstance {
     this.resource = resource;
     this.ctx = ctx;
     this.resolvedGuards = resolvedGuards;
+    this.preferenceReads = headerReads(resource.preferredLanguages);
     this.address = resource.listen?.address || "0.0.0.0";
     this.port = Number(resource.listen?.port || 0);
     this.scheme = resource.tls ? "https" : "http";
@@ -344,7 +353,7 @@ class HttpServer implements ResourceInstance {
       this.reportDecidingError(request, refusal);
       reply.code(421);
       reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
-      return reply.send(this.refusalProblem(421, refusal));
+      return reply.send(this.refusalProblem(421, refusal, this.languageOf(request, reply)));
     });
   }
 
@@ -541,23 +550,78 @@ class HttpServer implements ResourceInstance {
             );
           });
       });
+      const language = () => this.languageOf(request);
       const span = await opening;
       this.requestTraces.set(request, {
         context: span.context,
+        get lang() {
+          return language().lang;
+        },
         reject: (error) => {
           decidedBy = { error };
         },
       });
+      intake.language = this.negotiateLanguage(request, reply);
     });
+    // Covers a response whose headers were set before its language was read.
+    this.app.addHook("onSend", async (request) => {
+      this.requestIntakes.get(request)?.language?.apply();
+    });
+  }
+
+  /** The language of a request: the server's `preferredLanguages` first, then
+   *  `Accept-Language` by quality, then the application's own. */
+  private negotiateLanguage(request: FastifyRequest, reply: FastifyReply): RequestLanguage {
+    const translations = this.ctx.translations;
+    const varies = translations.languages().length > 1;
+    if (!varies) return this.fallbackLanguage(reply);
+    const preferred: string[] = [];
+    if (this.resource.preferredLanguages !== undefined) {
+      const evaluated = this.ctx.moduleContext.expandWith(this.resource.preferredLanguages, {
+        request: {
+          headers: normalizeHeaders(request.headers),
+          query: requestBag(request.query),
+          path: request.url,
+          host: this.requestHost(request.raw),
+          method: request.method,
+          ip: request.ip,
+        },
+      });
+      if (!Array.isArray(evaluated)) {
+        throw preferredLanguagesInvalid(`produced ${describeKind(evaluated)}, not a list of strings`);
+      }
+      for (const tag of evaluated) {
+        if (typeof tag !== "string") {
+          throw preferredLanguagesInvalid(`produced a list holding ${describeKind(tag)}, not a string`);
+        }
+        preferred.push(tag);
+      }
+    }
+    const tag = translations.negotiate([...preferred, ...acceptedLanguages(request.headers["accept-language"])]);
+    return new RequestLanguage(tag, reply, translations, true, this.preferenceReads);
+  }
+
+  private fallbackLanguage(reply: FastifyReply): RequestLanguage {
+    const translations = this.ctx.translations;
+    return new RequestLanguage(translations.fallback, reply, translations, false, new Set());
+  }
+
+  /** The request's language; a request that failed before it was negotiated is answered in the application's own. */
+  private languageOf(request: FastifyRequest, reply?: FastifyReply): RequestLanguage {
+    const held = this.requestIntakes.get(request)?.language;
+    if (held) return held;
+    return this.fallbackLanguage(reply ?? this.requestIntakes.get(request)!.reply);
   }
 
   /** A refusal this server answers itself, outside any dispatch, as its problem:
    *  its display message is the one this kind declares for its code. */
-  private refusalProblem(status: number, refusal: InvokeError) {
+  private refusalProblem(status: number, refusal: InvokeError, language: RequestLanguage) {
     return problemDetails(status, {
       code: refusal.code,
       data: refusal.data,
-      displayMessage: refusal.displayMessage ?? this.ctx.declaredDisplayMessage(refusal.code, refusal.data),
+      displayMessage: language.show(
+        refusal.displayMessage ?? this.ctx.declaredDisplayMessage(refusal.code, refusal.data),
+      ),
     });
   }
 
@@ -739,7 +803,9 @@ class HttpServer implements ResourceInstance {
       raw.destroy();
       return;
     }
-    const body = JSON.stringify(this.refusalProblem(413, refusal));
+    const body = JSON.stringify(
+      this.refusalProblem(413, refusal, intake.language ?? this.fallbackLanguage(reply)),
+    );
     for (const [name, value] of Object.entries(reply.getHeaders())) {
       if (value !== undefined) raw.setHeader(name, value);
     }
@@ -761,7 +827,7 @@ class HttpServer implements ResourceInstance {
     reply.code(413);
     reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
     reply.header("Connection", "close");
-    return reply.send(this.refusalProblem(413, refusal));
+    return reply.send(this.refusalProblem(413, refusal, this.languageOf(request, reply)));
   }
 
   /**
@@ -888,29 +954,33 @@ class HttpServer implements ResourceInstance {
         reply.log.info({ err: refusal }, refusal.message);
         reply.code(400);
         reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
-        return reply.send(this.refusalProblem(400, refusal));
+        return reply.send(this.refusalProblem(400, refusal, this.languageOf(request, reply)));
       }
       this.reportDecidingError(request, error);
       if (!isInvokeError(error)) return this.answerUncoded(error, reply);
 
+      const language = this.languageOf(request, reply);
       const invokeError = {
         code: error.code,
         message: error.message,
         data: error.data,
-        displayMessage: error.displayMessage,
+        displayMessage: language.show(error.displayMessage),
       };
       const normalizedHeaders: Record<string, any> = {};
       for (const [key, value] of Object.entries(request.headers)) {
         normalizedHeaders[key.toLowerCase()] = value;
       }
       const requestContext = {
-        request: {
-          method: request.method,
-          path: request.url,
-          host: this.requestHost(request.raw),
-          ip: request.ip,
-          headers: normalizedHeaders,
-        },
+        request: withLang(
+          {
+            method: request.method,
+            path: request.url,
+            host: this.requestHost(request.raw),
+            ip: request.ip,
+            headers: normalizedHeaders,
+          },
+          () => language.lang,
+        ),
       };
       const rendered = await dispatchCatches(
         this.resource.catches,
@@ -1021,17 +1091,21 @@ class HttpServer implements ResourceInstance {
         for (const [key, value] of Object.entries(request.headers)) {
           normalizedHeaders[key.toLowerCase()] = value;
         }
+        const language = this.languageOf(request, reply);
         const requestContext = {
-          request: {
-            method: request.method,
-            path: request.url,
-            host: this.requestHost(request.raw),
-            // The transport's own bags, as maps in the CEL value domain — see `requestBag`.
-            params: requestBag(request.params),
-            query: requestBag(request.query),
-            headers: normalizedHeaders,
-            body: request.body,
-          },
+          request: withLang(
+            {
+              method: request.method,
+              path: request.url,
+              host: this.requestHost(request.raw),
+              // The transport's own bags, as maps in the CEL value domain — see `requestBag`.
+              params: requestBag(request.params),
+              query: requestBag(request.query),
+              headers: normalizedHeaders,
+              body: request.body,
+            },
+            () => language.lang,
+          ),
         };
         const acceptHeader = (
           (request.headers as Record<string, string | string[] | undefined>)["accept"] as
@@ -1071,7 +1145,12 @@ class HttpServer implements ResourceInstance {
           // mounted route's throw takes.
           const rendered = await dispatchCatches(
             handler.catches,
-            { code: err.code, message: err.message, data: err.data, displayMessage: err.displayMessage },
+            {
+              code: err.code,
+              message: err.message,
+              data: err.data,
+              displayMessage: language.show(err.displayMessage),
+            },
             requestContext,
             acceptHeader,
             this.ctx.moduleContext,
@@ -1116,15 +1195,19 @@ class HttpServer implements ResourceInstance {
    */
   private guardHook(guard: ResolvedGuard) {
     return async (request: FastifyRequest, reply: FastifyReply) => {
+      const language = this.languageOf(request, reply);
       const requestContext = {
-        request: {
-          headers: normalizeHeaders(request.headers),
-          query: requestBag(request.query),
-          path: request.url,
-          host: this.requestHost(request.raw),
-          method: request.method,
-          ip: request.ip,
-        },
+        request: withLang(
+          {
+            headers: normalizeHeaders(request.headers),
+            query: requestBag(request.query),
+            path: request.url,
+            host: this.requestHost(request.raw),
+            method: request.method,
+            ip: request.ip,
+          },
+          () => language.lang,
+        ),
       };
       const inputs =
         Object.keys(guard.inputs).length > 0
@@ -1141,7 +1224,12 @@ class HttpServer implements ResourceInstance {
         trace.reject(err);
         const rendered = await dispatchCatches(
           guard.catches,
-          { code: err.code, message: err.message, data: err.data, displayMessage: err.displayMessage },
+          {
+            code: err.code,
+            message: err.message,
+            data: err.data,
+            displayMessage: language.show(err.displayMessage),
+          },
           requestContext,
           request.headers.accept?.toString(),
           this.ctx.moduleContext,
@@ -1409,4 +1497,19 @@ function closeConnection(raw: ServerResponse, socket: Socket): void {
   // As Node's own server ends a connection: not every host's socket has `destroySoon`.
   if (typeof socket.destroySoon === "function") socket.destroySoon();
   else socket.end();
+}
+
+function describeKind(value: unknown): string {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "a list";
+  if (typeof value === "bigint") return "an int";
+  if (typeof value === "object") return "a map";
+  return `a ${typeof value}`;
+}
+
+function preferredLanguagesInvalid(produced: string): InvokeError {
+  return new InvokeError(
+    "ERR_PREFERRED_LANGUAGES_INVALID",
+    `'preferredLanguages' must evaluate to a list of strings, but the expression ${produced}.`,
+  );
 }

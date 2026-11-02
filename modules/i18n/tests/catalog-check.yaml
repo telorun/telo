@@ -34,5 +34,6 @@ source: ./__fixtures__/renamed-title/telo.yaml
 expect:
   errors: []
   warnings:
+    - { code: DEPRECATED_KIND }
     - code: MESSAGE_TEXT_UNUSED
       message: "I18n.Catalog/polish: the text at 'texts[1].text' is shown by no module"

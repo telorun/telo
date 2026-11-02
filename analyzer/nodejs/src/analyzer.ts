@@ -924,7 +924,6 @@ function loopBindingsAtPath(
 }
 
 import { TextLanguageScope, validateTexts } from "./validate-texts.js";
-import { validateTextCatalogSets } from "./validate-text-catalog-sets.js";
 import type { TextFragment } from "./text-slot.js";
 
 /** One schema per text fragment, so the registry's per-schema validator memo
@@ -9562,40 +9561,6 @@ export class StaticAnalyzer {
               bodyWroteWhole: (manifest, path) => forwardViews.bodyWroteWhole(manifest, path),
             }
           : {}),
-      }),
-    );
-
-    // A catalog set: each text translated once per language across the
-    // catalogs a resource gathers, and the mark itself where a kind writes it.
-    const catalogSetDefs = moduleScopedDefResolver<ResourceDefinition>(defs, aliases, {
-      aliasesByModule,
-      rootModules,
-    });
-    reportRuleEvaluation("catalogSets", configuration?.own !== undefined);
-    diagnostics.push(
-      ...validateTextCatalogSets({
-        manifests: allManifests as unknown as ResourceManifest[],
-        rootModules,
-        schemaOf: (manifest) => {
-          if (typeof manifest.kind !== "string") return undefined;
-          const definition = catalogSetDefs(manifest.kind, manifest as { metadata?: { module?: string } });
-          return definition
-            ? effectiveAuthorSchema(definition, (k) => catalogSetDefs.in(k, definition.metadata?.module))
-            : undefined;
-        },
-        resolveRef: (ref) => {
-          const schema = defs.schemaForId(ref) ?? shapeDocuments.get(ref);
-          return schema ? { schema, root: schema } : undefined;
-        },
-        sitesOf: (manifest) => defs.referenceSites(manifest, aliases, aliasesByModule),
-        scope: resourceProjectionScope,
-        libraries,
-        moduleDocuments: options?.moduleDocuments ?? [],
-        accepts: (catalog) =>
-          defs.validateResourceConfig(catalog, TEXT_FRAGMENT_SCHEMAS.TextCatalog).length === 0,
-        isExpression: (value) => isTaggedSentinel(value) && !isRefSentinel(value),
-        reachOf: (module) => reach.of(module),
-        forwards: forwardViews,
       }),
     );
 

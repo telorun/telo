@@ -1,17 +1,14 @@
 import {
   formatMessage,
   isCelUint,
+  readMessage,
   type FunctionController,
+  type Message,
+  type MessageSource,
   type MessageValue,
   type ResourceManifest,
   type TextRecord,
 } from "@telorun/sdk";
-import { buildCatalogSet, CATALOG_SET, parsed, type CatalogView } from "./catalog-set.js";
-
-interface TranslatorResource extends ResourceManifest {
-  /** Each catalog's configuration, delivered as data. */
-  catalogs?: readonly CatalogView[];
-}
 
 interface TranslateArgs extends Record<string, unknown> {
   text: TextRecord;
@@ -28,22 +25,24 @@ function messageValues(values: Record<string, unknown>): Record<string, MessageV
   return out;
 }
 
+function parsed(source: MessageSource): Message {
+  const read = readMessage(source);
+  if (!read.ok) {
+    throw new Error(`the text is not a message: ${read.problems.map((problem) => problem.message).join("; ")}`);
+  }
+  return read.message;
+}
+
 /**
- * `I18n.Translator`: a text translated into the requested language, or formatted
- * as written in its own language when no catalog translates it.
+ * `I18n.Translator`: a text translated by the application's translations into
+ * the language asked for, formatted in the language reached.
  */
-export const Translator: FunctionController<TranslatorResource, TranslateArgs, string> = {
-  create(resource) {
-    const set = buildCatalogSet(resource.catalogs ?? []);
+export const Translator: FunctionController<ResourceManifest, TranslateArgs, string> = {
+  create(resource, ctx) {
     return {
-      [CATALOG_SET]: set,
       call({ text, lang, values }) {
-        const found = set.lookup(text, lang);
-        return formatMessage(
-          found?.message ?? parsed(text.text, "the text"),
-          found?.lang ?? text.lang,
-          messageValues(values ?? {}),
-        );
+        const shown = ctx.translations.translate(lang, text);
+        return formatMessage(parsed(shown.text), shown.lang, messageValues(values ?? {}));
       },
     };
   },

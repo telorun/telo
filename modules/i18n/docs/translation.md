@@ -2,24 +2,25 @@
 
 > Examples assume this module is imported under the alias `I18n`.
 
-A module writes its texts in one language, named by its `lang:`; catalogs hold their translations into other languages; a translator formats a text in the language a call asks for.
+A module writes its texts in one language, named by its `lang:`. The application lists their translations once, and `I18n.translate` formats a text in the language a call asks for.
 
-## `I18n.Catalog`
+## The application's translations
 
-One language's translations. Its whole configuration is the built-in `TextCatalog` shape:
+The root `Telo.Application` lists its translations in `translations.catalogs`; each entry is a `!ref` or an inline resource of a `Telo.Translations` kind, such as the built-in `Telo.TextTranslations`:
 
 ```yaml
-kind: I18n.Catalog
-metadata: { name: polish }
-lang: pl
-texts:
-  - { text: "Rate not found for {$user}", translation: "Nie znaleziono stawki dla {$user}" }
-  - { text: Open, context: verb, translation: Otwórz }
-  - { text: Open, context: state, translation: Otwarte }
-  - text: { plural: n, cases: { one: "{$n} file", other: "{$n} files" } }
-    translation:
-      plural: n
-      cases: { one: "{$n} plik", few: "{$n} pliki", many: "{$n} plików", other: "{$n} pliku" }
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: pl
+      texts:
+        - { text: "Rate not found for {$user}", translation: "Nie znaleziono stawki dla {$user}" }
+        - { text: Open, context: verb, translation: Otwórz }
+        - { text: Open, context: state, translation: Otwarte }
+        - text: { plural: n, cases: { one: "{$n} file", other: "{$n} files" } }
+          translation:
+            plural: n
+            cases: { one: "{$n} plik", few: "{$n} pliki", many: "{$n} plików", other: "{$n} pliku" }
 ```
 
 | Field | Meaning |
@@ -29,42 +30,34 @@ texts:
 | `texts[].context` | Optional: tells the same words used for different things apart. An entry translates only the text written with the same context. |
 | `texts[].translation` | The message in `lang`. Its shape is free — a plain source may have a plural translation. |
 
-A text is identified by its words and its context: a plural source is identified by the pattern its `other` cases lead to, so `{ plural: n, cases: { one: "{$n} file", other: "{$n} files" } }` and `"{$n} files"` are one text, and `{ $n }` and `{$n}` are one placeholder. Every value is written literally — a catalog holding an expression is refused.
+A text is identified by its words and its context: a plural source is identified by the pattern its `other` cases lead to, so `{ plural: n, cases: { one: "{$n} file", other: "{$n} files" } }` and `"{$n} files"` are one text, and `{ $n }` and `{$n}` are one placeholder. Every value is written literally.
 
-A language pack is a library that imports the module whose texts it translates and exports its catalogs, so `telo check` can tell it a key matches no text that module shows.
+Per language, entries apply in `catalogs` order and a later one wins, per text and context, so a pack can override one translation of a base catalog. A text translated twice within one catalog is refused. A library may ship translations as an exported resource of a `Telo.Translations` kind, which the application lists with `!ref <Alias>.<name>`; a library's texts are translated by the importing application's set.
 
-## `I18n.Translator`
+`I18n.Catalog` is the deprecated spelling of `Telo.TextTranslations`: it is listed in `translations:` the same way and takes part in the same layering, and reports `DEPRECATED_KIND`.
 
-A CEL function over a set of catalogs:
-
-```yaml
-kind: I18n.Translator
-metadata: { name: t }
-catalogs: [!ref polish, !ref Pack.german]
-```
-
-`catalogs` is optional: a translator with none formats every text as written — still with its values, numbers and plural cases.
+## `I18n.translate`
 
 ```yaml
-!cel "Self.t('Rate not found for {$user}', inputs.lang, {'user': inputs.user})"
-!cel "Self.t({'text': 'Open', 'context': 'verb'}, inputs.lang)"
-!cel "Self.t({'plural': 'n', 'cases': {'one': '{$n} file', 'other': '{$n} files'}}, inputs.lang, {'n': size(files)})"
+!cel "I18n.translate('Rate not found for {$user}', inputs.lang, {'user': inputs.user})"
+!cel "I18n.translate({'text': 'Open', 'context': 'verb'}, inputs.lang)"
+!cel "I18n.translate({'plural': 'n', 'cases': {'one': '{$n} file', 'other': '{$n} files'}}, inputs.lang, {'n': size(files)})"
 ```
 
 | Argument | Meaning |
 | --- | --- |
 | `text` | The source text, **written at the call** — a message, or `{'text': …, 'context': …}`. It is checked in the calling module's `lang:`, and an expression here is refused: a computed text has no source to look up. |
-| `lang` | One language tag. There is no ambient locale: every call says which language. |
+| `lang` | One language tag, usually `request.lang`. There is no ambient locale: every call says which language. |
 | `values` | Optional: a value for every placeholder and plural selector the text reads, by name — a string or a number, a selector a number. |
 
 The call answers a string:
 
-1. The requested tag is tried, then each shorter variant — `pl-Latn-PL`, `pl-Latn`, `pl` — compared without regard to case. The first catalog language translating the text wins, and the translation is formatted in that catalog's language.
-2. When no catalog translates it, the source is formatted as written, in the language of the module that wrote it — a Polish source asked for in German still chooses its plural case by Polish rules.
+1. The requested tag is matched against the languages the application serves by lookup, dropping subtags from the end — `pl-Latn-PL`, `pl-Latn`, `pl` — and the layered translation is formatted in the language reached.
+2. When nothing translates it there, the source is formatted as written, in the language of the module that wrote it — a Polish source asked for in German still chooses its plural case by Polish rules.
 
 A number is written by the language's CLDR rules (`1234.5` in `pl` is `1234,5`), and its plural case is chosen from the number as written — `=N` cases first, then the language's categories. A placeholder value that is neither a string nor a number is refused.
 
-A translator is called as `Self.<name>(…)` from the module declaring it, and as `<Alias>.<name>(…)` from a module importing a library that lists it in `exports.resources` — the text is still checked in, and attributed to, the module whose expression makes the call.
+The function is the module's exported instance `translate`, called as `I18n.translate(…)` from a module importing it — the text is checked in, and attributed to, the module whose expression makes the call. It reads the application's translations, so a call made while the application is still starting, before its catalogs exist, fails as `ERR_FUNCTION_FAILED`; call it from request handling or from resources initialized after the catalogs.
 
 ### A dynamic choice of message
 
@@ -73,22 +66,17 @@ A text is never computed, so choosing a message by a value — an error code to 
 ```yaml
 message: !cel >-
   {
-    'RATE_MISSING': Self.t('Rate not found for {$user}', inputs.lang, {'user': inputs.user}),
-    'USER_MISSING': Self.t('No such user: {$user}', inputs.lang, {'user': inputs.user})
-  }[?inputs.code].orValue(Self.t('Something went wrong', inputs.lang))
+    'RATE_MISSING': I18n.translate('Rate not found for {$user}', inputs.lang, {'user': inputs.user}),
+    'USER_MISSING': I18n.translate('No such user: {$user}', inputs.lang, {'user': inputs.user})
+  }[?inputs.code].orValue(I18n.translate('Something went wrong', inputs.lang))
 ```
-
-### One catalog set
-
-A translator's `catalogs` are one catalog set: across them, one text and context may be translated once per language. Two catalogs of one language translating the same text — a base catalog and a pack, say — is refused at the reference bringing in the later one, by `telo check` — for a translator declared at the top level, in a `with:` scope or as an entry of a template body — and again when the translator is created. The same catalog listed twice is one member, not a duplicate.
 
 ## What is checked
 
 | When | Refused |
 | --- | --- |
-| A catalog entry | a translation reading a placeholder its source lacks; a plural case the catalog's language does not have; a text and context translated twice; an expression anywhere in the catalog |
-| A translator's catalogs | a text and context translated twice in one language across them |
+| A translation entry | a translation reading a placeholder its source lacks; a plural case the language does not have; a text and context translated twice in one list; an expression anywhere in it |
 | A call | a computed `text`; a `lang` that is not a language tag; a plural case the calling module's language lacks; `values` missing a placeholder or selector the text reads, or holding a value of another type — checked before the app runs when written, when the call is made when computed |
 | A module | a plural source in a module declaring no `lang:` |
 
-A catalog entry matching no text the catalog's module, or a module it imports, shows is warned about: its translation is never used. Renaming a shape's `title` leaves the entry that translated the old title warned about at its `text`.
+An entry matching no text the module, or a module it imports, shows is warned about: its translation is never used.

@@ -74,6 +74,7 @@ describe("the roster", () => {
         "PublicHostPattern",
         "PublicUrl",
         "Sequence",
+        "TextTranslations",
       ].sort(),
     );
   });

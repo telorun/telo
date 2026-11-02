@@ -690,21 +690,6 @@ export type {
 } from "./text-schemas.js";
 export { textSlotAccessorProblems } from "./text-slot-accessor.js";
 export { dataTextValues, declaredValueKinds, judgeDataValues, judgeDeclaredValues, textValuesProblems } from "./text-values.js";
-export {
-  declaresTextCatalogSet,
-  TEXT_CATALOG_SET_ANNOTATION,
-  textCatalogSetDuplicates,
-  textCatalogSetMembers,
-  textCatalogSetProblems,
-} from "./text-catalog-set.js";
-export type {
-  CatalogSetReferenceSite,
-  NamedShapeResolver,
-  TextCatalogSetDuplicate,
-  TextCatalogSetHost,
-  TextCatalogSetMember,
-  TextCatalogSetProblem,
-} from "./text-catalog-set.js";
 export type { TextSlotAccessorProblem } from "./text-slot-accessor.js";
 export { moduleLangOf, moduleLangs, recordLangOf } from "./module-lang.js";
 export { TextLanguageScope } from "./validate-texts.js";

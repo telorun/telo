@@ -16,19 +16,21 @@ metadata:
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 lang: en
-# `http-server`, `i18n`, `data-model`, `ui` and `ui-react` come from this
+# `http-server`, `data-model`, `ui` and `ui-react` come from this
 # repository while their changes are unreleased; `telo upgrade --pin-local` pins
 # them again once they ship.
 imports:
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  I18n: oci://ghcr.io/telorun/i18n@0.2.0#sha256-N5GEtgU21xrBwQD_yBossj0hwSD7wvGH-VoRm3vpaEY
-  DataModel: oci://ghcr.io/telorun/data-model@0.2.0#sha256-rxGXii0Db-DcSJY0MUEY1KzbklXN15tLwKwK93z3AHg
-  Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
-  UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
+  Http: ../../modules/http-server
+  DataModel: ../../modules/data-model
+  Ui: ../../modules/ui
+  UiReact: ../../modules/ui-react
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include: [./stub-api.yaml, ./polish.yaml]
+translations:
+  catalogs:
+    - !ref polish
 targets:
   - !ref server
 ports: { http: { env: PORT, protocol: tcp, default: 8140 } }
@@ -275,18 +277,10 @@ kind: Telo.JsonSchema
 metadata: { name: RemindAnswer }
 schema: { type: object, required: [sentTo], properties: { sentTo: { type: string } } }
 ---
-# The language a request is answered in, chosen from the translator's catalogs.
-kind: I18n.Negotiator
-metadata: { name: language }
-translator: !ref t
-default: en
----
 kind: UiReact.App
 metadata: { name: console }
 title: Reports
 words: !ref Ui.words
-translator: !ref t
-lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
 # The built-in look, under the console's brand.
 theme: !ref UiReact.defaultTheme
 tokens:

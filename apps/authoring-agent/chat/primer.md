@@ -1689,7 +1689,7 @@ with the same reason.
 A language tag (`format: language-tag`, RFC 5646: `en`, `pl-PL`, `zh-Hant-TW`)
 and a MessageFormat 2 pattern (`format: message-pattern`) are checked the same way.
 
-## Text shown to a person — `Text`, `lang:`, catalogs
+## Text shown to a person — `Text`, `lang:`, translations
 
 A field or a function parameter holding text a person sees is typed
 `{ $ref: "telo://manifest#/$defs/Text" }`. Write the text as a pattern with
@@ -1740,30 +1740,37 @@ of `Ui` with a placeholder is written `{ text, values }`, never as a plain text.
 A field admitting a text OR another shape (`anyOf`) is judged by the branch the
 value is; a record a kind hands on is typed `telo://manifest#/$defs/TextRecord`
 and never judged again.
-A kind looking texts up in several catalogs marks where they are gathered with
-`x-telo-text-catalog-set: true` on a node of its `schema:` (a field holding
-catalogs, or the references naming them; never inside another marked node —
-`TEXT_CATALOG_SET_INVALID`): across the set — those catalogs, and the catalogs
-of every resource referenced there — one text and context is translated once
-per language (`MESSAGE_ENTRY_DUPLICATE`, at the reference bringing in the second).
+## Translating texts — `translations:` and `I18n.translate`
 
-## Translating texts — the `i18n` module
+A module writes its texts in its `lang:`. The root Application lists their
+translations ONCE, in `translations: { catalogs: [...] }` (Application-only; a
+Library writing it is refused). Each entry is a `!ref` or inline
+`Telo.TextTranslations` (built in, no import): `lang` and `texts: [{ text,
+context?, translation }]`, matched by source text and context (its fields are the
+`TextCatalog` shape). A library may export one as a resource of a
+`Telo.Translations` kind. Per language the catalogs layer in listed order and a
+later one wins per text and context; a text translated twice within ONE catalog
+is `MESSAGE_ENTRY_DUPLICATE`. The served languages are the Application's `lang:`
+(the fallback) plus every catalog's `lang`, and an imported library's texts are
+translated by the application's set. `I18n.Catalog` is deprecated for
+`Telo.TextTranslations`.
 
-`I18n.Catalog` is one language's translations (its fields are the `TextCatalog`
-shape: `lang`, `texts`). `I18n.Translator` is a CEL function over a catalog set
-(`catalogs: [!ref polish, !ref Pack.german]`, optional — none formats texts as
-written); declare it top-level and call it `Self.t(text, lang, values?)`, or
-`<Alias>.t(...)` when a library exports it. `text` is written at the call (a
-message or `{'text': …, 'context': …}`), `lang` ONE tag passed on every call —
-there is no ambient locale — and `values` a map for its placeholders and plural
-selectors. Lookup tries `pl-PL`, then `pl`, then formats the source in its own
-module's language. `I18n.Negotiator` (`translator: !ref t`, `default: en`)
-answers the language to reply in from an `Accept-Language` value:
-`Self.language(request.headers[?'accept-language'].orValue(''))`. In an API,
-negotiate once per request in the route's `inputs:`, pass the tag to every
-`Self.t`, and write it to a `Content-Language` header in `returns:`. Choose a
-message by a value with a CEL map of literal calls,
-`{'A': Self.t('…', lang), 'B': Self.t('…', lang)}[?code].orValue(Self.t('…', lang))`
+The transport chooses the request's language: in HTTP it is `request.lang` (a
+tag, always present), negotiated from `Accept-Language` by RFC 4647 lookup
+(`pl-PL` finds `pl`) and landing on the fallback. `Http.Server.preferredLanguages`
+(`!cel "'lang' in request.query ? [request.query.lang] : []"`) names tags tried
+first — a cookie, a path prefix, a query parameter. With several served languages
+the response carries `Content-Language` and `Vary`; a problem's `detail` is in
+`request.lang`. `UiReact.App` reads it, with no `translator:`, `lang:` or
+`catalogs:`.
+
+To translate outside a UI, call `I18n.translate(text, lang, values?)` (module
+`i18n`, imported): `text` is written at the call (a message or `{'text': …,
+'context': …}`), `lang` ONE tag passed on every call — usually `request.lang`
+through the route's `inputs:` — there is no ambient locale, and `values` a map
+for its placeholders and plural selectors. Choose a message by a value with a CEL
+map of literal calls,
+`{'A': I18n.translate('…', lang), 'B': I18n.translate('…', lang)}[?code].orValue(I18n.translate('…', lang))`
 — never a computed text.
 
 ## Typing a collection of entries — schema projections
@@ -1897,7 +1904,7 @@ body: !cel "net * (1.0 + rate)"
   - A NATIVE callable kind's `use: dependency` slot may name ANY kind but a
     need type: its controller's `create()` receives the referent's
     configuration as plain frozen data (references inside it resolved the
-    same way), never an instance — how a translator reads its catalogs. A
+    same way), never an instance — how a native function reads a frozen configuration. A
     referent holding a runtime-eval expression, a CEL region, a step or
     function body, a scope or a need there is `CALLABLE_REFERENCE_NOT_DATA`.
     A native function that CALLS a function it holds declares that slot

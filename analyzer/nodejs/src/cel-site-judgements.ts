@@ -265,9 +265,9 @@ export function reportConditionedPass(pass: ConditionedPass, configurationRun: b
   conditionedPassObserver?.(pass, configurationRun);
 }
 
-/** The families whose rules are evaluated: a kind's resource rules, its
- *  referrer rules, and the duplicate texts of a catalog set. */
-export type RuleFamily = "resourceRules" | "referrerRules" | "catalogSets";
+/** The families whose rules are evaluated: a kind's resource rules and its
+ *  referrer rules. */
+export type RuleFamily = "resourceRules" | "referrerRules";
 
 let ruleObserver: ((family: RuleFamily, configurationRun: boolean) => void) | undefined;
 

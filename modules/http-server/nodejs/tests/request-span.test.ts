@@ -1,3 +1,4 @@
+import { singleLanguageTranslations } from "./single-language-translations.js";
 import {
   builtinErrorCode,
   ERR_INVOKE_CANCELLED,
@@ -81,6 +82,7 @@ function testContext(behaviours: Record<string, (inputs: any, context: InvokeCon
     return behaviours[name]!(inputs, context);
   };
   const ctx = {
+    translations: singleLanguageTranslations,
     log,
     declaredDisplayMessage: (code: string) => builtinErrorCode(code)?.record,
     effect: (_reason: string, body: (input: unknown) => Promise<any>) => chain([body]),

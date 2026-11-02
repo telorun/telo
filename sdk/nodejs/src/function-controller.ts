@@ -24,6 +24,7 @@
  * declares `use: call` and holds the function itself.
  */
 import type { EffectBody, EffectChain } from "./effect.js";
+import type { ApplicationTranslations } from "./application-translations.js";
 import type { Logger } from "./logger.js";
 import type { ResourceManifest } from "./resource-manifest.js";
 
@@ -45,6 +46,9 @@ export interface FunctionContext {
   /** An allocation made in `create`, paired with its inverse — run it with
    *  `.perform()`, and a reload or teardown releases it. */
   effect<T>(reason: string, body: EffectBody<void, T>): EffectChain<T>;
+  /** The application's translations (see `ResourceContext`): fixed for the load,
+   *  so a function translating through them stays a function of its arguments. */
+  readonly translations: ApplicationTranslations;
 }
 
 /** What `call` may return: any value that is not a promise-like. */

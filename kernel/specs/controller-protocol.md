@@ -75,7 +75,7 @@ an incompatible controller and an incompatible peer are the same fact, discovere
 at different moments, and a second code would only invite a caller to handle one
 and not the other.
 
-### 0.3 Generation `telo-7`
+### 0.3 Generation `telo-8`
 
 One generation counter covers both carriers, reported in the handshake (§4.1) and
 written into a native controller's PURL as `abi=telo-<n>`.
@@ -84,24 +84,25 @@ written into a native controller's PURL as `abi=telo-<n>`.
   buffers across the C ABI, described only by the ABI crate's own layout. This
   specification does **not** retroactively describe it, and a generation `3`
   controller keeps loading exactly as it does today.
-- **Generations `4`, `5` and `6` are withdrawn, and nothing ever spoke any of
-  them.** `4` was the first generation this specification defined, and its value
-  encoding named the typed frame's millisecond timestamp payload. `5` moved the
-  value encoding to `durable-execution.md` §6's typed frame. `6` added the two
-  need operations (§7.5). No carrier implemented any of them and no artifact
-  could declare one, so each is superseded rather than kept readable.
-- **Generation `7` is the generation this specification defines.** It is `6`'s
-  message set with `Runtime.Run`'s `inputs` carrying `needs` (§9.2) and
-  `Throws.DisplayMessage` (§7.6) added, with the
-  same value encoding: `durable-execution.md` §6's typed frame, whose timestamp
-  payload is RFC 3339 with a trimmed nanosecond fraction. It is the value in
+- **Generations `4`, `5`, `6` and `7` are withdrawn, and nothing ever spoke any
+  of them.** `4` was the first generation this specification defined, and its
+  value encoding named the typed frame's millisecond timestamp payload. `5` moved
+  the value encoding to `durable-execution.md` §6's typed frame. `6` added the two
+  need operations (§7.5). `7` added `Runtime.Run`'s `inputs` carrying `needs`
+  (§9.2) and `Throws.DisplayMessage` (§7.6). No carrier implemented any of them
+  and no artifact could declare one, so each is superseded rather than kept
+  readable.
+- **Generation `8` is the generation this specification defines.** It is `7`'s
+  message set with `Translations.Lookup` (§7.7) added, with the same value
+  encoding: `durable-execution.md` §6's typed frame, whose timestamp payload is
+  RFC 3339 with a trimmed nanosecond fraction. It is the value in
   `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
   conformance vector carries states it.
-- **No artifact may declare `abi=telo-7` until the ABI carrier lands.** A
+- **No artifact may declare `abi=telo-8` until the ABI carrier lands.** A
   declaration reaching a kernel that does not implement the carrier MUST be
   refused with `ERR_CONTROLLER_HOST_INCOMPATIBLE`. Until then the ABI crate's
   `TELO_ABI_VERSION` stays `3`, which is what keeps the published `abi=telo-3`
-  controller candidates valid: specifying `7` does not retire `3`.
+  controller candidates valid: specifying `8` does not retire `3`.
 
 ### 0.4 Related specifications
 
@@ -295,6 +296,7 @@ One row per message, in the lexical order of the file names in
 | `Span.Settle` | `controller-to-kernel` | `6. Invocation` | no | no |
 | `Status.Set` | `controller-to-kernel` | `5. Lifecycle` | no | no |
 | `Throws.DisplayMessage` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
+| `Translations.Lookup` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Value.Decode` | `controller-to-kernel` | `7. Resolution & schema` | yes | no |
 | `Value.Expand` | `controller-to-kernel` | `7. Resolution & schema` | yes | yes |
 | `Zone.Attributes` | `controller-to-kernel` | `6. Invocation` | yes | no |
@@ -400,7 +402,7 @@ A **response** frame carries the requester's `id` and the same `type`, and its
   failure's `inputPointer`; the first location attached is kept, and a
   controller rethrowing a failure carries both members unchanged.
   `displayMessage`, `inputPointer` and `location` are additive members within
-  `telo-7`, which no carrier speaks yet. An error's `cause` is not carried.
+  `telo-8`, which no carrier speaks yet. An error's `cause` is not carried.
 
 A message whose `response` in `messages/` is `null` is a **notification**: no
 response frame is ever sent for it, and a peer that sends one is in violation.
@@ -831,7 +833,7 @@ WRITTEN, so each answer carries a `declaration` handle, and a request naming one
 as `holder` is resolved in the context that declared that answer — its own names
 and its own imports' aliases, whichever module asks. A `holder` that names no
 answer is `ERR_REF_UNRESOLVED`. `holder` and `declaration` are additive members
-within `telo-7`.
+within `telo-8`.
 
 A reference site whose every slot is `use: schema` — in every case of a case
 map — is a **declaration read**: a runtime MUST NOT substitute an instance there
@@ -904,7 +906,7 @@ is judged against its text (`ERR_MESSAGE_PLACEHOLDER_UNBOUND`,
 `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`), and each `Text` crosses as the record
 `{ text, context, lang, computed }` with `computed: true`. A literal text the
 instance's manifest already holds as a record crosses as it is. This is a reading
-of the result within `telo-7`, not a new message.
+of the result within `telo-8`, not a new message.
 
 **An accessor-mode field is not a compiled value.** A field its kind annotates
 `x-telo-eval: accessor` names a value for the controller's own consumer to
@@ -980,6 +982,36 @@ gives it one. The kernel holds `data` to the code's declared `data` schema first
 exactly as at a dispatch exit: a mismatch is `ERR_OUTPUT_INVALID` naming the code,
 whose structured `data` holds `code`, `data` and `issues`. It is synchronous
 because the controller is building the refusal it is about to render.
+
+### 7.7 Translations
+
+An application declares its translations once — the root Application's
+`translations.catalogs` — and every module it runs is translated through that one
+set, an imported library's texts included, matched by the message core's identity
+of each text and its context. Per language (tags compared case-insensitively) the
+catalogs apply in list order and a later one's translation replaces an earlier
+one's. The **served languages** are the application's `lang:` — the **fallback**,
+`und` when it declares none — then each listed catalog's `lang`, once each.
+
+`Translations.Lookup` is the one operation over that set. Its `preferences` are
+negotiated first: each entry in order is matched against the served languages by
+RFC 4647 lookup (`pl-PL` finds `pl`) and the first that finds one wins; an entry
+that is not a well-formed language tag, or finds none, is skipped, never refused;
+with none left, the fallback. Each of its `texts` — a text record (§7.4) — is
+then looked up in the language negotiated, by RFC 4647 among the languages the
+set translates that text into and the record's own: the answer is the
+translation as a record carrying the text's `context` and `computed` and the
+`lang` it was reached in, or the text's own record when nothing translates it
+there. A record with `computed: true` is never looked up. Every answer also
+carries `fallback` and `languages`, so a transport negotiating a request
+language and a renderer showing texts are both one request.
+
+Asked during startup, before every listed catalog has been created, the request
+fails with the deferral the kernel's initialization retries —
+`ERR_LOCAL_REF_PENDING`, or `ERR_CROSS_MODULE_REF_PENDING` for a catalog an
+import exports — so a controller asking from `Controller.Init` is initialized
+later. A text record that does not read is `ERR_MESSAGE_SYNTAX_INVALID`. It is
+synchronous because a renderer is building the text it is about to show.
 
 ## 8. Channels
 
@@ -1159,7 +1191,7 @@ codes cross unchanged and are not listed here.
 | `ERR_SPAN_ATTRIBUTE_INVALID` | a span attribute name was malformed | `Span.Open` |
 | `ERR_INTERPOLATION_HOLE_NOT_CONVERTIBLE` | an interpolation hole held a value CEL cannot convert to text | `Value.Expand` |
 | `ERR_HOST_PATH_RELATIVE` | a computed value at a host-path slot was not absolute | `Value.Expand` |
-| `ERR_MESSAGE_SYNTAX_INVALID` | a computed text is not a well-formed Message or Text | `Value.Expand` |
+| `ERR_MESSAGE_SYNTAX_INVALID` | a computed text is not a well-formed Message or Text, or a text to translate does not read | `Value.Expand`, `Translations.Lookup` |
 | `ERR_MESSAGE_SOURCE_LANGUAGE_MISSING` | a computed text selects a plural case and the module that wrote it declares no `lang:` | `Value.Expand` |
 | `ERR_MESSAGE_PLURAL_CATEGORY_INVALID` | a computed text selects a plural category the language it is written in lacks | `Value.Expand` |
 | `ERR_MESSAGE_PLACEHOLDER_UNBOUND` | a text's values lack a name the text reads | `Value.Expand` |
@@ -1168,6 +1200,7 @@ codes cross unchanged and are not listed here.
 | `ERR_REF_UNRESOLVED` | a pointer names no reference slot of the asking instance's kind, or one whose target is not a need's fulfilment; a `holder` names no earlier answer | `Need.Resolve`, `Need.Verify`, `Ref.Declaration` |
 | `ERR_NEED_UNMET` | an observation does not satisfy the outermost need; `data` holds `need`, `type`, `source`, `required` and `actual` | `Need.Verify`, and the entry point whose controller reported it: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
 | `ERR_NEED_OBSERVATION_INVALID` | an observation at a slot that does not observe, one missing or extra member, or a version that is not semver; or an observing slot left unreported when the entry point its deadline names returns | `Need.Verify`, and that entry point: `Controller.Init`, `Controller.Run`, `Controller.Invoke` |
+| `ERR_LOCAL_REF_PENDING` / `ERR_CROSS_MODULE_REF_PENDING` | a listed translations catalog has not been created yet — a deferral the kernel's initialization retries, raised out of the entry point that asked | `Translations.Lookup`, and that entry point: `Controller.Init` |
 | `ERR_NATIVE_FILE_UNAVAILABLE` | no `native:` entry of that name matches the host, or its staged file could not be brought to its pin | `Native.File` |
 
 `ERR_DURABLE_SUSPENDED` and `ERR_INVOKE_CANCELLED` are **signals, not errors**.

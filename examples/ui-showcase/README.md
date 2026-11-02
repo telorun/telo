@@ -73,8 +73,8 @@ Every application draws the same header around its title and navigation
 `compactBelow`: the example's mark before the title, and after the navigation
 two `menu` nodes. **Language** offers every language the showcase speaks,
 each named in its own language, each `/api/lang?set=<tag>` under the mount: it
-sets the cookie `showcase-lang` when the tag is one the translator has a
-catalog for or English (or clears it for any other value) and goes back to the page it was pressed on —
+sets the cookie `showcase-lang` when the value is a well-formed language tag
+(or clears it for any other value) and goes back to the page it was pressed on —
 the `Referer`'s path and query when the `Referer` is of the request's own
 origin, the mount's home otherwise.
 **Theme** offers the four mounts' home pages — another mount's by an absolute
@@ -83,11 +83,12 @@ address built from the request's `Host` and `X-Forwarded-Proto` (the function
 is `http` or `https`), since an app-relative link resolves
 under the mount it is drawn in — and on the root application the brand
 switch, each of its two items delivered only while it changes something. The
-language in effect is one rule, the function `Self.chosenLanguage`: the
-cookie first, then the `Accept-Language` negotiation, then English. Each
-application's `lang` calls it, and so does each language item's `style`, so
-the language in effect is the one marked `strong` — the current choice —
-whichever decided it; the current mount is marked the same way. The language
+language in effect is the server's to choose: its `preferredLanguages` names the
+`showcase-lang` cookie first, and the negotiation then tries `Accept-Language`
+and lands on English, skipping a tag the showcase does not speak. Each
+language item's `style` marks the language the server negotiated
+(`request.lang`) `strong` — the current choice;
+the current mount is marked the same way. The language
 names are written in their own language and left untranslated. The language
 and brand cookies last a year. None of the example's cookies is `Secure`,
 because it is served over plain http locally; a deployment behind TLS adds it.
@@ -107,9 +108,8 @@ brand switch, `/api/brand`, is the root's alone.
 | --- | --- |
 | `telo.yaml` | the application, the four `UiReact.App` mounts with their header and navigation, the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
 | `data.yaml` | the SQLite connection, schema, tables with their seed rows (the posts' and the reporting lines' with foreign keys), the projects, tasks, people, authors, posts and employees `Crud.Collection`s, the sources the browser reads them from, and the tasks' and posts' presentations |
-| `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, the language rule the applications share (`chosenLanguage`), and the request origin and redirect target rules (`origin`, `sameOriginTarget`) |
-| `translator.yaml` | the translator, listing one catalog per language |
-| `translations/` | one `I18n.Catalog` per language, each file named by its language tag (`pl.yaml`, `ja.yaml`, …) |
+| `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, and the request origin and redirect target rules (`origin`, `sameOriginTarget`) |
+| `translations/` | one `Telo.TextTranslations` per language, listed in the application's `translations:` block, each file named by its language tag (`pl.yaml`, `ja.yaml`, …) |
 | `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task listing, the forms page's team and project option sources and the requests' presentation, the actions page's assign action, the related-records page's post and employee forms and the reporting lines' presentation) |
 | `showcase.css` | the `/` and `/sidebar` applications' stylesheet |
 | `components/` | a library of the example's own: four browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet` and `typefaceSamples`. Its `nodejs/package.json` exists only to type-check the sources |
@@ -176,7 +176,7 @@ with `managerId.absent=true`, a person's reports with `managerId=<id>`.
 | `POST` | `/api/session/signout` | deletes the session and clears the cookie |
 | `GET` | `/api/private/account` | the session's person; 401 with no body without a session |
 | `POST` | `/api/private/ping` | 200 with a session, 401 without |
-| `POST` | `/api/private/pause` | pauses a project for a manager; 401 with no body without a session, 403 with no body for anyone else, 404 for an unknown project, 409 for one not running — worded in the language the applications answer in (`Self.chosenLanguage`), with `Content-Language` |
+| `POST` | `/api/private/pause` | pauses a project for a manager; 401 with no body without a session, 403 with no body for anyone else, 404 for an unknown project, 409 for one not running — worded in the request's language (`request.lang`, through `I18n.translate`), with `Content-Language` |
 | `GET` | `/api/brand?set=acme\|none` | sets or clears the brand cookie and goes to `/themes` |
 | `GET` `POST` | `/api/requests` | the five latest requests; a request stored, 400 on `title` for a title another request has |
 | `GET` `POST` | `/api/bookings` | the five latest bookings; a booking stored, 400 on `period.from` / `period.to` for a reversed period or one past a year, 404 for an unknown project |
@@ -231,13 +231,13 @@ why it is not shown.
 | Line | Capability | Where |
 | --- | --- | --- |
 | A1 | `title` | every mount |
-| A2 | `words: !ref Ui.words` | every mount. A custom `Ui.Words` set is not shown: the example words the renderer in every language it speaks by translating the exported set through its catalog |
+| A2 | `words: !ref Ui.words` | every mount. A custom `Ui.Words` set is not shown: the example words the renderer in every language it speaks by translating the exported set through the application's translations |
 | A3 | `theme`: the default, Radix's, one of the example's own | `/`, `/radix`, `/brand`. The example's own theme is declared in `brand/` and named by `!ref`, not written inline at the application, so `tests/brand-theme.yaml` checks the very theme the mount draws with |
 | A4 | `tokens` as one `Ui.DesignTokens`, inline | `/brand` (the Inter typeface) |
 | A5 | `tokens` as a `{ tokens, when }` list over a cookie | `/`, switched on its Themes page |
 | A6 | `stylesheets` | `/`, `/sidebar` (`showcase.css`) |
 | A7 | `compactBelow` | every mount |
-| A8, A9 | `translator`, `lang` negotiated from `Accept-Language`, `Vary` | every mount |
+| A8, A9 | `translations:` on the application, the request language negotiated by the server (`preferredLanguages`, `Accept-Language`), `Content-Language`, `Vary` | every mount |
 | A10 | eleven pages, one nav link each | every mount; the path refusals are out of scope |
 | A11 | `pages[].query` | `/conditions` on `/` |
 | A12 | `when` and text per request; an error node for an invalid computed `href` | Overview and Themes on `/`; `REF_SLOT_COMPUTED` is out of scope |
@@ -295,8 +295,8 @@ why it is not shown.
 | P147 | Radix's theme, and its controls reused by a theme of the example's own | `/radix`, `/brand` |
 | P148 | the cascade layers | `/components` (`telo.component`), `/` (`showcase.css`, unlayered) |
 | P149, P150 | the styling contract and `UiReactConformance.CheckTheme` | `brand/brand.css`, `tests/brand-theme.yaml` |
-| Q151–Q153 | fourteen catalogs with plurals, the translator, the negotiator | `translations/`, `translator.yaml`, `telo.yaml`, every mount |
-| Q152, Q154 | the translator in an API route, answering in the caller's language | `/api/private/pause` (from `/actions`) |
+| Q151–Q153 | fourteen translations with plurals, the application's `translations:` block, `preferredLanguages` | `translations/`, `telo.yaml`, every mount |
+| Q152, Q154 | `I18n.translate` in an API route, answering in the caller's language | `/api/private/pause` (from `/actions`) |
 | R155, R156 | `Crud.Collection`, `Crud.Api` | `data.yaml`, `/api/projects`, `/api/tasks`, `/api/people`, `/api/authors`, `/api/posts`, `/api/employees`; the rules are out of scope |
 | R157 | `CrudUi.Admin` with a filter policy and `create` / `edit` surfaces | `/crud`, and over the authors on `/records`; its expansion, written by hand, on `/tables` and `/filters` |
 | S158, S159 | the shell, the application and page documents | every mount |

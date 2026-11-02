@@ -1,9 +1,7 @@
 import type { RequestScope } from "@telorun/http-dispatch";
-import { catalogSetOf, type CatalogSet } from "@telorun/i18n";
 import {
   canonicalTypeSchemaId,
   formatMessage,
-  lookupLanguage,
   readMessage,
   RuntimeError,
   type Message,
@@ -64,9 +62,6 @@ function notFound(reply: FastifyReply) {
 
 export type AppResource = RuntimeResource & {
   title: TextRecord;
-  /** A fixed tag, or an expression read per request. */
-  lang?: unknown;
-  translator?: unknown;
   words: unknown;
   theme: unknown;
   tokens?: unknown;
@@ -90,8 +85,6 @@ interface Providing<T> {
   provide(): Promise<T>;
 }
 
-const isObject = (candidate: unknown): candidate is object => typeof candidate === "object" && candidate !== null;
-
 const provides = <T>(candidate: unknown): candidate is Providing<T> =>
   typeof (candidate as Providing<T> | null)?.provide === "function";
 
@@ -113,7 +106,7 @@ interface Translated {
 }
 
 /** What is the same for every request landing on one language: built once per
- *  effective tag, so there are at most as many as the catalog languages, plus one. */
+ *  negotiated tag, so there are at most as many as the application serves. */
 interface InLanguage {
   translator: SpecTranslator<Translated>;
   shell: string;
@@ -132,14 +125,10 @@ interface Started {
   bundle: string;
   rendererUrl: string;
   importMap: Record<string, string>;
-  /** The translator's catalogs, when the application names one. */
-  catalogs?: CatalogSet;
-  /** The language the application's own module writes in, when it declares one. */
-  sourceLang?: string;
   words: Words;
   /** The headers the shell, the application document and each page read. */
-  vary: { shell: HeaderReads; app: HeaderReads; pages: HeaderReads[] };
-  /** By effective tag; `""` for none. */
+  vary: { app: HeaderReads; pages: HeaderReads[] };
+  /** By negotiated tag. */
   languages: Map<string, InLanguage>;
   /** The header's nodes by side, prepared once; nothing when the application
    *  declares no header. */
@@ -219,7 +208,7 @@ export class UiReactApp {
         // A server stops by waiting for its connections, and an event stream
         // never ends on its own.
         scope.addHook("preClose", () => this.streams.closeAll());
-        scope.get("/_telo/ui/app", (request, reply) => this.serveApp(started, request, reply));
+        scope.get("/_telo/ui/app", (request, reply) => this.serveApp(started, requestScope, request, reply));
         scope.get("/_telo/ui/page", (request, reply) => this.servePage(started, requestScope, request, reply));
         scope.get("/_telo/ui/events", async (request, reply) => {
           reply.hijack();
@@ -235,7 +224,7 @@ export class UiReactApp {
           }
         });
         scope.get("/_telo/ui/assets/:digest/*", (request, reply) => this.serveAsset(started, request, reply));
-        scope.setNotFoundHandler((request, reply) => this.serveShell(started, mount, request, reply));
+        scope.setNotFoundHandler((request, reply) => this.serveShell(started, mount, requestScope, request, reply));
       },
       { prefix: mount === "" ? "/" : mount },
     );
@@ -351,22 +340,14 @@ export class UiReactApp {
     const words = await this.ctx
       .resolveRef(this.resource.words, isWords, () => `'words' of ${this.owner}`, "Ui.Words")
       .provide();
-    const catalogs =
-      this.resource.translator === undefined
-        ? undefined
-        : catalogSetOf(this.ctx.resolveRef(this.resource.translator, isObject, () => `'translator' of ${this.owner}`, "I18n.Translator"));
-    // The application module's own language: the one its title is written in.
-    const sourceLang = this.resource.title.lang === "und" ? undefined : this.resource.title.lang;
-    const langReads = headerReads(this.resource.lang);
+    // The server varies by the language itself; these are the other headers read.
     const vary = {
-      shell: langReads,
       app: unionReads(
-        langReads,
         headerReads(this.tokenEntries().map((entry) => entry.when)),
         ...HEADER_SIDES.map((side) => header?.[side].headerReads ?? new Set<string>()),
         headerReads(navigation.items),
       ),
-      pages: this.pages.map(({ instance }) => unionReads(langReads, instance.headerReads())),
+      pages: this.pages.map(({ instance }) => unionReads(instance.headerReads())),
     };
     return {
       mount,
@@ -374,8 +355,6 @@ export class UiReactApp {
       bundle,
       rendererUrl: urlOf(modules[RENDERER]),
       importMap,
-      catalogs,
-      sourceLang,
       words,
       vary,
       languages: new Map(),
@@ -395,45 +374,38 @@ export class UiReactApp {
     return Array.isArray(tokens) ? (tokens as TokensEntry[]) : [{ tokens }];
   }
 
-  private requestOf(request: FastifyRequest): Record<string, unknown> {
+  private requestOf(request: FastifyRequest, requestScope: RequestScope<FastifyRequest> | undefined): Record<string, unknown> {
     const headers: Record<string, string> = {};
     for (const [name, value] of Object.entries(request.headers)) {
       headers[name] = Array.isArray(value) ? value.join(", ") : (value ?? "");
     }
-    return { headers, ip: request.ip };
+    // Not enumerable: reading the language is what makes the response vary by it.
+    return Object.defineProperty({ headers, ip: request.ip }, "lang", {
+      get: () => this.languageOf(request, requestScope),
+      enumerable: false,
+      configurable: true,
+    });
   }
 
-  /**
-   * The language a request's documents are in: the catalog language its
-   * requested tag lands on through the translator, else the language the
-   * application's module writes in, else none.
-   */
-  private effectiveTag(started: Started, request: Record<string, unknown>): string | undefined {
-    const declared = this.resource.lang;
-    const requested = typeof declared === "string" ? declared : declared === undefined ? undefined : this.ctx.expandValue(declared, { request });
-    if (typeof requested === "string" && started.catalogs) {
-      const found = lookupLanguage(requested, started.catalogs.languages);
-      if (found !== null) return found;
-    }
-    return started.sourceLang;
+  /** The language the server negotiated for the request; reading it records that the response depends on it. */
+  private languageOf(request: FastifyRequest, requestScope: RequestScope<FastifyRequest> | undefined): string {
+    return requestScope === undefined ? this.ctx.translations.fallback : requestScope.forRequest(request).lang;
   }
 
   /** What every request in one language shares, built once for it. */
-  private inLanguage(started: Started, tag: string | undefined): InLanguage {
-    const key = tag ?? "";
-    const held = started.languages.get(key);
+  private inLanguage(started: Started, tag: string): InLanguage {
+    const held = started.languages.get(tag);
     if (held) return held;
     const translate = (record: TextRecord): Translated => {
-      const found = tag === undefined || !started.catalogs ? null : started.catalogs.lookup(record, tag);
-      if (found) return { message: found.message, lang: found.lang };
-      const read = readMessage(record.text);
+      const found = this.ctx.translations.translate(tag, record);
+      const read = readMessage(found.text);
       if (!read.ok) {
         throw new RuntimeError(
           "ERR_MESSAGE_SYNTAX_INVALID",
           `${this.owner}: a text it shows is no message: ${read.problems.map((problem) => problem.message).join("; ")}.`,
         );
       }
-      return { message: read.message, lang: record.lang };
+      return { message: read.message, lang: found.lang };
     };
     const translator = new SpecTranslator<Translated>(
       {
@@ -450,7 +422,7 @@ export class UiReactApp {
       words: Object.fromEntries(Object.entries(started.words).map(([id, record]) => [id, translate(record)])),
       shell: shellHtml({
         title: formatMessage(title.message, title.lang, {}),
-        ...(tag === undefined ? {} : { lang: tag }),
+        ...(tag === "und" ? {} : { lang: tag }),
         prefix: started.mount,
         bundle: started.bundle,
         rendererUrl: started.rendererUrl,
@@ -458,26 +430,36 @@ export class UiReactApp {
       }),
       translate,
     };
-    started.languages.set(key, made);
+    started.languages.set(tag, made);
     return made;
   }
 
   private send(request: FastifyRequest, reply: FastifyReply, document: Record<string, unknown>, reads: HeaderReads) {
     const served = servedDocument(document);
-    const vary = varyHeader(reads);
-    if (vary !== undefined) reply.header("vary", vary);
+    this.addVary(reply, reads);
     reply.header("cache-control", "private, no-cache").header("etag", `"${served.digest}"`);
     if (holdsCurrent(request.headers["if-none-match"], served.digest)) return reply.code(304).send();
     return reply.type("application/json; charset=utf-8").send(served.text);
   }
 
-  private serveApp(started: Started, request: FastifyRequest, reply: FastifyReply) {
-    const scope = { request: this.requestOf(request) };
+  /** Adds the headers an expression read to the `Vary` the server may already have set for the language. */
+  private addVary(reply: FastifyReply, reads: HeaderReads): void {
+    const own = varyHeader(reads);
+    if (own === undefined) return;
+    const held = reply.getHeader("vary");
+    const existing = (Array.isArray(held) ? held.join(",") : String(held ?? "")).split(",").map((token) => token.trim()).filter(Boolean);
+    const tokens = new Map<string, string>();
+    for (const token of [...existing, ...own.split(", ")]) tokens.set(token.toLowerCase(), token);
+    reply.header("vary", tokens.has("*") ? "*" : [...tokens.values()].join(", "));
+  }
+
+  private serveApp(started: Started, requestScope: RequestScope<FastifyRequest> | undefined, request: FastifyRequest, reply: FastifyReply) {
+    const scope = { request: this.requestOf(request, requestScope) };
     const chosen = this.tokenEntries().find(
       (entry) => entry.when === undefined || this.ctx.expandValue(entry.when, scope) === true,
     );
     const tokens = chosen === undefined ? [] : [started.tokens.get(chosen.tokens) as string];
-    const tag = this.effectiveTag(started, scope.request);
+    const tag = this.languageOf(request, requestScope);
     const language = this.inLanguage(started, tag);
     const header = {
       width: resolvedPageWidth(this.resource.header?.width, this.resource.pageWidth),
@@ -499,7 +481,7 @@ export class UiReactApp {
         specVersion: SPEC_VERSION,
         bundle: started.bundle,
         title: language.title,
-        ...(tag === undefined ? {} : { lang: tag }),
+        ...(tag === "und" ? {} : { lang: tag }),
         pages: this.pages.map(({ reading }, index) => ({ path: reading.path, title: language.pageTitles[index] })),
         navigation: { items: translatedEntries(items), placement: started.navigation.placement },
         header,
@@ -520,13 +502,13 @@ export class UiReactApp {
     if (!page) {
       return notFound(reply.header("cache-control", "private, no-cache"));
     }
-    const scope = { request: this.requestOf(request) };
+    const scope = { request: this.requestOf(request, requestScope) };
     const pageWidth = this.resource.pageWidth ?? undefined;
     const delivered = await page.instance.invoke(
       { request: scope.request as { headers: Record<string, string>; ip?: string }, ...(pageWidth === undefined ? {} : { pageWidth }) },
       requestScope?.forRequest(request).context,
     );
-    const tag = this.effectiveTag(started, scope.request);
+    const tag = this.languageOf(request, requestScope);
     const language = this.inLanguage(started, tag);
     return this.send(
       request,
@@ -536,7 +518,7 @@ export class UiReactApp {
         bundle: started.bundle,
         path: delivered.path,
         title: language.pageTitles[index],
-        ...(tag === undefined ? {} : { lang: tag }),
+        ...(tag === "und" ? {} : { lang: tag }),
         query: delivered.query,
         width: delivered.width,
         children: this.shown(started, delivered.children, language),
@@ -561,16 +543,14 @@ export class UiReactApp {
     return reply.send(asset.body);
   }
 
-  private serveShell(started: Started, mount: string, request: FastifyRequest, reply: FastifyReply) {
+  private serveShell(started: Started, mount: string, requestScope: RequestScope<FastifyRequest> | undefined, request: FastifyRequest, reply: FastifyReply) {
     const pathname = new URL(request.url, "http://telo.invalid").pathname;
     const path = pathname.slice(mount.length) || "/";
     if (path === "/_telo" || path.startsWith("/_telo/")) {
       return notFound(reply);
     }
     const declared = this.pages.some(({ reading }) => reading.path === path);
-    const language = this.inLanguage(started, this.effectiveTag(started, this.requestOf(request)));
-    const vary = varyHeader(started.vary.shell);
-    if (vary !== undefined) reply.header("vary", vary);
+    const language = this.inLanguage(started, this.languageOf(request, requestScope));
     return reply
       .code(declared ? 200 : 404)
       .header("cache-control", "no-cache")

@@ -1,3 +1,4 @@
+import { singleLanguageTranslations } from "./single-language-translations.js";
 import {
   NOOP_LOGGER,
   createCancellationSource,
@@ -77,6 +78,7 @@ function testContext(needs: Record<string, Address>, listenPort: number) {
     };
   };
   const ctx = {
+    translations: singleLanguageTranslations,
     log: NOOP_LOGGER,
     effect: (_reason: string, body: (input: unknown) => Promise<any>) => chain([body]),
     acquireHold: () => () => {},

@@ -48,7 +48,11 @@ requires:
   # renderer's SDK names (`formatDisplayMessage`, `valueIssue`) and call
   # `ctx.declaredDisplayMessage`, none of which an older runtime has (verified
   # by execution).
-  telo: ">=0.123.0"
+  #
+  # 0.129.0: the controllers read `ctx.translations`, which an older runtime does
+  # not have, to negotiate `request.lang`: a request on 0.127.0 dies with "Cannot
+  # read properties of undefined (reading 'languages')" (verified by execution).
+  telo: ">=0.129.0"
 lang: en
 imports:
   # Single source of truth for the returns:/catches: schema. EVERY slot anchors at
@@ -244,6 +248,30 @@ schema:
         enable behind a trusted proxy — otherwise clients can spoof their IP.
       type: ["boolean", "integer"]
       x-telo-eval: compile
+    preferredLanguages:
+      title: Preferred Languages
+      description: >-
+        CEL over the request (`headers`, `query`, `path`, `host`, `method`, `ip`)
+        returning language tags in preference order — a cookie, a path prefix, a
+        query parameter. They are tried before `Accept-Language`; a malformed or
+        unserved tag is skipped. Evaluated per request; the headers it reads are
+        added to the response's `Vary`.
+      type: array
+      items: { type: string }
+      x-telo-context:
+        type: object
+        additionalProperties: false
+        properties:
+          request:
+            type: object
+            additionalProperties: false
+            properties:
+              headers: { type: object, additionalProperties: true }
+              query: { type: object, additionalProperties: true }
+              path: { type: string }
+              host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+              method: { type: string }
+              ip: { type: string }
     maxBodyBytes:
       title: Max Body Bytes
       description: >-
@@ -417,6 +445,7 @@ schema:
                         query: { type: object, additionalProperties: true }
                         path: { type: string }
                         host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                        lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                         method: { type: string }
                         ip: { type: string }
               catches:
@@ -441,6 +470,7 @@ schema:
                         query: { type: object, additionalProperties: true }
                         path: { type: string }
                         host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                        lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                         method: { type: string }
                         ip: { type: string }
                     error:
@@ -517,6 +547,7 @@ schema:
             properties:
               path: { type: string }
               host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+              lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
               method: { type: string }
               ip: { type: string }
           error:
@@ -692,6 +723,7 @@ schema:
                   params: { type: object, additionalProperties: true }
                   path: { type: string }
                   host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                   method: { type: string }
                   ip: { type: string }
         returns:
@@ -709,6 +741,7 @@ schema:
                   method: { type: string }
                   path: { type: string }
                   host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                   params: { type: object, additionalProperties: true }
                   query: { type: object, additionalProperties: true }
                   headers: { type: object, additionalProperties: true }
@@ -732,6 +765,7 @@ schema:
                 properties:
                   path: { type: string }
                   host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                   method: { type: string }
                   ip: { type: string }
                   query: { type: object, additionalProperties: true }
@@ -852,6 +886,7 @@ schema:
             properties:
               path: { type: string }
               host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+              lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
               method: { type: string }
               ip: { type: string }
           error:
@@ -946,6 +981,7 @@ schema:
                     params: { type: object, additionalProperties: true }
                     path: { type: string }
                     host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                    lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
           handler:
@@ -983,6 +1019,7 @@ schema:
                   properties:
                     path: { type: string }
                     host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                    lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
                 result:
@@ -1006,6 +1043,7 @@ schema:
                   properties:
                     path: { type: string }
                     host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                    lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
                 error:

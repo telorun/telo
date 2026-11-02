@@ -1,32 +1,31 @@
 # An application translated into Polish: a catalog for its own texts — a page
 # title, a heading, a text with values, a text with context, a field's label
-# from its model, an enum value's label — and one for the renderer's own words.
-# Each application picks its language its own way: from the Accept-Language
-# header, from a cookie, and as one fixed tag. Start it with
+# from its model, an enum value's label — and the renderer's own words. The
+# server negotiates each request's language: from Accept-Language and the
+# `lang` query on one server, and a cookie as well on a second. Start it with
 #   pnpm run telo ./modules/ui-react/tests/__fixtures__/translated/telo.yaml
 # and open http://127.0.0.1:8130/ with the browser's language set to Polish.
 kind: Telo.Application
-metadata:
-  name: UiTranslatedFixtureApp
-  version: 1.0.0
-# Module `lang:` is read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+metadata: { name: UiTranslatedFixtureApp, version: 1.0.0 }
+requires: { telo: ">=0.129.0" }
 lang: en
 imports:
   Http: ../../../../http-server
-  I18n: ../../../../i18n
   Ui: ../../../../ui
   DataModel: ../../../../data-model
   UiReact: ../../../
 ports:
   http: { env: PORT, default: 8130 }
+  cookie: { env: COOKIE_PORT, default: 8131 }
+translations:
+  catalogs:
+    - !ref polish
 targets:
   - !ref server
+  - !ref cookieServer
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Invoice
+metadata: { name: Invoice }
 schema:
   type: object
   required: [number]
@@ -39,9 +38,8 @@ schema:
         - { const: open, title: Open }
         - { const: paid, title: Paid }
 ---
-kind: I18n.Catalog
-metadata:
-  name: polish
+kind: Telo.TextTranslations
+metadata: { name: polish }
 lang: pl
 texts:
   - { text: Invoices, translation: Faktury }
@@ -58,21 +56,8 @@ texts:
   - text: { plural: limit, cases: { one: "Must be at least {$limit} character", other: "Must be at least {$limit} characters" } }
     translation: { plural: limit, cases: { one: "Co najmniej {$limit} znak", few: "Co najmniej {$limit} znaki", other: "Co najmniej {$limit} znaków" } }
 ---
-kind: I18n.Translator
-metadata:
-  name: t
-catalogs:
-  - !ref polish
----
-kind: I18n.Negotiator
-metadata:
-  name: language
-translator: !ref t
-default: en
----
 kind: Ui.Form
-metadata:
-  name: invoiceForm
+metadata: { name: invoiceForm }
 model: !ref Invoice
 presentation:
   kind: Ui.CollectionPresentation
@@ -82,21 +67,16 @@ presentation:
     collection: { kind: DataModel.Collection, model: !ref Invoice, key: number, query: { filters: [], sort: [] } }
 ---
 kind: Ui.View
-metadata:
-  name: helpLink
+metadata: { name: helpLink }
 content: { type: link, text: Help, href: /help }
 ---
-# The language the Accept-Language header asks for. Its header holds a logo, a
-# composite, a menu with an item delivered per request, and a badge delivered
-# per request.
+# Its header holds a logo, a composite, a menu with an item delivered per
+# request, and a badge delivered per request.
 kind: UiReact.App
-metadata:
-  name: byHeader
+metadata: { name: app }
 title: Invoices
 words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
-translator: !ref t
-lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
 header:
   start:
     - { type: image, src: /logo.svg, alt: Invoices }
@@ -126,48 +106,22 @@ pages:
       - { type: composite, ref: !ref invoiceForm }
       - { type: badge, text: { text: Open, context: state } }
 ---
-# The language a cookie names.
-kind: UiReact.App
-metadata:
-  name: byCookie
-title: Invoices
-words: !ref Ui.words
-theme: !ref UiReact.defaultTheme
-translator: !ref t
-lang: !cel "'cookie' in request.headers && request.headers['cookie'].contains('lang=pl') ? 'pl' : 'en'"
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Invoices
-    children:
-      - { type: text, text: Unpaid invoices }
----
-# One language for every request.
-kind: UiReact.App
-metadata:
-  name: fixed
-title: Invoices
-words: !ref Ui.words
-theme: !ref UiReact.defaultTheme
-translator: !ref t
-lang: pl
-pages:
-  - kind: Ui.Page
-    path: /
-    title: Invoices
-    children:
-      - { type: text, text: Unpaid invoices }
----
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   address: 127.0.0.1
   port: !cel "ports.http"
+preferredLanguages: !cel "'lang' in request.query ? [request.query.lang] : []"
 mounts:
-  - path: /cookie
-    mount: !ref byCookie
-  - path: /fixed
-    mount: !ref fixed
   - path: /
-    mount: !ref byHeader
+    mount: !ref app
+---
+kind: Http.Server
+metadata: { name: cookieServer }
+listen:
+  address: 127.0.0.1
+  port: !cel "ports.cookie"
+preferredLanguages: !cel "'cookie' in request.headers && request.headers.cookie.contains('lang=pl') ? ['pl'] : []"
+mounts:
+  - path: /
+    mount: !ref app

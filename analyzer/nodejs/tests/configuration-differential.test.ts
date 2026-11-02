@@ -46,7 +46,6 @@ import {
   derivedResultTarget,
   nameReadPadding,
   rulePadding,
-  catalogSetPadding,
   zonePadding,
   valueSchemaCrossing,
   referentPadding,
@@ -529,7 +528,6 @@ describe("each configuration's findings equal its own analysis", () => {
     judge(await loadGenerated("name-read-padding.yaml", nameReadPadding(0))), 120_000);
   for (const [name, fixture] of [
     ["rule-padding.yaml", rulePadding],
-    ["catalog-set-padding.yaml", catalogSetPadding],
     ["zone-padding.yaml", zonePadding],
     ["value-schema-crossing.yaml", valueSchemaCrossing],
     ["referent-padding.yaml", referentPadding],

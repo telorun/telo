@@ -8,15 +8,9 @@ metadata:
 lang: en
 imports:
   I18n: ../../../../
-exports:
-  resources: [t]
 ---
 kind: I18n.Catalog
 metadata: { name: polish }
 lang: pl
 texts:
   - { text: Open, translation: "Otwórz {$x}" }
----
-kind: I18n.Translator
-metadata: { name: t }
-catalogs: [!ref polish]

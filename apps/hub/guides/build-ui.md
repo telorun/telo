@@ -97,8 +97,9 @@ below is named because a page and a filter bar both use it.
   `Ui.SidebarNavigation` (`side`, `rail`, `store`), or a compact one —
   `Ui.OverlayNavigation`, `Ui.TabBarNavigation` — which a header's or a
   sidebar's `compact` names for a narrow screen.
-- Optional: `translator` (an `I18n.Translator`) and `lang` (a tag, or `!cel`
-  over `request.headers`) serve every text translated; `tokens` (the brand),
+- Optional: list `Telo.TextTranslations` in the Application's
+  `translations: { catalogs }` and texts are served in the negotiated
+  `request.lang` (`Accept-Language`, `Http.Server.preferredLanguages`); `tokens` (the brand),
   `stylesheets` (`!module-path ./ui.css`), `compactBelow` (the narrow-viewport
   breakpoint), `pageWidth` (`contained` or `full`; a page's `width` wins),
   `header: { start?, end?, width? }` (nodes on every page).

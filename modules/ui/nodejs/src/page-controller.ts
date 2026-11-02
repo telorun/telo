@@ -24,6 +24,7 @@ export interface PageInputs {
 export interface PageRequest {
   headers: Record<string, string>;
   ip?: string;
+  lang?: string;
 }
 
 /** A page as delivered for one request. */

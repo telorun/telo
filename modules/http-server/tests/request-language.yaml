@@ -1,0 +1,195 @@
+kind: Telo.Application
+metadata:
+  name: RequestLanguageTest
+  version: 1.0.0
+  description: |
+    The request language is negotiated once per request and read as
+    `request.lang`. `preferredLanguages` is tried first, then `Accept-Language`
+    by quality, then the application's own language; a malformed or unserved
+    tag is skipped. With more than one language served, a response whose
+    production read the language carries `Content-Language` and
+    `Vary: Accept-Language`, plus every header `preferredLanguages` reads (`*` for
+    a computed header name); a response that never read it carries neither. A
+    problem's `detail` is shown in the request language.
+lang: en
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: pl
+      texts:
+        - { text: "Order {$id} does not exist.", translation: "Zamówienie {$id} nie istnieje." }
+imports: { Http: ../, HttpClient: ../../http-client, Run: ../../run, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /lang, method: GET }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - status: 200
+        content: { application/json: { body: { lang: !cel "request.lang" } } }
+  - request: { path: /plain, method: GET }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
+  - request: { path: "/orders/{id}", method: GET }
+    inputs: { id: !cel "request.params.id" }
+    handler:
+      kind: Telo.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, required: [id], properties: { id: { type: string } } }
+      steps:
+        - name: missing
+          throw:
+            code: ORDER_NOT_FOUND
+            message: no such order
+            displayMessage: "Order {$id} does not exist."
+            data: { id: !cel "inputs.id" }
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - when: !cel "problem.code == 'ORDER_NOT_FOUND'"
+        status: 404
+        content: { application/problem+json: {} }
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client:
+  kind: HttpClient.Client
+  baseUrl: http://127.0.0.1:8960
+  throwOnHttpError: false
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8960 }
+    preferredLanguages: !cel "'lang' in request.query ? [request.query.lang] : []"
+    mounts: [{ mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: headerServer }
+    listen: { address: 127.0.0.1, port: 8961 }
+    preferredLanguages: !cel "'x-lang' in request.headers ? [request.headers['x-lang']] : []"
+    mounts: [{ mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: computedServer }
+    listen: { address: 127.0.0.1, port: 8962 }
+    preferredLanguages: !cel "[request.headers[request.query.header]]"
+    mounts: [{ mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: invalidServer }
+    listen: { address: 127.0.0.1, port: 8978 }
+    preferredLanguages: !cel "request.query.lang"
+    mounts: [{ mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: mixedServer }
+    listen: { address: 127.0.0.1, port: 8979 }
+    preferredLanguages: !cel "[request.query.lang, dyn(1)]"
+    mounts: [{ mount: !ref api }]
+targets:
+  - !ref server
+  - !ref headerServer
+  - !ref computedServer
+  - !ref invalidServer
+  - !ref mixedServer
+steps:
+  - name: accepted
+    invoke: !ref call
+    inputs: { url: /lang, headers: { accept-language: "de;q=0.9, pl-PL;q=0.8" } }
+  - name: unserved
+    invoke: !ref call
+    inputs: { url: /lang, headers: { accept-language: "de, fr;q=0.5" } }
+  - name: malformed
+    invoke: !ref call
+    inputs: { url: /lang, headers: { accept-language: "!!!, ;q=x, pl;q=oops, pl" } }
+  - name: queryWins
+    invoke: !ref call
+    inputs: { url: "/lang?lang=en", headers: { accept-language: pl } }
+  - name: queryUnserved
+    invoke: !ref call
+    inputs: { url: "/lang?lang=xx", headers: { accept-language: pl } }
+  - name: unread
+    invoke: !ref call
+    inputs: { url: /plain, headers: { accept-language: pl } }
+  - name: problem
+    invoke: !ref call
+    inputs: { url: /orders/42, headers: { accept-language: pl } }
+  - name: problemFallback
+    invoke: !ref call
+    inputs: { url: /orders/42, headers: { accept-language: de } }
+  - name: headerRead
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8961, throwOnHttpError: false }
+    inputs: { url: /lang, headers: { x-lang: pl } }
+  - name: computedRead
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8962, throwOnHttpError: false }
+    inputs: { url: "/lang?header=x-lang", headers: { x-lang: pl } }
+  - name: notAList
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8978, throwOnHttpError: false }
+    inputs: { url: "/lang?lang=pl" }
+  - name: nonStringEntry
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8979, throwOnHttpError: false }
+    inputs: { url: "/lang?lang=pl" }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        accepted:
+          body: !cel "steps.accepted.result.body"
+          language: !cel "steps.accepted.result.headers['content-language']"
+          vary: !cel "steps.accepted.result.headers['vary']"
+        unserved:
+          body: !cel "steps.unserved.result.body"
+          language: !cel "steps.unserved.result.headers['content-language']"
+        malformed: !cel "steps.malformed.result.body"
+        queryWins:
+          body: !cel "steps.queryWins.result.body"
+          vary: !cel "steps.queryWins.result.headers['vary']"
+        queryUnserved: !cel "steps.queryUnserved.result.body"
+        unread:
+          language: !cel "'content-language' in steps.unread.result.headers"
+          vary: !cel "'vary' in steps.unread.result.headers"
+        problem:
+          status: !cel "steps.problem.result.status"
+          detail: !cel "steps.problem.result.body.detail"
+          language: !cel "steps.problem.result.headers['content-language']"
+          vary: !cel "steps.problem.result.headers['vary']"
+        problemFallback:
+          detail: !cel "steps.problemFallback.result.body.detail"
+          language: !cel "steps.problemFallback.result.headers['content-language']"
+        headerRead:
+          body: !cel "steps.headerRead.result.body"
+          vary: !cel "steps.headerRead.result.headers['vary']"
+        computedRead:
+          vary: !cel "steps.computedRead.result.headers['vary']"
+        notAList: { status: !cel "steps.notAList.result.status", code: !cel "steps.notAList.result.body.code" }
+        nonStringEntry: { status: !cel "steps.nonStringEntry.result.status", code: !cel "steps.nonStringEntry.result.body.code" }
+      expected:
+        accepted: { body: { lang: pl }, language: pl, vary: Accept-Language }
+        unserved: { body: { lang: en }, language: en }
+        malformed: { lang: pl }
+        queryWins: { body: { lang: en }, vary: Accept-Language }
+        queryUnserved: { lang: pl }
+        unread: { language: false, vary: false }
+        problem:
+          status: 404
+          detail: "Zamówienie 42 nie istnieje."
+          language: pl
+          vary: Accept-Language
+        problemFallback: { detail: "Order 42 does not exist.", language: en }
+        headerRead: { body: { lang: pl }, vary: "Accept-Language, X-Lang" }
+        computedRead: { vary: "*" }
+        notAList: { status: 500, code: ERR_PREFERRED_LANGUAGES_INVALID }
+        nonStringEntry: { status: 500, code: ERR_PREFERRED_LANGUAGES_INVALID }

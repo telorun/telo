@@ -2,7 +2,7 @@
   "kind": "Telo.Definition",
   "metadata": {
     "name": "Application",
-    "description": "A runnable entry point: the module a runtime starts. Declares its imports, the variables, secrets, ports and needs it reads from its host and command line, its boot sequence, logging and tracing destinations, and the runtime range it is verified against."
+    "description": "A runnable entry point: the module a runtime starts. Declares its imports, the variables, secrets, ports and needs it reads from its host and command line, its boot sequence, logging and tracing destinations, the translations of its texts, and the runtime range it is verified against."
   },
   "capability": "Telo.Template",
   "schema": {
@@ -350,6 +350,31 @@
                   "additionalProperties": false
                 }
               ]
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "translations": {
+        "title": "Translations",
+        "description": "The translations of every text the application and its libraries show, listed once. Per language, a later catalog's translation of a text replaces an earlier one's.",
+        "type": "object",
+        "required": [
+          "catalogs"
+        ],
+        "properties": {
+          "catalogs": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "x-telo-ref": {
+                "kind": "Telo.Translations",
+                "use": "dependency"
+              },
+              "x-telo-inline": true
             }
           }
         },

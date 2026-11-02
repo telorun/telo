@@ -33,6 +33,8 @@ import {
   effectiveAuthorSchema,
   isModuleKind,
   moduleLangOf,
+  recordLangOf,
+  UNDETERMINED_LANGUAGE,
   isInjectedDeclaration,
   inheritedCapability,
   isNeedTableDiagnostic,
@@ -82,8 +84,6 @@ import {
   scopeSlotProblems,
   textSlotAccessorProblems,
   textValuesProblems,
-  declaresTextCatalogSet,
-  textCatalogSetProblems,
   type NamedContractShape,
   type ProjectionScope,
   type ReachSite,
@@ -110,6 +110,7 @@ import {
   type LoadOptions,
   type TraceSinkInstance,
   type BrowserEntryFiles,
+  type ApplicationTranslations,
 } from "@telorun/sdk";
 import type { RuntimeDiagnostic, TextRecord } from "@telorun/sdk";
 import { TELO_RUNTIME_VERSION } from "./telo-runtime-version.js";
@@ -187,9 +188,10 @@ import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtSite, resolveReference } from "./dependency-injection.js";
 import { declarationOnlyNames, recordDeclarationReads } from "./declaration-reads.js";
-import { refuseCatalogSetDuplicates, type CatalogSetKernelHost } from "./text-catalog-sets.js";
+import { readListedCatalogs, TranslationSet, type ListedCatalog } from "./application-translations.js";
 import {
   deliverDataSites,
+  receivedConfigurationOf,
   recordReceivedConfiguration,
   type DataViewHost,
 } from "./callable-data-views.js";
@@ -593,18 +595,6 @@ export class Kernel implements IKernel {
       throw new RuntimeError(
         "ERR_BROWSER_EXPORT_ANNOTATION_INVALID",
         `${definition.kind} ${browserExport.message}`,
-      );
-    }
-    const [catalogSet] = textCatalogSetProblems(String(definition.metadata?.name), definition.schema, (ref) => {
-      const schema =
-        (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
-        this.registry.schemaForId(ref);
-      return schema ? { schema, root: schema } : undefined;
-    });
-    if (catalogSet) {
-      throw new RuntimeError(
-        catalogSet.code === "SCHEMA_VIOLATION" ? "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED" : `ERR_${catalogSet.code}`,
-        `${definition.kind} ${catalogSet.message}`,
       );
     }
     this.controllers.registerDefinition(definition);
@@ -1059,6 +1049,8 @@ export class Kernel implements IKernel {
 
     await this.rootContext.unwindResources(impacted);
     for (const name of impacted) this.rootContext.deregisterManifest(name);
+    // A rebuilt catalog is read again, from its new instance.
+    this.translationSet = undefined;
 
     const removed = [...impacted].filter((name) => !surviving.has(name));
     const added = diff.entries
@@ -1747,6 +1739,7 @@ export class Kernel implements IKernel {
 
       this.applyLoggingConfig(rootApplicationManifest as Record<string, any>);
       this.listSinks(rootApplicationManifest as Record<string, any>);
+      this.listCatalogs(rootApplicationManifest as Record<string, any>);
     }
   }
 
@@ -1778,6 +1771,83 @@ export class Kernel implements IKernel {
       forName.push(sink);
       this.listedSinks.set(sink.name, forName);
     }
+  }
+
+  /** The root Application's `translations.catalogs`, read at load, and its `lang:`. */
+  private listedCatalogs: ListedCatalog[] = [];
+  private translationFallback = UNDETERMINED_LANGUAGE;
+  /** The layered set, built once every listed catalog exists. */
+  private translationSet: TranslationSet | undefined;
+
+  private listCatalogs(rootApplicationManifest: Record<string, any>): void {
+    this.listedCatalogs = readListedCatalogs(rootApplicationManifest["translations"]);
+    this.translationFallback = recordLangOf(moduleLangOf(rootApplicationManifest));
+    this.translationSet = undefined;
+  }
+
+  /** `ctx.translations` — one object for every controller of this kernel. */
+  readonly translations: ApplicationTranslations = ((kernel: Kernel): ApplicationTranslations => ({
+    get fallback(): string {
+      return kernel.translationFallback;
+    },
+    languages: () => kernel.layeredTranslations().languages,
+    negotiate: (preferences) => kernel.layeredTranslations().negotiate(preferences),
+    translate: (lang, text) => kernel.layeredTranslations().translate(lang, text),
+    translateAll: (lang, texts) => {
+      const set = kernel.layeredTranslations();
+      return texts.map((text) => set.translate(lang, text));
+    },
+  }))(this);
+
+  /**
+   * The layered set over the listed catalogs' instances. A catalog not created
+   * yet raises the deferral Phase-5 injection raises for it, so a controller
+   * asking during startup is retried once it exists.
+   */
+  private layeredTranslations(): TranslationSet {
+    if (this.translationSet) return this.translationSet;
+    const catalogs = this.listedCatalogs.map((listed) => {
+      const instance = resolveReference(
+        { name: listed.name, ...(listed.alias !== undefined ? { alias: listed.alias } : {}) },
+        (name, alias) => this.rootContext.injectionInstance(name, alias),
+        (name) => this.rootContext.injectionPending(name),
+      );
+      const written = `${listed.alias !== undefined ? `${listed.alias}.` : ""}${listed.name}`;
+      const declaration = declarationOfInstance(instance);
+      if (!instance || !declaration) {
+        throw new RuntimeError(
+          "ERR_REF_UNRESOLVED",
+          `${listed.entry} names '${written}', which is no resource this application declares or imports.`,
+        );
+      }
+      if (!this.extendsTranslations(declaration)) {
+        throw new RuntimeError(
+          "ERR_REFERENCE_KIND_MISMATCH",
+          `${listed.entry} names '${written}', a ${String(declaration.kind)}: a catalog must be of a kind ` +
+            `extending Telo.Translations, such as Telo.TextTranslations.`,
+        );
+      }
+      const configuration = receivedConfigurationOf(declaration);
+      return { lang: String(configuration.lang), configuration };
+    });
+    return (this.translationSet = new TranslationSet(this.translationFallback, catalogs));
+  }
+
+  /** True when a declaration's kind is `Telo.Translations` or reaches it through `extends`. */
+  private extendsTranslations(declaration: ResourceManifest): boolean {
+    const seen = new Set<string>();
+    let definition = this.registry.resolveDefinitionIn(
+      String(declaration.kind),
+      (declaration.metadata as { module?: string } | undefined)?.module,
+    );
+    while (definition) {
+      const kind = `${definition.metadata.module}.${definition.metadata.name}`;
+      if (kind === "Telo.Translations") return true;
+      if (seen.has(kind) || typeof definition.extends !== "string") return false;
+      seen.add(kind);
+      definition = this.registry.resolveDefinitionIn(definition.extends, definition.metadata.module);
+    }
+    return false;
   }
 
   /** Attach `sink` to the destination its list feeds. */
@@ -3073,31 +3143,6 @@ export class Kernel implements IKernel {
       }
     }
     recordReceivedConfiguration(processedResource, received);
-    // A catalog set holds each text once per language, across every catalog it
-    // gathers — judged before the controller is created, as `telo check` judges it.
-    if (declaresTextCatalogSet(configSchema)) {
-      if (!(evalContext instanceof EvaluationContext)) {
-        throw new RuntimeError(
-          "ERR_FATAL",
-          `${resourceLabel}: created in a context that cannot resolve references.`,
-        );
-      }
-      const owner = evalContext;
-      refuseCatalogSetDuplicates({
-        label: resourceLabel,
-        declaration: processedResource,
-        authored: resource,
-        configuration: received,
-        schema: configSchema as Record<string, any>,
-        resolve: (name, alias) =>
-          resolveReference(
-            { name, ...(alias ? { alias } : {}) },
-            (n, a) => owner.injectionInstance(n, a),
-            (n) => owner.injectionPending(n),
-          ),
-        host: this.catalogSetHost,
-      });
-    }
     let ctx: ResourceContext;
     let instance: ResourceInstance | null;
     // The layers of the chain whose `inputs:` / `result:` translate the contract
@@ -3301,25 +3346,6 @@ export class Kernel implements IKernel {
         scope.declaredBeyondReach(name)
       );
     },
-  };
-
-  /** What gathering a resource's catalog set reads from the kernel. */
-  private readonly catalogSetHost: CatalogSetKernelHost = {
-    schemaOf: (declaration) =>
-      typeof declaration.kind === "string"
-        ? (this.registry.resolveDefinitionIn(
-            declaration.kind,
-            (declaration.metadata as { module?: string } | undefined)?.module,
-          )?.schema as Record<string, any> | undefined)
-        : undefined,
-    resolveRef: (ref) => {
-      const schema =
-        (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
-        this.registry.schemaForId(ref);
-      return schema ? { schema, root: schema } : undefined;
-    },
-    sitesOf: (declaration) => this.referenceSitesIn(undefined, declaration),
-    instanceFor: (declaration, name, alias) => this.dataViewHost.instanceFor(declaration, name, alias),
   };
 
   /** What decoding a resource's plain-encoded literals reads from the kernel. */

@@ -85,12 +85,12 @@ by a React renderer this module ships prebuilt.
   first where one is declared.
 - **Lists are entered, not just shown.** A list property is a group of options
   or typed tags, in every form.
-- **Served in the viewer's language.** With a translator, every text — page
-  titles, labels, a model's titles and enumeration labels, the renderer's own
-  words — is translated on the server for the language a request asks for
-  (`lang:`, from `Accept-Language` or a cookie), the browser choosing plural
-  forms and formatting numbers; each document says which headers it varies
-  on, and one copy is kept per language.
+- **Served in the viewer's language.** Every text — page titles, labels, a
+  model's titles and enumeration labels, the renderer's own words — is
+  translated on the server through the application's `translations:` block, in
+  the language the HTTP server negotiated for the request, the browser choosing
+  plural forms and formatting numbers; one copy of each document is kept per
+  served language, with `Content-Language` and `Vary` set.
 - **An open seam.** A module ships its own React components, and they get
   navigation, requests and refresh from the host — and its own listing layouts
   (a map, a seat plan), given the records the renderer reads under the

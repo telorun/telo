@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedTextTranslations
+  version: 1.0.0
+  description: |
+    Declares translations of texts. This kernel reads none, so the load must
+    fail naming the kind rather than as an unknown built-in.
+lang: en
+---
+kind: Telo.TextTranslations
+metadata: { name: polish }
+lang: pl
+texts:
+  - { text: Save, translation: Zapisz }

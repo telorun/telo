@@ -52,8 +52,7 @@ targets:
 kind: HttpClient.Client
 metadata: { name: browser }
 baseUrl: http://127.0.0.1:8151
-headers:
-  user-agent: showcase-test
+headers: { user-agent: showcase-test }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -64,8 +63,7 @@ with:
     # A database of its own for each run, so runs never share state.
     variables:
       dbFile: !cel "variables.dbFile.joinPath('ui-showcase-screen-' + uuidv4() + '.db')"
-    ports:
-      http: 8151
+    ports: { http: 8151 }
 targets:
   - !ref app
 steps:
@@ -73,30 +71,30 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
   - name: polishApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
-    inputs:
-      headers: { accept-language: "pl-PL, en;q=0.5" }
+    inputs: { headers: { accept-language: "pl-PL, en;q=0.5" } }
   - name: acmeApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
-    inputs:
-      headers: { cookie: "theme=dark; showcase-brand=acme" }
+    inputs: { headers: { cookie: "theme=dark; showcase-brand=acme" } }
   - name: cookiePolishApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
-    inputs:
-      headers: { accept-language: en, cookie: "theme=dark; showcase-lang=pl" }
+    inputs: { headers: { accept-language: en, cookie: "theme=dark; showcase-lang=pl" } }
   - name: cookieEnglishApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
-    inputs:
-      headers: { accept-language: pl, cookie: showcase-lang=en }
+    inputs: { headers: { accept-language: pl, cookie: showcase-lang=en } }
+  - name: weightedApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+    inputs: { headers: { accept-language: "de;q=0.1, pl" } }
+  - name: unservedCookieApp
+    invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+    inputs: { headers: { accept-language: pl, cookie: showcase-lang=xx } }
   - name: proxiedApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
-    inputs:
-      headers: { x-forwarded-proto: "https,http" }
+    inputs: { headers: { x-forwarded-proto: "https,http" } }
   - name: radixApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /radix/_telo/ui/app }
   - name: radixPolishApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /radix/_telo/ui/app }
-    inputs:
-      headers: { cookie: showcase-lang=pl }
+    inputs: { headers: { cookie: showcase-lang=pl } }
   - name: brandApp
     invoke: { kind: HttpClient.Request, client: !ref browser, url: /brand/_telo/ui/app }
   - name: sidebarApp
@@ -114,12 +112,10 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/" }
   - name: polishOverview
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: acmeOverview
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/" }
-    inputs:
-      headers: { cookie: showcase-brand=acme }
+    inputs: { headers: { cookie: showcase-brand=acme } }
   - name: conditions
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/conditions" }
   - name: data
@@ -128,48 +124,40 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/tables" }
   - name: polishTables
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/tables" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: filters
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/filters" }
   - name: polishFilters
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/filters" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: forms
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/forms" }
   - name: polishForms
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/forms" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: actions
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/actions" }
   - name: polishActions
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/actions" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: components
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/components" }
   - name: polishComponents
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/components" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: crud
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/crud" }
   - name: polishCrud
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/crud" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: themes
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/themes" }
   - name: polishThemes
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/themes" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: acmeThemes
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/_telo/ui/page?path=/themes" }
-    inputs:
-      headers: { cookie: showcase-brand=acme }
+    inputs: { headers: { cookie: showcase-brand=acme } }
   - name: radixOverview
     invoke: { kind: HttpClient.Request, client: !ref browser, url: "/radix/_telo/ui/page?path=/" }
   - name: radixConditions
@@ -448,7 +436,7 @@ steps:
           lang: !cel "steps.radixPolishApp.result.body.lang"
           title: !cel "steps.radixPolishApp.result.body.title"
         marked: !cel >-
-          [steps.app, steps.polishApp, steps.cookiePolishApp, steps.cookieEnglishApp, steps.radixPolishApp]
+          [steps.app, steps.polishApp, steps.cookiePolishApp, steps.cookieEnglishApp, steps.radixPolishApp, steps.weightedApp, steps.unservedCookieApp]
             .map(a, a.result.body.header.end[0].items.filter(i, size(i.style) > 0).map(i, i.text.message[0]))
       expected:
         polish:
@@ -456,15 +444,13 @@ steps:
           pages: [ Przegląd, Warunki, Dane, Tabele, Filtry, Formularze, Akcje, Komponenty, CRUD, Powiązane rekordy, Motywy ]
           logo: { lang: pl, message: [ Logo pokazu interfejsu ] }
           menus: [ Język, Motyw ]
-        english:
-          lang: en
-          title: { lang: en, message: [ UI showcase ] }
-        radix:
-          lang: pl
-          title: { lang: pl, message: [ Pokaz interfejsu — Radix ] }
+        english: { lang: en, title: { lang: en, message: [UI showcase] } }
+        radix: { lang: pl, title: { lang: pl, message: [Pokaz interfejsu — Radix] } }
         # No header, Accept-Language Polish, the cookie Polish over English,
-        # the cookie English over Polish, the cookie Polish under /radix.
-        marked: [ [ English ], [ Polski ], [ Polski ], [ English ], [ Polski ] ]
+        # the cookie English over Polish, the cookie Polish under /radix, a
+        # weighted header the server answers in Polish, an unserved cookie
+        # the server skips for Accept-Language.
+        marked: [ [ English ], [ Polski ], [ Polski ], [ English ], [ Polski ], [ Polski ], [ Polski ] ]
 
   # The derived theme names its typefaces and serves no face; the `/brand`
   # application's brand is one token set, which serves Inter's four faces with
@@ -589,8 +575,7 @@ steps:
               "=0": [ No projects yet. ]
               one: [ { placeholder: count }, " project so far." ]
               other: [ { placeholder: count }, " projects so far." ]
-          values:
-            count: { root: data, path: [ projectCount ] }
+          values: { count: { root: data, path: [projectCount] } }
         values:
           lang: en
           message: [ { placeholder: team }, " started ", { placeholder: project }, " most recently." ]
@@ -660,14 +645,7 @@ steps:
         errorMessage: !cel "steps.nodes.result.perRequest[6].message.startsWith(\"A 'link' node is not valid for this request\")"
         vary: !cel "steps.overview.result.headers['vary']"
       expected:
-        english:
-          - Per request
-          - These nodes are the page's own, so their when and their text are evaluated for every request.
-          - Your browser did not ask for Polish.
-          - A text an expression computes is shown as computed, never translated.
-          - "User-Agent: showcase-test"
-          - A link this request makes invalid is replaced by an error node, and the rest of the page is served.
-          - ERR_UI_NODE_INVALID
+        english: [Per request, "These nodes are the page's own, so their when and their text are evaluated for every request.", Your browser did not ask for Polish., "A text an expression computes is shown as computed, never translated.", "User-Agent: showcase-test", "A link this request makes invalid is replaced by an error node, and the rest of the page is served.", ERR_UI_NODE_INVALID]
         polish: { lang: pl, message: [ Twoja przeglądarka poprosiła o polski. ] }
         acme: [ The Acme brand is on. ]
         errorMessage: true
@@ -739,15 +717,8 @@ steps:
           - [ [ tag ], { minItems: 2 } ]
           - [ [], { required: [ ticket ] } ]
           - [ [], { not: { required: [ ticket ] } } ]
-        links:
-          - /conditions?mode=detailed
-          - /conditions?tag=red&tag=blue
-          - /conditions?ticket=OPS-7
-          - /conditions?ticket=nope
-          - /conditions?mode=detailed&mode=compact
-          - /conditions
-        pageQuery:
-          mode: { type: string, enum: [ compact, detailed ] }
+        links: [/conditions?mode=detailed, /conditions?tag=red&tag=blue, /conditions?ticket=OPS-7, /conditions?ticket=nope, /conditions?mode=detailed&mode=compact, /conditions]
+        pageQuery: { mode: { type: string, enum: [compact, detailed] } }
         pageOwn: { at: { root: query, path: [ mode ] }, matches: { const: detailed } }
 
   # A button enabled only while what the form holds meets its condition, which
@@ -780,9 +751,7 @@ steps:
             cases:
               one: [ "Tagged ", { placeholder: tag }, ": TEL-42 has ", { placeholder: count }, " tag now." ]
               other: [ "Tagged ", { placeholder: tag }, ": TEL-42 has ", { placeholder: count }, " tags now." ]
-          values:
-            tag: { root: result, path: [ tag ] }
-            count: { root: result, path: [ count ] }
+          values: { tag: { root: result, path: [tag] }, count: { root: result, path: [count] } }
 
   # Readers: a parameter from the page's query, a loading and a failure tree, a
   # nested reader, three readers that fail with the default failure, one read
@@ -814,8 +783,7 @@ steps:
           source:
             path: /api/project-summary
             params: { code: { root: query, path: [ project ] } }
-          query:
-            project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
+          query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
           loading: { type: text, style: muted, text: { lang: en, message: [ Reading the project… ] } }
           failure:
             - [ text, { at: { root: error, path: [] }, matches: { required: [ status ] } } ]
@@ -876,46 +844,7 @@ steps:
             t.edit.surface, t.edit.afterSubmit, t.edit.unsaved, t.delete])
         polish: !cel "[steps.polishTables.result.body.children[0].children[0].text.message[0], steps.polishTables.result.body.children[0].children[2].layout.columns[3].labels[1].label.message[0]]"
       expected:
-        kinds:
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - columns
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
-          - text
-          - text
-          - listing
+        kinds: [text, text, listing, text, text, listing, text, text, listing, text, text, columns, listing, text, text, listing, text, text, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing, text, text, listing]
         derived:
           columns:
             - [ title, Task ]
@@ -958,12 +887,9 @@ steps:
             - [ Brief, [ project, brief ], { type: string, format: uri-reference } ]
         byQuery:
           links: [ "/tables?project=TEL-42", "/tables?project=OPS-7", /tables ]
-          query:
-            project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
-          filters:
-            projectCode: { root: query, path: [ project ] }
-          fixed:
-            blocked: { value: true }
+          query: { project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" } }
+          filters: { projectCode: { root: query, path: [project] } }
+          fixed: { blocked: { value: true } }
         surfaces:
           # Dialogs.
           - - { type: dialog, size: small, modal: true, dismiss: { escape: true, outside: true, closeButton: true } }
@@ -1422,8 +1348,7 @@ steps:
             - hours: { root: result, path: [ hours ] }
               tasks: { root: result, path: [ tasks ] }
               project: { root: result, path: [ projectCode ] }
-            - weeks: { root: result, path: [ weeks ] }
-              pace: { root: input, path: [ pace ] }
+            - { weeks: { root: result, path: [weeks] }, pace: { root: input, path: [pace] } }
           value: [ { root: result, path: [ finishBy ] }, { type: string, format: date } ]
           list:
             - By label
@@ -1525,11 +1450,7 @@ steps:
           - [ { root: error, path: [ code ] }, { root: error, path: [ message ] } ]
         loop: [ /api/loop, false, [ { required: [ status ] }, { not: { required: [ status ] } }, null ] ]
         byAddress:
-          links:
-            - /actions?project=TEL-42&moveTo=review
-            - /actions?project=APP-5&moveTo=done
-            - /actions?project=OPS-7&moveTo=doing
-            - /actions
+          links: [/actions?project=TEL-42&moveTo=review, /actions?project=APP-5&moveTo=done, /actions?project=OPS-7&moveTo=doing, /actions]
           query:
             project: { type: string, pattern: "^[A-Z]{2,4}-[0-9]+$" }
             moveTo: { type: string, enum: [ todo, doing, review, done ] }

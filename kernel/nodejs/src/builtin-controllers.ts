@@ -39,6 +39,9 @@ const BUILTIN_CONTROLLERS: Readonly<Record<string, () => Promise<ControllerInsta
   // The step grammar is core, so the kind that runs a list of steps needs no
   // import either.
   "Telo.Sequence": () => import("./controllers/sequence/sequence-controller.js"),
+  // The application's translations are core vocabulary, so a library ships its
+  // own without importing a module to describe them.
+  "Telo.TextTranslations": () => import("./controllers/translations/text-translations-controller.js"),
 };
 
 /** Every controller entry this kernel registers at boot. */

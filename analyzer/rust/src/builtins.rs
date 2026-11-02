@@ -41,7 +41,9 @@ const ENTRY_FILES: &[(&str, &str)] = &[
     ("Service.json", include_str!("../../../sdk/builtins/Service.json")),
     ("Sink.json", include_str!("../../../sdk/builtins/Sink.json")),
     ("Template.json", include_str!("../../../sdk/builtins/Template.json")),
+    ("TextTranslations.json", include_str!("../../../sdk/builtins/TextTranslations.json")),
     ("TraceSink.json", include_str!("../../../sdk/builtins/TraceSink.json")),
+    ("Translations.json", include_str!("../../../sdk/builtins/Translations.json")),
     ("Type.json", include_str!("../../../sdk/builtins/Type.json")),
 ];
 

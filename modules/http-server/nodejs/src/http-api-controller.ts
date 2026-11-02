@@ -32,6 +32,7 @@ import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { requestBag } from "./request-binding.js";
 import { requestBodyRefused } from "./request-body-limit.js";
 import { requestHostOf } from "./request-host.js";
+import { withLang } from "./request-language.js";
 import { plainEncodedIssues, type RequestLocation } from "./request-validation-problem.js";
 
 const HttpApiRouteManifest = Type.Object({
@@ -192,19 +193,20 @@ export class HttpServerApi implements ResourceInstance {
             if (!isInvokeError(err) || err.code !== ERR_INPUT_INVALID) throw err;
             trace.reject(err);
             const data = { issues: plainEncodedIssues(location, err.data) };
+            const declared = this.ctx.declaredDisplayMessage(ERR_INPUT_INVALID, data);
             reply.code(400);
             reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
             return reply.send(
               problemDetails(400, {
                 code: ERR_INPUT_INVALID,
                 data,
-                displayMessage: this.ctx.declaredDisplayMessage(ERR_INPUT_INVALID, data),
+                displayMessage: declared && this.ctx.translations.translate(trace.lang, declared),
               }),
             );
           }
         }
         const requestContext = {
-          request: {
+          request: withLang({
             method: request.method,
             path: request.url,
             // The host the server routed the request by — `X-Forwarded-Host`
@@ -220,7 +222,7 @@ export class HttpServerApi implements ResourceInstance {
             // Canonical client address — honours X-Forwarded-For per the
             // server's `trustProxy` setting (Fastify resolves it).
             ip: request.ip,
-          },
+          }, () => trace.lang),
         };
         const acceptHeader = (
           (request.headers as Record<string, string | string[] | undefined>)["accept"] as
@@ -269,7 +271,9 @@ export class HttpServerApi implements ResourceInstance {
             code: err.code,
             message: err.message,
             data: err.data,
-            displayMessage: err.displayMessage,
+            displayMessage: err.displayMessage
+              ? this.ctx.translations.translate(trace.lang, err.displayMessage)
+              : err.displayMessage,
           };
           const dispatchArgs = [
             invokeError,

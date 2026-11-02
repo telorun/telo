@@ -36,13 +36,14 @@ function callOf(kernel: Kernel, name: string): (args: Record<string, unknown>) =
 }
 
 describe("a native function", () => {
-  it("gets a context offering only files, logging and effects", async () => {
+  it("gets a context offering only files, logging, effects and the application's translations", async () => {
     const kernel = await boot("telo.yaml");
     expect(probe().contexts.at(-1)).toEqual([
       "effect",
       "log",
       "resolveControllerFile",
       "resolveNativeFile",
+      "translations",
     ]);
     await kernel.teardown();
   });

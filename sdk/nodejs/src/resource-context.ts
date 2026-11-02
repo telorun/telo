@@ -21,6 +21,7 @@ import { RuntimeResource } from "./runtime-resource.js";
 import type { RuntimeSeam } from "./runtime-seam.js";
 import type { OpenZoneAttributes } from "./zone-attribute.js";
 import type { TextRecord } from "./text-record.js";
+import type { ApplicationTranslations } from "./application-translations.js";
 
 export interface LoadOptions {
   /** When true, `${{ }}` templates are replaced with CompiledValue wrappers
@@ -246,6 +247,9 @@ export interface ResourceContext extends ControllerContext {
    * `ERR_OUTPUT_INVALID` naming the code, so the display message always formats.
    */
   declaredDisplayMessage(code: string, data?: unknown): TextRecord | undefined;
+  /** The application's translations: its served languages, the negotiation that
+   *  chooses one, and every text shown in one (see {@link ApplicationTranslations}). */
+  readonly translations: ApplicationTranslations;
   /** The root context for runtime-driven inbound work (request, timer, queue
    *  message): inherits nothing from whatever ambient happens to be live at the
    *  registration site — no zones, no trace parent, no caller token. An inbound

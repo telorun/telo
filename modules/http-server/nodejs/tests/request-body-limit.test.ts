@@ -1,3 +1,4 @@
+import { singleLanguageTranslations } from "./single-language-translations.js";
 import {
   InvokeError,
   NOOP_LOGGER,
@@ -130,6 +131,7 @@ async function startServer() {
     },
   });
   const ctx = {
+    translations: singleLanguageTranslations,
     log: NOOP_LOGGER,
     effect: (reason: string, body: (input: unknown) => Promise<any>) => chain([body]),
     acquireHold: () => () => {},

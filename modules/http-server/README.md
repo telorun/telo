@@ -16,6 +16,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 - **Browsable API docs** — `Http.Reference` renders the generated OpenAPI document as an interactive page under a prefix you choose, and a mount's `when:` leaves it out of a production deployment.
 - **Serve a frontend** — `Http.Static` serves a directory of assets (a built SPA, plain HTML) so one application delivers both its API and its UI.
 - **CORS and content-type parsers** — first-class manifest fields; no controller code needed.
+- **Request language** — `request.lang` is negotiated per request from `preferredLanguages` (a cookie, a query parameter), then `Accept-Language`, against the application's `translations:`; a response that depends on it carries `Content-Language` and `Vary`, and a problem's `detail` is shown in it.
 - **Bounded request bodies** — no more than `maxBodyBytes` (1 MiB by default, replaceable per route) of a body, buffered, streamed or multipart, is ever buffered or handed to a handler; a larger one is answered 413 by the server itself, and a body nobody reads to its end is never handed on: its connection is closed rather than drained.
 
 ## Kinds
@@ -99,6 +100,7 @@ value:
 - [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
 - [Serving HTTPS](docs/tls.md) — `tls`: the server certificate and key, mutual TLS with `clientCa` / `clientCertificate`,.
+- [Request language](docs/request-language.md) — `request.lang`, `preferredLanguages`, the order of preference, `Content-Language` / `Vary`, and problem details in the request language.
 - [Log events](docs/log-events.md) — the `event_name` and attributes every implementation of this kind emits, and how to turn request logging off.
 - [Tracing](docs/tracing.md) — the one span each request is, its name, attributes and outcome, what runs beneath it, and continuing a caller's `traceparent`.
 
