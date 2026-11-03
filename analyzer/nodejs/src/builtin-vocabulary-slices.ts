@@ -13,11 +13,18 @@
  * at column 2 with every line of its body indented further; every later document
  * starting `kind:`, then `metadata:` with `name:` first. A name is a kind or need
  * type (`Application` or `Telo.Application`), a fragment (`Step`), a value type
- * (`Telo.Url`), a zone attribute (`atomic`), a format (`css-selector`) or an error code
- * (`ERR_INPUT_INVALID`).
+ * (`Telo.Url`), a zone attribute (`atomic`), a format (`css-selector`), an error code
+ * (`ERR_INPUT_INVALID`) or a translation (`pl`).
  */
 
-export type BuiltinEntryClass = "kind" | "fragment" | "value type" | "zone attribute" | "format" | "error code";
+export type BuiltinEntryClass =
+  | "kind"
+  | "fragment"
+  | "value type"
+  | "zone attribute"
+  | "format"
+  | "error code"
+  | "translation";
 
 export interface BuiltinVocabularyEntry {
   readonly class: BuiltinEntryClass;
@@ -35,10 +42,19 @@ const SECTION_CLASS: Readonly<Record<string, BuiltinEntryClass>> = {
   zoneAttributes: "zone attribute",
   formats: "format",
   errorCodes: "error code",
+  translations: "translation",
 };
 
 /** The order classes are listed in when a name is unknown. */
-const CLASS_ORDER: readonly BuiltinEntryClass[] = ["kind", "fragment", "value type", "zone attribute", "format", "error code"];
+const CLASS_ORDER: readonly BuiltinEntryClass[] = [
+  "kind",
+  "fragment",
+  "value type",
+  "zone attribute",
+  "format",
+  "error code",
+  "translation",
+];
 
 const DOCUMENT_SEPARATOR = "---";
 

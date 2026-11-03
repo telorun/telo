@@ -193,6 +193,7 @@ import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtSite, resolveReference } from "./dependency-injection.js";
 import { declarationOnlyNames, recordDeclarationReads } from "./declaration-reads.js";
 import {
+  BUILTIN_CATALOGS,
   readListedCatalogs,
   TranslationSet,
   type KeyedSource,
@@ -1903,7 +1904,7 @@ export class Kernel implements IKernel {
         ...(keyedSet ? { keyedSet: canonicalKindOf(keyedSet) } : {}),
       };
     });
-    return (this.translationSet = new TranslationSet(this.translationFallback, catalogs));
+    return (this.translationSet = new TranslationSet(this.translationFallback, catalogs, BUILTIN_CATALOGS));
   }
 
   /** True when a declaration's kind is `Telo.Translations` or reaches it through `extends`. */

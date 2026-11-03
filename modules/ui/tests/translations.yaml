@@ -5,6 +5,9 @@ metadata:
   description: |
     ui's own texts are the keyed set `Ui.Translations`, in English where nothing
     translates them. Every translation ui ships can be listed.
+
+    This application is ui's completeness proof: it serves all fourteen shipped
+    languages, and `telo check` on it reports no MESSAGE_TRANSLATION_MISSING.
 lang: en
 imports: { Ui: ../, Assert: ../../assert }
 translations:

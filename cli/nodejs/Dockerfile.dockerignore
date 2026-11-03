@@ -12,6 +12,7 @@
 !sdk/issue-keywords
 !sdk/formats
 !sdk/builtins
+!sdk/translations
 # The built-in vocabulary archive carries this MIT text beside it.
 !sdk/LICENSE
 !sdk/controller-protocol

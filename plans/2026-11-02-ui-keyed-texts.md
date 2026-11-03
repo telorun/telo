@@ -1,5 +1,5 @@
 ---
-status: in-progress
+status: done
 priority: high
 depends-on: [2026-11-02-application-translations.md, 2026-11-02-keyed-translations.md]
 packages: [modules/ui]

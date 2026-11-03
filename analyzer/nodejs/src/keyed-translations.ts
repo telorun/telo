@@ -147,6 +147,29 @@ export function keyedTranslationsOf(
   return isPlainObject(marked) ? (marked as unknown as KeyedTranslationsShape) : undefined;
 }
 
+/** The keyed set's definition `definition` translates — itself, or the nearest
+ *  along `extends`, each hop resolved from the definition that wrote it — or
+ *  undefined for a kind translating no keyed set. */
+export function keyedSetOf(
+  definition: ResourceDefinition | undefined,
+  resolve: (kind: string, from: ResourceDefinition) => ResourceDefinition | undefined,
+): ResourceDefinition | undefined {
+  const seen = new Set<object>();
+  let at = definition;
+  while (at && !seen.has(at)) {
+    if (keyedTranslationsOf(at)) return at;
+    seen.add(at);
+    const parent = (at as { extends?: unknown }).extends;
+    at = typeof parent === "string" ? resolve(parent, at) : undefined;
+  }
+  return undefined;
+}
+
+/** A keyed set's canonical kind, `<Module>.<Name>`. */
+export function keyedSetKind(definition: ResourceDefinition): string {
+  return `${definition.metadata?.module}.${definition.metadata?.name}`;
+}
+
 /** A problem with a keyed declaration or catalog, below the document or the
  *  catalog's value. */
 export interface KeyedTranslationsProblem {

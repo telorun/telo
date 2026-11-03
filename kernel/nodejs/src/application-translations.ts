@@ -12,8 +12,19 @@
  *
  * A keyed catalog is layered by the same rule per key, over its set's source
  * wording, and is read only by the kinds naming its set in `x-telo-text-keys`.
+ *
+ * Beneath every listed catalog lie the built-in ones (the archive's
+ * `translations`, translating the built-in error codes' display messages): a
+ * listed catalog's translation of the same text and context replaces theirs, and
+ * they add no served language.
  */
-import { isResolvedReference, judgeCatalog, teloFormatFailure, textKey } from "@telorun/analyzer";
+import {
+  builtinTranslationCatalogs,
+  isResolvedReference,
+  judgeCatalog,
+  teloFormatFailure,
+  textKey,
+} from "@telorun/analyzer";
 import {
   lookupLanguage,
   messageIdentity,
@@ -59,6 +70,12 @@ export interface ReadCatalog {
   readonly keyedSet?: string;
 }
 
+/** The built-in catalogs (the archive's `translations`), read like listed ones. */
+export const BUILTIN_CATALOGS: readonly ReadCatalog[] = builtinTranslationCatalogs().map(({ lang, catalog }) => ({
+  lang,
+  configuration: catalog,
+}));
+
 /** One keyed set as its declaration writes it: the source wording of each key,
  *  in the language of the module declaring it. */
 export interface KeyedSource {
@@ -89,16 +106,25 @@ export class TranslationSet {
   /** Each keyed set's layered messages, built the first time it is asked for. */
   private readonly layeredKeys = new Map<string, KeyedMessages[string]>();
 
+  /**
+   * @param catalogs the listed catalogs, in list order
+   * @param base the built-in catalogs, layered beneath `catalogs`
+   */
   constructor(
     readonly fallback: string,
     catalogs: readonly ReadCatalog[],
+    base: readonly ReadCatalog[],
   ) {
     const served = new Map<string, string>([[asciiLowercase(fallback), fallback]]);
     for (const catalog of catalogs) {
       const language = asciiLowercase(catalog.lang);
       if (!served.has(language)) served.set(language, catalog.lang);
+    }
+    for (const catalog of [...base, ...catalogs]) {
+      const language = asciiLowercase(catalog.lang);
+      const lang = served.get(language) ?? catalog.lang;
       if (catalog.keyedSet !== undefined) {
-        this.layerKeyed(catalog.keyedSet, language, served.get(language)!, catalog.configuration);
+        this.layerKeyed(catalog.keyedSet, language, lang, catalog.configuration);
         continue;
       }
       const texts = (catalog.configuration as { texts?: unknown } | null)?.texts;
@@ -107,7 +133,7 @@ export class TranslationSet {
         const written = texts[entry.index] as { translation: MessageSource };
         let languages = this.byText.get(entry.key);
         if (!languages) this.byText.set(entry.key, (languages = new Map()));
-        languages.set(language, { lang: served.get(language)!, text: written.translation });
+        languages.set(language, { lang, text: written.translation });
       }
     }
     this.languages = [...served.values()];

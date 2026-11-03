@@ -99,6 +99,12 @@ export function keyOfText(text: Text): string {
   return textKey(messageIdentity(text.message), text.context);
 }
 
+/** A text key as a person reads it: the source in quotes, and its context. */
+export function describeTextKey(key: string): string {
+  const [source, context] = JSON.parse(key) as [string, string | null];
+  return context === null ? JSON.stringify(source) : `${JSON.stringify(source)} (context ${JSON.stringify(context)})`;
+}
+
 /** One entry of a catalog, read. */
 export interface CatalogEntry {
   readonly index: number;

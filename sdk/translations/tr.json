@@ -1,0 +1,25 @@
+{
+  "lang": "tr",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "Hizmet yanlış yapılandırılmış."
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "Hizmet bir değer hesaplayamadı."
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "İstek geçerli değil."
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "Hizmet, iletemediği bir sonuç üretti."
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "Hizmet nasıl devam edeceğine karar veremedi."
+    }
+  ]
+}

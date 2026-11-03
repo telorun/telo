@@ -26,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: "UI 쇼케이스 로고" }
   - { text: Language, translation: "언어" }
   - { text: Theme, translation: "테마" }
@@ -524,3 +525,46 @@ texts:
   - { text: Delete, translation: "삭제" }
   - { text: From, translation: "시작" }
   - { text: To, translation: "끝" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "프로젝트 '{$code}'이(가) 없습니다." }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42에는 이미 '{$tag}' 태그가 있습니다." }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email}은(는) 팀 누구의 이메일도 아닙니다." }
+  - { text: "{$email} has left the team.", translation: "{$email}님은 팀을 떠났습니다." }
+  - { text: "Another request is already titled '{$title}'.", translation: "다른 요청의 제목이 이미 '{$title}'입니다." }
+  - { text: "The period must not start after it ends.", translation: "기간은 종료 이후에 시작할 수 없습니다." }
+  - { text: "The period must end within a year of its start.", translation: "기간은 시작 후 1년 이내에 끝나야 합니다." }
+  - { text: "Name someone to give the task to.", translation: "작업을 맡길 사람을 지정하세요." }
+  - { text: "There is no task {$id}.", translation: "작업 {$id}이(가) 없습니다." }
+  - { text: "{$name} has left the team.", translation: "{$name}님은 팀을 떠났습니다." }
+  - { text: "Task {$id} is already {$status}.", translation: "작업 {$id}은(는) 이미 {$status} 상태입니다." }
+  - { text: "There is no post {$id}.", translation: "게시물 {$id}이(가) 없습니다." }
+  - { text: "There is no comment {$id}.", translation: "댓글 {$id}이(가) 없습니다." }
+  - { text: "Write the new text of the comment.", translation: "댓글의 새 내용을 입력하세요." }
+  - { text: "The session closed.", translation: "세션이 종료되었습니다." }
+  - { text: "Only a manager may pause a project.", translation: "프로젝트는 매니저만 일시 중지할 수 있습니다." }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "요청 본문이 이 서버가 허용하는 {$maxBodyBytes}바이트보다 큽니다." }
+  - { text: "This server does not serve the host {$host}.", translation: "이 서버는 호스트 {$host}을(를) 처리하지 않습니다." }
+  - { text: "The list request is not valid.", translation: "목록 요청이 올바르지 않습니다." }

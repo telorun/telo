@@ -1,0 +1,25 @@
+{
+  "lang": "ja",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "サービスの設定に誤りがあります。"
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "サービスは値を計算できませんでした。"
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "リクエストが無効です。"
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "サービスは結果を生成しましたが、それを返すことができませんでした。"
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "サービスは処理を続行する方法を判断できませんでした。"
+    }
+  ]
+}

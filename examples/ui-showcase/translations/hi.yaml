@@ -26,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: "UI शोकेस लोगो" }
   - { text: Language, translation: "भाषा" }
   - { text: Theme, translation: "थीम" }
@@ -540,3 +541,46 @@ texts:
   - { text: Delete, translation: "हटाएँ" }
   - { text: From, translation: "से" }
   - { text: To, translation: "तक" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "'{$code}' नाम का कोई प्रोजेक्ट नहीं है।" }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 पर पहले से '{$tag}' टैग है।" }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} टीम में किसी का ई-मेल नहीं है।" }
+  - { text: "{$email} has left the team.", translation: "{$email} ने टीम छोड़ दी है।" }
+  - { text: "Another request is already titled '{$title}'.", translation: "एक और अनुरोध का शीर्षक पहले से '{$title}' है।" }
+  - { text: "The period must not start after it ends.", translation: "अवधि अपने समाप्त होने के बाद शुरू नहीं हो सकती।" }
+  - { text: "The period must end within a year of its start.", translation: "अवधि अपनी शुरुआत से एक वर्ष के भीतर समाप्त होनी चाहिए।" }
+  - { text: "Name someone to give the task to.", translation: "किसी का नाम बताएँ जिसे कार्य सौंपना है।" }
+  - { text: "There is no task {$id}.", translation: "कार्य {$id} मौजूद नहीं है।" }
+  - { text: "{$name} has left the team.", translation: "{$name} ने टीम छोड़ दी है।" }
+  - { text: "Task {$id} is already {$status}.", translation: "कार्य {$id} पहले से {$status} है।" }
+  - { text: "There is no post {$id}.", translation: "पोस्ट {$id} मौजूद नहीं है।" }
+  - { text: "There is no comment {$id}.", translation: "टिप्पणी {$id} मौजूद नहीं है।" }
+  - { text: "Write the new text of the comment.", translation: "टिप्पणी का नया पाठ लिखें।" }
+  - { text: "The session closed.", translation: "सत्र बंद हो गया।" }
+  - { text: "Only a manager may pause a project.", translation: "केवल मैनेजर ही किसी प्रोजेक्ट को रोक सकता है।" }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "अनुरोध की बॉडी इस सर्वर द्वारा स्वीकार किए जाने वाले {$maxBodyBytes} बाइट से बड़ी है।" }
+  - { text: "This server does not serve the host {$host}.", translation: "यह सर्वर होस्ट {$host} को सेवा नहीं देता।" }
+  - { text: "The list request is not valid.", translation: "सूची का अनुरोध मान्य नहीं है।" }

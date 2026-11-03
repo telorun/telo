@@ -43,9 +43,9 @@ imports:
 # The database, the routes crud does not give, the translations with one file
 # per language, and one file per page holding the view every application
 # places there.
-include: [./data.yaml, ./api.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-themes.yaml]
-# The texts are written in English, the module's `lang`, so English has no
-# catalog; ui's own texts come translated with ui.
+include: [./data.yaml, ./api.yaml, ./translations/en.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-themes.yaml]
+# The texts are written in English, the module's `lang`; `english` covers the
+# one text crud writes with no `lang`, and ui's own texts come translated with ui.
 translations:
   catalogs:
     - !ref Ui.germanTranslations
@@ -62,6 +62,7 @@ translations:
     - !ref Ui.japaneseTranslations
     - !ref Ui.koreanTranslations
     - !ref Ui.chineseTranslations
+    - !ref english
     - !ref german
     - !ref spanish
     - !ref french

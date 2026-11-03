@@ -26,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: "界面展示标志" }
   - { text: Language, translation: "语言" }
   - { text: Theme, translation: "主题" }
@@ -519,3 +520,46 @@ texts:
   - { text: Delete, translation: "删除" }
   - { text: From, translation: "开始" }
   - { text: To, translation: "结束" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "没有项目“{$code}”。" }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 已有标签“{$tag}”。" }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} 不是团队中任何人的电子邮件。" }
+  - { text: "{$email} has left the team.", translation: "{$email} 已离开团队。" }
+  - { text: "Another request is already titled '{$title}'.", translation: "另一个请求已使用标题“{$title}”。" }
+  - { text: "The period must not start after it ends.", translation: "期间不能在结束之后开始。" }
+  - { text: "The period must end within a year of its start.", translation: "期间必须在开始后一年内结束。" }
+  - { text: "Name someone to give the task to.", translation: "请指定要将任务交给谁。" }
+  - { text: "There is no task {$id}.", translation: "没有任务 {$id}。" }
+  - { text: "{$name} has left the team.", translation: "{$name} 已离开团队。" }
+  - { text: "Task {$id} is already {$status}.", translation: "任务 {$id} 已经是 {$status}。" }
+  - { text: "There is no post {$id}.", translation: "没有帖子 {$id}。" }
+  - { text: "There is no comment {$id}.", translation: "没有评论 {$id}。" }
+  - { text: "Write the new text of the comment.", translation: "请填写评论的新内容。" }
+  - { text: "The session closed.", translation: "会话已关闭。" }
+  - { text: "Only a manager may pause a project.", translation: "只有经理才能暂停项目。" }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "请求正文超过了此服务器接受的 {$maxBodyBytes} 字节。" }
+  - { text: "This server does not serve the host {$host}.", translation: "此服务器不提供主机 {$host} 的服务。" }
+  - { text: "The list request is not valid.", translation: "列表请求无效。" }

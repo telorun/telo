@@ -473,6 +473,10 @@ reads each key per served language from `ctx.translations.keyed()`; a kind
 extending it shows the same sets unless it names its own. Written anywhere else
 the annotation is refused.
 
+`telo check` warns `MESSAGE_TRANSLATION_MISSING` for every key a served language lacks;
+keep a test application that lists every catalog the library ships, so a check of
+it proves the translations complete.
+
 ## Names, descriptions and metadata
 
 - **Case encodes what a name denotes.** `PascalCase` for types — the

@@ -26,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: Logotipo del muestrario de interfaz }
   - { text: Language, translation: Idioma }
   - { text: Theme, translation: Tema }
@@ -540,3 +541,46 @@ texts:
   - { text: Delete, translation: Eliminar }
   - { text: From, translation: Desde }
   - { text: To, translation: Hasta }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "No existe el proyecto '{$code}'." }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 ya tiene la etiqueta '{$tag}'." }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} no es el correo electrónico de nadie del equipo." }
+  - { text: "{$email} has left the team.", translation: "{$email} ha dejado el equipo." }
+  - { text: "Another request is already titled '{$title}'.", translation: "Otra solicitud ya se titula '{$title}'." }
+  - { text: "The period must not start after it ends.", translation: "El periodo no puede empezar después de terminar." }
+  - { text: "The period must end within a year of its start.", translation: "El periodo debe terminar en el plazo de un año desde su inicio." }
+  - { text: "Name someone to give the task to.", translation: "Indica a quién asignar la tarea." }
+  - { text: "There is no task {$id}.", translation: "No existe la tarea {$id}." }
+  - { text: "{$name} has left the team.", translation: "{$name} ha dejado el equipo." }
+  - { text: "Task {$id} is already {$status}.", translation: "La tarea {$id} ya está {$status}." }
+  - { text: "There is no post {$id}.", translation: "No existe la publicación {$id}." }
+  - { text: "There is no comment {$id}.", translation: "No existe el comentario {$id}." }
+  - { text: "Write the new text of the comment.", translation: "Escribe el nuevo texto del comentario." }
+  - { text: "The session closed.", translation: "La sesión se cerró." }
+  - { text: "Only a manager may pause a project.", translation: "Solo un gerente puede pausar un proyecto." }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "El cuerpo de la solicitud supera los {$maxBodyBytes} bytes que acepta este servidor." }
+  - { text: "This server does not serve the host {$host}.", translation: "Este servidor no atiende el host {$host}." }
+  - { text: "The list request is not valid.", translation: "La solicitud de la lista no es válida." }

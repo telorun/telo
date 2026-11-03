@@ -1,5 +1,5 @@
 ---
-status: approved
+status: done
 priority: medium
 depends-on: [2026-11-02-application-translations.md, 2026-11-02-keyed-translations.md, 2026-11-02-ui-keyed-texts.md]
 packages: [analyzer]
@@ -46,5 +46,5 @@ The warning is reported as one diagnostic per (language, keyed set), plus one pe
 1. Removing a by-text UI text or the `I18n.translate` text from a Polish catalog gives one `MESSAGE_TRANSLATION_MISSING` warning naming it. The app still boots and shows the source.
 2. Removing `Ui.polishTranslations` from an app serving `pl` gives one warning naming `Ui.Translations` and every key it lacks.
 3. An app serving `pl-PL` and `pl` is warned only once per missing entry. An English-only app is warned about nothing.
-4. A built-in error code's display message reaches a Polish caller in Polish, with no catalog listed. A listed catalog translating the same message wins.
+4. With `lang: pl` and no catalog listed, a built-in error code's display message reaches the caller in Polish. A listed catalog translating the same message wins. An `en` application asked for `pl` answers in English.
 5. `ui`'s fixture application checks with no warning.

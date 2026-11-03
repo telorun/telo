@@ -1,7 +1,11 @@
-import { readValueTypeSlot } from "@telorun/sdk";
+import { readText, readValueTypeSlot } from "@telorun/sdk";
+import AjvModule from "ajv";
+import addFormats from "ajv-formats";
 import { fullFormats } from "ajv-formats/dist/formats.js";
 import { parseAllDocuments } from "yaml";
 import { TELO_FORMATS } from "./telo-format.js";
+import { describeTextKey, judgeCatalog, keyOfText } from "./text-judgement.js";
+import { registerTeloKeywords } from "./value-type-keyword.js";
 import { readProvidesZone, readRequiresZone, readViolatesZone } from "./zone-slot.js";
 
 /**
@@ -10,8 +14,9 @@ import { readProvidesZone, readRequiresZone, readViolatesZone } from "./zone-slo
  * document is the root (`kind: Telo.Builtins`, `metadata.name: Telo`, the
  * release's `metadata.version`, `license: MIT`) carrying the shared fragments as
  * `$defs` and the closed vocabularies a definition names (`valueTypes`,
- * `zoneAttributes`, `formats`), and the error codes the runtime raises itself with
- * their texts (`errorCodes`); every later document is one built-in kind in its
+ * `zoneAttributes`, `formats`), the error codes the runtime raises itself with
+ * their texts (`errorCodes`), and those texts' translations, one text catalog per
+ * language (`translations`); every later document is one built-in kind in its
  * authored form.
  *
  * It is READ, never declared, run or imported, which is why its kind is
@@ -57,12 +62,17 @@ const ROOT_KEYS = new Set([
   "zoneAttributes",
   "formats",
   "errorCodes",
+  "translations",
   "layers",
 ]);
 const DOCUMENT_KINDS = new Set(["Telo.Abstract", "Telo.Definition", "Telo.NeedType"]);
 const FRAGMENT_REF = "telo://manifest#/$defs/";
 /** A key the analyzer reserves for a fragment it hoists into a schema. */
 const HOISTED_KEY_PREFIX = "telo:";
+/** The language every built-in display message is written in, which no
+ *  translation catalog of the archive may be. */
+const BUILTIN_TEXT_LANG = "en";
+const Ajv = (AjvModule as any).default ?? AjvModule;
 
 export interface BuiltinVocabulary {
   /** The release the archive is the vocabulary of, `metadata.version`. */
@@ -75,6 +85,8 @@ export interface BuiltinVocabulary {
   readonly zoneAttributes: Readonly<Record<string, unknown>>;
   readonly formats: Readonly<Record<string, unknown>>;
   readonly errorCodes: Readonly<Record<string, unknown>>;
+  /** Text catalogs translating the error codes' display messages, by language. */
+  readonly translations: Readonly<Record<string, unknown>>;
 }
 
 export type BuiltinVocabularyReading =
@@ -97,6 +109,9 @@ const JSON_SCHEMA_FORMATS: ReadonlySet<string> = new Set(Object.keys(fullFormats
  * resolves in `$defs`, each `x-telo-type` (and each type argument naming one) in
  * `valueTypes`, each zone attribute in `zoneAttributes`, each Telo `format:` in
  * `formats` — so a reader of one release's archive never needs another source.
+ * Every `translations` entry is a text catalog, keyed by its own `lang` (never
+ * `en`), translating exactly the error codes' display messages — each of them,
+ * and nothing else.
  */
 export function readBuiltinVocabulary(text: string): BuiltinVocabularyReading {
   const problems: string[] = [];
@@ -139,6 +154,7 @@ export function readBuiltinVocabulary(text: string): BuiltinVocabularyReading {
   const zoneAttributes = section("zoneAttributes");
   const formats = section("formats");
   const errorCodes = section("errorCodes");
+  const translations = section("translations");
   for (const name of Object.keys(defs)) {
     if (name.startsWith(HOISTED_KEY_PREFIX)) {
       problems.push(
@@ -224,6 +240,7 @@ export function readBuiltinVocabulary(text: string): BuiltinVocabularyReading {
     const name = isMap(doc.metadata) ? doc.metadata.name : undefined;
     closure(doc, typeof name === "string" ? `Telo.${name}` : `document ${i + 2}`);
   });
+  problems.push(...translationProblems(translations, errorCodes, defs));
 
   if (problems.length > 0) return { problems };
   return {
@@ -236,7 +253,69 @@ export function readBuiltinVocabulary(text: string): BuiltinVocabularyReading {
       zoneAttributes,
       formats,
       errorCodes,
+      translations,
     },
     problems: [],
   };
+}
+
+/** What is wrong with the archive's `translations` section, read against its own
+ *  `$defs` and `errorCodes`. */
+function translationProblems(
+  translations: Record<string, unknown>,
+  errorCodes: Record<string, unknown>,
+  defs: Record<string, unknown>,
+): string[] {
+  const problems: string[] = [];
+  const builtinTexts = new Set<string>();
+  for (const entry of Object.values(errorCodes)) {
+    const read = readText((entry as { displayMessage?: unknown }).displayMessage);
+    if (read.ok) builtinTexts.add(keyOfText(read.text));
+  }
+  if (Object.keys(translations).length === 0) return problems;
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  (addFormats as any).default ? (addFormats as any).default(ajv) : (addFormats as any)(ajv);
+  registerTeloKeywords(ajv);
+  ajv.addSchema({ $id: "telo://manifest", $defs: defs });
+  let isTextCatalog: ReturnType<typeof ajv.compile>;
+  try {
+    isTextCatalog = ajv.compile({ $ref: `${FRAGMENT_REF}TextCatalog` });
+  } catch (error) {
+    return [
+      `\`translations\` cannot be read: \`$defs.TextCatalog\` does not compile (${error instanceof Error ? error.message : String(error)}).`,
+    ];
+  }
+  for (const [key, catalog] of Object.entries(translations)) {
+    const where = `\`translations.${key}\``;
+    if (!isTextCatalog(catalog)) {
+      const why = (isTextCatalog.errors ?? [])
+        .map((error: { instancePath: string; message?: string }) => `${error.instancePath || "/"} ${error.message}`)
+        .join("; ");
+      problems.push(`${where} is not a text catalog (\`$defs.TextCatalog\`): ${why}.`);
+      continue;
+    }
+    const lang = (catalog as { lang: string }).lang;
+    if (lang !== key) problems.push(`${where} declares \`lang: ${lang}\`; an entry is keyed by its own lang.`);
+    if (lang.toLowerCase() === BUILTIN_TEXT_LANG) {
+      problems.push(`${where} is written in '${BUILTIN_TEXT_LANG}', the language the built-in texts are written in.`);
+    }
+    const judged = judgeCatalog(catalog, () => false);
+    for (const problem of judged.problems) {
+      problems.push(`${where} at ${problem.path.join(".")}: ${problem.message} (${problem.code}).`);
+    }
+    const translated = new Set<string>();
+    for (const entry of judged.entries) {
+      translated.add(entry.key);
+      if (!builtinTexts.has(entry.key)) {
+        problems.push(
+          `${where} at texts.${entry.index} translates ${describeTextKey(entry.key)}, which no entry of \`errorCodes\` shows.`,
+        );
+      }
+    }
+    const missing = [...builtinTexts].filter((text) => !translated.has(text));
+    if (missing.length > 0) {
+      problems.push(`${where} leaves ${missing.map(describeTextKey).join(", ")} untranslated.`);
+    }
+  }
+  return problems;
 }

@@ -91,7 +91,14 @@ messages:
 A key the declaration does not have, a placeholder outside its key's values and
 a plural case the catalog's language does not have are refused by
 `telo check`. A key nothing translates into a served language is shown in
-English.
+English, and `telo check` warns `MESSAGE_TRANSLATION_MISSING` for it at the
+Application's `translations` key, per language and keyed set, before the app
+runs.
+
+`modules/ui/tests/translations.yaml` is `ui`'s completeness proof: an application
+listing all fourteen shipped catalogs, on which `telo check` reports no
+`MESSAGE_TRANSLATION_MISSING`. Do the same for a library of your own: keep a
+fixture application that lists every translation you ship.
 
 A kind showing these texts names the set with `x-telo-text-keys` on its
 schema root: `Ui.Data` and `Ui.Listing`, which fill `loading` and `empty`, name

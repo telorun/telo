@@ -1,0 +1,70 @@
+kind: Telo.Application
+metadata:
+  name: BuiltinTranslationsTest
+  version: 1.0.0
+  description: |
+    The built-in error codes' display messages arrive translated: an application
+    written in Polish answers a refused request in Polish with no catalog
+    listed; a listed catalog translating the same text wins over the built-in
+    translation; and an English application asked for Polish answers in
+    English, since the built-in translations serve no language of their own.
+imports:
+  App: ../modules/app
+  HttpClient: ../modules/http-client
+  Assert: ../modules/assert
+targets: [!ref test]
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: polish }
+    source: ./__fixtures__/builtin-translations/polish.yaml
+    ports: { http: 9741 }
+  - kind: App.Instance
+    metadata: { name: overridden }
+    source: ./__fixtures__/builtin-translations/overridden.yaml
+    ports: { http: 9743 }
+  - kind: App.Instance
+    metadata: { name: english }
+    source: ./__fixtures__/builtin-translations/english.yaml
+    ports: { http: 9745 }
+targets: [!ref polish, !ref overridden, !ref english]
+steps:
+  - name: polishRefusal
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:9741/check
+      method: POST
+      body: { name: too long }
+  - name: overriddenRefusal
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:9743/check
+      method: POST
+      headers: { accept-language: pl }
+      body: { name: too long }
+  - name: englishRefusal
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:9745/check
+      method: POST
+      headers: { accept-language: pl }
+      body: { name: too long }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        polish:
+          status: !cel "steps.polishRefusal.result.status"
+          detail: !cel "steps.polishRefusal.result.body.detail"
+        overridden:
+          detail: !cel "steps.overriddenRefusal.result.body.detail"
+          language: !cel "steps.overriddenRefusal.result.headers['content-language']"
+        english:
+          detail: !cel "steps.englishRefusal.result.body.detail"
+          vary: !cel "'vary' in steps.englishRefusal.result.headers"
+      expected:
+        polish: { status: 400, detail: Żądanie jest nieprawidłowe. }
+        overridden: { detail: Tego żądania nie da się przyjąć., language: pl }
+        english: { detail: The request is not valid., vary: false }

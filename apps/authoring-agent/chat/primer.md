@@ -1720,7 +1720,11 @@ whole (`MESSAGE_ENTRY_COMPUTED`), one entry per text and
 context (`MESSAGE_ENTRY_DUPLICATE`), a translation reading only the source's
 placeholders (`MESSAGE_PLACEHOLDER_UNKNOWN`); an entry matching no text the
 catalog's module imports is warned (`MESSAGE_TEXT_UNUSED`), so a language-pack
-library imports the module whose texts it translates. Titles, descriptions and
+library imports the module whose texts it translates. An application serving a
+language (its `lang:` or a listed catalog's) is warned for every keyed set's key
+and every literal `Text` written in another language that nothing translates into
+it (`MESSAGE_TRANSLATION_MISSING`); a library's shipped catalogs cover its keys
+when listed under `translations.catalogs`. The runtime's own error display messages (`ERR_INPUT_INVALID` and the other built-in codes) arrive translated into de, es, fr, hi, it, ja, ko, nl, pl, pt, ru, tr, uk and zh, beneath every listed catalog; they never add a served language, and a listed catalog translating the same text rewords it. Titles, descriptions and
 string enum values of a data schema are texts too; `x-telo-text-context: <context>`
 on a node gives them a context. A controller receives every `Text` as
 `{ text, context, lang, computed }`, attributed to the module that wrote it — a

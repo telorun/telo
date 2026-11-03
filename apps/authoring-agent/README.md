@@ -1105,9 +1105,7 @@ released and re-pinned. `Mcp` and `Run` (the application), `Mcp`, `AiMcp`,
 names in every test that imports the chat library, move together — all pinned
 to one version, or all from the checkout while a change to one of them is
 built — since a module loaded both from the checkout and from a published
-version is two identities for one kind. `reads-ui-guide.yaml` fails until the
-hub serving the guide tools is deployed: the agent's hub tools leave out a name
-the hub does not serve. Live cases skip themselves when `ANTHROPIC_API_KEY` is
+version is two identities for one kind. The live case skips itself when `ANTHROPIC_API_KEY` is
 unset. CI runs it as the `Authoring Agent E2E` workflow on every pull request
 touching the agent or the checkout's `telo` (never a fork's, which holds no
 API key), and it can be started by hand against any branch.
@@ -1120,22 +1118,9 @@ a local stand-in for Anthropic's Messages endpoint reached through `MODEL_ENDPOI
 three discovery tools and one stub guide tool, `guide_build_ui`. The first pins
 what a `find_kinds` call shows the agent and what it costs; the second that the
 guide is offered with its description and no parameters, that a call returns
-its text whole, and that the call adds no usage. `reads-ui-guide.yaml` is the live
-counterpart: asked for an app with a screen, the agent calls `guide_build_ui`
-before the first write of a manifest declaring `UiReact.App`.
+its text whole, and that the call adds no usage.
 
-`authors-manifest.yaml` and `asks-before-building.yaml` are a pair, and the pair
-is the assertion: a fully specified request writes a valid file in the first
-turn, a vague one writes nothing and comes back with questions. Either case
-passing alone would be satisfied by an agent that always does one of the two.
-
-`assumes-ui.yaml` and `asks-before-building.yaml` are a second pair, over the
-agent's default that an application has screens: a request that never mentions
-one still writes a `UiReact.App`, and answers ruling a UI out write none.
-
-`asks-about-external-data.yaml` covers the case that reads as a specification
-and is not — a report joining YouTrack to a Google Sheet names three systems and
-still says nothing about which sheet, which columns, or how the sides match.
+`asks-before-building.yaml` is the one case that drives a real model: a vague request writes nothing and comes back with questions, then the answers build a small application whose last `telo check` is clean without asking again.
 
 `boundary-auth.yaml`, `workspace-tools.yaml` and `turn-tracing.yaml` need no
 model either. The first pins the guard — 401 on every guarded route without the
@@ -1147,9 +1132,7 @@ rendering, path confinement, secret refusal, and both `/workspace` routes. The
 third runs one build turn against the collector and asserts its one trace, then
 starts the agent with no endpoint and watches a span arrive as a log record.
 
-`builds-with-tests.yaml` asserts the SHAPE of a build — a feature library, a
-suite, a test beside it, the agent running that suite, and the suite passing when
-this test runs it independently. `run-manifest-tool.yaml` and `telo-cli-tool.yaml`
+`run-manifest-tool.yaml` and `telo-cli-tool.yaml`
 need no model or key: they assert the two execution gates directly.
 
 `agent-state-survives-restart.yaml`, `chat-start-idempotency.yaml` and

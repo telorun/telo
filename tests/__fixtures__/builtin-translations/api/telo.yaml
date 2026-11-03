@@ -1,0 +1,18 @@
+kind: Telo.Library
+metadata:
+  name: RefusingApi
+  version: 1.0.0
+  description: One route refusing a body its schema does not accept, so every request to it answers the built-in validation problem.
+imports: { Http: ../../../../modules/http-server, Run: ../../../../modules/run }
+exports: { resources: [api] }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /check
+      method: POST
+      schema: { body: { type: object, properties: { name: { type: string, maxLength: 3 } } } }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - { status: 200, content: { application/json: { body: { ok: true } } } }

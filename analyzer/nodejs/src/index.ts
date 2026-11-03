@@ -279,6 +279,9 @@ export {
   readBuiltinVocabulary,
 } from "./builtin-vocabulary.js";
 export type { BuiltinVocabulary, BuiltinVocabularyReading } from "./builtin-vocabulary.js";
+// The archive's built-in translations, the lowest layer of every application's set.
+export { builtinTranslationCatalogs } from "./builtin-translations.js";
+export type { BuiltinTranslationCatalog } from "./builtin-translations.js";
 // `Telo` and `Self` as kind prefixes no module or import may take.
 export {
   RESERVED_KIND_PREFIXES,
