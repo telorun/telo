@@ -3,6 +3,7 @@ import swagger from "@fastify/swagger";
 import {
   CatchEntry,
   dispatchCatches,
+  parseCookieHeader,
   dispatchReturns,
   hostnameClaim,
   hostnameMatcher,
@@ -44,6 +45,9 @@ import Fastify, {
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Socket } from "node:net";
 import { resolveHttpsOptions, type ServerTlsSettings } from "./tls-material.js";
+import { ConnectionListener } from "./connection-listener.js";
+import type { ForwardedClientCertificate } from "./client-certificate.js";
+import { requestConnection, withConnection, type RequestConnection } from "./request-connection.js";
 import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { integerSetting } from "./integer-setting.js";
 import { requestBag } from "./request-binding.js";
@@ -59,7 +63,7 @@ import {
   requestBodyRefused,
   requestBodyTooLarge,
 } from "./request-body-limit.js";
-import { createFastifyTeloLogger, LISTEN_SUPERSEDED } from "./fastify-telo-logger.js";
+import { createFastifyTeloLogger } from "./fastify-telo-logger.js";
 import { publishSpecServerUrlPolicy } from "./openapi-spec-servers.js";
 import { HostRoutes, publishHostRoutes } from "./host-routes.js";
 import { HostClass, hostClasses, NO_CLASS, type MountHostEntry } from "./host-precedence.js";
@@ -131,6 +135,7 @@ type HttpServerResource = RuntimeResource & {
   trustForwardedHeaders?: boolean;
   trustProxy?: boolean | number | bigint;
   tls?: ServerTlsSettings;
+  forwardedClientCertificate?: ForwardedClientCertificate;
   maxBodyBytes?: number;
   cors?: CorsOptions;
   contentTypeParsers?: Array<{ contentType: string; parser?: Invocable; stream?: boolean }>;
@@ -177,6 +182,7 @@ class HttpServer implements ResourceInstance {
    *  instance, so two effects name it; running it twice is a no-op. */
   private closed = false;
   private readonly app: FastifyInstance;
+  private readonly listener: ConnectionListener;
   private readonly address: string;
   private readonly port: number;
   /** Whether a proxy in front is trusted for the forwarded host and protocol. */
@@ -194,6 +200,7 @@ class HttpServer implements ResourceInstance {
   private readonly resolvedGuards: WeakMap<HttpMount, ResolvedGuard>;
   private readonly requestTraces = new WeakMap<FastifyRequest, RequestTrace>();
   private readonly requestIntakes = new WeakMap<FastifyRequest, RequestIntake>();
+  private readonly requestConnections = new WeakMap<FastifyRequest, RequestConnection>();
   private readonly requestScope: RequestScope<FastifyRequest> = {
     forRequest: (request) => {
       const trace = this.requestTraces.get(request);
@@ -260,9 +267,37 @@ class HttpServer implements ResourceInstance {
     //
     // A custom logger *instance* must be passed via Fastify 5's `loggerInstance`
     // option; passing it to `logger:` throws FST_ERR_LOG_INVALID_LOGGER_CONFIG.
-    this.app = Fastify({
+    this.listener = new ConnectionListener({
+      address: this.address,
+      port: this.port,
       // Read here, so unreadable or mismatched material fails creation.
-      ...(resource.tls ? { https: resolveHttpsOptions(resource.tls) } : {}),
+      ...(resource.tls ? { tls: resolveHttpsOptions(resource.tls) } : {}),
+      onHandshakeFailure: (failure) =>
+        this.ctx.log.info(
+          "TLS handshake failed",
+          {
+            ...(failure.address === undefined ? {} : { "network.peer.address": failure.address }),
+            ...(failure.port === undefined ? {} : { "network.peer.port": failure.port }),
+            "server.port": this.port,
+            "error.type": failure.type,
+            "error.message": failure.message,
+          },
+          { eventName: "http.server.tls_handshake.failed" },
+        ),
+      onAddressUnavailable: (unavailable) =>
+        this.ctx.log.warn(
+          "Address unavailable",
+          {
+            "server.address": unavailable.address,
+            "server.port": unavailable.port,
+            "error.type": unavailable.type,
+            "error.message": unavailable.message,
+          },
+          { eventName: "http.server.address_unavailable" },
+        ),
+    });
+    this.app = Fastify({
+      serverFactory: this.listener.serverFactory,
       loggerInstance: createFastifyTeloLogger(this.ctx.log),
       // Fastify's own per-request lines are off: this kind emits its own from
       // `onRequest` / `onResponse` instead (see `installRequestLogging`), so the
@@ -551,11 +586,18 @@ class HttpServer implements ResourceInstance {
           });
       });
       const language = () => this.languageOf(request);
+      const connection = this.connectionOf(request);
       const span = await opening;
       this.requestTraces.set(request, {
         context: span.context,
         get lang() {
           return language().lang;
+        },
+        get tls() {
+          return connection.tls;
+        },
+        get clientCertificate() {
+          return connection.clientCertificate;
         },
         reject: (error) => {
           decidedBy = { error };
@@ -569,6 +611,27 @@ class HttpServer implements ResourceInstance {
     });
   }
 
+  /** The request's TLS session and client certificate, read when first asked. */
+  private connectionOf(request: FastifyRequest): RequestConnection {
+    let connection = this.requestConnections.get(request);
+    if (!connection) {
+      const forwarded = this.resource.forwardedClientCertificate;
+      connection = requestConnection(request, forwarded, (reason) =>
+        this.ctx.log.warn(
+          "Forwarded client certificate unreadable",
+          {
+            "httpserver.forwarded_certificate.header": forwarded!.header,
+            "httpserver.forwarded_certificate.format": forwarded!.format,
+            "error.message": reason,
+          },
+          { eventName: "http.server.forwarded_certificate.unreadable" },
+        ),
+      );
+      this.requestConnections.set(request, connection);
+    }
+    return connection;
+  }
+
   /** The language of a request: the server's `preferredLanguages` first, then
    *  `Accept-Language` by quality, then the application's own. */
   private negotiateLanguage(request: FastifyRequest, reply: FastifyReply): RequestLanguage {
@@ -578,14 +641,18 @@ class HttpServer implements ResourceInstance {
     const preferred: string[] = [];
     if (this.resource.preferredLanguages !== undefined) {
       const evaluated = this.ctx.moduleContext.expandWith(this.resource.preferredLanguages, {
-        request: {
-          headers: normalizeHeaders(request.headers),
-          query: requestBag(request.query),
-          path: request.url,
-          host: this.requestHost(request.raw),
-          method: request.method,
-          ip: request.ip,
-        },
+        request: withConnection(
+          {
+            headers: normalizeHeaders(request.headers),
+            cookies: parseCookieHeader(request.headers.cookie),
+            query: requestBag(request.query),
+            path: request.url,
+            host: this.requestHost(request.raw),
+            method: request.method,
+            ip: request.ip,
+          },
+          this.connectionOf(request),
+        ),
       });
       if (!Array.isArray(evaluated)) {
         throw preferredLanguagesInvalid(`produced ${describeKind(evaluated)}, not a list of strings`);
@@ -836,11 +903,12 @@ class HttpServer implements ResourceInstance {
    * off the socket while it closes is discarded, so the connection cannot carry
    * another request. Decided here for every response,
    * whoever wrote it; one whose headers went out earlier is closed at its end
-   * by the request's `finish` listener.
+   * by the request's `finish` listener. A response written while the server
+   * closes says so too, since its connection ends after it.
    */
   private installUnreadBodyClose(): void {
     this.app.addHook("onSend", (request, reply, payload, done) => {
-      if (!this.bodyArrived(request)) reply.header("Connection", "close");
+      if (this.listener.closing || !this.bodyArrived(request)) reply.header("Connection", "close");
       done();
     });
   }
@@ -971,15 +1039,19 @@ class HttpServer implements ResourceInstance {
         normalizedHeaders[key.toLowerCase()] = value;
       }
       const requestContext = {
-        request: withLang(
-          {
-            method: request.method,
-            path: request.url,
-            host: this.requestHost(request.raw),
-            ip: request.ip,
-            headers: normalizedHeaders,
-          },
-          () => language.lang,
+        request: withConnection(
+          withLang(
+            {
+              method: request.method,
+              path: request.url,
+              host: this.requestHost(request.raw),
+              ip: request.ip,
+              headers: normalizedHeaders,
+              cookies: parseCookieHeader(request.headers.cookie),
+            },
+            () => language.lang,
+          ),
+          this.connectionOf(request),
         ),
       };
       const rendered = await dispatchCatches(
@@ -1093,18 +1165,22 @@ class HttpServer implements ResourceInstance {
         }
         const language = this.languageOf(request, reply);
         const requestContext = {
-          request: withLang(
-            {
-              method: request.method,
-              path: request.url,
-              host: this.requestHost(request.raw),
-              // The transport's own bags, as maps in the CEL value domain — see `requestBag`.
-              params: requestBag(request.params),
-              query: requestBag(request.query),
-              headers: normalizedHeaders,
-              body: request.body,
-            },
-            () => language.lang,
+          request: withConnection(
+            withLang(
+              {
+                method: request.method,
+                path: request.url,
+                host: this.requestHost(request.raw),
+                // The transport's own bags, as maps in the CEL value domain — see `requestBag`.
+                params: requestBag(request.params),
+                query: requestBag(request.query),
+                headers: normalizedHeaders,
+                cookies: parseCookieHeader(request.headers.cookie),
+                body: request.body,
+              },
+              () => language.lang,
+            ),
+            this.connectionOf(request),
           ),
         };
         const acceptHeader = (
@@ -1197,16 +1273,20 @@ class HttpServer implements ResourceInstance {
     return async (request: FastifyRequest, reply: FastifyReply) => {
       const language = this.languageOf(request, reply);
       const requestContext = {
-        request: withLang(
-          {
-            headers: normalizeHeaders(request.headers),
-            query: requestBag(request.query),
-            path: request.url,
-            host: this.requestHost(request.raw),
-            method: request.method,
-            ip: request.ip,
-          },
-          () => language.lang,
+        request: withConnection(
+          withLang(
+            {
+              headers: normalizeHeaders(request.headers),
+              cookies: parseCookieHeader(request.headers.cookie),
+              query: requestBag(request.query),
+              path: request.url,
+              host: this.requestHost(request.raw),
+              method: request.method,
+              ip: request.ip,
+            },
+            () => language.lang,
+          ),
+          this.connectionOf(request),
         ),
       };
       const inputs =
@@ -1243,12 +1323,12 @@ class HttpServer implements ResourceInstance {
   }
 
   /**
-   * Two effects, and no error handling of its own.
-   *
-   * The hold is one, the open socket is the other. A `listen()` that throws — a bound port — unwinds the run frame,
-   * so the hold is released and the routes are torn down without this method
-   * knowing anything about recovery; the same unwind is what stops the server at
-   * teardown, which is why there is no `teardown()` left to keep in step.
+   * The hold, the listening socket, then the announcement — no error handling of
+   * its own. A `listen()` that throws — a bound port — unwinds the run frame, so
+   * the hold is released and the routes are torn down without this method knowing
+   * anything about recovery; the same unwind is what stops the server at teardown,
+   * plain or TLS alike. The socket's inverse is registered the moment it listens,
+   * so a failed announcement cannot leak it.
    */
   run() {
     return this.ctx
@@ -1257,50 +1337,55 @@ class HttpServer implements ResourceInstance {
         inverse: this.ctx.acquireHold(`http server ${this.resource.metadata.name}`),
       }))
       .effect("listening socket", async () => {
-        await this.app.listen({
-        host: this.address,
-        port: this.port,
-        // Fastify announces "Server listening at http://…" through the injected
-        // logger, interpolating the address into prose — unparseable, and exactly
-        // what §4.1 routes into attributes. Replacing the text with a constant
-        // this module owns lets the adapter drop it without pattern-matching
-        // Fastify's wording, which is the thing this kind's own contract forbids.
-        listenTextResolver: () => LISTEN_SUPERSEDED,
+        await this.app.ready();
+        await this.listener.listen();
+        this.ctx.log.info(
+          "Listening",
+          {
+            "server.address": this.address,
+            "server.port": this.port,
+            // The SOCKET's scheme, which is `https` only when `tls` is set. A public address is routinely
+            // `https://` behind a terminator, so deriving from one would claim TLS
+            // for a plaintext socket on the most common production deployment.
+            "url.scheme": this.scheme,
+          },
+          { eventName: "http.server.started" },
+        );
+        return {
+          result: undefined,
+          // Paired with the record above: a server that never listened has no
+          // such effect, so it cannot report a close nothing matches with a start.
+          // The drain starts first, but Fastify's close hooks run while it waits:
+          // they are what end a long-lived response (an event stream) it waits on.
+          inverse: async () => {
+            await settleBoth(this.listener.close(), this.closeApp());
+            this.ctx.log.info(
+              "Stopped listening",
+              { "server.address": this.address, "server.port": this.port },
+              { eventName: "http.server.stopped" },
+            );
+          },
+        };
+      })
+      .effect("listening announced", async () => {
+        await this.ctx.emitEvent(`${this.resource.metadata.name}.Listening`, {
+          address: this.address,
+          port: this.port,
+          mounts: this.resource.mounts,
+          openapi: this.resource.openapi,
+        });
+        return { result: undefined };
       });
-      this.ctx.log.info(
-        "Listening",
-        {
-          "server.address": this.address,
-          "server.port": this.port,
-          // The SOCKET's scheme, which is `https` only when `tls` is set. A public address is routinely
-          // `https://` behind a terminator, so deriving from one would claim TLS
-          // for a plaintext socket on the most common production deployment.
-          "url.scheme": this.scheme,
-        },
-        { eventName: "http.server.started" },
-      );
-      await this.ctx.emitEvent(`${this.resource.metadata.name}.Listening`, {
-        address: this.address,
-        port: this.port,
-        mounts: this.resource.mounts,
-        openapi: this.resource.openapi,
-      });
-      return {
-        result: undefined,
-        // Paired with the record above, which is what the `listening` flag used
-        // to approximate: a server that never listened has no such effect, so it
-        // cannot report a close a consumer would fail to match with a start.
-        inverse: async () => {
-          await this.closeApp();
-          this.ctx.log.info(
-            "Stopped listening",
-            { "server.address": this.address, "server.port": this.port },
-            { eventName: "http.server.stopped" },
-          );
-        },
-      };
-    });
   }
+}
+
+/** Awaits both, failing with every rejection. */
+async function settleBoth(first: Promise<void>, second: Promise<void>): Promise<void> {
+  const failures = (await Promise.allSettled([first, second]))
+    .filter((outcome): outcome is PromiseRejectedResult => outcome.status === "rejected")
+    .map((outcome) => outcome.reason);
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, "Http.Server: stopping failed twice");
 }
 
 /** The status a handler's result answers with when no `returns:` entry decides
@@ -1339,6 +1424,15 @@ export async function create(
       "ERR_HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES",
       `${label} sets \`unknownHosts: reject\`, and none of its mounts names \`hostnames\`, so ` +
         `every request whose host is not an IP literal would be refused.`,
+    );
+  }
+  const trust = trustProxyOf(resource);
+  if (resource.forwardedClientCertificate && !(trust === true || (typeof trust === "number" && trust > 0))) {
+    throw new RuntimeError(
+      "ERR_HTTP_FORWARDED_CERTIFICATE_UNTRUSTED",
+      `${label} reads a forwarded client certificate from ` +
+        `'${resource.forwardedClientCertificate.header}' but trusts no proxy, so any client could ` +
+        `send that header. Set \`trustProxy\` to the proxy in front of this server.`,
     );
   }
   let resolvedNotFoundHandler: ResolvedHandler | null = null;
@@ -1461,15 +1555,14 @@ const closesAtOnce = new WeakMap<Socket, () => void>();
  * the connection, and a reset discards a response the client has not read yet
  * (macOS and Windows lose it every time). So when the host ends such a
  * connection, reading stops, the response is flushed with a FIN and the socket
- * is destroyed only after a short hold. Bun's socket has no `destroySoon`, and
- * its server calls none.
+ * is destroyed only after a short hold. Every connection is one this server's
+ * own listener accepted, so its socket has `destroySoon` on every host.
  */
 function lingerOverUnreadBody(
   socket: Socket,
   request: IncomingMessage,
   bodyArrived: () => boolean,
 ): void {
-  if (typeof socket.destroySoon !== "function") return;
   const atOnce = closesAtOnce.get(socket) ?? socket.destroySoon.bind(socket);
   closesAtOnce.set(socket, atOnce);
   socket.destroySoon = () => {
@@ -1494,9 +1587,7 @@ function lingerOverUnreadBody(
  *  that announced the close is left to the host. */
 function closeConnection(raw: ServerResponse, socket: Socket): void {
   if (String(raw.getHeader("connection")).toLowerCase() === "close") return;
-  // As Node's own server ends a connection: not every host's socket has `destroySoon`.
-  if (typeof socket.destroySoon === "function") socket.destroySoon();
-  else socket.end();
+  socket.destroySoon();
 }
 
 function describeKind(value: unknown): string {

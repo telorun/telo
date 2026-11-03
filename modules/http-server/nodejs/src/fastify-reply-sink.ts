@@ -31,8 +31,11 @@ export function fastifyReplySink(reply: FastifyReply): ResponseSink {
     },
     setHeader(name, value) {
       ensureOpen("setHeader");
-      // Fastify's reply.header is last-write-wins for the same name.
-      reply.header(name, value);
+      // Removed first: Fastify appends to an existing `Set-Cookie` instead of
+      // replacing it.
+      reply.removeHeader(name);
+      if (typeof value === "string") reply.header(name, value);
+      else if (value.length > 0) reply.header(name, [...value]);
     },
     async send(body) {
       ensureOpen("send");

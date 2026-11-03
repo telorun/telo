@@ -3,6 +3,8 @@ import { dispatchCatches, dispatchReturns } from "../src/dispatch.js";
 import type { ModuleLikeContext, ValidateSchema } from "../src/dispatch.js";
 import type { ResponseSink } from "../src/sink.js";
 import type { CatchEntry, ReturnEntry } from "../src/schema.js";
+import * as HostCookieController from "../src/host-cookie-controller.js";
+import * as UnprefixedCookieController from "../src/unprefixed-cookie-controller.js";
 
 /** Minimal `ModuleLikeContext` that evaluates CEL-like templates:
  *  - `$path.to.value` looks up the context (returns raw value)
@@ -40,7 +42,7 @@ function makeModuleContext(): ModuleLikeContext {
 
 interface CapturedResponse {
   status: number;
-  headers: Record<string, string>;
+  headers: Record<string, string | readonly string[]>;
   body: Uint8Array;
   isStream: boolean;
 }
@@ -52,7 +54,7 @@ interface SinkHandle {
 
 function makeInMemorySink(): SinkHandle {
   let status = 200;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string | readonly string[]> = {};
   const chunks: Uint8Array[] = [];
   let sent = false;
   let isStream = false;
@@ -122,6 +124,29 @@ describe("dispatchReturns", () => {
     const captured = await result;
     expect(captured.status).toBe(204);
     expect(captured.body.byteLength).toBe(0);
+  });
+
+  it("writes an entry's cookies as its Set-Cookie lines, in written order", async () => {
+    const session = await HostCookieController.create({ name: "session" });
+    const theme = await UnprefixedCookieController.create({ name: "theme", httpOnly: false });
+    const returns = [
+      {
+        status: 204,
+        cookies: [
+          { cookie: session, value: "abc" },
+          { cookie: theme, value: "$result.theme", maxAge: "3600s" },
+          { cookie: session, maxAge: "0s" },
+        ],
+      },
+    ] as unknown as ReturnEntry[];
+    const { sink, result } = makeInMemorySink();
+    await dispatchReturns(returns, { theme: "dark" }, {}, undefined, makeModuleContext(), noopValidate, sink);
+    const captured = await result;
+    expect(captured.headers["set-cookie"]).toEqual([
+      "__Host-session=abc; Path=/; Secure; HttpOnly; SameSite=Lax",
+      "theme=dark; Path=/; Max-Age=3600; Secure; SameSite=Lax",
+      "__Host-session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax",
+    ]);
   });
 
   it("renders a buffered body and sets Content-Type from the matched mime", async () => {

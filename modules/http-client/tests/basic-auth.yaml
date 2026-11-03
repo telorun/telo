@@ -1,0 +1,117 @@
+kind: Telo.Application
+metadata:
+  name: HttpClientBasicAuthTest
+  version: 1.0.0
+  description: >-
+    Http.BasicAuth renders `Authorization: Basic base64(user:password)` in UTF-8.
+    An empty or colon-bearing username is refused before the app runs, and a
+    computed one when the credential is created.
+imports:
+  Http: ../
+  Server: ../../http-server
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+  - !ref emptyUsername
+  - !ref colonUsername
+  - !ref computedColonUsername
+---
+kind: Http.BasicAuth
+metadata: { name: ascii }
+username: aladdin
+password: open sesame
+---
+kind: Http.BasicAuth
+metadata: { name: unicode }
+username: zoë
+password: pässwörd-密码
+---
+kind: Http.BasicAuth
+metadata: { name: emptyPassword }
+username: aladdin
+password: ""
+---
+kind: Http.Client
+metadata: { name: asciiClient }
+baseUrl: http://localhost:8944
+credential: !ref ascii
+---
+kind: Http.Client
+metadata: { name: unicodeClient }
+baseUrl: http://localhost:8944
+credential: !ref unicode
+---
+kind: Http.Client
+metadata: { name: emptyPasswordClient }
+baseUrl: http://localhost:8944
+credential: !ref emptyPassword
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: Api }
+    routes:
+      - request:
+          path: /echo
+          method: GET
+          schema: { headers: { type: object, properties: { authorization: { type: string } } } }
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  authorization: !cel "request.headers['authorization']"
+  - kind: Server.Server
+    metadata: { name: Srv }
+    listen: { port: 8944 }
+    mounts:
+      - path: /
+        mount: !ref Api
+targets:
+  - !ref Srv
+steps:
+  - name: ascii
+    invoke: { kind: Http.Request, client: !ref asciiClient, url: /echo }
+  - name: assertAscii
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.ascii.result.body"
+      expected: { authorization: "Basic YWxhZGRpbjpvcGVuIHNlc2FtZQ==" }
+
+  - name: unicode
+    invoke: { kind: Http.Request, client: !ref unicodeClient, url: /echo }
+  - name: assertUnicode
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.unicode.result.body"
+      expected: { authorization: "Basic em/Dqzpww6Rzc3fDtnJkLeWvhueggQ==" }
+
+  - name: emptyPassword
+    invoke: { kind: Http.Request, client: !ref emptyPasswordClient, url: /echo }
+  - name: assertEmptyPassword
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.emptyPassword.result.body"
+      expected: { authorization: "Basic YWxhZGRpbjo=" }
+---
+kind: Assert.Manifest
+metadata: { name: emptyUsername }
+source: ./__fixtures__/basic-auth/empty-username.yaml
+expect:
+  errors: [{ code: SCHEMA_VIOLATION, message: "/username must NOT have fewer than 1 characters" }]
+  runFails: "/username must NOT have fewer than 1 characters"
+---
+kind: Assert.Manifest
+metadata: { name: colonUsername }
+source: ./__fixtures__/basic-auth/colon-username.yaml
+expect:
+  errors: [{ code: SCHEMA_VIOLATION, message: "/username must match pattern" }]
+  runFails: "/username must match pattern"
+---
+kind: Assert.Manifest
+metadata: { name: computedColonUsername }
+source: ./__fixtures__/basic-auth/computed-colon-username.yaml
+expect: { runFails: "username must match pattern" }

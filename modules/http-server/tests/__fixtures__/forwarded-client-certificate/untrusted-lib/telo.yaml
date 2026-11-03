@@ -1,0 +1,18 @@
+kind: Telo.Library
+metadata: { name: ForwardedCertificateUntrustedLib, version: 1.0.0, description: A server reading a forwarded client certificate while trusting no proxy. }
+imports: { Http: ../../../../ }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: 8934 }
+forwardedClientCertificate: { header: x-forwarded-client-cert, format: xfcc }
+mounts:
+  - path: /
+    mount: !ref api
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /, method: GET }
+    returns:
+      - { status: 200, content: { application/json: { body: { ok: true } } } }

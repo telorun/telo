@@ -9,7 +9,10 @@
  * - `setStatus` and `setHeader` are synchronous accumulators. The sink does
  *   not flush headers until `send` or `stream` is called.
  * - `setHeader` is last-write-wins: a second call for the same name replaces
- *   the previous value (no multi-value merging).
+ *   everything the first set (no multi-value merging). A list is the header's
+ *   complete set of lines, written one line per member in order and never
+ *   comma-joined; an empty list removes the header. `Set-Cookie` is always
+ *   written as a list.
  * - `Content-Type` is set via `setHeader("Content-Type", mime)` like any other
  *   header — no special-case parameter.
  * - `send(body?)` flushes status + headers and ends the response. The body is
@@ -27,7 +30,7 @@
  */
 export interface ResponseSink {
   setStatus(code: number): void;
-  setHeader(name: string, value: string): void;
+  setHeader(name: string, value: string | readonly string[]): void;
   send(body?: unknown): Promise<void>;
   stream(
     iter: AsyncIterable<Uint8Array>,

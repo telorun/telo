@@ -16,7 +16,7 @@ requires:
   # as X_TELO_TYPE_UNKNOWN (recorded by http-server's own floor of the same
   # type); the client controller also returns its effect chain from `init()`.
   telo: ">=0.98.0"
-exports: { kinds: [ApiKeyHeader, BearerToken, Client, Credential, QueryKey, Request] }
+exports: { kinds: [ApiKeyHeader, BasicAuth, BearerToken, Client, Credential, QueryKey, Request] }
 ---
 # Http.Credential — how a client authenticates the requests made through it.
 #
@@ -96,7 +96,7 @@ outputType:
         x-telo-sensitive: true
         description: Query parameters to apply, under the request's own by the same rule.
 ---
-# The three credentials that are just a value the author already holds.
+# The credentials that are just a value the author already holds.
 #
 # Http.Credential had exactly one implementation — OAuth's — so every module
 # talking to a keyed API grew its own `apiKey` field and applied it by hand,
@@ -183,6 +183,42 @@ schema:
         Text placed before the key in the header value, for services that expect one
         (`Token `, `ApiKey `). Omitted, the key is sent alone.
       type: string
+---
+kind: Telo.Definition
+metadata:
+  name: BasicAuth
+  description: >-
+    Authenticates requests with a username and password in the Authorization header
+    using the HTTP Basic scheme, UTF-8 encoded. The credentials are supplied from
+    configuration, typically secrets, and reused unchanged for every request.
+capability: Telo.Invocable
+extends: Self.Credential
+controllers: [pkg:telo/local/js?path=./nodejs/http-client.mjs&local_path=./nodejs/src/index.ts#BasicAuthController]
+throws:
+  codes:
+    ERR_INVALID_CREDENTIAL:
+      description: >-
+        The username was absent, empty or contained `:`. An empty password is legal.
+schema:
+  type: object
+  additionalProperties: false
+  required: [username, password]
+  examples:
+    - username: !cel "secrets.apiUser"
+      password: !cel "secrets.apiPassword"
+  properties:
+    username:
+      title: Username
+      description: The user name. Must be non-empty and must not contain `:`.
+      type: string
+      minLength: 1
+      pattern: "^[^:]*$"
+      x-telo-eval: compile
+    password:
+      title: Password
+      description: The password. An empty string is allowed. Usually a secret.
+      type: string
+      x-telo-eval: compile
 ---
 kind: Telo.Definition
 metadata:

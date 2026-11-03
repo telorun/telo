@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: HttpServerClientCertificateTest
+  version: 1.0.0
+  description: >-
+    request.clientCertificate holds the certificate the listener received:
+    verified under clientCertificate: required, and under optional null without
+    one and unverified for a certificate clientCa did not sign. A certificate the
+    listener verified wins over a forwarded one. Certificates are test fixtures
+    in __fixtures__/tls.
+imports:
+  Http: ../
+  Client: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Client.Client
+metadata: { name: requiredWithCert }
+baseUrl: https://localhost:8932
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+  cert: { file: !module-path ./__fixtures__/tls/client.pem }
+  key: { file: !module-path ./__fixtures__/tls/client.key }
+---
+kind: Client.Client
+metadata: { name: optionalNoCert }
+baseUrl: https://localhost:8933
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+---
+kind: Client.Client
+metadata: { name: optionalRogue }
+baseUrl: https://localhost:8933
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+  cert: { file: !module-path ./__fixtures__/tls/rogue-client.pem }
+  key: { file: !module-path ./__fixtures__/tls/rogue-client.key }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /whoami, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              certificate: !cel "request.clientCertificate"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: requiredServer }
+    listen: { address: 127.0.0.1, port: 8932 }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+      clientCa: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+      clientCertificate: required
+    trustProxy: true
+    forwardedClientCertificate: { header: x-forwarded-client-cert, format: xfcc }
+    mounts: [{ path: /, mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: optionalServer }
+    listen: { address: 127.0.0.1, port: 8933 }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+      clientCa: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+      clientCertificate: optional
+    mounts: [{ path: /, mount: !ref api }]
+targets:
+  - !ref requiredServer
+  - !ref optionalServer
+steps:
+  - name: pem
+    value: !include-text ./__fixtures__/tls/client.pem
+  - name: roguePem
+    value: !include-text ./__fixtures__/tls/rogue-client.pem
+  # The forwarded rogue certificate loses to the one the listener verified.
+  - name: required
+    invoke: { kind: Client.Request, client: !ref requiredWithCert, url: /whoami }
+    inputs:
+      headers: { x-forwarded-client-cert: !cel "'Cert=\"' + urlEncode(steps.roguePem.result) + '\"'" }
+  - name: assertRequired
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.required.result.body.certificate"
+      expected:
+        subject: { CN: telo-client }
+        issuer: { CN: Telo Test CA }
+        serialNumber: 286F27C9F0108BDA158C51FB9B2FE371036CCAA0
+        fingerprint256: 13:30:AC:AA:1C:34:E0:F2:5D:AE:D7:72:84:07:98:19:02:7F:B1:95:2A:21:B8:75:B5:59:83:ED:2B:0B:A8:54
+        validFrom: "2026-10-30T16:08:27Z"
+        validTo: "2126-10-06T16:08:27Z"
+        subjectAltNames: ["DNS:telo-client"]
+        pem: !cel "steps.pem.result"
+        verified: true
+        via: listener
+  - name: optionalWithout
+    invoke: { kind: Client.Request, client: !ref optionalNoCert, url: /whoami }
+  - name: assertOptionalWithout
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.optionalWithout.result.body"
+      expected: { certificate: null }
+  - name: optionalRogue
+    invoke: { kind: Client.Request, client: !ref optionalRogue, url: /whoami }
+  - name: assertOptionalRogue
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        {'cn': steps.optionalRogue.result.body.certificate.subject.CN,
+        'verified': steps.optionalRogue.result.body.certificate.verified,
+        'via': steps.optionalRogue.result.body.certificate.via}
+      expected: { cn: rogue, verified: false, via: listener }

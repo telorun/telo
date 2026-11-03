@@ -21,8 +21,13 @@ returns:
   - status: <int>            # required
     when: <CEL>              # optional — entry is selected if truthy
     mode: buffer | stream    # optional, default buffer
-    headers:                 # optional — entry-level; never includes Content-Type
+    headers:                 # optional — entry-level; never Content-Type or Set-Cookie
       <Header-Name>: <CEL or string>
+    cookies:                 # optional — one Set-Cookie line each, in order
+      - cookie: <ref to an HttpDispatch.Cookie>
+        value: <CEL or string>         # optional, cookie-octets
+        maxAge: <CEL or duration>      # optional; zero or less clears it
+        expires: <CEL or timestamp>    # optional
     content:                 # required when status carries a body; omit for 204/304
       <media-type>:
         # buffer-mode value fields:
@@ -131,7 +136,8 @@ When a `returns:` entry's `content:` map has multiple keys, the dispatcher picks
 
 - **CEL context.** `returns:` entries see `{ result, request }`. `catches:` entries see `{ error, problem, request }` — `error` is `{ code, message, data, displayMessage }`, `displayMessage` the display message's record (`{ text, context, lang, computed }`, unformatted) or null, and `problem` is the default problem that entry would render, readable in its `when:` as well as its body. Cross-channel references (`result.*` in `catches:`, `error.*` in `returns:`) are rejected by the analyzer.
 - **Stream-mode `when:`.** `result.*` is unavailable in stream-mode `when:` — the handler result is an unconsumed `Stream<...>`; iterating it to evaluate the predicate would either fail or consume the stream before bytes flow to the response. Reference only `request.*`. Load-time validator rejects violations.
-- **`Content-Type` is forbidden in `headers:`.** The matched `content[mime]` map key is the only Content-Type source. Declaring it again in `headers:` is rejected at load time (case-insensitive).
+- **`Content-Type` and `Set-Cookie` are forbidden in `headers:`.** The matched `content[mime]` map key is the only Content-Type source, and `cookies:` the only Set-Cookie one, so a cookie's attributes are always checked. Either one in `headers:` (entry level or per MIME type, case-insensitive) is refused by `telo check` and when the router is created.
+- **Cookies.** `cookies:` sits at entry level, on `returns:` and `catches:` alike, because a cookie does not vary by media type. A cookie's attributes come from its declaration; only `value`, `maxAge` and `expires` are per response. See [cookies](cookies.md).
 - **`body` and `encoder` are mutually exclusive.** A `content[mime]` value uses `body` (buffer mode) or `encoder` (stream mode), never both.
 - **Matching.** Both lists are scanned top-to-bottom. The first entry whose `when:` evaluates truthy wins. The first entry with no `when:` is the list's catch-all; entries following it are unreachable and rejected by the analyzer.
 - **`returns:` is required.** Every route must define at least one `returns:` entry. `catches:` is optional when the handler's declared throw union is empty, or when a scope list covers it.
@@ -276,7 +282,7 @@ trace. Members appear in this order.
 `{ pointer, keyword, params }`, and no prose:
 
 - `pointer` is a JSON Pointer into the request as CEL reads it: `/body/month`,
-  `/body/items/0/name`, `/query/sort`, `/params/id`, `/headers/x-api-key`. For a missing
+  `/body/items/0/name`, `/query/sort`, `/params/id`, `/headers/x-api-key`, `/cookies/session`. For a missing
   (`required`) or undeclared (`additionalProperties`) property it names that property.
 - `keyword` and `params` come from one closed vocabulary — the JSON Schema keywords the
   validators report, each with the names of its params: `type` (`type`), `required`

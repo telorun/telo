@@ -8,8 +8,9 @@ import type { ResponseSink } from "../sink.js";
  */
 export interface CapturedResponse {
   status: number;
-  /** Lowercased header keys → value. Last-write-wins is enforced. */
-  headers: Record<string, string>;
+  /** Lowercased header keys → value: a header sent on one line as its text,
+   *  one sent on several as its lines in order. */
+  headers: Record<string, string | string[]>;
   /** Raw response bytes. For buffered responses, parse via the captured
    *  `Content-Type`; for streamed responses, compare byte-exact. */
   body: Uint8Array;
@@ -115,6 +116,47 @@ export function runSinkContract(name: string, makeSink: SinkFactory): void {
       const captured = await result;
       expect(captured.headers["content-type"]).toMatch(/^application\/json/);
       expect(captured.headers["content-type"]).not.toMatch(/text\/plain/);
+    });
+
+    it("writes a list as one line per member, in order", async () => {
+      const { sink, result } = makeSink();
+      sink.setStatus(204);
+      sink.setHeader("X-Line", ["one", "two", "three"]);
+      await sink.send();
+      const captured = await result;
+      expect(captured.headers["x-line"]).toEqual(["one", "two", "three"]);
+    });
+
+    it("replaces a list with a later string", async () => {
+      const { sink, result } = makeSink();
+      sink.setStatus(204);
+      sink.setHeader("Set-Cookie", ["a=1", "b=2"]);
+      sink.setHeader("Set-Cookie", "c=3");
+      await sink.send();
+      const captured = await result;
+      expect(captured.headers["set-cookie"]).toBe("c=3");
+    });
+
+    it("removes a header set to an empty list", async () => {
+      const { sink, result } = makeSink();
+      sink.setStatus(204);
+      sink.setHeader("Set-Cookie", ["a=1"]);
+      sink.setHeader("Set-Cookie", []);
+      await sink.send();
+      const captured = await result;
+      expect(captured.headers["set-cookie"]).toBeUndefined();
+    });
+
+    it("never comma-joins the lines of a list", async () => {
+      const { sink, result } = makeSink();
+      sink.setStatus(204);
+      sink.setHeader("Set-Cookie", ["a=1; Expires=Thu, 01 Jan 1970 00:00:00 GMT", "b=2"]);
+      await sink.send();
+      const captured = await result;
+      expect(captured.headers["set-cookie"]).toEqual([
+        "a=1; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+        "b=2",
+      ]);
     });
 
     it("streams already-encoded bytes through `stream(iter)`", async () => {

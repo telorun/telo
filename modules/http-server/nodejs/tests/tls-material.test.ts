@@ -11,17 +11,33 @@ describe("resolveHttpsOptions", () => {
   it("serves plain TLS without asking for client certificates", () => {
     const options = resolveHttpsOptions(server);
     expect(options.requestCert).toBeUndefined();
+    expect(options.minVersion).toBe("TLSv1.2");
+  });
+
+  it("raises the protocol floor when asked", () => {
+    expect(resolveHttpsOptions({ ...server, minVersion: "TLSv1.3" }).minVersion).toBe("TLSv1.3");
   });
 
   it("requires client certificates when asked", () => {
     const clientCa = [{ pem: text("ca.pem") }];
     expect(resolveHttpsOptions({ ...server, clientCa, clientCertificate: "required" })).toMatchObject({
       requestCert: true,
-      rejectUnauthorized: true,
+      rejectUnauthorized: false,
+      requireVerifiedClient: true,
+    });
+  });
+
+  it("asks for client certificates without refusing a connection under optional", () => {
+    const clientCa = [{ pem: text("ca.pem") }];
+    expect(resolveHttpsOptions({ ...server, clientCa, clientCertificate: "optional" })).toMatchObject({
+      requestCert: true,
+      rejectUnauthorized: false,
+      requireVerifiedClient: false,
     });
   });
 
   it("refuses inconsistent settings", () => {
+    expect(() => resolveHttpsOptions({ ...server, clientCertificate: "optional" })).toThrow(/clientCa/);
     expect(() => resolveHttpsOptions({ ...server, clientCertificate: "required" })).toThrow(/clientCa/);
     expect(() => resolveHttpsOptions({ ...server, clientCa: [{ pem: text("ca.pem") }] })).toThrow(/'none'/);
   });

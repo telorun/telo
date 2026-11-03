@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: ComputedDomainInvalid, version: 1.0.0 }
+imports: { HttpDispatch: ../.. }
+variables: { domain: { env: COOKIE_DOMAIN, type: string, default: "a.test; Path=/x" } }
+---
+# A computed attribute is held to the same constraints once it is evaluated.
+kind: HttpDispatch.SecureCookie
+metadata: { name: prefs }
+name: prefs
+domain: !cel "variables.domain"

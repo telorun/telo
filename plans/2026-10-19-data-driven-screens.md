@@ -2,7 +2,7 @@
 status: in-progress
 priority: medium
 depends-on: []
-packages: [modules/ui, modules/ui-react, modules/i18n, message-format, sdk]
+packages: [modules/ui, modules/ui-react, modules/i18n]
 tracking: feat/data-driven-screens
 ---
 
@@ -65,120 +65,13 @@ discriminator an author writes", which is narrowed to resources and slot values 
   `license: MIT` and its own `LICENSE`. `message-format/` joins the MIT directory
   list in `pnpm run check:licenses` and the root `README.md`.
 
-**Grammar widening.** Phase 1 adds the formats `message-pattern` and `language-tag`,
-the fragments `Message`, `Text` and `TextCatalog`, the annotation
-`x-telo-text-context` and the module key `lang:`. Phase 3 adds the annotations
-`x-telo-match-for` and `x-telo-context-accessor-only`, the format `re2-pattern` and
-`resolve:` on referrer rules. Every module whose own `telo.yaml` uses any of them —
-`ui`, `i18n`, `ui-react`, `crud`, and any other the execution check finds — declares
-`requires: telo: ">=<surface version>"`, verified by running the previous published
-CLI against the module with the block stripped (refused) and restored
-(`MODULE_REQUIRES_NEWER_RUNTIME`).
-
 **Relation to the chat plan** (`2026-10-18-chat.md` beside this one): both add node
 types to `Ui.SpecNode` (`chat` there; `value`, `list` here) and parts to the
 styling contract; neither depends on the other.
 
 ---
 
-## Phase 1 — The message core and the built-in text vocabulary
-
-**Before.** No message format exists. Text in a manifest is plain strings; nothing
-can say which strings are shown to a person, and nothing checks a translation
-against its source.
-
-**After.**
-
-The **core** (`@telorun/message-format` / `telorun-message-format`) holds the
-pattern parser, the message model, the lookup chain, plural selection and number
-formatting, with CLDR plural rules and number symbols pinned as data. It calls no
-host `Intl`, so Node, Rust and every browser give one answer. It carries its own
-formatting vectors, including the MessageFormat 2 working group's test cases that
-fall inside the profile.
-
-Built-in vocabulary, published as data beside the other built-ins:
-
-- Format `message-pattern` — MessageFormat 2's `pattern` production limited to
-  literal text, variable placeholders `{$name}` (a name follows the Telo name rule)
-  and the escapes `\{`, `\}`, `\\`; its `grammar` points at the MF2 specification.
-- Format `language-tag` — an RFC 5646 well-formed tag.
-- Fragment `telo://manifest#/$defs/Message` — a pattern, or a selection
-  `{ plural: <placeholder>, cases: { <CLDR category> | =<integer>: Message } }`:
-  `other` is required, `=N` keys are matched before categories, and each case is
-  itself a Message, so several counts compose by nesting. Its structure maps
-  one-to-one onto MF2's data model. Select / gender is not in the profile; it is
-  added later as a sibling selection form.
-- Fragment `telo://manifest#/$defs/Text` — a Message, or `{ text: Message, context }`.
-  A field shown to a person is typed by it.
-- Fragment `telo://manifest#/$defs/TextCatalog` — `{ lang, texts: [{ text, context?,
-  translation }] }`, `lang` a `language-tag`, `translation` a Message.
-- Annotation `x-telo-text-context: "<context>"` — on a data schema node, the context
-  of that node's `title`, `description` and enum labels.
-- Module key `lang:` on `Telo.Application` and `Telo.Library` — a `language-tag`,
-  the language the module's own texts are written in.
-
-The three fragments are recognised by their `x-telo-fragment` stamp through one
-analyzer reader, which also reads `x-telo-text-context`.
-
-Semantics:
-
-- **Identity.** A source text's key is the pattern reached by taking `other` at
-  every selection, in canonical serialization, plus its context. A translation's
-  shape does not depend on its source's: a plain source may have a plural
-  translation.
-- **Lookup.** RFC 4647 truncation (`pl-Latn-PL` → `pl-Latn` → `pl`), ending at the
-  source, which is selected with the plural rules of its declaring module's `lang`.
-  A text reaches a controller together with that `lang`; the kernel supplies it
-  when it binds a call at a `Text` parameter.
-- **Values.** A string is inserted as written. An integer or double is formatted
-  with the language's CLDR decimal rules — default precision and grouping pinned in
-  the vectors, int64 / uint64 without precision loss — and plural selection reads
-  the operands of the number as formatted, so `1.0` is not `one`. Any other value
-  (a timestamp included — its text depends on a time zone the message does not know)
-  is refused.
-- A `Text` parameter of a `Telo.Callable` requires a literal argument.
-
-Texts a module shows are enumerable: every `Text` field, every `title`,
-`description` and string enum value of a shape (the `title` of a `const` branch
-included), and every literal argument at a `Text` parameter. Computed text is never
-looked up. Enumeration is linear — one hash set per analysis — and a catalog key is
-judged against the texts of its declaring module's import closure, so a
-language-pack library imports the module whose texts it translates.
-
-Codes, each refused by `telo check` and by the kernel as `ERR_<code>` for a
-computed value, and each pair pinned in `tests/check-run-agreement.yaml`:
-
-| Code | When |
-| --- | --- |
-| `MESSAGE_SYNTAX_INVALID` | a pattern does not parse |
-| `MESSAGE_PLACEHOLDER_UNKNOWN` | a translation uses a placeholder its source lacks |
-| `MESSAGE_PLURAL_CATEGORY_INVALID` | a selection names a category its language lacks — a translation judged against its catalog's `lang`, a source against its module's `lang` |
-| `MESSAGE_SOURCE_LANGUAGE_MISSING` | a module's own texts contain a selection and the module declares no `lang:` |
-| `MESSAGE_PLACEHOLDER_UNBOUND` | a call's literal `values` lacks a placeholder of the message, a plural selector included |
-| `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED` | a placeholder value of a refused type, or a plural selector over a non-number |
-| `MESSAGE_ENTRY_COMPUTED` | a computed value inside a `TextCatalog` |
-| `MESSAGE_ENTRY_DUPLICATE` | one (text, context) pair twice within a language |
-| `TEXT_ARGUMENT_COMPUTED` | a computed argument at a `Text` callable parameter |
-| `MESSAGE_TEXT_UNUSED` (warning) | a catalog key matches no text the module's import closure shows |
-
-**Verify.**
-
-- One vector set passes under the Node core, the Rust core and the built renderer
-  browser entry: plural choice for `en`, `pl`, `ar`; `1`, `1.0`, `1.5` and a value
-  above 2^53; escapes; refusals. No `Intl` call exists in any of the three.
-- `telo check` refuses `{$n}` in a translation whose source has none, `few` in an
-  English translation and in an English source, a computed first argument to a
-  translator, `!cel` inside a catalog entry, and a plural source in a module with no
-  `lang:`; each points at the line that wrote it.
-- `=0` works in an English source; a nested two-count message formats; a
-  Polish-source module shown for `en` at 5 picks Polish `many`.
-- `telo builtins message-pattern language-tag Message Text TextCatalog` prints the
-  five entries.
-- The editor renders a `Text` field from its schema alone.
-
----
-
-## Phase 2 — The `i18n` module
+## Phase 1 — The `i18n` module
 
 **Before.** A backend writes language-specific text inline; there is no way to send
 an email or an API error in the caller's language.
@@ -193,7 +86,7 @@ an email or an API error in the caller's language.
   from CEL as `Self.<name>(text, lang, values?)` → string.
   - `text` is a `Text` parameter: a literal source text or `{ text, context }`.
   - `lang` is one resolved tag, passed on every call — there is no ambient locale.
-    Lookup is Phase 1's chain.
+    Lookup is RFC 4647 truncation.
   - `values` maps placeholder names to values.
   - One (text, context) pair translated twice within a language across its catalogs
     is `MESSAGE_ENTRY_DUPLICATE`, a resource rule reading the catalogs through
@@ -229,54 +122,7 @@ an email or an API error in the caller's language.
 
 ---
 
-## Phase 3 — Typing inside node trees
-
-**Before.** The analyzer collects `x-telo-context` regions, eval paths and accessor
-sites only along a kind's own schema and does not follow `$ref`, so nothing inside
-the recursive `telo://Ui/Node` shape is typed. The most specific region replaces any
-enclosing one. Compile-time evaluation skips a whole top-level property that holds an
-accessor anywhere, so one accessor in a view's `content` stops its other `!cel` from
-being evaluated. A referrer rule cannot read what the referrer's reference slots
-name.
-
-**After.**
-
-- Context regions, eval paths and accessor sites are reached through named shapes
-  and recursive `$ref` at any depth, as the reference reach already is.
-- A nested `x-telo-context` region adds to its enclosing region; a name it declares
-  shadows the outer one.
-- `x-telo-context-accessor-only: true` on a binding: the binding exists only at
-  accessor sites, and an evaluated `!cel` or `!interpolate` that names it is
-  `CEL_UNKNOWN_IDENTIFIER`.
-- Compile-time evaluation skips each accessor site individually.
-- Referrer rules gain `resolve:` — pointers into the referrer kind's reference
-  slots, one level deep, as resource rules have.
-- `x-telo-match-for: "<pointer>"` on a JSON-Schema-valued field: the analyzer judges
-  the schema against the static type of the accessor at the pointer and reports only
-  definite disjointness — `type`, `const`, `enum`, and `required` naming a member a
-  closed object lacks — as `MATCH_UNSATISFIABLE`; the kernel refuses it through its
-  analysis at load (`ERR_MATCH_UNSATISFIABLE`).
-- Format `re2-pattern` — the RE2-compatible regular-expression subset (no
-  lookaround, no backreferences).
-
-`MATCH_UNSATISFIABLE` and the accessor-only refusal are pinned in
-`tests/check-run-agreement.yaml`.
-
-**Verify.**
-
-- A fixture kind with an `x-telo-context` region inside a recursive named shape
-  reports `CEL_UNKNOWN_FIELD` at depth three; a nested region sees both its own and
-  the enclosing names.
-- `!cel` naming an accessor-only binding is `CEL_UNKNOWN_IDENTIFIER`; a `!cel` beside
-  an accessor in the same top-level property is evaluated.
-- A referrer rule reads `referrer.model` behind a `!ref`.
-- `const: billing` and `type: string` at an integer accessor are both
-  `MATCH_UNSATISFIABLE`; `(?=x)` is refused under `re2-pattern`.
-- The analyzer guide and `docs/extend/referrer-rules.md` describe each change.
-
----
-
-## Phase 4 — Conditions, `Ui.Data` and the record contract
+## Phase 2 — Conditions, `Ui.Data` and the record contract
 
 **Before.** Only `Ui.Table` loads data, and only through the collection contract.
 A node's `when` is a CEL boolean the server evaluates per request over
@@ -372,7 +218,7 @@ Two new nodes in `Ui.Node` / `Ui.SpecNode`, usable in any data scope, each carry
   optional literal `text`.
 - `list` — `rows` (an accessor), `columns: [{ header?, value, shown? }]` (a column's
   `shown` reads the scope's roots, never `row`), `heading?`, `rowActions`
-  (`Ui.RowAction`, Phase 5). A list draws a member of one answer and is bounded by
+  (`Ui.RowAction`). A list draws a member of one answer and is bounded by
   it; it never pages — a set that grows without limit is served by the collection
   contract and drawn by `Ui.Table`.
 
@@ -396,83 +242,7 @@ Two new nodes in `Ui.Node` / `Ui.SpecNode`, usable in any data scope, each carry
 
 ---
 
-## Phase 5 — An action's answer, and row actions
-
-**Before.** An action posts and draws its `lists`; a failure is shown generically;
-nothing happens after success except drawing. Row actions exist only on
-`Ui.Table`, read only `row`, and may not draw an answer (`UI_ROW_ACTION_DRAWS_LISTS`).
-
-**After.**
-
-`Ui.Action` gains:
-
-- `result:` — a node tree binding `result`, `input` (the record sent) and `values`
-  (the form's current values).
-- `failure:` — a node tree binding `error` (`Ui.RequestError`), `input` and
-  `values`, drawn for any answer that is not 2xx (a 400 still marks the fields), for
-  no answer at all, and for a 2xx body that fails the output model's profile
-  keywords (`code: ERR_UI_RESPONSE_INVALID`). `ui` fills a default `failure`.
-- The body is read only when `result:` or `onSuccess.navigate` reads it.
-- `onSuccess: { navigate?, refreshes? }`.
-  - `navigate` is an accessor over `result`, or a literal. An app-relative address
-    that is a declared page is a move within the application; any other is a full
-    load; an `https:` or `http:` address replaces the tab. A value failing the
-    address rule navigates nowhere and the answer is drawn.
-  - `refreshes` lists literal app-relative paths, held to the address rule and
-    matched by exact equality against `Ui.Data.source.path` and
-    `Ui.Table.source.basePath`.
-- `concurrency: parallel | serial`, `ui` filling `parallel`. In both modes an entry
-  (the action's form, or one row) accepts no press while its previous press is
-  pending or queued, so a queue holds at most one press per entry; under `serial`,
-  presses of the action are ordered within this page only, which promises nothing
-  about the operation itself. Inputs are bound at press time.
-- `clearAnswerOn: [<property>…]` — the drawn answer (result or failure, and any row
-  answers inside it) is cleared when a submission starts and when a listed
-  property's value changes; a name that is not an `inputModel` property is
-  `UI_ACTION_CLEAR_UNKNOWN_PROPERTY`.
-- `enabled` (a `Ui.Enablement`).
-- **`lists` is removed.** Every in-repo manifest is rewritten to `result:` in the
-  same change; the fragment is `Added` and states the break. No migration entry
-  exists for it: a core migration entry may not name a module's kind, and modules
-  have no migration surface of their own.
-
-Row actions:
-
-- `Ui.RowAction` is one named shape — `{ action, inputs, confirm?, prompt?,
-  enabled? }` — used by `Ui.Table.rowActions` and by a `list` node's `rowActions`.
-- `inputs` are judged against `row` plus the roots in force where the list sits in
-  its own resource; in a table, `row` plus the table's declared `query`
-  (`CONTRACT_INPUTS_MISMATCH`, `CEL_UNKNOWN_FIELD`, `CEL_TYPE_ERROR`,
-  `ACCESSOR_NOT_PLAIN_CHAIN`, twin `ERR_UI_ROW_ACTION_INPUTS_INVALID`), bound at
-  press time.
-- A pressed row action draws its own `result:` tree, with only its own bindings, in
-  place of its button; its `failure:` tree inline unless a confirmation surface is
-  open, where the refusal is shown as today.
-- In a table the answer is keyed by (entry, row key): it survives the reload its own
-  success triggers and is dropped when that key leaves the shown page. In a list it
-  lives with the enclosing answer and is cleared with it.
-- The action's own `onSuccess` and `concurrency` apply wherever it runs.
-- `UI_ROW_ACTION_DRAWS_LISTS` is removed.
-- The action contract documents the `{ code, message }` failure body.
-
-**Verify.**
-
-- The starters that used `lists` (scheduled-job, background-worker, api-sync,
-  semantic-search, report-generator) and the `ui` / `ui-react` fixtures pass on
-  `result:`; `lists` on an action is a `SCHEMA_VIOLATION`.
-- A page document carries `result`, `failure`, `onSuccess`, `concurrency`,
-  `clearAnswerOn`, `enabled` and a `list` node's `rowActions` (`Assert.Equals`).
-- A row action binding `values.folder` outside a form is `CEL_UNKNOWN_FIELD`; one
-  missing a required input is `CONTRACT_INPUTS_MISMATCH`.
-- `ui-react` unit tests: a serial action's second press waits for the first; a
-  second press of a pending entry is refused; `navigate` to an `https:` address
-  leaves the page; a row's success draws the answer's link in place of the button
-  and the link survives the table reload that success triggers; a failure draws
-  `error.code`; no answer draws `failure:` with `status` absent.
-
----
-
-## Phase 6 — Field kinds, option sources, the date range, state, live validation
+## Phase 3 — Field kinds, option sources, the date range, state, live validation
 
 **Before.** A form's fields are `{ property }` entries whose control the model
 alone decides; no option list comes from a server; values are lost on reload;
@@ -502,7 +272,7 @@ Fields (`fields` on `Ui.Form` and `Ui.Action` stays one flat ordered list; `fiel
   the page document is identical for both spellings.
 - **A field kind judges its own fit.** Each field kind's fit to the model is a
   referrer rule on `Self.Form` and on `Self.Action`, reading the owner's model
-  through `resolve:` (Phase 3). Its runtime twin is a field contract in
+  through `resolve:`. Its runtime twin is a field contract in
   `@telorun/ui`: each field judges itself against the model property its owner hands
   it, and the owner raises `ERR_<code>` without naming any field kind. Owner rules
   read only `property`, `group` and `shown`; a bare name is judged by the existing
@@ -591,14 +361,13 @@ Live validation:
   the interpreted profile, showing a field's errors once it has been touched.
   Keywords outside the profile — a `pattern` outside `re2-pattern` included — stay
   legal in models and are left to the API.
-- A hidden required property blocks submission as Phase 4 states.
+- A hidden required property blocks submission as Phase 2 states.
 - A server 400's detail lands on the field whose property is the first segment of
   the detail's `path` (`period.from` reaches the range field); one for a property no
   shown field enters is shown under the form.
 
 `Crud.Ui` and every in-repo manifest writing `fields: [{ property }]` are rewritten
-by hand to property names or field kinds, for the same reason Phase 5 gives for
-`lists`.
+by hand to property names or field kinds.
 
 **Verify.**
 
@@ -624,7 +393,7 @@ by hand to property names or field kinds, for the same reason Phase 5 gives for
 
 ---
 
-## Phase 7 — Translated screens
+## Phase 4 — Translated screens
 
 **Before.** `UiReact.App.lang` is a literal; every label is the shape's `title` and
 every renderer word is English.
@@ -678,7 +447,7 @@ every renderer word is English.
 
 ---
 
-## Phase 8 — The proof: `examples/report-console`
+## Phase 5 — The proof: `examples/report-console`
 
 **Before.** No example uses a data-driven screen.
 
@@ -692,7 +461,7 @@ node and field kind in the checklist below.
 
 ---
 
-## Phase 9 — The invoicing console rebuilt
+## Phase 6 — The invoicing console rebuilt
 
 **Before.** `apps/report-console/public/index.html` in the invoicing repository is
 the whole frontend, served by `Http.Static`.
@@ -761,7 +530,7 @@ application, and the invoicing repository's manifest tests pass.
   `Vary`, styling parts for the new nodes and fields), `i18n`, `crud` (field
   shorthand).
 - The built-in vocabulary spec and the analyzer guide: the two message formats, the
-  three fragments, `x-telo-text-context`, the module `lang:` key, Phase 3's
+  three fragments, `x-telo-text-context`, the module `lang:` key, the typing
   annotations, `re2-pattern` and referrer-rule `resolve:`;
   `docs/extend/referrer-rules.md`.
 - Root `CLAUDE.md`: the annotation list, the shared fragments, the module keys, the

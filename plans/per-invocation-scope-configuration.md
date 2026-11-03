@@ -111,6 +111,47 @@ The kind that forwards declares the annotation. It is never inferred from proper
 - **Kernel and SDK:** a resource that owns a scope can open it with inputs and close it explicitly, so a member's lifetime ends at close and not when a callback returns. `ScopeHandle.run` is unchanged. This is how a pool keeps its members.
 - **Rust kernel:** refuses `Telo.Pool` as an unsupported manifest feature.
 
+*Example:* an application that lists the pods of a cluster whose address and token arrive at call time. The same client is shared by every call with the same address and token.
+
+```yaml
+kind: Telo.Application
+metadata: { name: K8sDashboard }
+imports:
+  Http: oci://ghcr.io/telorun/http-client@0.0.0
+variables:
+  server: { env: K8S_SERVER, type: string }
+secrets:
+  token: { env: K8S_TOKEN, type: string }
+targets:
+  - invoke:
+      kind: Telo.Sequence
+      inputType:
+        type: object
+        required: [server, token]
+        properties: { server: { type: string }, token: { type: string } }
+      with:
+        - kind: Http.Request
+          metadata: { name: req }
+          client: !ref clusters.resource
+      steps:
+        - name: get
+          invoke: !ref req
+          inputs: { method: GET, url: /api/v1/pods }
+      outputs: !cel "steps.get.result.body"
+    inputs: { server: !cel "variables.server", token: !cel "secrets.token" }
+---
+kind: Telo.Pool
+metadata: { name: clusters }
+idleTimeout: 5m
+maxEntries: 64
+resource:
+  kind: Http.Client
+  baseUrl: !cel "inputs.server"
+  headers: { Authorization: !interpolate "Bearer ${{ inputs.token }}" }
+```
+
+The pool's `resource` reads the `inputs` of the sequence that references it, so `server` and `token` are typed from that sequence's `inputType`, and a field it does not declare is refused at `telo check`.
+
 *Verify:*
 - A fixture kind marked shareable and counting its constructions: three runs of a sequence with the same inputs build one member, two distinct inputs build two, and concurrent runs with the same inputs share one.
 - After `idleTimeout` with no lease the fixture records one teardown; before it, none.

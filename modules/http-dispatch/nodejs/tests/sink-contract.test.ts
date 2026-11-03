@@ -1,26 +1,16 @@
-import { runSinkContract, type SinkHandle } from "../src/test-utils/sink-contract.js";
+import { runSinkContract, type CapturedResponse, type SinkHandle } from "../src/test-utils/sink-contract.js";
 import type { ResponseSink } from "../src/sink.js";
 
 /** A simple in-memory `ResponseSink` for testing the dispatcher and as a
  *  reference implementation that runs the shared contract harness. */
 function makeInMemorySink(): SinkHandle {
   let status = 200;
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string | string[]> = {};
   const chunks: Uint8Array[] = [];
   let sent = false;
   let isStream = false;
-  let resolveResult!: (v: {
-    status: number;
-    headers: Record<string, string>;
-    body: Uint8Array;
-    isStream: boolean;
-  }) => void;
-  const result = new Promise<{
-    status: number;
-    headers: Record<string, string>;
-    body: Uint8Array;
-    isStream: boolean;
-  }>((res) => (resolveResult = res));
+  let resolveResult!: (v: CapturedResponse) => void;
+  const result = new Promise<CapturedResponse>((res) => (resolveResult = res));
 
   function commit(): Uint8Array {
     let total = 0;
@@ -41,13 +31,16 @@ function makeInMemorySink(): SinkHandle {
     },
     setHeader(name, value) {
       if (sent) throw new Error("setHeader called after send()");
-      headers[name.toLowerCase()] = value;
+      const key = name.toLowerCase();
+      if (typeof value === "string") headers[key] = value;
+      else if (value.length === 0) delete headers[key];
+      else headers[key] = value.length === 1 ? value[0]! : [...value];
     },
     async send(body) {
       if (sent) throw new Error("send() called twice on the same sink");
       sent = true;
       if (body !== undefined) {
-        const contentType = (headers["content-type"] ?? "").toLowerCase();
+        const contentType = String(headers["content-type"] ?? "").toLowerCase();
         let bytes: Uint8Array;
         if (body instanceof Uint8Array) {
           bytes = body;

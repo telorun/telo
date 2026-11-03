@@ -25,6 +25,7 @@ lang: en
 imports:
   Run: ../../modules/run
   Http: ../../modules/http-server
+  HttpDispatch: ../../modules/http-dispatch
   Sql: ../../modules/sql
   SQLite: ../../modules/sqlite
   Crud: ../../modules/crud

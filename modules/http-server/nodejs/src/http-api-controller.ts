@@ -4,6 +4,7 @@ import {
   ContentEntry,
   dispatchCatches,
   dispatchReturns,
+  parseCookieHeader,
   PROBLEM_MEDIA_TYPE,
   problemDetails,
   ReturnEntry,
@@ -32,8 +33,13 @@ import { fastifyReplySink } from "./fastify-reply-sink.js";
 import { requestBag } from "./request-binding.js";
 import { requestBodyRefused } from "./request-body-limit.js";
 import { requestHostOf } from "./request-host.js";
+import { withConnection } from "./request-connection.js";
 import { withLang } from "./request-language.js";
-import { plainEncodedIssues, type RequestLocation } from "./request-validation-problem.js";
+import {
+  plainEncodedIssues,
+  textPartValidator,
+  type RequestLocation,
+} from "./request-validation-problem.js";
 
 const HttpApiRouteManifest = Type.Object({
   request: Type.Object({
@@ -45,6 +51,7 @@ const HttpApiRouteManifest = Type.Object({
         query: Type.Optional(Type.Any()),
         body: Type.Optional(Type.Any()),
         headers: Type.Optional(Type.Any()),
+        cookies: Type.Optional(Type.Any()),
       }),
     ),
   }),
@@ -142,6 +149,10 @@ export class HttpServerApi implements ResourceInstance {
     register("params", "params", route.request.schema?.params);
     if (!streamBody) register("body", "body", route.request.schema?.body);
     register("headers", "headers", route.request.schema?.headers);
+    // Fastify reads `cookies` for the OpenAPI document only and validates
+    // nothing, so the route validates them itself, as text like a query.
+    register("cookies", "cookies", route.request.schema?.cookies);
+    const cookiesRefused = schema.cookies ? textPartValidator("cookies", schema.cookies) : undefined;
 
     // OpenAPI operation metadata — @fastify/swagger reads these off the route
     // schema and renders them into the generated document.
@@ -164,10 +175,14 @@ export class HttpServerApi implements ResourceInstance {
       }
     }
 
+    const cookieStatuses = statusesSettingCookies(route);
     app.route({
       method: route.request.method as any,
       url: translatedPath,
       schema,
+      ...(cookieStatuses.size === 0
+        ? {}
+        : { config: { swaggerTransform: documentingSetCookie(cookieStatuses) } }),
       // Replaces the server's `maxBodyBytes` for this route, larger or smaller.
       ...(route.maxBodyBytes === undefined ? {} : { bodyLimit: Number(route.maxBodyBytes) }),
       handler: async (request: FastifyRequest, reply: FastifyReply) => {
@@ -180,33 +195,46 @@ export class HttpServerApi implements ResourceInstance {
           );
         }
         const trace = requestScope.forRequest(request);
+        const refuseInput = (error: unknown, issues: unknown[]) => {
+          trace.reject(error);
+          const data = { issues };
+          const declared = this.ctx.declaredDisplayMessage(ERR_INPUT_INVALID, data);
+          reply.code(400);
+          reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
+          return reply.send(
+            problemDetails(400, {
+              code: ERR_INPUT_INVALID,
+              data,
+              displayMessage: declared && this.ctx.translations.translate(trace.lang, declared),
+            }),
+          );
+        };
         const received: Record<RequestLocation, unknown> = {
           query: request.query,
           params: request.params,
           body: request.body,
           headers: request.headers,
+          cookies: parseCookieHeader(request.headers.cookie),
         };
+        const cookieIssues = cookiesRefused?.(received.cookies);
+        if (cookieIssues) {
+          return refuseInput(
+            new InvokeError(ERR_INPUT_INVALID, `${request.method} ${request.url}: the request's cookies are refused`, {
+              issues: cookieIssues,
+            }),
+            cookieIssues,
+          );
+        }
         for (const [location, declared] of declaredRequest) {
           try {
             received[location] = this.ctx.readPlainEncoded(received[location], declared);
           } catch (err) {
             if (!isInvokeError(err) || err.code !== ERR_INPUT_INVALID) throw err;
-            trace.reject(err);
-            const data = { issues: plainEncodedIssues(location, err.data) };
-            const declared = this.ctx.declaredDisplayMessage(ERR_INPUT_INVALID, data);
-            reply.code(400);
-            reply.header("Content-Type", PROBLEM_MEDIA_TYPE);
-            return reply.send(
-              problemDetails(400, {
-                code: ERR_INPUT_INVALID,
-                data,
-                displayMessage: declared && this.ctx.translations.translate(trace.lang, declared),
-              }),
-            );
+            return refuseInput(err, plainEncodedIssues(location, err.data));
           }
         }
         const requestContext = {
-          request: withLang({
+          request: withConnection(withLang({
             method: request.method,
             path: request.url,
             // The host the server routed the request by — `X-Forwarded-Host`
@@ -218,11 +246,12 @@ export class HttpServerApi implements ResourceInstance {
             params: requestBag(received.params),
             query: requestBag(received.query),
             headers: normalizeHeaders(received.headers as FastifyRequest["headers"]),
+            cookies: received.cookies,
             body: streamBody ? toByteStream(request) : received.body,
             // Canonical client address — honours X-Forwarded-For per the
             // server's `trustProxy` setting (Fastify resolves it).
             ip: request.ip,
-          }, () => trace.lang),
+          }, () => trace.lang), trace),
         };
         const acceptHeader = (
           (request.headers as Record<string, string | string[] | undefined>)["accept"] as
@@ -350,6 +379,42 @@ export async function create(resource: any, ctx: ResourceContext): Promise<HttpS
     }
   }
   return new HttpServerApi(ctx, resource, handlerRefs, resource?.metadata?.name ?? "");
+}
+
+/** Each status a route's entries set cookies with, and whether that entry has a body. */
+function statusesSettingCookies(route: HttpApiRouteManifest): Map<number, boolean> {
+  const statuses = new Map<number, boolean>();
+  for (const entry of [...route.returns, ...(route.catches ?? [])]) {
+    if (!entry.cookies?.length) continue;
+    const hasBody = !!entry.content && Object.keys(entry.content).length > 0;
+    statuses.set(entry.status, (statuses.get(entry.status) ?? false) || hasBody);
+  }
+  return statuses;
+}
+
+/**
+ * The route's OpenAPI operation with a `Set-Cookie` response header on each
+ * status that sets cookies. Applied to the document only — the schema Fastify
+ * serializes with is never touched.
+ */
+function documentingSetCookie(statuses: Map<number, boolean>) {
+  return ({ schema, url }: { schema: any; url: string }) => {
+    const response: Record<string, any> = { ...(schema?.response ?? {}) };
+    for (const [status, hasBody] of statuses) {
+      const declared = response[status] ?? (hasBody ? {} : { type: "null" });
+      response[status] = {
+        ...declared,
+        headers: {
+          ...(declared.headers ?? {}),
+          "Set-Cookie": {
+            type: "string",
+            description: "One line per cookie the response sets or clears.",
+          },
+        },
+      };
+    }
+    return { schema: { ...schema, response }, url };
+  };
 }
 
 /**

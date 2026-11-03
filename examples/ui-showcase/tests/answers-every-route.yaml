@@ -341,7 +341,7 @@ steps:
         signedIn: { signedIn: true }
         account: { name: Ada Brooks, email: ada@northwind.example, memberSince: "2021-03-01" }
         ping: 200
-        signOut: [ 200, showcase-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax ]
+        signOut: [ 200, "showcase-session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax" ]
         afterSignOut: 401
         closedSession: { signedIn: false }
 
@@ -379,7 +379,7 @@ steps:
         - /radix/
         - /
         - [ 302, /radix/, showcase-lang=en; Path=/; Max-Age=31536000; SameSite=Lax ]
-        - [ 302, /brand/, showcase-lang=; Path=/; Max-Age=0; SameSite=Lax ]
+        - [ 302, /brand/, "showcase-lang=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax" ]
         - 400
 
   # ---- The brand switch ----
@@ -398,7 +398,7 @@ steps:
         - !cel "steps.brandUnknown.result.status"
       expected:
         - [ 302, /themes, showcase-brand=acme; Path=/; Max-Age=31536000; SameSite=Lax ]
-        - [ 302, /themes, showcase-brand=; Path=/; Max-Age=0; SameSite=Lax ]
+        - [ 302, /themes, "showcase-brand=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax" ]
         - 400
 
   # ---- The same API under the other three mounts ----

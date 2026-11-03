@@ -53,7 +53,7 @@ steps:
 | Field | Meaning |
 | --- | --- |
 | `invoke` | The resource called for each request — any invocable or runnable (a `Run.Sequence`, a custom kind). Required. |
-| `inputs` | CEL mapped into the guard's input. The context is `request` with `headers` (lowercase keys), `query`, `path`, `method` and `ip` — no `body` and no `params`, because the guard runs before either exists. Without `inputs:` the guard is called with `{}`. |
+| `inputs` | CEL mapped into the guard's input. The context is `request` with `headers` (lowercase keys), `query`, `path`, `method`, `ip`, `tls` and `clientCertificate` ([Serving HTTPS](tls.md#what-a-handler-reads)) — no `body` and no `params`, because the guard runs before either exists. Without `inputs:` the guard is called with `{}`. |
 | `catches` | Rendering rules for the guard's structured throws, the same entry shape as a route's `catches:` (`status`, `when`, `headers`, `content`). Entries see `error`, `problem` and the same `request` as `inputs:`; an entry with no body renders the default problem. |
 
 ## Behaviour

@@ -10,6 +10,23 @@
 # Accept-Language header, and `showcase-brand`, which picks the brand tokens of
 # the `/` application.
 
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: sessionCookie }
+name: showcase-session
+secure: false
+---
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: langCookie }
+name: showcase-lang
+secure: false
+httpOnly: false
+---
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: brandCookie }
+name: showcase-brand
+secure: false
+httpOnly: false
+---
 # ---- Shapes the routes answer and the screens read ----
 # The studio, as the overview reads it: one value of each shape a `value` node
 # presents its own way, and the projects still running.
@@ -943,8 +960,7 @@ routes:
         token: !cel "steps.token.result"
     returns:
       - status: 200
-        headers:
-          Set-Cookie: !interpolate "showcase-session=${{ result.token }}; Path=/; HttpOnly; SameSite=Lax"
+        cookies: [{ cookie: !ref sessionCookie, value: !cel "result.token" }]
         content: { application/json: { body: {} } }
     catches:
       - when: !cel "error.code == 'NOT_A_MEMBER'"
@@ -970,7 +986,7 @@ routes:
             sql: !sql "DELETE FROM sessions WHERE token = ${{ inputs.token }}"
     returns:
       - status: 200
-        headers: { Set-Cookie: showcase-session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax }
+        cookies: [{ cookie: !ref sessionCookie, maxAge: 0s }]
         content: { application/json: { body: {} } }
 
   # ---- The forms page ----
@@ -1744,11 +1760,11 @@ routes:
         when: !cel "result.set.matches('^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$')"
         headers:
           Location: !cel "result.back"
-          Set-Cookie: !interpolate "showcase-lang=${{ result.set }}; Path=/; Max-Age=31536000; SameSite=Lax"
+        cookies: [{ cookie: !ref langCookie, value: !cel "result.set", maxAge: 31536000s }]
       - status: 302
         headers:
           Location: !cel "result.back"
-          Set-Cookie: showcase-lang=; Path=/; Max-Age=0; SameSite=Lax
+        cookies: [{ cookie: !ref langCookie, maxAge: 0s }]
 ---
 # ---- The brand switch, under /api of the root application only ----
 # The other two mounts draw with a brand of their own, so this route is not
@@ -1777,13 +1793,11 @@ routes:
     returns:
       - status: 302
         when: !cel "result.set == 'acme'"
-        headers:
-          Location: /themes
-          Set-Cookie: showcase-brand=acme; Path=/; Max-Age=31536000; SameSite=Lax
+        headers: { Location: /themes }
+        cookies: [{ cookie: !ref brandCookie, value: acme, maxAge: 31536000s }]
       - status: 302
-        headers:
-          Location: /themes
-          Set-Cookie: showcase-brand=; Path=/; Max-Age=0; SameSite=Lax
+        headers: { Location: /themes }
+        cookies: [{ cookie: !ref brandCookie, maxAge: 0s }]
 ---
 # ---- Routes under /api/private, behind the session guard ----
 kind: Http.Api

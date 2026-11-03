@@ -20,6 +20,7 @@ lang: en
 imports:
   Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
   Http: ../../modules/http-server
+  HttpDispatch: ../../modules/http-dispatch
   DataModel: ../../modules/data-model
   Ui: ../../modules/ui
   UiReact: ../../modules/ui-react

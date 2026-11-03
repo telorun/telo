@@ -1,6 +1,7 @@
 import { InvokeError, type ResourceInstance } from "@telorun/sdk";
+import { setCookieLine, type CookieAttributes } from "./cookie.js";
 import { PROBLEM_MEDIA_TYPE, problemDetails, type CodedFailure, type ProblemDetails } from "./problem-details.js";
-import type { CatchEntry, ContentEntry, ReturnEntry } from "./schema.js";
+import type { CatchEntry, ContentEntry, CookieEntry, ReturnEntry } from "./schema.js";
 import type { ResponseSink, StreamErrorHook } from "./sink.js";
 
 /** Subset of `ModuleContext` the dispatcher uses — kept narrow so the
@@ -154,6 +155,40 @@ function applyHeaders(
   }
 }
 
+const COOKIE_WRITE_FIELDS = ["value", "maxAge", "expires"] as const;
+
+/** Write an entry's cookies as the response's complete set of `Set-Cookie`
+ *  lines, in written order. Each declaration is read through the attribute
+ *  record it publishes; only value and lifetime are expanded per response. */
+async function applyCookies(
+  cookies: CookieEntry[] | undefined,
+  celCtx: Record<string, unknown>,
+  moduleContext: ModuleLikeContext,
+  sink: ResponseSink,
+  status: number,
+): Promise<void> {
+  if (!cookies || cookies.length === 0) return;
+  const lines: string[] = [];
+  for (const entry of cookies) {
+    const declaration = entry.cookie as unknown as { snapshot?: () => unknown };
+    if (typeof declaration?.snapshot !== "function") {
+      throw new Error(
+        `Cookie ref on the ${status} entry is not a live cookie declaration — Phase 5 injection may have failed.`,
+      );
+    }
+    const attributes = (await declaration.snapshot()) as CookieAttributes;
+    const written: Record<string, unknown> = {};
+    for (const key of COOKIE_WRITE_FIELDS) if (entry[key] !== undefined) written[key] = entry[key];
+    const write = moduleContext.expandWith(written, celCtx) as {
+      value?: unknown;
+      maxAge?: unknown;
+      expires?: unknown;
+    };
+    lines.push(setCookieLine(attributes, write));
+  }
+  sink.setHeader("Set-Cookie", lines);
+}
+
 export async function dispatchReturns(
   returns: ReturnEntry[],
   result: unknown,
@@ -181,6 +216,7 @@ export async function dispatchReturns(
   if (!entry.content || Object.keys(entry.content).length === 0) {
     sink.setStatus(entry.status);
     applyHeaders(entry.headers, undefined, celCtx, moduleContext, sink, entry.status);
+    await applyCookies(entry.cookies, celCtx, moduleContext, sink, entry.status);
     await sink.send();
     return;
   }
@@ -201,6 +237,7 @@ export async function dispatchReturns(
   sink.setStatus(entry.status);
   sink.setHeader("Content-Type", matchedMime);
   applyHeaders(entry.headers, contentEntry.headers, celCtx, moduleContext, sink, entry.status);
+  await applyCookies(entry.cookies, celCtx, moduleContext, sink, entry.status);
 
   if (entry.mode === "stream") {
     await dispatchStream(entry.status, matchedMime, contentEntry, result, sink, streamError);
@@ -352,6 +389,7 @@ export async function dispatchCatches(
   if (!entry.content || Object.keys(entry.content).length === 0) {
     sink.setStatus(entry.status);
     applyHeaders(entry.headers, undefined, celCtx, moduleContext, sink, entry.status);
+    await applyCookies(entry.cookies, celCtx, moduleContext, sink, entry.status);
     await sink.send();
     return true;
   }
@@ -365,6 +403,7 @@ export async function dispatchCatches(
   // statically only, so a dependency's entry still reaches here.
   sink.setHeader("Content-Type", contentEntry.body !== undefined ? matchedMime : PROBLEM_MEDIA_TYPE);
   applyHeaders(entry.headers, contentEntry.headers, celCtx, moduleContext, sink, entry.status);
+  await applyCookies(entry.cookies, celCtx, moduleContext, sink, entry.status);
 
   const body =
     contentEntry.body !== undefined ? moduleContext.expandWith(contentEntry.body, celCtx) : problemOf(entry);

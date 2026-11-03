@@ -1,8 +1,8 @@
 ---
-status: in-progress
+status: done
 priority: high
 depends-on: []
-packages: [modules/http-server, modules/http-client]
+packages: [modules/http-dispatch, modules/http-server, modules/http-client, apps/authoring-agent, docs]
 ---
 
 # HTTP transport: cookies, TLS finish, client certificates, Basic credentials
@@ -35,73 +35,95 @@ has to parse the header to read a language cookie.
 
 **After.**
 
-- **Declaring cookies on a route.** The canonical request carrier (`HttpDispatch.Request`,
-  `$defs/Matcher`) gains `schema.cookies`, declared the same way as `query` or `headers`.
-  - It types `request.cookies.<name>` through the existing `request/schema` context merge.
-  - The OpenAPI document renders it as `in: cookie` parameters.
-  - A route that declares no cookies reads `request.cookies` as a map of string to string.
+- **Declaring a cookie.** `http-dispatch` gains the abstract `HttpDispatch.Cookie` and three
+  provider kinds extending it. Every attribute is compile-eval, so a declaration reads
+  literals, `variables` and `secrets`, never the request, and a computed attribute is held to
+  the kind's rules when the declaration is created.
+  - Common keys: `name` (an RFC 6265 token, refusing a leading `__Host-` / `__Secure-` in any
+    letter case), `httpOnly` (default `true`), `sameSite` `Strict | Lax | None` (default
+    `Lax`), `partitioned` (default `false`).
+  - `HostCookie` takes nothing more and renders `__Host-<name>`, `Secure`, `Path=/`, no
+    `Domain`.
+  - `SecureCookie` adds `domain?` and `path` (default `/`) and renders `__Secure-<name>` with
+    `Secure`.
+  - `UnprefixedCookie` adds `domain?`, `path` (default `/`) and `secure` (default `true`);
+    `sameSite: None` and `partitioned: true` each require `secure` to stay true.
+  - `domain` and `path` are typed by one exported named shape,
+    `HttpDispatch.CookieAttributeValue` (printable ASCII without `;`); `path` starts with `/`.
+  - Every constraint is plain JSON Schema on the kind, so `telo check` and the kernel both
+    refuse a bad declaration as `SCHEMA_VIOLATION`. There are no resource rules and no
+    cookie-specific codes.
+  - Each kind's controller (in the module's own bundle) publishes the full normalized
+    attribute record — `name` as sent, prefix included, `secure`, `httpOnly`, `sameSite`,
+    `partitioned`, `domain` (null when host-only), `path` — with the schema defaults filled.
+    The dispatcher renders from that record and never asks which kind declared the cookie.
+- **Setting and clearing.** `HttpDispatch.Outcomes`' `$defs/Returns` and `$defs/Catches`
+  entries gain `cookies:`, a list of `{ cookie, value?, maxAge?, expires? }`.
+  - `cookie` is `x-telo-ref: { kind: Self.Cookie, use: dependency }`; it resolves to
+    `HttpDispatch.Cookie` from the carrier transplanted into `Http.Api` and `Http.Server`, at
+    check and at run time alike. It is written inline when one entry uses it.
+  - Only `value`, `maxAge` (a `Telo.Duration`, sent as whole seconds) and `expires` (a
+    `Telo.Timestamp`, sent as an HTTP date) vary per response.
+  - Each cookie is one `Set-Cookie` line, in written order; the same declaration listed twice
+    is written twice.
+  - Clearing is `maxAge` of zero or less on the same declaration: an empty value unless one
+    is given, `Max-Age=0`, and a past `Expires` unless one is given, under the declaration's
+    own scope, so the browser drops it.
+  - A literal `value` must be cookie-octets (refused statically). A computed one that is not
+    fails the response with `ERR_COOKIE_VALUE_INVALID`, naming the cookie. Nothing is escaped
+    silently.
+- **The sink.** `ResponseSink.setHeader(name, value: string | readonly string[])`. A list is
+  the header's complete set of lines in order, replaces any earlier value, is never
+  comma-joined, and an empty list removes the header. The dispatcher writes an entry's
+  cookies as one list call. The Fastify sink removes the header before setting it, because
+  Fastify appends to an existing `Set-Cookie`.
 - **Reading cookies.** Every `request` context of `Http.Server` and `Http.Api` carries
-  `cookies` beside `headers`: route `inputs:`, `returns:`, `catches:`, scope-level catches,
-  the not-found handler's `inputs:`, and `preferredLanguages`.
+  `cookies` beside `headers`: route `inputs:`, `returns:`, `catches:`, scope-level catches, a
+  guard's `inputs:` and `catches:`, the not-found handler and `preferredLanguages`.
   - Parsing follows RFC 6265: the first occurrence of a name wins, and values are passed
     through as written, with no decoding.
-  - When `preferredLanguages` reads a cookie, `Cookie` is added to the response's `Vary`, the
-    same way a header it reads is.
-- **Setting cookies.** The canonical outcome carrier (`HttpDispatch.Outcomes`, both
-  `$defs/Returns` and `$defs/Catches`) gains `cookies:` on an entry. It maps a cookie name to
-  one of two forms, and each cookie becomes one `Set-Cookie` header. Cookies sit at entry
-  level only, because a cookie does not vary by negotiated MIME type.
-  - **Value form:** `{ value, maxAge?, expires?, domain?, path?, secure?, httpOnly?, sameSite?,
-    partitioned? }`.
-    - Only `value`, `maxAge` (a `Telo.Duration`, rendered as whole seconds) and `expires` (a
-      `Telo.Timestamp`) may be computed.
-    - Every other attribute is a literal, so the rules below can judge it statically.
-  - **Clear form:** `{ clear: true, domain?, path?, secure? }`. It renders an empty value with
-    `Max-Age=0`, a past `Expires` and the same scope, so the browser actually drops the cookie.
-    That includes a `__Host-` cookie, which needs `Secure` even when it is being deleted.
-- **Secure defaults:** `secure: true`, `httpOnly: true`, `sameSite: Lax`, `path: /`. A cookie
-  that scripts must read says `httpOnly: false` explicitly.
-- **Computed values must be legal.** A computed `value` that is not RFC 6265 cookie-octets
-  fails the response the same way a body that fails its `schema` does. The error is
-  `ERR_COOKIE_VALUE_INVALID`, naming the cookie. Nothing is escaped silently: an author who
-  needs arbitrary bytes encodes them, for example with base64url.
-- **Raw headers are refused.** `Set-Cookie` in `headers:` (entry level or per MIME type) is
-  refused because the raw string bypasses the checked shape.
-  - The refusal is a `propertyNames` exclusion in the carrier schema, so it is a
-    `SCHEMA_VIOLATION` at check and at creation alike.
-  - `Content-Type` joins the same exclusion. Its existing refusal is runtime-only, so this
-    gives it the static twin it lacks.
-- **Static rules.** These are `x-telo-resource-rules` on `Http.Api` and `Http.Server`,
-  reported as `RESOURCE_RULE_VIOLATED`, each twinned in the controller as `ERR_<code>`:
-
-  | Code | Refuses |
-  | --- | --- |
-  | `COOKIE_NAME_INVALID` | A name that is not an RFC 6265 token. |
-  | `COOKIE_HOST_PREFIX` | A `__Host-` cookie without `secure`, with a `path` other than `/`, or with a `domain`. |
-  | `COOKIE_SECURE_PREFIX` | A `__Secure-` cookie without `secure`. |
-  | `COOKIE_SAMESITE_NONE_INSECURE` | `sameSite: None` without `secure`. |
-  | `COOKIE_PARTITIONED_INSECURE` | `partitioned: true` without `secure`. |
-
-- **No dependency.** The cookie shape belongs to the transport-neutral carrier, and parsing
-  and serializing are a page of code. Both live in `@telorun/http-dispatch` beside the
-  request scope, so another HTTP transport gets them unchanged.
-- **OpenAPI.** An entry with `cookies:` documents a `Set-Cookie` response header.
+  - A route that declares no cookies reads `request.cookies` as a map of string to string.
+  - `HttpDispatch.Request`'s `$defs/Matcher` gains `schema.cookies`. It types
+    `request.cookies.<name>` through the `request/schema` context merge, and the OpenAPI
+    document renders it as `in: cookie` parameters.
+  - Fastify validates no cookies, so `Http.Api` validates `schema.cookies` itself with a
+    text-coercing validator, as a query is read. A refused cookie is answered 400
+    `ERR_INPUT_INVALID` with a finding at `/cookies/<name>`.
+  - When `preferredLanguages` reads `request.cookies`, `Cookie` joins the response's `Vary`.
+- **Raw headers are refused.** `headers:` (entry level and per MIME type) excludes `Set-Cookie`
+  and `Content-Type` through `propertyNames`, reported by `telo check` as
+  `DEPENDENT_SCHEMA_MISMATCH`. `Http.Api`'s creation-time header check refuses both too, for a
+  dependency's routes, which the consumer's check does not judge.
+- **OpenAPI.** An entry with `cookies:` documents a `Set-Cookie` response header on its status,
+  added through the route's own `swaggerTransform`, so the schema Fastify serializes with is
+  untouched.
+- **No floor.** The previous published CLI (0.128.0) reads `http-dispatch`'s and
+  `http-server`'s manifests (`requires:` stripped) with no issue, and loads the cookie
+  controllers. `http-server` keeps its existing `>=0.129.0`.
 
 **Verify.**
 
-- `modules/http-server/tests/cookies.yaml`:
-  - A route sets two cookies and clears one, and the response's `set-cookie` headers are
-    asserted as exact strings, defaults included.
-  - A second request carrying `Cookie:` reads `request.cookies.session` into its handler.
-  - A duplicated name yields the first occurrence.
-  - A computed value holding `;` fails with `ERR_COOKIE_VALUE_INVALID`.
-- `modules/http-server/tests/cookie-rules.yaml`:
-  - Each of the five codes is refused at a declaring manifest through `Assert.Manifest`, and
-    the same manifest's `runFails:` shows the controller twin.
-  - `Set-Cookie` and `Content-Type` in `headers:` are both refused as `SCHEMA_VIOLATION`.
-- An OpenAPI assertion shows an `in: cookie` parameter and a `Set-Cookie` response header.
-- `request-language.yaml` gains a case where `preferredLanguages` reads `request.cookies.lang`
-  and the response carries `Vary: Cookie`.
+- `modules/http-dispatch/tests/cookie-declarations.yaml`: through `Assert.Manifest`, each
+  refused by `telo check` and by the run — a `HostCookie` with `domain`; an `UnprefixedCookie`
+  with `sameSite: None, secure: false`; a name holding `;`; an `UnprefixedCookie` named
+  `__host-x`; an attribute reading `request` (`CEL_UNKNOWN_IDENTIFIER`).
+- `modules/http-server/tests/cookies.yaml`: exact `Set-Cookie` strings, defaults included, for
+  a computed `HostCookie` value, a `SecureCookie` with domain, path, `maxAge` and `expires`,
+  its clear (byte-identical `Domain` / `Path` / `Secure`), and an inline `UnprefixedCookie`; a
+  request reading `request.cookies.session` with a repeated name yielding the first; a missing
+  declared cookie answered 400 at `/cookies/session`; a computed value holding `;` answered
+  500 `ERR_COOKIE_VALUE_INVALID`; the OpenAPI document's `in: cookie` parameter and
+  `Set-Cookie` response header.
+- `request-language.yaml`: `preferredLanguages` reading `request.cookies.lang`, with
+  `Vary: Accept-Language, Cookie`.
+- Unit: the dispatcher writes two set cookies and one cleared as three exact lines in written
+  order (`dispatch.test.ts`); `runSinkContract` holds every sink to a list written as N lines
+  in order, a later string replacing a list, an empty list removing the header and no
+  comma-joining (in-memory and Fastify sinks); each cookie controller fills its kind's schema
+  `default:`s (`cookie-defaults.test.ts`).
+- `Http.Client` returns one value per response header, so a manifest test cannot see more
+  than one `Set-Cookie` line; the multi-line response is proven at the dispatcher and sink
+  level above.
 
 ## 2. Finishing TLS and client certificates on `Http.Server`
 
@@ -148,6 +170,16 @@ has to parse the header to read a language cookie.
     wins.
   - Validating a forwarded certificate against the application's CAs belongs to `auth-mtls`
     in phase 6.
+- **A module-owned listener.** Every `Http.Server` accepts connections on a `net` or `tls`
+  listener it owns and hands each to HTTP once its TLS handshake completes, so `request.tls`
+  and `request.clientCertificate` read the same on Node and Bun. A TLS connection closed
+  before it is served (a handshake error, the handshake timeout, a peer hanging up, a
+  certificate refused under `required`) is logged as `http.server.tls_handshake.failed`, and
+  stopping closes idle and handshaking connections at once and each busy one after its
+  response, running the app's close hooks while it waits, so a hook ending a long-lived
+  response lets the stop finish. A hostname `listen.address` (`localhost`) is bound on every
+  address it resolves to on one port; an address the host has no interface for is skipped and
+  logged as `http.server.address_unavailable`.
 - **Fixture README.** `tests/__fixtures__/tls/` gains a README saying the PEMs are test
   fixtures, with how they were generated and their validity.
 
@@ -179,8 +211,9 @@ has to parse the header to read a language cookie.
   compile-eval, normally from `secrets:`).
 - It renders `Authorization: Basic <base64(username:password)>`, encoding the text as UTF-8
   per RFC 7617.
-- An empty `username`, or one containing `:`, is `ERR_INVALID_CREDENTIAL`. An empty password
-  is legal.
+- An empty `username`, or one containing `:`, is a `SCHEMA_VIOLATION` from `telo check` and at
+  creation; a computed one is refused when the credential is created. An empty password is
+  legal.
 - `forceRefresh` returns the same material, as the other three do.
 - Basic authentication is what `sms-twilio` and the phase-6 Basic module need.
 
@@ -188,20 +221,22 @@ has to parse the header to read a language cookie.
 
 - An `Http.Server` in `with:` echoes the `authorization` header it received, and the test
   asserts the exact string, including a non-ASCII password.
-- An empty username fails with `ERR_INVALID_CREDENTIAL`.
+- An empty and a colon-bearing username are refused through `Assert.Manifest` with their
+  `runFails:` twins, and a computed colon-bearing one is refused at creation.
 
 ## Cross-cutting
 
 - **Releases.**
   - `http-server`, `http-client` and `http-dispatch` each take a `telo release add` fragment,
     one per module and each body naming only that module's own changes.
-  - `@telorun/http-dispatch` (a published TS contract) also takes a changeset.
-  - `http-server` is bundled, so it takes no changeset.
+  - No changesets: `@telorun/http-dispatch` is module-owned (in `.changeset/config.json`'s
+    `ignore`, its version its module's), and `http-server` and `http-client` are bundled.
 - **Floors.** All of the new syntax is ordinary schema properties, enums and resource rules
-  in the modules' own artifacts, so no floor is expected. This is confirmed by running the
-  previous published CLI against each changed `telo.yaml`, per the grammar-change rule.
+  in the modules' own artifacts, so no floor is needed beyond `http-server`'s existing one.
+  This is confirmed by running the previous published CLI against each changed `telo.yaml`,
+  per the grammar-change rule.
 - **Docs.**
-  - New `modules/http-server/docs/cookies.md`.
+  - New `modules/http-server/docs/cookies.md` and `modules/http-dispatch/docs/cookie-declarations.md`.
   - `docs/tls.md` gains `optional`, `minVersion`, `request.tls`, `request.clientCertificate`
     and `forwardedClientCertificate`.
   - `returns-and-catches.md` gains `cookies:` and the `Set-Cookie` prohibition.

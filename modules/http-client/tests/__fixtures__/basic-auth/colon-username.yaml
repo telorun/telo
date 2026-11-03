@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata: { name: BasicAuthColonUsername, version: 1.0.0 }
+imports: { Http: ../../.. }
+---
+kind: Http.BasicAuth
+metadata: { name: colonUser }
+username: "a:b"
+password: x
