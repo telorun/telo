@@ -26,8 +26,7 @@ with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8141
+    ports: { http: 8141 }
 targets:
   - !ref app
 steps:
@@ -35,14 +34,12 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/app" }
   - name: polishApp
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/app" }
-    inputs:
-      headers: { accept-language: "pl-PL, en;q=0.5" }
+    inputs: { headers: { accept-language: "pl-PL, en;q=0.5" } }
   - name: page
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/page?path=/" }
   - name: polishPage
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/page?path=/" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: projectsPage
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8141/_telo/ui/page?path=/projects" }
 
@@ -80,15 +77,15 @@ steps:
         vary: Accept-Language
 
   # In Polish: the application's texts, its models' titles and enumeration
-  # labels, a plural heading over the answer and the renderer's own words.
+  # labels, a plural heading over the answer and ui's own texts.
   - name: verifyPolish
     invoke: { kind: Assert.Equals }
     inputs:
       actual:
         lang: !cel "steps.polishApp.result.body.lang"
         title: !cel "steps.polishApp.result.body.title"
-        save: !cel "steps.polishApp.result.body.words.save"
-        longerThanMonths: !cel "steps.polishApp.result.body.words.rangeLongerThanMonths"
+        save: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].save"
+        longerThanMonths: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].rangeLongerThanMonths"
         heading: !cel "steps.polishPage.result.body.children[0].text"
         sheetLabel: !cel "steps.nodes.result.polishForm.fields[0].label"
         hoursAs: !cel "steps.nodes.result.polishForm.fields[5].labels"
@@ -153,8 +150,7 @@ steps:
       expected:
         type: data
         source: { path: /api/auth, params: {} }
-        query:
-          signin: { type: string, enum: [ denied, expired ] }
+        query: { signin: { type: string, enum: [denied, expired] } }
         reloadOn: [ focus, unauthorized ]
         loading: { type: text, text: { lang: en, message: [ Checking your sign-in… ] }, style: muted }
         branches:
@@ -170,9 +166,7 @@ steps:
           type: data
           source: { path: /api/auth/user, params: {} }
           email: { root: data, path: [ email ] }
-          signOut:
-            path: /api/auth/signout
-            onSuccess: { refreshes: [ /api/auth ] }
+          signOut: { path: /api/auth/signout, onSuccess: { refreshes: [/api/auth] } }
 
   # The report form: its fields by kind and group, each option source, the
   # date range, the columns' fixed order and default, the remembered sheet
@@ -218,15 +212,7 @@ steps:
           - [ input, hoursFormat, output, options ]
           - [ input, merge, output, toggle ]
           - [ input, chart, output, toggle ]
-        hints:
-          - "-"
-          - Where Upload puts a report.
-          - "-"
-          - None chosen means every project of the sheet.
-          - Always in this order.
-          - "-"
-          - Merge every project into one PDF.
-          - Add a chart of hours per person.
+        hints: ["-", Where Upload puts a report., "-", None chosen means every project of the sheet., Always in this order., "-", Merge every project into one PDF., Add a chart of hours per person.]
         sources:
           - basePath: /api/drive/files
             filters: { kind: { value: spreadsheet } }
@@ -262,9 +248,7 @@ steps:
             weekStart: monday
             initialPreset: 1
             warnLongerThan: { unit: month, count: 1 }
-        columns:
-          order: [ date, person, task, hours, amount ]
-          default: [ date, person, hours ]
+        columns: { order: [date, person, task, hours, amount], default: [date, person, hours] }
         groups:
           - [ source, Source, null ]
           - [ period, Period, &sheetChosen { at: { root: values, path: [ spreadsheetId ] }, matches: { minLength: 1 } } ]
@@ -309,8 +293,7 @@ steps:
             cases:
               one: [ { placeholder: count }, " chosen project has no time in the period and was skipped." ]
               other: [ { placeholder: count }, " chosen projects have no time in the period and were skipped." ]
-          values:
-            count: { root: result, path: [ skipped ] }
+          values: { count: { root: result, path: [skipped] } }
         warnings:
           - [ Hours without a rate, { root: result, path: [ unpriced ] } ]
           - [ Hours on no project, { root: result, path: [ unassigned ] } ]
@@ -324,17 +307,14 @@ steps:
               text:
                 lang: en
                 message: [ "HTTP ", { placeholder: status }, " · ", { placeholder: code } ]
-                values:
-                  status: { root: error, path: [ status ] }
-                  code: { root: error, path: [ code ] }
+                values: { status: { root: error, path: [status] }, code: { root: error, path: [code] } }
               shown: { at: { root: error, path: [] }, matches: { required: [ status ] } }
             - type: text
               style: strong
               text:
                 lang: en
                 message: [ "No answer · ", { placeholder: code } ]
-                values:
-                  code: { root: error, path: [ code ] }
+                values: { code: { root: error, path: [code] } }
               shown: { at: { root: error, path: [] }, matches: { not: { required: [ status ] } } }
             - { type: value, value: { root: error, path: [ message ] }, present: { type: string }, labels: [] }
 
@@ -396,8 +376,7 @@ steps:
               text:
                 lang: en
                 message: [ "Uploaded to ", { placeholder: target } ]
-                values:
-                  target: { root: result, path: [ target ] }
+                values: { target: { root: result, path: [target] } }
               present: { type: string, format: uri }
               labels: []
 
@@ -425,10 +404,8 @@ steps:
           type: listing
           shown: { at: { root: data, path: [ authorized ] }, matches: { const: true } }
           basePath: /api/projects
-          query:
-            sheet: { type: string, minLength: 1 }
-          filters:
-            spreadsheetId: { root: query, path: [ sheet ] }
+          query: { sheet: { type: string, minLength: 1 } }
+          filters: { spreadsheetId: { root: query, path: [sheet] } }
           remind:
             path: /api/projects/remind
             inputs:

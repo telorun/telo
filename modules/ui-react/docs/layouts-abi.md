@@ -40,7 +40,7 @@ record and delivered on it as `record.props`, every other once, as `props`.
 | `paging` | `more` — `onEndReached` when the viewer asks — or `scroll` — once the end is in view |
 | `empty` | the listing's `empty` node, drawn where the records would be when the reads answer none |
 | `can` | which of `open`, `create` and `move` does anything |
-| `words` | the renderer's words a layout draws, finished: `loadMore`, `moveTo`, `none`, `newRecord` |
+| `words` | the renderer's own texts a layout draws, finished: `loadMore`, `moveTo`, `none`, `newRecord` |
 | `lang` | the language the page is in |
 
 A record:
@@ -63,7 +63,7 @@ A group, beside everything a read holds:
 | --- | --- |
 | `value` | the value its records hold, as read |
 | `label` | the value as shown: its label, its related record's, or the value as text |
-| `heading` | the label with the group's count, as the `valueCount` word says |
+| `heading` | the label with the group's count, as the `valueCount` text says |
 | `records` | its records |
 | `total` | its read's `total` |
 | `hasMore` | whether `onEndReached({ group })` reads more of it |
@@ -254,7 +254,7 @@ vector. `runLayoutVector` runs one, as `runVector` runs a control's (see
 [the controls contract](controls-abi.md#vectors-scenes-and-the-interpreter)):
 an intent reported is applied to the prop it sets — `onPeriodChange` sets
 `span` — and after every step the layout is held to its documented parts. The
-built-ins meet every vector inside the renderer's words, in a happy-dom window.
+built-ins meet every vector inside the renderer's own texts, in a happy-dom window.
 
 ## How the generation grows
 

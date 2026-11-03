@@ -1,8 +1,6 @@
-# `examples/report-console` with one change: its theme is `Radix.theme`
-# instead of `UiReact.defaultTheme` (with the import that names it). The paths
-# are this file's own; `console.css` is a copy, since a module path names a file
-# of the module declaring it. `radix-theme.yaml` holds every document it serves
-# equal to the example's, so the two cannot drift apart unseen.
+# `examples/report-console` themed by `Radix.theme`; `console.css` is a copy, as
+# a module path names a file of its own module. `radix-theme.yaml` holds every
+# document it serves equal to the example's, so the two cannot drift unseen.
 kind: Telo.Application
 metadata:
   name: ReportConsole
@@ -16,9 +14,8 @@ metadata:
     drawn as headings with plural counts, warning boxes and a results list whose
     rows draft an e-mail or upload the report. A second page lists a sheet's
     projects in a table listing. The backend is a set of stub routes over fixture data.
-# Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
-# vocabulary are read from 0.121.0.
-requires: { telo: ">=0.128.0" }
+# 0.129.0: the `translations:` block and ui's shipped translations.
+requires: { telo: ">=0.129.0" }
 lang: en
 # `http-server`, `data-model`, `ui` and `ui-react` come from this
 # repository while their changes are unreleased; `telo upgrade --pin-local` pins
@@ -35,6 +32,7 @@ imports:
 include: [../../../stub-api.yaml, ../../../polish.yaml]
 translations:
   catalogs:
+    - !ref Ui.polishTranslations
     - !ref polish
 targets:
   - !ref server
@@ -285,7 +283,6 @@ schema: { type: object, required: [sentTo], properties: { sentTo: { type: string
 kind: UiReact.App
 metadata: { name: console }
 title: Reports
-words: !ref Ui.words
 # Radix's look and controls, under the console's brand.
 theme: !ref Radix.theme
 tokens:

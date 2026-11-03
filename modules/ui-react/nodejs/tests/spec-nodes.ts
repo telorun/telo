@@ -1,4 +1,5 @@
 import type { SpecNode } from "../src/browser/nodes.js";
+import { uiText } from "./ui-texts.js";
 
 /** The row model the test pages are built over. */
 export const todoSchema = {
@@ -90,7 +91,7 @@ export const listingNode = ({ columns = todoColumns, layout, ...overrides }: Rec
   delete: true,
   rowActions: [],
   relations: {},
-  empty: { type: "text", text: { word: "noRows" } },
+  empty: { type: "text", text: uiText("noRows") },
   layout: layout ?? { type: "table", columns, reads: {} },
   ...overrides,
 });

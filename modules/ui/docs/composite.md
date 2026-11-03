@@ -45,8 +45,8 @@ its own controller. Among what it exports:
 
 | Export | |
 | --- | --- |
-| `SpecTranslator` | `new SpecTranslator({ root, resolve }, translate)` over the registered `Ui.SpecNode` schema and a lookup of the shapes it names: `.node(node)` returns a provided node with every text record replaced by what `translate(record)` returns — found by following the schema, a `{ text, values }` text flattened to the translation with `values` beside it, a word reference left as it is. See [Texts and translation](texts.md#what-a-renderer-receives). |
-| `isWords(instance)` / `Words` (type) | Recognises a `Ui.Words` resource a renderer holds; its `provide()` answers `Words`, every word id to its text record. |
+| `SpecTranslator` | `new SpecTranslator({ root, resolve }, translate)` over the registered `Ui.SpecNode` schema and a lookup of the shapes it names: `.node(node)` returns a provided node with every text record replaced by what `translate(record)` returns — found by following the schema, a `{ text, values }` text flattened to the translation with `values` beside it, a keyed text left as it is. See [Texts and translation](texts.md#what-a-renderer-receives). |
+| `KeyedText` (type) | A keyed text as a provided node carries it, `{ set, key }`: `set` the canonical kind of a keyed translation set (`Ui.Translations` for `ui`'s own texts), `key` one of its keys. |
 | `entryAssets(entry)` | Turns a built browser entry — what `ctx.resolveBrowserEntry` / `ctx.resolveControllerBrowserEntry` return — into `{ module, assets }`: the entry file and every file built beside it as `assets`, and the entry's own address as `module`. |
 | `AssetFile` (type) | One file of `assets`: `{ digest, name, file, mediaType }`, as in the table above. |
 | `AssetRef` (type) | An address, `{ digest, name }`. |

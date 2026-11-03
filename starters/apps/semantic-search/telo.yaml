@@ -32,19 +32,17 @@ metadata:
           -d '{"q":"how do I roll back a bad release"}'
         curl -s -XPOST localhost:8104/api/documents -H 'content-type: application/json' \
           -d '{"title":"VPN access","text":"Request VPN access from the IT desk; it is granted per project."}'
-# Module `lang:` — the language this application's texts are written in — and
-# `UiReact.App.words` are read from 0.121.0.
+# Module `lang:` — the language this application's texts are written in — is
+# read from 0.121.0.
 # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
 requires: { telo: ">=0.128.0" }
 lang: en
-# Every module comes from this repository while the error responses of
-# `http-server` are unreleased, since a published module beside a workspace
-# one would load a second copy of what they share; `telo upgrade --pin-local`
-# pins them again once they ship.
+# `ui` and `ui-react` come from this repository while their changes are
+# unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
-  Ui: oci://ghcr.io/telorun/ui@0.8.0#sha256-lFtULN4n9ItwMCL0s0s5jJPe7TiJO4Tt2xUkEMatulw
-  UiReact: oci://ghcr.io/telorun/ui-react@0.9.0#sha256-NZX-2O20TcLARSIedCU1Fu-9Ay3XsjpqUfGiWlfanVk
+  Ui: ../../../modules/ui
+  UiReact: ../../../modules/ui-react
   HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
   OpenAI: oci://ghcr.io/telorun/openai@0.18.0#sha256-t1cBMD7FMjIAOEAs76SSKy-YB40ozm8S6jwdBG9z08Q
   Ai: oci://ghcr.io/telorun/ai@0.32.0#sha256-wFl0WwbqZ9Nq6-N2Y18VePWibYUwNKJs2pu6d5_0Zcc
@@ -165,10 +163,9 @@ metadata: { name: findNearest }
 store: !ref knowledgeBase
 topK: 3
 ---
-# Indexing: embed every passage in ONE batched call, then write the vectors
-# with the text alongside them as metadata — so a match carries what it matched,
-# and answering needs no second lookup. A document indexed again under the same
-# id replaces the one before.
+# Indexing: embed every passage in one batched call, then write each vector
+# with its text as metadata, so a match carries what it matched. A document
+# indexed again under the same id replaces the one before.
 kind: Telo.Sequence
 metadata: { name: indexDocuments }
 inputType:
@@ -300,10 +297,9 @@ outputs:
   reply:
     - answer: !cel "steps.reply.result"
 ---
-# The shapes the page and the API share. Each route below validates its body
-# against the same shape the page's form is built from, and each action reads
-# its lists from the same shape the route answers with — so the page cannot
-# send what the API refuses, or draw what it does not return.
+# The shapes the page and the API share: each route validates its body against
+# the shape the page's form is built from, and each action reads the shape the
+# route answers with, so the page cannot send what the API refuses.
 kind: Telo.JsonSchema
 metadata: { name: Question }
 schema:
@@ -470,7 +466,6 @@ routes:
 kind: UiReact.App
 metadata: { name: ui }
 title: Semantic search
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page

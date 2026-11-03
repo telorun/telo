@@ -107,7 +107,7 @@ The bar's node carries its presentation's source `basePath` as written. A
 filters and those of any bar around it, and every change announced for that
 path — a write, a delete, a row action, `notifyChanged` — reads the values and
 their counts again, whether or not the bar holds a listing. Each value is shown
-through the renderer's `valueCount` word, `{$label} ({$count})`.
+through `ui`'s text `valueCount`, `{$label} ({$count})`.
 
 ```yaml
 fields:

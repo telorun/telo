@@ -6,7 +6,6 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | Field | | |
 | --- | --- | --- |
 | `title` | required | the application's name, a text shown in its header and as the document title |
-| `words` | required | the [`Ui.Words`](../../ui/docs/texts.md#the-renderers-own-words) the renderer draws on its own — `!ref Ui.words` for English |
 | `theme` | required | one [`UiReact.Theme`](theme.md): `!ref UiReact.defaultTheme`, a theme another module publishes, or one of your own |
 | `tokens` | | your brand: one [`Ui.DesignTokens`](../../ui/docs/design-tokens.md), or a list of `{ tokens, when? }` |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
@@ -118,7 +117,7 @@ file: !module-path ./icons/reports.svg
   part by the [`Navigation` control](controls-abi.md#navigation) in a row: a
   group opens as a dropdown, a group inside it as a submenu, and what does not
   fit the row moves under More. The navigation is a landmark named by the
-  `siteNavigation` word, under every placement.
+  `siteNavigation` text, under every placement.
 - **Behind a menu button** (`Ui.OverlayNavigation`) the header shows the
   `nav-menu` button — first, or last when its surface is a drawer opening from
   the `end` edge — which opens the surface holding the whole tree in a column,
@@ -130,7 +129,7 @@ file: !module-path ./icons/reports.svg
   `sidebar` part, a column beside `main` under the header at the placement's
   `side`, in a column whose groups open in place beneath their buttons —
   several at once, none closed by following a link. With a `rail`, the
-  `sidebar-toggle` button — named by the `collapseNavigation` word, or
+  `sidebar-toggle` button — named by the `collapseNavigation` text, or
   `expandNavigation` while collapsed — collapses it to a rail of each
   top-level entry's icon — its first letter when it has none — whose groups
   float their entries beside it, and expands it again. The open groups, each
@@ -298,9 +297,13 @@ provides is checked once, when it is resolved.
 ## Languages
 
 Every text the application shows — page titles, node texts, labels, a model's
-titles and enumeration labels, the renderer's own words — is written in the
-`lang:` of the module that wrote it. The application translates them through its
-own `translations:` block, the one set every surface of the application shares:
+titles and enumeration labels — is written in the `lang:` of the module that
+wrote it. The application translates them through its own `translations:`
+block, the one set every surface of the application shares. What the renderer
+draws on its own — "Save", the pager, each validation message — is
+[`ui`'s own texts](../../ui/docs/texts.md#uis-own-texts), keys of the set
+`Ui.Translations`: English with nothing listed, and in another language once its
+shipped translation is listed:
 
 ```yaml
 kind: Telo.Application
@@ -308,11 +311,11 @@ metadata: { name: Invoices, version: 1.0.0 }
 lang: en
 translations:
   catalogs:
+    - !ref Ui.polishTranslations
     - kind: Telo.TextTranslations
       lang: pl
       texts:
         - { text: Invoices, translation: Faktury }
-        - { text: Save, translation: Zapisz }
 ```
 
 `UiReact.App` takes no language setting of its own. It serves each request in the
@@ -323,6 +326,18 @@ each text up and sends the browser the message it chose, already parsed, with th
 language it is written in; the browser formats it — plural forms, placeholders,
 numbers — with no catalog of its own. A text with no translation is shown as
 written, and a text an expression computed is never looked up.
+
+### Keyed texts
+
+`UiReact.App` names the keyed sets it shows in `x-telo-text-keys` on its
+schema root — `[Ui.Translations]`. The application document carries them as
+`texts`: under `sets`, per set (by its canonical kind) each key's message in the
+request's language, already layered over every listed catalog of that set and
+parsed; and under `own`, the set the renderer's own texts are drawn from — the
+first set the kind names. A node's keyed text, `{ set, key }`, is drawn from
+`sets`; the renderer names no set itself, so a kind extending `UiReact.App`
+that shows another library's keyed texts as well names `Ui.Translations` first
+and the other sets after it.
 
 The documents carry the negotiated tag as `lang`, the shell as `<html lang>`, and
 the server keeps one copy of every document per served language — a thousand
@@ -560,7 +575,7 @@ delete.
   A 400 problem's issue (`data.issues`) lands on the field whose property is
   the first segment of its `pointer` after `/body` (`/body/period/from`
   reaches the date range entering `period`), worded from its `keyword` and
-  `params` by the same `Ui.Words` the browser's own validation uses, and stays
+  `params` by the same validation texts the browser's own validation uses, and stays
   until that field changes; one no shown field enters is shown under the form.
 - **Field kinds.** An input field draws the control it names: `select` a list
   (several values for a list property), `options` side by side, `toggle` a
@@ -618,9 +633,9 @@ below it what the operation answered.
   `status`, absent when nothing answered; `code`, the problem body's `code`,
   else `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN` for a 403 and
   `ERR_UI_REQUEST_FAILED` for anything else; `message`, its `detail`, else the
-  renderer's own word for the status — `input` and `values`. A 400 also marks
+  renderer's own text for the status — `input` and `values`. A 400 also marks
   the fields its `data.issues` name, each worded from its `keyword` and
-  `params` by `Ui.Words`, every other issue under the fields.
+  `params` by `ui`'s validation texts, every other issue under the fields.
 - After a success, every reader whose `source.path` and every listing whose
   source's `basePath` equals an entry of `onSuccess.refreshes` reads again, and
   `onSuccess.navigate` moves the page: within the application to a declared

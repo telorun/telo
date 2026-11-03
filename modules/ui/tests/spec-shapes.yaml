@@ -102,7 +102,7 @@ steps:
               sort: []
               rowActions: []
               relations: {}
-              empty: { type: text, text: { word: noRows } }
+              empty: { type: text, text: { set: Ui.Translations, key: noRows } }
               layout: { type: table, columns: [], reads: {} }
               delete: false
               create:
@@ -154,7 +154,7 @@ steps:
               type: filters
               basePath: /api/todos
               fields: []
-              content: { type: text, text: { word: loading } }
+              content: { type: text, text: { set: Ui.Translations, key: loading } }
               show: all
               placement: { type: nowhere }
               controls: direct
@@ -178,7 +178,7 @@ steps:
               type: filters
               basePath: /api/todos
               fields: []
-              content: { type: text, text: { word: loading } }
+              content: { type: text, text: { set: Ui.Translations, key: loading } }
               show: all
               placement: { type: above }
               controls: direct

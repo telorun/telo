@@ -6,13 +6,13 @@ import { presetRange, rangeLongerThan, rangeReversed, type Preset, type Range, t
 import { useControl, useControls } from "./effective-controls.js";
 import { optionKey, useChosenOptions, useOptionPages, type OptionSourceSpec } from "./option-source.js";
 import { Picker } from "./picker.js";
-import { issuePlace, issueWord, problemOf } from "./problem-details.js";
+import { issuePlace, issueText, problemOf } from "./problem-details.js";
 import { RendererContext } from "./renderer-context.js";
 import type { SurfaceSpec } from "./surface.js";
 import { findingText, labelFor, useSay, useText, type Say, type ValueLabel, type WireText } from "./texts.js";
 import { plainTypes, validate, type JsonSchema } from "./validation.js";
 
-/** The word warning of a range longer than its limit, by unit. */
+/** The text warning of a range longer than its limit, by unit. */
 const LONGER_THAN: Record<Unit, string> = {
   day: "rangeLongerThanDays",
   week: "rangeLongerThanWeeks",
@@ -169,7 +169,8 @@ function storedItem(text: string, items: JsonSchema): unknown {
   const widget = controlFor(items);
   if (widget === "checkbox") return text === "true" ? true : text === "false" ? false : text;
   if (widget === "number") return Number.isNaN(Number(text)) ? text : Number(text);
-  return stored(text, { type: "input", property: "", label: { word: "none" }, control: "auto" }, items);
+  // The field stands for the item's type alone; its label is never read.
+  return stored(text, { type: "input", property: "", label: { message: [], lang: "und" }, control: "auto" }, items);
 }
 
 /** The value sent for what a control holds; `undefined` leaves the property out. */
@@ -260,7 +261,7 @@ export function hiddenFindings(
   const labels = new Map(hidden.map((field) => [field.property, field.label]));
   return validate(schema, record)
     .filter((finding) => labels.has(finding.path[0]))
-    .map((finding) => `${text(labels.get(finding.path[0])!)}: ${say(finding.word.id, finding.word.values)}`);
+    .map((finding) => `${text(labels.get(finding.path[0])!)}: ${say(finding.text.key, finding.text.values)}`);
 }
 
 /** What is wrong with a record, by shown field: what the model refuses of its
@@ -281,7 +282,7 @@ export function fieldFindings(
     }
   }
   for (const finding of validate(schema, record)) {
-    if (shown.has(finding.path[0])) invalid[finding.path[0]] ??= say(finding.word.id, finding.word.values);
+    if (shown.has(finding.path[0])) invalid[finding.path[0]] ??= say(finding.text.key, finding.text.values);
   }
   return invalid;
 }
@@ -304,9 +305,9 @@ export function refusalOf(body: unknown, fields: Field[], say: Say): Refusal {
   const other: string[] = [];
   for (const issue of problem.issues) {
     const { inBody, path } = issuePlace(issue);
-    const word = issueWord(issue);
-    if (inBody && shown.has(path[0])) byField[path[0]] ??= say(word.id, word.values);
-    else other.push(findingText({ path, word }, say));
+    const text = issueText(issue);
+    if (inBody && shown.has(path[0])) byField[path[0]] ??= say(text.key, text.values);
+    else other.push(findingText({ path, text }, say));
   }
   if (problem.issues.length === 0) other.push(problem.detail ?? say("recordRefused"));
   return { byField, other };

@@ -230,7 +230,7 @@ produced. A `value` node carries `present` — what the schema it reads says
 resolved on the server; both carry `labels`, the label of each value an
 enumeration offers (`[]` when none). Every text is a text record, a
 `{ text, values }` text is the record with its `values` beside it, and a text
-`ui` fills itself is a word reference `{ word: <id> }` — see
+`ui` fills itself is a keyed text `{ set: Ui.Translations, key }` — see
 [what a renderer receives](texts.md#what-a-renderer-receives). A composite placed with a `shown` of its own around a
 provided node that has one is wrapped in a `box` carrying the placement's, so
 both must hold. It carries no resource name. Row-bound values in it are **bindings** — `{ root, path }` for a

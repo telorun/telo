@@ -1,0 +1,133 @@
+# ui's own texts in Portuguese.
+kind: Self.Translations
+metadata: { name: portugueseTranslations }
+lang: pt
+messages:
+  loading: Carregando…
+  noRows: Nenhuma linha.
+  nothingFound: Nada encontrado.
+  save: Salvar
+  cancel: Cancelar
+  close: Fechar
+  newRecord: Novo
+  edit: Editar
+  delete: Excluir
+  deleteRowQuestion: Excluir esta linha?
+  deleteRowDetail: Isso não pode ser desfeito.
+  previousPage: Página anterior
+  pagerRange: "{$first}–{$last} de {$total}"
+  pagerEmpty: 0 de {$total}
+  nextPage: Próxima página
+  loadMore: Carregar mais
+  moveTo: Mover para
+  valueCount: "{$label} ({$count})"
+  yes: Sim
+  no: Não
+  none: Nenhum
+  any: Qualquer
+  select: Selecionar…
+  choose: Escolher…
+  more: Mais
+  menu: Menu
+  siteNavigation: Site
+  collapseNavigation: Recolher navegação
+  expandNavigation: Expandir navegação
+  search: Pesquisar {$label}
+  remove: Remover {$label}
+  clear: Limpar {$label}
+  filters: Filtros
+  addFilter: Adicionar filtro
+  apply: Aplicar
+  reset: Redefinir
+  done: Concluído
+  presets: Predefinições
+  operatorEq: é
+  operatorContains: contém
+  operatorGt: depois de
+  operatorGte: de
+  operatorLt: antes de
+  operatorLte: até
+  operatorIn: um de
+  operatorAbsent: não definido
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: De
+  rangeTo: Até
+  rangeStartsAfterEnd: Não pode começar depois de terminar
+  rangeLongerThanDays:
+    plural: count
+    cases: { one: "Mais de {$count} dia", other: "Mais de {$count} dias" }
+  rangeLongerThanWeeks:
+    plural: count
+    cases: { one: "Mais de {$count} semana", other: "Mais de {$count} semanas" }
+  rangeLongerThanMonths:
+    plural: count
+    cases: { one: "Mais de {$count} mês", other: "Mais de {$count} meses" }
+  rangeLongerThanQuarters:
+    plural: count
+    cases: { one: "Mais de {$count} trimestre", other: "Mais de {$count} trimestres" }
+  rangeLongerThanYears:
+    plural: count
+    cases: { one: "Mais de {$count} ano", other: "Mais de {$count} anos" }
+  notFound: Não encontrado
+  noPageAt: Este aplicativo não tem página em {$path}.
+  unsavedQuestion: Descartar alterações não salvas?
+  unsavedDetail: O que você digitou não foi salvo.
+  discard: Descartar
+  keepEditing: Continuar editando
+  requestUnauthorized: Você não está conectado ou sua sessão terminou.
+  requestForbidden: Você não tem permissão para fazer isso.
+  requestFailedStatus: A requisição falhou com o status {$status}.
+  requestFailed: "A requisição falhou: {$reason}"
+  recordRefused: O registro foi recusado.
+  answerNotJson: A resposta não é JSON.
+  answerNotObject: A resposta não é um objeto JSON.
+  answerNotModel: "A resposta não corresponde ao seu modelo: {$detail}"
+  invalid: Não é válido
+  required: É obrigatório
+  type: Deve ser do tipo {$types}
+  enum: "Deve ser um de: {$allowed}"
+  const: Deve ser {$value}
+  not: Não é permitido
+  anyOf: Não tem nenhuma das formas permitidas
+  minLength:
+    plural: limit
+    cases:
+      one: Deve ter pelo menos {$limit} caractere
+      other: Deve ter pelo menos {$limit} caracteres
+  maxLength:
+    plural: limit
+    cases:
+      one: Deve ter no máximo {$limit} caractere
+      other: Deve ter no máximo {$limit} caracteres
+  pattern: Não está no formato esperado
+  minimum: Deve ser no mínimo {$limit}
+  maximum: Deve ser no máximo {$limit}
+  exclusiveMinimum: Deve ser maior que {$limit}
+  exclusiveMaximum: Deve ser menor que {$limit}
+  multipleOf: Deve ser múltiplo de {$limit}
+  minItems:
+    plural: limit
+    cases:
+      one: Deve ter pelo menos {$limit} item
+      other: Deve ter pelo menos {$limit} itens
+  maxItems:
+    plural: limit
+    cases:
+      one: Deve ter no máximo {$limit} item
+      other: Deve ter no máximo {$limit} itens
+  uniqueItems: Não pode repetir um item
+  minProperties:
+    plural: limit
+    cases:
+      one: Deve ter pelo menos {$limit} entrada
+      other: Deve ter pelo menos {$limit} entradas
+  maxProperties:
+    plural: limit
+    cases:
+      one: Deve ter no máximo {$limit} entrada
+      other: Deve ter no máximo {$limit} entradas
+  format: Não é um valor {$format} válido
+  additionalProperties: Não é esperado aqui
+  propertyNames: "Tem um nome não permitido: {$propertyName}"

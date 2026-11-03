@@ -13,17 +13,9 @@ metadata:
     and custom React components. Mounted on an HTTP server, it turns page
     descriptions into an admin panel with no frontend build.
 requires:
-  # 0.120.1 refuses this file: it does not know `x-telo-context-eval`, which
-  # keeps a page's `request` out of what the browser names and its `query` out
-  # of what the server evaluates, nor the `Text` fragment and
-  # `x-telo-text-values` an application's titles are typed with. Verified by
-  # execution (`check` of this file) against 0.120.1. The `abi` and `external`
-  # a control set's `implements` is checked against ship in the same release,
-  # and so does the repeated group of a rule's `in:` pointer
-  # (`/navigation/items(/*/items)*`), which 0.120.1 reads as a field this kind
-  # does not declare (RESOURCE_RULE_INVALID).
-  # 0.129.0: the App reads the application's translations through ctx.translations,
-  # which an older runtime does not have.
+  # The App reads the application's translations (`ctx.translations`) and the
+  # keyed texts its kind names (`x-telo-text-keys`); 0.128.0 has neither, and
+  # cannot load the `ui` beneath it.
   telo: ">=0.129.0"
 imports: { Ui: ../ui, SseCodec: ../sse-codec }
 exports:
@@ -37,10 +29,9 @@ exports:
       format: js
       path: ./nodejs/ui-react-contract.mjs
       source: ./nodejs/src/contract/index.ts
-  # Six entries, two builds. The four React entries declare no `external`, so
-  # they are one build and the page holds one React. The renderer and the host
-  # module declare the same `external` list, so they are one build too and
-  # share the context `useHost` reads.
+  # Six entries, two builds: the four React entries (no `external`) are one, so
+  # the page holds one React; the renderer and the host module (one `external`
+  # list) are the other, sharing the context `useHost` reads.
   browser:
     - specifier: react
       path: ./browser/react.js
@@ -114,8 +105,10 @@ capability: Telo.Mount
 controllers: [pkg:telo/local/js?path=./nodejs/ui-react.mjs&local_path=./nodejs/src/index.ts#AppController]
 schema:
   type: object
+  # The renderer's own texts are drawn from the first set named here.
+  x-telo-text-keys: [Ui.Translations]
   additionalProperties: false
-  required: [title, words, theme, pages]
+  required: [title, theme, pages]
   properties:
     title:
       title: Title
@@ -123,13 +116,6 @@ schema:
       $ref: "telo://manifest#/$defs/Text"
       x-telo-text-values: {}
       x-telo-eval: compile
-    words:
-      title: Words
-      description: >-
-        The words the renderer shows of its own — loading, empty states,
-        buttons, validation messages — `Ui.words` in English, or a set of one's
-        own.
-      x-telo-ref: { kind: Ui.Words, use: dependency }
     theme:
       title: Theme
       description: >-
@@ -191,10 +177,9 @@ schema:
       title: Header
       description: >-
         Nodes of the application's own in its header, drawn on every page:
-        `start` before the title, `end` after the navigation. Each node's
-        `when:` and text values may read the request, evaluated per request;
-        no browser root is in scope. `width` lines the header's content up
-        with a contained page or spreads it across the bar.
+        `start` before the title, `end` after the navigation, each evaluated
+        per request over `request` alone; `width` lines the content up with a
+        contained page or spreads it across the bar.
       type: object
       additionalProperties: false
       properties:
@@ -248,9 +233,9 @@ schema:
     navigation:
       title: Navigation
       description: >-
-        The navigation tree and how it is drawn. Omitted, one entry per page in
-        the order `pages` lists them, in the header and behind a menu button on
-        a narrow viewport. Every page an entry names is one `pages` lists.
+        The navigation tree and how it is drawn, every page an entry names one
+        `pages` lists. Omitted, one entry per page in the order `pages` lists
+        them, in the header and behind a menu button on a narrow viewport.
       $ref: "telo://Ui/Navigation"
   x-telo-resource-rules:
     - resolve: [/pages]
@@ -270,11 +255,9 @@ schema:
         names a page the application does not list in its pages, so it leads
         nowhere. Add the page to pages, or remove the entry.
 ---
-# A theme is the look of every part the renderer draws and, optionally, the
-# controls it draws with; brand values stay a separate `Ui.DesignTokens` set,
-# so switching the theme keeps the brand. The application places the theme's
-# tokens, then its stylesheets in order, in the `telo.theme` layer, and each
-# control set's own stylesheet in `telo.control`.
+# The look of every part the renderer draws and, optionally, the controls it
+# draws with; the brand stays a separate `Ui.DesignTokens` set. Layering:
+# docs/theme.md.
 kind: Telo.Definition
 metadata:
   name: Theme

@@ -49,7 +49,7 @@ describe("a theme implementing every control", () => {
       const problems = await runScene({
         window,
         scene,
-        words: data.words,
+        texts: data.texts,
         mount: renderer,
         controls: { stylesheets: {}, sets: [{ module: STUBS, exports: names }] },
         load: (url) => (url === STUBS ? Promise.resolve(stubs) : undefined),

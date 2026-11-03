@@ -1777,7 +1777,13 @@ tag, always present), negotiated from `Accept-Language` by RFC 4647 lookup
 first — a cookie, a path prefix, a query parameter. With several served languages
 the response carries `Content-Language` and `Vary`; a problem's `detail` is in
 `request.lang`. `UiReact.App` reads it, with no `translator:`, `lang:` or
-`catalogs:`.
+`catalogs:`. What the renderer draws on its own — Save, the pager, validation
+messages — is `ui`'s keyed set `Ui.Translations`: English with nothing written
+(there is no `words:`), translated by listing `ui`'s shipped
+`Ui.<language>Translations` (`Ui.germanTranslations`, `Ui.polishTranslations`, …,
+fourteen languages) in `translations.catalogs`, one key reworded by a
+`kind: Ui.Translations` (`lang`, `messages: { save: Submit }`) listed after them
+— never by translating ui's English as a `TextTranslations` text.
 
 To translate outside a UI, call `I18n.translate(text, lang, values?)` (module
 `i18n`, imported): `text` is written at the call (a message or `{'text': …,

@@ -28,8 +28,8 @@ export interface PartsContract {
 
 export const controls = controlsData as unknown as ControlsContract;
 export const parts: PartsContract = partsData;
-/** The scenes, with the renderer's words their documents are drawn with. */
-export const scenes = scenesData as unknown as { words: Record<string, unknown>; scenes: Scene[] };
+/** The scenes, with the keyed texts their documents are drawn with (the application document's `texts`). */
+export const scenes = scenesData as unknown as { texts: Record<string, unknown>; scenes: Scene[] };
 export const vectors = vectorsData as unknown as Record<string, ControlVectors>;
 /** The layout contract: the props and intents of a layout component, and each built-in's parts. */
 export const layouts = layoutsData as unknown as LayoutsContract;

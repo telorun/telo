@@ -15,16 +15,16 @@ import { RelatedContext, RelatedValue } from "./related-labels.js";
 import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
 import { TabsNode } from "./tabs-node.js";
 import { Presented } from "./value-cell.js";
-import { formatWord, useSay, useText, WordsContext } from "./texts.js";
+import { formatOwn, holdsOwn, TextsContext, useSay, useText } from "./texts.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
 
 /** A node of a page document. */
 export type SpecNode = { type: string; style?: Style } & Record<string, any>;
 
 export function ErrorNode({ error }: { error: ErrorSpec }) {
-  const words = useContext(WordsContext);
-  // Before the application's words arrive, what stands for them is shown.
-  const message = error.word && words[error.word.id] ? formatWord(words, error.word.id, error.word.values) : error.message;
+  const texts = useContext(TextsContext);
+  // Before the application's texts arrive, what stands for them is shown.
+  const message = error.text && holdsOwn(texts, error.text.key) ? formatOwn(texts, error.text.key, error.text.values) : error.message;
   return (
     <div data-telo-part="error" role="alert">
       <ErrorGlyph />

@@ -18,7 +18,7 @@ layout. How records are drawn is [the layout's](listing-layouts.md).
 | `create`, `edit` | | [how a form is opened](#opening-a-form): `{ form, surface?, afterSubmit?, unsaved? }` |
 | `delete` | `false` | whether each record offers a confirmed delete |
 | `rowActions` | none | [operations each record offers](#row-actions): `{ action, inputs, confirm?, prompt?, enabled? }` each |
-| `empty` | the renderer's words for no records | a [node](nodes.md) drawn where the records would be when the reads answer none |
+| `empty` | the text `noRows`, "No rows." | a [node](nodes.md) drawn where the records would be when the reads answer none |
 | `layout` | a table | how the records are drawn: [a layout kind](listing-layouts.md), `!ref` or inline |
 | `compact` | none | the layout drawn below the application's breakpoint; same kinds as `layout` |
 
@@ -61,7 +61,7 @@ pages read, the viewer's sort, an open edit form and what it holds.
 
 - `pages` — a pager. The cursors already read are kept, so "previous" replays a
   page. It applies to the table, list and cards layouts.
-- `more` — a "Load more" control (the renderer's `loadMore` word) appending
+- `more` — a "Load more" control (`ui`'s text `loadMore`) appending
   the next page to what is shown.
 - `scroll` — the next page is loaded when the end comes into view; the "Load
   more" control stays at the end, focusable, so keyboard and screen-reader

@@ -32,7 +32,7 @@ failure with `code: ERR_UI_RESPONSE_INVALID`.
 `failure` tree reads as `error.code` and `error.message` beside `error.status`.
 Without a `code`, `code` is `ERR_UI_UNAUTHORIZED` for a 401, `ERR_UI_FORBIDDEN`
 for a 403 and `ERR_UI_REQUEST_FAILED` otherwise; without a `detail`, `message`
-is the renderer's own word for the status. With no answer at all `status` is
+is `ui`'s own text for the status. With no answer at all `status` is
 absent and `code` is `ERR_UI_REQUEST_FAILED`.
 
 **A 400** is the validation problem
@@ -52,9 +52,9 @@ in `data.issues`:
 
 An issue whose `pointer` names a shown field's property as its first segment
 after `/body` marks that field, worded by the issue's `keyword` and `params`
-in the page's language — with the word the browser's own validation says for
-that keyword ([`Ui.Words`](texts.md#the-renderers-own-words)). Every other
-issue is shown under the form, as its path and that word, and the `failure`
+in the page's language — with the text the browser's own validation shows for
+that keyword ([`ui`'s own texts](texts.md#uis-own-texts)). Every other
+issue is shown under the form, as its path and that text, and the `failure`
 tree reads the problem's `code` and `detail`.
 
 ## One shape, named twice

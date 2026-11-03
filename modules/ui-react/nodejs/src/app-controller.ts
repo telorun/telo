@@ -14,7 +14,6 @@ import { basename } from "node:path";
 import {
   deliveredNavigation,
   isPage,
-  isWords,
   preparedNavigation,
   resolvedPageWidth,
   RequestNodes,
@@ -25,7 +24,6 @@ import {
   type PageReading,
   type PageWidth,
   type PreparedNavigation,
-  type Words,
 } from "@telorun/ui";
 import abi from "./contract/abi.json" with { type: "json" };
 import layoutsContract from "./contract/layouts.json" with { type: "json" };
@@ -62,7 +60,6 @@ function notFound(reply: FastifyReply) {
 
 export type AppResource = RuntimeResource & {
   title: TextRecord;
-  words: unknown;
   theme: unknown;
   tokens?: unknown;
   stylesheets?: string[];
@@ -105,6 +102,13 @@ interface Translated {
   lang: string;
 }
 
+/** The keyed texts as the browser receives them: per set, each key's message
+ *  in one language, and the set the renderer's own texts are drawn from. */
+interface KeyedTexts {
+  own: string;
+  sets: Record<string, Record<string, Translated>>;
+}
+
 /** What is the same for every request landing on one language: built once per
  *  negotiated tag, so there are at most as many as the application serves. */
 interface InLanguage {
@@ -112,7 +116,7 @@ interface InLanguage {
   shell: string;
   title: Translated;
   pageTitles: Translated[];
-  words: Record<string, Translated>;
+  texts: KeyedTexts;
   /** Translates a text the application document carries. */
   translate(record: TextRecord): Translated;
 }
@@ -125,7 +129,6 @@ interface Started {
   bundle: string;
   rendererUrl: string;
   importMap: Record<string, string>;
-  words: Words;
   /** The headers the shell, the application document and each page read. */
   vary: { app: HeaderReads; pages: HeaderReads[] };
   /** By negotiated tag. */
@@ -337,9 +340,6 @@ export class UiReactApp {
     const importMap: Record<string, string> = {};
     for (const specifier of MAPPED) importMap[specifier] = urlOf(modules[specifier]);
     Object.assign(importMap, store.sharedFileRemaps(urlOf));
-    const words = await this.ctx
-      .resolveRef(this.resource.words, isWords, () => `'words' of ${this.owner}`, "Ui.Words")
-      .provide();
     // The server varies by the language itself; these are the other headers read.
     const vary = {
       app: unionReads(
@@ -355,7 +355,6 @@ export class UiReactApp {
       bundle,
       rendererUrl: urlOf(modules[RENDERER]),
       importMap,
-      words,
       vary,
       languages: new Map(),
       header,
@@ -396,17 +395,17 @@ export class UiReactApp {
   private inLanguage(started: Started, tag: string): InLanguage {
     const held = started.languages.get(tag);
     if (held) return held;
-    const translate = (record: TextRecord): Translated => {
-      const found = this.ctx.translations.translate(tag, record);
-      const read = readMessage(found.text);
+    const parsed = (record: TextRecord): Translated => {
+      const read = readMessage(record.text);
       if (!read.ok) {
         throw new RuntimeError(
           "ERR_MESSAGE_SYNTAX_INVALID",
           `${this.owner}: a text it shows is no message: ${read.problems.map((problem) => problem.message).join("; ")}.`,
         );
       }
-      return { message: read.message, lang: found.lang };
+      return { message: read.message, lang: record.lang };
     };
+    const translate = (record: TextRecord): Translated => parsed(this.ctx.translations.translate(tag, record));
     const translator = new SpecTranslator<Translated>(
       {
         root: this.ctx.lookupSchema(canonicalTypeSchemaId("Ui", "SpecNode")) as Record<string, any>,
@@ -419,7 +418,7 @@ export class UiReactApp {
       translator,
       title,
       pageTitles: this.pages.map(({ reading }) => translate(reading.title)),
-      words: Object.fromEntries(Object.entries(started.words).map(([id, record]) => [id, translate(record)])),
+      texts: this.keyedTexts(tag, parsed),
       shell: shellHtml({
         title: formatMessage(title.message, title.lang, {}),
         ...(tag === "und" ? {} : { lang: tag }),
@@ -432,6 +431,31 @@ export class UiReactApp {
     };
     started.languages.set(tag, made);
     return made;
+  }
+
+  /**
+   * Every keyed set the App's kind names in `x-telo-text-keys`, layered, in
+   * `tag`; the first it names is the one the renderer's own texts are drawn
+   * from, so no set is named here or in the renderer.
+   */
+  private keyedTexts(tag: string, parsed: (record: TextRecord) => Translated): KeyedTexts {
+    const keyed = this.ctx.translations.keyed();
+    const [own] = Object.keys(keyed);
+    if (own === undefined) {
+      throw new RuntimeError(
+        "ERR_TEXT_KEYS_INVALID",
+        `${this.owner}: its kind names no keyed set in 'x-telo-text-keys', so the renderer has no texts of its own to draw. Name the set of the vocabulary it draws first.`,
+      );
+    }
+    const sets: KeyedTexts["sets"] = {};
+    for (const [set, byLanguage] of Object.entries(keyed)) {
+      const messages = byLanguage[tag];
+      if (messages === undefined) {
+        throw new RuntimeError("ERR_FATAL", `${this.owner}: the keyed set '${set}' holds no messages in '${tag}', a language the application serves.`);
+      }
+      sets[set] = Object.fromEntries(Object.entries(messages).map(([key, record]) => [key, parsed(record)]));
+    }
+    return { own, sets };
   }
 
   private send(request: FastifyRequest, reply: FastifyReply, document: Record<string, unknown>, reads: HeaderReads) {
@@ -485,7 +509,7 @@ export class UiReactApp {
         pages: this.pages.map(({ reading }, index) => ({ path: reading.path, title: language.pageTitles[index] })),
         navigation: { items: translatedEntries(items), placement: started.navigation.placement },
         header,
-        words: language.words,
+        texts: language.texts,
         stylesheets: [...started.leading, ...tokens, ...started.trailing],
         controls: started.controls,
         compactBelow: this.resource.compactBelow ?? "40rem",

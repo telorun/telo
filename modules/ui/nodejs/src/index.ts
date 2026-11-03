@@ -47,15 +47,14 @@ export {
 } from "./navigation.js";
 export { isIcon, type IconFile } from "./icon.js";
 // How a renderer's controller sends the texts of what `ui` provides: each text
-// of a `Ui.SpecNode` found by following its schema and translated, and the
-// renderer's own words.
+// of a `Ui.SpecNode` found by following its schema and translated; a keyed text
+// is looked up in its set.
 export { SpecTranslator, type SpecSchemas } from "./spec-translation.js";
-export { isWords, type Words } from "./words-controller.js";
+export { type KeyedText } from "./spec-texts.js";
 // The closed design token names, for whatever reads a token set by name: a
 // renderer spelling them in CSS, a check that a theme gives each a value.
 export { DESIGN_TOKENS, type DesignTokenName } from "./design-tokens-controller.js";
 
-export * as WordsController from "./words-controller.js";
 export * as ViewController from "./view-controller.js";
 export * as PageController from "./page-controller.js";
 export * as DataController from "./data-controller.js";

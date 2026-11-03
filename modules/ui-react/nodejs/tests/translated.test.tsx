@@ -21,13 +21,13 @@ describe("a page in Polish", () => {
   it.each([
     [3, "Co najmniej 3 znaki"],
     [5, "Co najmniej 5 znaków"],
-  ])("fills a validation word's limit of %d with its plural case", async (limit, expected) => {
+  ])("fills a validation text's limit of %d with its plural case", async (limit, expected) => {
     const form = formNode();
     const schema = { ...form.schema, properties: { ...form.schema.properties, text: { type: "string", title: "Task", minLength: limit } } };
     rendered = await render({
       path: "/",
       lang: "pl",
-      words: { minLength: polishMinLength },
+      messages: { minLength: polishMinLength },
       pages: { "/": { title: "Zadania", children: [{ ...form, schema }] } },
     });
     await rendered.enter(rendered.parts("input")[0], "a");

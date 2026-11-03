@@ -1,12 +1,8 @@
-# An application whose page runs an operation, whose listing offers one on
-# every row and whose list of the months the address names offers the first on
-# each, over routes that name the same shapes. Start it with
-#   pnpm run telo ./modules/ui-react/tests/__fixtures__/action/telo.yaml
-# and open http://127.0.0.1:19330/admin/
+# A page running an operation, a listing offering one per row and a list of
+# the months the address names offering the first on each, over routes naming
+# the same shapes. Run it with `pnpm run telo` and open :19330/admin/.
 kind: Telo.Application
-metadata:
-  name: UiActionFixtureApp
-  version: 1.0.0
+metadata: { name: UiActionFixtureApp, version: 1.0.0 }
 imports:
   Http: ../../../../http-server
   Ui: ../../../../ui
@@ -14,14 +10,12 @@ imports:
   UiReact: ../../../
   Api: ../collection-api
   Operations: ../operation-api
-ports:
-  http: { env: PORT, default: 19330 }
+ports: { http: { env: PORT, default: 19330 } }
 targets:
   - !ref server
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ReportRequest
+metadata: { name: ReportRequest }
 schema:
   type: object
   additionalProperties: false
@@ -33,8 +27,7 @@ schema:
     recipients: { type: array, title: Recipients, items: { type: string, minLength: 3 } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ReportAnswer
+metadata: { name: ReportAnswer }
 schema:
   type: object
   required: [files]
@@ -48,39 +41,30 @@ schema:
           url: { type: string, title: Download, format: uri-reference }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ArchiveRequest
+metadata: { name: ArchiveRequest }
 schema:
   type: object
   additionalProperties: false
   required: [id]
-  properties:
-    id: { type: integer }
-    status: { type: string }
+  properties: { id: { type: integer }, status: { type: string } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id, text]
-  properties:
-    id: { type: integer }
-    text: { type: string, title: Task }
+  properties: { id: { type: integer }, text: { type: string, title: Task } }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: ArchiveAnswer
+metadata: { name: ArchiveAnswer }
 schema:
   type: object
   required: [archived]
-  properties:
-    archived: { type: boolean }
+  properties: { archived: { type: boolean } }
 ---
 # Each operation validates against the shape its action sends, by name.
 kind: Operations.Operation
-metadata:
-  name: reportsApi
+metadata: { name: reportsApi }
 input: !ref ReportRequest
 output: !ref ReportAnswer
 answer:
@@ -89,22 +73,19 @@ answer:
     - { name: 2026-09.csv, url: /files/2026-09.csv }
 ---
 kind: Operations.Operation
-metadata:
-  name: archiveApi
+metadata: { name: archiveApi }
 input: !ref ArchiveRequest
 output: !ref ArchiveAnswer
 answer: { archived: true }
 ---
 kind: Api.Collection
-metadata:
-  name: todosApi
+metadata: { name: todosApi }
 rows:
   - { id: 1, text: Write the plan }
   - { id: 2, text: Review the plan }
 ---
 kind: Ui.Action
-metadata:
-  name: generate
+metadata: { name: generate }
 inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
 source: { path: /api/reports }
@@ -116,14 +97,12 @@ result:
   columns:
     - value: !cel "row.name"
     - value: !cel "row.url"
-onSuccess:
-  refreshes: [/api/todos]
+onSuccess: { refreshes: [/api/todos] }
 concurrency: serial
 clearAnswerOn: [month]
 ---
 kind: Ui.Action
-metadata:
-  name: archive
+metadata: { name: archive }
 inputModel: !ref ArchiveRequest
 outputModel: !ref ArchiveAnswer
 source: { path: /api/archive }
@@ -131,8 +110,7 @@ label: Archive
 result: { type: value, value: !cel "result.archived" }
 ---
 kind: Ui.Listing
-metadata:
-  name: todos
+metadata: { name: todos }
 presentation:
   kind: Ui.CollectionPresentation
   source:
@@ -156,17 +134,14 @@ rowActions:
       disabledText: Name it first.
 ---
 kind: UiReact.App
-metadata:
-  name: admin
+metadata: { name: admin }
 title: Reports
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page
     path: /
     title: Reports
-    query:
-      months: { type: array, items: { type: string } }
+    query: { months: { type: array, items: { type: string } } }
     children:
       - { type: composite, ref: !ref generate }
       - { type: composite, ref: !ref todos }
@@ -181,8 +156,7 @@ pages:
               month: !cel "row"
 ---
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   address: 127.0.0.1
   port: !cel "ports.http"

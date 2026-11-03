@@ -1,0 +1,99 @@
+# ui's own texts in Japanese.
+kind: Self.Translations
+metadata: { name: japaneseTranslations }
+lang: ja
+messages:
+  loading: 読み込み中…
+  noRows: 行がありません。
+  nothingFound: 見つかりませんでした。
+  save: 保存
+  cancel: キャンセル
+  close: 閉じる
+  newRecord: 新規
+  edit: 編集
+  delete: 削除
+  deleteRowQuestion: この行を削除しますか？
+  deleteRowDetail: この操作は元に戻せません。
+  previousPage: 前のページ
+  pagerRange: "{$total} 件中 {$first}–{$last} 件"
+  pagerEmpty: "{$total} 件中 0 件"
+  nextPage: 次のページ
+  loadMore: さらに読み込む
+  moveTo: 移動先
+  valueCount: "{$label} ({$count})"
+  yes: はい
+  no: いいえ
+  none: なし
+  any: すべて
+  select: 選択…
+  choose: 指定…
+  more: さらに表示
+  menu: メニュー
+  siteNavigation: サイト
+  collapseNavigation: ナビゲーションを折りたたむ
+  expandNavigation: ナビゲーションを展開
+  search: "{$label}を検索"
+  remove: "{$label}を削除"
+  clear: "{$label}をクリア"
+  filters: フィルター
+  addFilter: フィルターを追加
+  apply: 適用
+  reset: リセット
+  done: 完了
+  presets: プリセット
+  operatorEq: と一致
+  operatorContains: を含む
+  operatorGt: より後
+  operatorGte: から
+  operatorLt: より前
+  operatorLte: まで
+  operatorIn: のいずれか
+  operatorAbsent: 未設定
+  filterControl: "{$label}（{$operator}）"
+  filterChip: "{$label}: {$value} {$operator}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: 開始
+  rangeTo: 終了
+  rangeStartsAfterEnd: 終了より後に開始することはできません
+  rangeLongerThanDays: "{$count} 日を超えています"
+  rangeLongerThanWeeks: "{$count} 週間を超えています"
+  rangeLongerThanMonths: "{$count} か月を超えています"
+  rangeLongerThanQuarters: "{$count} 四半期を超えています"
+  rangeLongerThanYears: "{$count} 年を超えています"
+  notFound: 見つかりません
+  noPageAt: このアプリケーションには {$path} のページがありません。
+  unsavedQuestion: 未保存の変更を破棄しますか？
+  unsavedDetail: 入力した内容は保存されていません。
+  discard: 破棄
+  keepEditing: 編集を続ける
+  requestUnauthorized: サインインしていないか、セッションが終了しています。
+  requestForbidden: この操作を行う権限がありません。
+  requestFailedStatus: リクエストはステータス {$status} で失敗しました。
+  requestFailed: "リクエストが失敗しました: {$reason}"
+  recordRefused: レコードは拒否されました。
+  answerNotJson: 応答が JSON ではありません。
+  answerNotObject: 応答が JSON オブジェクトではありません。
+  answerNotModel: "応答がモデルに適合しません: {$detail}"
+  invalid: 無効です
+  required: 必須です
+  type: "{$types} 型である必要があります"
+  enum: "次のいずれかである必要があります: {$allowed}"
+  const: "{$value} である必要があります"
+  not: 許可されていません
+  anyOf: 許可された形式のいずれにも一致しません
+  minLength: "{$limit} 文字以上で入力してください"
+  maxLength: "{$limit} 文字以下で入力してください"
+  pattern: 形式が正しくありません
+  minimum: "{$limit} 以上である必要があります"
+  maximum: "{$limit} 以下である必要があります"
+  exclusiveMinimum: "{$limit} より大きい必要があります"
+  exclusiveMaximum: "{$limit} より小さい必要があります"
+  multipleOf: "{$limit} の倍数である必要があります"
+  minItems: "{$limit} 個以上の項目が必要です"
+  maxItems: 項目は {$limit} 個以下にしてください
+  uniqueItems: 項目を重複させることはできません
+  minProperties: エントリは {$limit} 件以上必要です
+  maxProperties: エントリは {$limit} 件以下にしてください
+  format: 有効な {$format} ではありません
+  additionalProperties: ここでは想定されていません
+  propertyNames: "許可されていない名前があります: {$propertyName}"

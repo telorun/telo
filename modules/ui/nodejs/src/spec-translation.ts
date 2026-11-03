@@ -7,7 +7,7 @@ import type { JsonSchema } from "./model-schema.js";
  * through the branch its tag and its members choose, a member a branch does not
  * declare is never entered, and only a node the schema types as a text record
  * is translated. A text with values arrives as the translation with its values
- * beside it. A word reference is left as it is, for the renderer to resolve.
+ * beside it. A keyed text is left as it is, for the renderer to look up in its set.
  */
 
 /** The schema documents a walk reads: `Ui.SpecNode` and the shapes it names. */

@@ -15,7 +15,7 @@ metadata:
     nothing set. A form enters a property with a presented relation with a
     picker of the related records, read from the same source a listing of
     those records reads. A listing declaring no row actions carries an empty
-    list of them, and the renderer's words for no records.
+    list of them, and `ui`'s text for no records.
 imports:
   Ui: ../
   DataModel: ../../data-model
@@ -197,7 +197,7 @@ steps:
               basePath: /api/people
               filters: {}
               pageSize: 25
-          empty: { type: text, text: { word: noRows } }
+          empty: { type: text, text: { set: Ui.Translations, key: noRows } }
           compact: false
           schemaRequired: [id, text]
           assets: []

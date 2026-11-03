@@ -1,0 +1,58 @@
+# ui's own texts overridden key by key: `save` reads "Submit" in English and
+# "Zachowaj" in Polish over ui's shipped Polish, while a "Save" the author
+# writes on the page is a text of its own and is left as written.
+kind: Telo.Application
+metadata: { name: UiKeyedTextsFixtureApp, version: 1.0.0 }
+requires: { telo: ">=0.129.0" }
+lang: en
+imports: { Http: ../../../../http-server, Ui: ../../../../ui, DataModel: ../../../../data-model, UiReact: ../../../ }
+ports: { http: { env: PORT, default: 8135 } }
+translations:
+  catalogs:
+    - !ref englishOverrides
+    - !ref Ui.polishTranslations
+    - !ref polishOverrides
+targets: [!ref server]
+---
+kind: Ui.Translations
+metadata: { name: englishOverrides }
+lang: en
+messages: { save: Submit }
+---
+kind: Ui.Translations
+metadata: { name: polishOverrides }
+lang: pl
+messages: { save: Zachowaj }
+---
+kind: Telo.JsonSchema
+metadata: { name: Invoice }
+schema:
+  type: object
+  required: [number]
+  properties: { number: { type: string, title: Number, minLength: 3 } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { address: 127.0.0.1, port: !cel "ports.http" }
+mounts:
+  - path: /
+    mount:
+      kind: UiReact.App
+      title: Invoices
+      theme: !ref UiReact.defaultTheme
+      pages:
+        - kind: Ui.Page
+          path: /
+          title: Invoices
+          children:
+            - { type: text, text: Save }
+            - type: composite
+              ref:
+                kind: Ui.Form
+                model: !ref Invoice
+                presentation:
+                  kind: Ui.CollectionPresentation
+                  source:
+                    kind: Ui.CollectionSource
+                    basePath: /api/invoices
+                    collection: { kind: DataModel.Collection, model: !ref Invoice, key: number, query: { filters: [], sort: [] } }

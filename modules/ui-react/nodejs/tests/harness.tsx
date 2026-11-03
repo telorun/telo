@@ -1,7 +1,7 @@
 import { act } from "react";
-import { englishWords, wireText } from "./words.js";
+import { uiText, uiTexts, wireText } from "./ui-texts.js";
 
-export { englishWords, wireText };
+export { uiText, uiTexts, wireText };
 import { createRoot, type Root } from "react-dom/client";
 import { createCollection } from "../../tests/__fixtures__/collection-api/collection.mjs";
 import { App } from "../src/browser/app.js";
@@ -153,9 +153,9 @@ export async function render(options: {
   narrow?: boolean;
   /** Leave the application's stylesheets loading until `loadStylesheets`. */
   holdStylesheets?: boolean;
-  /** The language the documents are in, and the renderer's words in it. */
+  /** The language the documents are in, and the renderer's own texts in it, by key. */
   lang?: string;
-  words?: Record<string, ReturnType<typeof wireText>>;
+  messages?: Record<string, ReturnType<typeof wireText>>;
   /** The application document's controls: the built-ins' mechanics and a theme's sets. */
   controls?: ControlsField;
   /** The application's own header nodes, by side, and its width (`contained` when not given). */
@@ -200,7 +200,7 @@ export async function render(options: {
           items: Object.entries(pages).map(([path, page]) => ({ type: "page", path, text: wireText(page.title) })),
           placement: HEADER_NAVIGATION,
         },
-        words: { ...englishWords, ...options.words },
+        texts: uiTexts(options.messages),
         stylesheets: [`${prefix}/_telo/ui/assets/aa/base.css`],
         controls: options.controls ?? { stylesheets: {}, sets: [] },
         compactBelow: "40rem",

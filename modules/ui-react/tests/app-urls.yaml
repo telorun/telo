@@ -198,7 +198,7 @@ steps:
           status: 200
           cache: private, no-cache
           etagIsDigest: true
-          keys: [bundle, compactBelow, controls, digest, header, lang, navigation, pages, specVersion, stylesheets, title, words]
+          keys: [bundle, compactBelow, controls, digest, header, lang, navigation, pages, specVersion, stylesheets, texts, title]
           compactBelow: 48rem
           header: { start: [], end: [], width: full }
           specVersion: 1

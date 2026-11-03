@@ -32,6 +32,12 @@ imports:
   UiReact: oci://ghcr.io/telorun/ui-react
   UiLucide: oci://ghcr.io/telorun/ui-lucide
 ---
+kind: Ui.Page
+metadata: { name: home }
+path: /
+title: Home
+children: []
+---
 kind: UiLucide.Icon
 metadata:
   name: homeIcon
@@ -41,7 +47,6 @@ kind: UiReact.App
 metadata:
   name: admin
 title: Admin
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - !ref home

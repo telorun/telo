@@ -7,7 +7,7 @@ metadata:
     theme — `Radix.theme` instead of `UiReact.defaultTheme` — and reads what
     each serves: the copy draws thirteen controls from the Radix set and serves
     no built-in mechanics for them, with the Radix stylesheets in place of the
-    built-in look, while its pages, words, forms and routes are the example's
+    built-in look, while its pages, texts, forms and routes are the example's
     own, so nothing the screen sends, checks or keeps differs.
 imports:
   App: ../../../modules/app
@@ -23,13 +23,11 @@ with:
   - kind: App.Instance
     metadata: { name: radix }
     source: ./__fixtures__/radix/telo.yaml
-    ports:
-      http: 8143
+    ports: { http: 8143 }
   - kind: App.Instance
     metadata: { name: builtIn }
     source: ../telo.yaml
-    ports:
-      http: 8144
+    ports: { http: 8144 }
 targets:
   - !ref radix
   - !ref builtIn
@@ -40,24 +38,20 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/app" }
   - name: radixPolishApp
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/app" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: builtInPolishApp
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/app" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: radixReports
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/page?path=/" }
   - name: builtInReports
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/page?path=/" }
   - name: radixPolishReports
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/page?path=/" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: builtInPolishReports
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8144/_telo/ui/page?path=/" }
-    inputs:
-      headers: { accept-language: pl }
+    inputs: { headers: { accept-language: pl } }
   - name: radixProjects
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8143/_telo/ui/page?path=/projects" }
   - name: builtInProjects
@@ -104,14 +98,14 @@ steps:
       actual:
         app: !cel >-
           [steps.radixApp.result.body, steps.radixPolishApp.result.body].map(a,
-          {'title': a.title, 'lang': a.lang, 'pages': a.pages, 'words': a.words, 'compactBelow': a.compactBelow, 'bundle': a.bundle})
+          {'title': a.title, 'lang': a.lang, 'pages': a.pages, 'texts': a.texts, 'compactBelow': a.compactBelow, 'bundle': a.bundle})
         pages: !cel >-
           [steps.radixReports.result.body, steps.radixPolishReports.result.body, steps.radixProjects.result.body].map(p,
           {'path': p.path, 'lang': p.lang, 'title': p.title, 'query': p.query, 'children': p.children})
       expected:
         app: !cel >-
           [steps.builtInApp.result.body, steps.builtInPolishApp.result.body].map(a,
-          {'title': a.title, 'lang': a.lang, 'pages': a.pages, 'words': a.words, 'compactBelow': a.compactBelow, 'bundle': a.bundle})
+          {'title': a.title, 'lang': a.lang, 'pages': a.pages, 'texts': a.texts, 'compactBelow': a.compactBelow, 'bundle': a.bundle})
         pages: !cel >-
           [steps.builtInReports.result.body, steps.builtInPolishReports.result.body, steps.builtInProjects.result.body].map(p,
           {'path': p.path, 'lang': p.lang, 'title': p.title, 'query': p.query, 'children': p.children})

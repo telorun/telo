@@ -65,8 +65,9 @@ turns what it produces into a web application.
   condition that can never hold for the type it reads is refused by
   `telo check`.
 - **Every word on screen can be translated.** Labels, headings, presets, a
-  model's titles and enumeration labels and the renderer's own words are texts
-  in the module's `lang:`; a heading over data names its values
+  model's titles and enumeration labels are texts in the module's `lang:`, and
+  `ui`'s own texts — "Save", a pager's range, each validation message — are
+  declared by key and ship translated into 14 languages; a heading over data names its values
   (`{ text, values }`), so a plural is chosen in the page, and a placeholder
   nothing fills is refused by `telo check`.
 - **Nothing is reachable only through a shortcut.** Whatever a higher-level
@@ -112,11 +113,11 @@ turns what it produces into a web application.
 | [`Ui.ComponentExport`](docs/component-export.md) | Publishes a component a module ships. |
 | [`Ui.DesignTokens`](docs/design-tokens.md) | The brand: colours, radii, spacing, shadows, type sizes, typefaces and a page's measure and inset by name, read by any renderer's theme. |
 | [`Ui.Composite`](docs/composite.md) | The contract every composite provides through. |
-| [`Ui.Words`](docs/texts.md#the-renderers-own-words) | The words a renderer draws on its own — loading, save, a pager's range, each validation message — one text per id; `Ui.words` is the English set. |
+| [`Ui.Translations`](docs/texts.md#uis-own-texts) | A translation of `ui`'s own texts — loading, save, a pager's range, each validation message — into one language, by key; `ui` exports one per language it ships (`Ui.germanTranslations`, `Ui.polishTranslations`, …). |
 
 An application's navigation tree, `Ui.Navigation` with its `Ui.NavigationItem`
 entries, and the defaults `ui` fills are in [Navigation](docs/navigation.md).
-Which fields are texts, a text over data (`Ui.BoundText`), the renderer's words and what a renderer translates are in [Texts and translation](docs/texts.md).
+Which fields are texts, a text over data (`Ui.BoundText`), `ui`'s own texts and their translations, and what a renderer translates are in [Texts and translation](docs/texts.md).
 The node vocabulary and the style list are in [Nodes](docs/nodes.md);
 `when`, `shown`, `Ui.Condition`, `Ui.Enablement`, `Ui.QueryParameters` and the
 interpreted profile `Ui.Match` are in [Conditions](docs/conditions.md). What a

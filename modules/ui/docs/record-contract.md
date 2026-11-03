@@ -32,7 +32,7 @@ Accept: application/json
 `error` is a `Ui.RequestError`: `status` the response's status, `code` the
 problem body's `code` (RFC 9457, `application/problem+json`, what an `Http.Api`
 answers every error with) and `message` its `detail`; without a `detail`,
-`message` is the renderer's own word for the status. Keywords of the model
+`message` is `ui`'s own text for the status. Keywords of the model
 outside the profile are left to the API.
 
 A 401 or 403 to a request made *inside* the content — a listing's page, a form's

@@ -55,7 +55,6 @@ targets:
 kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page
@@ -83,8 +82,7 @@ mounts:
 once is declared inline at its node (`ref: { kind: Ui.Listing, … }`); `taskTable`
 below is named because a page and a filter bar both use it.
 
-- `title` (required) names the application. `words` (required) is what the
-  renderer draws on its own — `!ref Ui.words`, English. `theme` (required) is
+- `title` (required) names the application. `theme` (required) is
   the look — `!ref UiReact.defaultTheme`, or another theme. `pages` (at least
   one) are `Ui.Page`s — `{ path, title, query?, width?, children }`, each path
   unique — inline or `!ref`, a library's included.
@@ -99,7 +97,12 @@ below is named because a page and a filter bar both use it.
   sidebar's `compact` names for a narrow screen.
 - Optional: list `Telo.TextTranslations` in the Application's
   `translations: { catalogs }` and texts are served in the negotiated
-  `request.lang` (`Accept-Language`, `Http.Server.preferredLanguages`); `tokens` (the brand),
+  `request.lang` (`Accept-Language`, `Http.Server.preferredLanguages`). What
+  the renderer draws on its own (Save, the pager, validation messages) is
+  English with nothing written; list `ui`'s shipped `Ui.polishTranslations`,
+  `Ui.germanTranslations`, … (fourteen languages) there to translate it, and a
+  `kind: Ui.Translations` (`lang`, `messages: { save: Submit }`) after them to
+  reword one key; `tokens` (the brand),
   `stylesheets` (`!module-path ./ui.css`), `compactBelow` (the narrow-viewport
   breakpoint), `pageWidth` (`contained` or `full`; a page's `width` wins),
   `header: { start?, end?, width? }` (nodes on every page).

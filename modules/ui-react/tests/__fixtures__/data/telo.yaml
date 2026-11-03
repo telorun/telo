@@ -1,45 +1,33 @@
-# An application whose page reads who is signed in when it is drawn: a reader
-# over `/api/auth`, conditions over its answer and over the page's declared
-# query parameter, a node delivered only when a request header says so.
-# Start it with
-#   pnpm run telo ./modules/ui-react/tests/__fixtures__/data/telo.yaml
-# and open http://127.0.0.1:8121/
+# A page reading who is signed in when drawn: a reader over `/api/auth`,
+# conditions over its answer and a declared query parameter, a node delivered
+# only when a request header says so. Run it and open http://127.0.0.1:8121/.
 kind: Telo.Application
-metadata:
-  name: UiDataFixtureApp
-  version: 1.0.0
+metadata: { name: UiDataFixtureApp, version: 1.0.0 }
 imports:
   Http: ../../../../http-server
   Run: ../../../../run
   Ui: ../../../../ui
   UiReact: ../../../
-ports:
-  http: { env: PORT, default: 8121 }
+ports: { http: { env: PORT, default: 8121 } }
 targets:
   - !ref server
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Auth
+metadata: { name: Auth }
 schema:
   type: object
   required: [authorized]
-  properties:
-    authorized: { type: boolean }
-    email: { type: string, title: Email }
+  properties: { authorized: { type: boolean }, email: { type: string, title: Email } }
 ---
 kind: UiReact.App
-metadata:
-  name: app
+metadata: { name: app }
 title: Account
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page
     path: /
     title: Account
-    query:
-      signin: { type: string, enum: [denied, expired] }
+    query: { signin: { type: string, enum: [denied, expired] } }
     children:
       - type: text
         text: Your sign-in was refused.
@@ -70,13 +58,10 @@ pages:
                   matches: { const: false }
 ---
 kind: Http.Api
-metadata:
-  name: authApi
+metadata: { name: authApi }
 routes:
   - request: { path: /, method: GET }
-    handler:
-      kind: Run.Value
-      value: { authorized: true, email: ada@example.com }
+    handler: { kind: Run.Value, value: { authorized: true, email: ada@example.com } }
     returns:
       - status: 200
         content:
@@ -84,8 +69,7 @@ routes:
             body: !cel "result"
 ---
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   address: 127.0.0.1
   port: !cel "ports.http"

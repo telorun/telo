@@ -12,7 +12,6 @@ under any theme.
 kind: UiReact.App
 metadata: { name: console }
 title: Reports
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1d4ed8", radius.md: 6px }
 stylesheets: [!module-path ./console.css]

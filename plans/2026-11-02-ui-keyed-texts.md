@@ -1,8 +1,9 @@
 ---
-status: approved
+status: in-progress
 priority: high
 depends-on: [2026-11-02-application-translations.md, 2026-11-02-keyed-translations.md]
 packages: [modules/ui]
+tracking: feat/application-translations
 ---
 
 # `ui` texts by key

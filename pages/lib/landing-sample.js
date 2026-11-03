@@ -279,7 +279,6 @@ tables: [!ref TodosTable]
 kind: UiReact.App
 metadata: { name: Frontend }
 title: Todos
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page

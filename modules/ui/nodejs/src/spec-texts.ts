@@ -6,15 +6,19 @@ import type { JsonSchema } from "./model-schema.js";
  * arrives as the record the kernel built; a text read off a data schema — a
  * property's `title` or `description`, an enum value's label — is built here
  * in the same shape, so a renderer translates both the same way; a default
- * `ui` fills is one of the renderer's own words, by id.
+ * `ui` fills is a key of `ui`'s own keyed set, `Ui.Translations`.
  */
 
-/** One of `Ui.Words`. */
-export interface WordRef {
-  word: string;
+/** A key of a keyed translation set, by the set's canonical kind. */
+export interface KeyedText {
+  set: string;
+  key: string;
 }
 
-export type SpecText = TextRecord | WordRef;
+export type SpecText = TextRecord | KeyedText;
+
+/** The canonical kind of `ui`'s own keyed set. */
+const UI_TEXTS = "Ui.Translations";
 
 const TEXT_CONTEXT = "x-telo-text-context";
 
@@ -34,8 +38,8 @@ export function schemaText(text: string, context: string | null): TextRecord {
   return { text: serializePattern(text === "" ? [] : [text]), context, lang: "und", computed: false };
 }
 
-/** A renderer's own word. */
-export const word = (id: string): WordRef => ({ word: id });
+/** A key of `ui`'s own keyed set. */
+export const uiText = (key: string): KeyedText => ({ set: UI_TEXTS, key });
 
 /** A property's description, or none. */
 export function descriptionOf(property: JsonSchema | undefined): TextRecord | null {

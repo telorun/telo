@@ -3,6 +3,7 @@ import { mergeAssets, type AssetFile, type SpecNode } from "./composite.js";
 import { deliveredMenu, deliveredTabs, placed, presented, type AuthoredNode, type AuthoredTab, type RootShapes } from "./node-resolution.js";
 import { headerReads, type HeaderReads } from "./request-header-reads.js";
 import { placedRowAction } from "./row-actions.js";
+import { uiText } from "./spec-texts.js";
 
 /** The node standing where one could not be produced. */
 export function errorNode(code: string, message: string): SpecNode {
@@ -22,14 +23,14 @@ export interface EvaluatedNode {
 
 /** Stands where a node already judged sits, so judging what holds it does not
  *  judge it again. */
-const JUDGED: SpecNode = { type: "text", text: { word: "loading" } };
+const JUDGED: SpecNode = { type: "stack", children: [] };
 
 /** Stands where an action already judged sits inside a row action. */
 const JUDGED_ACTION: SpecNode = {
   type: "action",
   schema: {},
   path: "/",
-  label: { word: "save" },
+  label: uiText("save"),
   fields: [],
   groups: [],
   state: { address: false, store: { type: "memory" }, fields: [] },

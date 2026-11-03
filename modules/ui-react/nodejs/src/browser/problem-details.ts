@@ -1,5 +1,5 @@
 import type { MessageValue } from "@telorun/message-format";
-import type { WordCall } from "./ui-error.js";
+import type { OwnText } from "./ui-error.js";
 
 /** One finding of a refused request: where, under which keyword, with what. */
 export interface Issue {
@@ -40,11 +40,11 @@ const passed = (...names: string[]) => (params: Issue["params"]) =>
   Object.fromEntries(names.filter((name) => params[name] !== undefined).map((name) => [name, scalar(params[name])]));
 
 /**
- * Each keyword of the issue vocabulary as the word it reads as, with the
- * values that word is formatted with: the words the browser's own validation
- * says, so a refusal the server finds reads as one the browser finds.
+ * Each keyword of the issue vocabulary as the values its text — the renderer's
+ * own text named after the keyword — is formatted with: the texts the browser's
+ * own validation says, so a refusal the server finds reads as one the browser finds.
  */
-export const ISSUE_WORDS: Readonly<Record<string, (params: Issue["params"]) => Record<string, MessageValue>>> = {
+export const ISSUE_VALUES: Readonly<Record<string, (params: Issue["params"]) => Record<string, MessageValue>>> = {
   type: (params) => ({ types: listed(params.type) }),
   required: passed("missingProperty"),
   additionalProperties: passed("additionalProperty"),
@@ -68,10 +68,10 @@ export const ISSUE_WORDS: Readonly<Record<string, (params: Issue["params"]) => R
   invalid: () => ({}),
 };
 
-/** The word an issue reads as; a keyword outside the vocabulary is `invalid`. */
-export function issueWord(issue: Issue): WordCall {
-  const values = Object.hasOwn(ISSUE_WORDS, issue.keyword) ? ISSUE_WORDS[issue.keyword](issue.params) : undefined;
-  return values ? { id: issue.keyword, values } : { id: "invalid" };
+/** The text an issue reads as; a keyword outside the vocabulary is `invalid`. */
+export function issueText(issue: Issue): OwnText {
+  const values = Object.hasOwn(ISSUE_VALUES, issue.keyword) ? ISSUE_VALUES[issue.keyword](issue.params) : undefined;
+  return values ? { key: issue.keyword, values } : { key: "invalid" };
 }
 
 /** A JSON Pointer's segments, unescaped. */

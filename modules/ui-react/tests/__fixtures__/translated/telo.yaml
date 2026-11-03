@@ -1,10 +1,6 @@
-# An application translated into Polish: a catalog for its own texts — a page
-# title, a heading, a text with values, a text with context, a field's label
-# from its model, an enum value's label — and the renderer's own words. The
-# server negotiates each request's language: from Accept-Language and the
-# `lang` query on one server, and a cookie as well on a second. Start it with
-#   pnpm run telo ./modules/ui-react/tests/__fixtures__/translated/telo.yaml
-# and open http://127.0.0.1:8130/ with the browser's language set to Polish.
+# Translated into Polish: its own texts by a catalog, ui's by the shipped
+# `Ui.polishTranslations`. One server negotiates by Accept-Language and the
+# `lang` query, the second by a cookie as well. Open http://127.0.0.1:8130/.
 kind: Telo.Application
 metadata: { name: UiTranslatedFixtureApp, version: 1.0.0 }
 requires: { telo: ">=0.129.0" }
@@ -19,6 +15,7 @@ ports:
   cookie: { env: COOKIE_PORT, default: 8131 }
 translations:
   catalogs:
+    - !ref Ui.polishTranslations
     - !ref polish
 targets:
   - !ref server
@@ -50,11 +47,8 @@ texts:
   - { text: Open, translation: Otwarta }
   - { text: Open, context: state, translation: Otwarte }
   - { text: Paid, translation: Opłacona }
-  - { text: Save, translation: Zapisz }
   - { text: Help, translation: Pomoc }
   - { text: Staff, translation: Personel }
-  - text: { plural: limit, cases: { one: "Must be at least {$limit} character", other: "Must be at least {$limit} characters" } }
-    translation: { plural: limit, cases: { one: "Co najmniej {$limit} znak", few: "Co najmniej {$limit} znaki", other: "Co najmniej {$limit} znaków" } }
 ---
 kind: Ui.Form
 metadata: { name: invoiceForm }
@@ -75,7 +69,6 @@ content: { type: link, text: Help, href: /help }
 kind: UiReact.App
 metadata: { name: app }
 title: Invoices
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 header:
   start:

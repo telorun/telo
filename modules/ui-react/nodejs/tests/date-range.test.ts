@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { wireText } from "./words.js";
+import { wireText } from "./ui-texts.js";
 import { activePreset, presetRange, rangeLongerThan, rangeReversed, type Preset } from "../src/browser/date-range.js";
 
 const on = (text: string) => {

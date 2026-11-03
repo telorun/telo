@@ -111,7 +111,7 @@ layout:
 - A 2xx answer is a change to the collection: every listing over its source's
   `basePath` [reloads](listing.md#reloading).
 - Every move has a keyboard path: each record's "Move to" menu (the renderer's
-  `moveTo` word), drawn with `Menu`, offering the places the gesture could
+  `moveTo` text), drawn with `Menu`, offering the places the gesture could
   drop it. Drag and drop is composition; there is no control of its own.
 - Order within a column is the listing's sort. There is no manual rank.
 

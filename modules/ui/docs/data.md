@@ -11,7 +11,7 @@ a context card over one API answer, a sign-in gate. A reader is a
 | `source.path` | required | [app-relative](nodes.md#addresses) URL of the record, read under [the record contract](record-contract.md) |
 | `source.params` | none | query parameters sent with the read, by name: a path into `query`, or a fixed value |
 | `content` | required | the [node](nodes.md) drawn once an answer is in, over `data` and `query` |
-| `loading` | a muted "Loading…" text (the word `loading`) | what is drawn before the first answer, over `query` |
+| `loading` | a muted "Loading…" text (the key `loading`) | what is drawn before the first answer, over `query` |
 | `failure` | the error's code and message | what is drawn when the read does not succeed, over `error` and `query` |
 | `reloadOn` | none | what reads the record again: `focus`, `unauthorized` |
 

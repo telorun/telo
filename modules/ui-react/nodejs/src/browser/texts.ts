@@ -6,24 +6,35 @@ import { RootsContext } from "./renderer-context.js";
 /**
  * A text as the browser receives it: the Message the server chose — translated,
  * or the source — already parsed, and the language it is written in; with the
- * values it is formatted with when the page names them; or one of the
- * renderer's own words, by id. The browser formats it with the message core —
- * plural choice, placeholders, numbers — and holds no catalog.
+ * values it is formatted with when the page names them; or a key of a keyed
+ * set, by the set's canonical kind, drawn from the messages the application
+ * document carries. The browser formats it with the message core — plural
+ * choice, placeholders, numbers — and holds no catalog.
  */
 export type WireText =
   | { message: Message; lang: string; values?: Readonly<Record<string, Binding>> }
-  | { word: string };
+  | { set: string; key: string };
 
 /** A translated text with no values of its own. */
 export type TranslatedText = { message: Message; lang: string };
 
-/** The renderer's own words, translated, by id. */
-export type Words = Readonly<Record<string, TranslatedText>>;
+/**
+ * The keyed texts the application document carries: per set, each key's
+ * message in the request's language, and which set the renderer's own texts —
+ * its buttons, pager, validation messages — are drawn from.
+ */
+export interface Texts {
+  own: string;
+  sets: Readonly<Record<string, Readonly<Record<string, TranslatedText>>>>;
+}
 
-export const WordsContext = createContext<Words>({});
+/** Before the application document arrives. */
+export const NO_TEXTS: Texts = { own: "", sets: {} };
 
-/** What formats a renderer word, for code that runs outside a component. */
-export type Say = (id: string, values?: Readonly<Record<string, MessageValue>>) => string;
+export const TextsContext = createContext<Texts>(NO_TEXTS);
+
+/** What formats one of the renderer's own texts, for code that runs outside a component. */
+export type Say = (key: string, values?: Readonly<Record<string, MessageValue>>) => string;
 
 /** A value a page names, as a message reads it. */
 function messageValue(value: unknown): MessageValue {
@@ -32,14 +43,14 @@ function messageValue(value: unknown): MessageValue {
     : (value as MessageValue);
 }
 
-/** `text` formatted: a word looked up, a page's values read from the roots in scope. */
+/** `text` formatted: a key looked up in its set, a page's values read from the roots in scope. */
 export function formatText(
-  words: Words,
+  texts: Texts,
   text: WireText,
   roots: Readonly<Record<string, unknown>>,
   values: Readonly<Record<string, MessageValue>> = {},
 ): string {
-  if ("word" in text) return formatWord(words, text.word, values);
+  if ("set" in text) return formatKeyed(texts, text.set, text.key, values);
   const bound: Record<string, MessageValue> = { ...values };
   for (const [name, binding] of Object.entries(text.values ?? {})) {
     const read = readBinding(binding, roots);
@@ -48,11 +59,20 @@ export function formatText(
   return formatMessage(text.message, text.lang, bound);
 }
 
-export function formatWord(words: Words, id: string, values: Readonly<Record<string, MessageValue>> = {}): string {
-  const word = words[id];
-  if (!word) throw new Error(`This renderer was sent no word '${id}'.`);
-  return formatMessage(word.message, word.lang, values);
+/** The message of `key` in `set`, formatted. */
+export function formatKeyed(texts: Texts, set: string, key: string, values: Readonly<Record<string, MessageValue>> = {}): string {
+  const message = texts.sets[set]?.[key];
+  if (!message) throw new Error(`This renderer was sent no text '${key}' of the set '${set}'.`);
+  return formatMessage(message.message, message.lang, values);
 }
+
+/** One of the renderer's own texts, formatted. */
+export function formatOwn(texts: Texts, key: string, values: Readonly<Record<string, MessageValue>> = {}): string {
+  return formatKeyed(texts, texts.own, key, values);
+}
+
+/** Whether the renderer was sent its own text `key`. */
+export const holdsOwn = (texts: Texts, key: string): boolean => texts.sets[texts.own]?.[key] !== undefined;
 
 /** What formats a wire text where it is drawn, over the roots in scope. */
 export function useText(): (
@@ -60,15 +80,15 @@ export function useText(): (
   values?: Readonly<Record<string, MessageValue>>,
   roots?: Readonly<Record<string, unknown>>,
 ) => string {
-  const words = useContext(WordsContext);
+  const texts = useContext(TextsContext);
   const scope = useContext(RootsContext);
-  return (text, values, roots) => formatText(words, text, roots ?? scope, values);
+  return (text, values, roots) => formatText(texts, text, roots ?? scope, values);
 }
 
-/** What formats one of the renderer's own words. */
+/** What formats one of the renderer's own texts. */
 export function useSay(): Say {
-  const words = useContext(WordsContext);
-  return (id, values) => formatWord(words, id, values);
+  const texts = useContext(TextsContext);
+  return (key, values) => formatOwn(texts, key, values);
 }
 
 /** What a value of an enumeration is shown as: its label, else its text. */
@@ -82,7 +102,7 @@ export function labelFor(labels: readonly ValueLabel[] | undefined, value: unkno
 }
 
 /** A validation finding as it reads: the path to what failed, then why. */
-export function findingText(finding: { path: string[]; word: { id: string; values?: Readonly<Record<string, MessageValue>> } }, say: Say): string {
-  const why = say(finding.word.id, finding.word.values);
+export function findingText(finding: { path: string[]; text: { key: string; values?: Readonly<Record<string, MessageValue>> } }, say: Say): string {
+  const why = say(finding.text.key, finding.text.values);
   return finding.path.length > 0 ? `${finding.path.join(".")}: ${why}` : why;
 }

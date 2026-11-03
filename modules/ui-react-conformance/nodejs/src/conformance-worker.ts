@@ -145,7 +145,7 @@ async function sceneProblems(window: Window, rendererUrl: string, loaded: Loaded
     let found: string;
     try {
       found = stepsOf(
-        await runScene({ window, scene, words: scenes.words, mount: renderer, controls, load, afterStep: () => coverage.record(window.document) }),
+        await runScene({ window, scene, texts: scenes.texts, mount: renderer, controls, load, afterStep: () => coverage.record(window.document) }),
       );
     } catch (error) {
       found = `it threw: ${reasonOf(error)}`;

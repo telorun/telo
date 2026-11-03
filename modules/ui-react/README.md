@@ -86,7 +86,7 @@ by a React renderer this module ships prebuilt.
 - **Lists are entered, not just shown.** A list property is a group of options
   or typed tags, in every form.
 - **Served in the viewer's language.** Every text — page titles, labels, a
-  model's titles and enumeration labels, the renderer's own words — is
+  model's titles and enumeration labels, the renderer's own texts — is
   translated on the server through the application's `translations:` block, in
   the language the HTTP server negotiated for the request, the browser choosing
   plural forms and formatting numbers; one copy of each document is kept per
@@ -162,7 +162,6 @@ source:
 kind: UiReact.App
 metadata: { name: admin }
 title: Todo Admin
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1d4ed8" }
 pages:
@@ -190,6 +189,8 @@ mounts:
     mount: !ref admin
 ```
 
-The renderer's own words — button labels, validation messages — are `ui`'s
-[words](../ui/docs/texts.md#the-renderers-own-words), English in `Ui.words`
-and translated like any other text; see [Languages](docs/app.md#languages).
+The renderer's own texts — button labels, the pager, validation messages — are
+[`ui`'s own texts](../ui/docs/texts.md#uis-own-texts): English with nothing
+written, and translated by listing one of `ui`'s shipped translations
+(`Ui.polishTranslations`, …) in the application's `translations:` block; see
+[Languages](docs/app.md#languages).

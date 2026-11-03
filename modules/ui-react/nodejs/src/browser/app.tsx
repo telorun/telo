@@ -10,10 +10,8 @@ import { queryRoot } from "./query-root.js";
 import { RendererContext, RootsContext, type RendererEnvironment } from "./renderer-context.js";
 import { Confirmation, PageSlotContext, type PageSlot } from "./surface.js";
 import { errorSpec, networkError, responseError, type ErrorSpec } from "./ui-error.js";
-import { formatText, formatWord, WordsContext, type TranslatedText, type Words } from "./texts.js";
+import { formatOwn, formatText, NO_TEXTS, TextsContext, type Texts, type TranslatedText } from "./texts.js";
 import type { JsonSchema } from "./validation.js";
-
-const NO_WORDS: Words = {};
 
 interface AppDocument {
   bundle: string;
@@ -28,8 +26,8 @@ interface AppDocument {
   /** The application's own header nodes, before its title and after its
    *  navigation (empty when it declares none), and how wide its content is drawn. */
   header: { start: SpecNode[]; end: SpecNode[]; width: "contained" | "full" };
-  /** The renderer's own words, translated. */
-  words: Words;
+  /** The keyed texts in the request's language, and the set the renderer's own are drawn from. */
+  texts: Texts;
   stylesheets: string[];
   /** The mechanics stylesheet of each built-in control in use, and the theme's control sets. */
   controls: ControlsField;
@@ -233,8 +231,8 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
     if (!app) return;
     let current = true;
     void applyStylesheets([...app.stylesheets, ...Object.values(app.controls.stylesheets)]).then(() => current && setStyled(true));
-    const title = formatText(app.words, app.title, {});
-    document.title = declared ? `${formatText(app.words, declared.title, {})} · ${title}` : title;
+    const title = formatText(app.texts, app.title, {});
+    document.title = declared ? `${formatText(app.texts, declared.title, {})} · ${title}` : title;
     if (app.lang === undefined) document.documentElement.removeAttribute("lang");
     else document.documentElement.lang = app.lang;
     return () => {
@@ -265,10 +263,10 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
   const width = declared ? (shown ?? held.current.page)?.width : undefined;
   // A failure is drawn whatever the styles: it must never be a spinner forever.
   if (!failure && (!styled || !controls)) return null;
-  const words = app?.words ?? NO_WORDS;
-  const say = (id: string, values?: Readonly<Record<string, string>>) => formatWord(words, id, values);
+  const texts = app?.texts ?? NO_TEXTS;
+  const say = (key: string, values?: Readonly<Record<string, string>>) => formatOwn(texts, key, values);
   return (
-    <WordsContext.Provider value={words}>
+    <TextsContext.Provider value={texts}>
     <ControlsContext.Provider value={controls ?? BUILT_IN}>
     <HostContext.Provider value={store}>
       <RendererContext.Provider value={base}>
@@ -281,7 +279,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                   <Nodes nodes={app.header.start} />
                 </div>
               )}
-              <span data-telo-part="app-title">{app && formatText(words, app.title, {})}</span>
+              <span data-telo-part="app-title">{app && formatText(texts, app.title, {})}</span>
               {app && <SiteNavigation navigation={app.navigation} path={path} side="middle" />}
               {app && app.header.end.length > 0 && (
                 <div data-telo-part="header-end">
@@ -305,7 +303,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
                 </>
               ) : (
                 <>
-                  <h1 data-telo-part="page-title">{formatText(words, declared.title, {})}</h1>
+                  <h1 data-telo-part="page-title">{formatText(texts, declared.title, {})}</h1>
                   <PageSlotContext.Provider value={slot}>
                     <div ref={setSlotElement} style={{ display: "contents" }} />
                     <div style={{ display: claims > 0 ? "none" : "contents" }}>{shown ? (
@@ -338,7 +336,7 @@ function Application({ prefix, bundle, reload = () => window.location.reload(), 
       </RendererContext.Provider>
     </HostContext.Provider>
     </ControlsContext.Provider>
-    </WordsContext.Provider>
+    </TextsContext.Provider>
   );
 }
 

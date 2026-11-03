@@ -123,9 +123,9 @@ A 400's `data.issues` are shown on the fields: an issue whose `pointer`'s first
 segment after `/body` is a shown field's property — `/body/period/from`
 reaches the field entering `period` — marks that field until it changes again,
 worded by its `keyword` and `params` as the browser's own validation words that
-keyword ([`Ui.Words`](texts.md#the-renderers-own-words)), so a refusal the API
+keyword ([`ui`'s own texts](texts.md#uis-own-texts)), so a refusal the API
 finds reads like one the browser finds. Every other issue is shown under the
-form as its path and that word; a 400 with no issues shows its `detail`.
+form as its path and that text; a 400 with no issues shows its `detail`.
 
 ## Refused
 

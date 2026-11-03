@@ -62,7 +62,7 @@ steps:
                 - type: text
                   text: { lang: und, message: [Sign in first.] }
                   shown: { at: { root: data, path: [authorized] }, matches: { const: false } }
-            loading: { type: text, text: { word: loading }, style: muted }
+            loading: { type: text, text: { set: Ui.Translations, key: loading }, style: muted }
             failure:
               type: stack
               style: danger

@@ -1,153 +1,158 @@
 {
-  "words": {
-    "loading": {"message":["Loading…"],"lang":"en"},
-    "noRows": {"message":["No rows."],"lang":"en"},
-    "nothingFound": {"message":["Nothing found."],"lang":"en"},
-    "save": {"message":["Save"],"lang":"en"},
-    "cancel": {"message":["Cancel"],"lang":"en"},
-    "close": {"message":["Close"],"lang":"en"},
-    "newRecord": {"message":["New"],"lang":"en"},
-    "edit": {"message":["Edit"],"lang":"en"},
-    "delete": {"message":["Delete"],"lang":"en"},
-    "deleteRowQuestion": {"message":["Delete this row?"],"lang":"en"},
-    "deleteRowDetail": {"message":["This cannot be undone."],"lang":"en"},
-    "previousPage": {"message":["Previous page"],"lang":"en"},
-    "pagerRange": {"message":[{"placeholder":"first"},"–",{"placeholder":"last"}," of ",{"placeholder":"total"}],"lang":"en"},
-    "pagerEmpty": {"message":["0 of ",{"placeholder":"total"}],"lang":"en"},
-    "nextPage": {"message":["Next page"],"lang":"en"},
-    "yes": {"message":["Yes"],"lang":"en"},
-    "no": {"message":["No"],"lang":"en"},
-    "none": {"message":["None"],"lang":"en"},
-    "any": {"message":["Any"],"lang":"en"},
-    "select": {"message":["Select…"],"lang":"en"},
-    "choose": {"message":["Choose…"],"lang":"en"},
-    "more": {"message":["More"],"lang":"en"},
-    "menu": {"message":["Menu"],"lang":"en"},
-    "siteNavigation": {"message":["Site"],"lang":"en"},
-    "collapseNavigation": {"message":["Collapse navigation"],"lang":"en"},
-    "expandNavigation": {"message":["Expand navigation"],"lang":"en"},
-    "search": {"message":["Search ",{"placeholder":"label"}],"lang":"en"},
-    "remove": {"message":["Remove ",{"placeholder":"label"}],"lang":"en"},
-    "clear": {"message":["Clear ",{"placeholder":"label"}],"lang":"en"},
-    "filters": {"message":["Filters"],"lang":"en"},
-    "addFilter": {"message":["Add filter"],"lang":"en"},
-    "apply": {"message":["Apply"],"lang":"en"},
-    "reset": {"message":["Reset"],"lang":"en"},
-    "done": {"message":["Done"],"lang":"en"},
-    "presets": {"message":["Presets"],"lang":"en"},
-    "operatorEq": {"message":["is"],"lang":"en"},
-    "operatorContains": {"message":["contains"],"lang":"en"},
-    "operatorGt": {"message":["after"],"lang":"en"},
-    "operatorGte": {"message":["from"],"lang":"en"},
-    "operatorLt": {"message":["before"],"lang":"en"},
-    "operatorLte": {"message":["to"],"lang":"en"},
-    "operatorIn": {"message":["one of"],"lang":"en"},
-    "filterControl": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}],"lang":"en"},
-    "filterChip": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}," ",{"placeholder":"value"}],"lang":"en"},
-    "filterGroupSummary": {"message":[{"placeholder":"label"},": ",{"placeholder":"summary"}],"lang":"en"},
-    "rangeFrom": {"message":["From"],"lang":"en"},
-    "rangeTo": {"message":["To"],"lang":"en"},
-    "rangeStartsAfterEnd": {"message":["Must not start after it ends"],"lang":"en"},
-    "rangeLongerThanDays": {
-      "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," day"],"other":["Longer than ",{"placeholder":"count"}," days"]}},
-      "lang": "en"
-    },
-    "rangeLongerThanWeeks": {
-      "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," week"],"other":["Longer than ",{"placeholder":"count"}," weeks"]}},
-      "lang": "en"
-    },
-    "rangeLongerThanMonths": {
-      "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," month"],"other":["Longer than ",{"placeholder":"count"}," months"]}},
-      "lang": "en"
-    },
-    "rangeLongerThanQuarters": {
-      "message": {
-        "plural": "count",
-        "cases": {"one":["Longer than ",{"placeholder":"count"}," quarter"],"other":["Longer than ",{"placeholder":"count"}," quarters"]}
-      },
-      "lang": "en"
-    },
-    "rangeLongerThanYears": {
-      "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," year"],"other":["Longer than ",{"placeholder":"count"}," years"]}},
-      "lang": "en"
-    },
-    "notFound": {"message":["Not found"],"lang":"en"},
-    "noPageAt": {"message":["This application has no page at ",{"placeholder":"path"},"."],"lang":"en"},
-    "unsavedQuestion": {"message":["Discard unsaved changes?"],"lang":"en"},
-    "unsavedDetail": {"message":["What you entered has not been saved."],"lang":"en"},
-    "discard": {"message":["Discard"],"lang":"en"},
-    "keepEditing": {"message":["Keep editing"],"lang":"en"},
-    "requestUnauthorized": {"message":["You are not signed in, or your session has ended."],"lang":"en"},
-    "requestForbidden": {"message":["You are not allowed to do this."],"lang":"en"},
-    "requestFailedStatus": {"message":["The request failed with status ",{"placeholder":"status"},"."],"lang":"en"},
-    "requestFailed": {"message":["The request failed: ",{"placeholder":"reason"}],"lang":"en"},
-    "recordRefused": {"message":["The record was refused."],"lang":"en"},
-    "answerNotJson": {"message":["The answer is not JSON."],"lang":"en"},
-    "answerNotObject": {"message":["The answer is not a JSON object."],"lang":"en"},
-    "answerNotModel": {"message":["The answer does not fit its model: ",{"placeholder":"detail"}],"lang":"en"},
-    "invalid": {"message":["Is not valid"],"lang":"en"},
-    "required": {"message":["Is required"],"lang":"en"},
-    "type": {"message":["Must be ",{"placeholder":"types"}],"lang":"en"},
-    "enum": {"message":["Must be one of: ",{"placeholder":"allowed"}],"lang":"en"},
-    "const": {"message":["Must be ",{"placeholder":"value"}],"lang":"en"},
-    "not": {"message":["Is not allowed"],"lang":"en"},
-    "anyOf": {"message":["Is not one of the allowed forms"],"lang":"en"},
-    "minLength": {
-      "message": {
-        "plural": "limit",
-        "cases": {"one":["Must be at least ",{"placeholder":"limit"}," character"],"other":["Must be at least ",{"placeholder":"limit"}," characters"]}
-      },
-      "lang": "en"
-    },
-    "maxLength": {
-      "message": {
-        "plural": "limit",
-        "cases": {"one":["Must be at most ",{"placeholder":"limit"}," character"],"other":["Must be at most ",{"placeholder":"limit"}," characters"]}
-      },
-      "lang": "en"
-    },
-    "pattern": {"message":["Is not in the expected format"],"lang":"en"},
-    "minimum": {"message":["Must be at least ",{"placeholder":"limit"}],"lang":"en"},
-    "maximum": {"message":["Must be at most ",{"placeholder":"limit"}],"lang":"en"},
-    "exclusiveMinimum": {"message":["Must be greater than ",{"placeholder":"limit"}],"lang":"en"},
-    "exclusiveMaximum": {"message":["Must be less than ",{"placeholder":"limit"}],"lang":"en"},
-    "multipleOf": {"message":["Must be a multiple of ",{"placeholder":"limit"}],"lang":"en"},
-    "minItems": {
-      "message": {
-        "plural": "limit",
-        "cases": {"one":["Must have at least ",{"placeholder":"limit"}," item"],"other":["Must have at least ",{"placeholder":"limit"}," items"]}
-      },
-      "lang": "en"
-    },
-    "maxItems": {
-      "message": {
-        "plural": "limit",
-        "cases": {"one":["Must have at most ",{"placeholder":"limit"}," item"],"other":["Must have at most ",{"placeholder":"limit"}," items"]}
-      },
-      "lang": "en"
-    },
-    "uniqueItems": {"message":["Must not repeat an item"],"lang":"en"},
-    "minProperties": {
-      "message": {
-        "plural": "limit",
-        "cases": {"one":["Must have at least ",{"placeholder":"limit"}," entry"],"other":["Must have at least ",{"placeholder":"limit"}," entries"]}
-      },
-      "lang": "en"
-    },
-    "maxProperties": {
-      "message": {
-        "plural": "limit",
-        "cases": {"one":["Must have at most ",{"placeholder":"limit"}," entry"],"other":["Must have at most ",{"placeholder":"limit"}," entries"]}
-      },
-      "lang": "en"
-    },
-    "format": {"message":["Is not a valid ",{"placeholder":"format"}],"lang":"en"},
-    "additionalProperties": {"message":["Is not expected here"],"lang":"en"},
-    "propertyNames": {"message":["Has a name that is not allowed: ",{"placeholder":"propertyName"}],"lang":"en"},
-    "loadMore": {"message":["Load more"],"lang":"en"},
-    "moveTo": {"message":["Move to"],"lang":"en"},
-    "valueCount": {"message":[{"placeholder":"label"}," (",{"placeholder":"count"},")"],"lang":"en"},
-    "operatorAbsent": {"message":["not set"],"lang":"en"}
+  "texts": {
+    "own": "Ui.Translations",
+    "sets": {
+      "Ui.Translations": {
+        "loading": {"message":["Loading…"],"lang":"en"},
+        "noRows": {"message":["No rows."],"lang":"en"},
+        "nothingFound": {"message":["Nothing found."],"lang":"en"},
+        "save": {"message":["Save"],"lang":"en"},
+        "cancel": {"message":["Cancel"],"lang":"en"},
+        "close": {"message":["Close"],"lang":"en"},
+        "newRecord": {"message":["New"],"lang":"en"},
+        "edit": {"message":["Edit"],"lang":"en"},
+        "delete": {"message":["Delete"],"lang":"en"},
+        "deleteRowQuestion": {"message":["Delete this row?"],"lang":"en"},
+        "deleteRowDetail": {"message":["This cannot be undone."],"lang":"en"},
+        "previousPage": {"message":["Previous page"],"lang":"en"},
+        "pagerRange": {"message":[{"placeholder":"first"},"–",{"placeholder":"last"}," of ",{"placeholder":"total"}],"lang":"en"},
+        "pagerEmpty": {"message":["0 of ",{"placeholder":"total"}],"lang":"en"},
+        "nextPage": {"message":["Next page"],"lang":"en"},
+        "yes": {"message":["Yes"],"lang":"en"},
+        "no": {"message":["No"],"lang":"en"},
+        "none": {"message":["None"],"lang":"en"},
+        "any": {"message":["Any"],"lang":"en"},
+        "select": {"message":["Select…"],"lang":"en"},
+        "choose": {"message":["Choose…"],"lang":"en"},
+        "more": {"message":["More"],"lang":"en"},
+        "menu": {"message":["Menu"],"lang":"en"},
+        "siteNavigation": {"message":["Site"],"lang":"en"},
+        "collapseNavigation": {"message":["Collapse navigation"],"lang":"en"},
+        "expandNavigation": {"message":["Expand navigation"],"lang":"en"},
+        "search": {"message":["Search ",{"placeholder":"label"}],"lang":"en"},
+        "remove": {"message":["Remove ",{"placeholder":"label"}],"lang":"en"},
+        "clear": {"message":["Clear ",{"placeholder":"label"}],"lang":"en"},
+        "filters": {"message":["Filters"],"lang":"en"},
+        "addFilter": {"message":["Add filter"],"lang":"en"},
+        "apply": {"message":["Apply"],"lang":"en"},
+        "reset": {"message":["Reset"],"lang":"en"},
+        "done": {"message":["Done"],"lang":"en"},
+        "presets": {"message":["Presets"],"lang":"en"},
+        "operatorEq": {"message":["is"],"lang":"en"},
+        "operatorContains": {"message":["contains"],"lang":"en"},
+        "operatorGt": {"message":["after"],"lang":"en"},
+        "operatorGte": {"message":["from"],"lang":"en"},
+        "operatorLt": {"message":["before"],"lang":"en"},
+        "operatorLte": {"message":["to"],"lang":"en"},
+        "operatorIn": {"message":["one of"],"lang":"en"},
+        "filterControl": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}],"lang":"en"},
+        "filterChip": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}," ",{"placeholder":"value"}],"lang":"en"},
+        "filterGroupSummary": {"message":[{"placeholder":"label"},": ",{"placeholder":"summary"}],"lang":"en"},
+        "rangeFrom": {"message":["From"],"lang":"en"},
+        "rangeTo": {"message":["To"],"lang":"en"},
+        "rangeStartsAfterEnd": {"message":["Must not start after it ends"],"lang":"en"},
+        "rangeLongerThanDays": {
+          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," day"],"other":["Longer than ",{"placeholder":"count"}," days"]}},
+          "lang": "en"
+        },
+        "rangeLongerThanWeeks": {
+          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," week"],"other":["Longer than ",{"placeholder":"count"}," weeks"]}},
+          "lang": "en"
+        },
+        "rangeLongerThanMonths": {
+          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," month"],"other":["Longer than ",{"placeholder":"count"}," months"]}},
+          "lang": "en"
+        },
+        "rangeLongerThanQuarters": {
+          "message": {
+            "plural": "count",
+            "cases": {"one":["Longer than ",{"placeholder":"count"}," quarter"],"other":["Longer than ",{"placeholder":"count"}," quarters"]}
+          },
+          "lang": "en"
+        },
+        "rangeLongerThanYears": {
+          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," year"],"other":["Longer than ",{"placeholder":"count"}," years"]}},
+          "lang": "en"
+        },
+        "notFound": {"message":["Not found"],"lang":"en"},
+        "noPageAt": {"message":["This application has no page at ",{"placeholder":"path"},"."],"lang":"en"},
+        "unsavedQuestion": {"message":["Discard unsaved changes?"],"lang":"en"},
+        "unsavedDetail": {"message":["What you entered has not been saved."],"lang":"en"},
+        "discard": {"message":["Discard"],"lang":"en"},
+        "keepEditing": {"message":["Keep editing"],"lang":"en"},
+        "requestUnauthorized": {"message":["You are not signed in, or your session has ended."],"lang":"en"},
+        "requestForbidden": {"message":["You are not allowed to do this."],"lang":"en"},
+        "requestFailedStatus": {"message":["The request failed with status ",{"placeholder":"status"},"."],"lang":"en"},
+        "requestFailed": {"message":["The request failed: ",{"placeholder":"reason"}],"lang":"en"},
+        "recordRefused": {"message":["The record was refused."],"lang":"en"},
+        "answerNotJson": {"message":["The answer is not JSON."],"lang":"en"},
+        "answerNotObject": {"message":["The answer is not a JSON object."],"lang":"en"},
+        "answerNotModel": {"message":["The answer does not fit its model: ",{"placeholder":"detail"}],"lang":"en"},
+        "invalid": {"message":["Is not valid"],"lang":"en"},
+        "required": {"message":["Is required"],"lang":"en"},
+        "type": {"message":["Must be ",{"placeholder":"types"}],"lang":"en"},
+        "enum": {"message":["Must be one of: ",{"placeholder":"allowed"}],"lang":"en"},
+        "const": {"message":["Must be ",{"placeholder":"value"}],"lang":"en"},
+        "not": {"message":["Is not allowed"],"lang":"en"},
+        "anyOf": {"message":["Is not one of the allowed forms"],"lang":"en"},
+        "minLength": {
+          "message": {
+            "plural": "limit",
+            "cases": {"one":["Must be at least ",{"placeholder":"limit"}," character"],"other":["Must be at least ",{"placeholder":"limit"}," characters"]}
+          },
+          "lang": "en"
+        },
+        "maxLength": {
+          "message": {
+            "plural": "limit",
+            "cases": {"one":["Must be at most ",{"placeholder":"limit"}," character"],"other":["Must be at most ",{"placeholder":"limit"}," characters"]}
+          },
+          "lang": "en"
+        },
+        "pattern": {"message":["Is not in the expected format"],"lang":"en"},
+        "minimum": {"message":["Must be at least ",{"placeholder":"limit"}],"lang":"en"},
+        "maximum": {"message":["Must be at most ",{"placeholder":"limit"}],"lang":"en"},
+        "exclusiveMinimum": {"message":["Must be greater than ",{"placeholder":"limit"}],"lang":"en"},
+        "exclusiveMaximum": {"message":["Must be less than ",{"placeholder":"limit"}],"lang":"en"},
+        "multipleOf": {"message":["Must be a multiple of ",{"placeholder":"limit"}],"lang":"en"},
+        "minItems": {
+          "message": {
+            "plural": "limit",
+            "cases": {"one":["Must have at least ",{"placeholder":"limit"}," item"],"other":["Must have at least ",{"placeholder":"limit"}," items"]}
+          },
+          "lang": "en"
+        },
+        "maxItems": {
+          "message": {
+            "plural": "limit",
+            "cases": {"one":["Must have at most ",{"placeholder":"limit"}," item"],"other":["Must have at most ",{"placeholder":"limit"}," items"]}
+          },
+          "lang": "en"
+        },
+        "uniqueItems": {"message":["Must not repeat an item"],"lang":"en"},
+        "minProperties": {
+          "message": {
+            "plural": "limit",
+            "cases": {"one":["Must have at least ",{"placeholder":"limit"}," entry"],"other":["Must have at least ",{"placeholder":"limit"}," entries"]}
+          },
+          "lang": "en"
+        },
+        "maxProperties": {
+          "message": {
+            "plural": "limit",
+            "cases": {"one":["Must have at most ",{"placeholder":"limit"}," entry"],"other":["Must have at most ",{"placeholder":"limit"}," entries"]}
+          },
+          "lang": "en"
+        },
+        "format": {"message":["Is not a valid ",{"placeholder":"format"}],"lang":"en"},
+        "additionalProperties": {"message":["Is not expected here"],"lang":"en"},
+        "propertyNames": {"message":["Has a name that is not allowed: ",{"placeholder":"propertyName"}],"lang":"en"},
+        "loadMore": {"message":["Load more"],"lang":"en"},
+        "moveTo": {"message":["Move to"],"lang":"en"},
+        "valueCount": {"message":[{"placeholder":"label"}," (",{"placeholder":"count"},")"],"lang":"en"},
+        "operatorAbsent": {"message":["not set"],"lang":"en"}
+      }
+    }
   },
   "scenes": [
     {
@@ -356,7 +361,7 @@
                 "delete": true,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -550,7 +555,7 @@
                 "delete": true,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -705,7 +710,7 @@
                 "delete": true,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -845,7 +850,7 @@
               "delete": true,
               "rowActions": [],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {
                 "type": "table",
                 "columns": [
@@ -1097,7 +1102,7 @@
               "delete": true,
               "rowActions": [],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {"type":"table","columns":[],"reads":{}}
             }
           ]
@@ -1322,7 +1327,7 @@
                 }
               ],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {"type":"table","columns":[],"reads":{}}
             }
           ]
@@ -1577,7 +1582,7 @@
                 }
               ],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {"type":"table","columns":[],"reads":{}}
             }
           ]
@@ -2005,7 +2010,7 @@
               "delete": true,
               "rowActions": [],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {"type":"table","columns":[],"reads":{}}
             },
             {
@@ -2072,7 +2077,7 @@
               "delete": true,
               "rowActions": [],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {"type":"table","columns":[],"reads":{}}
             }
           ]
@@ -2214,7 +2219,7 @@
               "delete": true,
               "rowActions": [],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {
                 "type": "table",
                 "columns": [
@@ -2460,7 +2465,7 @@
                 "delete": true,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -2600,7 +2605,7 @@
               "delete": true,
               "rowActions": [],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {
                 "type": "table",
                 "columns": [
@@ -2786,7 +2791,7 @@
                 "delete": true,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -2941,7 +2946,7 @@
                 "delete": true,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -3197,7 +3202,7 @@
               "delete": false,
               "rowActions": [],
               "relations": {},
-              "empty": {"type":"text","text":{"word":"noRows"}},
+              "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
               "layout": {
                 "type": "table",
                 "columns": [
@@ -3383,7 +3388,7 @@
                 "delete": false,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -3586,7 +3591,7 @@
                 "delete": false,
                 "rowActions": [],
                 "relations": {},
-                "empty": {"type":"text","text":{"word":"noRows"}},
+                "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
                 "layout": {
                   "type": "table",
                   "columns": [
@@ -4374,7 +4379,7 @@
               "empty": {
                 "type": "text",
                 "text": {
-                  "word": "noRows"
+                  "set": "Ui.Translations", "key": "noRows"
                 }
               },
               "layout": {
@@ -4635,7 +4640,7 @@
               "empty": {
                 "type": "text",
                 "text": {
-                  "word": "noRows"
+                  "set": "Ui.Translations", "key": "noRows"
                 }
               },
               "layout": {
@@ -4897,7 +4902,7 @@
               "empty": {
                 "type": "text",
                 "text": {
-                  "word": "noRows"
+                  "set": "Ui.Translations", "key": "noRows"
                 }
               },
               "layout": {
@@ -5417,7 +5422,7 @@
               "empty": {
                 "type": "text",
                 "text": {
-                  "word": "noRows"
+                  "set": "Ui.Translations", "key": "noRows"
                 }
               },
               "layout": {
@@ -5772,7 +5777,7 @@
               "empty": {
                 "type": "text",
                 "text": {
-                  "word": "noRows"
+                  "set": "Ui.Translations", "key": "noRows"
                 }
               },
               "layout": {
@@ -6136,7 +6141,7 @@
               "empty": {
                 "type": "text",
                 "text": {
-                  "word": "noRows"
+                  "set": "Ui.Translations", "key": "noRows"
                 }
               },
               "layout": {
