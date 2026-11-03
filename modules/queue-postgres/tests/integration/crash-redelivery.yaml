@@ -1,0 +1,121 @@
+kind: Telo.Application
+metadata:
+  name: QueuePostgresCrashRedelivery
+  version: 1.0.0
+  description: |
+    A worker process killed with SIGKILL in the middle of a delivery, after its
+    handler committed its effect and before the message was settled. The
+    message is delivered again once the lease lapses, with `delivery.attempt`
+    one higher; the handler's effect, recorded once per message id in the same
+    transaction as the id, is not written twice; and the message completes.
+
+    Each worker is a separate operating-system process — a kernel run through
+    `bun <telo CLI> run`, since an in-process child cannot be killed alone. The
+    CLI path is read from TELO_CLI, by default `cli/nodejs/bin/telo.ts` from the
+    working directory, the repository root a test run starts in.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+include: [./__fixtures__/crash/model.yaml]
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Queues: ../../../queue
+  Queue: ../..
+  Idempotency: ../../../idempotency-postgres
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  Shell: ../../../shell
+  Run: ../../../run
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+  teloCli:
+    env: TELO_CLI
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: file }
+    default: cli/nodejs/bin/telo.ts
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref test
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+cwd: !module-path __fixtures__/crash
+---
+kind: Shell.Command
+metadata: { name: runWorker }
+host: !ref local
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref db
+---
+kind: Run.Sequence
+metadata: { name: test }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs: { id: k-1, message: { n: 1 } }
+  # The worker kills its own process; a killed command answers exit code 137.
+  - name: crash
+    invoke: !ref runWorker
+    inputs:
+      args: [bun, !cel "string(variables.teloCli)", run, worker.yaml]
+      env:
+        DB_HOST: !cel "resources.Pg.endpoint.status.host"
+        DB_PORT: !cel "string(resources.Pg.endpoint.status.port)"
+        CRASH: "true"
+      timeoutMs: 120000
+  - name: afterCrash
+    invoke: { kind: Queues.Status, queue: !ref jobs }
+    inputs: { id: k-1 }
+  - name: recovering
+    invoke: !ref runWorker
+    inputs:
+      args: [bun, !cel "string(variables.teloCli)", run, worker.yaml]
+      env:
+        DB_HOST: !cel "resources.Pg.endpoint.status.host"
+        DB_PORT: !cel "string(resources.Pg.endpoint.status.port)"
+      timeoutMs: 120000
+  - name: final
+    invoke: { kind: Queues.Status, queue: !ref jobs }
+    inputs: { id: k-1 }
+  - name: deliveries
+    invoke: !ref read
+    inputs:
+      sql: SELECT attempt FROM crash_deliveries WHERE message_id = 'k-1' ORDER BY id
+  - name: effects
+    invoke: !ref read
+    inputs:
+      sql: SELECT CAST(count(*) AS INTEGER) AS n FROM crash_effects WHERE message_id = 'k-1'
+  - name: keys
+    invoke: !ref read
+    inputs:
+      sql: SELECT CAST(count(*) AS INTEGER) AS n FROM idempotency_keys WHERE idempotency_key = 'k-1'
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        killed: !cel "steps.crash.result.exitCode == 137"
+        afterCrash: !cel "[steps.afterCrash.result.state in ['running', 'pending'], steps.afterCrash.result.attempts]"
+        recovered: !cel "steps.recovering.result.exitCode"
+        final: !cel "[steps.final.result.state, steps.final.result.attempts]"
+        deliveries: !cel "steps.deliveries.result.rows"
+        effects: !cel "steps.effects.result.rows"
+        keys: !cel "steps.keys.result.rows"
+      expected:
+        killed: true
+        afterCrash: [true, 1]
+        recovered: 0
+        final: [completed, 2]
+        deliveries: [{ attempt: 1 }, { attempt: 2 }]
+        effects: [{ n: 1 }]
+        keys: [{ n: 1 }]

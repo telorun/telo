@@ -1,0 +1,50 @@
+# A table-like kind refusing two stores that claim one name in it: the rule is
+# declared on the TABLE, and `coReferrers: /table` binds the other stores
+# reaching the same table through their `table` slot.
+kind: Telo.Library
+metadata:
+  name: CoReferrers
+  version: 1.0.0
+  description: >-
+    Fixture kinds: a table, and stores that each claim a name inside one table.
+requires:
+  telo: ">=0.122.0"
+exports:
+  kinds:
+    - Table
+    - Store
+---
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: A table several stores keep their rows in.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./co-referrers.mjs#Table
+schema:
+  type: object
+  additionalProperties: false
+  properties: {}
+  x-telo-referrer-rules:
+    - referrer: Self.Store
+      coReferrers: /table
+      condition: !cel "!coReferrers.exists(o, o.name == referrer.name)"
+      code: STORE_NAME_DUPLICATE
+      message: claims a name another store in this table already claims
+---
+kind: Telo.Definition
+metadata:
+  name: Store
+  description: Keeps its rows in a table, under a name unique to that table.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./co-referrers.mjs#Store
+schema:
+  type: object
+  additionalProperties: false
+  required: [table, name]
+  properties:
+    table:
+      x-telo-ref: { kind: Self.Table, use: dependency }
+    name:
+      type: string

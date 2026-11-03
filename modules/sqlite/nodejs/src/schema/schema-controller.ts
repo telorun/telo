@@ -1,4 +1,4 @@
-import type { ResourceContext } from "@telorun/sdk";
+import type { CelDuration, CelTimestamp, ResourceContext } from "@telorun/sdk";
 import {
   assertListedTable,
   resolveSqlConnection,
@@ -7,9 +7,17 @@ import {
   type DeclaredTable,
   type ReclaimPolicy,
   type SqlConnection,
-  type SqlInstantSchema,
+  type SqlFragments,
+  type SqlInstantArithmeticSchema,
+  type SqlLockSchema,
 } from "@telorun/sql";
 import { SqliteSchemaDriver } from "./sqlite-schema-driver.js";
+import {
+  SQLITE_SKIP_LOCKED_CLAUSE,
+  sqliteCurrentInstant,
+  sqliteCurrentInstantPlus,
+  sqliteInstantParameter,
+} from "./sqlite-instants.js";
 import type { SqliteEnumResource } from "./enum-controller.js";
 import type { SqliteTableResource } from "./table-controller.js";
 
@@ -32,7 +40,7 @@ interface SqliteSchemaManifest {
  * SQLite has exactly one namespace, so unlike the PostgreSQL kind there is no
  * `schema:` field to name and nothing to create.
  */
-class SqliteSchemaResource implements SqlInstantSchema {
+class SqliteSchemaResource implements SqlInstantArithmeticSchema, SqlLockSchema {
   constructor(
     private readonly manifest: SqliteSchemaManifest,
     private readonly ctx: ResourceContext,
@@ -53,17 +61,31 @@ class SqliteSchemaResource implements SqlInstantSchema {
 
   qualifiedTableName(table: DeclaredTable): string {
     assertListedTable(
-      `SQLite.Schema "${this.manifest.metadata.name}"`,
+      this.describe,
       (this.manifest.tables ?? []).map((listed) => listed.declaration),
       table,
     );
     return this.driver.qualify(this.namespace, table.name);
   }
 
-  /** SQLite has no timestamp type: an instant is fixed-width UTC text
-   *  (`YYYY-MM-DDTHH:MM:SS.sssZ`), so plain text comparison is chronological. */
+  private get describe(): string {
+    return `SQLite.Schema "${this.manifest.metadata.name}"`;
+  }
+
   currentInstant(): string {
-    return "strftime('%Y-%m-%dT%H:%M:%fZ', 'now')";
+    return sqliteCurrentInstant();
+  }
+
+  currentInstantPlus(duration: CelDuration): SqlFragments {
+    return sqliteCurrentInstantPlus(duration, this.describe);
+  }
+
+  instantParameter(timestamp: CelTimestamp): SqlFragments {
+    return sqliteInstantParameter(timestamp, this.describe);
+  }
+
+  skipLockedClause(): string {
+    return SQLITE_SKIP_LOCKED_CLAUSE;
   }
 
   async run(): Promise<void> {

@@ -73,6 +73,7 @@ must supply it. That is not a stylistic preference:
 | `self` with `resolveSelf:` | the referenced resource with its own named reference slots replaced the same way |
 | `entry` | *(with `peers:`)* the referrer's own entry that reached me |
 | `peers` | *(with `peers:`)* that collection's other entries |
+| `coReferrers` | *(with `coReferrers:`)* the other declarations reaching me through the same slot of the referrer kind |
 
 There is deliberately no `this`: in a resource rule `this` is an *element* of a
 collection, and giving one word two meanings across the two families is how an
@@ -167,6 +168,49 @@ this kind in the analysis" needs no resolution and is unsound: a physical name i
 scoped by its namespace, so two schema resources over one connection — which the
 schema design supports deliberately — would report a conflict between objects that
 never meet. The reference collection is what defines the scope.
+
+## `coReferrers:` — the others reaching me through the same slot
+
+`peers:` relates entries a referrer LISTS. The other direction is the referrers
+themselves: two stores that each name one table, and claim one name inside it, are
+a conflict only in relation to each other — and only when the table they name is
+the same declaration. A resource rule sees one store, a plain referrer rule sees
+one store beside its table; neither sees the second store.
+
+`coReferrers:` is a JSON Pointer naming the reference slot **of the referrer kind**
+through which it reaches me:
+
+```yaml
+x-telo-referrer-rules:
+  - referrer: Self.Queue
+    coReferrers: /table
+    condition: !cel "!coReferrers.exists(o, o.name == referrer.name)"
+    code: QUEUE_NAME_DUPLICATE
+    message: claims a name another queue in this table already claims
+```
+
+`coReferrers` binds every **other** declaration of the filtered kind that reaches
+this same resolved declaration through that slot. Each binds as written, with the
+references inside it resolved one level — the per-reference resolution `peers:`
+applies — so `o.connection` is the connection's declaration. The rule then applies
+only to referrers reaching me **through that slot**, each judged once, itself
+excluded. A table named by two stores is judged per table, so one name claimed in
+two different tables is no conflict.
+
+`coReferrers:` requires `referrer:`, and must name one reference slot that kind
+(or an implementation of it) declares — a pointer naming none, or a collection,
+matches no referrer, and is `REFERRER_RULE_INVALID` at the kind that wrote the
+rule. A co-referrer whose reference cannot be resolved (or names a library's
+`resources:` input, known by its kind alone) skips the rule for every referrer
+seeing it, reported as `REFERRER_RULE_SKIPPED`: a duplicate check over a set
+missing a member would answer wrongly in silence. A value the condition reads
+from a co-referrer that holds a `!cel` skips it the same way; one it does not read
+does not.
+
+Like `peers:`, the key is unknown to an analyzer released before it, which then
+evaluates the condition with `coReferrers` unbound and reports a defect against
+the module that wrote it — so the first module to write it declares a
+`requires: telo:` floor at the release that carries it, verified by execution.
 
 ## `resolve:` — what the referrer's references name
 
@@ -299,6 +343,10 @@ completion or hover — so the strict half reports it while the rule keeps worki
 - **Every peer set was empty.** A peer rule that only ever ran against an empty
   set proved nothing, and reports as `REFERRER_RULE_UNEXERCISED` — which is what a
   typo in `peers:` looks like from the outside.
+- **Nothing reached me through the `coReferrers:` slot.** The rule judges only
+  referrers reaching through that slot, so one never reached that way never ran,
+  and reports as `REFERRER_RULE_UNEXERCISED`. An empty `coReferrers` set is not
+  this case: one store per table is the ordinary manifest, and the rule ran.
 
 ## Diagnostics
 

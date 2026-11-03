@@ -308,7 +308,7 @@ describe("a message quoting its place quotes its data.path", () => {
         ],
         [
           "SCHEMA_VIOLATION",
-          "Telo.Application/ShiftedFinding: /targets/1/then/timeout must be >= 1",
+          "Telo.Application/ShiftedFinding: /targets/1/then/timeout must be a Telo.Duration greater than 0s, not 0s",
           "targets[1].then.timeout",
         ],
         [

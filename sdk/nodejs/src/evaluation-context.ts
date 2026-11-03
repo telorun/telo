@@ -1,4 +1,4 @@
-import type { InvokeContext, OpenSpan, OpenSpanOptions } from "./cancellation.js";
+import type { InvokeContext, OpenSpan, OpenSpanOptions, TraceCarrier } from "./cancellation.js";
 import type { ScopeHandle } from "./ref.js";
 import type { ResourceInstance } from "./resource-instance.js";
 import type { ResourceManifest } from "./resource-manifest.js";
@@ -213,6 +213,7 @@ export interface EvaluationContext {
   ): Promise<any>;
   run(name: string, ctx?: InvokeContext): Promise<void>;
   openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan>;
+  traceCarrier(ctx?: InvokeContext): TraceCarrier | undefined;
   /** Bare scope-detach primitive: run `fn` outside the caller's cancellation/
    *  trace scope. Tracking/draining the task is the owning `ResourceContext`'s
    *  concern (see {@link ResourceContext.runDetached}). */

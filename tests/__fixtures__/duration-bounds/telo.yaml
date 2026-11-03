@@ -1,0 +1,56 @@
+kind: Telo.Library
+metadata:
+  name: DurationBoundsRefused
+  description: Durations outside the bounds their slots declare, each written as a literal.
+imports:
+  Run: ../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Pause
+  description: Waits a bounded duration, read back as its text.
+extends: Run.Value
+schema:
+  type: object
+  required: [lasts]
+  properties:
+    # An integer-form bound: 100 milliseconds up to an hour.
+    lasts: { x-telo-type: { name: Telo.Duration, minimum: 100, maximum: 1h } }
+base:
+  value: !cel "string(self.lasts)"
+---
+kind: Self.Pause
+metadata: { name: tooShort }
+lasts: 50
+---
+kind: Self.Pause
+metadata: { name: tooLong }
+lasts: 2h
+---
+kind: Run.Value
+metadata: { name: delayed }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [after]
+    properties:
+      after: { x-telo-type: { name: Telo.Duration, minimum: 0s } }
+value: !cel "string(inputs.after)"
+---
+kind: Run.Sequence
+metadata: { name: caller }
+steps:
+  - name: early
+    invoke: !ref delayed
+    inputs: { after: -1s }
+---
+kind: Telo.Definition
+metadata:
+  name: Unreadable
+  description: A bound written as no duration.
+capability: Telo.Type
+schema:
+  type: object
+  properties:
+    soon: { x-telo-type: { name: Telo.Duration, minimum: soon } }

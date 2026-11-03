@@ -18,13 +18,14 @@
  * Browser-safe: no Node built-ins.
  */
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
-import { isCompiledValue, VALUE_TYPES } from "@telorun/sdk";
+import { isCompiledValue } from "@telorun/sdk";
 import { auditCalls, buildCelEnvironment, isTaggedSentinel, celExpressionsOf } from "@telorun/templating";
 import type { CallGraph, CallGraphNode, StepGraphNode } from "./call-graph.js";
 import { moduleNamesEnvironment } from "./cel-environment.js";
 import { renderChain, type CallableFlags } from "./callable-flags.js";
 import { moduleCallNamesOf } from "./module-call-names.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { liveValueIn } from "./serializable-slot.js";
 import {
   findZoneRegions,
   type DefinitionLookup,
@@ -282,7 +283,7 @@ function checkUnjournalableResults(
         source: SOURCE,
         message:
           `Step '${(node as StepGraphNode).name ?? (node as StepGraphNode).path}' invokes ` +
-          `${target.kind} '${target.name}', whose declared output is a live value, inside a ` +
+          `${target.kind} '${target.name}', whose declared output holds a live value, inside a ` +
           `durable region (${region.provider.kind} '${region.provider.name}'). A live handle ` +
           `is produced by consuming it, so it cannot be recorded and replayed — the run will ` +
           `fail at this step with ERR_DURABLE_UNJOURNALABLE_VALUE. Collect what you need ` +
@@ -298,32 +299,15 @@ function checkUnjournalableResults(
   }
 }
 
-/** Is this declared type a live-representation value? Reads the annotation the
- *  vocabulary defines rather than testing against a type name. */
+/** Does this declared type hold a live value — at its root or at any depth —
+ *  read through the one walk `x-telo-serializable` uses. A type field's inline
+ *  `{ kind, schema }` form is read as its schema. */
 function isLiveSchema(schema: unknown): boolean {
   if (!schema || typeof schema !== "object") return false;
-  const annotation = (schema as Record<string, unknown>)["x-telo-type"];
-  const name =
-    typeof annotation === "string"
-      ? annotation
-      : ((annotation as Record<string, unknown> | undefined)?.name as string | undefined);
-  if (!name) {
-    const inner = (schema as Record<string, unknown>).schema;
-    return inner !== undefined && inner !== schema ? isLiveSchema(inner) : false;
-  }
-  // The one place a name is compared, and it is compared against the LIVE flag
-  // of the vocabulary entry rather than against a literal — so this stays true
-  // when a second live type is declared.
-  return LIVE_TYPE_NAMES.has(name);
+  const inner = (schema as Record<string, unknown>).schema;
+  const declared = inner && typeof inner === "object" && !("x-telo-type" in schema) ? inner : schema;
+  return liveValueIn(declared) !== undefined;
 }
-
-/** Names of the value types whose representation is live, derived from the
- *  vocabulary itself. A constant rather than one-shot mutable state: the
- *  vocabulary is fixed at module load, so there is nothing to initialize and
- *  nothing an initialization order could get wrong. */
-const LIVE_TYPE_NAMES: ReadonlySet<string> = new Set(
-  [...VALUE_TYPES.values()].filter((e) => e.live).map((e) => e.name),
-);
 
 /**
  * Where a node's CEL lives, and which manifest a diagnostic about it anchors on.

@@ -373,6 +373,20 @@ throws:
 - Use an abstract only where there will be more than one implementation, or
   the backend is the importer's choice. To reuse one controller under a
   friendlier schema, specialize the concrete kind instead.
+- A store kept in the application's SQL database splits three ways: a generic
+  module (the abstract store and the operations), a `<name>-sql` module (the
+  engine-neutral abstract over `Sql.Connection`, the rules and the shared
+  controllers, importing no engine) and one module per engine
+  (`<name>-postgres`, `<name>-sqlite`) holding only concrete kinds that narrow
+  each slot to that engine's kinds. The store's table is a kind the author
+  declares and lists in the engine's schema resource, which creates and
+  migrates it; the module issues no DDL.
+- Such a table kind must `extends` the ENGINE's table kind with `base:` to be
+  accepted by that engine's schema, and a kind has one parent, so there is no
+  engine-neutral table kind to hold a rule. A rule about the stores sharing one
+  table (two claiming one `name`) is a referrer rule declared on EACH engine's
+  table kind, with `coReferrers:` binding the other stores that reach the same
+  table through their `table` slot.
 
 ## The importer contract
 

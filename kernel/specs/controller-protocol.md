@@ -75,7 +75,7 @@ an incompatible controller and an incompatible peer are the same fact, discovere
 at different moments, and a second code would only invite a caller to handle one
 and not the other.
 
-### 0.3 Generation `telo-8`
+### 0.3 Generation `telo-9`
 
 One generation counter covers both carriers, reported in the handshake (§4.1) and
 written into a native controller's PURL as `abi=telo-<n>`.
@@ -84,26 +84,26 @@ written into a native controller's PURL as `abi=telo-<n>`.
   buffers across the C ABI, described only by the ABI crate's own layout. This
   specification does **not** retroactively describe it, and a generation `3`
   controller keeps loading exactly as it does today.
-- **Generations `4`, `5`, `6` and `7` are withdrawn, and nothing ever spoke any
-  of them.** `4` was the first generation this specification defined, and its
+- **Generations `4`, `5`, `6`, `7` and `8` are withdrawn, and nothing ever spoke
+  any of them.** `4` was the first generation this specification defined, and its
   value encoding named the typed frame's millisecond timestamp payload. `5` moved
   the value encoding to `durable-execution.md` §6's typed frame. `6` added the two
   need operations (§7.5). `7` added `Runtime.Run`'s `inputs` carrying `needs`
-  (§9.2) and `Throws.DisplayMessage` (§7.6). No carrier implemented any of them
-  and no artifact could declare one, so each is superseded rather than kept
-  readable.
-- **Generation `8` is the generation this specification defines.** It is `7`'s
-  message set with `Translations.Lookup` (§7.7) added, its answer carrying the
-  keyed texts of the instance's kind, with the same value
-  encoding: `durable-execution.md` §6's typed frame, whose timestamp payload is
-  RFC 3339 with a trimmed nanosecond fraction. It is the value in
+  (§9.2) and `Throws.DisplayMessage` (§7.6). `8` added `Translations.Lookup`
+  (§7.7), its answer carrying the keyed texts of the instance's kind. No carrier
+  implemented any of them and no artifact could declare one, so each is
+  superseded rather than kept readable.
+- **Generation `9` is the generation this specification defines.** It is `8`'s
+  message set plus `Span.Carrier` (§6.5), with the same value encoding:
+  `durable-execution.md` §6's typed frame, whose timestamp payload is RFC 3339
+  with a trimmed nanosecond fraction. It is the value in
   `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
   conformance vector carries states it.
-- **No artifact may declare `abi=telo-8` until the ABI carrier lands.** A
+- **No artifact may declare `abi=telo-9` until the ABI carrier lands.** A
   declaration reaching a kernel that does not implement the carrier MUST be
   refused with `ERR_CONTROLLER_HOST_INCOMPATIBLE`. Until then the ABI crate's
   `TELO_ABI_VERSION` stays `3`, which is what keeps the published `abi=telo-3`
-  controller candidates valid: specifying `8` does not retire `3`.
+  controller candidates valid: specifying `9` does not retire `3`.
 
 ### 0.4 Related specifications
 
@@ -293,6 +293,7 @@ One row per message, in the lexical order of the file names in
 | `Session.Close` | `kernel-to-controller` | `4. Session` | no | yes |
 | `Session.Hello` | `kernel-to-controller` | `4. Session` | no | no |
 | `Session.Open` | `kernel-to-controller` | `4. Session` | no | no |
+| `Span.Carrier` | `controller-to-kernel` | `6. Invocation` | yes | no |
 | `Span.Open` | `controller-to-kernel` | `6. Invocation` | no | no |
 | `Span.Settle` | `controller-to-kernel` | `6. Invocation` | no | no |
 | `Status.Set` | `controller-to-kernel` | `5. Lifecycle` | no | no |
@@ -403,7 +404,7 @@ A **response** frame carries the requester's `id` and the same `type`, and its
   failure's `inputPointer`; the first location attached is kept, and a
   controller rethrowing a failure carries both members unchanged.
   `displayMessage`, `inputPointer` and `location` are additive members within
-  `telo-8`, which no carrier speaks yet. An error's `cause` is not carried.
+  `telo-9`, which no carrier speaks yet. An error's `cause` is not carried.
 
 A message whose `response` in `messages/` is `null` is a **notification**: no
 response frame is ever sent for it, and a peer that sends one is in violation.
@@ -746,7 +747,8 @@ an async boundary the controller crossed — the controller is responsible for
 sending `Zone.Close` on every path out of the region, its own failure path
 included.
 
-`Zone.Require` and `Zone.Find` are the same lookup with different failure modes —
+`Zone.Require` and `Zone.Find` name the requiring field, or no field for the
+requirement at the kind's schema root. They are the same lookup with different failure modes —
 a refusal with `ERR_ZONE_REQUIRED`, and absence as a valid answer — and are two
 messages for that reason. `Zone.List` answers the undeclared case: every ambient
 zone correlated on an instance the caller holds. `Zone.Attributes` returns what
@@ -768,6 +770,15 @@ neither succeeded nor failed.
 A kernel with tracing off MUST still answer `Span.Open`, returning the base
 context unchanged, so a controller has one code path whether or not a sink is
 attached.
+
+`Span.Carrier` answers the span a context carries — `base`, else the ambient
+context of the call being served — as W3C Trace Context headers, for work a
+controller records now and continues later or elsewhere (a stored message, an
+outbound request). The `traceparent` names the span by the id its exported record
+carries (`tracing.md` §3), so `Span.Open` with that carrier as `inbound` opens a
+child of it, in its trace; `tracestate` is present when the trace continued an
+upstream one that sent it. With tracing off, or no span current, the answer holds
+no `carrier`.
 
 ### 6.6 Detached work
 
@@ -834,7 +845,7 @@ WRITTEN, so each answer carries a `declaration` handle, and a request naming one
 as `holder` is resolved in the context that declared that answer — its own names
 and its own imports' aliases, whichever module asks. A `holder` that names no
 answer is `ERR_REF_UNRESOLVED`. `holder` and `declaration` are additive members
-within `telo-8`.
+within `telo-9`.
 
 A reference site whose every slot is `use: schema` — in every case of a case
 map — is a **declaration read**: a runtime MUST NOT substitute an instance there
@@ -907,7 +918,7 @@ is judged against its text (`ERR_MESSAGE_PLACEHOLDER_UNBOUND`,
 `ERR_MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`), and each `Text` crosses as the record
 `{ text, context, lang, computed }` with `computed: true`. A literal text the
 instance's manifest already holds as a record crosses as it is. This is a reading
-of the result within `telo-8`, not a new message.
+of the result within `telo-9`, not a new message.
 
 **An accessor-mode field is not a compiled value.** A field its kind annotates
 `x-telo-eval: accessor` names a value for the controller's own consumer to

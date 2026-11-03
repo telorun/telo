@@ -1,0 +1,126 @@
+kind: Telo.Library
+metadata:
+  name: IdempotencySqlite
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Reliability, Data]
+  description: >-
+    Records idempotency keys in a SQLite table beside the work they guard, so a
+    retried or redelivered operation's writes happen once per key. A key commits
+    or rolls back with the caller's transaction, is remembered for a retention
+    window and is removed in the background after it.
+requires:
+  # The table kind's duplicate-name rule binds `coReferrers:`, which an older
+  # analyzer evaluates unbound and reports as a defect in this module.
+  # Forward-declared: 0.129.0 is the release that carries the binding.
+  telo: ">=0.129.0"
+imports:
+  IdempotencySql: ../idempotency-sql
+  SQLite: ../sqlite
+exports:
+  kinds:
+    - Table
+    - Ledger
+---
+# IdempotencySqlite.Table — a `SQLite.Table` holding the keys of every ledger
+# that names it. The author names only the physical table; every column and
+# index is the ledger's own, added by `base:` as internal, so no row contract
+# sees them. List it in the `SQLite.Schema` that creates and migrates it.
+#
+# The duplicate-name rule is declared here, on the engine table kind, and not
+# once in `idempotency-sql`: this kind must extend `SQLite.Table` to be listed in
+# a `SQLite.Schema`, a kind has one parent, and a `base:`-form kind inherits no
+# rule — so an engine-neutral table kind the rule could live on would be one no
+# table could ever be.
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: >-
+    The SQLite table an idempotency ledger records its keys in, shared by any
+    number of ledgers under different names. The application names the table;
+    its columns and indexes belong to the ledger and appear in no contract.
+    Created and migrated by the schema that lists it.
+extends: SQLite.Table
+schema:
+  type: object
+  additionalProperties: false
+  required: [table]
+  examples:
+    - table: idempotency_keys
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+  x-telo-referrer-rules:
+    - referrer: IdempotencySql.Ledger
+      coReferrers: /table
+      condition: !cel "!coReferrers.exists(o, o.name == referrer.name)"
+      code: IDEMPOTENCY_LEDGER_NAME_DUPLICATE
+      message: >-
+        claims a ledger name another ledger in this table already claims. Two
+        ledgers with one name in one table would read each other's keys as
+        their own — give each ledger a name of its own.
+base:
+  table: !cel "self.table"
+  columns: {}
+  internalColumns:
+    ledger_name: { type: text, nullable: false }
+    idempotency_key: { type: text, nullable: false }
+    fingerprint: { type: text }
+    # Fixed-width UTC text, the form the schema's instant members write, so a
+    # plain comparison is chronological.
+    recorded_at: { type: text, nullable: false }
+  indexes: !cel >-
+    { 'idempotency_' + self.table + '_key':
+        { 'columns': ['ledger_name', 'idempotency_key'], 'unique': true },
+      'idempotency_' + self.table + '_recorded':
+        { 'columns': ['ledger_name', 'recorded_at'] } }
+---
+kind: Telo.Definition
+metadata:
+  name: Ledger
+  description: >-
+    One named record of idempotency keys in a SQLite table, kept beside the work
+    it guards on the same connection. A key commits or rolls back with the
+    caller's transaction, is remembered for the retention window, and is removed
+    in the background in small batches once it has expired.
+capability: Telo.Service
+extends: IdempotencySql.Ledger
+controllers:
+  - pkg:telo/local/js?path=./nodejs/idempotency-sqlite.mjs&local_path=./nodejs/src/index.ts#Ledger
+schema:
+  type: object
+  # Only what this kind narrows; `name` and `retention` are inherited from
+  # IdempotencySql.Ledger, the positive-retention bound with them.
+  required: [connection, schema, table]
+  additionalProperties: false
+  examples:
+    - connection: !ref db
+      schema: !ref appSchema
+      table: !ref idempotencyKeys
+      name: orders
+      retention: 168h
+  properties:
+    connection:
+      title: Connection
+      description: The connection the ledger's table lives on, and the one a guarded transaction must be open on.
+      x-telo-ref:
+        kind: SQLite.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The schema that lists the ledger's table, on the same connection. It
+        creates and migrates the table; the ledger issues no DDL.
+      x-telo-ref:
+        kind: SQLite.Schema
+        use: dependency
+    table:
+      title: Table
+      description: The table the keys are recorded in.
+      x-telo-ref:
+        kind: Self.Table
+        use: dependency

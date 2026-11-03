@@ -156,6 +156,14 @@ a bare name means that module's resource, an alias goes through that module's
 imports. A value at any other path is data, whatever its shape, and the walk
 continues through it as plain fields.
 
+**A contract field past a reference resolves as a contract.** When the last
+segment names `inputType` or `outputType` of a declaration reached by crossing a
+reference, and that declaration does not write the field itself, the value is
+the contract its kind declares for that direction, resolved to the nearest
+declaration along `extends` (§2.1) and read in the scope of the definition
+declaring it — so `/invoke/outputType` types a node by the invoked resource's
+output contract wherever along its kind that contract is declared.
+
 **What a location yields.** Every value the walk ends at is read as a **type
 field**, in the forms `inputType` / `outputType` accept (a named type by
 reference, an inline type, a raw JSON Schema), resolved in the scope of the
@@ -442,8 +450,17 @@ same way before an expression reads it.
 
 A value type whose representation is an INSTANCE holds that instance in both
 directions. Text is read into one only where the value arrives from outside the
-runtime, and a conforming runtime MUST decode it at exactly these sites, each
-against the schema the site resolves to:
+runtime — and, for a type whose entry declares an `integerForm`, so is a JSON
+integer, read as the text `<integer><unit>` through the same encoding (a
+`Telo.Duration`'s `250` is `250ms`). The integer form admits only an integer every
+runtime reads exactly (magnitude at most 2^53 − 1, a number with a zero fraction
+counting as the integer it equals), and the encoding's own grammar and range
+decide the rest, so a negative integer is a negative duration exactly as `-250ms`
+is. A digit-only STRING is text and is read only as text, and an expression's
+integer is never read through the integer form: a computed value must already be
+the instance. A conforming runtime MUST decode text, and an integer at a slot
+whose type has an integer form, at exactly these sites, each against the schema
+the site resolves to:
 
 - a resource's own configuration, against its kind's schema;
 - an Application `variables:` / `secrets:` env value, and the `default:` standing
@@ -464,8 +481,18 @@ against the schema the site resolves to:
   validates such a slot as the TEXT a client sends (`type: string, format:
   date-time` for a timestamp).
 
+At a union (`anyOf` / `oneOf`) the value is decoded against the one branch it is
+written against. Where every branch a text or an integer fits is a value type with
+a plain encoding — `anyOf: [Telo.Duration, Telo.Timestamp]` — that branch is the
+ONE whose encoding reads the value: `2s` is a duration, `2026-01-01T00:00:00Z` a
+timestamp, and an integer the type declaring an integer form. A value two branches'
+encodings read, or none, selects no branch and is left as written. A union holding
+any other branch (a plain `string`) is never narrowed this way, since that branch
+reads the text as itself. Every site above, and a static checker, selects the
+branch by this one rule.
+
 The decoding MUST use the type's declared plain encoding and nothing else, and
-text the encoding does not read MUST be left as written so the slot's own
+text — or an integer — the encoding does not read MUST be left as written so the slot's own
 assertion refuses it — with the same message the static checker produces —
 wherever the runtime validates that slot: a configuration at creation, an
 argument map at its dispatch. A slot whose schema is DERIVED from another kind's

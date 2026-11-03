@@ -23,6 +23,7 @@ import {
   type LifecycleState,
   type OpenSpan,
   type OpenSpanOptions,
+  type TraceCarrier,
   type PreInitHook,
   type ResourceDefinition,
   type ResourceInstance,
@@ -2546,6 +2547,10 @@ export class EvaluationContext implements IEvaluationContext {
     const traceId = upstream?.traceId ?? (underBase ? ctx.traceId! : this.tracer.newTraceId());
     const localParentSpanId = underBase ? ctx.invocationId : undefined;
     const parentSpanId: number | string | undefined = upstream?.parentSpanId ?? localParentSpanId;
+    // A carrier taken under this span hands the upstream's flags and state on.
+    const releaseUpstream = upstream
+      ? this.tracer.continueUpstream(traceId, upstream.traceFlags, upstream.traceState)
+      : undefined;
     const startTime = nowUnixNano();
     // A local root (no parent in this process) carries the root scope.
     const rootScope = localParentSpanId === undefined ? this.traceRootScope() : undefined;
@@ -2585,6 +2590,7 @@ export class EvaluationContext implements IEvaluationContext {
       settle: async (outcome, extra?: SpanSettleDetail) => {
         if (settled) return;
         settled = true;
+        releaseUpstream?.();
         const attributes: Record<string, unknown> = { ...opts.attributes, ...extra?.attributes };
         if (outcome === "cancelled" && attributes["telo.cancellation.reason"] === undefined) {
           attributes["telo.cancellation.reason"] = ctx.cancellation.reason ?? "cancelled";
@@ -2606,6 +2612,18 @@ export class EvaluationContext implements IEvaluationContext {
         });
       },
     };
+  }
+
+  /**
+   * The span `ctx` carries — else the ambient one — as a W3C carrier, which
+   * `openSpan(…, { inbound })` continues as that span's child. Nothing when tracing
+   * is off or no span is current.
+   */
+  traceCarrier(ctx?: InvokeContext): TraceCarrier | undefined {
+    if (this.tracer?.enabled !== true) return undefined;
+    const current = ctx ?? cancellationStore.getStore();
+    if (current?.traceId === undefined || current.invocationId === undefined) return undefined;
+    return this.tracer.carrier(current.traceId, current.invocationId);
   }
 
   private async runInstance(

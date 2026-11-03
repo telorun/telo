@@ -1,0 +1,38 @@
+# The guarded operation inside a transaction on `dbA`, while its holder names
+# `dbB`: the zone's kind matches, its correlation does not.
+kind: Telo.Application
+metadata:
+  name: RootZoneForeignConnection
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  Sql: ../../../../modules/sql
+  SQLite: ../../../../modules/sqlite
+targets:
+  - invoke: !ref writesTx
+---
+kind: SQLite.Connection
+metadata:
+  name: dbA
+file: ":memory:"
+---
+kind: SQLite.Connection
+metadata:
+  name: dbB
+file: ":memory:"
+---
+kind: Sql.Transaction
+metadata:
+  name: writesTx
+connection: !ref dbA
+steps: !ref guarded
+---
+kind: Kinds.Holder
+metadata:
+  name: holder
+connection: !ref dbB
+---
+kind: Kinds.Guarded
+metadata:
+  name: guarded
+holder: !ref holder

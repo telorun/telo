@@ -1,0 +1,73 @@
+# A kind holding a retry policy beside the handler slot it re-attempts, raising a
+# code of its own into the loop: `x-telo-retry-for` relates the two fields, so
+# the policy is judged against the handler's throws plus that code, as a step's
+# own retry is judged against its target's.
+kind: Telo.Library
+metadata:
+  name: RetryFor
+  version: 1.0.0
+  description: >-
+    Fixture kinds: a worker re-attempting its handler under a retry policy it
+    holds, and a handler whose one declared failure carries a wait.
+requires:
+  telo: ">=0.122.0"
+imports:
+  Run: ../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Worker
+  description: Runs its handler, re-attempting it under its own retry policy.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./retry-for.mjs#Worker
+schema:
+  type: object
+  additionalProperties: false
+  required: [invoke, retry]
+  properties:
+    invoke:
+      x-telo-ref: { kind: Telo.Executable, use: trigger.inbound }
+    retry:
+      $ref: telo://manifest#/$defs/RetryPolicy
+      x-telo-retry-for:
+        slot: /invoke
+        codes:
+          ERR_WORKER_TIMEOUT:
+            description: An attempt overran the worker's deadline.
+            data:
+              type: object
+              properties:
+                overranMs: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: Limited
+  description: A sequence whose one declared failure carries how long to wait.
+extends: Run.Sequence
+throws:
+  codes:
+    ERR_RATE_LIMITED:
+      description: Asked to come back later.
+      data:
+        type: object
+        properties:
+          waitMs: { type: integer }
+---
+kind: Self.Limited
+metadata: { name: limited }
+steps:
+  - name: refuse
+    throw:
+      code: ERR_RATE_LIMITED
+      data: { waitMs: 5 }
+---
+kind: Self.Worker
+metadata: { name: worker }
+invoke: !ref limited
+retry:
+  attempts: 3
+  # The handler's code and the worker's own are both raised; the third is
+  # raised by nothing.
+  nonRetryable: [ERR_RATE_LIMITED, ERR_WORKER_TIMEOUT, ERR_NEVER_RAISED]
+  retryAfter: !cel "duration(string(error.data.wait) + 'ms')"

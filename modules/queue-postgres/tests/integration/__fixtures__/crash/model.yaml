@@ -1,0 +1,53 @@
+# The tables, queue and ledger every process of the crash test shares. A
+# partial: the parent that includes it runs the schema; a child only names it.
+# Each includer declares the connection `db`: the parent to the server it
+# started, a child to the one it is handed.
+kind: Queue.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: Postgres.Table
+metadata: { name: effects }
+table: crash_effects
+columns:
+  message_id: { type: text, nullable: false }
+---
+kind: Postgres.Table
+metadata: { name: deliveries }
+table: crash_deliveries
+columns:
+  id: { type: bigint, primaryKey: true, identity: always }
+  message_id: { type: text, nullable: false }
+  attempt: { type: integer, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref messages, !ref keys, !ref effects, !ref deliveries]
+---
+kind: Queue.Queue
+metadata: { name: jobs }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: jobs
+retention: 1h
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [n]
+    properties:
+      n: { type: integer }
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: crash
+retention: 1h

@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: IdempotencySqliteSuite
+  version: 1.0.0
+  description: |
+    The idempotency ledger's behaviour suite on an in-memory SQLite database:
+    two ledgers sharing one table, keys recorded with the work they guard.
+imports:
+  Suite:
+    source: ../../idempotency-sql/tests/__fixtures__/behaviour-suite
+    resources:
+      connection: !ref db
+      ledger: !ref ledger
+      expiringLedger: !ref expiringLedger
+  SQLite: ../../sqlite
+  Idempotency: ../
+targets:
+  - !ref appSchema
+  - !ref ledger
+  - !ref Suite.runsOnce
+  - !ref Suite.failureForgetsKey
+  - !ref Suite.fingerprintConflict
+  - !ref Suite.expiredKeyRunsAgain
+  - !ref Suite.sweepRemovesExpired
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: SQLite.Table
+metadata: { name: effects }
+table: idempotency_effects
+columns:
+  effect_key: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys, !ref effects]
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: suite
+retention: 1h
+---
+kind: Idempotency.Ledger
+metadata: { name: expiringLedger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: expiring
+retention: 1ms

@@ -2909,7 +2909,7 @@
     {
       "id": "verdicts/CEL_UNKNOWN_FIELD/other_keywords_not_read",
       "tag": "cel",
-      "source": "either.zzz == linked.zzz",
+      "source": "linked.zzz",
       "bindings": {
         "closed": {
           "a": "x"
@@ -3037,17 +3037,171 @@
       "expect": {
         "check": {
           "diagnostics": [],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 10
+            }
+          ],
+          "refs": [
+            "linked"
+          ],
+          "volatile": false
+        },
+        "error": {
+          "code": null,
+          "message": "no such key: \"zzz\""
+        }
+      }
+    },
+    {
+      "id": "verdicts/CEL_UNKNOWN_FIELD/union_alternatives_read",
+      "tag": "cel",
+      "source": "either != null && either.zzz == \"x\"",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_UNKNOWN_FIELD",
+              "message": "'either.zzz' is not defined (available: a)"
+            }
+          ],
           "type": "bool",
           "calls": [],
           "regions": [
             {
               "start": 0,
-              "end": 24
+              "end": 35
             }
           ],
           "refs": [
-            "either",
-            "linked"
+            "either"
           ],
           "volatile": false
         },
@@ -4903,7 +5057,7 @@
     {
       "id": "verdicts/CEL_NULLABLE_ACCESS/other_keywords_not_read",
       "tag": "cel",
-      "source": "either.a + linked.a",
+      "source": "linked.a",
       "bindings": {
         "closed": {
           "a": "x"
@@ -5036,16 +5190,167 @@
           "regions": [
             {
               "start": 0,
-              "end": 19
+              "end": 8
             }
           ],
           "refs": [
-            "either",
             "linked"
           ],
           "volatile": false
         },
-        "value": "xx"
+        "value": "x"
+      }
+    },
+    {
+      "id": "verdicts/CEL_NULLABLE_ACCESS/union_null_branch",
+      "tag": "cel",
+      "source": "either.a",
+      "bindings": {
+        "closed": {
+          "a": "x"
+        },
+        "either": {
+          "a": "x"
+        },
+        "gone": null,
+        "labels": {
+          "env": "dev",
+          "other": "x"
+        },
+        "linked": {
+          "a": "x"
+        },
+        "maybe": "ab",
+        "name": "Ada",
+        "pair": [
+          {
+            "a": "x"
+          }
+        ],
+        "port": {
+          "$telo": "int",
+          "value": "8080"
+        },
+        "rows": [
+          {
+            "v": "x"
+          }
+        ]
+      },
+      "context": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "labels": {
+            "type": "object",
+            "properties": {
+              "env": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "closed": {
+            "type": "object",
+            "properties": {
+              "a": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "pair": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "v": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "either": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "a": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "linked": {
+            "$ref": "#/definitions/target",
+            "nullable": true
+          },
+          "gone": {
+            "type": "null"
+          },
+          "maybe": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "feed": {
+            "x-telo-type": {
+              "name": "Telo.Stream",
+              "of": "Telo.Bytes"
+            }
+          },
+          "port": {
+            "x-telo-type": "Telo.TcpPort"
+          }
+        }
+      },
+      "expect": {
+        "check": {
+          "diagnostics": [
+            {
+              "code": "CEL_NULLABLE_ACCESS",
+              "message": "'either' may be null \u2014 guard it (e.g. 'either != null && \u2026' or 'either == null ? \u2026 : either.a') before accessing '.a'"
+            }
+          ],
+          "type": "dyn",
+          "calls": [],
+          "regions": [
+            {
+              "start": 0,
+              "end": 8
+            }
+          ],
+          "refs": [
+            "either"
+          ],
+          "volatile": false
+        },
+        "value": "x"
       }
     },
     {

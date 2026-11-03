@@ -33,7 +33,8 @@ An entry declares **how the value is represented** and nothing about any runtime
 | `live`           | An instance whose consumption has effects, so it is exempt from validation.    |
 | `members`        | Non-live `instance` only: the members a value holds, each a JSON Schema. They are the CEL fields of its type, its object authoring form beside its text, and — through `x-telo-sensitive: true` — what of it is redacted. Its encoding must build a value from them. |
 | `acceptsText`    | Non-live `instance` with an `encoding` only: `{ code }`. A CEL `string` stands at a slot of the type and is read through the encoding when the resource holding it is created, or — at a contract — when the call is dispatched. Every refusal of the type is `code` statically, at every site a literal is written (a resource field, a call's `inputs:`, a schema-derived slot, a need supply, an import's `variables:` / `secrets:`, a `default:`), and `ERR_<code>` at runtime: raised as itself at creation and at an import, carried as an entry inside `ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` at a contract boundary and inside `ERR_MANIFEST_VALIDATION_FAILED` at load. |
-| `parameters`     | Named type parameters. Each is optional and defaults to *any*. A parameter's own keys: `name`, `description`, `element` (its argument is what iterating a value yields), `member` (its argument is a schema the member of that name must satisfy) and `hostEntry` (its argument is a token, `file` or `directory`, saying what a host path names — only on a `fromHost` type, at most one). |
+| `integerForm`    | Non-live `instance` with an `encoding` only: `{ unit }`. A JSON integer written where text is decoded is read as the text `<integer><unit>` through the encoding (`Telo.Duration`: `250` is `250ms`). The encoding must read `0<unit>`, or the entry is a startup error. |
+| `parameters`     | Named type parameters. Each is optional and defaults to *any*. A parameter's own keys: `name`, `description`, `element` (its argument is what iterating a value yields), `member` (its argument is a schema the member of that name must satisfy), `hostEntry` (its argument is a token, `file` or `directory`, saying what a host path names — only on a `fromHost` type, at most one) and `bound` (`minimum`, `maximum`, `exclusiveMinimum` or `exclusiveMaximum`: its argument is a value of the type, below). |
 | `description`    | What `telo cel types` and the generated docs section print.                    |
 
 `binding` is deliberately **not** a constructor name — that is a fact about one
@@ -147,7 +148,7 @@ error.
 | -------------- | ----------------------------------- | --------------------------------- |
 | `base64url`    | base64url without padding           | the same form                     |
 | `rfc3339`      | RFC 3339 in UTC with a trailing `Z`, fraction trimmed | RFC 3339 with any offset and one to nine fractional digits |
-| `cel-duration` | seconds with an `s` suffix (`5400s`) | any CEL duration string (`1h30m`) within ±315576000000s |
+| `cel-duration` | seconds with an `s` suffix (`5400s`) | any CEL duration string (`1h30m`) within ±315576000000s; through `Telo.Duration`'s integer form, an integer number of milliseconds |
 | `url-text`     | the scheme in lower case; each component's bytes that are not RFC 3986 unreserved percent-encoded with upper-case hex, a path keeping its `/`; an IPv6 host in brackets; the query ordered by key | any absolute URL RFC 3986 reads, with no fragment and no repeated query key |
 
 `url-text` is pinned for every runtime by `encodings/url-text.json` beside the
@@ -189,6 +190,52 @@ C ABI — gets the typed frame instead, whose tagged payloads are these same
 encodings (`kernel/specs/durable-execution.md` §6). In Rust the instance types are
 `Timestamp`, `Duration`, `Bytes` and `Uint64` in `telorun-sdk`, whose serde impls
 write the plain form and read either.
+
+## Bounds
+
+A parameter declaring `bound` takes a value of the type itself as its argument,
+written as the type's plain encoding (or its integer form), and every value at the
+slot must be at least it (`minimum`), at most it (`maximum`), above it
+(`exclusiveMinimum`) or below it (`exclusiveMaximum`) —
+`x-telo-type: { name: Telo.Duration, minimum: 0s }`. The names are JSON Schema's for
+the same bounds on a number. Only a non-live instance with an encoding declares
+one, each kind of bound at most once, and its binding must be ORDERED — each
+runtime's table carries the ordering (`compare` in Node, `ordered` in Rust), and a
+bound over a binding with none is a startup error, since nothing could hold a value
+to it.
+
+The bound is held by the `x-telo-type` keyword wherever the slot is asserted: a
+literal statically (`SCHEMA_VIOLATION` at a resource's field, `CONTRACT_INPUTS_MISMATCH`
+at a call's `inputs:`), a resource's configuration when it is created, a computed
+result after compile-time evaluation, and a contract at dispatch — the refusal
+naming the bound and the value (`must be a Telo.Duration at least 0s, not -1s`).
+An argument that does not read as a value of the type is
+`X_TELO_TYPE_ARGUMENT_INVALID`, and holds nothing. Bounds constrain values, not
+types: two slots of one type with different bounds are compatible, as two numbers
+with different `minimum`s are. The Rust kernel asserts no value type, so it holds
+no bound either.
+
+## Integer forms
+
+An entry declaring `integerForm: { unit }` admits a second plain form: a JSON
+integer, read as the text `<integer><unit>` through the type's own encoding — so
+the encoding's grammar and range decide what it holds, and a negative integer is
+a negative value exactly as its text is. `Telo.Duration` declares `unit: ms`, which
+is what keeps a duration slot reading a field that used to take integer
+milliseconds (`initialDelay: 250`) unchanged. It is read at exactly the sites text
+is decoded (above), by the same walk, in both runtimes: `decodePlainInteger` in
+Node, `Duration`'s serde form in Rust (`integer_unit_of_binding`). Only an integer
+every runtime reads exactly counts — magnitude at most 2^53 − 1, a number with a
+zero fraction counting as the integer it equals — and any other number is left
+for the slot's assertion to refuse, its message naming both forms. Two things are
+deliberately NOT read through it: a digit-only STRING (`"250"`, an environment
+variable's text) is text, read only by the encoding; and an expression yielding a
+CEL `int` is not a duration — a computed value must already be one, and
+`duration('250ms')` is how CEL makes one, so the static type check is unchanged.
+
+A `default:` at an instance slot is filled as plain JSON by a validator that
+decodes nothing, so a kind leaves a duration's default out of its schema and
+states it in the field's description, filling it where it reads the field.
 
 Adding a value type is one file here plus one row per runtime that can represent
 it, and a codec row when it names a new encoding. A **representation** cannot be

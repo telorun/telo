@@ -1,0 +1,135 @@
+kind: Telo.Application
+metadata:
+  name: QueuePostgresWake
+  version: 1.0.0
+  description: |
+    A worker idle on a PostgreSQL queue is woken by the notification an enqueue
+    sends, at the commit of the transaction that enqueued it. The worker has sat
+    idle long enough for its poll to back off to a second and its claim to be
+    waiting on the wake channel; the message is enqueued in a transaction that
+    stays open another second, and it completes after that second and well
+    within the next, both instants read on the database's clock. A queue with no
+    wake — or a wake sent before the commit, which a claim would find nothing
+    for — would take a poll interval or the claim's whole wait.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Queues: ../../../queue
+  QueueSql: ../../../queue-sql
+  Queue: ../..
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  Run: ../../../run
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref wakesOnCommit
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Queue.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref messages]
+---
+kind: Queue.Queue
+metadata: { name: pings }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: pings
+retention: 1h
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [n]
+    properties:
+      n: { type: integer }
+---
+kind: Run.Sequence
+metadata: { name: handle }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      n: { type: integer }
+steps:
+  - name: done
+    value: !cel "inputs.n"
+---
+kind: Sql.Transaction
+metadata: { name: enqueueInTransaction }
+connection: !ref db
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: enqueue
+      invoke: { kind: QueueSql.Enqueue, queue: !ref pings }
+      inputs:
+        id: w-1
+        message: { n: 1 }
+    - name: linger
+      invoke: { kind: Timer.Delay }
+      inputs: { duration: 1s }
+---
+kind: Run.Loop
+metadata: { name: awaitCompleted }
+condition: !cel "previous == null || previous.status.result.state != 'completed'"
+maxIterations: 400
+steps:
+  - name: pause
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 10ms }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref pings }
+    inputs: { id: w-1 }
+outputs:
+  status: !cel "steps.status.result"
+---
+kind: Run.Sequence
+metadata: { name: wakesOnCommit }
+with:
+  - kind: Queues.Worker
+    metadata: { name: worker }
+    queue: !ref pings
+    timeout: 10s
+    shutdownGrace: 0s
+    invoke: !ref handle
+    inputs:
+      n: !cel "message.n"
+    retry: { attempts: 0 }
+targets:
+  - !ref worker
+steps:
+  - name: idle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 3s }
+  - name: enqueue
+    invoke: !ref enqueueInTransaction
+  - name: done
+    invoke: !ref awaitCompleted
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        [steps.done.result.status.state,
+         steps.done.result.status.settledAt - steps.done.result.status.enqueuedAt >= duration('1s'),
+         steps.done.result.status.settledAt - steps.done.result.status.enqueuedAt < duration('1600ms')]
+      expected: [completed, true, true]

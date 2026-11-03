@@ -95,7 +95,22 @@ The schema instance also renders the current instant for a consumer that
 records database time. SQLite has no timestamp type, so an instant is
 fixed-width UTC text — `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')`, giving
 `YYYY-MM-DDTHH:MM:SS.sssZ` in a `text` column — and plain text comparison is
-chronological. The clock has millisecond resolution.
+chronological. The clock has millisecond resolution, and `'now'` is one reading
+for a whole statement. In the same form it renders the current instant shifted
+by a signed `Telo.Duration` — `strftime(…, 'now', ?)` with the duration bound as
+a date modifier (`+90.000 seconds`), truncated toward zero to the millisecond —
+and a bound `Telo.Timestamp`, written as that text and truncated toward the past
+to the millisecond. A shift whose result leaves years 0000–9999 is refused before
+the statement runs, because SQLite's date functions answer NULL there instead of
+failing; the database is embedded, so its clock is the process's and the bound is
+exact.
+
+The schema instance renders no lock-skipping clause for a row selection: SQLite
+has one writer per database, and a transaction that writes holds the whole file
+until it ends, so there is no row lock another claimant could hold and skip. A
+consumer appending the clause to `UPDATE … WHERE id IN (SELECT … LIMIT n)`
+gets that statement unchanged, and concurrent claimants are serialized by the
+database's write lock.
 
 Declared foreign keys are enforced under both host drivers (better-sqlite3 on
 Node, `bun:sqlite` on Bun): the connection switches SQLite's per-connection

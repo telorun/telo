@@ -1,0 +1,150 @@
+kind: Telo.Application
+metadata:
+  name: QueueSqliteSuite
+  version: 1.0.0
+  description: |
+    The database-backed queue's behaviour suite on an in-memory SQLite database:
+    six queues sharing one table, served by polling workers.
+imports:
+  Suite:
+    source: ../../queue-sql/tests/__fixtures__/behaviour-suite
+    resources:
+      connection: !ref db
+      jobs: !ref jobs
+      grouped: !ref grouped
+      typed: !ref typed
+      strict: !ref strict
+      inspected: !ref inspected
+      shortLived: !ref shortLived
+  SQLite: ../../sqlite
+  Queue: ../
+targets:
+  - !ref appSchema
+  - !ref Suite.jobScenarios
+  - !ref Suite.groupScenarios
+  - !ref Suite.typedValues
+  - !ref Suite.invalidBody
+  - !ref Suite.inspection
+  - !ref Suite.dedupe
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Queue.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: SQLite.Table
+metadata: { name: deliveries }
+table: queue_deliveries
+columns:
+  id: { type: integer, primaryKey: true, identity: always }
+  message_id: { type: text, nullable: false }
+  attempt: { type: integer, nullable: false }
+  note: { type: text, nullable: false }
+---
+kind: SQLite.Table
+metadata: { name: orders }
+table: queue_orders
+columns:
+  order_id: { type: text, nullable: false }
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref messages, !ref deliveries, !ref orders]
+---
+kind: Telo.JsonSchema
+metadata: { name: Job }
+schema:
+  type: object
+  additionalProperties: false
+  required: [key, behaviour]
+  properties:
+    key: { type: string }
+    behaviour:
+      type: string
+      enum: [ok, retryTwice, fatal, fatalOnce, slow, outbox]
+---
+kind: Queue.Queue
+metadata: { name: jobs }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: jobs
+retention: 1h
+messageType: !ref Job
+---
+kind: Queue.Queue
+metadata: { name: grouped }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: grouped
+retention: 1h
+groupBy: !cel "message.customer"
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    # `customer` is optional so a message without a group can be offered to the
+    # queue, which refuses it.
+    required: [step, behaviour]
+    properties:
+      customer: { type: string }
+      step: { type: integer }
+      behaviour: { type: string, enum: [ok, fatal] }
+---
+kind: Queue.Queue
+metadata: { name: typed }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: typed
+retention: 1h
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [at, big, data]
+    properties:
+      at: { x-telo-type: Telo.Timestamp }
+      big: { type: integer }
+      data: { x-telo-type: Telo.Bytes }
+---
+kind: Queue.Queue
+metadata: { name: strict }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: strict
+retention: 1h
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [n]
+    properties:
+      n: { type: integer }
+---
+kind: Queue.Queue
+metadata: { name: inspected }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: inspected
+retention: 1h
+messageType: !ref Job
+---
+kind: Queue.Queue
+metadata: { name: shortLived }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: shortLived
+retention: 50ms
+messageType: !ref Job

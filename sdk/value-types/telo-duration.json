@@ -3,5 +3,28 @@
   "representation": "instance",
   "binding": "duration",
   "encoding": "cel-duration",
-  "description": "A span of time, held as a native duration so it adds to and subtracts from timestamps exactly. Written inline as any CEL duration string (`1h30m`, `250ms`); it is written as seconds (`5400s`)."
+  "integerForm": { "unit": "ms" },
+  "parameters": [
+    {
+      "name": "minimum",
+      "bound": "minimum",
+      "description": "The shortest duration the slot holds, inclusive — written as a duration (`0s`) or an integer number of milliseconds."
+    },
+    {
+      "name": "maximum",
+      "bound": "maximum",
+      "description": "The longest duration the slot holds, inclusive — written as a duration (`1h`) or an integer number of milliseconds."
+    },
+    {
+      "name": "exclusiveMinimum",
+      "bound": "exclusiveMinimum",
+      "description": "A duration every value must exceed (`0s` for a positive duration) — written as a duration or an integer number of milliseconds."
+    },
+    {
+      "name": "exclusiveMaximum",
+      "bound": "exclusiveMaximum",
+      "description": "A duration every value must stay below — written as a duration or an integer number of milliseconds."
+    }
+  ],
+  "description": "A span of time, held as a native duration so it adds to and subtracts from timestamps exactly. Written inline as any CEL duration string (`1h30m`, `250ms`) or as an integer number of milliseconds (`250`); it is written as seconds (`5400s`). A slot may bound it: `x-telo-type: { name: Telo.Duration, minimum: 0s }`."
 }

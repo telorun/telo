@@ -22,6 +22,7 @@ import {
   flattenLoadedModule,
   valueTypeRefusalCode,
   schemaIssues,
+  serializableProblems,
   implicitEvalSites,
   callableBodyField,
   isCallableKind,
@@ -212,6 +213,7 @@ import { resolveIncludeSentinels, type IncludeCache } from "./resolve-include-se
 import { refuseMisplacedHostEntries, refuseRelativeHostPaths } from "./host-paths.js";
 import { refuseMalformedFormats } from "./telo-format-results.js";
 import { refuseComputedRefSlots } from "./refuse-computed-ref-slots.js";
+import { resolveTypeFieldSchema } from "./type-field-schema.js";
 import {
   controllerBrowserEntryModule,
   directImportSources,
@@ -3027,6 +3029,21 @@ export class Kernel implements IKernel {
           `Resource does not match schema for kind ${kind}: ${reason}`,
         );
       }
+    }
+
+    // A shape whose values are stored or serialized holds no live value — read
+    // off the declarations the load holds, as `telo check` reads it, since a named
+    // shape registers its schema only once it is created.
+    const [unserializable] = serializableProblems(
+      configSchema as Record<string, any>,
+      resource,
+      (value) =>
+        this.resolveNamedContractShape(value, resource as unknown as Record<string, any>)?.schema ??
+        resolveTypeFieldSchema(value, schemaForRef),
+      schemaForRef,
+    );
+    if (unserializable) {
+      throw new RuntimeError("ERR_SCHEMA_NOT_SERIALIZABLE", `${resourceLabel}: ${unserializable.message}`);
     }
 
     // Every text the resource holds is judged in the language of the module

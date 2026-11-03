@@ -1,0 +1,27 @@
+# The ledger every process of the key race shares. A partial: the parent that
+# includes it runs the schema; a child only names it. Each includer declares the
+# connection `db`: the parent to the server it started, a child to the one it is
+# handed.
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: Postgres.Table
+metadata: { name: effects }
+table: race_effects
+columns:
+  effect_key: { type: text, nullable: false }
+  writer: { type: text, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys, !ref effects]
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: race
+retention: 1h

@@ -1,0 +1,124 @@
+# One process of the crash test: a worker serving the queue until the message
+# `k-1` is completed. Its handler records the delivery, then writes its effect
+# once per message id — the key recorded in the same transaction — and, when
+# `crash` is set and this is the first attempt, kills its own process with
+# SIGKILL after that transaction committed and before the message is settled.
+kind: Telo.Application
+metadata:
+  name: QueueCrashWorker
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  Queues: ../../../../../queue
+  Queue: ../../../..
+  IdempotencySql: ../../../../../idempotency-sql
+  Idempotency: ../../../../../idempotency-postgres
+  Sql: ../../../../../sql
+  Postgres: ../../../../../postgres
+  Shell: ../../../../../shell
+  Run: ../../../../../run
+  Timer: ../../../../../timer
+variables:
+  dbHost: { env: DB_HOST, type: string }
+  dbPort: { env: DB_PORT, type: integer }
+  crash: { env: CRASH, type: boolean, default: false }
+targets:
+  - !ref serve
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: postgres
+      password: postgres
+      path: /postgres
+      query: { options: "-c search_path=public" }
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref db
+---
+kind: Shell.LocalHost
+metadata: { name: local }
+---
+# The effect, once per message id, in the transaction that records the id.
+kind: Sql.Transaction
+metadata: { name: effectOnce }
+connection: !ref db
+inputs:
+  messageId: !cel "inputs.messageId"
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: once
+      invoke:
+        kind: IdempotencySql.Once
+        ledger: !ref ledger
+        invoke: !ref write
+      inputs:
+        key: !cel "inputs.messageId"
+        inputs:
+          sql: !sql "INSERT INTO crash_effects (message_id) VALUES (${{ inputs.messageId }})"
+---
+kind: Run.Sequence
+metadata: { name: handle }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, attempt]
+    properties:
+      messageId: { type: string }
+      attempt: { type: integer }
+steps:
+  - name: record
+    invoke: !ref write
+    inputs:
+      sql: !sql "INSERT INTO crash_deliveries (message_id, attempt) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }})"
+  - name: effect
+    invoke: !ref effectOnce
+    inputs: { messageId: !cel "inputs.messageId" }
+  - name: crash
+    if: !cel "variables.crash && inputs.attempt == 1"
+    then:
+      - name: kill
+        invoke: { kind: Shell.Command, host: !ref local }
+        inputs:
+          command: kill -KILL $PPID
+---
+kind: Run.Sequence
+metadata: { name: serve }
+with:
+  - kind: Queues.Worker
+    metadata: { name: worker }
+    queue: !ref jobs
+    lease: 2s
+    timeout: 30s
+    shutdownGrace: 0s
+    invoke: !ref handle
+    inputs:
+      messageId: !cel "delivery.messageId"
+      attempt: !cel "delivery.attempt"
+    retry: { attempts: 3 }
+targets:
+  - !ref worker
+steps:
+  - name: untilCompleted
+    invoke:
+      kind: Run.Loop
+      condition: !cel "previous == null || previous.status.result.state != 'completed'"
+      maxIterations: 1500
+      steps:
+        - name: pause
+          invoke: { kind: Timer.Delay }
+          inputs: { duration: 20ms }
+        - name: status
+          invoke: { kind: Queues.Status, queue: !ref jobs }
+          inputs: { id: k-1 }

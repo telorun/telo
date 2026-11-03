@@ -26,11 +26,15 @@ import type { KeywordDefinition } from "ajv";
 import {
   CEL_SCALAR_FORMS,
   celScalarTypeOf,
+  integerFormText,
   isAbsoluteHostPath,
   PLAIN_ENCODINGS,
   VALUE_TYPE_BINDINGS,
   X_TELO_TYPE,
   readValueTypeSlot,
+  valueTypeBoundHolds,
+  valueTypeBoundsOf,
+  valueTypeBoundsText,
   valueTypeOf,
   type ValueTypeEntry,
 } from "@telorun/sdk";
@@ -80,6 +84,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-ref",
   "x-telo-requires-zone",
   "x-telo-resource-rules",
+  "x-telo-retry-for",
   "x-telo-returns-from",
   "x-telo-schema-from",
   "x-telo-schema-map",
@@ -87,6 +92,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-schema-projection-from",
   "x-telo-scope",
   "x-telo-sensitive",
+  "x-telo-serializable",
   "x-telo-span-attribute",
   "x-telo-step-context",
   "x-telo-text-context",
@@ -102,7 +108,7 @@ export const ANNOTATION_KEYWORDS = [
 /** Folded into the kernel's validator cache key. Bump it with any change to the
  *  code or messages {@link valueTypeKeyword} emits: a validator compiled before
  *  the change is otherwise served from disk unchanged. */
-export const VALUE_TYPE_KEYWORD_VERSION = 6;
+export const VALUE_TYPE_KEYWORD_VERSION = 8;
 
 /** How an AJV instance treats a `live` value type. */
 export interface TeloKeywordOptions {
@@ -136,7 +142,12 @@ export interface TeloKeywordOptions {
  *    and, for a type whose parameter binds a member (a URL's `scheme`), the
  *    member a value holds is held to the slot's argument, a schema, through a
  *    subschema of this keyword, so the argument is any JSON Schema and is checked
- *    by the same validator wherever the value is validated.
+ *    by the same validator wherever the value is validated;
+ *  - a slot's BOUND arguments (a duration's `minimum: 0s`) are held against the
+ *    value through the binding's ordering, each argument written in the type's own
+ *    encoding and read again by the SDK when the check runs, so a cached validator
+ *    carries only what the author wrote. A bound that does not read emits nothing —
+ *    `X_TELO_TYPE_ARGUMENT_INVALID` reports it where it is written.
  *
  * An unknown name emits nothing here. It is a hard diagnostic in the analyzer
  * (`X_TELO_TYPE_UNKNOWN`), which is where a name can be reported against the
@@ -195,14 +206,30 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
         code: codegen`require("@telorun/sdk").VALUE_TYPE_BINDINGS[${entry.binding!}].holds`,
       });
       const bound = boundMemberArguments(entry, cxt.schema);
-      if (bound.length === 0) {
+      const { bounds } = valueTypeBoundsOf(readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema }));
+      if (bound.length === 0 && bounds.length === 0) {
         cxt.pass(codegen`${holds}(${cxt.data})`);
+        return;
+      }
+      const valid = cxt.gen.let("valid", codegen`${holds}(${cxt.data})`);
+      if (bounds.length > 0) {
+        const holdsBound = cxt.gen.scopeValue("func", {
+          ref: valueTypeBoundHolds,
+          code: codegen`require("@telorun/sdk").valueTypeBoundHolds`,
+        });
+        for (const { bound: kind, written } of bounds) {
+          cxt.gen.if(valid, () =>
+            cxt.gen.assign(valid, codegen`${holdsBound}(${entry.name}, ${kind}, ${written as string | number}, ${cxt.data})`),
+          );
+        }
+      }
+      if (bound.length === 0) {
+        cxt.pass(valid);
         return;
       }
       // A member a slot argument binds is held to that argument — a schema — where
       // the value holds the member at all. One error, this keyword's, whatever
       // inside the argument refused it: the refusal is about the value type.
-      const valid = cxt.gen.let("valid", codegen`${holds}(${cxt.data})`);
       for (const { parameter, member } of bound) {
         cxt.gen.if(codegen`${valid} && ${cxt.data}[${member}] !== undefined`, () => {
           const accepted = cxt.gen.name("valid");
@@ -240,10 +267,15 @@ export function valueTypeKeyword(options: TeloKeywordOptions = {}): KeywordDefin
         const range = celType === undefined ? undefined : CEL_SCALAR_FORMS[celType]?.range;
         if (range) return `must be a ${entry.name}, ${range.describe}`;
         const encoding = entry.encoding === undefined ? undefined : PLAIN_ENCODINGS[entry.encoding];
-        if (!encoding) return `must be a ${entry.name}`;
+        const bounds = valueTypeBoundsText(readValueTypeSlot({ [X_TELO_TYPE]: cxt.schema }));
+        const named = bounds ? `${entry.name} ${bounds}` : entry.name;
+        if (!encoding) return `must be a ${named}`;
+        const integer = integerFormText(entry);
         return (
-          `must be a ${entry.name} — text written in the manifest or an environment variable ` +
-          `is read only as ${encoding.form}, and a computed value must already be one` +
+          `must be a ${named} — text written in the manifest or an environment variable ` +
+          `is read only as ${encoding.form}` +
+          (integer ? `, a number written in the manifest only as ${integer}` : "") +
+          `, and a computed value must already be one` +
           producingTags(entry)
         );
       },

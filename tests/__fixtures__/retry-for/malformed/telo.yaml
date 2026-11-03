@@ -1,0 +1,28 @@
+# `x-telo-retry-for` written where nothing reads it: off a retry policy, naming
+# a slot that holds data, with a code described by nothing.
+kind: Telo.Library
+metadata:
+  name: RetryForMalformed
+  version: 1.0.0
+  description: Fixture kind whose retry annotation cannot be read.
+requires:
+  telo: ">=0.122.0"
+---
+kind: Telo.Definition
+metadata:
+  name: Worker
+  description: A worker whose retry annotation names no dispatch.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=../retry-for.mjs#Worker
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    target: { type: string }
+    retry:
+      type: object
+      x-telo-retry-for:
+        slot: /target
+        codes:
+          ERR_WORKER_TIMEOUT: {}

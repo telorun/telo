@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  celDurationFromNanos,
   createCancellationSource,
   ERR_FUNCTION_FAILED,
   ERR_INPUT_INVALID,
@@ -192,6 +193,72 @@ describe("step retry", () => {
 
     await executeInvokeStep(step, fakeContext(), state());
     expect(calls()).toBe(2);
+  });
+});
+
+describe("step retry — durations and the failure's own wait", () => {
+  const ms = (n: number) => celDurationFromNanos(BigInt(n) * 1_000_000n);
+
+  it("reads its delays as durations", async () => {
+    const { step, calls } = stepCalling(
+      (attempt) => (attempt < 3 ? new Error("again") : { ok: true }),
+      { attempts: 2, initialDelay: ms(5), maxDelay: ms(10), jitter: "none" },
+    );
+    await executeInvokeStep(step, fakeContext(), state());
+    expect(calls()).toBe(3);
+  });
+
+  it("waits what `retryAfter` yields instead of the computed backoff", async () => {
+    // The backoff would park the step for a minute; the failure says 5ms. The
+    // expression sees the failure as `error`, so it reads the failure's own data.
+    let seen: unknown;
+    const ctx: InvokeStepContext = {
+      ...fakeContext(),
+      expandValue: (value, scope) => {
+        if (value !== "retryAfter") return value;
+        seen = scope.error;
+        return ms((scope.error as { data: { waitMs: number } }).data.waitMs);
+      },
+    };
+    const { step, calls } = stepCalling(
+      (attempt) =>
+        attempt < 2 ? new InvokeError("ERR_RATE_LIMITED", "slow down", { waitMs: 5 }) : { ok: true },
+      { attempts: 1, initialDelay: ms(60_000), maxDelay: ms(60_000), retryAfter: "retryAfter" },
+    );
+    const started = Date.now();
+    await executeInvokeStep(step, ctx, state());
+    expect(calls()).toBe(2);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(seen).toEqual({ code: "ERR_RATE_LIMITED", message: "slow down", data: { waitMs: 5 } });
+  });
+
+  it("keeps the computed backoff when `retryAfter` yields null", async () => {
+    const ctx: InvokeStepContext = {
+      ...fakeContext(),
+      expandValue: (value) => (value === "retryAfter" ? null : value),
+    };
+    const { step, calls } = stepCalling(
+      (attempt) => (attempt < 2 ? new Error("first") : { ok: true }),
+      { attempts: 1, initialDelay: ms(5), retryAfter: "retryAfter" },
+    );
+    await executeInvokeStep(step, ctx, state());
+    expect(calls()).toBe(2);
+  });
+
+  it("refuses a `retryAfter` result that is not a duration", async () => {
+    const ctx: InvokeStepContext = {
+      ...fakeContext(),
+      expandValue: (value) => (value === "retryAfter" ? 5 : value),
+    };
+    const { step } = stepCalling(() => new Error("always"), {
+      attempts: 1,
+      initialDelay: ms(5),
+      retryAfter: "retryAfter",
+    });
+    await expect(executeInvokeStep(step, ctx, state())).rejects.toMatchObject({
+      code: "ERR_INVALID_VALUE",
+      data: { field: "retryAfter", pendingFailure: { message: "always" } },
+    });
   });
 });
 

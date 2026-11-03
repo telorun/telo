@@ -1,0 +1,38 @@
+# `coReferrers:` binds the OTHER declarations reaching one resolved declaration
+# through the same slot — what a referrer rule needs to refuse two stores
+# claiming one name in one table, and only in one table.
+kind: Telo.Application
+metadata:
+  name: ReferrerRuleCoReferrers
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref sameName
+  - !ref differentNames
+  - !ref differentTables
+---
+kind: Assert.Manifest
+metadata:
+  name: sameName
+source: ./__fixtures__/co-referrers/same-name.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Kinds.Store/first at 'table': required by Kinds.Table — claims a name another store in this table already claims"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Kinds.Store/second at 'table'"
+---
+kind: Assert.Manifest
+metadata:
+  name: differentNames
+source: ./__fixtures__/co-referrers/different-names.yaml
+expect:
+  errors: []
+---
+kind: Assert.Manifest
+metadata:
+  name: differentTables
+source: ./__fixtures__/co-referrers/different-tables.yaml
+expect:
+  errors: []

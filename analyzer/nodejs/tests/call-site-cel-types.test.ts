@@ -473,8 +473,12 @@ describe("a member read through a union in its producer's schema", () => {
     });
 
     it("is not nullable for a `null` alternative crossed on the way", () => {
+      // The tail fits the slot; dereferencing the union holding `null` is the
+      // unguarded read `CEL_NULLABLE_ACCESS` reports, and nothing else is.
       const produced = { anyOf: [{ type: "object", properties: { a: text } }, { type: "null" }] };
-      expect(reported(site(produced, text, ".a"))).toEqual([]);
+      const found = reported(site(produced, text, ".a"));
+      expect(found).toHaveLength(1);
+      expect(found[0]!.startsWith("CEL_NULLABLE_ACCESS: ")).toBe(true);
     });
 
     it("is a host path where every alternative declares one, and an untyped source where one declares a string", () => {

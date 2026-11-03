@@ -22,7 +22,10 @@
  */
 import {
   HOST_ENTRY_KINDS,
+  integerFormText,
+  PLAIN_ENCODINGS,
   readValueTypeSlot,
+  valueTypeBoundsOf,
   VALUE_TYPES,
   X_TELO_TYPE,
   type ResourceManifest,
@@ -165,7 +168,23 @@ function checkNode(
   }
 
   const declared = new Set(slot.entry.parameters.map((p) => p.name));
+  // A bound is a value of the type itself, so it must read through the type's encoding.
+  const unreadBounds = new Set(valueTypeBoundsOf(slot).invalid);
   for (const argument of Object.keys(slot.args)) {
+    if (unreadBounds.has(argument)) {
+      const encoding = slot.entry.encoding === undefined ? undefined : PLAIN_ENCODINGS[slot.entry.encoding];
+      const integer = integerFormText(slot.entry);
+      issues.push({
+        code: "X_TELO_TYPE_ARGUMENT_INVALID",
+        manifest,
+        path,
+        message:
+          `'${slot.entry.name}' parameter '${argument}' is a bound, written as a ${slot.entry.name} ` +
+          `(${encoding?.form ?? "its plain encoding"}${integer ? `, or ${integer}` : ""}), ` +
+          `not ${JSON.stringify(slot.args[argument])}.`,
+      });
+      continue;
+    }
     const parameter = slot.entry.parameters.find((p) => p.name === argument);
     if (parameter?.hostEntry) {
       const token = slot.args[argument];

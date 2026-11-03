@@ -148,6 +148,40 @@ So a kind declares `steps:` **or** an executable `!ref`, never both — two
 spellings of one thing means every annotation that qualifies the body (a
 zone provision, a retry budget) has to be written twice and kept agreeing.
 
+## A retry policy your kind holds itself
+
+A step's `retry:` sits beside the `invoke:` it re-attempts, so `telo check`
+judges it against that target: a `nonRetryable` code the target cannot throw is
+flagged, and `retryAfter`'s `error.data` is typed against the codes it declares.
+A kind that drives a handler and re-attempts it on its own — a worker redelivering
+a message — holds the policy at a field of its own instead, beside the slot, and
+often raises a code of its own into the loop. Say so with `x-telo-retry-for` on
+the policy's field:
+
+```yaml
+schema:
+  properties:
+    invoke:
+      x-telo-ref: { kind: Telo.Executable, use: trigger.inbound }
+    retry:
+      $ref: telo://manifest#/$defs/RetryPolicy
+      x-telo-retry-for:
+        slot: /invoke
+        codes:
+          ERR_QUEUE_TIMEOUT:
+            description: An attempt overran the worker's timeout.
+```
+
+`slot` is a JSON Pointer to the top-level reference slot whose dispatch the
+policy re-attempts; `codes` lists what your kind raises into the loop itself, in
+the `throws:` vocabulary's shape (a `description`, an optional `data` schema) —
+a `Telo.Service` may declare no `throws:` of its own. The policy is then judged
+exactly as a step's is, against the slot target's throws plus those codes. The
+annotation belongs on a named top-level property holding a retry policy, naming
+a slot that transfers control; anything else is `RETRY_FOR_INVALID` at the kind.
+Your controller still runs the loop — the annotation is read by `telo check`
+alone, and an older one ignores it.
+
 ## Publishing one
 
 The grammar is a shared fragment, which is manifest syntax an older runtime does

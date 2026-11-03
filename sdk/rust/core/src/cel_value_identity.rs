@@ -214,6 +214,21 @@ struct TypedVisitor<T> {
     plain: fn(&str) -> Option<T>,
     from_u64: Option<fn(u64) -> T>,
     from_bytes: Option<fn(Vec<u8>) -> T>,
+    /// The type's integer form, where its entry declares one: an exact integer read as
+    /// its plain text in the entry's unit, `None` when the encoding refuses that text.
+    from_integer: Option<fn(i64) -> Option<T>>,
+}
+
+impl<T> TypedVisitor<T> {
+    fn integer<E: de::Error>(self, value: i64, unexpected: de::Unexpected<'_>) -> Result<T, E> {
+        let Some(from) = self.from_integer else {
+            return Err(E::invalid_type(unexpected, &self));
+        };
+        if value.unsigned_abs() > crate::value_type::MAX_EXACT_INTEGER as u64 {
+            return Err(E::custom(format!("{value} is not an integer every runtime reads exactly, so it is not {}", self.expecting)));
+        }
+        from(value).ok_or_else(|| E::custom(format!("{value} is not {}", self.expecting)))
+    }
 }
 
 impl<'de, T> Visitor<'de> for TypedVisitor<T> {
@@ -232,17 +247,28 @@ impl<'de, T> Visitor<'de> for TypedVisitor<T> {
     }
 
     fn visit_u64<E: de::Error>(self, value: u64) -> Result<T, E> {
-        match self.from_u64 {
-            Some(from) => Ok(from(value)),
-            None => Err(E::invalid_type(de::Unexpected::Unsigned(value), &self)),
+        match (self.from_u64, i64::try_from(value)) {
+            (Some(from), _) => Ok(from(value)),
+            (None, Ok(signed)) => self.integer(signed, de::Unexpected::Unsigned(value)),
+            (None, Err(_)) => Err(E::invalid_type(de::Unexpected::Unsigned(value), &self)),
         }
     }
 
     fn visit_i64<E: de::Error>(self, value: i64) -> Result<T, E> {
         match (self.from_u64, u64::try_from(value)) {
             (Some(from), Ok(unsigned)) => Ok(from(unsigned)),
-            _ => Err(E::invalid_type(de::Unexpected::Signed(value), &self)),
+            (Some(_), Err(_)) => Err(E::invalid_type(de::Unexpected::Signed(value), &self)),
+            (None, _) => self.integer(value, de::Unexpected::Signed(value)),
         }
+    }
+
+    /// A number written with a fraction of zero is the integer it equals, as it is to a
+    /// runtime holding every number as a double.
+    fn visit_f64<E: de::Error>(self, value: f64) -> Result<T, E> {
+        if self.from_integer.is_some() && value.fract() == 0.0 && value.abs() <= crate::value_type::MAX_EXACT_INTEGER as f64 {
+            return self.integer(value as i64, de::Unexpected::Float(value));
+        }
+        Err(E::invalid_type(de::Unexpected::Float(value), &self))
     }
 
     fn visit_byte_buf<E: de::Error>(self, value: Vec<u8>) -> Result<T, E> {
@@ -285,16 +311,30 @@ impl<'de> Deserialize<'de> for Timestamp {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_newtype_struct(
             TIMESTAMP_TOKEN,
-            TypedVisitor { tag: TAG_TIMESTAMP, expecting: "an RFC 3339 timestamp", plain: rfc3339::decode, from_u64: None, from_bytes: None },
+            TypedVisitor { tag: TAG_TIMESTAMP, expecting: "an RFC 3339 timestamp", plain: rfc3339::decode, from_u64: None, from_bytes: None, from_integer: None },
         )
     }
+}
+
+/// A duration's integer form, read through the `duration` binding's entry: the integer
+/// written in the entry's unit, as the `cel-duration` encoding reads that text.
+fn duration_from_integer(value: i64) -> Option<Duration> {
+    let unit = crate::value_type::integer_unit_of_binding("duration")?;
+    cel_duration::decode(&format!("{value}{unit}"))
 }
 
 impl<'de> Deserialize<'de> for Duration {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_newtype_struct(
             DURATION_TOKEN,
-            TypedVisitor { tag: TAG_DURATION, expecting: "a CEL duration string", plain: cel_duration::decode, from_u64: None, from_bytes: None },
+            TypedVisitor {
+                tag: TAG_DURATION,
+                expecting: "a CEL duration string or an integer number of the entry's unit",
+                plain: cel_duration::decode,
+                from_u64: None,
+                from_bytes: None,
+                from_integer: Some(duration_from_integer),
+            },
         )
     }
 }
@@ -309,6 +349,7 @@ impl<'de> Deserialize<'de> for Bytes {
                 plain: |text| base64url::decode(text).map(Bytes),
                 from_u64: None,
                 from_bytes: Some(Bytes),
+                from_integer: None,
             },
         )
     }
@@ -327,6 +368,7 @@ impl<'de> Deserialize<'de> for Uint64 {
                 },
                 from_u64: Some(Uint64),
                 from_bytes: None,
+                from_integer: None,
             },
         )
     }
@@ -405,5 +447,23 @@ mod tests {
         let frame = typed_frame::to_frame(&args).unwrap();
         assert_eq!(serde_json::from_str::<Args>(&frame).unwrap(), args);
         assert_eq!(typed_frame::from_frame::<Args>(&frame).unwrap(), args);
+    }
+
+    /// The Duration entry's integer form: an integer is that many milliseconds, read as
+    /// the text the encoding reads, so a negative one is a negative span; an integer no
+    /// runtime reads exactly is refused, and a digit-only STRING is still text.
+    #[test]
+    fn reads_an_integer_duration_as_milliseconds() {
+        let read = |json: &str| serde_json::from_str::<Duration>(json).map(|d| cel_duration::encode(&d));
+        assert_eq!(read("250").unwrap(), "0.25s");
+        assert_eq!(read("\"250ms\"").unwrap(), "0.25s");
+        assert_eq!(read("-1500").unwrap(), "-1.5s");
+        assert_eq!(read("32000.0").unwrap(), "32s");
+        assert_eq!(read("315576000000999").unwrap(), "315576000000.999s");
+        // Past the encoding's range, and past what every runtime reads exactly.
+        assert!(read("315576000001000").is_err());
+        assert!(read("9007199254740992").is_err());
+        assert!(read("250.5").is_err());
+        assert!(read("\"250\"").is_err());
     }
 }

@@ -1,0 +1,19 @@
+# The root of a three-module abstract chain: declares the field `x`.
+kind: Telo.Library
+metadata:
+  name: ChainBase
+  version: 1.0.0
+  description: Fixture abstract declaring one field.
+exports:
+  kinds: [Base]
+---
+kind: Telo.Abstract
+metadata:
+  name: Base
+  description: A contract whose implementations take an integer `x`.
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    x: { type: integer }

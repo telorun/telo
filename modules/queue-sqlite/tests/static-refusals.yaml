@@ -1,0 +1,52 @@
+# What the queue kinds refuse, each pinned at `telo check` and at run: a
+# transactional enqueue with no transaction open on its queue's connection —
+# none at all, or one on another connection — and two queues claiming one name
+# in one table, which a consumer's entry-scoped check cannot see and the queue
+# refuses at creation.
+kind: Telo.Application
+metadata:
+  name: QueueSqliteStaticRefusals
+  version: 1.0.0
+  description: The SQLite queue's refusals, as `telo check` and the kernel report them.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref outsideTransaction
+  - !ref foreignConnection
+  - !ref queueNameDuplicate
+  - !ref queueNameDuplicateAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: outsideTransaction }
+source: ./__fixtures__/outside-transaction.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "requires a SQL.Transaction zone on SQLite.Connection 'db'"
+  runFails: "[ZONE_REQUIREMENT_UNSATISFIED]"
+---
+kind: Assert.Manifest
+metadata: { name: foreignConnection }
+source: ./__fixtures__/foreign-connection.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "requires a SQL.Transaction zone on SQLite.Connection 'db'"
+  runFails: "[ZONE_REQUIREMENT_UNSATISFIED]"
+---
+kind: Assert.Manifest
+metadata: { name: queueNameDuplicate }
+source: ./__fixtures__/queue-name-duplicate/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Queue.Queue/emails at 'table': required by Queue.Table — claims a queue name"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Queue.Queue/emailsAgain at 'table'"
+---
+kind: Assert.Manifest
+metadata: { name: queueNameDuplicateAtRuntime }
+source: ./__fixtures__/queue-name-duplicate-app.yaml
+expect:
+  errors: []
+  runFails: "ERR_QUEUE_NAME_DUPLICATE"

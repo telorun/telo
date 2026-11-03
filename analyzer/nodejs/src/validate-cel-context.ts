@@ -607,12 +607,15 @@ export function resolveContextAnnotations(
         // kernel substitutes with that resource's published reading before
         // evaluating (`celSelfView`). Type it the same way, or `self.<ref>` is
         // the annotation node — a shape nothing can be read off.
-        return defs
-          ? (withRefSlotsAsReadings(resolved, {
-              resolve: (kind) => defs.resolve(kind),
-              resolveKind: (kind) => aliases?.resolveKind(kind),
-            }) as Record<string, any>)
-          : resolved;
+        return keepDeclaredNullability(
+          schema,
+          defs
+            ? (withRefSlotsAsReadings(resolved, {
+                resolve: (kind) => defs.resolve(kind),
+                resolveKind: (kind) => aliases?.resolveKind(kind),
+              }) as Record<string, any>)
+            : resolved,
+        );
       }
     }
     if (defs) {
@@ -636,13 +639,13 @@ export function resolveContextAnnotations(
         const own = target.entry?.[field];
         const ownResolved =
           own !== undefined ? resolveTypeFieldToSchema(own, declarations ?? NO_DECLARATIONS, manifestRoot) : undefined;
-        if (ownResolved && typeof ownResolved === "object") return ownResolved;
+        if (ownResolved && typeof ownResolved === "object") return keepDeclaredNullability(schema, ownResolved);
         const canonical = scope?.resolveKind(target.kind) ?? target.kind;
         const def = defs.resolve(canonical) ?? defs.resolve(target.kind);
         const typeField = def ? (def as Record<string, unknown>)[field] : undefined;
         const resolved = resolveTypeFieldToSchema(typeField, declarations ?? NO_DECLARATIONS);
         if (resolved && typeof resolved === "object") {
-          return resolved;
+          return keepDeclaredNullability(schema, resolved);
         }
       }
     }
@@ -682,7 +685,7 @@ export function resolveContextAnnotations(
       ) as Record<string, any> | undefined;
       if (refManifest) {
         const resolved = refFromSchema(refManifest, segments, declarations, referenceHost);
-        if (resolved) return resolved;
+        if (resolved) return keepDeclaredNullability(schema, resolved);
       }
       // The instance declares nothing, so fall back to its KIND's declaration —
       // the same layering `buildStepContextSchema` applies to `steps.<name>.result`,
@@ -698,7 +701,7 @@ export function resolveContextAnnotations(
             declarations,
           );
           if (resolved && typeof resolved === "object") {
-            return resolved;
+            return keepDeclaredNullability(schema, resolved);
           }
           // Neither declares the contract: the instance's own value slot for it
           // (a sequence's `outputs:`) is what it produces.
@@ -708,7 +711,7 @@ export function resolveContextAnnotations(
               (defs.effectiveSchemaOf?.(def) ?? def.schema) as Record<string, any> | undefined,
               segments[0]!,
             );
-            if (derived) return derived;
+            if (derived) return keepDeclaredNullability(schema, derived);
           }
         }
       }
@@ -736,6 +739,32 @@ export function resolveContextAnnotations(
   }
 
   return schema;
+}
+
+/** True when a binding node declares that its value may be null — `type` naming
+ *  `null` (alone or in a list) or `nullable: true`. */
+function declaresNull(node: Record<string, any>): boolean {
+  const type = node.type;
+  return type === "null" || (Array.isArray(type) && type.includes("null")) || node.nullable === true;
+}
+
+/**
+ * The schema a binding is REPLACED with, still admitting the null its own node
+ * declares. The replacing annotations (`x-telo-context-ref-from`,
+ * `-from-root`, `-from-ref-kind`) say what the value is when there is one; the
+ * node says whether there may be none, and dropping that let an unguarded member
+ * read through a null value pass. Written as a `type` list, the form the
+ * nullable-access check reads; a resolved schema declaring no `type` takes the
+ * node's own non-null types, which say what kind of value it is.
+ */
+function keepDeclaredNullability(
+  node: Record<string, any>,
+  resolved: Record<string, any>,
+): Record<string, any> {
+  if (!declaresNull(node) || declaresNull(resolved)) return resolved;
+  const own = resolved.type ?? (Array.isArray(node.type) ? node.type.filter((t: unknown) => t !== "null") : node.type);
+  const types = own === undefined ? [] : Array.isArray(own) ? own : [own];
+  return types.length === 0 ? { ...resolved, nullable: true } : { ...resolved, type: [...types, "null"] };
 }
 
 /**

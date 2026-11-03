@@ -329,7 +329,12 @@ interface NullableIssue {
 function schemaIsNullable(schema: Record<string, any> | undefined): boolean {
   if (!schema || typeof schema !== "object") return false;
   const t = schema.type;
-  return t === "null" || (Array.isArray(t) && t.includes("null"));
+  if (t === "null" || (Array.isArray(t) && t.includes("null"))) return true;
+  // A union admits null when one of its branches does.
+  const branches = Array.isArray(schema.anyOf) ? schema.anyOf : Array.isArray(schema.oneOf) ? schema.oneOf : [];
+  return (branches as unknown[]).some((branch) =>
+    schemaIsNullable(branch as Record<string, any> | undefined),
+  );
 }
 
 /** Navigate `schema` following a member chain, descending through `properties`.
@@ -513,6 +518,17 @@ function walkNullable(
  * reach inside a `live` value type — one whose consumption has effects, so its
  * contents exist only for a consumer that drains it.
  * Returns null when the chain is valid or the schema is too open to judge.
+ *
+ * A node is read with its `allOf` conjuncts ({@link schemaConjuncts}), and a
+ * document-local `$ref` (`#…`) is followed against the nearest node on the walk
+ * that holds its target — the innermost document a contract embedded whole
+ * carries its reached types in. A union (`anyOf` / `oneOf`) is read in every
+ * alternative: one that cannot hold an object (a null or scalar type, a value
+ * type with no members) or a closed object not declaring the member contributes
+ * nothing, and the chain continues through every alternative declaring it. A
+ * member is unknown only when every alternative is read and none declares it
+ * nor is open; an alternative, conjunct or reference that cannot be read leaves
+ * the chain unjudged.
  */
 export function validateChainAgainstSchema(
   chain: string[],
@@ -550,49 +566,199 @@ export function chainFailureAgainstSchema(
   chain: string[],
   schema: Record<string, any>,
 ): { path: string; message: string } | null {
-  let current: Record<string, any> = schema;
+  const walked: Record<string, any>[] = [];
+  let current: Record<string, any>[] = [schema];
   for (let i = 0; i < chain.length; i++) {
     const key = chain[i]!;
-    if (!current || typeof current !== "object") return null;
+    const alternatives = alternativesOf(
+      current,
+      walked,
+      key === INDEX_SEGMENT ? holdsCollection : holdsObject,
+    );
+    if (!alternatives || alternatives.length === 0) return null;
+    walked.push(...alternatives);
     // An index reads an ELEMENT: an array's `items`, or a map's value schema. What
     // is below it is checked like any member access, which is what reaches a
     // typo inside a list of records (`items[0].amont`). An object that also
     // declares `properties` may be indexed by one of those names, which the
     // chain does not record, so nothing below it is judged.
     if (key === INDEX_SEGMENT) {
-      const element =
-        current.items && typeof current.items === "object" && !Array.isArray(current.items)
-          ? current.items
-          : !current.properties &&
-              current.additionalProperties &&
-              typeof current.additionalProperties === "object"
-            ? current.additionalProperties
-            : undefined;
-      if (!element) return null;
-      current = element;
+      const elements: Record<string, any>[] = [];
+      for (const alternative of alternatives) {
+        const element =
+          alternative.items && typeof alternative.items === "object" && !Array.isArray(alternative.items)
+            ? alternative.items
+            : !alternative.properties &&
+                alternative.additionalProperties &&
+                typeof alternative.additionalProperties === "object"
+              ? alternative.additionalProperties
+              : undefined;
+        if (!element) return null;
+        elements.push(element);
+      }
+      current = elements;
       continue;
     }
-    // A value type declaring members is read by those members alone: they are its
-    // fields, closed as the CEL type the type registers.
-    const members = membersOf(current);
-    const props: Record<string, any> | undefined = members ?? current.properties;
-    if (!props) return null;
-    if (key in props) {
-      const propSchema = props[key];
-      if (isLiveSlot(propSchema) && i < chain.length - 1) {
+    const found: Record<string, any>[] = [];
+    let declares = false;
+    const available: string[] = [];
+    for (const alternative of alternatives) {
+      const conjuncts = schemaConjuncts(
+        alternative,
+        (node) => node,
+        (_, raw) => followLocalRef(raw as Record<string, any>, walked),
+      );
+      if (!conjuncts) return null;
+      let declared: Record<string, any> | undefined;
+      let groupDeclares = false;
+      for (const conjunct of conjuncts) {
+        // A value type declaring members is read by those members alone: they are
+        // its fields, closed as the CEL type the type registers.
+        const members = membersOf(conjunct);
+        const props: Record<string, any> | undefined = members ?? conjunct.properties;
+        if (!props) continue;
+        groupDeclares = true;
+        if (key in props) {
+          declared = props[key];
+          break;
+        }
+        if (!members && conjunct.additionalProperties === true) return null;
+        for (const name of Object.keys(props)) if (!available.includes(name)) available.push(name);
+      }
+      // An alternative saying nothing about its members could hold this one.
+      if (!groupDeclares) return null;
+      declares = true;
+      if (declared !== undefined) found.push(declared);
+    }
+    if (found.length > 0) {
+      if (i < chain.length - 1 && found.some((node) => isLiveSlot(node))) {
         const path = chain.slice(0, i + 1).join(".");
         return {
           path,
           message: `'${path}' yields a stream — pipe it through an Encoder or iterate in a JS.Script step (no member access on stream-typed values)`,
         };
       }
-      current = propSchema;
+      current = found;
       continue;
     }
-    if (!members && current.additionalProperties === true) return null;
+    if (!declares) return null;
     const path = chain.slice(0, i + 1).join(".");
-    const available = Object.keys(props).join(", ");
-    return { path, message: `'${path}' is not defined (available: ${available})` };
+    return { path, message: `'${path}' is not defined (available: ${available.join(", ")})` };
   }
   return null;
+}
+
+/**
+ * The alternatives a value at `nodes` may be read through: each node with its
+ * references followed and every union split into its branches, recursively,
+ * keeping only those `holds` accepts — what can hold the member or element the
+ * chain reads next. Undefined when a reference cannot be read.
+ */
+function alternativesOf(
+  nodes: readonly Record<string, any>[],
+  walked: readonly Record<string, any>[],
+  holds: (node: Record<string, any>) => boolean,
+): Record<string, any>[] | undefined {
+  const out: Record<string, any>[] = [];
+  const visit = (raw: Record<string, any>, depth: number): boolean => {
+    if (depth > 32) return false;
+    const node = followLocalRef(raw, [...walked, ...out]);
+    if (!node || typeof node !== "object") return false;
+    const branches = Array.isArray(node.anyOf) ? node.anyOf : Array.isArray(node.oneOf) ? node.oneOf : undefined;
+    if (branches && !node.properties && !node.allOf) {
+      for (const branch of branches as Record<string, any>[]) {
+        if (!branch || typeof branch !== "object" || !visit(branch, depth + 1)) return false;
+      }
+      return true;
+    }
+    if (holds(node)) out.push(node);
+    return true;
+  };
+  for (const node of nodes) if (!visit(node, 0)) return undefined;
+  return out;
+}
+
+/** Whether a value at `node` can be a list or a map a chain indexes into. */
+function holdsCollection(node: Record<string, any>): boolean {
+  if (node["x-telo-type"] !== undefined) return false;
+  const types = Array.isArray(node.type) ? node.type : node.type === undefined ? undefined : [node.type];
+  return !types || types.includes("array") || types.includes("object");
+}
+
+/** Whether a value at `node` can be an object whose members a chain reads: a
+ *  node typed as no object (null, a scalar, a list) or a value type with no
+ *  members cannot. */
+function holdsObject(node: Record<string, any>): boolean {
+  if (membersOf(node)) return true;
+  if (node["x-telo-type"] !== undefined) return false;
+  const types = Array.isArray(node.type) ? node.type : node.type === undefined ? undefined : [node.type];
+  if (types && !types.includes("object")) return false;
+  if ("const" in node && (node.const === null || typeof node.const !== "object")) return false;
+  return true;
+}
+
+/**
+ * A schema node and each of its `allOf` members, recursively — or undefined when
+ * a member cannot be read, which leaves the node unjudged. `schemaOf` reads the
+ * schema off whatever the caller carries per node (a node alone, or a node with
+ * the document its references resolve against), and `member` reads one written
+ * member in its parent's context, following its references.
+ *
+ * Shared by every walk reading a node as the conjunction it is — the CEL chain
+ * check and the analyzer's plain-literal decoding.
+ */
+export function schemaConjuncts<N>(
+  node: N,
+  schemaOf: (node: N) => Record<string, any>,
+  member: (parent: N, raw: unknown) => N | undefined,
+): N[] | undefined {
+  const out = [node];
+  const all = schemaOf(node).allOf;
+  if (!Array.isArray(all)) return out;
+  for (const raw of all as unknown[]) {
+    const read = member(node, raw);
+    if (read === undefined) return undefined;
+    const nested = schemaConjuncts(read, schemaOf, member);
+    if (!nested) return undefined;
+    out.push(...nested);
+  }
+  return out;
+}
+
+/** `node` with every document-local `$ref` it is followed through, resolved
+ *  against the nearest node of `walked` holding the target. A reference that is
+ *  not local, or whose target no walked node holds, yields undefined. */
+function followLocalRef(
+  node: Record<string, any> | undefined,
+  walked: readonly Record<string, any>[],
+): Record<string, any> | undefined {
+  const seen = new Set<object>();
+  let current = node;
+  while (current && typeof current === "object" && typeof current.$ref === "string") {
+    if (seen.has(current)) return undefined;
+    seen.add(current);
+    const ref = current.$ref as string;
+    if (!ref.startsWith("#")) return undefined;
+    let target: Record<string, any> | undefined;
+    for (let i = walked.length - 1; i >= 0 && target === undefined; i--) {
+      target = schemaAtPointer(walked[i]!, ref.slice(1));
+    }
+    current = target;
+  }
+  return current;
+}
+
+/** The node a JSON Pointer (the part of a reference after `#`) names in `root`. */
+function schemaAtPointer(root: Record<string, any>, pointer: string): Record<string, any> | undefined {
+  if (pointer === "") return root;
+  if (!pointer.startsWith("/")) return undefined;
+  let current: unknown = root;
+  for (const raw of pointer.slice(1).split("/")) {
+    const segment = decodeURIComponent(raw).replace(/~1/g, "/").replace(/~0/g, "~");
+    if (!current || typeof current !== "object") return undefined;
+    current = (current as Record<string, unknown>)[segment];
+  }
+  return current && typeof current === "object" && !Array.isArray(current)
+    ? (current as Record<string, any>)
+    : undefined;
 }

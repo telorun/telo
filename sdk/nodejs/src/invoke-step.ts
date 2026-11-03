@@ -25,7 +25,8 @@ import {
   parkRun,
 } from "./durable-suspension.js";
 import type { OpenZoneAttributes } from "./zone-attribute.js";
-import { tryParseDurationMs } from "./duration.js";
+import { isCelDuration } from "./cel-value-identity.js";
+import { durationMs, tryParseDurationMs } from "./duration.js";
 import { fileStepResult, stepLabel } from "./emitted-step.js";
 import { InvokeError, strandInputPointer } from "./invoke-error.js";
 import { RuntimeError } from "./types.js";
@@ -42,6 +43,10 @@ import { getRefIdentity, type ResourceInstance } from "./resource-instance.js";
  * duration-string spelling, kept because published manifests carry it, and read
  * as `initialDelay` when that is absent.
  *
+ * The delays are `Telo.Duration` slots: a manifest's text or integer has been
+ * decoded into a duration by the time a policy reaches here, and a policy
+ * assembled in code may carry an integer number of milliseconds instead.
+ *
  * Consumed HERE, in the leaf, rather than passed to `ctx.invoke`. The leaf has
  * four dispatch branches and only one of them went through `ctx.invoke`, so a
  * policy handed downstream was silently ignored for a pre-injected `!ref` — the
@@ -51,12 +56,12 @@ import { getRefIdentity, type ResourceInstance } from "./resource-instance.js";
 export interface InvokeStepRetry {
   /** Re-attempts after the first try. 0 (or absent) disables retrying. */
   attempts?: number;
-  /** Milliseconds before the first re-attempt. */
-  initialDelay?: number;
+  /** Wait before the first re-attempt: a duration, or integer milliseconds. */
+  initialDelay?: unknown;
   /** Multiplier applied to the delay after each re-attempt. */
   factor?: number;
-  /** Ceiling on the delay between re-attempts, in milliseconds. */
-  maxDelay?: number;
+  /** Ceiling on the delay between re-attempts: a duration, or integer milliseconds. */
+  maxDelay?: unknown;
   /** `full` picks each delay uniformly from [0, delay], decorrelating a fleet
    *  that failed together. */
   jitter?: "none" | "full";
@@ -82,6 +87,13 @@ export interface InvokeStepRetry {
    * the same thing wherever the step ends up executing.
    */
   nonRetryable?: string[];
+  /**
+   * CEL over `error` — the failure just caught — evaluated before each
+   * re-attempt: a duration replaces the computed backoff, null keeps it. Capped
+   * by `maxDelay` and never jittered, since it is the failure's own statement of
+   * when to come back rather than a curve to spread.
+   */
+  retryAfter?: unknown;
 }
 
 /**
@@ -117,7 +129,7 @@ export interface InvokeStep {
    * that honours cancellation stops working rather than continuing unobserved
    * past a deadline nobody is waiting on any more.
    */
-  timeout?: number;
+  timeout?: unknown;
 }
 
 /** An inline flat invoke step on an Application's `targets`. Same as an
@@ -290,7 +302,7 @@ export async function executeInvokeStep(
       ? deriveContext(state.invokeCtx, { durablePath: path })
       : state.invokeCtx;
   const execute = () =>
-    withStepRetry(step, stepCtx, ctx, rawHandle, path, (attemptCtx) =>
+    withStepRetry(step, stepCtx, ctx, rawHandle, path, cel, (attemptCtx) =>
       withStepTimeout(step, attemptCtx, (dispatchCtx) =>
         dispatch(raw, inputs, ctx, { ...state, invokeCtx: dispatchCtx }),
       ),
@@ -421,10 +433,12 @@ function instanceBehind(
  * after the tree was cancelled — so a backoff is the one interval where a
  * cancelled run would otherwise stay parked, for up to `attempts × maxDelay`.
  *
- * The defaults come from the schema (`Run` steps declare `default:` on every
- * field, as `Http.Request.retry` does), so the `??` fallbacks here are the floor
- * for a caller that assembled a policy in code rather than from a manifest — not
- * a second, competing statement of what a default is.
+ * The scalar defaults come from the schema; the two delays' defaults are
+ * stated here and in the shared fragment's descriptions, because a schema
+ * `default:` at a duration slot is filled as plain JSON that no runtime decodes.
+ *
+ * `retryAfter`, when declared, is evaluated over the caught failure before each
+ * re-attempt, in the step's own CEL scope with `error` bound beside it.
  */
 async function withStepRetry<T>(
   step: InvokeStep,
@@ -432,6 +446,7 @@ async function withStepRetry<T>(
   ctx: InvokeStepContext,
   handle: DurableRunHandle | undefined,
   path: string,
+  cel: Record<string, unknown>,
   dispatch: (ctx: InvokeContext | undefined) => Promise<T>,
 ): Promise<T> {
   const policy = step.retry;
@@ -454,8 +469,16 @@ async function withStepRetry<T>(
       // check unstateable, since the analyzer cannot know which way a coin
       // landed. Jitter still does its whole job — spreading re-attempts — on the
       // duration itself, in both branches.
-      const backoff = retryBackoffMs(policy, resend);
-      const delay = jitter === "full" ? Math.random() * backoff : backoff;
+      // A failure that says when to come back replaces the curve, and is waited
+      // out as stated: jittering it would come back early half the time.
+      const requested = retryAfterMs(
+        policy,
+        err,
+        (expression, error) => ctx.expandValue(expression, { ...cel, error }),
+        { describe: `Step '${step.name}'`, data: { step: step.name } },
+      );
+      const backoff = requested ?? retryBackoffMs(policy, resend);
+      const delay = requested === undefined && jitter === "full" ? Math.random() * backoff : backoff;
 
       // A LONG backoff inside a durable run suspends rather than sleeps, and the
       // attempt state is journaled with it. The obvious reading — only the
@@ -502,14 +525,95 @@ async function withStepRetry<T>(
  * the shape of the policy, and the two consumers want the shape: the runtime
  * branches on it (see `withStepRetry`) and the analyzer reports on it.
  *
- * The `??` fallbacks are the floor for a caller that assembled a policy in code;
- * a manifest gets its defaults from the schema.
+ * The two delays default here — 250ms and 32s — and nowhere else: a schema
+ * `default:` at a duration slot would be filled as plain JSON nothing decodes.
  */
 export function retryBackoffMs(policy: InvokeStepRetry, resend: number): number {
-  const initial = policy.initialDelay ?? parseDuration(policy.delay) ?? 250;
+  const initial = policyDelayMs(policy.initialDelay, "initialDelay") ?? parseDuration(policy.delay) ?? 250;
   const factor = policy.factor ?? 2;
-  const maxDelay = policy.maxDelay ?? 32_000;
-  return Math.min(maxDelay, initial * Math.pow(factor, resend));
+  return Math.min(retryMaxDelayMs(policy), initial * Math.pow(factor, resend));
+}
+
+/** The policy's ceiling on any one wait, in milliseconds. */
+export function retryMaxDelayMs(policy: InvokeStepRetry): number {
+  return policyDelayMs(policy.maxDelay, "maxDelay") ?? 32_000;
+}
+
+/**
+ * A retry delay in milliseconds, or undefined when the field is absent. Anything
+ * else is refused rather than read as the default: a delay that is not a duration
+ * of at least zero reaching here means the policy was assembled in code wrongly,
+ * or computed — and a silently different backoff is the outcome either way.
+ */
+function policyDelayMs(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  const ms = durationMs(value);
+  if (ms === undefined || ms < 0) {
+    throw new InvokeError(
+      "ERR_INVALID_VALUE",
+      `Step retry: '${field}' must be a duration of at least zero, or an integer number of milliseconds.`,
+      { field },
+    );
+  }
+  return ms;
+}
+
+/**
+ * What the policy's `retryAfter` asks to wait before re-attempting after `err`,
+ * capped by `maxDelay` — or undefined when it declares none or yields null, which
+ * keeps the computed backoff. A result that is neither a duration of at least zero
+ * nor null is refused, naming what it produced.
+ *
+ * Exported for every holder that runs its own loop over the shared policy (a
+ * worker re-attempting a delivery): `evaluate` is the holder's CEL evaluation of
+ * the expression with `error` bound, and `subject` names the holder in the
+ * refusal.
+ */
+export function retryAfterMs(
+  policy: InvokeStepRetry,
+  err: unknown,
+  evaluate: (expression: unknown, error: RetryErrorView) => unknown,
+  subject: { describe: string; data?: Record<string, unknown> },
+): number | undefined {
+  if (policy.retryAfter === undefined) return undefined;
+  const value = evaluate(policy.retryAfter, retryErrorView(err));
+  if (value === null) return undefined;
+  // A computed value is already the instance; an integer here is CEL's, not a
+  // manifest's milliseconds.
+  const ms = isCelDuration(value) ? durationMs(value) : undefined;
+  if (ms === undefined || ms < 0) {
+    throw new InvokeError(
+      "ERR_INVALID_VALUE",
+      `${subject.describe}: 'retry.retryAfter' must yield a duration of at least zero or null, ` +
+        `but produced ${describeProduced(value)}.`,
+      { ...subject.data, field: "retryAfter", pendingFailure: describeFailure(err) },
+    );
+  }
+  return Math.min(ms, retryMaxDelayMs(policy));
+}
+
+/** The failure a retry policy's CEL reads as `error`. */
+export interface RetryErrorView {
+  code: string;
+  message: string;
+  data: unknown;
+}
+
+/** The failure a retry policy's CEL reads as `error`. A failure carrying no code
+ *  reads as `INTERNAL_ERROR`, as it does inside a `catch:`. */
+export function retryErrorView(err: unknown): RetryErrorView {
+  const failure = err as { code?: unknown; data?: unknown } | null | undefined;
+  return {
+    code: typeof failure?.code === "string" ? failure.code : "INTERNAL_ERROR",
+    message: err instanceof Error ? err.message : String(err),
+    data: failure?.data ?? null,
+  };
+}
+
+function describeProduced(value: unknown): string {
+  if (value === undefined) return "nothing";
+  if (Array.isArray(value)) return "a list";
+  return typeof value === "object" ? "an object that is not a duration" : `a ${typeof value}`;
 }
 
 /** Kernel verdicts on the CALL rather than on the work, beyond the ambient
@@ -517,7 +621,13 @@ export function retryBackoffMs(policy: InvokeStepRetry, resend: number): number 
  *  re-issuing it re-resolves the same name against the same registry. */
 const UNRETRYABLE_CODES = new Set(["ERR_RESOURCE_NOT_FOUND", "ERR_RESOURCE_NOT_INVOKABLE"]);
 
-function isRetryable(err: unknown, nonRetryable?: string[]): boolean {
+/**
+ * Whether re-issuing the call that failed with `err` is capable of a different
+ * answer: never for a cancellation, a suspension, an ambient contract error, the
+ * kernel's verdicts on the call, or a code the policy lists in `nonRetryable`.
+ * Exported for every holder that runs its own loop over the shared policy.
+ */
+export function isRetryable(err: unknown, nonRetryable?: readonly string[]): boolean {
   if (isCancellationError(err)) return false;
   // A suspension is not a failure — it is the run leaving. Re-attempting it
   // would park again under the same policy until the budget ran out, and the
@@ -559,8 +669,15 @@ async function withStepTimeout<T>(
   invokeCtx: InvokeContext | undefined,
   dispatch: (ctx: InvokeContext | undefined) => Promise<T>,
 ): Promise<T> {
-  const ms = step.timeout;
-  if (ms === undefined || !(ms > 0)) return dispatch(invokeCtx);
+  if (step.timeout === undefined) return dispatch(invokeCtx);
+  const ms = durationMs(step.timeout);
+  if (ms === undefined || !(ms > 0)) {
+    throw new InvokeError(
+      "ERR_INVALID_VALUE",
+      `Step '${step.name}': 'timeout' must be a positive duration, or a positive integer number of milliseconds.`,
+      { step: step.name, field: "timeout" },
+    );
+  }
 
   const source = createCancellationSource();
   const base = invokeCtx ?? UNCANCELLABLE_CONTEXT;

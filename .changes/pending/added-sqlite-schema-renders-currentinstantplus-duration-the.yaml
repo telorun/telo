@@ -1,0 +1,7 @@
+modules:
+  modules/sqlite: Added
+body: SQLite.Schema renders currentInstantPlus(duration) — the current instant shifted
+  by a bound date modifier, in the same fixed-width UTC text to the millisecond,
+  refusing a shift that leaves years 0000–9999 — and instantParameter(timestamp) — a
+  bound Telo.Timestamp as that text, to the millisecond — and its skipLockedClause() is
+  empty, since SQLite has a single writer.

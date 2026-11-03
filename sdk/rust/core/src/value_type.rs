@@ -59,8 +59,17 @@ pub struct Parameter {
     /// a host path names when something is there — only on a `fromHost` entry, at
     /// most one per entry. Found by this flag, never by the parameter's name.
     pub host_entry: bool,
+    /// This parameter's argument is a BOUND on the value, one of [`VALUE_TYPE_BOUNDS`]:
+    /// a value of the type itself, written in its plain encoding, every value at the
+    /// slot must be at least / at most / above / below. Only on a non-live instance
+    /// with an encoding whose binding is [`Binding::ordered`]; each kind at most once.
+    pub bound: Option<String>,
     pub description: Option<String>,
 }
+
+/// The closed vocabulary of a bound parameter, mirroring the Node reader's
+/// `VALUE_TYPE_BOUNDS`.
+pub const VALUE_TYPE_BOUNDS: &[&str] = &["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"];
 
 /// The closed vocabulary of a host-entry argument: `directory` names a directory,
 /// `file` anything that is not one, links followed. Each runtime maps a token to
@@ -97,6 +106,9 @@ pub struct ValueType {
     /// Non-live `instance` with an encoding only — the code a text that does not read
     /// is refused under (`ERR_`-prefixed at runtime).
     pub accepts_text: Option<String>,
+    /// Non-live `instance` with an encoding only — the unit a JSON integer is read in:
+    /// the integer `n` is the text `<n><unit>` read through the encoding.
+    pub integer_unit: Option<String>,
     pub parameters: Vec<Parameter>,
     pub description: String,
 }
@@ -111,6 +123,10 @@ pub struct ValueType {
 pub struct Binding {
     /// A human-readable name for the host representation, used in diagnostics.
     pub rust_type: &'static str,
+    /// Whether two values of the representation are ordered, which a bound parameter
+    /// compares through. An entry declaring a bound over an unordered binding is
+    /// refused, as the Node reader refuses one whose binding has no `compare`.
+    pub ordered: bool,
 }
 
 /// This runtime's binding table — the ONLY per-language artifact in the whole
@@ -120,11 +136,11 @@ fn bindings() -> &'static HashMap<&'static str, Binding> {
     static BINDINGS: OnceLock<HashMap<&'static str, Binding>> = OnceLock::new();
     BINDINGS.get_or_init(|| {
         HashMap::from([
-            ("bytes", Binding { rust_type: "Bytes" }),
-            ("duration", Binding { rust_type: "Duration" }),
-            ("stream", Binding { rust_type: "Stream" }),
-            ("timestamp", Binding { rust_type: "Timestamp" }),
-            ("url", Binding { rust_type: "plain_encoding::url_text::Url" }),
+            ("bytes", Binding { rust_type: "Bytes", ordered: false }),
+            ("duration", Binding { rust_type: "Duration", ordered: true }),
+            ("stream", Binding { rust_type: "Stream", ordered: false }),
+            ("timestamp", Binding { rust_type: "Timestamp", ordered: false }),
+            ("url", Binding { rust_type: "plain_encoding::url_text::Url", ordered: false }),
         ])
     })
 }
@@ -171,6 +187,7 @@ const ENTRY_KEYS: &[&str] = &[
     "live",
     "members",
     "acceptsText",
+    "integerForm",
     "parameters",
     "description",
     "$comment",
@@ -279,7 +296,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                     if let Some(map) = item.as_object() {
                         for key in map.keys() {
                             assert!(
-                                matches!(key.as_str(), "name" | "description" | "element" | "member" | "hostEntry"),
+                                matches!(key.as_str(), "name" | "description" | "element" | "member" | "hostEntry" | "bound"),
                                 "Invalid value-type entry '{file}': a parameter has no key '{key}'"
                             );
                         }
@@ -304,6 +321,14 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
                             "Invalid value-type entry '{file}': a parameter's 'hostEntry' must be a boolean when present"
                         ),
                     },
+                    bound: item.get("bound").map(|bound| {
+                        let bound = bound.as_str().filter(|bound| VALUE_TYPE_BOUNDS.contains(bound));
+                        bound
+                            .unwrap_or_else(|| panic!(
+                                "Invalid value-type entry '{file}': a parameter's 'bound' must be one of {VALUE_TYPE_BOUNDS:?} when present"
+                            ))
+                            .to_owned()
+                    }),
                     description: item
                         .get("description")
                         .and_then(Value::as_str)
@@ -330,6 +355,24 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
     }
     if parameters.iter().filter(|p: &&Parameter| p.host_entry).count() > 1 {
         panic!("Invalid value-type entry '{file}': at most one parameter may declare 'hostEntry'");
+    }
+    // A bound is a value of the type, written in its encoding and compared through its
+    // binding's ordering, by the Node reader's rules.
+    for bound in VALUE_TYPE_BOUNDS {
+        if parameters.iter().filter(|p| p.bound.as_deref() == Some(bound)).count() > 1 {
+            panic!("Invalid value-type entry '{file}': at most one parameter may declare 'bound: {bound}'");
+        }
+    }
+    if parameters.iter().any(|p| p.bound.is_some()) {
+        assert!(
+            representation == Representation::Instance && !live && encoding.is_some(),
+            "Invalid value-type entry '{file}': 'bound' belongs to a parameter of a non-live 'instance' with an 'encoding'"
+        );
+        let ordered = binding.as_deref().and_then(|key| bindings().get(key)).is_some_and(|b| b.ordered);
+        assert!(
+            ordered,
+            "Invalid value-type entry '{file}': a parameter declares 'bound', but its binding has no ordering in this runtime"
+        );
     }
 
     // `members` and `acceptsText`, by the Node reader's rules: an entry refused on one
@@ -378,6 +421,25 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
         );
         code.to_owned()
     });
+    let integer_unit = obj.get("integerForm").map(|raw| {
+        assert!(
+            representation == Representation::Instance && !live && encoding.is_some(),
+            "Invalid value-type entry '{file}': 'integerForm' belongs to a non-live 'instance' with an 'encoding'"
+        );
+        let unit = raw
+            .as_object()
+            .filter(|object| object.keys().all(|key| key == "unit"))
+            .and_then(|object| object.get("unit"))
+            .and_then(Value::as_str)
+            .filter(|unit| !unit.is_empty())
+            .unwrap_or_else(|| panic!("Invalid value-type entry '{file}': 'integerForm' is a mapping holding exactly 'unit'"));
+        let name = encoding.as_deref().unwrap_or_default();
+        assert!(
+            crate::plain_encoding::reads_text(name, &format!("0{unit}")),
+            "Invalid value-type entry '{file}': 'integerForm.unit' '{unit}' is not a unit encoding '{name}' reads ('0{unit}' does not decode)"
+        );
+        unit.to_owned()
+    });
     for parameter in &parameters {
         if let Some(member) = &parameter.member {
             assert!(
@@ -399,6 +461,7 @@ fn read_entry(file: &str, raw: &Value) -> ValueType {
         live,
         members,
         accepts_text,
+        integer_unit,
         parameters,
         description: string("description").unwrap_or_default(),
     }
@@ -423,6 +486,21 @@ pub fn value_types() -> &'static HashMap<String, ValueType> {
         out
     })
 }
+
+/// The unit a JSON integer is read in for the type a runtime holds under `binding`, or
+/// `None` when that type has no integer form. Found by binding — the key this runtime
+/// maps to its own identity — never by a type's name.
+pub fn integer_unit_of_binding(binding: &str) -> Option<&'static str> {
+    value_types()
+        .values()
+        .find(|entry| entry.binding.as_deref() == Some(binding))
+        .and_then(|entry| entry.integer_unit.as_deref())
+}
+
+/// The largest integer every runtime reads exactly — a JSON number past it is already
+/// some other integer in a runtime holding numbers as doubles, so an integer form
+/// admits only integers within it, alike everywhere.
+pub const MAX_EXACT_INTEGER: i64 = (1 << 53) - 1;
 
 /// The name a schema node declares, in either spelling: a bare name, or the
 /// object form carrying type arguments.
@@ -543,6 +621,25 @@ mod tests {
         assert!(types["Telo.Stream"].encoding.is_none());
         assert_eq!(types["Telo.HostPath"].from_host.as_deref(), Some("working-directory"));
         assert!(types["Telo.HostPath"].cel_type.is_none());
+        assert_eq!(types["Telo.Duration"].integer_unit.as_deref(), Some("ms"));
+        assert_eq!(integer_unit_of_binding("duration"), Some("ms"));
+        assert!(types["Telo.Timestamp"].integer_unit.is_none());
+    }
+
+    #[test]
+    #[should_panic(expected = "is not a unit encoding 'cel-duration' reads")]
+    fn an_integer_unit_the_encoding_cannot_read_is_refused() {
+        read_entry(
+            "bad-unit.json",
+            &json!({
+                "name": "Telo.Span",
+                "representation": "instance",
+                "binding": "duration",
+                "encoding": "cel-duration",
+                "integerForm": { "unit": "d" },
+                "description": "x"
+            }),
+        );
     }
 
     #[test]
@@ -654,6 +751,22 @@ mod tests {
                 "base": "string",
                 "fromHost": "working-directory",
                 "parameters": [{ "name": "entry", "hostEntry": "yes" }],
+                "description": "x"
+            }),
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "its binding has no ordering in this runtime")]
+    fn a_bound_over_an_unordered_binding_is_refused() {
+        read_entry(
+            "bounded-bytes.json",
+            &json!({
+                "name": "Telo.BoundedBytes",
+                "representation": "instance",
+                "binding": "bytes",
+                "encoding": "base64url",
+                "parameters": [{ "name": "minimum", "bound": "minimum" }],
                 "description": "x"
             }),
         );

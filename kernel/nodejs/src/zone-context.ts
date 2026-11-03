@@ -84,6 +84,8 @@ export class ZoneContext {
   readonly #host: ZoneHost;
   /** Field → resolved requirement. See the file docstring. */
   readonly #requirements = new Map<string, ResolvedRequirement>();
+  /** The requirement at the kind's schema root, resolved once. */
+  #rootRequirement: ResolvedRequirement | undefined;
   /** Slot → resolved correlation handle for a providing slot. */
   readonly #providers = new Map<string, { key?: ResourceHandle }>();
   /** Providing kind → what the zone it provides declares about its contents.
@@ -114,7 +116,8 @@ export class ZoneContext {
     return runWithAmbientContext(derived, () => fn(derived, entry));
   }
 
-  requireZone(field: string, ctx?: InvokeContext): ZoneEntry {
+  /** `field` undefined is the requirement at the kind's schema root. */
+  requireZone(field: string | undefined, ctx?: InvokeContext): ZoneEntry {
     const resolved = this.resolveRequirement(field);
     const entry = this.match(resolved, ctx);
     if (entry) return entry;
@@ -128,7 +131,7 @@ export class ZoneContext {
     );
   }
 
-  findZone(field: string, ctx?: InvokeContext): ZoneEntry | undefined {
+  findZone(field: string | undefined, ctx?: InvokeContext): ZoneEntry | undefined {
     return this.match(this.resolveRequirement(field), ctx);
   }
 
@@ -223,16 +226,21 @@ export class ZoneContext {
     return resolved;
   }
 
-  private resolveRequirement(field: string): ResolvedRequirement {
-    const cached = this.#requirements.get(field);
+  private resolveRequirement(field: string | undefined): ResolvedRequirement {
+    const cached = field === undefined ? this.#rootRequirement : this.#requirements.get(field);
     if (cached) return cached;
-    const requirement = readRequiresZone(this.slotSchema(field));
+    const requirement = readRequiresZone(
+      field === undefined ? this.rootSchema() : this.slotSchema(field),
+    );
     if (!requirement) {
+      const site =
+        field === undefined
+          ? `requireZone(): the schema root of ${this.#host.resolvedKind}`
+          : `requireZone('${field}'): schema.properties.${field} of ${this.#host.resolvedKind}`;
       throw new RuntimeError(
         "ERR_ZONE_ANNOTATION_MISSING",
-        `[${this.#host.resourceName}] requireZone('${field}'): schema.properties.${field} of ` +
-          `${this.#host.resolvedKind} carries no x-telo-requires-zone — the controller and its ` +
-          `schema disagree`,
+        `[${this.#host.resourceName}] ${site} carries no x-telo-requires-zone — the controller ` +
+          `and its schema disagree`,
       );
     }
     const requiredKind = this.resolveZoneKind(requirement.zone);
@@ -246,7 +254,8 @@ export class ZoneContext {
       keyHandle:
         requirement.key.length > 0 ? this.resolveCorrelationHandle(requirement.key) : undefined,
     };
-    this.#requirements.set(field, resolved);
+    if (field === undefined) this.#rootRequirement = resolved;
+    else this.#requirements.set(field, resolved);
     return resolved;
   }
 
@@ -270,6 +279,11 @@ export class ZoneContext {
     const def = this.ownDefinition();
     return (def.schema as { properties?: Record<string, Record<string, any>> } | undefined)
       ?.properties?.[field];
+  }
+
+  /** The kind's own schema root — where an unconditional requirement lives. */
+  private rootSchema(): Record<string, any> | undefined {
+    return this.ownDefinition().schema as Record<string, any> | undefined;
   }
 
   private ownDefinition(): ResourceDefinition {

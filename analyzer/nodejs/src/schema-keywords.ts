@@ -304,6 +304,25 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       "This field holds a JSON Schema matched against the value an accessor field names: a JSON Pointer, relative to the object enclosing this field, to that `x-telo-eval: accessor` field. A schema that can never hold for the accessor's type is refused.",
     type: "string",
   },
+  "x-telo-retry-for": {
+    title: "Retry for",
+    description:
+      "The retry policy at this field re-attempts the dispatch through one of this kind's own " +
+      "reference slots: `slot` is a JSON Pointer to that top-level field, and `codes` lists the codes " +
+      "the kind raises into the loop itself, each with a `description` and an optional `data` schema. " +
+      "`telo check` then judges `nonRetryable` and types `retryAfter`'s `error` against that dispatch's " +
+      "throws plus these codes, as it does a step's own retry.",
+    type: "object",
+  },
+  "x-telo-serializable": {
+    title: "Serializable",
+    description:
+      "On a slot holding a shape (a reference slot with `use: schema`, or a JSON-Schema-valued field): " +
+      "values of that shape are stored or serialized, so it may hold no live value at any depth. " +
+      "A shape holding one is refused where the resource names it, and when the resource is created. Only `true`.",
+    type: "boolean",
+    const: true,
+  },
   "x-telo-catches-for": {
     title: "Catches for",
     description:

@@ -1,5 +1,11 @@
-import { isTaggedSentinel } from "@telorun/templating";
-import { decodePlainText, isCelRecord, isCompiledValue } from "@telorun/sdk";
+import { isTaggedSentinel, schemaConjuncts } from "@telorun/templating";
+import {
+  decodePlainInteger,
+  decodePlainText,
+  isCelRecord,
+  isCompiledValue,
+  isValueTypeSlot,
+} from "@telorun/sdk";
 import { membersSlotOf, readMembersLiteral } from "./members-value-slot.js";
 import {
   collectProperties,
@@ -13,7 +19,9 @@ import {
 /**
  * Decode, IN PLACE, every string literal a resource's config writes at a slot
  * whose value type declares a plain encoding — a timestamp as RFC 3339 text,
- * bytes as base64url — into the instance the slot holds.
+ * bytes as base64url — into the instance the slot holds, and every integer
+ * literal at a slot whose type declares an integer form (a duration's
+ * milliseconds).
  *
  * A YAML literal is one of the places a value arrives from outside Telo, so it
  * is the one place such text is read; the slot holds the instance everywhere
@@ -35,7 +43,16 @@ export function decodePlainLiterals(
   external?: ExternalSchemaResolver,
   rootSchema: Record<string, any> = schema,
 ): unknown {
-  return mapTextLeaves(value, schema, decodePlainText, external, rootSchema, undefined, composeLiteralMembers);
+  return mapTextLeaves(
+    value,
+    schema,
+    decodePlainText,
+    external,
+    rootSchema,
+    undefined,
+    composeLiteralMembers,
+    decodePlainInteger,
+  );
 }
 
 /** An object of literal members at a slot of a type declaring them, built — or
@@ -53,6 +70,9 @@ export type TextLeafMapper = (schema: Record<string, any>, text: string, pointer
  *  sits at — for a question about a slot rather than about its text. */
 export type SchemaNodeVisitor = (schema: Record<string, any>, node: unknown, pointer: string) => void;
 
+/** What a number leaf becomes, given the schema node it sits at. */
+export type NumberLeafMapper = (schema: Record<string, any>, value: number) => unknown;
+
 /** What a plain record becomes, given the schema node it sits at and its JSON
  *  Pointer — or undefined to descend into it as a container. */
 export type RecordMapper = (schema: Record<string, any>, record: Record<string, unknown>, pointer: string) => unknown;
@@ -63,7 +83,8 @@ export type RecordMapper = (schema: Record<string, any>, record: Record<string, 
  * the schema node it sits at. The same union branch, the same stops at reference
  * slots, compiled expressions and instances — so a caller asking another
  * question of the text leaves (is this host path absolute?) visits exactly the
- * leaves decoding does. `visit`, when given, is called on every node first.
+ * leaves decoding does. `visit`, when given, is called on every node first;
+ * `numeric`, when given, maps every number leaf as `leaf` maps a string.
  */
 export function mapTextLeaves(
   value: unknown,
@@ -73,26 +94,49 @@ export function mapTextLeaves(
   rootSchema: Record<string, any> = schema,
   visit?: SchemaNodeVisitor,
   record?: RecordMapper,
+  numeric?: NumberLeafMapper,
 ): unknown {
-  const walk = (
-    node: unknown,
-    raw: Record<string, any>,
-    base: Record<string, any>,
-    pointer: string,
-  ): unknown => {
+  // A node is read as the conjunction it is: its own keywords and every `allOf`
+  // member, each with the document its references resolve against — so a
+  // contract node typed by `x-telo-value-schema-from` (an `allOf` of references
+  // into the contract's own `$defs`) decodes what its reached types declare.
+  const expand = (node: unknown, raw: Record<string, any>, base: Record<string, any>): SchemaPart[] => {
     const entered = resolveRefIn(raw, base, external);
     const selected = selectUnionBranch(entered.schema, node, entered.root, external);
-    const { schema: here, root } = resolveRefIn(selected, entered.root, external);
+    const here = resolveRefIn(selected, entered.root, external);
+    return (
+      schemaConjuncts<SchemaPart>(
+        here,
+        (part) => part.schema,
+        (part, member) => {
+          if (!member || typeof member !== "object" || Array.isArray(member)) return undefined;
+          const read = resolveRefIn(member as Record<string, any>, part.root, external);
+          if (typeof read.schema.$ref === "string") return undefined;
+          const branch = selectUnionBranch(read.schema, node, read.root, external);
+          return resolveRefIn(branch, read.root, external);
+        },
+      ) ?? [here]
+    );
+  };
 
-    visit?.(here, node, pointer);
-    if (typeof node === "string") return leaf(here, node, pointer);
+  const walk = (node: unknown, raw: readonly SchemaPart[], pointer: string): unknown => {
+    const parts = raw.flatMap((part) => expand(node, part.schema, part.root));
+    // The member saying what the value IS — a value type — answers for the slot.
+    const slot = parts.find((part) => isValueTypeSlot(part.schema)) ?? parts[0]!;
+
+    visit?.(slot.schema, node, pointer);
+    if (typeof node === "string") return leaf(slot.schema, node, pointer);
+    if (typeof node === "number" && numeric) return numeric(slot.schema, node);
     if (!node || typeof node !== "object") return node;
-    if (here["x-telo-ref"] !== undefined) return node;
+    if (parts.some((part) => part.schema["x-telo-ref"] !== undefined)) return node;
     if (isCompiledValue(node) || isTaggedSentinel(node)) return node;
 
     if (Array.isArray(node)) {
-      const item = resolveRefIn((here.items ?? {}) as Record<string, any>, root, external);
-      for (let i = 0; i < node.length; i++) node[i] = walk(node[i], item.schema, item.root, `${pointer}/${i}`);
+      const items = parts
+        .filter((part) => part.schema.items && typeof part.schema.items === "object")
+        .map((part) => ({ schema: part.schema.items as Record<string, any>, root: part.root }));
+      const each = items.length > 0 ? items : [{ schema: {}, root: slot.root }];
+      for (let i = 0; i < node.length; i++) node[i] = walk(node[i], each, `${pointer}/${i}`);
       return node;
     }
     // A branded CEL value — a duration, a uint, a timestamp — is a PLAIN
@@ -100,23 +144,32 @@ export function mapTextLeaves(
     // the decoded value and descending into its fields would decode its parts
     // against the slot's own schema.
     if (!isCelRecord(node)) return node;
-    const mapped = record?.(here, node as Record<string, unknown>, pointer);
+    const mapped = record?.(slot.schema, node as Record<string, unknown>, pointer);
     if (mapped !== undefined) return mapped;
-    const properties = collectProperties(here);
-    const additional =
-      here.additionalProperties && typeof here.additionalProperties === "object"
-        ? (here.additionalProperties as Record<string, any>)
-        : undefined;
     const entries = node as Record<string, unknown>;
     for (const key of Object.keys(entries)) {
-      const child = properties[key] ?? additional;
-      if (child) {
-        entries[key] = walk(entries[key], child, root, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`);
+      const children: SchemaPart[] = [];
+      for (const part of parts) {
+        const additional =
+          part.schema.additionalProperties && typeof part.schema.additionalProperties === "object"
+            ? (part.schema.additionalProperties as Record<string, any>)
+            : undefined;
+        const child = collectProperties(part.schema)[key] ?? additional;
+        if (child) children.push({ schema: child, root: part.root });
+      }
+      if (children.length > 0) {
+        entries[key] = walk(entries[key], children, `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}`);
       }
     }
     return node;
   };
-  return walk(value, schema, rootSchema, "");
+  return walk(value, [{ schema, root: rootSchema }], "");
+}
+
+/** A schema node with the document its references resolve against. */
+interface SchemaPart {
+  readonly schema: Record<string, any>;
+  readonly root: Record<string, any>;
 }
 
 /**
@@ -144,7 +197,7 @@ export function substituteDecodedCelFields(
 
 /** Arrays and plain objects copied, every other value shared — the containers
  *  decoding writes into. */
-function copyPlainContainers(value: unknown): unknown {
+export function copyPlainContainers(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(copyPlainContainers);
   if (!value || typeof value !== "object" || isCompiledValue(value) || isTaggedSentinel(value)) {
     return value;

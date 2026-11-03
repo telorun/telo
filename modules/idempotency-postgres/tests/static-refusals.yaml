@@ -1,0 +1,23 @@
+# The PostgreSQL ledger table kind declares the duplicate-name rule itself (a
+# table kind has one parent, its engine's Table), so it is pinned here at
+# `telo check`. The refusal at creation is the shared ledger code's, run by the
+# SQLite module's suite and identical on every engine.
+kind: Telo.Application
+metadata:
+  name: IdempotencyPostgresStaticRefusals
+  version: 1.0.0
+  description: The PostgreSQL ledger's refusals, as `telo check` reports them.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref ledgerNameDuplicate
+---
+kind: Assert.Manifest
+metadata: { name: ledgerNameDuplicate }
+source: ./__fixtures__/ledger-name-duplicate/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Idempotency.Ledger/orders at 'table': required by Idempotency.Table — claims a ledger name"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Idempotency.Ledger/ordersAgain at 'table'"

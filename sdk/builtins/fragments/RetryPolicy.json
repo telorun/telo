@@ -13,10 +13,11 @@
     },
     "initialDelay": {
       "title": "Initial delay",
-      "description": "Milliseconds to wait before the first re-attempt.",
-      "type": "integer",
-      "minimum": 0,
-      "default": 250
+      "description": "How long to wait before the first re-attempt, at least zero: a duration (`250ms`, `2s`) or an integer number of milliseconds. 250ms when omitted.",
+      "x-telo-type": {
+        "name": "Telo.Duration",
+        "minimum": "0s"
+      }
     },
     "factor": {
       "title": "Factor",
@@ -27,10 +28,11 @@
     },
     "maxDelay": {
       "title": "Max delay",
-      "description": "Ceiling on the delay between re-attempts, in milliseconds.",
-      "type": "integer",
-      "minimum": 0,
-      "default": 32000
+      "description": "Ceiling on the delay between re-attempts, at least zero: a duration (`30s`) or an integer number of milliseconds. 32s when omitted.",
+      "x-telo-type": {
+        "name": "Telo.Duration",
+        "minimum": "0s"
+      }
     },
     "jitter": {
       "title": "Jitter",
@@ -42,9 +44,61 @@
       ],
       "default": "full"
     },
+    "nonRetryable": {
+      "title": "Non-retryable codes",
+      "description": "Error codes that end the loop immediately instead of consuming the budget. The built-in exclusions are the ones decidable without judgement — a cancellation, and the kernel's verdicts on the shape of the call; whether a DOMAIN failure is worth re-attempting only the author knows, and without this every terminal one is retried to exhaustion — for a non-idempotent target, N extra attempts at a side effect.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": []
+    },
+    "retryAfter": {
+      "title": "Retry after",
+      "description": "CEL over the failure just caught (`error`): a duration replaces the computed backoff before the next re-attempt, and null keeps it. How a failure that says when to come back — a rate limit's reset time in its data — is waited out exactly. Waited as stated, with no jitter, and capped by `maxDelay`. `error` exists only where the policy is evaluated per failure; where the resource holding it resolves its fields once, when it is created, it is a fixed wait.",
+      "x-telo-context": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "description": "The failure the re-attempt is deciding about.",
+            "x-telo-context-eval": "runtime",
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "description": "Structured error code; INTERNAL_ERROR for a failure that carries none.",
+                "type": "string"
+              },
+              "message": {
+                "description": "Human-readable error message.",
+                "type": "string"
+              },
+              "data": {
+                "description": "Structured payload the failure carries, else null."
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "anyOf": [
+        {
+          "x-telo-type": {
+            "name": "Telo.Duration",
+            "minimum": "0s"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "delay": {
       "title": "Delay",
-      "description": "DEPRECATED duration string (`250ms`, `1s`) — read as `initialDelay` when that is absent. The pattern is what makes a typo a `telo check` failure instead of a silently different backoff.",
+      "description": "DEPRECATED — write `initialDelay`, which takes a duration. A duration string (`250ms`, `1s`) read as `initialDelay` when that is absent. The pattern is what makes a typo a `telo check` failure instead of a silently different backoff.",
       "type": "string",
       "pattern": "^[0-9]+(\\.[0-9]+)?\\s*(ms|s|m|h)$"
     }

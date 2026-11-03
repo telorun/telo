@@ -1,7 +1,7 @@
 {
   "extends": "../../../tsconfig.base.json",
   "files": [],
-  "include": ["src/**/*.ts", "test/**/*.ts"],
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
   "compilerOptions": {
     "strict": true,
     "esModuleInterop": true

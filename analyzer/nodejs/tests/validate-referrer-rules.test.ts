@@ -911,3 +911,139 @@ describe("referrer rules — resolveSelf", () => {
     expect(issues.map((i) => i.path)).toEqual(["schema.x-telo-referrer-rules[0].resolveSelf[0]"]);
   });
 });
+
+describe("co-referrer rules", () => {
+  const storeSlot = { "x-telo-ref": { kind: "Q.Table", use: "dependency" } };
+  const SCHEMAS: Record<string, Record<string, any>> = {
+    "Q.Store": {
+      type: "object",
+      properties: { name: { type: "string" }, table: storeSlot, archive: storeSlot },
+    },
+  };
+  const NAME_UNIQUE = {
+    type: "object",
+    "x-telo-referrer-rules": [
+      {
+        referrer: "Q.Store",
+        coReferrers: "/table",
+        condition: cel("!coReferrers.exists(o, o.name == referrer.name)"),
+        code: "NAME_DUPLICATE",
+        message: "claims a name another store on this table already claims",
+      },
+    ],
+  };
+  const table = { kind: "Q.Table", metadata: { name: "jobs" } } as unknown as ResourceManifest;
+  const store = (name: string, extra: Record<string, unknown> = {}): ResourceManifest =>
+    ({
+      kind: "Q.Store",
+      metadata: { name: `${name}Store${Object.keys(extra).length}` },
+      name,
+      table: resolvedReference("Q.Table", "jobs"),
+      ...extra,
+    }) as unknown as ResourceManifest;
+  const through = (manifest: ResourceManifest, path = "table"): Referrer => referrer(manifest, path);
+  const matches = (filter: string, kind: string) => filter === kind;
+  const context = (...declarations: ResourceManifest[]): ReferrerRuleContext => {
+    const byName = new Map(declarations.map((d) => [d.metadata!.name as string, d]));
+    return {
+      peerBinder: new PeerBinder({
+        declarationOf: (r) => byName.get(r.name),
+        ...reachEnv(SCHEMAS),
+      }),
+    };
+  };
+
+  it("refuses each of two referrers claiming one name through the slot", () => {
+    const a = store("emails");
+    const b = store("emails", { note: "second" });
+    const findings = evaluateReferrerRules(
+      table,
+      NAME_UNIQUE,
+      [through(a), through(b)],
+      matches,
+      context(table),
+    );
+    expect(findings.map((f) => [f.kind, f.referrer?.manifest])).toEqual([
+      ["violation", a],
+      ["violation", b],
+    ]);
+  });
+
+  it("holds for different names, and binds each co-referrer's references resolved", () => {
+    const a = store("emails");
+    const b = store("reports");
+    const SEES_TABLE = {
+      type: "object",
+      "x-telo-referrer-rules": [
+        {
+          referrer: "Q.Store",
+          coReferrers: "/table",
+          condition: cel(
+            "coReferrers.all(o, o.table.metadata.name == 'jobs') && !coReferrers.exists(o, o.name == referrer.name)",
+          ),
+          code: "NAME_DUPLICATE",
+          message: "m",
+        },
+      ],
+    };
+    expect(
+      evaluateReferrerRules(table, SEES_TABLE, [through(a), through(b)], matches, context(table)),
+    ).toEqual([]);
+  });
+
+  it("excludes a referrer reaching the resource through another slot", () => {
+    const a = store("emails");
+    const b = store("emails", { note: "archived" });
+    const findings = evaluateReferrerRules(
+      table,
+      NAME_UNIQUE,
+      [through(a), through(b, "archive")],
+      matches,
+      context(table),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it("reports rather than passes when a co-referrer's reference resolves to nothing", () => {
+    const a = store("emails");
+    const b = store("reports", { archive: resolvedReference("Q.Table", "missing") });
+    const findings = evaluateReferrerRules(
+      table,
+      NAME_UNIQUE,
+      [through(a), through(b)],
+      matches,
+      context(table),
+    );
+    expect(findings[0]).toMatchObject({
+      kind: "unbound",
+      referrer: { manifest: a },
+      failure: { reason: "unresolved" },
+    });
+  });
+
+  it("is exercised only by a referrer reaching through the slot", () => {
+    const [rule] = readReferrerRules(NAME_UNIQUE);
+    expect(referrerRuleExercised(rule!, [through(store("a"), "archive")], matches)).toBe(false);
+    expect(referrerRuleExercised(rule!, [through(store("a"))], matches)).toBe(true);
+  });
+
+  it("refuses a `coReferrers:` with no `referrer:`, or naming no reference slot", () => {
+    const rule = (extra: Record<string, unknown>) =>
+      definition({
+        "x-telo-referrer-rules": [
+          { condition: cel("true"), code: "C", message: "m", coReferrers: "/table", ...extra },
+        ],
+      });
+    expect(validateReferrerRuleDeclarations(rule({})).map((i) => i.message)).toEqual([
+      expect.stringContaining("must also declare 'referrer:'"),
+    ]);
+    expect(
+      validateReferrerRuleDeclarations(rule({ referrer: "Q.Store" }), { referrerSlot: () => "absent" }).map(
+        (i) => i.path,
+      ),
+    ).toEqual(["schema.x-telo-referrer-rules[0].coReferrers"]);
+    expect(
+      validateReferrerRuleDeclarations(rule({ referrer: "Q.Store" }), { referrerSlot: () => "ok" }),
+    ).toEqual([]);
+  });
+});

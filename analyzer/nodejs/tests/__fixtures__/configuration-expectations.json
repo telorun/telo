@@ -1138,7 +1138,7 @@
       "severity": 1,
       "file": "tests/__fixtures__/configurations/step-union-choice.yaml",
       "path": "steps[0].timeout",
-      "message": "Telo.Sequence/main: /steps/0/timeout must be >= 1 (when variables.flag1 is true)",
+      "message": "Telo.Sequence/main: /steps/0/timeout must be a Telo.Duration greater than 0s, not 0s (when variables.flag1 is true)",
       "configurations": [
         {
           "variables.flag1": true

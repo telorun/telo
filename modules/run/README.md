@@ -142,7 +142,7 @@ See [Bindings and pure steps](docs/bindings.md).
 
 ## Retrying a step
 
-Any dispatch site takes a `retry:` policy — `attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter`, `nonRetryable` — and a per-attempt `timeout:`. A step and an Application `targets:` entry are the same kernel-owned shape, so it reads identically in both:
+Any dispatch site takes a `retry:` policy — `attempts`, `initialDelay` and `maxDelay` (durations, or integer milliseconds), `factor`, `jitter`, `nonRetryable`, and `retryAfter` (CEL over the failure yielding the wait to take instead of the backoff) — and a per-attempt `timeout:` (a duration). A step and an Application `targets:` entry are the same kernel-owned shape, so it reads identically in both:
 
 ```yaml
   - name: Charge

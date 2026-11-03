@@ -13,6 +13,7 @@
  * (`1h30m`, no `d`). A field moved from a string read here to `Telo.Duration`
  * changes which literals are valid, and is a breaking change for its kind.
  */
+import { durationNanos, isCelDuration } from "./cel-value-identity.js";
 import { RuntimeError } from "./types.js";
 
 const DURATION_PATTERN = /^(\d+(?:\.\d+)?)\s*(ms|s|m|h|d)$/;
@@ -39,4 +40,21 @@ export function parseDurationMs(value: string | undefined, fallback = 0): number
     );
   }
   return ms;
+}
+
+const NANOS_PER_MILLISECOND = 1_000_000n;
+
+/**
+ * A `Telo.Duration` slot's value in milliseconds, or `undefined` when it holds
+ * neither form a reader is handed: the duration instance a decoded slot holds, or
+ * an integer number of milliseconds — what a policy assembled in code carries, and
+ * what an older runtime that typed the slot as an integer delivers. A fraction of a
+ * millisecond is kept. Text is never read here: it is decoded where it arrives.
+ */
+export function durationMs(value: unknown): number | undefined {
+  if (isCelDuration(value)) {
+    const nanos = durationNanos(value);
+    return Number(nanos / NANOS_PER_MILLISECOND) + Number(nanos % NANOS_PER_MILLISECOND) / 1e6;
+  }
+  return Number.isSafeInteger(value) ? (value as number) : undefined;
 }

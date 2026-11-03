@@ -210,7 +210,23 @@ connection's `search_path` never decides which table a statement reaches.
 
 The schema instance also renders the current instant for a consumer that
 records database time: `clock_timestamp()` — the moment the statement runs, not
-the transaction's start — in the storage form of a `timestamptz` column.
+the transaction's start — in the storage form of a `timestamptz` column, to the
+microsecond. `clock_timestamp()` is read each time it is evaluated, so two
+instants in one statement are moments apart. It renders that instant shifted by
+a signed `Telo.Duration` too — `clock_timestamp()` plus an interval cast from a
+bound value in whole hours and seconds (`+1 hours +125.000001 seconds`),
+truncated toward zero to the microsecond and never expressed in days, so the
+shift is elapsed time across a daylight-saving change — and a bound
+`Telo.Timestamp`, cast from UTC text and truncated toward the past to the
+microsecond. A result outside the range of `timestamptz` is the server's own
+error.
+
+For a row selection the schema instance renders `FOR UPDATE SKIP LOCKED`: rows
+another open transaction has locked are passed over rather than waited for, and
+the rows selected stay locked until this transaction ends. A consumer appends it
+to a plain one-table `SELECT … LIMIT n` inside `UPDATE … WHERE id IN (…)` or
+`DELETE … WHERE id IN (…)`; PostgreSQL refuses it beside `DISTINCT`,
+`GROUP BY`, an aggregate or `UNION`.
 
 ### What a column's values arrive as
 

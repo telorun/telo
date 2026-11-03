@@ -35,7 +35,13 @@
  * derivation can reach.
  */
 
-import { isCompiledValue, type ResourceManifest } from "@telorun/sdk";
+import { isCompiledValue, type ResourceDefinition, type ResourceManifest } from "@telorun/sdk";
+import {
+  contractDeclarer,
+  effectiveContractField,
+  type ContractDirection,
+  type DefResolver,
+} from "./extends-resolution.js";
 import { isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import { refSentinelTarget } from "./ref-sentinel-target.js";
 import type { LibraryDeclarations } from "./library-declarations.js";
@@ -1206,6 +1212,13 @@ export interface DeclarationValue {
  * the module that declared the holder. A `*` segment ranges over every item of a
  * list. A branch that reaches nothing — an absent field, a reference that does
  * not resolve here, a library's resource input — contributes nothing.
+ *
+ * A location ENDING at a contract field (`inputType` / `outputType`) of a
+ * declaration reached past a reference reads it as a contract resolves: the
+ * declaration's own field, else the nearest declaration along its kind's
+ * `extends`, held by the definition declaring it — so `/invoke/outputType` types
+ * a call's result by the invoked resource's output contract whichever level
+ * declares it.
  */
 export function declarationValuesAt(
   consumer: Record<string, any>,
@@ -1243,6 +1256,17 @@ export function declarationValuesAt(
     }
     const [segment, ...tail] = rest;
     const into = (key: string): void => {
+      if (
+        tail.length === 0 &&
+        inner.length === 0 &&
+        holder.declaration !== consumer &&
+        isContractField(key) &&
+        (value as Record<string, unknown>)[key] === undefined
+      ) {
+        const declared = kindContractOf(holder.declaration, key, scope);
+        if (declared) out.push(declared);
+        return;
+      }
       const nextInner = [...inner, key];
       const nextContainers = [...containers, value];
       reach(
@@ -1264,6 +1288,27 @@ export function declarationValuesAt(
 
   reach(start, consumer, [], [], slots, false, segments);
   return out;
+}
+
+const isContractField = (key: string): key is ContractDirection =>
+  key === "inputType" || key === "outputType";
+
+/** The contract a declaration's KIND declares for `direction`, nearest along
+ *  `extends`, held by the definition declaring it — the half of a contract's
+ *  resolution that follows an instance declaring none of its own. */
+function kindContractOf(
+  declaration: Record<string, any>,
+  direction: ContractDirection,
+  scope: ProjectionScope,
+): DeclarationValue | undefined {
+  if (typeof declaration.kind !== "string") return undefined;
+  const resolve: DefResolver = (kind, from) =>
+    scope.resolveDefinition(kind, from as Record<string, any> | undefined) as ResourceDefinition | undefined;
+  const definition = resolve(declaration.kind, declaration as ResourceDefinition);
+  const value = effectiveContractField(definition, resolve, direction);
+  const declarer = contractDeclarer(definition, resolve, direction);
+  if (value === undefined || value === null || !declarer) return undefined;
+  return { value, holder: declarer as unknown as Record<string, any> };
 }
 
 function referenceSlotsOf(

@@ -1,0 +1,29 @@
+kind: Telo.Application
+metadata:
+  name: QueueNonRetryable
+  version: 1.0.0
+  description: A worker naming a code its handler cannot throw as non-retryable.
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+---
+kind: Fixture.PlainQueue
+metadata: { name: payments }
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Fixture.Refusing
+metadata: { name: charge }
+steps:
+  - name: refuse
+    throw:
+      code: ERR_PAYMENT_DECLINED
+---
+kind: Queue.Worker
+metadata: { name: worker }
+queue: !ref payments
+invoke: !ref charge
+timeout: 30s
+retry:
+  attempts: 3
+  nonRetryable: [ERR_PAYMENT_DECLINED, ERR_QUEUE_TIMEOUT, ERR_CARD_EXPIRED]

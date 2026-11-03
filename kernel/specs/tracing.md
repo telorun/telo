@@ -151,6 +151,21 @@ included — on `ctx.rootContext()`, which carries no span (`execution-zones.md`
 work on the span's context, so each unit is one local root with everything it
 drove beneath it.
 
+### 4.1 Carrying a span onward
+
+A controller that records work now for another unit to continue later or
+elsewhere — a message stored for a worker, a request sent to another service —
+asks for the current span as a W3C carrier (`ctx.traceCarrier(ctx?)`, the
+protocol's `Span.Carrier`): the span the given context carries, else the ambient
+one. A runtime MUST render the carrier's `traceparent` with the span's trace id
+and the span id its exported record carries (§3), version `00`, the sampled flag
+set (every finished span is exported) and the random-trace-id flag kept when the
+trace continued an upstream one that set it; it MUST carry that upstream's
+`tracestate` unchanged while a span continuing it is open, and none otherwise.
+So a span opened with the carrier as `inbound` is a child of the span that
+produced it, in its trace. With tracing off, or no span current, there is no
+carrier, and a recorded field for one stays absent.
+
 ## 5. `x-telo-span-attribute`
 
 ```yaml

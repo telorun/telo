@@ -204,3 +204,55 @@ describe("x-telo-context-ref-from beneath an array item", () => {
     expect(aboutCel).toEqual([]);
   });
 });
+
+/** A binding declared nullable beside the reference it is typed from: the type
+ *  comes from the reference, whether a value is there from the binding. */
+const deadLetterDef = {
+  kind: "Telo.Definition",
+  metadata: { name: "DeadLetter", module: "review" },
+  capability: "Telo.Invocable",
+  schema: {
+    type: "object",
+    properties: {
+      invoke: { "x-telo-ref": "Telo.Invocable" },
+      inputs: {
+        type: "object",
+        additionalProperties: true,
+        "x-telo-eval": "runtime",
+        "x-telo-context": {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            message: { type: ["object", "null"], "x-telo-context-ref-from": "invoke/outputType" },
+          },
+        },
+      },
+    },
+  },
+} as unknown as ResourceManifest;
+
+function analyzeDeadLetter(source: string) {
+  const deadLetter = {
+    kind: "review.DeadLetter",
+    metadata: { name: "deadLetter", module: "test" },
+    invoke: { kind: "oauth-client.Callback", name: "oauthCallback" },
+    inputs: { reason: { __tagged: true, engine: "cel", source } },
+  } as unknown as ResourceManifest;
+  return new StaticAnalyzer()
+    .analyze(withSyntheticPositions([deadLetterDef, callbackDef, callbackInstance, deadLetter]))
+    .filter((d) => String(d.code).startsWith("CEL_"));
+}
+
+describe("x-telo-context-ref-from keeps the nullability its binding declares", () => {
+  it("refuses an unguarded member read through the nullable binding", () => {
+    const found = analyzeDeadLetter("message.reason");
+    expect(found.map((d) => d.code)).toEqual(["CEL_NULLABLE_ACCESS"]);
+  });
+
+  it("accepts a guarded read, still typed from the reference", () => {
+    expect(analyzeDeadLetter("message != null && message.reason == 'x'")).toEqual([]);
+    expect(analyzeDeadLetter("message != null && message.reasson == 'x'").map((d) => d.code)).toEqual([
+      "CEL_UNKNOWN_FIELD",
+    ]);
+  });
+});

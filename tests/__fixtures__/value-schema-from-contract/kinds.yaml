@@ -1,0 +1,55 @@
+# A wrapper whose `result` is typed by `x-telo-value-schema-from:
+# /invoke/outputType` — the output contract of whatever it invokes, read as a
+# contract resolves: the invoked resource's own field, else its kind's, nearest
+# along `extends`. Neither body below declares one on the instance.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromContract
+  version: 1.0.0
+  description: Fixture kinds — a body with an output contract, and a wrapper typed by it.
+exports:
+  kinds: [Body, ChildBody, Once]
+---
+kind: Telo.Definition
+metadata:
+  name: Body
+  description: Answers a total; its kind declares the output contract.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Body
+schema: { type: object, additionalProperties: false, properties: {} }
+outputType:
+  type: object
+  additionalProperties: false
+  required: [total]
+  properties:
+    total: { type: integer }
+---
+kind: Telo.Definition
+metadata:
+  name: ChildBody
+  description: A body inheriting its parent's controller and output contract.
+extends: Self.Body
+---
+kind: Telo.Definition
+metadata:
+  name: Once
+  description: Runs its body and hands back what it answered.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Once
+schema:
+  type: object
+  additionalProperties: false
+  required: [invoke]
+  properties:
+    invoke:
+      x-telo-ref: { kind: Telo.Executable, use: call }
+outputType:
+  type: object
+  additionalProperties: false
+  required: [executed]
+  properties:
+    executed: { type: boolean }
+    result:
+      x-telo-value-schema-from: /invoke/outputType

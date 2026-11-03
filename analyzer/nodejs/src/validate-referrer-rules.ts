@@ -119,6 +119,10 @@ export interface ReferrerRuleDeclarationContext {
   /** Whether the `referrer:` kind declares the field a `resolve:` pointer names
    *  — `unknown` when the kind cannot be judged here. Omit to skip the check. */
   readonly referrerDeclares?: (referrerKind: string, pointer: string) => "ok" | "absent" | "unknown";
+  /** Whether the `referrer:` kind declares a single reference slot at a
+   *  `coReferrers:` pointer — `unknown` when the kind cannot be judged here.
+   *  Omit to skip the check. */
+  readonly referrerSlot?: (referrerKind: string, pointer: string) => "ok" | "absent" | "unknown";
   /** Whether THIS kind declares the field a `resolveSelf:` pointer names. Omit
    *  to skip the check. */
   readonly selfDeclares?: (pointer: string) => "ok" | "absent" | "unknown";
@@ -228,6 +232,7 @@ export function validateReferrerRuleDeclarations(
     }
 
     validatePeersDeclaration(entry, at, issue, context);
+    validateCoReferrersDeclaration(entry, at, issue, context);
     validateResolveDeclaration(entry, at, issue, context);
     validateResolveSelfDeclaration(entry, at, issue, context);
 
@@ -315,6 +320,49 @@ function validatePeersDeclaration(
       `'${peers}' on '${entry.referrer}' holds plain data — nothing in it is a reference, so ` +
         "no entry resolves to a declaration and the rule would run against values it cannot " +
         "compare. Name a collection whose items are, or contain, a reference.",
+    );
+  }
+}
+
+/** The strict half of `coReferrers:` — a pointer to the reference slot of the
+ *  referrer kind through which it reaches `self`. A pointer naming no such slot
+ *  matches no referrer, so the rule would never run, and say so nowhere. */
+function validateCoReferrersDeclaration(
+  entry: Record<string, unknown>,
+  at: string,
+  issue: (path: string, message: string) => void,
+  context: ReferrerRuleDeclarationContext,
+): void {
+  const { coReferrers } = entry;
+  if (coReferrers === undefined) return;
+  if (
+    typeof coReferrers !== "string" ||
+    pointerSegments(coReferrers) === undefined ||
+    coReferrers === "" ||
+    coReferrers === "/"
+  ) {
+    issue(
+      `${at}.coReferrers`,
+      "'coReferrers' is a JSON Pointer naming the reference slot of the REFERRER kind through " +
+        "which it reaches this resource (e.g. /table); the other declarations reaching it there " +
+        "bind as 'coReferrers'.",
+    );
+    return;
+  }
+  if (typeof entry.referrer !== "string" || entry.referrer.length === 0) {
+    issue(
+      `${at}.coReferrers`,
+      "'coReferrers' names a reference slot of the REFERRER, so the rule must also declare " +
+        "'referrer:' — without a kind there is nothing to check the pointer against.",
+    );
+    return;
+  }
+  if (context.referrerSlot?.(entry.referrer, coReferrers) === "absent") {
+    issue(
+      `${at}.coReferrers`,
+      `'${entry.referrer}' declares no reference slot at '${coReferrers}'. The pointer must name ` +
+        "the slot through which the referrer reaches this resource — one reference, not a " +
+        "collection — or no referrer ever matches and the rule never runs.",
     );
   }
 }
@@ -421,6 +469,10 @@ export function evaluateReferrerRules(
 
   for (const rule of rules) {
     const perEntry = rule.peers !== undefined;
+    // A `coReferrers:` rule judges only the referrers reaching `self` through
+    // its slot, and binds each one's fellows there.
+    const coSlot = rule.coReferrers === undefined ? undefined : pointerToPath(rule.coReferrers);
+    const throughSlot = coSlot === undefined ? [] : referrersThrough(rule, coSlot, referrers, kindMatches);
     const compiled = compileRuleCondition(rule.condition, context.moduleNames);
     if ("reason" in compiled) {
       findings.push({ kind: "failed", rule, reason: compiled.reason });
@@ -447,6 +499,7 @@ export function evaluateReferrerRules(
         findings.push({ kind: "over-budget", rule, referrer, elapsedMs: elapsed });
         break;
       }
+      if (coSlot !== undefined && referrer.path !== coSlot) continue;
       if (!perEntry) {
         if (seen.has(referrer.manifest)) continue;
         seen.add(referrer.manifest);
@@ -484,6 +537,14 @@ export function evaluateReferrerRules(
         scope.peers = bound.binding.peers;
         scope.entry = bound.binding.entry;
       }
+      if (coSlot !== undefined) {
+        const bound = bindCoReferrers(referrer, throughSlot, context.peerBinder, coSlot);
+        if (!bound.ok) {
+          findings.push({ kind: "unbound", rule, referrer, failure: bound.failure });
+          continue;
+        }
+        scope.coReferrers = bound.values;
+      }
 
       // Only the nodes this condition READS decide whether it can run — the
       // resource-rule reasoning, and it bites harder here: the referrer is a
@@ -516,6 +577,46 @@ export function evaluateReferrerRules(
   return findings;
 }
 
+/** The referrers the filter matches that reach `self` through `slot`, one per
+ *  manifest — identity, never `(kind, name)`, since names are module-scoped. */
+function referrersThrough(
+  rule: ReferrerRule,
+  slot: string,
+  referrers: readonly Referrer[],
+  kindMatches: (filter: string, kind: string) => boolean,
+): Referrer[] {
+  const seen = new Set<ResourceManifest>();
+  const out: Referrer[] = [];
+  for (const referrer of referrers) {
+    if (referrer.path !== slot || seen.has(referrer.manifest)) continue;
+    if (rule.referrer !== undefined && !kindMatches(rule.referrer, referrer.kind)) continue;
+    seen.add(referrer.manifest);
+    out.push(referrer);
+  }
+  return out;
+}
+
+/** `coReferrers` for one referrer: every OTHER declaration reaching `self`
+ *  through the slot, each resolved by the shared binder. One that cannot be
+ *  resolved fails the whole binding — the `peers:` rule, since a duplicate check
+ *  over a set missing a member answers wrongly and silently. */
+function bindCoReferrers(
+  referrer: Referrer,
+  throughSlot: readonly Referrer[],
+  binder: PeerBinder | undefined,
+  slot: string,
+): { ok: true; values: unknown[] } | { ok: false; failure: PeerBindingFailure } {
+  if (!binder) return { ok: false, failure: { reason: "unknown-shape", at: slot } };
+  const values: unknown[] = [];
+  for (const other of throughSlot) {
+    if (other.manifest === referrer.manifest) continue;
+    const bound = binder.coReferrer(other.manifest, other.kind);
+    if (!bound.ok) return bound;
+    values.push(bound.value);
+  }
+  return { ok: true, values };
+}
+
 /** Whether a rule found any referrer to judge — the input to the never-exercised
  *  report, which is how a mistyped `referrer:` filter would otherwise disable a
  *  check in silence. */
@@ -530,6 +631,12 @@ export function referrerRuleExercised(
       ? referrers
       : referrers.filter((referrer) => kindMatches(rule.referrer!, referrer.kind));
   if (matching.length === 0) return false;
+  // A `coReferrers:` rule judges only the referrers reaching `self` through its
+  // slot; one through any other slot proved nothing about it.
+  if (rule.coReferrers !== undefined) {
+    const slot = pointerToPath(rule.coReferrers);
+    return matching.some((referrer) => referrer.path === slot);
+  }
   if (rule.peers === undefined) return true;
   // A peer rule that ran against an EMPTY peer set proved nothing — and an empty
   // set everywhere is exactly what a typo in `peers:` looks like from outside,
@@ -684,7 +791,12 @@ export function reportUnexercisedReferrerRule(
     code: "REFERRER_RULE_UNEXERCISED",
     severity: "information",
     message:
-      rule.peers !== undefined
+      rule.coReferrers !== undefined
+        ? `Referrer rule '${rule.code}' never ran: nothing` +
+          (rule.referrer === undefined ? "" : ` of kind '${rule.referrer}'`) +
+          ` references a resource of this kind through '${rule.coReferrers}', so nothing has ` +
+          "proven the condition."
+        : rule.peers !== undefined
         ? `Referrer rule '${rule.code}' never ran with peers to compare: nothing` +
           (rule.referrer === undefined ? "" : ` of kind '${rule.referrer}'`) +
           ` references a resource of this kind while '${rule.peers}' held another ` +

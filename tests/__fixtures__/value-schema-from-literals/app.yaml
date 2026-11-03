@@ -1,0 +1,68 @@
+# Literals of every encoded value type, written inside an object typed by a
+# referenced shape — at a call's `inputs:` and at a config field.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaFromLiteralsApp
+  version: 1.0.0
+imports:
+  Kinds: ./kinds.yaml
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Telo.JsonSchema
+metadata: { name: Message }
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    at: { x-telo-type: Telo.Timestamp }
+    wait: { x-telo-type: Telo.Duration }
+    pause: { x-telo-type: Telo.Duration }
+    blob: { x-telo-type: Telo.Bytes }
+    count: { x-telo-type: Telo.Uint64 }
+---
+kind: Kinds.Box
+metadata: { name: called }
+shape: !ref Message
+---
+kind: Kinds.Box
+metadata: { name: configured }
+shape: !ref Message
+seed:
+  at: "2026-01-01T00:00:00Z"
+  wait: 2s
+  pause: 1500
+  blob: AQID
+  count: 7
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: call
+    invoke: !ref called
+    inputs:
+      message:
+        at: "2026-01-01T00:00:00Z"
+        wait: 2s
+        pause: 1500
+        blob: AQID
+        count: 7
+  - name: config
+    invoke: !ref configured
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.call.result.message.at == timestamp('2026-01-01T00:00:00Z')"
+        - !cel "steps.call.result.message.wait == duration('2s')"
+        - !cel "steps.call.result.message.pause == duration('1500ms')"
+        - !cel "steps.call.result.message.blob == b'\\x01\\x02\\x03'"
+        - !cel "steps.call.result.message.count == 7u"
+        - !cel "steps.config.result.message.at == timestamp('2026-01-01T00:00:00Z')"
+        - !cel "steps.config.result.message.wait == duration('2s')"
+        - !cel "steps.config.result.message.pause == duration('1500ms')"
+        - !cel "steps.config.result.message.blob == b'\\x01\\x02\\x03'"
+        - !cel "steps.config.result.message.count == 7u"
+      expected: [true, true, true, true, true, true, true, true, true, true]

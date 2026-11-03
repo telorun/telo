@@ -1,0 +1,37 @@
+# Reads a member neither body's contract declares.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaFromUndeclared
+  version: 1.0.0
+imports:
+  Kinds: ./kinds.yaml
+  Run: ../../../modules/run
+  Assert: ../../../modules/assert
+targets:
+  - !ref main
+---
+kind: Kinds.Body
+metadata: { name: body }
+---
+kind: Kinds.ChildBody
+metadata: { name: childBody }
+---
+kind: Kinds.Once
+metadata: { name: once }
+invoke: !ref body
+---
+kind: Kinds.Once
+metadata: { name: onceChild }
+invoke: !ref childBody
+---
+kind: Run.Sequence
+metadata: { name: main }
+steps:
+  - name: call
+    invoke: !ref once
+  - name: callChild
+    invoke: !ref onceChild
+  - name: missing
+    value: !cel "steps.call.result.result.missing"
+  - name: missingChild
+    value: !cel "steps.callChild.result.result.missing"

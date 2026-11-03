@@ -1,0 +1,21 @@
+# A literal of an encoded value type inside an object typed by
+# `x-telo-value-schema-from` — reached as an `allOf` conjunct of the node, a
+# reference into the contract's own `$defs` — is decoded by its type at a call's
+# `inputs:` and at a config field alike: a timestamp, a duration as text and as
+# integer milliseconds, bytes and an unsigned integer, checked and delivered.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaFromLiterals
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref decodedAndDelivered
+---
+kind: Assert.Manifest
+metadata:
+  name: decodedAndDelivered
+source: ./__fixtures__/value-schema-from-literals/app.yaml
+expect:
+  errors: []
+  runs: true

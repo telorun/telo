@@ -1,0 +1,35 @@
+kind: Telo.Application
+metadata:
+  name: QueueCallSite
+  version: 1.0.0
+  description: Enqueue calls whose message or delivery time the queue refuses.
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+targets:
+  - !ref place
+---
+kind: Fixture.KeyedQueue
+metadata: { name: orders }
+retention: 24h
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [orderId]
+    properties:
+      orderId: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: place }
+steps:
+  - name: missingProperty
+    invoke: { kind: Queue.Enqueue, queue: !ref orders }
+    inputs:
+      message: { customerId: c-1 }
+  - name: neitherDurationNorInstant
+    invoke: { kind: Queue.Enqueue, queue: !ref orders }
+    inputs:
+      message: { orderId: o-1 }
+      after: next week

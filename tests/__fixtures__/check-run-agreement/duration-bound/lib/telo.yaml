@@ -1,0 +1,25 @@
+# A step's `timeout:` is a `Telo.Duration` bounded above zero, so a zero one is
+# refused by the type's own bound — here at the library, and at creation for a
+# consumer.
+kind: Telo.Library
+metadata:
+  name: DurationBoundLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [waits]
+---
+kind: Run.Sequence
+metadata:
+  name: echo
+steps:
+  - name: done
+    value: true
+---
+kind: Run.Sequence
+metadata:
+  name: waits
+steps:
+  - name: call
+    invoke: !ref echo
+    timeout: 0

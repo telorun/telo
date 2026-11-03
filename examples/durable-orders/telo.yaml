@@ -26,6 +26,8 @@ metadata:
 
         ORDER_ID=A-2 pnpm run telo examples/durable-orders/telo.yaml   # a new order runs fresh
 
+        ORDER_ID=A-3 CARD=declined pnpm run telo examples/durable-orders/telo.yaml   # declined once, not retried
+
     What makes that work is not that the results are cached. Each step's outcome
     is recorded WHEN IT COMPLETES, so a step interrupted mid-flight has no record
     and runs again — while one that finished is never re-entered. Recording on
@@ -56,6 +58,12 @@ variables:
     x-telo-type: { name: Telo.HostPath, entry: directory }
     default: .telo/orders
     description: Where runs are recorded, resolved against the working directory.
+  card:
+    env: CARD
+    type: string
+    enum: [ok, declined, expired]
+    default: ok
+    description: What the payment provider answers. Set it to watch a terminal failure stop the retries.
 targets:
   - !ref fulfil
 ---
@@ -97,7 +105,11 @@ kind: Telo.Sequence
 metadata: { name: chargeCard }
 inputType:
   kind: Telo.JsonSchema
-  schema: { type: object, properties: { order: { type: string } } }
+  schema:
+    type: object
+    properties:
+      order: { type: string }
+      card: { type: string, enum: [ok, declined, expired] }
 steps:
   - name: announce
     invoke: !ref say
@@ -106,6 +118,18 @@ steps:
   - name: work
     invoke: !ref pause
     inputs: { duration: 4s }
+  # The provider's terminal answers. Asking again changes neither, which is why
+  # the workflow's retry policy names both as `nonRetryable`.
+  - name: declined
+    if: !cel "inputs.card == 'declined'"
+    then:
+      - name: refuse
+        throw: { code: ERR_PAYMENT_DECLINED, message: the card issuer declined the payment }
+  - name: expired
+    if: !cel "inputs.card == 'expired'"
+    then:
+      - name: refuse
+        throw: { code: ERR_CARD_EXPIRED, message: the card has expired }
   - name: done
     invoke: !ref say
     inputs: { output: "  {green ✓ card charged}  ← the one you do not want to happen twice" }
@@ -155,6 +179,7 @@ runId: !cel "'order:' + inputs.order"
 onConflict: attach
 inputs:
   order: !cel "inputs.order"
+  card: !cel "inputs.card"
 steps:
   - name: reserve
     invoke: !ref reserveStock
@@ -168,6 +193,7 @@ steps:
     invoke: !ref chargeCard
     inputs:
       order: !cel "inputs.order"
+      card: !cel "inputs.card"
     retry:
       attempts: 3
       initialDelay: 500
@@ -207,6 +233,7 @@ steps:
     invoke: !ref order
     inputs:
       order: !cel "variables.orderId"
+      card: !cel "variables.card"
 
   # …and this is how a caller that does want the outcome asks for it. Waiting is
   # the CALLER's choice rather than the start's, because a run may take days: put

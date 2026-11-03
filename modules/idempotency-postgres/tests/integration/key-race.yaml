@@ -1,0 +1,195 @@
+kind: Telo.Application
+metadata:
+  name: IdempotencyPostgresKeyRace
+  version: 1.0.0
+  description: |
+    Two processes recording one key, each a child application with a connection
+    pool of its own, where only the database stands between them. The holder
+    records the key and keeps its transaction open for three seconds; the late
+    process records the same key a second later, while that transaction is open,
+    so it waits for it to end.
+
+    When the holder commits, the late process finds the key and skips its work:
+    one write, the holder's, and one ledger row. When the holder rolls back, the
+    late process records the key and runs its work: one write, the late one's.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+include:
+  - ./__fixtures__/key-race/model.yaml
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Idempotency: ../..
+  Sql: ../../../sql
+  Postgres: ../../../postgres
+  App: ../../../app
+  Run: ../../../run
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref commitHolder
+  - !ref commitLate
+  - !ref commitRace
+  - !ref rollbackHolder
+  - !ref rollbackLate
+  - !ref rollbackRace
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+kind: App.Instance
+metadata: { name: commitHolder }
+source: ./__fixtures__/key-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
+  role: holder
+  key: race-commit
+  fail: false
+---
+kind: Run.Loop
+metadata: { name: commitHolderExit }
+condition: !cel "resources.commitHolder.status.exitCode == null"
+# 60s for a child kernel to boot, record and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: commitLate }
+source: ./__fixtures__/key-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
+  role: late
+  key: race-commit
+  fail: false
+---
+kind: Run.Loop
+metadata: { name: commitLateExit }
+condition: !cel "resources.commitLate.status.exitCode == null"
+# 60s for a child kernel to boot, record and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: rollbackHolder }
+source: ./__fixtures__/key-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
+  role: holder
+  key: race-rollback
+  fail: true
+---
+kind: Run.Loop
+metadata: { name: rollbackHolderExit }
+condition: !cel "resources.rollbackHolder.status.exitCode == null"
+# 60s for a child kernel to boot, record and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: App.Instance
+metadata: { name: rollbackLate }
+source: ./__fixtures__/key-race/racer.yaml
+awaitStart: false
+variables:
+  dbHost: !cel "resources.Pg.endpoint.status.host"
+  dbPort: !cel "resources.Pg.endpoint.status.port"
+  role: late
+  key: race-rollback
+  fail: false
+---
+kind: Run.Loop
+metadata: { name: rollbackLateExit }
+condition: !cel "resources.rollbackLate.status.exitCode == null"
+# 60s for a child kernel to boot, record and exit.
+maxIterations: 3000
+steps:
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+---
+kind: Run.Sequence
+metadata: { name: commitRace }
+steps:
+  - name: awaitHolder
+    invoke: !ref commitHolderExit
+  - name: awaitLate
+    invoke: !ref commitLateExit
+  - name: exitCodes
+    invoke: !ref check
+    inputs:
+      actual: !cel "[resources.commitHolder.status.exitCode, resources.commitLate.status.exitCode]"
+      expected: [0, 0]
+  - name: writes
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT writer FROM race_effects WHERE effect_key = 'race-commit'
+  - name: onlyHolderWrote
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.writes.result.rows"
+      expected: [{ writer: holder }]
+  - name: recorded
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT CAST(count(*) AS INTEGER) AS n FROM idempotency_keys WHERE idempotency_key = 'race-commit'
+  - name: oneRow
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.recorded.result.rows"
+      expected: [{ n: 1 }]
+---
+kind: Run.Sequence
+metadata: { name: rollbackRace }
+steps:
+  - name: awaitHolder
+    invoke: !ref rollbackHolderExit
+  - name: awaitLate
+    invoke: !ref rollbackLateExit
+  - name: exitCodes
+    invoke: !ref check
+    inputs:
+      actual: !cel "[resources.rollbackHolder.status.exitCode != 0, resources.rollbackLate.status.exitCode]"
+      expected: [true, 0]
+  - name: writes
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT writer FROM race_effects WHERE effect_key = 'race-rollback'
+  - name: onlyLateWrote
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.writes.result.rows"
+      expected: [{ writer: late }]
+  - name: recorded
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT CAST(count(*) AS INTEGER) AS n FROM idempotency_keys WHERE idempotency_key = 'race-rollback'
+  - name: oneRow
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.recorded.result.rows"
+      expected: [{ n: 1 }]

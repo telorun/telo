@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: QueueNotSerializable
+  version: 1.0.0
+  description: A queue whose message type holds a stream.
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+---
+kind: Fixture.PlainQueue
+metadata: { name: uploads }
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      parts:
+        type: array
+        items:
+          x-telo-type: { name: Telo.Stream, of: Telo.Bytes }

@@ -356,6 +356,19 @@ export type {
 } from "./span-attribute.js";
 export { declaredCelViewAt, declaredViewPaths } from "./declared-cel-view.js";
 export {
+  liveValueIn,
+  serializableAnnotationProblems,
+  serializableProblems,
+  serializableSites,
+  X_TELO_SERIALIZABLE,
+} from "./serializable-slot.js";
+export type {
+  LiveValueNode,
+  SerializableAnnotationProblem,
+  SerializableProblem,
+  SerializableSite,
+} from "./serializable-slot.js";
+export {
   defaultBearingPaths,
   declaredScalarPaths,
   normalizeDeclaredScalars,

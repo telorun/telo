@@ -607,6 +607,13 @@ targets:
   - !ref schemaForwardInheritedAtRuntime
   - !ref templateBodyLiteralAtLibrary
   - !ref templateBodyLiteralAtRuntime
+  - !ref rootZoneOutside
+  - !ref rootZoneForeignConnection
+  - !ref schemaNotSerializable
+  - !ref schemaNotSerializableAtRuntime
+  - !ref durationBound
+  - !ref durationBoundAtRuntime
+  - !ref abstractExtendsChain
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -5878,3 +5885,69 @@ source: ./__fixtures__/check-run-agreement/template-entry-views/telo.yaml
 expect:
   errors: []
   runFails: "/bindings must be object [ERR_RESOURCE_SCHEMA_VALIDATION_FAILED]"
+---
+# A kind whose zone requirement sits at its schema ROOT, correlated through a
+# `!ref` (`/holder/connection`), reached as a boot target with no transaction
+# open: refused where it is written, and the run is refused for the same cause.
+# The controller's field-less `ctx.requireZone(ctx)` is the runtime half; the
+# load's analysis refuses first here, so that half is pinned by
+# `kernel/nodejs/tests/execution-zones.test.ts`.
+kind: Assert.Manifest
+metadata: { name: rootZoneOutside }
+source: ./__fixtures__/check-run-agreement/root-zone/outside.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "requires a SQL.Transaction zone on SQLite.Connection 'db'"
+  runFails: "[ZONE_REQUIREMENT_UNSATISFIED]"
+---
+# The same kind inside a transaction on another connection: the zone's kind
+# matches, its correlation does not.
+kind: Assert.Manifest
+metadata: { name: rootZoneForeignConnection }
+source: ./__fixtures__/check-run-agreement/root-zone/foreign-connection.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "requires a SQL.Transaction zone on SQLite.Connection 'dbB'"
+  runFails: "[ZONE_REQUIREMENT_UNSATISFIED]"
+---
+# A slot marked `x-telo-serializable` names a shape holding a live value: the
+# analyzer and the kernel read it through one walk.
+kind: Assert.Manifest
+metadata: { name: schemaNotSerializable }
+source: ./__fixtures__/check-run-agreement/schema-not-serializable/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_NOT_SERIALIZABLE
+      message: "it holds a live Telo.Stream at /parts/*"
+---
+kind: Assert.Manifest
+metadata: { name: schemaNotSerializableAtRuntime }
+source: ./__fixtures__/check-run-agreement/schema-not-serializable/telo.yaml
+expect:
+  runFails: "[ERR_SCHEMA_NOT_SERIALIZABLE] RuntimeError: SchemaNotSerializableLib.Box/box: 'shape' names a shape whose values are stored or serialized, but it holds a live Telo.Stream at /parts/*"
+---
+# A duration outside the bound its slot's type declares: the `x-telo-type`
+# keyword both halves register refuses it.
+kind: Assert.Manifest
+metadata: { name: durationBound }
+source: ./__fixtures__/check-run-agreement/duration-bound/lib/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/steps/0/timeout must be a Telo.Duration greater than 0s, not 0s"
+---
+kind: Assert.Manifest
+metadata: { name: durationBoundAtRuntime }
+source: ./__fixtures__/check-run-agreement/duration-bound/telo.yaml
+expect: { runFails: "/steps/0/timeout must be a Telo.Duration greater than 0s, not 0s" }
+---
+# An abstract extending another module's abstract is registered with its
+# ancestors folded in ITS OWN scope, as a definition is: a concrete kind two
+# modules down, which has no alias for the root abstract's module, accepts the
+# field that root declares — `telo check` folds the chain the same way.
+kind: Assert.Manifest
+metadata: { name: abstractExtendsChain }
+source: ./__fixtures__/check-run-agreement/abstract-extends-chain/app.yaml
+expect: { errors: [], runs: true }

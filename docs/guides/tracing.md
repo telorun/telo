@@ -152,6 +152,13 @@ work from outside passes the W3C headers it received as
 tracing is off, `openSpan` hands back the context unchanged and `settle` does
 nothing.
 
+The other direction is `ctx.traceCarrier(ctx)`: the span a context carries, as the
+W3C headers `{ traceparent, tracestate? }`. A controller that stores work for later
+— a queued message — or sends a request to another service records it beside the
+work, and whoever continues the work passes it as `inbound`: the new span is a
+child of the one that recorded it, in the same trace. It is `undefined` while
+tracing is off or when no span is current, so the recorded field is simply absent.
+
 ## Metrics
 
 There is no separate metrics signal. A counter or a latency distribution is an

@@ -1,0 +1,26 @@
+# The guarded operation as a boot target: nothing encloses `targets:`, so no
+# transaction is open around it.
+kind: Telo.Application
+metadata:
+  name: RootZoneOutside
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+  SQLite: ../../../../modules/sqlite
+targets:
+  - invoke: !ref guarded
+---
+kind: SQLite.Connection
+metadata:
+  name: db
+file: ":memory:"
+---
+kind: Kinds.Holder
+metadata:
+  name: holder
+connection: !ref db
+---
+kind: Kinds.Guarded
+metadata:
+  name: guarded
+holder: !ref holder

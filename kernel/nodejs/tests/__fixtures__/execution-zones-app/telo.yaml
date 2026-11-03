@@ -113,3 +113,40 @@ metadata:
 steps:
   - name: enqueue
     invoke: !ref insideA
+---
+# A root requirement correlated through `/batch/session`: discharged by its own
+# batch on sessionA…
+kind: Zone.RootEnqueue
+metadata:
+  name: rootInsideA
+batch: !ref rootBatchA
+---
+kind: Zone.Batch
+metadata:
+  name: rootBatchA
+session: !ref sessionA
+steps: !ref rootBodyA
+---
+kind: Run.Sequence
+metadata:
+  name: rootBodyA
+steps:
+  - name: enqueue
+    invoke: !ref rootInsideA
+outputs:
+  zone: !cel "steps.enqueue.result.zone"
+  correlatedOn: !cel "steps.enqueue.result.correlatedOn"
+---
+# …and not by a batch on sessionB.
+kind: Zone.Batch
+metadata:
+  name: rootCrossBatch
+session: !ref sessionB
+steps: !ref rootCrossBody
+---
+kind: Run.Sequence
+metadata:
+  name: rootCrossBody
+steps:
+  - name: enqueue
+    invoke: !ref rootInsideA

@@ -278,7 +278,9 @@ schema:
       description: >-
         Default retry policy for requests made through this client — the common
         case, since backoff is a property of the API being called rather than of
-        one call. An individual request replaces it wholesale.
+        one call. An individual request replaces it wholesale. Its `retryAfter` is
+        resolved once, when the client is created, so it reads no `error` and is a
+        fixed wait; one that reads each failure is written on the request.
       properties:
         honorRetryAfter:
           type: boolean
@@ -557,14 +559,20 @@ schema:
       description: >-
         How a retryable failure is re-attempted. Network failures are retried
         whatever `retryOn` says; a response is retried when `retryOn` accepts it.
+        `retryAfter` and `nonRetryable` read each failure as `error`: a network
+        failure under its own code (`TIMEOUT`, `CONNECTION_REFUSED`, …) with
+        `data.url`, and a retried response as `ERR_HTTP_STATUS` with `data`
+        holding its `status`, `url`, `headers` and `body` (null when streamed).
+        A duration `retryAfter` yields is waited instead of both the backoff and
+        the `Retry-After` header, capped by `maxDelay`.
       properties:
         honorRetryAfter:
           type: boolean
           default: true
           description: >-
             Wait as long as a `Retry-After` header asks, when it asks for longer
-            than the computed delay. The server's number is better information
-            than any local curve.
+            than the computed delay and `retryAfter` yields nothing. The server's
+            number is better information than any local curve.
     retries:
       title: Retries
       $ref: "telo://manifest#/$defs/RetryAttempts"

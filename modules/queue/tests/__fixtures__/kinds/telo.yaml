@@ -1,0 +1,49 @@
+# Concrete queue kinds for the static-surface tests. Their controller is never
+# loaded: the tests only check manifests.
+kind: Telo.Library
+metadata:
+  name: QueueFixture
+  version: 1.0.0
+  description: Fixture queue kinds over the queue abstracts, for static checks only.
+requires:
+  telo: ">=0.129.0"
+imports:
+  Queue: ../../..
+  Run: ../../../../run
+exports:
+  kinds:
+    - PlainQueue
+    - KeyedQueue
+    - Refusing
+---
+kind: Telo.Definition
+metadata:
+  name: PlainQueue
+  description: A queue with no addressable guarantee.
+extends: Queue.Queue
+controllers:
+  - pkg:telo/local/js?path=./fixture-queue.mjs#PlainQueue
+---
+kind: Telo.Definition
+metadata:
+  name: KeyedQueue
+  description: An addressable queue that can group delivery.
+extends: Queue.AddressableQueue
+controllers:
+  - pkg:telo/local/js?path=./fixture-queue.mjs#KeyedQueue
+schema:
+  type: object
+  properties:
+    groupBy:
+      $ref: "telo://Queue/GroupBy"
+---
+# A handler whose one declared failure is ERR_PAYMENT_DECLINED.
+kind: Telo.Definition
+metadata:
+  name: Refusing
+  description: A sequence declaring one failure.
+extends: Run.Sequence
+throws:
+  codes:
+    ERR_PAYMENT_DECLINED:
+      description: The payment was declined.

@@ -23,6 +23,7 @@ import {
   type Logger,
   type OpenSpan,
   type OpenSpanOptions,
+  type TraceCarrier,
   type ResourceDefinition,
   type ResourceHandle,
   type RuntimeSeam,
@@ -561,12 +562,20 @@ export class ResourceContextImpl implements ResourceContext {
     return this.zoneContext().withZone(slot, fn, base);
   }
 
-  requireZone(field: string, ctx?: InvokeContext): ZoneEntry {
-    return this.zoneContext().requireZone(field, ctx);
+  requireZone(ctx?: InvokeContext): ZoneEntry;
+  requireZone(field: string, ctx?: InvokeContext): ZoneEntry;
+  requireZone(fieldOrCtx?: string | InvokeContext, ctx?: InvokeContext): ZoneEntry {
+    return typeof fieldOrCtx === "string"
+      ? this.zoneContext().requireZone(fieldOrCtx, ctx)
+      : this.zoneContext().requireZone(undefined, fieldOrCtx);
   }
 
-  findZone(field: string, ctx?: InvokeContext): ZoneEntry | undefined {
-    return this.zoneContext().findZone(field, ctx);
+  findZone(ctx?: InvokeContext): ZoneEntry | undefined;
+  findZone(field: string, ctx?: InvokeContext): ZoneEntry | undefined;
+  findZone(fieldOrCtx?: string | InvokeContext, ctx?: InvokeContext): ZoneEntry | undefined {
+    return typeof fieldOrCtx === "string"
+      ? this.zoneContext().findZone(fieldOrCtx, ctx)
+      : this.zoneContext().findZone(undefined, fieldOrCtx);
   }
 
   zonesFor(instance: ResourceInstance, ctx?: InvokeContext): readonly ZoneEntry[] {
@@ -648,6 +657,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan> {
     return this.owningContext.openSpan(base, opts);
+  }
+
+  traceCarrier(ctx?: InvokeContext): TraceCarrier | undefined {
+    return this.owningContext.traceCarrier(ctx);
   }
 
   invoke<TInputs>(

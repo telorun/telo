@@ -302,7 +302,17 @@ return this.ctx.withZone("steps", (zoneCtx, entry) => {
 // Requiring — "transaction" is this kind's own field. Throws ERR_ZONE_REQUIRED
 // when no matching zone is open, including one open on a different connection.
 const zone = this.ctx.requireZone("transaction", invokeCtx);
+
+// Requiring at the schema root — no field to name, so no field is passed. The
+// same matching, correlation and ERR_ZONE_REQUIRED message as the field form.
+const rootZone = this.ctx.requireZone(invokeCtx);
 ```
+
+A requirement declared at the schema root is read by the **field-less** form,
+`requireZone(ctx?)` / `findZone(ctx?)`. Use it rather than raising
+`ERR_ZONE_REQUIRED` yourself: the kernel derives the zone kind, the correlation
+target (a key such as `/ledger/connection` crossing a `!ref` included) and the
+message from the annotation, exactly as for a field.
 
 `withZone` is a scope function rather than a push/pop pair, because push/pop
 cannot be honest across async boundaries. It hands back the derived context (to

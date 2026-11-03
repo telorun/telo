@@ -192,7 +192,19 @@ It is crucial to differentiate between an HTTP error (the external server respon
 
 `retryOn` names the FAILED responses worth another try — again a status list or a CEL predicate over the same scope — and is consulted only for responses `success` already rejected, so a status named by both is a success and no precedence rule is needed. It defaults to `408, 429, 500, 502, 503, 504` when `retry.attempts` is non-zero.
 
-`retry` carries `attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter` (`full` by default, picking each delay uniformly from `[0, delay]` so a fleet that failed together does not re-attempt together) and `honorRetryAfter` (a `Retry-After` header raises the delay, never lowers it). Network failures and retryable statuses share one attempt counter: an author who says five attempts means five, not five per failure mode. `Http.Client` supplies defaults, since backoff is a property of the API being called rather than of one call; `retries` is a deprecated alias for `retry.attempts`.
+`retry` is the shared retry policy: `attempts`, `initialDelay` and `maxDelay` (durations — `250ms`, `30s` — or integer milliseconds; 250ms and 32s when omitted), `factor`, `jitter` (`full` by default, picking each delay uniformly from `[0, delay]` so a fleet that failed together does not re-attempt together), `nonRetryable`, `retryAfter`, plus `honorRetryAfter` (a `Retry-After` header raises the delay, never lowers it). Network failures and retryable statuses share one attempt counter: an author who says five attempts means five, not five per failure mode. `Http.Client` supplies defaults, since backoff is a property of the API being called rather than of one call; `retries` is a deprecated alias for `retry.attempts`.
+
+`nonRetryable` and `retryAfter` read each failure as `error`. A network failure is its own code (`TIMEOUT`, `CONNECTION_REFUSED`, `DNS_RESOLUTION_FAILED`, `SSL_ERROR`) with `data.url`; a response `retryOn` accepted is `ERR_HTTP_STATUS` — the failure `throwOnHttpError` would raise — with `data.status`, `data.url`, `data.headers` and `data.body` (null for a streamed response). A code in `nonRetryable` ends the loop: a network failure is raised, a response returned. `retryAfter` is CEL over `error` yielding a duration or null: a duration is waited before the next attempt instead of both the computed backoff and the `Retry-After` header — no jitter, capped by `maxDelay` — and null leaves both in force, so `honorRetryAfter` applies only when `retryAfter` yields nothing:
+
+```yaml
+retry:
+  attempts: 5
+  retryAfter: !cel "error.code == 'ERR_HTTP_STATUS' && 'x-ratelimit-reset-after' in error.data.headers ? duration(error.data.headers['x-ratelimit-reset-after'] + 's') : dyn(null)"
+```
+
+A conditional's two branches answer one type in CEL, so the branch keeping the computed delay is written `dyn(null)`.
+
+An `Http.Client`'s `retry` is resolved once, when the client is created, so a `retryAfter` written there reads no `error` and is a fixed wait (`telo check` refuses one that reads it); a `retryAfter` that reads each failure is written on the request's own policy.
 
 #### 3.2 Network and engine errors
 

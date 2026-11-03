@@ -1121,7 +1121,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 8,
+        "generation": 9,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1135,7 +1135,7 @@
       "message": "Session.Hello",
       "part": "response",
       "body": {
-        "generation": 8,
+        "generation": 9,
         "controller": {
           "telo": "0.103.2",
           "runtime": {
@@ -1160,6 +1160,30 @@
       "message": "Session.Open",
       "part": "response",
       "body": {}
+    },
+    {
+      "message": "Span.Carrier",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "base": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Span.Carrier",
+      "part": "response",
+      "body": {
+        "carrier": {
+          "traceparent": "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01",
+          "tracestate": "vendor=opaque"
+        }
+      }
     },
     {
       "message": "Span.Open",
@@ -1556,6 +1580,20 @@
     },
     {
       "message": "Zone.Require",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "context": {
+          "cancellation": {
+            "source": "c1"
+          },
+          "invocationId": 7,
+          "traceId": "0af7651916cd43dd8448eb211c80319c"
+        }
+      }
+    },
+    {
+      "message": "Zone.Require",
       "part": "response",
       "body": {
         "entry": {
@@ -1577,7 +1615,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": "8",
+        "generation": "9",
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1609,7 +1647,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 8,
+        "generation": 9,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1918,6 +1956,17 @@
         "keyed": {}
       },
       "pointer": "/languages"
+    },
+    {
+      "name": "a carrier whose traceparent is not W3C's",
+      "message": "Span.Carrier",
+      "part": "response",
+      "body": {
+        "carrier": {
+          "traceparent": "not-a-traceparent"
+        }
+      },
+      "pointer": "/carrier/traceparent"
     }
   ]
 }

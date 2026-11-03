@@ -159,6 +159,51 @@ describe("openSpan — inbound boundary span", () => {
     expect(child.attributes["telo.span.parent_span_id"]).toBe(request.span_id);
   });
 
+  it("hands a span on as a carrier another span continues, as its child in its trace", async () => {
+    const chunks: string[] = [];
+    const stdout = { write: (chunk: string) => void chunks.push(String(chunk)) } as never;
+    const kernel = new Kernel({ sources: [new LocalFileSource()], env: {}, stdout });
+    await kernel.load(TRACED_APP);
+    await kernel.boot();
+    const rootContext = (kernel as unknown as { rootContext: any }).rootContext;
+    const ref = { kind: "Test.Queue", name: "queue" };
+
+    // One unit of work records where it was; another, later, continues from it.
+    const producer = await rootContext.openSpan(undefined, { ref, label: "enqueue" });
+    const carrier = rootContext.traceCarrier(producer.context);
+    await producer.settle("ok");
+    const consumer = await rootContext.openSpan(undefined, {
+      ref,
+      label: "deliver",
+      inbound: carrier,
+    });
+    await consumer.settle("ok");
+    await kernel.teardown();
+
+    const exported = chunks
+      .join("")
+      .split("\n")
+      .filter((line) => line.startsWith("{"))
+      .map((line) => JSON.parse(line) as Record<string, any>)
+      .filter((record) => record.event_name === "telo.span");
+    const enqueue = exported.find((span) => span.msg === "enqueue")!;
+    const deliver = exported.find((span) => span.msg === "deliver")!;
+    expect(carrier).toEqual({ traceparent: `00-${enqueue.trace_id}-${enqueue.span_id}-01` });
+    expect(deliver.trace_id).toBe(enqueue.trace_id);
+    expect(deliver.attributes["telo.span.parent_span_id"]).toBe(enqueue.span_id);
+  });
+
+  it("gives no carrier when tracing is off", async () => {
+    const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
+    await kernel.load(APP);
+    await kernel.boot();
+    const rootContext = (kernel as unknown as { rootContext: any }).rootContext;
+    const span = await rootContext.openSpan(undefined, { ref: { kind: "Test.Queue", name: "queue" } });
+    expect(rootContext.traceCarrier(span.context)).toBeUndefined();
+    await span.settle("ok");
+    await kernel.teardown();
+  });
+
   it("is a no-op pass-through when tracing is off", async () => {
     const kernel = new Kernel({ sources: [new LocalFileSource()], env: {} });
     await kernel.load(APP);

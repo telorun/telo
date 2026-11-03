@@ -1,0 +1,35 @@
+kind: Telo.Library
+metadata:
+  name: RefusedDurations
+  version: 1.0.0
+  description: Durations no runtime reads — a fraction of a millisecond, an integer past the range, a digit-only string.
+imports:
+  Run: ../../../../modules/run
+---
+kind: Telo.Definition
+metadata:
+  name: Span
+  description: Reads back the duration it is configured with.
+extends: Run.Value
+schema:
+  type: object
+  required: [lasts]
+  properties:
+    lasts: { x-telo-type: Telo.Duration }
+base:
+  value: !cel "string(self.lasts)"
+---
+kind: Self.Span
+metadata:
+  name: fraction
+lasts: 250.5
+---
+kind: Self.Span
+metadata:
+  name: pastRange
+lasts: 315576000001000
+---
+kind: Self.Span
+metadata:
+  name: digits
+lasts: "250"

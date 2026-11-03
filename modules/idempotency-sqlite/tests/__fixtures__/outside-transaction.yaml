@@ -1,0 +1,43 @@
+# The guarded operation as a boot target: nothing encloses `targets:`, so no
+# transaction is open on the ledger's connection.
+kind: Telo.Application
+metadata:
+  name: OnceOutsideTransaction
+  version: 1.0.0
+imports:
+  IdempotencySql: ../../../idempotency-sql
+  Idempotency: ../..
+  Sql: ../../../sql
+  SQLite: ../../../sqlite
+targets:
+  - !ref appSchema
+  - invoke: !ref chargeOnce
+    inputs: { key: order-1 }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+retention: 1h
+---
+kind: IdempotencySql.Once
+metadata: { name: chargeOnce }
+ledger: !ref ledger
+invoke:
+  kind: Sql.Command
+  connection: !ref db

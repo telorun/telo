@@ -1,0 +1,1109 @@
+# The database-backed queue's behaviour, once, for every engine: delivery,
+# retries spaced on the store's clock, dead-lettering and requeueing,
+# cancellation, inspection, deduplication, delayed visibility, group order,
+# batches, a body that no longer has its type, typed values round-tripping, and
+# the transactional outbox.
+#
+# A run supplies a connection and six queues on it, all in ONE table whose
+# physical name is `queue_messages`, named inside it `jobs`, `grouped`, `typed`,
+# `strict`, `inspected` and `shortLived` (their message types and retention are
+# stated on each input below), plus two tables the handlers write to —
+# `queue_deliveries (id <identity primary key>, message_id text, attempt
+# integer, note text)` and `queue_orders (order_id text)` — every one listed in
+# the engine's schema. Each sequence keeps to ids of its own prefix.
+kind: Telo.Library
+metadata:
+  name: QueueBehaviourSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the database-backed queue's behaviour over one connection and
+    six queues in one table, run unchanged by every engine.
+imports:
+  Sql: ../../../../sql
+  Queues: ../../../../queue
+  QueueSql: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+  Timer: ../../../../timer
+resources:
+  connection:
+    kind: Sql.Connection
+    description: The connection every queue and both handler tables live on.
+  jobs:
+    kind: QueueSql.Queue
+    description: >-
+      Named `jobs`, retention 1h, message `{ key: string, behaviour: ok |
+      retryTwice | fatal | fatalOnce | slow | outbox }`, both required.
+  grouped:
+    kind: QueueSql.Queue
+    description: >-
+      Named `grouped`, retention 1h, message `{ customer?: string, step: integer,
+      behaviour: ok | fatal }`, `customer` optional and every other member
+      required, `groupBy: message.customer`.
+  typed:
+    kind: QueueSql.Queue
+    description: >-
+      Named `typed`, retention 1h, message `{ at: Telo.Timestamp, big: integer,
+      data: Telo.Bytes }`, all required.
+  strict:
+    kind: QueueSql.Queue
+    description: >-
+      Named `strict`, retention 1h, message `{ n: integer }`, required.
+  inspected:
+    kind: QueueSql.Queue
+    description: Named `inspected`, retention 1h, the `jobs` message type. No worker serves it.
+  shortLived:
+    kind: QueueSql.Queue
+    description: Named `shortLived`, retention 50ms, the `jobs` message type. No worker serves it.
+exports:
+  resources:
+    - jobScenarios
+    - groupScenarios
+    - typedValues
+    - invalidBody
+    - inspection
+    - dedupe
+---
+kind: Sql.Command
+metadata: { name: write }
+connection: !ref connection
+---
+kind: Sql.Query
+metadata: { name: read }
+connection: !ref connection
+---
+kind: Assert.Equals
+metadata: { name: check }
+---
+# ------------------------------------------------------------------ handlers
+kind: Run.Sequence
+metadata: { name: handleJob }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, attempt, key, behaviour]
+    properties:
+      messageId: { type: string }
+      attempt: { type: integer }
+      key: { type: string }
+      behaviour: { type: string }
+throws:
+  codes:
+    RETRY_ME: { description: The job fails until its third attempt. }
+    FATAL: { description: The job can never succeed. }
+steps:
+  - name: record
+    invoke: !ref write
+    inputs:
+      sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, 'start')"
+  - name: prior
+    invoke: !ref read
+    inputs:
+      sql: !sql "SELECT CAST(count(*) AS INTEGER) AS n FROM queue_deliveries WHERE message_id = ${{ inputs.messageId }} AND note = 'start'"
+  - name: retry
+    if: !cel "inputs.behaviour == 'retryTwice' && inputs.attempt < 3"
+    then:
+      - name: notYet
+        throw: { code: RETRY_ME, message: the job fails until its third attempt }
+  - name: fatal
+    if: !cel "inputs.behaviour == 'fatal' || (inputs.behaviour == 'fatalOnce' && steps.prior.result.rows[0].n == 1)"
+    then:
+      - name: never
+        throw: { code: FATAL, message: the job cannot be done }
+  - name: slow
+    if: !cel "inputs.behaviour == 'slow'"
+    then:
+      - name: wait
+        invoke: { kind: Timer.Delay }
+        inputs: { duration: 10s }
+      - name: finished
+        invoke: !ref write
+        inputs:
+          sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, 'finished')"
+  - name: outbox
+    if: !cel "inputs.behaviour == 'outbox'"
+    then:
+      - name: orders
+        invoke: !ref read
+        inputs:
+          sql: !sql "SELECT CAST(count(*) AS INTEGER) AS n FROM queue_orders WHERE order_id = ${{ inputs.key }}"
+      - name: seen
+        invoke: !ref write
+        inputs:
+          sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, ${{ 'orders:' + string(steps.orders.result.rows[0].n) }})"
+---
+# Records what a dead-letter handler was given.
+kind: Run.Sequence
+metadata: { name: recordDead }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, attempt, code, hadMessage]
+    properties:
+      messageId: { type: string }
+      attempt: { type: integer }
+      code: { type: string }
+      hadMessage: { type: boolean }
+steps:
+  - name: record
+    invoke: !ref write
+    inputs:
+      sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, ${{ 'dead:' + inputs.code + ':' + string(inputs.hadMessage) }})"
+---
+kind: Run.Sequence
+metadata: { name: handleOrdered }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, attempt, behaviour]
+    properties:
+      messageId: { type: string }
+      attempt: { type: integer }
+      behaviour: { type: string }
+throws:
+  codes:
+    FATAL: { description: The step can never succeed. }
+steps:
+  - name: start
+    invoke: !ref write
+    inputs:
+      sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, 'start')"
+  - name: fatal
+    if: !cel "inputs.behaviour == 'fatal'"
+    then:
+      - name: never
+        throw: { code: FATAL, message: the step cannot be done }
+  - name: work
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 150ms }
+  - name: end
+    invoke: !ref write
+    inputs:
+      sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, 'end')"
+---
+kind: Run.Sequence
+metadata: { name: handleTyped }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, attempt, matches]
+    properties:
+      messageId: { type: string }
+      attempt: { type: integer }
+      matches: { type: boolean }
+steps:
+  - name: record
+    invoke: !ref write
+    inputs:
+      sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, ${{ 'match:' + string(inputs.matches) }})"
+---
+kind: Run.Sequence
+metadata: { name: handleStrict }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, attempt]
+    properties:
+      messageId: { type: string }
+      attempt: { type: integer }
+steps:
+  - name: record
+    invoke: !ref write
+    inputs:
+      sql: !sql "INSERT INTO queue_deliveries (message_id, attempt, note) VALUES (${{ inputs.messageId }}, ${{ inputs.attempt }}, 'start')"
+---
+# ----------------------------------------------------------------- waiting
+kind: Telo.JsonSchema
+metadata: { name: AwaitInput }
+schema:
+  type: object
+  additionalProperties: false
+  required: [id, state]
+  properties:
+    id: { type: string }
+    state: { type: string }
+    attempts: { type: integer }
+---
+# Polls a `jobs` message until it is in `state` (with `attempts`, when given),
+# for at most about fifteen seconds; answers its last status either way.
+kind: Run.Loop
+metadata: { name: awaitJob }
+inputType: !ref AwaitInput
+condition: !cel >-
+  previous == null || !(previous.status.result.state == inputs.state &&
+  (!has(inputs.attempts) || previous.status.result.attempts == inputs.attempts))
+maxIterations: 600
+steps:
+  - name: pause
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 25ms }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref jobs }
+    inputs: { id: !cel "inputs.id" }
+outputs:
+  status: !cel "steps.status.result"
+---
+kind: Run.Loop
+metadata: { name: awaitGrouped }
+inputType: !ref AwaitInput
+condition: !cel "previous == null || previous.status.result.state != inputs.state"
+maxIterations: 600
+steps:
+  - name: pause
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 25ms }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref grouped }
+    inputs: { id: !cel "inputs.id" }
+outputs:
+  status: !cel "steps.status.result"
+---
+kind: Run.Loop
+metadata: { name: awaitTyped }
+inputType: !ref AwaitInput
+condition: !cel "previous == null || previous.status.result.state != inputs.state"
+maxIterations: 600
+steps:
+  - name: pause
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 25ms }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref typed }
+    inputs: { id: !cel "inputs.id" }
+outputs:
+  status: !cel "steps.status.result"
+---
+kind: Run.Loop
+metadata: { name: awaitStrict }
+inputType: !ref AwaitInput
+condition: !cel "previous == null || previous.status.result.state != inputs.state"
+maxIterations: 600
+steps:
+  - name: pause
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 25ms }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref strict }
+    inputs: { id: !cel "inputs.id" }
+outputs:
+  status: !cel "steps.status.result"
+---
+# The notes recorded for one message, in the order they were written.
+kind: Run.Sequence
+metadata: { name: notesOf }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id: { type: string }
+steps:
+  - name: rows
+    invoke: !ref read
+    inputs:
+      sql: !sql "SELECT attempt, note FROM queue_deliveries WHERE message_id = ${{ inputs.id }} ORDER BY id"
+outputs:
+  rows: !cel "steps.rows.result.rows"
+---
+# ------------------------------------------------------- the `jobs` queue
+# One worker serves every scenario below, for the length of this sequence.
+kind: Run.Sequence
+metadata: { name: jobScenarios }
+with:
+  - kind: Queues.Worker
+    metadata: { name: jobsWorker }
+    queue: !ref jobs
+    concurrency: 2
+    # Short, so a renewal — where a cancel of a running message is seen —
+    # comes every second, yet a renewal has a full second to answer on a loaded
+    # database before the handler is cancelled.
+    lease: 3s
+    timeout: 30s
+    shutdownGrace: 0s
+    invoke: !ref handleJob
+    inputs:
+      messageId: !cel "delivery.messageId"
+      attempt: !cel "delivery.attempt"
+      key: !cel "message.key"
+      behaviour: !cel "message.behaviour"
+    retry:
+      attempts: 3
+      initialDelay: 500ms
+      factor: 2
+      jitter: none
+      nonRetryable: [FATAL]
+    onDead:
+      invoke: !ref recordDead
+      inputs:
+        messageId: !cel "delivery.messageId"
+        attempt: !cel "delivery.attempt"
+        code: !cel "error.code"
+        hadMessage: !cel "message != null"
+targets:
+  - !ref jobsWorker
+steps:
+  - name: completes
+    invoke: !ref completes
+  - name: retriesOnTheStoreClock
+    invoke: !ref retriesOnTheStoreClock
+  - name: deadLetters
+    invoke: !ref deadLetters
+  - name: requeueDeliversAgain
+    invoke: !ref requeueDeliversAgain
+  - name: cancelsPending
+    invoke: !ref cancelsPending
+  - name: cancelsRunning
+    invoke: !ref cancelsRunning
+  - name: delayedNotEarly
+    invoke: !ref delayedNotEarly
+  - name: outboxRollback
+    invoke: !ref outboxRollback
+  - name: outboxCommit
+    invoke: !ref outboxCommit
+---
+# Enqueued, delivered once, completed.
+kind: Run.Sequence
+metadata: { name: completes }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: c-1
+      message: { key: c-1, behaviour: ok }
+  - name: done
+    invoke: !ref awaitJob
+    inputs: { id: c-1, state: completed }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: c-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        enqueued: !cel "steps.enqueue.result"
+        state: !cel "steps.done.result.status.state"
+        attempts: !cel "steps.done.result.status.attempts"
+        notes: !cel "steps.notes.result.rows"
+      expected:
+        enqueued: { id: c-1, enqueued: true }
+        state: completed
+        attempts: 1
+        notes: [{ attempt: 1, note: start }]
+---
+# Two failures, each backoff stored as a visibility time on the store's clock:
+# 500ms after the first failure, 1000ms after the second.
+kind: Run.Sequence
+metadata: { name: retriesOnTheStoreClock }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: r-1
+      message: { key: r-1, behaviour: retryTwice }
+  - name: firstBackoff
+    invoke: !ref awaitJob
+    inputs: { id: r-1, state: scheduled, attempts: 1 }
+  - name: secondBackoff
+    invoke: !ref awaitJob
+    inputs: { id: r-1, state: scheduled, attempts: 2 }
+  - name: done
+    invoke: !ref awaitJob
+    inputs: { id: r-1, state: completed }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: r-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        firstWait: !cel "steps.firstBackoff.result.status.visibleAt - steps.firstBackoff.result.status.enqueuedAt >= duration('500ms')"
+        secondWait: !cel "steps.secondBackoff.result.status.visibleAt - steps.firstBackoff.result.status.visibleAt >= duration('1s')"
+        lastError: !cel "steps.firstBackoff.result.status.lastError.code"
+        state: !cel "steps.done.result.status.state"
+        attempts: !cel "steps.done.result.status.attempts"
+        notes: !cel "steps.notes.result.rows"
+      expected:
+        firstWait: true
+        secondWait: true
+        lastError: RETRY_ME
+        state: completed
+        attempts: 3
+        notes:
+          - { attempt: 1, note: start }
+          - { attempt: 2, note: start }
+          - { attempt: 3, note: start }
+---
+# A non-retryable failure runs the dead-letter handler, then the message is dead.
+kind: Run.Sequence
+metadata: { name: deadLetters }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: d-1
+      message: { key: d-1, behaviour: fatal }
+  - name: dead
+    invoke: !ref awaitJob
+    inputs: { id: d-1, state: dead }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: d-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        attempts: !cel "steps.dead.result.status.attempts"
+        lastError: !cel "steps.dead.result.status.lastError.code"
+        notes: !cel "steps.notes.result.rows"
+      expected:
+        attempts: 1
+        lastError: FATAL
+        notes:
+          - { attempt: 1, note: start }
+          - { attempt: 1, note: "dead:FATAL:true" }
+---
+# A dead message requeued is delivered again, at attempt 1.
+kind: Run.Sequence
+metadata: { name: requeueDeliversAgain }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: q-1
+      message: { key: q-1, behaviour: fatalOnce }
+  - name: dead
+    invoke: !ref awaitJob
+    inputs: { id: q-1, state: dead }
+  - name: requeue
+    invoke: { kind: Queues.Requeue, queue: !ref jobs }
+    inputs: { id: q-1 }
+  - name: again
+    invoke: { kind: Queues.Requeue, queue: !ref jobs }
+    inputs: { id: q-1 }
+  - name: done
+    invoke: !ref awaitJob
+    inputs: { id: q-1, state: completed }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: q-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        requeue: !cel "steps.requeue.result"
+        againRequeued: !cel "steps.again.result.requeued"
+        attempts: !cel "steps.done.result.status.attempts"
+        notes: !cel "steps.notes.result.rows"
+      expected:
+        requeue: { id: q-1, requeued: true, state: pending }
+        againRequeued: false
+        attempts: 1
+        notes:
+          - { attempt: 1, note: start }
+          - { attempt: 1, note: "dead:FATAL:true" }
+          - { attempt: 1, note: start }
+---
+# A scheduled message is cancelled at once, keeping the reason.
+kind: Run.Sequence
+metadata: { name: cancelsPending }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: x-1
+      message: { key: x-1, behaviour: ok }
+      after: 1h
+  - name: cancel
+    invoke: { kind: Queues.Cancel, queue: !ref jobs }
+    inputs: { id: x-1, reason: no longer needed }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref jobs }
+    inputs: { id: x-1 }
+  - name: cancelAgain
+    invoke: { kind: Queues.Cancel, queue: !ref jobs }
+    inputs: { id: x-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        cancel: !cel "steps.cancel.result"
+        state: !cel "steps.status.result.state"
+        reason: !cel "steps.status.result.reason"
+        cancelAgain: !cel "steps.cancelAgain.result"
+      expected:
+        cancel: { id: x-1, cancelled: true, state: cancelled }
+        state: cancelled
+        reason: no longer needed
+        cancelAgain: { id: x-1, cancelled: false, state: cancelled }
+---
+# A running message is cancelled at its handler's next lease renewal: the
+# handler is stopped before it finishes, and the message settles cancelled.
+kind: Run.Sequence
+metadata: { name: cancelsRunning }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: x-2
+      message: { key: x-2, behaviour: slow }
+  - name: running
+    invoke: !ref awaitJob
+    inputs: { id: x-2, state: running }
+  - name: cancel
+    invoke: { kind: Queues.Cancel, queue: !ref jobs }
+    inputs: { id: x-2 }
+  - name: cancelled
+    invoke: !ref awaitJob
+    inputs: { id: x-2, state: cancelled }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: x-2 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        cancel: !cel "steps.cancel.result"
+        state: !cel "steps.cancelled.result.status.state"
+        notes: !cel "steps.notes.result.rows"
+      expected:
+        cancel: { id: x-2, cancelled: true, state: running }
+        state: cancelled
+        notes: [{ attempt: 1, note: start }]
+---
+# A delayed message is not delivered before its time: it settles at least the
+# delay after it was enqueued, both read on the store's clock. An instant is
+# stored as given.
+kind: Run.Sequence
+metadata: { name: delayedNotEarly }
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: l-1
+      message: { key: l-1, behaviour: ok }
+      after: 1500ms
+  - name: before
+    invoke: { kind: Queues.Status, queue: !ref jobs }
+    inputs: { id: l-1 }
+  - name: done
+    invoke: !ref awaitJob
+    inputs: { id: l-1, state: completed }
+  - name: atInstant
+    invoke: { kind: Queues.Enqueue, queue: !ref jobs }
+    inputs:
+      id: l-2
+      message: { key: l-2, behaviour: ok }
+      after: "2100-01-01T00:00:00Z"
+  - name: instant
+    invoke: { kind: Queues.Status, queue: !ref jobs }
+    inputs: { id: l-2 }
+  - name: tidy
+    invoke: { kind: Queues.Cancel, queue: !ref jobs }
+    inputs: { id: l-2 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        before: !cel "steps.before.result.state"
+        notEarly: !cel "steps.done.result.status.settledAt - steps.done.result.status.enqueuedAt >= duration('1500ms')"
+        instant: !cel "[steps.instant.result.state, steps.instant.result.visibleAt == timestamp('2100-01-01T00:00:00Z')]"
+      expected:
+        before: scheduled
+        notEarly: true
+        instant: [scheduled, true]
+---
+# The transactional outbox, rolled back: neither the order nor the message.
+kind: Sql.Transaction
+metadata: { name: placeOrderThenFail }
+connection: !ref connection
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: order
+      invoke: !ref write
+      inputs:
+        sql: INSERT INTO queue_orders (order_id) VALUES ('o-1')
+    - name: enqueue
+      invoke: { kind: QueueSql.Enqueue, queue: !ref jobs }
+      inputs:
+        id: ob-1
+        message: { key: o-1, behaviour: outbox }
+    - name: fail
+      throw: { code: ORDER_REFUSED, message: the order is refused after both writes }
+---
+kind: Run.Sequence
+metadata: { name: outboxRollback }
+steps:
+  - name: attempt
+    try:
+      - name: place
+        invoke: !ref placeOrderThenFail
+    catch:
+      - name: caught
+        value: !cel "error.code"
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref jobs }
+    inputs: { id: ob-1 }
+  - name: orders
+    invoke: !ref read
+    inputs:
+      sql: SELECT CAST(count(*) AS INTEGER) AS n FROM queue_orders WHERE order_id = 'o-1'
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        caught: !cel "steps.caught.result"
+        state: !cel "steps.status.result.state"
+        orders: !cel "steps.orders.result.rows"
+      expected:
+        caught: ORDER_REFUSED
+        state: unknown
+        orders: [{ n: 0 }]
+---
+# The transactional outbox, committed after a pause with the worker running:
+# the worker reads the order when it is handed the message, so it saw the row.
+kind: Sql.Transaction
+metadata: { name: placeOrder }
+connection: !ref connection
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: order
+      invoke: !ref write
+      inputs:
+        sql: INSERT INTO queue_orders (order_id) VALUES ('o-2')
+    - name: enqueue
+      invoke: { kind: QueueSql.Enqueue, queue: !ref jobs }
+      inputs:
+        id: ob-2
+        message: { key: o-2, behaviour: outbox }
+    - name: linger
+      invoke: { kind: Timer.Delay }
+      inputs: { duration: 700ms }
+---
+kind: Run.Sequence
+metadata: { name: outboxCommit }
+steps:
+  - name: place
+    invoke: !ref placeOrder
+  - name: done
+    invoke: !ref awaitJob
+    inputs: { id: ob-2, state: completed }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: ob-2 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual: !cel "steps.notes.result.rows"
+      expected:
+        - { attempt: 1, note: start }
+        - { attempt: 1, note: "orders:1" }
+---
+# ---------------------------------------------------- the `grouped` queue
+kind: Run.Sequence
+metadata: { name: groupScenarios }
+with:
+  - kind: Queues.Worker
+    metadata: { name: groupedWorker }
+    queue: !ref grouped
+    concurrency: 4
+    timeout: 30s
+    shutdownGrace: 0s
+    invoke: !ref handleOrdered
+    inputs:
+      messageId: !cel "delivery.messageId"
+      attempt: !cel "delivery.attempt"
+      behaviour: !cel "message.behaviour"
+    retry:
+      attempts: 1
+      nonRetryable: [FATAL]
+targets:
+  - !ref groupedWorker
+steps:
+  - name: oneAtATimeInOrder
+    invoke: !ref oneAtATimeInOrder
+  - name: deadHeadParksItsGroup
+    invoke: !ref deadHeadParksItsGroup
+  - name: groupRequired
+    invoke: !ref groupRequired
+---
+# One batch, two groups: each group's messages run one at a time, in enqueue
+# order, with four handler slots free.
+kind: Run.Sequence
+metadata: { name: oneAtATimeInOrder }
+steps:
+  - name: batch
+    invoke: { kind: Queues.EnqueueMany, queue: !ref grouped }
+    inputs:
+      messages:
+        - { id: g-a1, message: { customer: a, step: 1, behaviour: ok } }
+        - { id: g-a2, message: { customer: a, step: 2, behaviour: ok } }
+        - { id: g-b1, message: { customer: b, step: 1, behaviour: ok } }
+        - { id: g-a3, message: { customer: a, step: 3, behaviour: ok } }
+        - { id: g-b2, message: { customer: b, step: 2, behaviour: ok } }
+  - name: lastA
+    invoke: !ref awaitGrouped
+    inputs: { id: g-a3, state: completed }
+  - name: lastB
+    invoke: !ref awaitGrouped
+    inputs: { id: g-b2, state: completed }
+  - name: groupA
+    invoke: !ref read
+    inputs:
+      sql: SELECT message_id, note FROM queue_deliveries WHERE message_id LIKE 'g-a%' ORDER BY id
+  - name: groupB
+    invoke: !ref read
+    inputs:
+      sql: SELECT message_id, note FROM queue_deliveries WHERE message_id LIKE 'g-b%' ORDER BY id
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        batch: !cel "steps.batch.result.messages"
+        groupA: !cel "steps.groupA.result.rows"
+        groupB: !cel "steps.groupB.result.rows"
+      expected:
+        batch:
+          - { id: g-a1, enqueued: true }
+          - { id: g-a2, enqueued: true }
+          - { id: g-b1, enqueued: true }
+          - { id: g-a3, enqueued: true }
+          - { id: g-b2, enqueued: true }
+        groupA:
+          - { message_id: g-a1, note: start }
+          - { message_id: g-a1, note: end }
+          - { message_id: g-a2, note: start }
+          - { message_id: g-a2, note: end }
+          - { message_id: g-a3, note: start }
+          - { message_id: g-a3, note: end }
+        groupB:
+          - { message_id: g-b1, note: start }
+          - { message_id: g-b1, note: end }
+          - { message_id: g-b2, note: start }
+          - { message_id: g-b2, note: end }
+---
+# A dead message holds its group: the next one waits until the dead one is
+# cancelled, while another group's message is delivered meanwhile.
+kind: Run.Sequence
+metadata: { name: deadHeadParksItsGroup }
+steps:
+  - name: batch
+    invoke: { kind: Queues.EnqueueMany, queue: !ref grouped }
+    inputs:
+      messages:
+        - { id: p-c1, message: { customer: c, step: 1, behaviour: fatal } }
+        - { id: p-c2, message: { customer: c, step: 2, behaviour: ok } }
+  - name: dead
+    invoke: !ref awaitGrouped
+    inputs: { id: p-c1, state: dead }
+  - name: other
+    invoke: { kind: Queues.Enqueue, queue: !ref grouped }
+    inputs:
+      id: p-d1
+      message: { customer: d, step: 1, behaviour: ok }
+  - name: otherDone
+    invoke: !ref awaitGrouped
+    inputs: { id: p-d1, state: completed }
+  - name: parked
+    invoke: { kind: Queues.Status, queue: !ref grouped }
+    inputs: { id: p-c2 }
+  - name: parkedNotes
+    invoke: !ref notesOf
+    inputs: { id: p-c2 }
+  - name: unpark
+    invoke: { kind: Queues.Cancel, queue: !ref grouped }
+    inputs: { id: p-c1 }
+  - name: released
+    invoke: !ref awaitGrouped
+    inputs: { id: p-c2, state: completed }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        parked: !cel "[steps.parked.result.state, steps.parked.result.attempts]"
+        parkedNotes: !cel "steps.parkedNotes.result.rows"
+        unpark: !cel "steps.unpark.result"
+        released: !cel "steps.released.result.status.state"
+      expected:
+        parked: [pending, 0]
+        parkedNotes: []
+        unpark: { id: p-c1, cancelled: true, state: cancelled }
+        released: completed
+---
+# A message with no group is refused on a grouped queue, and nothing of its
+# batch is stored.
+kind: Run.Sequence
+metadata: { name: groupRequired }
+steps:
+  - name: batch
+    try:
+      - name: enqueue
+        invoke: { kind: Queues.EnqueueMany, queue: !ref grouped }
+        inputs:
+          messages:
+            - { id: n-1, message: { customer: e, step: 1, behaviour: ok }, after: 1h }
+            - { id: n-2, message: { step: 2, behaviour: ok }, after: 1h }
+    catch:
+      - name: refused
+        value: !cel "{'code': error.code, 'data': error.data}"
+  - name: first
+    invoke: { kind: Queues.Status, queue: !ref grouped }
+    inputs: { id: n-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        refused: !cel "steps.refused.result"
+        first: !cel "steps.first.result.state"
+      expected:
+        refused: { code: ERR_QUEUE_GROUP_INVALID, data: { index: 1 } }
+        first: unknown
+---
+# ------------------------------------------------------ the `typed` queue
+# An instant to the nanosecond, an integer past 2^53 and raw bytes reach the
+# handler, and read back, equal to what was enqueued.
+kind: Run.Sequence
+metadata: { name: typedValues }
+with:
+  - kind: Queues.Worker
+    metadata: { name: typedWorker }
+    queue: !ref typed
+    timeout: 30s
+    shutdownGrace: 0s
+    invoke: !ref handleTyped
+    inputs:
+      messageId: !cel "delivery.messageId"
+      attempt: !cel "delivery.attempt"
+      matches: !cel >-
+        message.at == timestamp('2026-01-02T03:04:05.123456789Z') &&
+        message.big == 9007199254740993 && message.data == b'\x00\xffhi'
+    retry: { attempts: 0 }
+targets:
+  - !ref typedWorker
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref typed }
+    inputs:
+      id: t-1
+      message: !cel >-
+        {'at': timestamp('2026-01-02T03:04:05.123456789Z'), 'big': 9007199254740993,
+         'data': b'\x00\xffhi'}
+  - name: done
+    invoke: !ref awaitTyped
+    inputs: { id: t-1, state: completed }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: t-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        notes: !cel "steps.notes.result.rows"
+        readBack: !cel >-
+          steps.done.result.status.message.at == timestamp('2026-01-02T03:04:05.123456789Z') &&
+          steps.done.result.status.message.big == 9007199254740993 &&
+          steps.done.result.status.message.data == b'\x00\xffhi'
+      expected:
+        notes: [{ attempt: 1, note: "match:true" }]
+        readBack: true
+---
+# ----------------------------------------------------- the `strict` queue
+# A stored body that no longer has the message type is dead at once: the handler
+# never runs, and the dead-letter handler is given no message. The body is
+# rewritten in the table while the message waits out its delay, as a producer
+# outside Telo could write it.
+kind: Run.Sequence
+metadata: { name: invalidBody }
+with:
+  - kind: Queues.Worker
+    metadata: { name: strictWorker }
+    queue: !ref strict
+    timeout: 30s
+    shutdownGrace: 0s
+    invoke: !ref handleStrict
+    inputs:
+      messageId: !cel "delivery.messageId"
+      attempt: !cel "delivery.attempt"
+    retry: { attempts: 3 }
+    onDead:
+      invoke: !ref recordDead
+      inputs:
+        messageId: !cel "delivery.messageId"
+        attempt: !cel "delivery.attempt"
+        code: !cel "error.code"
+        hadMessage: !cel "message != null"
+targets:
+  - !ref strictWorker
+steps:
+  - name: enqueue
+    invoke: { kind: Queues.Enqueue, queue: !ref strict }
+    inputs:
+      id: m-1
+      message: { n: 1 }
+      after: 1s
+  - name: corrupt
+    invoke: !ref write
+    inputs:
+      sql: >-
+        UPDATE queue_messages SET body = '{"n":"x"}'
+        WHERE queue_name = 'strict' AND message_id = 'm-1'
+  - name: dead
+    invoke: !ref awaitStrict
+    inputs: { id: m-1, state: dead }
+  - name: notes
+    invoke: !ref notesOf
+    inputs: { id: m-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        lastError: !cel "steps.dead.result.status.lastError.code"
+        message: !cel "steps.dead.result.status.message"
+        notes: !cel "steps.notes.result.rows"
+      expected:
+        lastError: ERR_QUEUE_MESSAGE_INVALID
+        message: null
+        notes: [{ attempt: 1, note: "dead:ERR_QUEUE_MESSAGE_INVALID:false" }]
+---
+# -------------------------------------------------- the `inspected` queue
+# Status, List and Stats over a queue no worker serves.
+kind: Run.Sequence
+metadata: { name: inspection }
+steps:
+  - name: pending
+    invoke: { kind: Queues.Enqueue, queue: !ref inspected }
+    inputs: { id: i-1, message: { key: i-1, behaviour: ok } }
+  - name: scheduled1
+    invoke: { kind: Queues.Enqueue, queue: !ref inspected }
+    inputs: { id: i-2, message: { key: i-2, behaviour: ok }, after: 1h }
+  - name: scheduled2
+    invoke: { kind: Queues.Enqueue, queue: !ref inspected }
+    inputs: { id: i-3, message: { key: i-3, behaviour: ok }, after: 1h }
+  - name: toCancel
+    invoke: { kind: Queues.Enqueue, queue: !ref inspected }
+    inputs: { id: i-4, message: { key: i-4, behaviour: ok }, after: 1h }
+  - name: cancel
+    invoke: { kind: Queues.Cancel, queue: !ref inspected }
+    inputs: { id: i-4 }
+  - name: stats
+    invoke: { kind: Queues.Stats, queue: !ref inspected }
+    inputs: {}
+  - name: firstPage
+    invoke: { kind: Queues.List, queue: !ref inspected }
+    inputs: { state: scheduled, limit: 1 }
+  - name: secondPage
+    invoke: { kind: Queues.List, queue: !ref inspected }
+    inputs: { state: scheduled, limit: 1, cursor: !cel "steps.firstPage.result.next" }
+  - name: cancelled
+    invoke: { kind: Queues.List, queue: !ref inspected }
+    inputs: { state: cancelled }
+  - name: wrongState
+    try:
+      - name: listPending
+        invoke: { kind: Queues.List, queue: !ref inspected }
+        inputs: { state: pending, cursor: !cel "steps.firstPage.result.next" }
+    catch:
+      - name: refused
+        value: !cel "error.code"
+  - name: unknown
+    invoke: { kind: Queues.Status, queue: !ref inspected }
+    inputs: { id: i-none }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref inspected }
+    inputs: { id: i-1 }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        counts: !cel >-
+          [steps.stats.result.pending, steps.stats.result.scheduled,
+           steps.stats.result.running, steps.stats.result.dead, steps.stats.result.exact,
+           steps.stats.result.oldestPendingAge != null]
+        firstPage: !cel "[steps.firstPage.result.messages.map(m, m.id), has(steps.firstPage.result.next)]"
+        secondPage: !cel "[steps.secondPage.result.messages.map(m, m.id), has(steps.secondPage.result.next)]"
+        cancelled: !cel "steps.cancelled.result.messages.map(m, [m.id, m.state])"
+        refused: !cel "steps.refused.result"
+        unknown: !cel "steps.unknown.result"
+        status: !cel "[steps.status.result.state, steps.status.result.attempts, steps.status.result.message]"
+      expected:
+        counts: [1, 2, 0, 0, true, true]
+        firstPage: [[i-2], true]
+        secondPage: [[i-3], false]
+        cancelled: [[i-4, cancelled]]
+        refused: ERR_QUEUE_CURSOR_INVALID
+        unknown: { id: i-none, state: unknown, attempts: 0 }
+        status: [pending, 0, { key: i-1, behaviour: ok }]
+---
+# ------------------------------------------------- the `shortLived` queue
+# An id names one message: the same message again stores nothing, a different
+# one is refused, and once its retention has passed after it settled the id is
+# free again. A batch repeating an id stores it once.
+kind: Run.Sequence
+metadata: { name: dedupe }
+steps:
+  - name: first
+    invoke: { kind: Queues.Enqueue, queue: !ref shortLived }
+    inputs: { id: u-1, message: { key: same, behaviour: ok }, after: 1h }
+  - name: same
+    invoke: { kind: Queues.Enqueue, queue: !ref shortLived }
+    inputs: { id: u-1, message: { key: same, behaviour: ok }, after: 1h }
+  - name: different
+    try:
+      - name: other
+        invoke: { kind: Queues.Enqueue, queue: !ref shortLived }
+        inputs: { id: u-1, message: { key: other, behaviour: ok } }
+    catch:
+      - name: refused
+        value: !cel "{'code': error.code, 'data': error.data}"
+  - name: settle
+    invoke: { kind: Queues.Cancel, queue: !ref shortLived }
+    inputs: { id: u-1 }
+  - name: retentionPasses
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 200ms }
+  - name: afterRetention
+    invoke: { kind: Queues.Enqueue, queue: !ref shortLived }
+    inputs: { id: u-1, message: { key: other, behaviour: ok }, after: 1h }
+  - name: status
+    invoke: { kind: Queues.Status, queue: !ref shortLived }
+    inputs: { id: u-1 }
+  - name: batch
+    invoke: { kind: Queues.EnqueueMany, queue: !ref shortLived }
+    inputs:
+      messages:
+        - { id: u-2, message: { key: two, behaviour: ok }, after: 1h }
+        - { id: u-2, message: { key: two, behaviour: ok }, after: 1h }
+        - { id: u-3, message: { key: three, behaviour: ok }, after: 1h }
+  - name: verify
+    invoke: !ref check
+    inputs:
+      actual:
+        first: !cel "steps.first.result.enqueued"
+        same: !cel "steps.same.result.enqueued"
+        refused: !cel "steps.refused.result"
+        afterRetention: !cel "steps.afterRetention.result.enqueued"
+        status: !cel "[steps.status.result.state, steps.status.result.message != null ? steps.status.result.message.key : null]"
+        batch: !cel "steps.batch.result.messages"
+      expected:
+        first: true
+        same: false
+        refused: { code: ERR_QUEUE_ID_CONFLICT, data: { id: u-1 } }
+        afterRetention: true
+        status: [scheduled, other]
+        batch:
+          - { id: u-2, enqueued: true }
+          - { id: u-2, enqueued: false }
+          - { id: u-3, enqueued: true }

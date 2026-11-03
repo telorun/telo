@@ -1,0 +1,42 @@
+# A slot marked `x-telo-serializable` names a shape holding a live stream two
+# levels down — refused here, and at creation for a consumer.
+kind: Telo.Library
+metadata:
+  name: SchemaNotSerializableLib
+imports:
+  Run: ../../../../../modules/run
+exports:
+  resources: [box]
+---
+kind: Telo.Definition
+metadata:
+  name: Box
+  description: Stores values of the shape it is given.
+extends: Run.Value
+schema:
+  type: object
+  required: [shape]
+  properties:
+    shape:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+      x-telo-serializable: true
+base:
+  value: stored
+---
+kind: Telo.JsonSchema
+metadata:
+  name: Payload
+schema:
+  type: object
+  properties:
+    parts:
+      type: array
+      items:
+        anyOf:
+          - type: string
+          - x-telo-type: { name: Telo.Stream, of: Telo.Bytes }
+---
+kind: Self.Box
+metadata:
+  name: box
+shape: !ref Payload
