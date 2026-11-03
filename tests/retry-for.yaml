@@ -1,0 +1,38 @@
+# `x-telo-retry-for` makes a retry policy a kind holds beside the slot it
+# re-attempts judged as a step's own: `nonRetryable` against the slot target's
+# throws plus the codes the annotation lists, `retryAfter`'s `error.data` typed
+# against the same union — and the annotation itself refused where unreadable.
+kind: Telo.Application
+metadata:
+  name: RetryForChecks
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref judged
+  - !ref malformed
+---
+kind: Assert.Manifest
+metadata:
+  name: judged
+source: ./__fixtures__/retry-for/telo.yaml
+expect:
+  warnings:
+    - code: NON_RETRYABLE_CODE_NOT_THROWN
+      message: "names 'ERR_NEVER_RAISED', which the retried dispatch cannot throw — its throw union is {ERR_RATE_LIMITED, ERR_WORKER_TIMEOUT}"
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "error.data.'wait' is not defined"
+---
+kind: Assert.Manifest
+metadata:
+  name: malformed
+source: ./__fixtures__/retry-for/malformed/telo.yaml
+expect:
+  errors:
+    - code: RETRY_FOR_INVALID
+      message: "annotates 'retry', which does not hold a retry policy"
+    - code: RETRY_FOR_INVALID
+      message: "names '/target' as the slot 'retry' retries, but the kind declares no reference slot there"
+    - code: RETRY_FOR_INVALID
+      message: "describes code 'ERR_WORKER_TIMEOUT' with no 'description'"

@@ -99,6 +99,23 @@ export const enqueue = {
   },
 };
 
+/** Requirer at the schema root: names no field at all. */
+export const rootEnqueue = {
+  schema: { type: "object", additionalProperties: true },
+  async create(resource, ctx) {
+    return {
+      async init() {},
+      async invoke(inputs, invokeCtx) {
+        const zone = ctx.requireZone(invokeCtx);
+        return { zone: zone.kind, correlatedOn: zone.key?.ref.name ?? null };
+      },
+      snapshot() {
+        return {};
+      },
+    };
+  },
+};
+
 /** Reports the ambient stack it observes. */
 export const probe = {
   schema: { type: "object", additionalProperties: true },

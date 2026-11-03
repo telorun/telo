@@ -1,0 +1,55 @@
+# A kind whose zone requirement sits at its schema ROOT, correlated through a
+# reference: every instance must run inside a transaction on the connection its
+# holder names. The controller asks the kernel with the field-less
+# `ctx.requireZone(ctx)`; it never raises the code itself.
+kind: Telo.Library
+metadata:
+  name: RootZone
+  version: 1.0.0
+  description: >-
+    Fixture kinds: a holder naming a connection, and an operation that must run
+    inside a transaction on that connection.
+imports:
+  Sql: ../../../../../modules/sql
+exports:
+  kinds:
+    - Holder
+    - Guarded
+---
+kind: Telo.Definition
+metadata:
+  name: Holder
+  description: Names the connection a guarded operation correlates on.
+capability: Telo.Provider
+controllers:
+  - pkg:telo/local/js?path=./root-zone.mjs#Holder
+schema:
+  type: object
+  additionalProperties: false
+  required: [connection]
+  properties:
+    connection:
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Guarded
+  description: Succeeds only inside a transaction on its holder's connection.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./root-zone.mjs#Guarded
+throws:
+  codes:
+    ERR_ZONE_REQUIRED:
+      description: No transaction is open on the holder's connection.
+schema:
+  type: object
+  additionalProperties: false
+  required: [holder]
+  x-telo-requires-zone:
+    zone: Sql.Transaction
+    key: /holder/connection
+    reason: the operation would run apart from the transaction it belongs to
+  properties:
+    holder:
+      x-telo-ref: { kind: Self.Holder, use: dependency }

@@ -1,0 +1,962 @@
+kind: Telo.Library
+metadata:
+  # Named `Queues` so the kinds can be `Queue`, `Worker`, …; imported as `Queue`
+  # by convention, which is how every doc spells them (`Queue.Queue`).
+  name: Queues
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Reliability, Coordination]
+  description: >-
+    Durable typed work queues for background jobs: enqueue a message, and
+    workers process it with leases, per-attempt timeouts, retries with backoff,
+    delayed delivery and dead-lettering, so work survives crashes and restarts.
+    Delivery is at-least-once; messages can be deduplicated, looked up,
+    cancelled and requeued by id, and handled in order per group.
+requires:
+  # `x-telo-serializable`, a bounded `Telo.Duration` argument and the retry
+  # policy's duration delays, `retryAfter` and `x-telo-retry-for` are first
+  # read in 0.129.0: an older analyzer refuses the bounds and the duration
+  # delays, and enforces none of the rest. Forward-declared: 0.129.0 is the
+  # release that carries them.
+  telo: ">=0.129.0"
+exports:
+  kinds:
+    - Queue
+    - AddressableQueue
+    - Enqueue
+    - EnqueueMany
+    - Worker
+    - Stats
+    - Status
+    - List
+    - Cancel
+    - Requeue
+  resources:
+    - GroupBy
+    - EnqueueItem
+  # The store contract a backend implements and the shared controllers it may
+  # re-export. Optional for a backend — a store is recognised by its methods,
+  # never by having imported this.
+  code:
+    - specifier: "@telorun/queue"
+      format: js
+      path: ./nodejs/queue.mjs
+      source: ./nodejs/src/index.ts
+---
+# Queue.Queue — one durable typed queue. A backend provides a kind extending it
+# (or AddressableQueue) whose instance implements the store contract
+# (docs/store-contract.md). The operation kinds own every code and every retry
+# and dead-letter decision; a store stores.
+kind: Telo.Abstract
+metadata:
+  name: Queue
+  description: >-
+    A durable queue of typed messages for background work. An enqueued message is
+    stored before the call returns and survives restarts; it is claimed by one
+    consumer at a time under a renewable lease, delivered at least once, never
+    before its visibility time, and kept dead after its retries run out.
+capability: Telo.Provider
+schema:
+  type: object
+  required: [messageType]
+  properties:
+    messageType:
+      title: Message type
+      description: >-
+        The shape every message on this queue has, inline or a `!ref` to a
+        named type. It is stored as plain JSON, so a live value (a stream) is
+        refused anywhere in it.
+      x-telo-ref:
+        kind: Telo.Type
+        use: schema
+      x-telo-serializable: true
+    maxMessageBytes:
+      title: Max message bytes
+      description: >-
+        The largest encoded message body this queue stores, in bytes. A larger
+        one is refused with `ERR_QUEUE_MESSAGE_TOO_LARGE` and nothing stored.
+      type: integer
+      minimum: 1
+      default: 262144
+---
+# Queue.AddressableQueue — a queue whose ids name at most one message, so an
+# enqueue is deduplicated and a message can be looked up, listed, cancelled and
+# requeued by id.
+kind: Telo.Abstract
+metadata:
+  name: AddressableQueue
+  description: >-
+    A durable queue where an id names at most one message until a retention
+    window after it settled, so a repeated enqueue with the same id stores
+    nothing. Messages can be looked up, listed by state, cancelled and requeued
+    by id; settled messages past retention read as absent, dead ones are kept.
+extends: Self.Queue
+schema:
+  type: object
+  required: [retention]
+  properties:
+    retention:
+      title: Retention
+      description: >-
+        How long a completed or cancelled message keeps its id after it settled.
+        An enqueue with that id inside the window stores nothing; after it, the
+        message reads as absent and the id is free. Dead messages are kept
+        whatever their age.
+      x-telo-type:
+        name: Telo.Duration
+        minimum: 0s
+---
+# Queue.GroupBy — the field an ordering-capable backend declares: an accessor
+# naming the message member that orders delivery within a group.
+kind: Telo.JsonSchema
+metadata:
+  name: GroupBy
+schema:
+  title: Group by
+  description: >-
+    The message member messages are grouped by, as a plain chain over `message`
+    (`!cel "message.customerId"`). Messages of one group are delivered one at a
+    time in enqueue order, a dead message holds its group until it is requeued
+    or cancelled, and different groups are delivered in parallel.
+  type: string
+  x-telo-eval: accessor
+  x-telo-context:
+    type: object
+    properties:
+      message:
+        description: The message, typed from the queue's `messageType`.
+        x-telo-context-eval: accessor
+        x-telo-context-from-root: messageType
+---
+# Queue.EnqueueItem — one message to enqueue: what `Queue.Enqueue` takes and
+# each item of `Queue.EnqueueMany`.
+kind: Telo.JsonSchema
+metadata:
+  name: EnqueueItem
+schema:
+  type: object
+  additionalProperties: false
+  required: [message]
+  properties:
+    message:
+      title: Message
+      description: The message, which must have the queue's `messageType`.
+      x-telo-value-schema-from: /queue/messageType
+    id:
+      title: Id
+      description: >-
+        The message's id. On an addressable queue an id names at most one
+        message, so an enqueue repeating one stores nothing. Omitted, a fresh id
+        is minted.
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[!-~]+$"
+    after:
+      title: After
+      description: >-
+        When the message may first be delivered: a duration from now, measured
+        on the queue's own clock, or an instant. Omitted, it is deliverable at
+        once.
+      # anyOf, not oneOf: a consumer that does not know a value type reads its
+      # branch as an empty schema matching everything.
+      anyOf:
+        - x-telo-type:
+            name: Telo.Duration
+            minimum: 0s
+        - x-telo-type: Telo.Timestamp
+---
+kind: Telo.Definition
+metadata:
+  name: Enqueue
+  description: >-
+    Adds a message to a durable queue, optionally under an id and delayed by a
+    duration or until an instant. Returns the message id and whether it was
+    stored; on an addressable queue already holding the same message under that
+    id nothing is stored. A message over the size limit or an id reused for a
+    different message is refused.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#Enqueue
+throws:
+  codes:
+    ERR_QUEUE_UNAVAILABLE:
+      description: >-
+        The queue's storage could not be reached or failed. The message may or
+        may not be stored; retrying is safe on an addressable queue when the
+        call names an id, and may store a second message when it does not.
+    ERR_QUEUE_MESSAGE_TOO_LARGE:
+      description: >-
+        The encoded message is larger than the queue's `maxMessageBytes`.
+        Nothing was stored.
+      data:
+        type: object
+        additionalProperties: false
+        required: [bytes, maxBytes]
+        properties:
+          bytes:
+            type: integer
+            description: The encoded message's size in bytes.
+          maxBytes:
+            type: integer
+            description: The queue's bound.
+    ERR_QUEUE_ID_CONFLICT:
+      description: >-
+        An addressable queue already holds a different message under this id.
+        Nothing was stored.
+      data:
+        type: object
+        additionalProperties: false
+        required: [id]
+        properties:
+          id:
+            type: string
+            description: The id that is taken.
+    ERR_QUEUE_GROUP_INVALID:
+      description: >-
+        The queue groups its messages, and the message's group member is absent
+        or not a string. Terminal: nothing was stored.
+    ERR_QUEUE_STORE_INCONSISTENT:
+      description: >-
+        The queue's storage answered in a way its contract rules out. Terminal:
+        re-issuing the call cannot help; the storage needs attention.
+    ERR_ZONE_REQUIRED:
+      description: >-
+        The queue's storage stores a message only inside an enclosing zone (a
+        transaction) and the call is outside it. Nothing was stored.
+inputType: !ref EnqueueItem
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, enqueued]
+    properties:
+      id:
+        title: Id
+        description: The message's id, given or minted.
+        type: string
+        x-telo-span-attribute: telo.queue.message.id
+      enqueued:
+        title: Enqueued
+        description: >-
+          Whether this call stored the message. False only on an addressable
+          queue that already holds the same message under this id.
+        type: boolean
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue]
+  properties:
+    queue:
+      title: Queue
+      description: The queue the message is added to.
+      x-telo-ref:
+        kind: Self.Queue
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: EnqueueMany
+  description: >-
+    Adds up to a thousand messages to a durable queue in one round trip to its
+    storage, returning each message's id and whether it was stored, in input
+    order. Not atomic across the batch: a refusal names the item, and retrying
+    with the same ids stores nothing twice on an addressable queue.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#EnqueueMany
+throws:
+  codes:
+    ERR_QUEUE_UNAVAILABLE:
+      description: >-
+        The queue's storage could not be reached or failed. The messages may or
+        may not be stored; retrying is safe on an addressable queue for the
+        items that name an id, and may store a second message for those that
+        do not.
+    ERR_QUEUE_MESSAGE_TOO_LARGE:
+      description: >-
+        An encoded message is larger than the queue's `maxMessageBytes`.
+        Nothing of the batch was stored.
+      data:
+        type: object
+        additionalProperties: false
+        required: [index, bytes, maxBytes]
+        properties:
+          index:
+            type: integer
+            description: The position of the refused message in `messages`.
+          bytes:
+            type: integer
+            description: The encoded message's size in bytes.
+          maxBytes:
+            type: integer
+            description: The queue's bound.
+    ERR_QUEUE_ID_CONFLICT:
+      description: >-
+        An addressable queue already holds a different message under an item's
+        id. The other items of the batch may have been stored.
+      data:
+        type: object
+        additionalProperties: false
+        required: [index, id]
+        properties:
+          index:
+            type: integer
+            description: The position of the refused message in `messages`.
+          id:
+            type: string
+            description: The id that is taken.
+    ERR_QUEUE_GROUP_INVALID:
+      description: >-
+        The queue groups its messages, and a message's group member is absent
+        or not a string. Terminal: nothing of the batch was stored.
+      data:
+        type: object
+        required: [index]
+        properties:
+          index:
+            type: integer
+            description: The position of the refused message in `messages`.
+    ERR_QUEUE_STORE_INCONSISTENT:
+      description: >-
+        The queue's storage answered in a way its contract rules out. Terminal:
+        re-issuing the call cannot help; the storage needs attention.
+    ERR_ZONE_REQUIRED:
+      description: >-
+        The queue's storage stores a message only inside an enclosing zone (a
+        transaction) and the call is outside it. Nothing was stored.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messages]
+    properties:
+      messages:
+        title: Messages
+        description: The messages to add, 1 to 1000.
+        type: array
+        minItems: 1
+        maxItems: 1000
+        # The item is written out rather than naming `EnqueueItem`: a message
+        # typed from the queue is read only where the contract itself declares
+        # it, not inside a shape a contract node references.
+        items:
+          type: object
+          additionalProperties: false
+          required: [message]
+          properties:
+            message:
+              title: Message
+              description: The message, which must have the queue's `messageType`.
+              x-telo-value-schema-from: /queue/messageType
+            id:
+              title: Id
+              description: >-
+                The message's id. Omitted, a fresh id is minted.
+              type: string
+              minLength: 1
+              maxLength: 128
+              pattern: "^[!-~]+$"
+            after:
+              title: After
+              description: >-
+                When the message may first be delivered: a duration from now on
+                the queue's own clock, or an instant.
+              anyOf:
+                - x-telo-type:
+                    name: Telo.Duration
+                    minimum: 0s
+                - x-telo-type: Telo.Timestamp
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messages]
+    properties:
+      messages:
+        title: Messages
+        description: One entry per input message, in input order.
+        type: array
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, enqueued]
+          properties:
+            id:
+              type: string
+              description: The message's id, given or minted.
+            enqueued:
+              type: boolean
+              description: >-
+                Whether this call stored the message. False only on an
+                addressable queue already holding the same message under this
+                id.
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue]
+  properties:
+    queue:
+      title: Queue
+      description: The queue the messages are added to.
+      x-telo-ref:
+        kind: Self.Queue
+        use: dependency
+---
+# Queue.Worker — claims messages and runs a handler for each. Every delivery
+# outcome — retry, backoff, dead-lettering, lease renewal, cancellation,
+# shutdown — is decided here, once for every backend.
+kind: Telo.Definition
+metadata:
+  name: Worker
+  description: >-
+    Processes messages from a durable queue in the background: claims each under
+    a renewed lease, runs a handler with a per-attempt timeout, retries failures
+    with exponential backoff or a wait the failure names, and dead-letters a
+    message whose retries run out after an optional dead-letter handler ran.
+    Stops claiming on shutdown and hands unfinished work back.
+capability: Telo.Service
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#Worker
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue, invoke, timeout, retry]
+  properties:
+    queue:
+      title: Queue
+      description: The queue messages are claimed from.
+      x-telo-ref:
+        kind: Self.Queue
+        use: dependency
+    invoke:
+      title: Handler
+      description: >-
+        What runs for each delivered message. Returning completes the message;
+        failing re-attempts it under `retry`.
+      x-telo-ref:
+        kind: Telo.Executable
+        use: trigger.inbound
+        inputs: /inputs
+      x-telo-provides-zone:
+        noSuspend: >-
+          the lease is renewed only while this process runs the handler, so a
+          handler that parked would resume after the message was redelivered to
+          another consumer
+    inputs:
+      title: Inputs
+      description: >-
+        The handler's inputs, evaluated per delivery over `message` and
+        `delivery`.
+      type: object
+      additionalProperties: true
+      x-telo-context:
+        type: object
+        properties:
+          message:
+            description: The delivered message, typed from the queue's `messageType`.
+            x-telo-context-ref-from: queue/messageType
+          delivery:
+            $ref: "#/$defs/Delivery"
+    concurrency:
+      title: Concurrency
+      description: How many messages this process handles at once.
+      type: integer
+      minimum: 1
+      default: 1
+      x-telo-eval: compile
+    # No `default:` on the durations — a validator fills a default as plain JSON
+    # nothing decodes into the instance a duration slot holds.
+    lease:
+      title: Lease
+      description: >-
+        How long a claim holds a message before another consumer may take it.
+        Renewed every third of it while the handler runs. 30s when omitted.
+      x-telo-type:
+        name: Telo.Duration
+        exclusiveMinimum: 0s
+      x-telo-eval: compile
+    timeout:
+      title: Timeout
+      description: >-
+        How long one attempt may run. On expiry the handler is cancelled and the
+        attempt fails with `ERR_QUEUE_TIMEOUT`.
+      x-telo-type:
+        name: Telo.Duration
+        exclusiveMinimum: 0s
+      x-telo-eval: compile
+    shutdownGrace:
+      title: Shutdown grace
+      description: >-
+        How long a delivery still running when the application shuts down may
+        finish. After it the handler is cancelled and the message handed back
+        with its attempt not counted. 5s when omitted.
+      x-telo-type:
+        name: Telo.Duration
+        minimum: 0s
+      x-telo-eval: compile
+    retry:
+      title: Retry
+      description: >-
+        How a failed attempt is re-attempted: `attempts` re-attempts after the
+        first, each made visible again after the backoff, or after the duration
+        `retryAfter` yields. A code in `nonRetryable`, a contract violation or
+        an exhausted budget dead-letters the message.
+      $ref: telo://manifest#/$defs/RetryPolicy
+      required: [attempts]
+      x-telo-retry-for:
+        slot: /invoke
+        codes:
+          ERR_QUEUE_TIMEOUT:
+            description: An attempt ran longer than the worker's `timeout` and was cancelled.
+          ERR_QUEUE_LEASE_EXPIRED:
+            description: The previous attempt's lease lapsed before the message was settled.
+    onDead:
+      title: On dead
+      description: >-
+        What runs before a message is marked dead, at least once: a message is
+        marked dead only after this returned. `message` is null when the stored
+        body no longer has the queue's `messageType`.
+      type: object
+      additionalProperties: false
+      required: [invoke]
+      x-telo-context:
+        type: object
+        properties:
+          message:
+            description: The message, or null when its body did not decode.
+            type: [object, "null"]
+            x-telo-context-ref-from: queue/messageType
+          delivery:
+            $ref: "#/$defs/Delivery"
+          error:
+            description: Why the message is dead.
+            type: object
+            additionalProperties: false
+            required: [code, message]
+            properties:
+              code:
+                type: string
+                description: The failure's code.
+              message:
+                type: string
+                description: The failure's message.
+              data:
+                description: The failure's structured data, when it carries any.
+      properties:
+        invoke:
+          title: Handler
+          description: What runs for a message about to be marked dead.
+          x-telo-ref:
+            kind: Telo.Executable
+            use: trigger.inbound
+            inputs: /inputs
+          x-telo-provides-zone:
+            noSuspend: >-
+              the lease is renewed only while this process runs the handler, so
+              a handler that parked would resume after the message was
+              redelivered to another consumer
+        inputs:
+          title: Inputs
+          description: The handler's inputs, evaluated over `message`, `delivery` and `error`.
+          type: object
+          additionalProperties: true
+  $defs:
+    Delivery:
+      description: This delivery of the message.
+      type: object
+      additionalProperties: false
+      required: [messageId, attempt, enqueuedAt]
+      properties:
+        messageId:
+          type: string
+          description: >-
+            The message's id. A handler whose effects live in a database makes
+            them happen once per message by recording it in the same transaction
+            as the effects.
+        attempt:
+          type: integer
+          minimum: 1
+          description: This attempt's number, 1 for the first.
+        enqueuedAt:
+          description: When the message was enqueued, on the queue's own clock.
+          x-telo-type: Telo.Timestamp
+---
+kind: Telo.Definition
+metadata:
+  name: Stats
+  description: >-
+    Reports how many messages a durable queue holds in each state — pending,
+    scheduled for later, running and dead — and how long the oldest pending one
+    has waited, for monitoring backlog and alerting on stuck work. Says whether
+    the counts are exact or estimated.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#Stats
+throws:
+  codes:
+    ERR_QUEUE_UNAVAILABLE:
+      description: The queue's storage could not be reached or failed.
+    ERR_QUEUE_STORE_INCONSISTENT:
+      description: >-
+        The queue's storage answered in a way its contract rules out. Terminal:
+        re-issuing the call cannot help; the storage needs attention.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties: {}
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [pending, scheduled, running, dead, oldestPendingAge, exact]
+    properties:
+      pending:
+        type: integer
+        description: Messages deliverable now and not claimed.
+      scheduled:
+        type: integer
+        description: Messages not yet visible — delayed, or waiting out a retry backoff.
+      running:
+        type: integer
+        description: Messages claimed under a lease.
+      dead:
+        type: integer
+        description: Messages whose retries ran out, kept until requeued or cancelled.
+      oldestPendingAge:
+        description: How long the oldest pending message has been deliverable, or null when none is.
+        anyOf:
+          - x-telo-type: Telo.Duration
+          - type: "null"
+      exact:
+        type: boolean
+        description: Whether the counts are exact rather than an estimate.
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue]
+  properties:
+    queue:
+      title: Queue
+      description: The queue to report on.
+      x-telo-ref:
+        kind: Self.Queue
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: Status
+  description: >-
+    Looks up one message on an addressable queue by id: its state, attempt
+    count, when it was enqueued, becomes visible or settled, its last error and
+    the message itself. An unknown id is an ordinary answer, state `unknown`,
+    so a job's progress can be polled with no error handling.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#Status
+throws:
+  codes:
+    ERR_QUEUE_UNAVAILABLE:
+      description: The queue's storage could not be reached or failed.
+    ERR_QUEUE_STORE_INCONSISTENT:
+      description: >-
+        The queue's storage answered in a way its contract rules out. Terminal:
+        re-issuing the call cannot help; the storage needs attention.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id:
+        description: The message's id.
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[!-~]+$"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, state, attempts]
+    properties:
+      id:
+        type: string
+        description: The id asked about.
+      state:
+        type: string
+        enum: [unknown, scheduled, pending, running, completed, dead, cancelled]
+        description: >-
+          `unknown` when no message has the id (or it settled longer ago than
+          the queue's retention).
+      attempts:
+        type: integer
+        description: Attempts made so far.
+      enqueuedAt:
+        description: When the message was enqueued.
+        x-telo-type: Telo.Timestamp
+      visibleAt:
+        description: When the message becomes, or became, deliverable.
+        x-telo-type: Telo.Timestamp
+      settledAt:
+        description: When the message completed, died or was cancelled.
+        x-telo-type: Telo.Timestamp
+      lastError:
+        description: The failure of the last unsuccessful attempt.
+        type: object
+        additionalProperties: false
+        required: [code, message]
+        properties:
+          code:
+            type: string
+          message:
+            type: string
+      reason:
+        type: string
+        description: The reason given when the message was cancelled.
+      message:
+        description: The message, or null when its stored body no longer has the queue's `messageType`.
+        anyOf:
+          - type: "null"
+          - x-telo-value-schema-from: /queue/messageType
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue]
+  properties:
+    queue:
+      title: Queue
+      description: The addressable queue the message is on.
+      x-telo-ref:
+        kind: Self.AddressableQueue
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: List
+  description: >-
+    Lists the messages of an addressable queue in one state — scheduled,
+    pending, running, completed, dead or cancelled — oldest first, a page at a
+    time through an opaque cursor, so an operator can browse dead messages or a
+    backlog without loading them all.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#List
+throws:
+  codes:
+    ERR_QUEUE_UNAVAILABLE:
+      description: The queue's storage could not be reached or failed.
+    ERR_QUEUE_STORE_INCONSISTENT:
+      description: >-
+        The queue's storage answered in a way its contract rules out. Terminal:
+        re-issuing the call cannot help; the storage needs attention.
+    ERR_QUEUE_CURSOR_INVALID:
+      description: >-
+        The cursor was not returned by a listing of this state on this queue,
+        or this queue can no longer read it.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [state]
+    properties:
+      state:
+        type: string
+        enum: [scheduled, pending, running, completed, dead, cancelled]
+        description: The state to list.
+      limit:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+        description: The most messages one page holds.
+      cursor:
+        type: string
+        description: The `next` of the previous page.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messages]
+    properties:
+      messages:
+        type: array
+        description: The page, oldest first.
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, state, attempts, enqueuedAt]
+          properties:
+            id:
+              type: string
+            state:
+              type: string
+              enum: [scheduled, pending, running, completed, dead, cancelled]
+            attempts:
+              type: integer
+            enqueuedAt:
+              x-telo-type: Telo.Timestamp
+            visibleAt:
+              x-telo-type: Telo.Timestamp
+            settledAt:
+              x-telo-type: Telo.Timestamp
+            lastError:
+              type: object
+              additionalProperties: false
+              required: [code, message]
+              properties:
+                code:
+                  type: string
+                message:
+                  type: string
+      next:
+        type: string
+        description: The cursor of the next page; absent on the last.
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue]
+  properties:
+    queue:
+      title: Queue
+      description: The addressable queue to list.
+      x-telo-ref:
+        kind: Self.AddressableQueue
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: Cancel
+  description: >-
+    Cancels a message on an addressable queue by id so it is never delivered
+    again: a scheduled, pending or dead message at once, a running one when its
+    handler's lease is next renewed, which cancels the handler. A completed,
+    cancelled or unknown message is reported as not cancelled.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#Cancel
+throws:
+  codes:
+    ERR_QUEUE_UNAVAILABLE:
+      description: The queue's storage could not be reached or failed.
+    ERR_QUEUE_STORE_INCONSISTENT:
+      description: >-
+        The queue's storage answered in a way its contract rules out. Terminal:
+        re-issuing the call cannot help; the storage needs attention.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id:
+        description: The message's id.
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[!-~]+$"
+      reason:
+        type: string
+        description: Why it is cancelled, kept with the message.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, cancelled, state]
+    properties:
+      id:
+        type: string
+      cancelled:
+        type: boolean
+        description: >-
+          Whether this call cancelled the message, or asked its running handler
+          to stop.
+      state:
+        type: string
+        enum: [unknown, scheduled, pending, running, completed, dead, cancelled]
+        description: >-
+          The message's state after the call — `running` while a cancelled
+          handler has not yet reached its next lease renewal.
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue]
+  properties:
+    queue:
+      title: Queue
+      description: The addressable queue the message is on.
+      x-telo-ref:
+        kind: Self.AddressableQueue
+        use: dependency
+---
+kind: Telo.Definition
+metadata:
+  name: Requeue
+  description: >-
+    Brings a dead message on an addressable queue back for delivery by id, with
+    its attempts reset and its place in its group kept — after fixing whatever
+    made it fail. Any other message is reported as not requeued.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue.mjs&local_path=./nodejs/src/index.ts#Requeue
+throws:
+  codes:
+    ERR_QUEUE_UNAVAILABLE:
+      description: The queue's storage could not be reached or failed.
+    ERR_QUEUE_STORE_INCONSISTENT:
+      description: >-
+        The queue's storage answered in a way its contract rules out. Terminal:
+        re-issuing the call cannot help; the storage needs attention.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id:
+        description: The message's id.
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: "^[!-~]+$"
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id, requeued, state]
+    properties:
+      id:
+        type: string
+      requeued:
+        type: boolean
+        description: Whether the message was dead and is now pending.
+      state:
+        type: string
+        enum: [unknown, scheduled, pending, running, completed, dead, cancelled]
+        description: The message's state after the call.
+schema:
+  type: object
+  additionalProperties: false
+  required: [queue]
+  properties:
+    queue:
+      title: Queue
+      description: The addressable queue the message is on.
+      x-telo-ref:
+        kind: Self.AddressableQueue
+        use: dependency

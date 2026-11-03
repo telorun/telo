@@ -13,6 +13,7 @@ exports:
     - Batch
     - Ambient
     - Enqueue
+    - RootEnqueue
     - Probe
     - Detacher
     - Starter
@@ -90,6 +91,29 @@ schema:
         zone: Self.Batch
         key: [/session, /batch/session]
         reason: the message would be written outside any batch, losing atomicity
+---
+# A requirer whose requirement sits at its schema ROOT — unconditional, named by
+# no field — correlated through the batch it names. Its controller asks with the
+# field-less `ctx.requireZone(ctx)`.
+kind: Telo.Definition
+metadata:
+  name: RootEnqueue
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/zones.mjs#rootEnqueue
+schema:
+  type: object
+  required: [batch]
+  additionalProperties: false
+  x-telo-requires-zone:
+    zone: Self.Batch
+    key: /batch/session
+    reason: the root message would be written outside its batch
+  properties:
+    batch:
+      x-telo-ref:
+        kind: Self.Batch
+        use: dependency
 ---
 # Reports the ambient stack it observes, so a test can assert what survives an
 # edge without reaching into kernel internals.

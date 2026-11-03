@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: QueueStatusMessageReads
+  version: 1.0.0
+  description: >-
+    Reads of a status answer's message, which is null when the stored body no
+    longer has the queue's message type: a mistyped member, an unguarded read,
+    and a guarded one.
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+---
+kind: Fixture.KeyedQueue
+metadata: { name: orders }
+retention: 1h
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [orderId]
+    properties:
+      orderId: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: lookup }
+steps:
+  - name: s
+    invoke: { kind: Queue.Status, queue: !ref orders }
+    inputs: { id: msg_1 }
+  - name: typo
+    value: !cel "steps.s.result.message != null ? steps.s.result.message.orderIdd : ''"
+  - name: unguarded
+    value: !cel "steps.s.result.message.orderId"
+  - name: guarded
+    value: !cel "steps.s.result.message != null ? steps.s.result.message.orderId : ''"

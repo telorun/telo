@@ -1,0 +1,27 @@
+# One name, claimed in two different tables.
+kind: Telo.Application
+metadata:
+  name: CoReferrersDifferentTables
+  version: 1.0.0
+imports:
+  Kinds: ./kinds
+---
+kind: Kinds.Table
+metadata:
+  name: jobs
+---
+kind: Kinds.Table
+metadata:
+  name: archive
+---
+kind: Kinds.Store
+metadata:
+  name: first
+table: !ref jobs
+name: emails
+---
+kind: Kinds.Store
+metadata:
+  name: second
+table: !ref archive
+name: emails

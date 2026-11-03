@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: DurationBounds
+  version: 1.0.0
+  description: |
+    A `Telo.Duration` slot may bound its value — `minimum`, `maximum`,
+    `exclusiveMinimum`, `exclusiveMaximum` — each written in the duration's own
+    encoding, as text or as integer milliseconds. A value on an inclusive bound
+    is held; a literal outside one is refused by `telo check` at a resource's
+    own field and at a call's `inputs:`, naming the bound and the value, and a
+    bound that reads as no duration is refused where the type is declared.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+targets:
+  - !ref verifyDurationBounds
+---
+kind: Telo.Definition
+metadata:
+  name: Pause
+  description: Reads back a bounded duration as its canonical text.
+extends: Run.Value
+schema:
+  type: object
+  required: [lasts]
+  properties:
+    lasts: { x-telo-type: { name: Telo.Duration, minimum: 100, maximum: 1h } }
+base:
+  value: !cel "string(self.lasts)"
+---
+kind: Run.Sequence
+metadata:
+  name: verifyDurationBounds
+steps:
+  - name: atMinimum
+    invoke: { kind: Self.Pause, lasts: 100 }
+  - name: atMaximum
+    invoke: { kind: Self.Pause, lasts: 1h }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: [!cel "steps.atMinimum.result", !cel "steps.atMaximum.result"]
+      expected: [0.1s, 3600s]
+  - name: refusedByCheck
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/duration-bounds/telo.yaml
+      expect:
+        errors:
+          - code: SCHEMA_VIOLATION
+            message: "/lasts must be a Telo.Duration at least 0.1s and at most 3600s, not 0.05s"
+          - code: SCHEMA_VIOLATION
+            message: "/lasts must be a Telo.Duration at least 0.1s and at most 3600s, not 7200s"
+          - code: CONTRACT_INPUTS_MISMATCH
+            message: "/after must be a Telo.Duration at least 0s, not -1s"
+          - code: X_TELO_TYPE_ARGUMENT_INVALID
+            message: "parameter 'minimum' is a bound"

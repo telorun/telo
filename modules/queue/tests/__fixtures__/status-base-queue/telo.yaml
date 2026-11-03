@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: QueueStatusBaseQueue
+  version: 1.0.0
+  description: Looking a message up on a queue whose ids are not addresses.
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+targets:
+  - !ref lookup
+---
+kind: Fixture.PlainQueue
+metadata: { name: jobs }
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Run.Sequence
+metadata: { name: lookup }
+steps:
+  - name: status
+    invoke:
+      kind: Queue.Status
+      queue: !ref jobs
+    inputs: { id: job-1 }

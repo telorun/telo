@@ -1,0 +1,69 @@
+kind: Telo.Application
+metadata:
+  name: IdempotencyPostgresSuite
+  version: 1.0.0
+  description: |
+    The idempotency ledger's behaviour suite against a real PostgreSQL: the same
+    sequences the SQLite run executes, two ledgers sharing one table.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  Suite:
+    source: ../../../idempotency-sql/tests/__fixtures__/behaviour-suite
+    resources:
+      connection: !ref db
+      ledger: !ref ledger
+      expiringLedger: !ref expiringLedger
+  Postgres: ../../../postgres
+  Idempotency: ../..
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref ledger
+  - !ref Suite.runsOnce
+  - !ref Suite.failureForgetsKey
+  - !ref Suite.fingerprintConflict
+  - !ref Suite.expiredKeyRunsAgain
+  - !ref Suite.sweepRemovesExpired
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: Postgres.Table
+metadata: { name: effects }
+table: idempotency_effects
+columns:
+  effect_key: { type: text, nullable: false }
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys, !ref effects]
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: suite
+retention: 1h
+---
+kind: Idempotency.Ledger
+metadata: { name: expiringLedger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: expiring
+retention: 1ms

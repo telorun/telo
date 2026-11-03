@@ -130,7 +130,7 @@
         "additionalProperties": false
       }
     },
-    "description": "The zone this resource's field requires, or a refusal.",
+    "description": "The zone this resource's field requires — or, with no field, the requirement at its kind's schema root — or a refusal.",
     "type": "object",
     "properties": {
       "instance": {
@@ -139,15 +139,15 @@
       },
       "field": {
         "type": "string",
-        "minLength": 1
+        "minLength": 1,
+        "description": "A top-level field of the resource's kind carrying the requirement; absent names the requirement at the kind's schema root."
       },
       "context": {
         "$ref": "#/definitions/invokeContext"
       }
     },
     "required": [
-      "instance",
-      "field"
+      "instance"
     ],
     "additionalProperties": false
   },

@@ -4,8 +4,10 @@ import { isRefSentinel } from "@telorun/templating";
 import {
   celBaseOfValueType,
   celTypeOfValueType,
+  decodePlainInteger,
   hostAnchorOf,
   isCelRecord,
+  plainEncodingOf,
   readValueTypeSlot,
   VALUE_TYPE_BINDINGS,
   valueBrandBases,
@@ -230,6 +232,9 @@ function compare(
       // bare `Telo.Stream` flowing into a typed slot and vice versa, so nothing
       // that does not declare its element is forced to.
       if (sourceArg === undefined) continue;
+      // A bound constrains the value, as JSON Schema's `minimum` does a number's, and
+      // is judged on the value; two types differing in their bounds may still share it.
+      if (targetType.entry?.parameters.some((p) => p.bound && p.name === argument)) continue;
       // A host-entry argument is a token, compared by equality.
       if (targetType.entry?.parameters.some((p) => p.hostEntry && p.name === argument)) {
         if (sourceArg !== targetArg) {
@@ -1218,7 +1223,11 @@ export function inlineNamedShapes(
  * separates a `{type, text}` part from a `{type, data, mediaType}` one). If that
  * leaves anything other than exactly one branch, the union is returned unchanged
  * — an ambiguous union is one the analyzer should not resolve on the author's
- * behalf. A union beside a shared base (`type` / `properties` of its own)
+ * behalf — with one exception, decided by the value itself: where every branch a
+ * text or number fits is a value type written in a plain encoding (a duration
+ * beside a timestamp), the value is the type of the ONE whose encoding reads it
+ * (`"2s"` a duration, RFC 3339 text a timestamp, an integer the type with an
+ * integer form). Text two encodings read stays ambiguous. A union beside a shared base (`type` / `properties` of its own)
  * selects the same way and returns the base with the branch merged over it.
  */
 export function selectUnionBranch(
@@ -1279,6 +1288,8 @@ export function fittingUnionBranches(
       }
       return true;
     });
+  const read = encodedReading(fits, data);
+  if (read) fits.splice(0, fits.length, read);
   if (schema.type === undefined && schema.properties === undefined) return fits;
   // A discriminated union over a shared base (a step: a `name` beside one of
   // several statement shapes) is the base with the branch's own keys over it.
@@ -1293,6 +1304,23 @@ export function fittingUnionBranches(
       ...(required.length > 0 ? { required: [...new Set(required)] } : {}),
     };
   });
+}
+
+/**
+ * The one branch whose plain encoding reads `data`, where every fitting branch is
+ * a value type with one — otherwise undefined, leaving the fits as they are. A
+ * branch of any other shape (a plain `string`, a JSON-based brand) reads text as
+ * itself, so a union holding one is never narrowed by encoding.
+ */
+function encodedReading(fits: Record<string, any>[], data: unknown): Record<string, any> | undefined {
+  if (fits.length < 2 || (typeof data !== "string" && typeof data !== "number")) return undefined;
+  if (!fits.every((branch) => plainEncodingOf(branch) !== undefined)) return undefined;
+  const reading = fits.filter((branch) =>
+    typeof data === "string"
+      ? plainEncodingOf(branch)!.decode(data) !== undefined
+      : decodePlainInteger(branch, data) !== data,
+  );
+  return reading.length === 1 ? reading[0] : undefined;
 }
 
 export function collectProperties(schema: Record<string, any>): Record<string, any> {

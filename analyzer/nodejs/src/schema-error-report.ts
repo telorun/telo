@@ -28,7 +28,7 @@
  * would mean re-implementing AJV's resolution.
  */
 
-import { VALUE_TYPES, X_TELO_TYPE } from "@telorun/sdk";
+import { readValueTypeSlot, VALUE_TYPES, valueTypeBoundRefusal, X_TELO_TYPE } from "@telorun/sdk";
 import { membersSlotOf, membersValueRefusal } from "./members-value-slot.js";
 import { nearestNames } from "./nearest-name.js";
 import { describeTeloFormatFailure, TELO_FORMATS, teloFormatFailure } from "./telo-format.js";
@@ -672,6 +672,11 @@ export function explainValueTypeErrors(
   return errors.map((err) => {
     if (err.keyword !== X_TELO_TYPE) return err;
     const annotation = err.params?.typeArguments ?? err.params?.valueType;
+    const outOfBounds = valueTypeBoundRefusal(
+      readValueTypeSlot({ [X_TELO_TYPE]: annotation }),
+      valueAt(data, err.instancePath),
+    );
+    if (outOfBounds) return { ...err, message: outOfBounds };
     const slot = membersSlotOf({ [X_TELO_TYPE]: annotation });
     if (!slot) return err;
     return { ...err, message: `is not a ${slot.entry.name}: ${membersValueRefusal(slot, valueAt(data, err.instancePath))}` };

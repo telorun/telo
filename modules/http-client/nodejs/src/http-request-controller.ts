@@ -1,8 +1,11 @@
 import {
   ERR_INVOKE_CANCELLED,
   InvokeError,
+  RuntimeError,
   SEVERITY,
   Stream,
+  durationNanos,
+  isCelDuration,
   networkCauseCode,
   parseDurationMs,
   plainScalar,
@@ -23,6 +26,9 @@ const DEFAULT_TIMEOUT = 10000;
  *  the default: an author who needs more says so. */
 const DEFAULT_RETRY_STATUSES = [408, 429, 500, 502, 503, 504];
 
+/** The shared policy's defaults. The two delays are stated here and in the
+ *  fragment's descriptions alone: a schema `default:` at a duration slot would be
+ *  filled as plain JSON that nothing decodes. */
 const DEFAULT_RETRY: ResolvedRetry = {
   attempts: 0,
   initialDelay: 250,
@@ -30,19 +36,35 @@ const DEFAULT_RETRY: ResolvedRetry = {
   maxDelay: 32_000,
   jitter: "full",
   honorRetryAfter: true,
+  nonRetryable: [],
 };
 
-/** The policy after resolution: `delay` is folded into `initialDelay`, so the
- *  deprecated spelling exists on the authored shape and nowhere past it. */
-type ResolvedRetry = Required<Omit<RetryPolicy, "delay">>;
+/** The policy after resolution: `delay` is folded into `initialDelay`, and both
+ *  delays are milliseconds, so the authored spellings exist on the authored shape
+ *  and nowhere past it. */
+interface ResolvedRetry {
+  attempts: number;
+  initialDelay: number;
+  factor: number;
+  maxDelay: number;
+  jitter: "none" | "full";
+  honorRetryAfter: boolean;
+  nonRetryable: string[];
+  /** CEL over the failure; present only where the request's own policy writes it. */
+  retryAfter?: unknown;
+}
 
 interface RetryPolicy {
   attempts?: number;
-  initialDelay?: number;
+  /** A duration, or an integer number of milliseconds. */
+  initialDelay?: unknown;
   factor?: number;
-  maxDelay?: number;
+  /** A duration, or an integer number of milliseconds. */
+  maxDelay?: unknown;
   jitter?: "none" | "full";
   honorRetryAfter?: boolean;
+  nonRetryable?: string[];
+  retryAfter?: unknown;
   /** DEPRECATED duration string (`"250ms"`, `"1s"`) — read as `initialDelay`
    *  when that is absent, exactly as the step leaf reads it. The shared retry
    *  fragment carries the field, so accepting it here without honouring it would
@@ -413,19 +435,61 @@ interface RequestAttempt {
   responseType: ResponseType;
   isSuccess: (status: number, headers: Record<string, string>, body: unknown) => boolean;
   isRetryable: (status: number, headers: Record<string, string>, body: unknown) => boolean;
+  /** What the policy's `retryAfter` asks to wait after this failure, in
+   *  milliseconds, or undefined to keep the computed delay. */
+  retryAfter: (failure: RetryFailure) => number | undefined;
   callerSignal?: AbortSignal;
   transport?: ClientTransport;
+}
+
+/** A failure a retry decides about, as the policy's CEL reads it (`error`): a
+ *  network failure under its own code, and a response the policy retries as the
+ *  `ERR_HTTP_STATUS` failure it would otherwise be. */
+interface RetryFailure {
+  code: string;
+  message: string;
+  data: Record<string, unknown>;
+}
+
+function statusFailure(response: TeloResponse, url: string, responseType: ResponseType): RetryFailure {
+  return {
+    code: ERR_HTTP_STATUS,
+    message: `HTTP ${response.status} error from ${url}`,
+    data: {
+      status: response.status,
+      url,
+      headers: response.headers,
+      // A streamed body is never read to decide a retry.
+      body: responseType === "stream" ? null : (response.body ?? null),
+    },
+  };
+}
+
+function networkFailure(err: unknown, url: string): RetryFailure {
+  const failure = err as { code?: unknown; message?: unknown };
+  return {
+    code: typeof failure.code === "string" ? failure.code : "NetworkError",
+    message: typeof failure.message === "string" ? failure.message : String(err),
+    data: { url },
+  };
 }
 
 /** The wait before re-attempt number `resend` (1-based), and never below what the
  *  server asked for. Full jitter picks uniformly from [0, delay]: a fleet that
  *  failed together must not re-attempt together, and spreading the whole interval
- *  is what actually decorrelates them. */
+ *  is what actually decorrelates them.
+ *
+ *  A `retryAfter` the policy evaluated to a duration (`requested`) wins over both
+ *  the curve and the `Retry-After` header: it is the author's reading of THIS
+ *  failure, the header included if they chose to read it. It is waited as stated
+ *  — no jitter — and capped by `maxDelay`, as the step engine caps it. */
 function retryDelay(
   policy: ResolvedRetry,
   resend: number,
   headers: Record<string, string>,
+  requested?: number,
 ): RetryWait {
+  if (requested !== undefined) return { delay: Math.min(requested, policy.maxDelay) };
   const backoff = Math.min(
     policy.maxDelay,
     policy.initialDelay * Math.pow(policy.factor, Math.max(0, resend - 1)),
@@ -515,6 +579,7 @@ async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> 
     responseType,
     isSuccess,
     isRetryable,
+    retryAfter,
     callerSignal,
     transport,
   } = attempt;
@@ -546,7 +611,9 @@ async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> 
       if (!canResend || !isRetryable(response.status, response.headers, response.body)) {
         return response;
       }
-      const wait = retryDelay(retry, resendCount + 1, response.headers);
+      const failure = statusFailure(response, url, responseType);
+      if (retry.nonRetryable.includes(failure.code)) return response;
+      const wait = retryDelay(retry, resendCount + 1, response.headers, retryAfter(failure));
       if (wait.exceedsCeiling) {
         log.warn("Retry-After exceeds the retry ceiling; returning the response", {
           "http.request.method": method,
@@ -572,10 +639,12 @@ async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> 
       continue;
     } catch (err) {
       if (!canResend || (err as any).error !== "NetworkError") throw err;
+      const failure = networkFailure(err, url);
+      if (retry.nonRetryable.includes(failure.code)) throw err;
       // Only the FINAL failure reaches the caller, so an attempt that failed and
       // was retried is invisible to everything except this record — including the
       // common case where the retry succeeds and the call looks perfectly healthy.
-      const wait = retryDelay(retry, resendCount + 1, {});
+      const wait = retryDelay(retry, resendCount + 1, {}, retryAfter(failure));
       log.warn("Request failed; retrying", {
         "http.request.method": method,
         ...urlAttributes(url),
@@ -586,6 +655,30 @@ async function executeWithRetry(attempt: RequestAttempt): Promise<TeloResponse> 
       await sleep(wait.delay, callerSignal);
     }
   }
+}
+
+/** A duration slot's value in milliseconds: the duration a decoded slot holds, or
+ *  the integer milliseconds an older runtime — whose policy typed the delays as
+ *  integers — delivers. Built from the SDK's long-standing exports, so this
+ *  controller keeps loading on every runtime it already ran on. */
+function durationMs(value: unknown): number | undefined {
+  if (isCelDuration(value)) return Number(durationNanos(value)) / 1e6;
+  return Number.isSafeInteger(value) ? (value as number) : undefined;
+}
+
+/** A retry delay in milliseconds, or undefined when the policy leaves it out. A
+ *  delay that is not a duration of at least zero is refused rather than read as the
+ *  default, which would be a silently different backoff. */
+function retryDelayMs(value: unknown, field: string): number | undefined {
+  if (value === undefined) return undefined;
+  const ms = durationMs(value);
+  if (ms === undefined || ms < 0) {
+    throw new RuntimeError(
+      "ERR_INVALID_VALUE",
+      `Http.Request: 'retry.${field}' must be a duration of at least zero, or an integer number of milliseconds.`,
+    );
+  }
+  return ms;
 }
 
 /** Refuse to re-send what cannot be produced again. Named error rather than a
@@ -866,16 +959,17 @@ class HttpRequestResource implements ResourceInstance {
     // `retries` is the deprecated spelling of exactly one field of `retry`, so it
     // fills that field rather than competing with the policy.
     const declaredRetry = m.retry ?? clientDefaults.retry;
+    const { delay, initialDelay, maxDelay, ...declaredRest } = declaredRetry ?? {};
     const retry: ResolvedRetry = {
       ...DEFAULT_RETRY,
       ...(m.retries !== undefined ? { attempts: m.retries } : {}),
-      ...declaredRetry,
+      ...declaredRest,
       // The deprecated spelling, resolved the way the step leaf resolves it:
-      // `initialDelay` wins when both are present. Applied AFTER the spread so a
-      // policy carrying only `delay` does not silently keep the default.
-      ...(declaredRetry?.initialDelay === undefined && declaredRetry?.delay !== undefined
-        ? { initialDelay: parseDurationMs(declaredRetry.delay) }
-        : {}),
+      // `initialDelay` wins when both are present.
+      initialDelay:
+        retryDelayMs(initialDelay, "initialDelay") ??
+        (delay !== undefined ? parseDurationMs(delay) : DEFAULT_RETRY.initialDelay),
+      maxDelay: retryDelayMs(maxDelay, "maxDelay") ?? DEFAULT_RETRY.maxDelay,
     };
 
     // Classification sees the same scope in both fields, and `retryOn` is
@@ -887,6 +981,21 @@ class HttpRequestResource implements ResourceInstance {
     const isRetryable = classifier("retryOn", m.retryOn, evaluate, (status) =>
       DEFAULT_RETRY_STATUSES.includes(status),
     );
+    const retryAfter = (failure: RetryFailure): number | undefined => {
+      if (retry.retryAfter === undefined) return undefined;
+      const value = evaluate(retry.retryAfter, { error: failure });
+      if (value === null) return undefined;
+      const ms = isCelDuration(value) ? durationMs(value) : undefined;
+      if (ms === undefined || ms < 0) {
+        throw new RuntimeError(
+          "ERR_INVALID_VALUE",
+          `Http.Request: 'retry.retryAfter' must yield a duration of at least zero or null, ` +
+            `but produced ${value === undefined ? "nothing" : Array.isArray(value) ? "a list" : `a ${typeof value}`} ` +
+            `while deciding about ${failure.code} (${failure.message}).`,
+        );
+      }
+      return ms;
+    };
 
     // Build URL
     const baseUrl = rawUrl.startsWith("http") ? rawUrl : `${clientBaseUrl}${rawUrl}`;
@@ -963,6 +1072,7 @@ class HttpRequestResource implements ResourceInstance {
         responseType,
         isSuccess,
         isRetryable,
+        retryAfter,
         callerSignal: invokeCtx?.cancellation.signal,
         transport,
       });

@@ -22,8 +22,10 @@ import { elementFromItemReads } from "./element-from-item.js";
 import type { ReadReporter } from "./read-place.js";
 import { refSlotReads } from "./ref-slot.js";
 import { referrerRulesReads } from "./referrer-rule.js";
+import { retryForReads } from "./retry-for-slot.js";
 import { projectionFromReads } from "./schema-projection.js";
 import { scopeReads } from "./scope-declarations.js";
+import { serializableReads } from "./serializable-slot.js";
 import { textValuesForReads } from "./text-values.js";
 import {
   contextCollectionReads,
@@ -77,6 +79,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-requires-zone": requiresZoneReads,
   // Judged by the `resourceRules` relation group, which declares what its rules read.
   "x-telo-resource-rules": READS_NOTHING,
+  "x-telo-retry-for": retryForReads,
   "x-telo-returns-from": returnsFromReads,
   "x-telo-schema-from": schemaFromReads,
   "x-telo-schema-map": READS_NOTHING,
@@ -84,6 +87,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-schema-projection-from": projectionFromReads,
   "x-telo-scope": scopeReads,
   "x-telo-sensitive": READS_NOTHING,
+  "x-telo-serializable": serializableReads,
   "x-telo-span-attribute": READS_NOTHING,
   "x-telo-step-context": READS_NOTHING,
   "x-telo-text-context": READS_NOTHING,

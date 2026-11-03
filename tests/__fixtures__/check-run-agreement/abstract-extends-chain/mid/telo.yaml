@@ -1,0 +1,22 @@
+# An abstract extending the base through ITS OWN alias for it, which no module
+# further down the chain has.
+kind: Telo.Library
+metadata:
+  name: ChainMid
+  version: 1.0.0
+  description: Fixture abstract extending an abstract of another module.
+imports:
+  Base: ../base
+exports:
+  kinds: [Mid]
+---
+kind: Telo.Abstract
+metadata:
+  name: Mid
+  description: Narrows the base contract with a label.
+extends: Base.Base
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label: { type: string }

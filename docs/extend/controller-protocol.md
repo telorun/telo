@@ -189,19 +189,19 @@ of your own. A failure you rethrow keeps its `inputPointer` and `location`
 unchanged. In Node the options are `new InvokeError(code, message, data,
 { inputPointer })` and the context member `inputsAt`.
 
-## Generations, and `abi=telo-8`
+## Generations, and `abi=telo-9`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by
-the ABI crate's layout. Generation `8` is the one this specification defines, and
-it is the generation in which the C ABI carries the protocol's messages. `4` to `7`
+the ABI crate's layout. Generation `9` is the one this specification defines, and
+it is the generation in which the C ABI carries the protocol's messages. `4` to `8`
 were withdrawn before any carrier spoke them: `4`'s value encoding named the typed
 frame's millisecond timestamp payload (now RFC 3339 with a trimmed nanosecond
 fraction), `6` was `5` plus the two need messages, `7` was `6` with a child run's
-inputs carrying the child's needs and the declared display message, and `8` is `7`
-with the translations lookup. Every handshake in the vectors states `8`, and
-`pnpm run check:controller-protocol` refuses a conformance vector whose handshake
-states another generation.
+inputs carrying the child's needs and the declared display message, `8` was `7`
+with the translations lookup, and `9` is `8` plus `Span.Carrier`. Every handshake
+in the vectors states `9`, and `pnpm run check:controller-protocol` refuses a
+conformance vector whose handshake states another generation.
 
-**Do not write `abi=telo-8` into a module yet.** The ABI carrier has not landed,
+**Do not write `abi=telo-9` into a module yet.** The ABI carrier has not landed,
 and a kernel meeting that declaration refuses it. Published `abi=telo-3`
 candidates stay valid — specifying a new generation does not retire the old one.

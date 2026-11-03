@@ -1,0 +1,8 @@
+kind: Telo.Application
+metadata:
+  name: SchemaNotSerializableApp
+imports:
+  Lib: ./lib
+targets:
+  - name: call
+    invoke: !ref Lib.box

@@ -1,0 +1,54 @@
+# The guarded operation inside a transaction on another connection than its
+# ledger's: the zone's kind matches, its correlation does not.
+kind: Telo.Application
+metadata:
+  name: OnceForeignConnection
+  version: 1.0.0
+imports:
+  IdempotencySql: ../../../idempotency-sql
+  Idempotency: ../..
+  Sql: ../../../sql
+  SQLite: ../../../sqlite
+targets:
+  - !ref appSchema
+  - invoke: !ref otherTx
+    inputs: { key: order-1 }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: SQLite.Connection
+metadata: { name: otherDb }
+file: ":memory:"
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+retention: 1h
+---
+kind: Sql.Transaction
+metadata: { name: otherTx }
+connection: !ref otherDb
+inputs:
+  key: !cel "inputs.key"
+steps: !ref chargeOnce
+---
+kind: IdempotencySql.Once
+metadata: { name: chargeOnce }
+ledger: !ref ledger
+invoke:
+  kind: Sql.Command
+  connection: !ref db

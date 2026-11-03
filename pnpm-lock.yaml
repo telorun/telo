@@ -1757,6 +1757,66 @@ importers:
         specifier: ^2.1.8
         version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
+  modules/idempotency-postgres/nodejs:
+    dependencies:
+      '@telorun/idempotency-sql':
+        specifier: workspace:*
+        version: link:../../idempotency-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/idempotency-sql/nodejs:
+    dependencies:
+      '@telorun/sql':
+        specifier: workspace:*
+        version: link:../../sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
+  modules/idempotency-sqlite/nodejs:
+    dependencies:
+      '@telorun/idempotency-sql':
+        specifier: workspace:*
+        version: link:../../idempotency-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/idempotency/nodejs:
     devDependencies:
       '@telorun/kv-store':
@@ -2170,6 +2230,87 @@ importers:
       '@types/pg':
         specifier: ^8.0.0
         version: 8.18.0
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
+  modules/queue-postgres/nodejs:
+    dependencies:
+      '@telorun/queue-sql':
+        specifier: workspace:*
+        version: link:../../queue-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/queue-sql/nodejs:
+    dependencies:
+      '@telorun/queue':
+        specifier: workspace:*
+        version: link:../../queue/nodejs
+      '@telorun/sql':
+        specifier: workspace:*
+        version: link:../../sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
+
+  modules/queue-sqlite/nodejs:
+    dependencies:
+      '@telorun/queue-sql':
+        specifier: workspace:*
+        version: link:../../queue-sql/nodejs
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/queue/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
       esbuild:
         specifier: ^0.25.12
         version: 0.25.12

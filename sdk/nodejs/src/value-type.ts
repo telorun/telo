@@ -28,6 +28,7 @@
 import {
   celDurationFromNanos,
   celTimestampFromMillis,
+  durationNanos,
   isCelDuration,
   isCelTimestamp,
   isCelUint,
@@ -68,8 +69,19 @@ export interface ValueTypeParameter {
    *  a host path names when something is there — only on a `fromHost` entry, at
    *  most one per entry. Found by this flag, never by the parameter's name. */
   readonly hostEntry?: boolean;
+  /** This parameter's argument is a BOUND on the value: a value of the type itself,
+   *  written in its plain encoding (or its integer form), that every value at the slot
+   *  must be at least / at most / above / below — compared through the binding's
+   *  ordering ({@link ValueTypeBinding.compare}). Only on a non-live instance with an
+   *  encoding whose binding is ordered; each bound kind at most once per entry. */
+  readonly bound?: ValueTypeBound;
   readonly description?: string;
 }
+
+/** The closed vocabulary of a bound parameter, named as JSON Schema names the same
+ *  bounds on a number. */
+export const VALUE_TYPE_BOUNDS = ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum"] as const;
+export type ValueTypeBound = (typeof VALUE_TYPE_BOUNDS)[number];
 
 /** The closed vocabulary of a host-entry argument: `directory` names a directory,
  *  `file` anything that is not one, links followed. Each runtime maps a token to
@@ -110,6 +122,10 @@ export interface ValueTypeEntry {
    *  value that does not read is refused under `code` (statically) and `ERR_<code>` at
    *  runtime. */
   readonly acceptsText?: { readonly code: string };
+  /** Non-live `instance` with an encoding only — a JSON integer is also a plain form of
+   *  the type: the integer `n` is read as the text `<n><unit>` through the encoding, so
+   *  the encoding's own grammar and range decide what it holds. */
+  readonly integerForm?: { readonly unit: string };
   readonly parameters: readonly ValueTypeParameter[];
   readonly description: string;
 }
@@ -137,6 +153,9 @@ export interface ValueTypeBinding {
    *  analyzer previously reached through the constructor's prototype, which a
    *  brand does not have. */
   readonly placeholder?: () => unknown;
+  /** The ordering of two values of this representation (negative, zero, positive),
+   *  for a representation that has one — what a bound parameter compares through. */
+  readonly compare?: (a: unknown, b: unknown) => number;
 }
 
 /**
@@ -156,6 +175,10 @@ export const VALUE_TYPE_BINDINGS: Readonly<Record<string, ValueTypeBinding>> = {
     holds: isCelDuration,
     celType: "google.protobuf.Duration",
     placeholder: () => celDurationFromNanos(0n),
+    compare: (a, b) => {
+      const difference = durationNanos(a as never) - durationNanos(b as never);
+      return difference < 0n ? -1 : difference > 0n ? 1 : 0;
+    },
   },
   stream: {
     holds: (value) => value instanceof Stream,
@@ -321,6 +344,7 @@ const ENTRY_KEYS = [
   "live",
   "members",
   "acceptsText",
+  "integerForm",
   "parameters",
   "description",
   "$comment",
@@ -356,7 +380,8 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
         key !== "description" &&
         key !== "element" &&
         key !== "member" &&
-        key !== "hostEntry"
+        key !== "hostEntry" &&
+        key !== "bound"
       ) {
         throw new ValueTypeEntryError(file, `parameters[${i}] has no key '${key}'`);
       }
@@ -367,10 +392,17 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
     if (entry.hostEntry !== undefined && typeof entry.hostEntry !== "boolean") {
       throw new ValueTypeEntryError(file, `parameters[${i}].hostEntry must be a boolean when present`);
     }
+    if (entry.bound !== undefined && !(VALUE_TYPE_BOUNDS as readonly unknown[]).includes(entry.bound)) {
+      throw new ValueTypeEntryError(
+        file,
+        `parameters[${i}].bound must be one of ${VALUE_TYPE_BOUNDS.join(", ")} when present`,
+      );
+    }
     const name = requireString(file, entry, "name");
     return {
       name,
       ...(entry.element === true ? { element: true as const } : {}),
+      ...(entry.bound === undefined ? {} : { bound: entry.bound as ValueTypeBound }),
       ...(entry.member === undefined ? {} : { member: requireString(file, entry, "member") }),
       ...(entry.hostEntry === true ? { hostEntry: true as const } : {}),
       ...(entry.description === undefined
@@ -386,6 +418,11 @@ function readParameters(file: string, raw: unknown): ValueTypeParameter[] {
   }
   if (params.filter((p) => p.hostEntry).length > 1) {
     throw new ValueTypeEntryError(file, "at most one parameter may declare 'hostEntry'");
+  }
+  for (const bound of VALUE_TYPE_BOUNDS) {
+    if (params.filter((p) => p.bound === bound).length > 1) {
+      throw new ValueTypeEntryError(file, `at most one parameter may declare 'bound: ${bound}'`);
+    }
   }
   return params;
 }
@@ -497,9 +534,19 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
 
   const members = readMembers(file, data, representation);
   const acceptsText = readAcceptsText(file, data, representation);
+  const integerForm = readIntegerForm(file, data, representation);
   const parameters = readParameters(file, data.parameters);
   if (parameters.some((p) => p.hostEntry) && data.fromHost === undefined) {
     throw new ValueTypeEntryError(file, "'hostEntry' belongs to a parameter of a type declaring 'fromHost'");
+  }
+  if (
+    parameters.some((p) => p.bound !== undefined) &&
+    (representation !== "instance" || data.live === true || data.encoding === undefined)
+  ) {
+    throw new ValueTypeEntryError(
+      file,
+      "'bound' belongs to a parameter of a non-live 'instance' with an 'encoding' — its argument is written in it",
+    );
   }
   for (const parameter of parameters) {
     if (parameter.member !== undefined && !(members && parameter.member in members)) {
@@ -526,6 +573,7 @@ export function parseValueTypeEntry(file: string, data: unknown): ValueTypeEntry
     live: data.live === true,
     ...(members === undefined ? {} : { members }),
     ...(acceptsText === undefined ? {} : { acceptsText }),
+    ...(integerForm === undefined ? {} : { integerForm }),
     parameters,
     description: requireString(file, data, "description"),
   };
@@ -586,6 +634,31 @@ function readAcceptsText(
   return { code };
 }
 
+/** The unit a JSON integer is read in, when the type has an integer form. The encoding
+ *  must read `0<unit>`, or every integer the form admits would be refused. */
+function readIntegerForm(
+  file: string,
+  data: Record<string, unknown>,
+  representation: string,
+): { unit: string } | undefined {
+  if (data.integerForm === undefined) return undefined;
+  if (representation !== "instance" || data.live === true || typeof data.encoding !== "string") {
+    throw new ValueTypeEntryError(file, "'integerForm' belongs to a non-live 'instance' with an 'encoding'");
+  }
+  const raw = data.integerForm;
+  if (!isPlainObject(raw) || Object.keys(raw).some((key) => key !== "unit")) {
+    throw new ValueTypeEntryError(file, "'integerForm' is a mapping holding exactly 'unit'");
+  }
+  const unit = requireString(file, raw, "unit");
+  if (PLAIN_ENCODINGS[data.encoding]?.decode(`0${unit}`) === undefined) {
+    throw new ValueTypeEntryError(
+      file,
+      `'integerForm.unit' '${unit}' is not a unit encoding '${data.encoding}' reads ('0${unit}' does not decode)`,
+    );
+  }
+  return { unit };
+}
+
 function buildRegistry(): ReadonlyMap<string, ValueTypeEntry> {
   const registry = new Map<string, ValueTypeEntry>();
   for (const [file, data] of VALUE_TYPE_ENTRY_FILES) {
@@ -602,6 +675,13 @@ function buildRegistry(): ReadonlyMap<string, ValueTypeEntry> {
         file,
         `binding '${entry.binding}' has no row in this runtime's table — a value type ` +
           `whose assertion cannot be produced would silently exempt every slot that declares it`,
+      );
+    }
+    // A bound nothing can compare would silently admit every value.
+    if (entry.parameters.some((p) => p.bound) && !VALUE_TYPE_BINDINGS[entry.binding!]?.compare) {
+      throw new ValueTypeEntryError(
+        file,
+        `a parameter declares 'bound', but binding '${entry.binding}' has no ordering in this runtime`,
       );
     }
     registry.set(entry.name, entry);
@@ -666,8 +746,8 @@ export function readValueTypeSlot(schema: unknown): ValueTypeSlot | undefined {
     const args: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(raw)) {
       if (key === "name") continue;
-      // A host-entry argument is a token, never a schema.
-      if (entry?.parameters.some((p) => p.hostEntry && p.name === key)) {
+      // A host-entry argument is a token and a bound a written value, never a schema.
+      if (entry?.parameters.some((p) => (p.hostEntry || p.bound) && p.name === key)) {
         args[key] = value;
         continue;
       }
@@ -784,6 +864,127 @@ export function plainEncodingOf(schema: unknown): PlainEncoding | undefined {
 export function decodePlainText(schema: unknown, text: string): unknown {
   const decoded = plainEncodingOf(schema)?.decode(text);
   return decoded === undefined ? text : decoded;
+}
+
+/** What a JSON number arriving from outside at this slot holds: the instance its type's
+ *  integer form reads it as, or the number unchanged when the slot declares no integer
+ *  form or the number is not an integer that form reads — which the slot's assertion
+ *  then refuses. Only an integer exact in a double counts, so every runtime reads the
+ *  same set; a wider one is already some other integer. The leaf rule every decoding
+ *  walk applies to a number. */
+export function decodePlainInteger(schema: unknown, value: number): unknown {
+  const entry = valueTypeOf(schema);
+  if (!entry?.integerForm || !Number.isSafeInteger(value)) return value;
+  const decoded = PLAIN_ENCODINGS[entry.encoding!]?.decode(`${value}${entry.integerForm.unit}`);
+  return decoded === undefined ? value : decoded;
+}
+
+/** A value of `entry` as it is written outside: its encoding's text, or an integer read
+ *  through its integer form — or undefined when the written value reads as neither. */
+function decodeWritten(entry: ValueTypeEntry, written: unknown): unknown {
+  const encoding = entry.encoding === undefined ? undefined : PLAIN_ENCODINGS[entry.encoding];
+  if (!encoding) return undefined;
+  if (typeof written === "string") return encoding.decode(written);
+  if (typeof written === "number" && entry.integerForm && Number.isSafeInteger(written)) {
+    return encoding.decode(`${written}${entry.integerForm.unit}`);
+  }
+  return undefined;
+}
+
+/** One bound a slot declares: the parameter, its argument as written, and the value it
+ *  reads as. */
+export interface ValueTypeBoundArgument {
+  readonly parameter: string;
+  readonly bound: ValueTypeBound;
+  readonly written: unknown;
+  readonly value: unknown;
+}
+
+/**
+ * The bounds a slot's annotation states, each argument read through its type's own
+ * encoding. A bound whose argument does not read is left out — the analyzer reports it
+ * (`X_TELO_TYPE_ARGUMENT_INVALID`) where it is written — so `invalid` lists those.
+ */
+export function valueTypeBoundsOf(slot: ValueTypeSlot | undefined): {
+  bounds: ValueTypeBoundArgument[];
+  invalid: string[];
+} {
+  const bounds: ValueTypeBoundArgument[] = [];
+  const invalid: string[] = [];
+  for (const parameter of slot?.entry?.parameters ?? []) {
+    if (!parameter.bound || !(parameter.name in slot!.args)) continue;
+    const written = slot!.args[parameter.name];
+    const value = decodeWritten(slot!.entry!, written);
+    if (value === undefined) invalid.push(parameter.name);
+    else bounds.push({ parameter: parameter.name, bound: parameter.bound, written, value });
+  }
+  return { bounds, invalid };
+}
+
+/** Whether `value` holds a bound read from what was written — the comparison the
+ *  `x-telo-type` keyword emits into a validator, by the type's name so a cached
+ *  validator reaches it again. A bound that does not read admits every value: it is
+ *  reported where it is written, and the keyword never emits a call for one. */
+export function valueTypeBoundHolds(
+  typeName: string,
+  bound: ValueTypeBound,
+  written: unknown,
+  value: unknown,
+): boolean {
+  const entry = VALUE_TYPES.get(typeName);
+  const compare = entry?.binding === undefined ? undefined : VALUE_TYPE_BINDINGS[entry.binding]?.compare;
+  if (!entry || !compare) return true;
+  const limit = decodeWritten(entry, written);
+  if (limit === undefined) return true;
+  const order = compare(value, limit);
+  switch (bound) {
+    case "minimum":
+      return order >= 0;
+    case "maximum":
+      return order <= 0;
+    case "exclusiveMinimum":
+      return order > 0;
+    case "exclusiveMaximum":
+      return order < 0;
+  }
+}
+
+const BOUND_WORDS: Readonly<Record<ValueTypeBound, string>> = {
+  minimum: "at least",
+  maximum: "at most",
+  exclusiveMinimum: "greater than",
+  exclusiveMaximum: "less than",
+};
+
+/** How a slot's bounds read to an author (`at least 0s and at most 1h`), each limit in
+ *  its type's own encoding — or the empty string when it states none. */
+export function valueTypeBoundsText(slot: ValueTypeSlot | undefined): string {
+  const encoding =
+    slot?.entry?.encoding === undefined ? undefined : PLAIN_ENCODINGS[slot.entry.encoding];
+  if (!encoding) return "";
+  return valueTypeBoundsOf(slot)
+    .bounds.map(({ bound, value }) => `${BOUND_WORDS[bound]} ${encoding.encode(value)}`)
+    .join(" and ");
+}
+
+/** Why `value` — a value of the slot's type — is outside the slot's bounds
+ *  (`must be a Telo.Duration greater than 0s, not 0s`), or undefined when it is within
+ *  them (or is no value of the type, which the type itself refuses). */
+export function valueTypeBoundRefusal(slot: ValueTypeSlot | undefined, value: unknown): string | undefined {
+  const entry = slot?.entry;
+  const binding = entry?.binding === undefined ? undefined : VALUE_TYPE_BINDINGS[entry.binding];
+  if (!entry || !binding?.holds(value)) return undefined;
+  const missed = valueTypeBoundsOf(slot).bounds.some(
+    ({ bound, written }) => !valueTypeBoundHolds(entry.name, bound, written, value),
+  );
+  if (!missed) return undefined;
+  return `must be a ${entry.name} ${valueTypeBoundsText(slot)}, not ${PLAIN_ENCODINGS[entry.encoding!]!.encode(value)}`;
+}
+
+/** How a slot's integer form is described to an author, or nothing when it has none —
+ *  beside the encoding's own form wherever a refusal names what may be written. */
+export function integerFormText(entry: ValueTypeEntry): string | undefined {
+  return entry.integerForm && `an integer, read as that many ${entry.integerForm.unit}`;
 }
 
 /** The members of the value type a schema node declares, or undefined when it declares

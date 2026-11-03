@@ -256,6 +256,14 @@ A runtime MUST expose on the resource context:
   matched per §6 against `ctx` (default: the ambient context); throws
   `ERR_ZONE_REQUIRED` when none matches. **`findZone`** is the non-throwing
   form.
+- **`requireZone(ctx?)`** / **`findZone(ctx?)`** — the same lookup for the
+  requirement at the kind's **schema root** (§4.2), named by no field. The
+  matcher, the correlation (key pointers, a pointer traversing a `!ref`
+  included) and the `ERR_ZONE_REQUIRED` message are the field form's; a root
+  carrying no `x-telo-requires-zone` is `ERR_ZONE_ANNOTATION_MISSING`. A kind
+  whose requirement is unconditional declares it at the root and calls this
+  form, so its controller never raises `ERR_ZONE_REQUIRED` itself. On the
+  protocol it is `Zone.Require` / `Zone.Find` with no `field`.
 - **`zonesFor(instance, ctx?)`** — ambient zones whose correlation payload IS
   `instance`, innermost first. The undeclared case: a statement with no
   `transaction:` still joins an open transaction. No kind parameter — the
@@ -271,6 +279,11 @@ A runtime MUST expose on the resource context:
 - **`rootContext(opts?)`** — a context inheriting **nothing** from the ambient:
   no zones, no trace parent, no caller token (optionally a cancellation
   source's). See §7.
+
+**Polyglot debt:** `kernel/rust` and `sdk/rust` implement none of this surface —
+neither form of `requireZone` / `findZone`, nor `withZone`, `zonesFor` or
+`zoneAttributes` — so a Rust controller cannot open or assert a zone. A Rust
+kernel hosting a zone-bearing kind owes all of it, the field-less form included.
 
 ## 6. Matching and correlation
 
@@ -344,7 +357,8 @@ references.
   resolved (`no sql.Transaction zone open on sqlite.Connection 'appDb'`), and
   quote the annotation's `reason` when present.
 - **`ERR_ZONE_ANNOTATION_MISSING`** — `withZone`/`requireZone` named a slot that
-  carries no such annotation: a controller/schema disagreement, a defect.
+  carries no such annotation, or the field-less `requireZone` / `findZone` found
+  none at the schema root: a controller/schema disagreement, a defect.
 - **`ERR_ZONE_UNRESOLVED`** — a requirement's zone kind resolves to no
   registered kind at runtime (statically `ZONE_PROVIDER_UNRESOLVED`).
 

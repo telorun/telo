@@ -180,6 +180,18 @@ options:
 
 The analyzer resolves the path by finding the resource referenced by the `backend` field and navigating to the `$defs/NodeOptions` sub-schema within its definition's schema. This allows option fields whose shape is determined by a user-selected backend resource to be validated correctly.
 
+#### `x-telo-serializable`
+
+On a slot holding a shape — an `x-telo-ref` whose `use` is `schema`, inline or `!ref`, or a JSON-Schema-valued field — `x-telo-serializable: true` says that values of that shape are stored or serialized (a queue's message type), so the shape may hold no live value type at any depth:
+
+```yaml
+messageType:
+  x-telo-ref: { kind: Telo.Type, use: schema }
+  x-telo-serializable: true
+```
+
+A resource naming a shape that holds a `Telo.Stream` — in a property, an item, a map value, a union branch or a named shape it reaches — is refused by `telo check` (`SCHEMA_NOT_SERIALIZABLE`, naming the path to it) and when the kernel creates it (`ERR_SCHEMA_NOT_SERIALIZABLE`). The annotation anywhere else, or with any value but `true`, is `SERIALIZABLE_ANNOTATION_INVALID`.
+
 ---
 
 ## 5. Invocation Contract (`inputs`, `outputs`)
@@ -291,6 +303,8 @@ The value is `<refField>/<subpath>`. The analyzer resolves `refField` to the man
 This is the mechanism that types the `result` variable in HTTP response body CEL expressions based on the `outputSchema` declared on the handler resource (e.g. `Sql.Select`).
 
 A `subpath` of several segments may cross reference slots: past a field the referenced declaration's kind declares as a reference (`x-telo-ref`), the walk continues inside the declaration that field names, resolved in the module that wrote it. A type reference it ends on is read as the shape it names, `extends` folded. `x-telo-context-ref-from: "source/collection/model"` beside a `source` slot types the binding as a record of the model the source's collection names; inside a map of such entries, each entry is typed from its own `source`. A walk that reaches no type falls back as above.
+
+The node keeps the nullability it declares. A binding written `type: [object, "null"]` (or `nullable: true`) beside the annotation is typed from the reference AND may be null, so every member read through it needs a guard — `message != null && message.id` — and an unguarded one is `CEL_NULLABLE_ACCESS`. The same holds for `x-telo-context-from-root` and `x-telo-context-from-ref-kind`, which replace a node the same way.
 
 #### `x-telo-bindings-from`
 

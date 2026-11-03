@@ -7,6 +7,9 @@ use std::borrow::Cow;
 
 use serde_json::{Map, Value};
 
+use telorun_sdk_core::plain_encoding::reads_text;
+use telorun_sdk_core::value_type::{value_type_of, ValueType, MAX_EXACT_INTEGER};
+
 use crate::manifest_navigation::resolve_schema_pointer;
 
 /// Looks a registered schema up by its `$id`.
@@ -66,7 +69,9 @@ pub fn select_union_branch<'s: 'a, 'a>(
 /// Every branch `data` may be written against — each merged over the union's
 /// shared base — or `None` when `schema` is not a union. Selection is structural
 /// and conservative: a branch must agree with the data's kind, a constant branch
-/// reads exactly one scalar, and an object must hold every `required` key.
+/// reads exactly one scalar, and an object must hold every `required` key. Where
+/// every branch a text or number fits is a value type with a plain encoding, the
+/// value is the type of the one whose encoding reads it ([`encoded_reading`]).
 pub fn fitting_union_branches<'s: 'a, 'a>(
     schema: &'a Value,
     data: &Value,
@@ -108,12 +113,47 @@ pub fn fitting_union_branches<'s: 'a, 'a>(
             true
         })
         .collect();
+    let fits = match encoded_reading(&fits, data) {
+        Some(read) => vec![read],
+        None => fits,
+    };
     if schema.get("type").is_none() && schema.get("properties").is_none() {
         return Some(fits.into_iter().map(Cow::Borrowed).collect());
     }
     let mut base = schema.as_object().cloned().unwrap_or_default();
     base.remove(union_key);
     Some(fits.into_iter().map(|branch| Cow::Owned(merged_over(&base, branch))).collect())
+}
+
+/// The one branch whose plain encoding reads `data`, where every fitting branch is
+/// a value type with one; `None` otherwise. A branch of any other shape reads text
+/// as itself, so a union holding one is never narrowed by encoding.
+fn encoded_reading<'a>(fits: &[&'a Value], data: &Value) -> Option<&'a Value> {
+    if fits.len() < 2 || !(data.is_string() || data.is_number()) {
+        return None;
+    }
+    let encodings: Vec<(&'a Value, &'static ValueType)> = fits
+        .iter()
+        .map(|branch| value_type_of(branch).filter(|entry| entry.encoding.is_some()).map(|entry| (*branch, entry)))
+        .collect::<Option<_>>()?;
+    let reading: Vec<&'a Value> = encodings
+        .into_iter()
+        .filter(|(_, entry)| {
+            let encoding = entry.encoding.as_deref().unwrap_or_default();
+            match data {
+                Value::String(text) => reads_text(encoding, text),
+                Value::Number(number) => match (number.as_i64(), entry.integer_unit.as_deref()) {
+                    (Some(n), Some(unit)) if n.abs() <= MAX_EXACT_INTEGER => {
+                        reads_text(encoding, &format!("{n}{unit}"))
+                    }
+                    _ => false,
+                },
+                _ => false,
+            }
+        })
+        .map(|(branch, _)| branch)
+        .collect();
+    (reading.len() == 1).then(|| reading[0])
 }
 
 /// A discriminated union over a shared base: the base with the branch's own keys
@@ -185,6 +225,16 @@ mod tests {
         let schema = sqlite_file();
         let chosen = select_union_branch(&schema, &json!("/srv/app.db"), &schema, None);
         assert_eq!(chosen.as_ref(), &json!({ "type": "string", "x-telo-type": "Telo.HostPath" }));
+    }
+
+    #[test]
+    fn reads_a_union_of_encodings_by_the_one_that_reads_the_value() {
+        let after = json!({ "anyOf": [{ "x-telo-type": "Telo.Duration" }, { "x-telo-type": "Telo.Timestamp" }] });
+        let root = after.clone();
+        let chosen = |data: Value| select_union_branch(&after, &data, &root, None)["x-telo-type"].clone();
+        assert_eq!(chosen(json!("2s")), json!("Telo.Duration"));
+        assert_eq!(chosen(json!("2026-01-01T00:00:00Z")), json!("Telo.Timestamp"));
+        assert_eq!(chosen(json!(1500)), json!("Telo.Duration"));
     }
 
     #[test]

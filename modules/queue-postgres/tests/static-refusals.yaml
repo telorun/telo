@@ -1,0 +1,23 @@
+# The PostgreSQL queue table kind declares the duplicate-name rule itself (a
+# table kind has one parent, its engine's Table), so it is pinned here at
+# `telo check`. The refusal at creation is the shared queue code's, run by the
+# SQLite module's suite and identical on every engine.
+kind: Telo.Application
+metadata:
+  name: QueuePostgresStaticRefusals
+  version: 1.0.0
+  description: The PostgreSQL queue's refusals, as `telo check` reports them.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref queueNameDuplicate
+---
+kind: Assert.Manifest
+metadata: { name: queueNameDuplicate }
+source: ./__fixtures__/queue-name-duplicate/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Queue.Queue/emails at 'table': required by Queue.Table — claims a queue name"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Queue.Queue/emailsAgain at 'table'"

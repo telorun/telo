@@ -1090,6 +1090,17 @@ object, or beside `x-telo-sensitive` — it is `SPAN_ATTRIBUTE_MISPLACED`, and a
 malformed name is `SPAN_ATTRIBUTE_INVALID` (`ERR_SPAN_ATTRIBUTE_INVALID` at
 run).
 
+A slot holding a shape whose VALUES a kind stores or serializes (a queue's
+message type) is marked `x-telo-serializable: true` beside its
+`x-telo-ref: { kind: Telo.Type, use: schema }`: a shape holding a `Telo.Stream`
+anywhere is then refused (`SCHEMA_NOT_SERIALIZABLE`, `ERR_SCHEMA_NOT_SERIALIZABLE`
+at run), naming the path to it.
+
+A context binding typed from a reference (`x-telo-context-ref-from`,
+`-from-root`, `-from-ref-kind`) keeps the nullability its own node declares:
+declare it `type: [object, "null"]` when the value may be absent, and every read
+of it needs a guard (`message != null && message.id`).
+
 A `!ref` inside a `Telo.Sequence` `with:` block may name either a scope-local
 resource or one from the enclosing module; scope-local wins, exactly as CEL's
 `resources.<name>` layers inside a scope. So two resources declared together in
@@ -1227,6 +1238,10 @@ ORDERED LIST tried in order, first hit winning — the correlated field is often
 optional, so a single pointer would resolve to nothing in the common shape; a
 pointer may traverse a `!ref` into a kind the declaring module owns), and an
 optional `reason` quoted in diagnostics.
+
+A requirement at the kind's schema ROOT is unconditional; its controller reads
+it with the field-less `ctx.requireZone(invokeCtx)` / `ctx.findZone(invokeCtx)`
+and never raises `ERR_ZONE_REQUIRED` itself.
 
 What the checker does with it follows entirely from `use`: a requirement
 propagates up `call` edges and is discharged by a providing slot whose
@@ -1386,6 +1401,14 @@ collection, which is what lets a condition be an existential over the set. A
 rule declaring `peers:` evaluates once per entry; `peers:` requires `referrer:`
 and must name a collection that kind declares whose items are, or contain, a
 reference.
+
+`coReferrers: /table` is the other direction: the pointer names the referrer
+kind's slot that reaches me, and `coReferrers` binds the OTHER declarations of
+that kind reaching this same resource through it (references resolved one
+level, as `peers`), judged once per referrer — so a table can refuse two stores
+claiming one name in it: `condition: !cel "!coReferrers.exists(o, o.name ==
+referrer.name)"`. It requires `referrer:` and must name a single reference slot
+of that kind.
 
 `resolve: [/model]` binds `referrer` with each named reference slot of the
 referrer replaced by the declaration it names, one level deep — so
@@ -1573,6 +1596,104 @@ zone kind and correlation key from the annotation, so the two halves cannot
 disagree. Provider-private state (an open executor) goes on an instance both
 sides hold by reference, never at module scope.
 
+## Background jobs — the `queue` modules
+
+Which tool runs work off the request path:
+  - **A queue** — a background job that must not be lost (send an email,
+    render a report, call a slow API), a transactional OUTBOX (tell another
+    system only if your write committed), WEBHOOK INTAKE (store the provider's
+    event by its id, answer 2xx, process later). One message, one handler,
+    retried until it succeeds or is dead.
+  - **A durable workflow** (`Local.Workflow`, above) — a multi-step process
+    whose progress must survive a restart, or that WAITS (an approval, a sleep
+    of days).
+  - **`Run.Detach`** — fire-and-forget inside this process (an audit write,
+    cache warming): nothing is stored, a crash loses it, a failure reaches no
+    caller. Never for work that must happen.
+
+Modules: `queue` (its library is named `Queues`; import it as `Queue`, so its
+kinds read `Queue.Worker`, `Queue.Enqueue`, …), `queue-sql` (`QueueSql`) and
+one engine module, `queue-postgres` or `queue-sqlite`. The SQL modules' own
+docs import the queue module as `Queues` and the ENGINE as `Queue` — when you
+copy from them, keep one alias per module and rewrite the prefixes. Kinds:
+`Queue.Worker` (a Service — list it in `targets:`), `Queue.Enqueue` /
+`Queue.EnqueueMany`, `Queue.Stats`, and on an addressable queue (every SQL one)
+`Queue.Status` / `List` / `Cancel` / `Requeue`; `QueueSql.Enqueue` /
+`QueueSql.EnqueueMany`; the engine's `Table` and `Queue`.
+
+    kind: QueuePostgres.Table          # one field; every column is the queue's
+    metadata: { name: queueMessages }
+    table: queue_messages
+    ---
+    kind: Postgres.Schema              # MUST list the table — it creates it
+    metadata: { name: appSchema }
+    connection: !ref db
+    tables: [!ref queueMessages, !ref orders]
+    ---
+    kind: QueuePostgres.Queue
+    metadata: { name: emails }
+    connection: !ref db
+    schema: !ref appSchema
+    table: !ref queueMessages
+    name: emails                       # durable identity inside the table
+    retention: 168h                    # how long a settled id is remembered
+    messageType: !ref OrderEmail       # a Telo.JsonSchema; checked at enqueue
+    ---
+    kind: Queue.Worker
+    metadata: { name: emailWorker }
+    queue: !ref emails
+    invoke: !ref sendOrderEmail
+    inputs:
+      orderId: !cel "message.orderId"           # typed from messageType
+      idempotencyKey: !cel "delivery.messageId"
+    timeout: 30s                       # REQUIRED: one attempt's limit
+    retry: { attempts: 5, initialDelay: 1s, nonRetryable: [ERR_ORDER_INVALID] }
+    onDead:                            # optional: runs before a message is dead
+      invoke: !ref parkEmail
+      inputs:
+        reason: !cel "error.code"
+        orderId: !cel "message != null ? message.orderId : null"
+
+`timeout` and `retry` (with `attempts`) are required on a worker. `delivery`
+is `{ messageId, attempt, enqueuedAt }`; in `onDead`, `message` is nullable.
+List the schema and the worker in `targets:`. `queue-sqlite` is the same with
+`QueueSqlite.*` and `SQLite.*` kinds.
+
+**Outbox**: enqueue with `QueueSql.Enqueue` as a step INSIDE the
+`Sql.Transaction` that writes the data, on the queue's connection — the
+message commits or rolls back with the rows, and an enqueue outside such a
+transaction is refused by `telo check`. Give it a deterministic `id`
+(`!interpolate "order-email-${{ inputs.orderId }}"`): an id the queue holds
+stores nothing again.
+
+DELIVERY IS AT-LEAST-ONCE — a handler can run twice for one message. Never
+write "exactly once". Make a repeat harmless:
+  - effects in the SAME database: the handler is a `Sql.Transaction` whose
+    steps wrap the writes in `IdempotencySql.Once` keyed on the message id —
+    the key and the writes commit together, so they are committed once per
+    message id. Its ledger (`IdempotencyPostgres.Ledger` /
+    `IdempotencySqlite.Ledger`: `connection`, `schema`, `table` — the engine
+    module's own `Table` kind, listed in the schema — `name`, `retention`)
+    sweeps its own expired keys once it has been written to; it needs no
+    `targets:` entry.
+
+        - name: once
+          invoke:
+            kind: IdempotencySql.Once
+            ledger: !ref ledger
+            invoke: !ref insertProjection
+          inputs:
+            key: !cel "inputs.messageId"      # the worker passed delivery.messageId
+            inputs: { order: !cel "inputs.order" }
+
+  - effects elsewhere (an email, another API): pass `delivery.messageId` as
+    that system's idempotency key (an `Idempotency-Key` header).
+
+`IdempotencySql.Once` is not `Idempotency.Once`: the latter (over a
+`KvStore.Store`) replays a stored result and suits effects outside the
+database; the SQL one stores no result (`executed: false` on a repeat) and must
+run inside a transaction on its ledger's connection.
+
 ## What a value IS — `x-telo-type`
 
 One annotation says what the value at a slot is, beyond what JSON Schema's
@@ -1594,7 +1715,15 @@ One annotation says what the value at a slot is, beyond what JSON Schema's
     digits read; UTC `Z` written, with the fraction absent when the instant is
     whole and otherwise carrying no trailing zero — `2026-01-15T07:30:00Z`,
     `…:00.25Z`, `…:00.000000001Z`), a CEL duration string for a duration
-    (`1h30m` read, `5400s` written). Both are nanosecond-precise: a timestamp
+    (`1h30m` read, `5400s` written) — or, for a duration, an integer literal,
+    read as that many milliseconds (`250` is `250ms`; a STRING `"250"` is not).
+    A CEL `int` is never a duration: compute one with `duration('250ms')`. A
+    duration slot may be BOUNDED — `x-telo-type: { name: Telo.Duration,
+    minimum: 0s }`, likewise `maximum`, `exclusiveMinimum` (`0s` for a positive
+    duration) and `exclusiveMaximum`, each written as a duration or integer
+    milliseconds — and a value outside the bound is refused by `telo check` and
+    at run (a retry policy's delays are bounded `minimum: 0s`, a step's
+    `timeout:` `exclusiveMinimum: 0s`). Both are nanosecond-precise: a timestamp
     is seconds plus nanos, never a host date type, so an `expected:` literal in
     a test is written in exactly that trimmed form.
   - `Telo.Uint64` — an unsigned 64-bit integer (CEL `uint`), declared over
@@ -1649,8 +1778,8 @@ Three rules follow, all yours to obey when authoring:
 
   - A literal at a `Telo.Bytes`, `Telo.Timestamp`, `Telo.Duration` or
     `Telo.Url` slot is TEXT in that type's encoding — base64url without padding for bytes, RFC
-    3339 for a timestamp, a CEL duration string for a duration — and is read
-    into the value where it is written; text the encoding does not read is a
+    3339 for a timestamp, a CEL duration string (or an integer of milliseconds)
+    for a duration — and is read into the value where it is written; text the encoding does not read is a
     `telo check` error. A computed value (`!cel`) must already BE the value.
     A file's bytes come from an `!include-bytes` embed. Where a kind's slot is
     `anyOf: [string, bytes]`, a string is always the TEXT branch — use the
@@ -1846,7 +1975,10 @@ nothing is reached the node stays as written. The object form
 `{ from: <location>, member: "0#" }` holds the value to the property of each
 reached type that its own map key names — a map of filters typed key by key by
 a model; on a configuration slot every expression there, accessors included,
-must fit that property's type (`CEL_TYPE_ERROR`). A call whose argument does not
+must fit that property's type (`CEL_TYPE_ERROR`). A location ending at
+`inputType` / `outputType` past a reference (`/invoke/outputType`) reads the
+called resource's contract as a contract resolves — its own, else its kind's
+along `extends` — so a wrapper's `result` is typed by whatever it calls. A call whose argument does not
 satisfy a reached type is `CONTRACT_INPUTS_MISMATCH` at the call site and
 `ERR_INPUT_INVALID` at dispatch.
 
@@ -1971,8 +2103,13 @@ predicate reading it must guard for null.
 
 `retryOn:` takes the same two spellings and is consulted ONLY for responses
 `success` rejected, so a status named by both is a success. `retry:` carries
-`attempts`, `initialDelay`, `factor`, `maxDelay`, `jitter` and
-`honorRetryAfter`; `Http.Client` supplies defaults for a whole API.
+the shared retry policy plus `honorRetryAfter`; `Http.Client` supplies defaults
+for a whole API. `nonRetryable` and `retryAfter` read each failure as `error`: a
+network failure under its own code (`TIMEOUT`, `CONNECTION_REFUSED`, …) and a
+retried response as `ERR_HTTP_STATUS` with `data.status` / `headers` / `body`. A
+duration `retryAfter` yields wins over the `Retry-After` header. On an
+`Http.Client`, `retryAfter` is resolved once when the client is created and
+cannot read `error`.
 
     - name: fetch
       inputs:
@@ -1981,7 +2118,7 @@ predicate reading it must guard for null.
         kind: Http.Request
         throwOnHttpError: true
         retryOn: [429, 500, 502, 503, 504]
-        retry: { attempts: 5, maxDelay: 32000 }
+        retry: { attempts: 5, maxDelay: 32s }
 
 ## Multipart bodies
 
@@ -2397,8 +2534,15 @@ CONTRACT_INPUTS_MISMATCH; a literal limit below 1 is SCHEMA_VIOLATION.
 ## Retrying a step
 
 Any dispatch site takes `retry:` — `attempts`, `initialDelay`, `factor`,
-`maxDelay`, `jitter`, the same field names `Http.Request` uses. `attempts` counts
-re-attempts AFTER the first try. A `Run` step and an Application `targets:`
+`maxDelay`, `jitter`, `nonRetryable`, `retryAfter`, the same field names
+`Http.Request` uses. `attempts` counts re-attempts AFTER the first try.
+`initialDelay` / `maxDelay` (default 250ms / 32s) and a step's per-attempt
+`timeout:` are durations (`250ms`, `30s`; an integer is milliseconds).
+`nonRetryable: [ERR_…]` lists codes that end the loop at once — a code the
+target cannot throw is the warning `NON_RETRYABLE_CODE_NOT_THROWN`.
+`retryAfter: !cel "…"` reads the failure as `error` (`code`, `message`, `data`)
+and yields a duration to wait instead of the backoff, or null to keep it (write
+the null branch of a conditional as `dyn(null)`); it is capped by `maxDelay`. A `Run` step and an Application `targets:`
 entry are the same shape, so `retry:` is written the same way in both. It retries a domain failure and refuses two
 things it cannot help: a cancellation, and a contract violation
 (`ERR_INPUT_INVALID` / `ERR_OUTPUT_INVALID` / `ERR_CONTRACT_UNRESOLVABLE`),
@@ -2417,6 +2561,13 @@ carries its own replayable piece.
       inputs:
         amount: !cel "inputs.amount"
       retry: { attempts: 3 }
+
+A KIND that re-attempts a handler itself (a worker redelivering a message)
+holds a `retry: { $ref: telo://manifest#/$defs/RetryPolicy }` field beside its
+handler slot; annotating that field `x-telo-retry-for: { slot: /invoke, codes:
+{ <CODE>: { description } } }` makes `telo check` judge its `nonRetryable` and
+`retryAfter` against the handler's throws plus the codes the kind raises into
+the loop, exactly as for a step.
 
 Retries COMPOSE MULTIPLICATIVELY: a step `retry: { attempts: 3 }` around an
 Http.Request that itself declares `retry: { attempts: 3 }` is up to 16 requests,

@@ -165,6 +165,7 @@ import {
   analyzerPeersTarget,
   analyzerKindSchemas,
   analyzerReferrerDeclares,
+  analyzerReferrerSlot,
   navigatePath,
 } from "./peer-binding.js";
 import { RuleFailureLedger } from "./rule-condition.js";
@@ -181,6 +182,8 @@ import {
   validateRefSlotDeclarations,
   type RefSlotIssue,
 } from "./validate-ref-slots.js";
+import { retryForProblems } from "./retry-for-slot.js";
+import { serializableAnnotationProblems, serializableProblems } from "./serializable-slot.js";
 import { scopeSlotProblems } from "./validate-scope-slots.js";
 import { topologyRoleProblems } from "./validate-topology-roles.js";
 import { caughtMemberProblems } from "./validate-caught-members.js";
@@ -3395,6 +3398,21 @@ function ownSchemaChecks(world: OwnCheckWorld, m: ResourceManifest, declared: De
   // A module file named at a host-path slot that says what the path names,
   // where the loader found the other kind of entry.
   if (!ownModule || rootModules.has(ownModule)) {
+    // A shape whose values are stored or serialized holds no live value.
+    for (const problem of serializableProblems(
+      projected,
+      m,
+      (value) => world.valueSchemaHost.typeSchemaOf(value, m as Record<string, any>),
+      (ref) => defs.schemaForId(ref),
+    )) {
+      push({
+        severity: DiagnosticSeverity.Error,
+        code: "SCHEMA_NOT_SERIALIZABLE",
+        source: SOURCE,
+        message: `${m.kind}/${resource.name}: ${problem.message}`,
+        data: { resource, filePath, path: pointerToPath(problem.pointer) },
+      });
+    }
     for (const diagnostic of moduleFileEntryMismatches(m, (path) => navigateSchemaToExprPath(projected, path))) {
       push(diagnostic);
     }
@@ -7093,6 +7111,32 @@ export class StaticAnalyzer {
       if (!ownModule || rootModules.has(ownModule)) {
         refConstraintIssues.push(...issues);
         refSlotIssues.push(...validateRefSlotDeclarations(m as unknown as ResourceManifest));
+        for (const problem of serializableAnnotationProblems((def as { schema?: unknown }).schema)) {
+          scopeSlotDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "SERIALIZABLE_ANNOTATION_INVALID",
+            source: SOURCE,
+            message: problem.message,
+            data: {
+              resource: { kind: m.kind, name: def.metadata?.name as string },
+              filePath: (def.metadata as { source?: string } | undefined)?.source,
+              path: pointerToPath(`/schema${problem.pointer}`),
+            },
+          });
+        }
+        for (const problem of retryForProblems(def)) {
+          scopeSlotDiagnostics.push({
+            severity: DiagnosticSeverity.Error,
+            code: "RETRY_FOR_INVALID",
+            source: SOURCE,
+            message: problem.message,
+            data: {
+              resource: { kind: m.kind, name: def.metadata?.name as string },
+              filePath: (def.metadata as { source?: string } | undefined)?.source,
+              path: problem.path,
+            },
+          });
+        }
         for (const problem of scopeSlotProblems(def)) {
           scopeSlotDiagnostics.push({
             severity: DiagnosticSeverity.Error,
@@ -7275,6 +7319,7 @@ export class StaticAnalyzer {
      */
     const peersTarget = analyzerPeersTarget(defs);
     const referrerDeclares = analyzerReferrerDeclares(defs);
+    const referrerSlot = analyzerReferrerSlot(defs);
 
     // Checked against the MERGED schema, so an `in:` pointer naming an
     // inherited field resolves — which is what lets a rule shared by every
@@ -7346,6 +7391,7 @@ export class StaticAnalyzer {
           ...validateReferrerRuleDeclarations(declarer, {
             peersTarget,
             referrerDeclares,
+            referrerSlot,
             selfDeclares: (pointer) =>
               rulePointerReaches(
                 effectiveAuthorSchema(declarer as any, (k) => defs.resolve(aliases.resolveKind(k) ?? k) ?? defs.resolve(k)),

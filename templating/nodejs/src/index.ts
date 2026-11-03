@@ -30,6 +30,7 @@ export {
   extractReadChains,
   findNullableAccessIssues,
   INDEX_SEGMENT,
+  schemaConjuncts,
   validateChainAgainstSchema,
 } from "./cel/analyze.js";
 export {

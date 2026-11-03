@@ -1,4 +1,4 @@
-import type { ResourceContext } from "@telorun/sdk";
+import type { CelDuration, CelTimestamp, ResourceContext } from "@telorun/sdk";
 import {
   assertListedTable,
   resolveSqlConnection,
@@ -7,9 +7,17 @@ import {
   type DeclaredTable,
   type ReclaimPolicy,
   type SqlConnection,
-  type SqlInstantSchema,
+  type SqlFragments,
+  type SqlInstantArithmeticSchema,
+  type SqlLockSchema,
 } from "@telorun/sql";
 import { PostgresSchemaDriver } from "./postgres-schema-driver.js";
+import {
+  POSTGRES_SKIP_LOCKED_CLAUSE,
+  postgresCurrentInstant,
+  postgresCurrentInstantPlus,
+  postgresInstantParameter,
+} from "./postgres-instants.js";
 import type { PostgresEnumResource } from "./enum-controller.js";
 import type { PostgresTableResource } from "./table-controller.js";
 
@@ -34,7 +42,7 @@ interface PostgresSchemaManifest {
  * two schema resources, and schema-per-tenant falls out as one per tenant, each
  * with its own migration history and reclaim clock.
  */
-class PostgresSchemaResource implements SqlInstantSchema {
+class PostgresSchemaResource implements SqlInstantArithmeticSchema, SqlLockSchema {
   constructor(
     private readonly manifest: PostgresSchemaManifest,
     private readonly ctx: ResourceContext,
@@ -54,17 +62,31 @@ class PostgresSchemaResource implements SqlInstantSchema {
 
   qualifiedTableName(table: DeclaredTable): string {
     assertListedTable(
-      `Postgres.Schema "${this.manifest.metadata.name}"`,
+      this.describe,
       (this.manifest.tables ?? []).map((listed) => listed.declaration),
       table,
     );
     return this.driver.qualify(this.namespace, table.name);
   }
 
-  /** `clock_timestamp()` rather than `now()`: the latter is the transaction's
-   *  start, so two statements of one transaction would record one instant. */
+  private get describe(): string {
+    return `Postgres.Schema "${this.manifest.metadata.name}"`;
+  }
+
   currentInstant(): string {
-    return "clock_timestamp()";
+    return postgresCurrentInstant();
+  }
+
+  currentInstantPlus(duration: CelDuration): SqlFragments {
+    return postgresCurrentInstantPlus(duration, this.describe);
+  }
+
+  instantParameter(timestamp: CelTimestamp): SqlFragments {
+    return postgresInstantParameter(timestamp, this.describe);
+  }
+
+  skipLockedClause(): string {
+    return POSTGRES_SKIP_LOCKED_CLAUSE;
   }
 
   async run(): Promise<void> {

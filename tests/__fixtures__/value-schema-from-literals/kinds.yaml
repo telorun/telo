@@ -1,0 +1,40 @@
+# A kind typing caller data, and a config field, by the shape it references
+# (`x-telo-value-schema-from: /shape`) — the reached type carried as a
+# conjunct of the node, under the contract's own `$defs`.
+kind: Telo.Library
+metadata:
+  name: ValueSchemaFromLiterals
+  version: 1.0.0
+  description: Fixture kind handing back a message typed by the shape it references.
+exports:
+  kinds: [Box]
+---
+kind: Telo.Definition
+metadata:
+  name: Box
+  description: Hands back the message it is called with, or the one it is configured with.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./controllers.mjs#Box
+schema:
+  type: object
+  additionalProperties: false
+  required: [shape]
+  properties:
+    shape:
+      x-telo-ref: { kind: Telo.Type, use: schema }
+    seed:
+      x-telo-value-schema-from: /shape
+inputType:
+  type: object
+  additionalProperties: false
+  properties:
+    message:
+      x-telo-value-schema-from: /shape
+outputType:
+  type: object
+  additionalProperties: false
+  required: [message]
+  properties:
+    message:
+      x-telo-value-schema-from: /shape

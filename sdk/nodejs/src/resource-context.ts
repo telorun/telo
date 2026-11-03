@@ -3,6 +3,7 @@ import type {
   InvokeContext,
   OpenSpan,
   OpenSpanOptions,
+  TraceCarrier,
   ZoneEntry,
 } from "./cancellation.js";
 import type { EffectBody, EffectChain } from "./effect.js";
@@ -203,10 +204,15 @@ export interface ResourceContext extends ControllerContext {
     fn: (ctx: InvokeContext, entry: ZoneEntry) => Promise<T>,
     base?: InvokeContext,
   ): Promise<T>;
+  /** The zone required at this resource's kind's schema root
+   *  (`x-telo-requires-zone` there — unconditional for every instance), or throw
+   *  ERR_ZONE_REQUIRED. Reads the ambient stack unless `ctx` is given. */
+  requireZone(ctx?: InvokeContext): ZoneEntry;
   /** The zone required by this resource's `field` (`x-telo-requires-zone`), or
    *  throw ERR_ZONE_REQUIRED. Reads the ambient stack unless `ctx` is given. */
   requireZone(field: string, ctx?: InvokeContext): ZoneEntry;
   /** Like {@link requireZone} but absence is a valid answer, not an error. */
+  findZone(ctx?: InvokeContext): ZoneEntry | undefined;
   findZone(field: string, ctx?: InvokeContext): ZoneEntry | undefined;
   /** Ambient zones correlated on an instance the caller holds, innermost first —
    *  the undeclared case (a statement with no `transaction:` still joins an open
@@ -270,6 +276,11 @@ export interface ResourceContext extends ControllerContext {
    *  (e.g. a W3C `traceparent`). A no-op (returns `base` unchanged) when tracing
    *  is off. */
   openSpan(base: InvokeContext | undefined, opts: OpenSpanOptions): Promise<OpenSpan>;
+  /** The span `ctx` carries — else the ambient one — as a W3C carrier, for work
+   *  recorded now and continued later or elsewhere (a stored message, an outbound
+   *  request): `openSpan(…, { inbound: carrier })` continues it as a child of that
+   *  span. `undefined` when tracing is off or no span is current. */
+  traceCarrier(ctx?: InvokeContext): TraceCarrier | undefined;
   /** Dispatch by name through the traced chokepoint. See
    *  {@link InvokeByNameOptions} for `ctx` — an inbound registrant passes
    *  {@link rootContext} there so the handler inherits nothing ambient

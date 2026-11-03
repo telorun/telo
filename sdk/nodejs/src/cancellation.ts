@@ -170,6 +170,14 @@ export interface OpenSpanOptions {
   inbound?: { traceparent: string; tracestate?: string };
 }
 
+/** The current span as W3C Trace Context headers — what one process hands another
+ *  so the work it starts continues this trace. {@link OpenSpanOptions.inbound}
+ *  takes it back unchanged. */
+export interface TraceCarrier {
+  readonly traceparent: string;
+  readonly tracestate?: string;
+}
+
 /** What {@link OpenSpan.settle} may add to the span it closes. */
 export interface SpanSettleDetail {
   /** Attributes learned while the span was open (token counts, an error's

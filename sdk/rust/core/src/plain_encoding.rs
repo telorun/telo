@@ -36,6 +36,18 @@ pub const PLAIN_ENCODINGS: &[PlainEncoding] = &[
     },
 ];
 
+/// Whether `encoding` reads `text` — the check an entry's integer form is held to when
+/// it is read, so a unit the encoding does not know is refused at startup.
+pub fn reads_text(encoding: &str, text: &str) -> bool {
+    match encoding {
+        "base64url" => base64url::decode(text).is_some(),
+        "rfc3339" => rfc3339::decode(text).is_some(),
+        "cel-duration" => cel_duration::decode(text).is_some(),
+        "url-text" => url_text::read(text).is_ok(),
+        _ => false,
+    }
+}
+
 /// The members a host value written in `encoding` holds, or `None` when its payload is
 /// not that encoding's value or the encoding builds no value from members.
 pub fn host_members(

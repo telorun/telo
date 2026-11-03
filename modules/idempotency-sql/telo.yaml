@@ -1,0 +1,191 @@
+kind: Telo.Library
+metadata:
+  name: IdempotencySql
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Reliability, Data]
+  description: >-
+    Makes the database effects of a retried or redelivered operation happen once
+    per key. The key is recorded in the same transaction as the writes it guards,
+    so a rollback forgets it and a commit keeps it for a retention window; a
+    repeat inside the window skips the work, and concurrent callers with one key
+    wait for the first to finish.
+requires:
+  # `Once` asks for its schema-root zone with the field-less `ctx.requireZone`,
+  # and its `result` is typed by `/invoke/outputType` read as a contract
+  # resolves — both first in 0.129.0. An older kernel reads the field-less call
+  # as a field named by an object and refuses every call with
+  # ERR_ZONE_ANNOTATION_MISSING. Forward-declared: 0.129.0 is the release that
+  # carries them.
+  telo: ">=0.129.0"
+imports:
+  Sql: ../sql
+exports:
+  kinds:
+    - Ledger
+    - Once
+  # The controllers every engine module re-exports under its own kinds, so the
+  # implementation is one module scope across engines.
+  code:
+    - specifier: "@telorun/idempotency-sql"
+      format: js
+      path: ./nodejs/idempotency-sql.mjs
+      source: ./nodejs/src/index.ts
+---
+# IdempotencySql.Ledger — where keys are recorded. An engine module's Ledger
+# narrows `connection` and `table` to its own kinds; the table is listed in the
+# engine Schema, which creates and migrates it, so the ledger issues no DDL.
+# There is no engine-neutral table kind: an engine table kind must extend its
+# engine's Table with `base:` to be listed in that engine's Schema, and a kind
+# has one parent, so it cannot also extend a table kind declared here.
+kind: Telo.Abstract
+metadata:
+  name: Ledger
+  description: >-
+    A durable record of idempotency keys kept in a table of the application's own
+    database. A key is recorded atomically with the transaction it is written in:
+    a rollback forgets it, a commit keeps it for the retention window, and a key
+    older than that reads as absent. Expired keys are removed in the background
+    in small batches.
+capability: Telo.Service
+schema:
+  type: object
+  required: [connection, schema, table, name, retention]
+  properties:
+    connection:
+      title: Connection
+      description: The connection the ledger's table lives on, and the one a guarded transaction must be open on.
+      x-telo-ref:
+        kind: Sql.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The engine schema that lists the ledger's table. It creates and migrates
+        the table and renders its name; the ledger issues no DDL.
+      x-telo-ref:
+        kind: Sql.Schema
+        use: dependency
+    table:
+      title: Table
+      description: The ledger's table, declared with the engine module's own ledger table kind.
+      x-telo-ref:
+        kind: Sql.Table
+        use: dependency
+    name:
+      title: Name
+      description: >-
+        The ledger's durable identity inside its table, written into every row it
+        records. Several ledgers may share one table under different names. Never
+        derived from the resource's name, so renaming the resource keeps its keys.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+      x-telo-eval: compile
+    retention:
+      title: Retention
+      description: >-
+        How long a committed key is remembered. A key older than this reads as
+        absent, so the guarded work runs again. Set it to at least the window in
+        which a caller or a queue may deliver the same key again.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: "0s" }
+      x-telo-eval: compile
+---
+# IdempotencySql.Once — run a body once per key, inside the caller's transaction.
+kind: Telo.Definition
+metadata:
+  name: Once
+  description: >-
+    Runs work at most once per key within a database transaction the caller has
+    open: the key is recorded beside the work's own writes, so a retry or a
+    redelivery after commit skips the work and a rolled-back attempt runs again.
+    Returns whether the work ran, and its result when it did; a key reused with a
+    different fingerprint is refused.
+capability: Telo.Invocable
+controllers:
+  - pkg:telo/local/js?path=./nodejs/idempotency-sql.mjs&local_path=./nodejs/src/index.ts#Once
+throws:
+  # Whatever the body throws passes through unchanged and rolls the caller's
+  # transaction back, the key with it.
+  inherit: true
+  codes:
+    ERR_IDEMPOTENCY_KEY_CONFLICT:
+      description: >-
+        The key was already recorded with a different fingerprint, so this call
+        names other work under a key that is taken. Terminal: a retry gets the
+        same answer until the key expires.
+      data:
+        type: object
+        additionalProperties: false
+        required: [key]
+        properties:
+          key:
+            type: string
+    ERR_ZONE_REQUIRED:
+      description: >-
+        No transaction is open on the ledger's connection, so the key would be
+        recorded apart from the effects it guards.
+inputType:
+  type: object
+  additionalProperties: false
+  required: [key]
+  properties:
+    key:
+      description: >-
+        The idempotency key: a deterministic id for the logical operation (a
+        message id, a request id), 1 to 128 printable ASCII characters.
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[!-~]+$"
+    fingerprint:
+      description: >-
+        Optional: what the work under this key is. Stored as a digest of its
+        canonical encoding; a later call with the same key and a different
+        fingerprint is refused. Omitted, the call makes no claim about the work.
+    inputs:
+      description: >-
+        Inputs forwarded to the body when this call runs it, held to the body's
+        own input contract when it declares one.
+      type: object
+      additionalProperties: true
+      x-telo-value-schema-from: /invoke/inputType
+outputType:
+  type: object
+  additionalProperties: false
+  required: [executed]
+  properties:
+    executed:
+      description: Whether this call ran the body. False when the key was already recorded.
+      type: boolean
+    result:
+      description: The body's result. Present only when `executed` is true; no result is stored.
+      x-telo-value-schema-from: /invoke/outputType
+schema:
+  type: object
+  additionalProperties: false
+  required: [ledger, invoke]
+  # Unconditional: a key recorded outside the transaction holding the work could
+  # commit without it, or the work without it.
+  x-telo-requires-zone:
+    zone: Sql.Transaction
+    key: /ledger/connection
+    reason: the key would be recorded apart from the effects it guards
+  properties:
+    ledger:
+      title: Ledger
+      description: The ledger the key is recorded in.
+      x-telo-ref:
+        kind: Self.Ledger
+        use: dependency
+    invoke:
+      title: Invoke
+      description: The work run once per key, inside the caller's transaction.
+      x-telo-ref:
+        kind: Telo.Executable
+        use: call
+        inputs: /inputs
+      x-telo-provides-zone:
+        idempotent: >-
+          the key is committed with this body's writes, so running it again after
+          the commit finds the key and skips the body

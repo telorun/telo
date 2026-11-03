@@ -1,6 +1,8 @@
 /**
  * The `peers:` / `entry` bindings of a referrer rule — a rule's view of the
- * SIBLING declarations a referrer lists beside the one that reached it.
+ * SIBLING declarations a referrer lists beside the one that reached it — and
+ * the `coReferrers:` binding, the OTHER declarations reaching the same resource
+ * through the same slot, whose references resolve by the same rule.
  *
  * A rename marker is wrong only in relation to the *other* declarations a schema
  * lists, and an enum a column names is unlisted only in relation to the same set.
@@ -299,6 +301,19 @@ export function referenceValueOf(value: unknown): ReferenceValue | undefined {
   return undefined;
 }
 
+/** A concrete dotted/bracketed path (`mounts[1].mount`) as segments
+ *  (`["mounts", "1", "mount"]`), the spelling {@link replaceAt} walks. */
+function pathSegments(path: string): string[] {
+  const out: string[] = [];
+  for (const segment of path.split(".")) {
+    const parsed = /^([^[\]]*)((?:\[\d+\])*)$/.exec(segment);
+    if (!parsed) return [segment];
+    if (parsed[1] !== "") out.push(parsed[1]!);
+    for (const index of parsed[2]!.match(/\d+/g) ?? []) out.push(index);
+  }
+  return out;
+}
+
 /** The concrete path of the ENTRY a slot path sits in, truncated at the first
  *  `[]` / `{}` marker of the shape it matches — which is where an entry begins,
  *  everything after it being the entry's own shape. */
@@ -388,7 +403,7 @@ function dynamicInDeclaration(declaration: ResourceManifest): DynamicLeaf | unde
 const isModulePath = (value: unknown): boolean =>
   !!value && typeof value === "object" && (value as { engine?: unknown }).engine === MODULE_PATH_ENGINE;
 
-type EntryResult =
+export type EntryResult =
   | { readonly ok: true; readonly value: unknown }
   | { readonly ok: false; readonly failure: PeerBindingFailure };
 
@@ -487,6 +502,7 @@ export class PeerBinder {
   constructor(private readonly env: PeerBinderEnv) {}
 
   private readonly collections = new WeakMap<ResourceManifest, Map<string, ResolvedCollection>>();
+  private readonly coReferrers = new WeakMap<ResourceManifest, EntryResult>();
 
   /** `declaration` as a rule reads it. Every declaration a rule binds goes
    *  through here before anything scans it for dynamic values. */
@@ -702,6 +718,44 @@ export class PeerBinder {
     if (!raw || typeof raw !== "object") return false;
     const entry = entryShapeOf(shapes, path, Array.isArray(raw));
     return entry !== undefined && (!continues || shapes.includes(entry));
+  }
+
+  /**
+   * One co-referrer as a `coReferrers:` rule reads it: the declaration (through
+   * {@link view}) with each of its reference sites resolved one level, by the
+   * same per-reference resolution `peers:` applies — an unresolved reference,
+   * a library's kind-only input, a slot refusing the kind it names, or a
+   * resolved declaration holding an expression fails the binding. The
+   * declaration's own data is bound as written: which of it a condition reads
+   * is the evaluator's read-narrowed scan, so an unrelated expression in a
+   * co-referrer does not switch the rule off.
+   *
+   * Cached per declaration, so a rule judging n referrers of one slot resolves
+   * each co-referrer once rather than once per referrer that sees it.
+   */
+  coReferrer(manifest: ResourceManifest, kind: string): EntryResult {
+    const cached = this.coReferrers.get(manifest);
+    if (cached) return cached;
+    const resolved = this.resolveCoReferrer(manifest, kind);
+    this.coReferrers.set(manifest, resolved);
+    return resolved;
+  }
+
+  private resolveCoReferrer(manifest: ResourceManifest, kind: string): EntryResult {
+    const name = (manifest.metadata?.name as string | undefined) ?? "<unnamed>";
+    const sites = this.env.refSitesOf(manifest, kind);
+    if (!sites) return { ok: false, failure: { reason: "unknown-shape", at: name } };
+    const written = this.view(manifest);
+    const resolver = this.resolver(manifest, (path) => sites.get(path));
+    let value: unknown = written;
+    for (const [path, site] of sites) {
+      const reference = referenceValueOf(navigatePath(written, path));
+      if (!reference) continue;
+      const resolved = resolveReference(reference, site, `${name}.${path}`, resolver);
+      if (!resolved.ok) return resolved;
+      value = replaceAt(value, pathSegments(path), resolved.value);
+    }
+    return { ok: true, value };
   }
 
   /** True when the rule has something to compare — the input to the
@@ -1042,6 +1096,38 @@ export function analyzerPeersTarget(
     const filter = registry.resolve(referrerKind);
     if (implementations.length === 0 && filter?.kind === "Telo.Abstract") return "unknown";
     return sawCollection ? "plain" : "absent";
+  };
+}
+
+/**
+ * Whether a referrer rule's `coReferrers:` pointer names a single reference slot
+ * of its `referrer:` kind — the slot through which a referrer reaches `self`.
+ * Liskov in both directions, as {@link analyzerPeersTarget}: `ok` when the kind
+ * or any implementation declares the slot, `absent` when none does, `unknown`
+ * when no schema of the kind is in reach — an abstract filter with no
+ * implementations in this analysis included.
+ */
+export function analyzerReferrerSlot(
+  registry: PeerBinderRegistry,
+): (referrerKind: string, pointer: string) => "ok" | "absent" | "unknown" {
+  return (referrerKind, pointer) => {
+    const implementations = registry
+      .getByExtends(referrerKind)
+      .map((d) =>
+        d.metadata.module ? `${d.metadata.module}.${d.metadata.name}` : String(d.metadata.name),
+      );
+    const path = pointerToPath(pointer);
+    let sawSchema = false;
+    for (const kind of [referrerKind, ...implementations]) {
+      if (!registry.effectiveSchema(kind)) continue;
+      sawSchema = true;
+      const declared = registry.declaredReachOf({ kind });
+      if (declared?.references.some((reference) => reference.path === path)) return "ok";
+    }
+    if (!sawSchema) return "unknown";
+    const filter = registry.resolve(referrerKind);
+    if (implementations.length === 0 && filter?.kind === "Telo.Abstract") return "unknown";
+    return "absent";
   };
 }
 

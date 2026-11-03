@@ -3,6 +3,7 @@ import { celDurationFromNanos, celTimestamp, celUint } from "../src/cel-value-id
 import { PLAIN_ENCODINGS } from "../src/plain-encoding.js";
 import {
   CEL_SCALAR_FORMS,
+  decodePlainInteger,
   holdsSensitiveMember,
   hostEntryOf,
   hostAnchorOf,
@@ -161,6 +162,71 @@ describe("a value type with members", () => {
       false,
       false,
     ]);
+  });
+});
+
+describe("a value type's integer form", () => {
+  const slot = { "x-telo-type": "Telo.Duration" };
+  const encode = (value: unknown) => PLAIN_ENCODINGS["cel-duration"]!.encode(value);
+
+  // The same set the Rust SDK's `reads_an_integer_duration_as_milliseconds` reads.
+  it("reads an integer as the encoding's text in the entry's unit", () => {
+    expect(VALUE_TYPES.get("Telo.Duration")?.integerForm).toEqual({ unit: "ms" });
+    expect(encode(decodePlainInteger(slot, 250))).toBe("0.25s");
+    expect(encode(decodePlainInteger(slot, -1500))).toBe("-1.5s");
+    expect(encode(decodePlainInteger(slot, 315_576_000_000_999))).toBe("315576000000.999s");
+  });
+
+  it("leaves a number it does not read for the slot's assertion to refuse", () => {
+    for (const refused of [250.5, 315_576_000_001_000, 2 ** 53]) {
+      expect(decodePlainInteger(slot, refused)).toBe(refused);
+    }
+    expect(decodePlainInteger({ "x-telo-type": "Telo.Timestamp" }, 250)).toBe(250);
+  });
+
+  it("belongs to a non-live instance whose encoding reads the unit", () => {
+    const entry = (integerForm: unknown, extra: Record<string, unknown> = {}) => () =>
+      parseValueTypeEntry("span.json", {
+        name: "Telo.Span",
+        representation: "instance",
+        binding: "duration",
+        encoding: "cel-duration",
+        integerForm,
+        description: "x",
+        ...extra,
+      });
+    expect(entry({ unit: "d" })).toThrow(/'0d' does not decode/);
+    expect(entry({ unit: "ms", base: 1 })).toThrow(/exactly 'unit'|takes no 'base'/);
+    expect(entry({ units: "ms" })).toThrow(/exactly 'unit'/);
+    expect(entry({ unit: "ms" }, { live: true, encoding: undefined })).toThrow(
+      /'integerForm' belongs to a non-live 'instance'/,
+    );
+  });
+});
+
+describe("a value type's bound parameters", () => {
+  it("belong to a non-live instance with an encoding, each bound once", () => {
+    const entry = (parameters: unknown[], extra: Record<string, unknown> = {}) => () =>
+      parseValueTypeEntry("span.json", {
+        name: "Telo.Span",
+        representation: "instance",
+        binding: "duration",
+        encoding: "cel-duration",
+        parameters,
+        description: "x",
+        ...extra,
+      });
+    expect(entry([{ name: "min", bound: "minimum" }])).not.toThrow();
+    expect(entry([{ name: "min", bound: "least" }])).toThrow(/bound must be one of minimum, maximum/);
+    expect(
+      entry([
+        { name: "a", bound: "minimum" },
+        { name: "b", bound: "minimum" },
+      ]),
+    ).toThrow(/at most one parameter may declare 'bound: minimum'/);
+    expect(entry([{ name: "min", bound: "minimum" }], { representation: "json", base: "integer", binding: undefined, encoding: undefined })).toThrow(
+      /'bound' belongs to a parameter of a non-live 'instance' with an 'encoding'/,
+    );
   });
 });
 

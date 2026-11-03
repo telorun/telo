@@ -1,0 +1,9 @@
+modules:
+  modules/http-client: Added
+body: Http.Request's retry policy honours nonRetryable and retryAfter, which read each
+  failure as error — a network failure under its own code with data.url, a retried
+  response as ERR_HTTP_STATUS with its status, url, headers and body; a duration
+  retryAfter yields is waited instead of both the backoff and the Retry-After header,
+  capped by maxDelay. initialDelay and maxDelay take durations as well as integer
+  milliseconds. On Http.Client, retryAfter is resolved once when the client is created
+  and reads no error.

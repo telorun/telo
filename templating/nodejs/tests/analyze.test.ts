@@ -154,6 +154,16 @@ describe("findNullableAccessIssues", () => {
     expect(issues("value.code")).toEqual([]);
   });
 
+  it("flags a member access on a union holding a null branch", () => {
+    const union = {
+      type: "object",
+      properties: { message: { anyOf: [{ type: "null" }, { type: "object" }] } },
+    };
+    expect(findNullableAccessIssues(env.parse("message.orderId").root, union)).toEqual([
+      { path: "message", member: "orderId" },
+    ]);
+  });
+
   it("recognises a `!= null` guard in a ternary true branch", () => {
     expect(issues("error != null ? error.code : 'x'")).toEqual([]);
   });
@@ -219,5 +229,52 @@ describe("cel.bind", () => {
       properties: { error: { type: ["object", "null"], properties: { code: { type: "string" } } } },
     };
     expect(findNullableAccessIssues(ast, schema)).toEqual([]);
+  });
+});
+
+describe("validateChainAgainstSchema — conjuncts and local references", () => {
+  it("reads a member through an allOf of a reference into the document's $defs", () => {
+    const contract = {
+      $defs: { reached: { type: "object", properties: { total: { type: "integer" } } } },
+      type: "object",
+      properties: { result: { allOf: [{ $ref: "#/$defs/reached" }] } },
+    };
+    const context = { type: "object", properties: { out: contract } };
+    expect(validateChainAgainstSchema(["out", "result", "total"], context)).toBeNull();
+    expect(validateChainAgainstSchema(["out", "result", "missing"], context)).toContain(
+      "'out.result.missing' is not defined (available: total)",
+    );
+    expect(
+      validateChainAgainstSchema(["out", "result", "missing"], {
+        type: "object",
+        properties: { out: { properties: { result: { allOf: [{ $ref: "telo:Lib/Shape" }] } } } },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("validateChainAgainstSchema — unions", () => {
+  const message = { type: "object", additionalProperties: false, properties: { orderId: { type: "string" } } };
+  const context = {
+    type: "object",
+    properties: {
+      result: {
+        $defs: { reached: message },
+        type: "object",
+        properties: { message: { anyOf: [{ type: "null" }, { allOf: [{ $ref: "#/$defs/reached" }] }] } },
+      },
+    },
+  };
+
+  it("reads a member through the alternatives that can hold an object", () => {
+    expect(validateChainAgainstSchema(["result", "message", "orderId"], context)).toBeNull();
+    expect(validateChainAgainstSchema(["result", "message", "orderIdd"], context)).toContain(
+      "'result.message.orderIdd' is not defined (available: orderId)",
+    );
+  });
+
+  it("leaves the chain unjudged when an alternative is open", () => {
+    const open = { type: "object", properties: { m: { anyOf: [message, { type: "object" }] } } };
+    expect(validateChainAgainstSchema(["m", "anything"], open)).toBeNull();
   });
 });

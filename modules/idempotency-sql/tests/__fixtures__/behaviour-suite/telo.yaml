@@ -1,0 +1,264 @@
+# The ledger's behaviour, once, for every engine: a key recorded with the work it
+# guards runs that work once, a body that fails leaves no key behind, a key reused
+# for other work is refused, an expired key runs again, and the sweep reclaims
+# expired rows. A run supplies a connection and two ledgers on it, both in a
+# table whose physical name is `idempotency_keys`, plus a table
+# `idempotency_effects (effect_key text not null)` the bodies write to — every
+# one listed in the engine's schema. It starts `ledger` (a boot target) and
+# leaves `expiringLedger` unstarted, so that ledger's sweep runs only because it
+# was written to. Each sequence keeps to keys of its own prefix.
+kind: Telo.Library
+metadata:
+  name: IdempotencyBehaviourSuite
+  version: 1.0.0
+  description: >-
+    Test fixture: the idempotency ledger's behaviour over one connection and two
+    ledgers, run unchanged by every engine.
+imports:
+  Sql: ../../../../sql
+  IdempotencySql: ../../..
+  Run: ../../../../run
+  Assert: ../../../../assert
+  Timer: ../../../../timer
+resources:
+  connection:
+    kind: Sql.Connection
+    description: The connection both ledgers and the effects table live on.
+  ledger:
+    kind: IdempotencySql.Ledger
+    description: A ledger named `suite` whose retention outlasts the run.
+  expiringLedger:
+    kind: IdempotencySql.Ledger
+    description: A ledger named `expiring` with a one-millisecond retention, never started — its sweep starts from its first write.
+exports:
+  resources:
+    - runsOnce
+    - failureForgetsKey
+    - fingerprintConflict
+    - expiredKeyRunsAgain
+    - sweepRemovesExpired
+---
+kind: Sql.Command
+metadata: { name: writeEffect }
+connection: !ref connection
+---
+kind: IdempotencySql.Once
+metadata: { name: once }
+ledger: !ref ledger
+invoke: !ref writeEffect
+---
+kind: IdempotencySql.Once
+metadata: { name: onceExpiring }
+ledger: !ref expiringLedger
+invoke: !ref writeEffect
+---
+# Writes the effect, then fails: the caller's transaction rolls both back.
+kind: IdempotencySql.Once
+metadata: { name: onceFailing }
+ledger: !ref ledger
+invoke:
+  kind: Run.Sequence
+  steps:
+    - name: write
+      invoke: !ref writeEffect
+      inputs:
+        sql: !sql "INSERT INTO idempotency_effects (effect_key) VALUES (${{ inputs.key }})"
+    - name: fail
+      throw:
+        code: BODY_FAILED
+        message: the body failed after writing its effect
+---
+# One transaction holding one guarded write: what a handler does per delivery.
+kind: Sql.Transaction
+metadata: { name: recordOnce }
+connection: !ref connection
+inputs:
+  key: !cel "inputs.key"
+  fingerprint: !cel "inputs.?fingerprint.orValue(null)"
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: once
+      invoke: !ref once
+      inputs:
+        key: !cel "inputs.key"
+        fingerprint: !cel "inputs.fingerprint"
+        inputs:
+          sql: !sql "INSERT INTO idempotency_effects (effect_key) VALUES (${{ inputs.key }})"
+  outputs:
+    executed: !cel "steps.once.result.executed"
+---
+kind: Sql.Transaction
+metadata: { name: recordExpiring }
+connection: !ref connection
+inputs:
+  key: !cel "inputs.key"
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: once
+      invoke: !ref onceExpiring
+      inputs:
+        key: !cel "inputs.key"
+        inputs:
+          sql: !sql "INSERT INTO idempotency_effects (effect_key) VALUES (${{ inputs.key }})"
+  outputs:
+    executed: !cel "steps.once.result.executed"
+---
+kind: Sql.Transaction
+metadata: { name: recordThenFail }
+connection: !ref connection
+inputs:
+  key: !cel "inputs.key"
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: once
+      invoke: !ref onceFailing
+      inputs:
+        key: !cel "inputs.key"
+        inputs:
+          key: !cel "inputs.key"
+---
+kind: Run.Sequence
+metadata: { name: countEffects }
+steps:
+  - name: count
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: !sql "SELECT CAST(count(*) AS INTEGER) AS n FROM idempotency_effects WHERE effect_key = ${{ inputs.key }}"
+outputs:
+  n: !cel "steps.count.result.rows[0].n"
+---
+# A redelivery after commit finds the key and skips the work.
+kind: Run.Sequence
+metadata: { name: runsOnce }
+steps:
+  - name: first
+    invoke: !ref recordOnce
+    inputs: { key: once-1 }
+  - name: redelivered
+    invoke: !ref recordOnce
+    inputs: { key: once-1 }
+  - name: effects
+    invoke: !ref countEffects
+    inputs: { key: once-1 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.first.result.executed, steps.redelivered.result.executed, steps.effects.result.n]"
+      expected: [true, false, 1]
+---
+# A body that throws rolls its key back with its writes, so a redelivery runs it.
+kind: Run.Sequence
+metadata: { name: failureForgetsKey }
+steps:
+  - name: attempt
+    try:
+      - name: failing
+        invoke: !ref recordThenFail
+        inputs: { key: fail-1 }
+    catch:
+      - name: caught
+        value: !cel "error.code"
+  - name: afterFailure
+    invoke: !ref countEffects
+    inputs: { key: fail-1 }
+  - name: redelivered
+    invoke: !ref recordOnce
+    inputs: { key: fail-1 }
+  - name: afterRedelivery
+    invoke: !ref countEffects
+    inputs: { key: fail-1 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.caught.result"
+        - !cel "steps.afterFailure.result.n"
+        - !cel "steps.redelivered.result.executed"
+        - !cel "steps.afterRedelivery.result.n"
+      expected: [BODY_FAILED, 0, true, 1]
+---
+# The same fingerprint, or none, is a duplicate; a different one is refused.
+kind: Run.Sequence
+metadata: { name: fingerprintConflict }
+steps:
+  - name: first
+    invoke: !ref recordOnce
+    inputs: { key: fp-1, fingerprint: { order: 1, total: 20 } }
+  - name: sameFingerprint
+    invoke: !ref recordOnce
+    inputs: { key: fp-1, fingerprint: { order: 1, total: 20 } }
+  - name: noFingerprint
+    invoke: !ref recordOnce
+    inputs: { key: fp-1 }
+  - name: other
+    try:
+      - name: otherFingerprint
+        invoke: !ref recordOnce
+        inputs: { key: fp-1, fingerprint: { order: 2, total: 20 } }
+    catch:
+      - name: refused
+        value: !cel "{'code': error.code, 'data': error.data}"
+  - name: effects
+    invoke: !ref countEffects
+    inputs: { key: fp-1 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.first.result.executed"
+        - !cel "steps.sameFingerprint.result.executed"
+        - !cel "steps.noFingerprint.result.executed"
+        - !cel "steps.refused.result"
+        - !cel "steps.effects.result.n"
+      expected:
+        - true
+        - false
+        - false
+        - { code: ERR_IDEMPOTENCY_KEY_CONFLICT, data: { key: fp-1 } }
+        - 1
+---
+# A key older than retention reads as absent at the write, swept or not.
+kind: Run.Sequence
+metadata: { name: expiredKeyRunsAgain }
+steps:
+  - name: first
+    invoke: !ref recordExpiring
+    inputs: { key: exp-1 }
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 20ms }
+  - name: again
+    invoke: !ref recordExpiring
+    inputs: { key: exp-1 }
+  - name: effects
+    invoke: !ref countEffects
+    inputs: { key: exp-1 }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[steps.first.result.executed, steps.again.result.executed, steps.effects.result.n]"
+      expected: [true, true, 2]
+---
+# A ledger nothing started reclaims expired rows once it has been written to; a
+# sweep runs at least once a second when retention is that short.
+kind: Run.Sequence
+metadata: { name: sweepRemovesExpired }
+steps:
+  - name: record
+    invoke: !ref recordExpiring
+    inputs: { key: sweep-1 }
+  - name: wait
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 2500ms }
+  - name: remaining
+    invoke: { kind: Sql.Query, connection: !ref connection }
+    inputs:
+      sql: SELECT CAST(count(*) AS INTEGER) AS n FROM idempotency_keys WHERE ledger_name = 'expiring'
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.remaining.result.rows"
+      expected: [{ n: 0 }]

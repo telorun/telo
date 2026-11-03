@@ -38,10 +38,13 @@ import { isGeneratedDeclaration } from "./generated-name.js";
 import {
   SUSPENDING_BACKOFF_MS,
   ZONE_ATTRIBUTES,
+  durationMs,
   retryBackoffMs,
   type ResourceManifest,
 } from "@telorun/sdk";
 import type { CallGraph } from "./call-graph.js";
+import { RetryPolicySchema } from "./manifest-schemas.js";
+import { decodePlainLiterals } from "./plain-literal-decoding.js";
 import { findZoneRegions, type DefinitionLookup } from "./resolve-zone-containment.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 import { readViolatesZone } from "./zone-slot.js";
@@ -165,24 +168,39 @@ export function validateZoneViolations(args: ZoneViolationArgs): AnalysisDiagnos
  * Only a STATICALLY KNOWN policy is judged — the `LIVE_VALUE_RETRIED` posture,
  * and for its reason: a CEL budget says nothing, and guessing would report a
  * conflict against a manifest that may never wait that long. An unreadable
- * policy is left to the runtime check, which sees the real number.
+ * policy is left to the runtime check, which sees the real number. The policy is
+ * read as the kernel reads it, its delays decoded from the manifest's text or
+ * integers, and only the fields the backoff is computed from must be known; a
+ * `retryAfter` makes each wait the failure's own, so no wait is known.
  */
 function suspendingBackoff(raw: unknown): boolean {
-  if (!raw || typeof raw !== "object") return false;
-  const policy = raw as Record<string, unknown>;
-  if (!Object.values(policy).every(isStaticValue)) return false;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return false;
+  const policy = decodePlainLiterals({ ...(raw as Record<string, unknown>) }, RetryPolicySchema) as Record<
+    string,
+    unknown
+  >;
+  if (policy.retryAfter !== undefined) return false;
+  if (!BACKOFF_FIELDS.every((field) => isStaticValue(field, policy[field]))) return false;
   const attempts = policy.attempts;
   if (typeof attempts !== "number" || attempts <= 0) return false;
   return retryBackoffMs(policy as never, attempts - 1) >= SUSPENDING_BACKOFF_MS;
 }
 
+/** What the backoff is computed from. */
+const BACKOFF_FIELDS = ["attempts", "initialDelay", "delay", "factor", "maxDelay"] as const;
+
 /** A CEL leaf reaches here as a compiled value or a tagged sentinel, and either
  *  way the policy is not statically known. Refusing the whole policy rather than
  *  the one field is the conservative direction: `maxDelay` alone decides the
  *  answer, so reading around an unresolved one would report a bound the manifest
- *  may never reach. */
-function isStaticValue(value: unknown): boolean {
-  return value === undefined || typeof value === "number" || typeof value === "string";
+ *  may never reach. A delay that did not decode is the schema's to refuse. */
+function isStaticValue(field: (typeof BACKOFF_FIELDS)[number], value: unknown): boolean {
+  if (value === undefined) return true;
+  if (field === "initialDelay" || field === "maxDelay") {
+    const ms = durationMs(value);
+    return ms !== undefined && ms >= 0;
+  }
+  return field === "delay" ? typeof value === "string" : typeof value === "number";
 }
 
 function owned(manifest: ResourceManifest, reportModules: ReadonlySet<string>): boolean {

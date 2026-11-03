@@ -1,0 +1,39 @@
+# Two ledgers claiming one name in one table. Checked only: nothing connects.
+kind: Telo.Library
+metadata:
+  name: LedgerNameDuplicate
+imports:
+  Idempotency: ../../..
+  Postgres: ../../../../postgres
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url: postgres://postgres:postgres@localhost:5432/postgres
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Idempotency.Ledger
+metadata: { name: orders }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+retention: 1h
+---
+kind: Idempotency.Ledger
+metadata: { name: ordersAgain }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+retention: 1h

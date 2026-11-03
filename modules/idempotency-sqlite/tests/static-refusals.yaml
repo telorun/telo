@@ -1,0 +1,73 @@
+# What the ledger kinds refuse: a guarded call with no transaction open on its
+# ledger's connection — none at all, or one on another connection — at check and
+# at run; two ledgers claiming one name in one table, which a consumer's
+# entry-scoped check cannot see and the ledger refuses at creation; a retention
+# that is not positive; and a forwarded input the guarded body's own contract
+# does not declare.
+kind: Telo.Application
+metadata:
+  name: IdempotencySqliteStaticRefusals
+  version: 1.0.0
+  description: The SQLite ledger's refusals, as `telo check` and the kernel report them.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref outsideTransaction
+  - !ref foreignConnection
+  - !ref ledgerNameDuplicate
+  - !ref ledgerNameDuplicateAtRuntime
+  - !ref zeroRetention
+  - !ref misspelledBodyInput
+---
+kind: Assert.Manifest
+metadata: { name: outsideTransaction }
+source: ./__fixtures__/outside-transaction.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "requires a SQL.Transaction zone on SQLite.Connection 'db'"
+  runFails: "[ZONE_REQUIREMENT_UNSATISFIED]"
+---
+kind: Assert.Manifest
+metadata: { name: foreignConnection }
+source: ./__fixtures__/foreign-connection.yaml
+expect:
+  errors:
+    - code: ZONE_REQUIREMENT_UNSATISFIED
+      message: "requires a SQL.Transaction zone on SQLite.Connection 'db'"
+  runFails: "[ZONE_REQUIREMENT_UNSATISFIED]"
+---
+kind: Assert.Manifest
+metadata: { name: ledgerNameDuplicate }
+source: ./__fixtures__/ledger-name-duplicate/telo.yaml
+expect:
+  errors:
+    - code: REFERRER_RULE_VIOLATED
+      message: "Idempotency.Ledger/orders at 'table': required by Idempotency.Table — claims a ledger name"
+    - code: REFERRER_RULE_VIOLATED
+      message: "Idempotency.Ledger/ordersAgain at 'table'"
+---
+kind: Assert.Manifest
+metadata: { name: ledgerNameDuplicateAtRuntime }
+source: ./__fixtures__/ledger-name-duplicate-app.yaml
+expect:
+  errors: []
+  runFails: "ERR_IDEMPOTENCY_LEDGER_NAME_DUPLICATE"
+---
+kind: Assert.Manifest
+metadata: { name: zeroRetention }
+source: ./__fixtures__/zero-retention.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "/retention must be a Telo.Duration greater than 0s"
+---
+kind: Assert.Manifest
+metadata: { name: misspelledBodyInput }
+source: ./__fixtures__/misspelled-body-input.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/inputs is missing required property 'orderId'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "'ordrId' is not allowed"

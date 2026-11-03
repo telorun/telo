@@ -1,0 +1,99 @@
+# One process of the key race: it records `key` with one guarded write in a
+# transaction of its own. A `holder` keeps its transaction open for three
+# seconds after recording, then commits — or, with `fail`, rolls back and exits non-zero; a `late`
+# process starts a second after the holder, so it records while the holder's
+# transaction is still open.
+kind: Telo.Application
+metadata:
+  name: IdempotencyKeyRacer
+  version: 1.0.0
+include:
+  - ./model.yaml
+imports:
+  IdempotencySql: ../../../../../idempotency-sql
+  Idempotency: ../../../..
+  Sql: ../../../../../sql
+  Postgres: ../../../../../postgres
+  Run: ../../../../../run
+  Timer: ../../../../../timer
+variables:
+  dbHost: { env: DB_HOST, type: string }
+  dbPort: { env: DB_PORT, type: integer }
+  role: { env: RACER_ROLE, type: string }
+  key: { env: RACER_KEY, type: string }
+  fail: { env: RACER_FAIL, type: boolean, default: false }
+targets:
+  - { ref: !ref holder, when: !cel "variables.role == 'holder'" }
+  - { ref: !ref late, when: !cel "variables.role == 'late'" }
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: postgres
+      password: postgres
+      path: /postgres
+      query: { options: "-c search_path=public" }
+---
+kind: IdempotencySql.Once
+metadata: { name: once }
+ledger: !ref ledger
+invoke:
+  kind: Run.Sequence
+  steps:
+    - name: write
+      invoke: { kind: Sql.Command, connection: !ref db }
+      inputs:
+        sql: !sql "INSERT INTO race_effects (effect_key, writer) VALUES (${{ inputs.key }}, ${{ inputs.writer }})"
+    - name: hold
+      if: !cel "inputs.writer == 'holder'"
+      then:
+        - name: wait
+          invoke: { kind: Timer.Delay }
+          inputs: { duration: 3s }
+    - name: fail
+      if: !cel "inputs.fail"
+      then:
+        - name: rollback
+          throw:
+            code: HOLDER_FAILED
+            message: the holder rolls its transaction back
+---
+kind: Sql.Transaction
+metadata: { name: guarded }
+connection: !ref db
+inputs:
+  key: !cel "variables.key"
+  writer: !cel "variables.role"
+  fail: !cel "variables.fail"
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: once
+      invoke: !ref once
+      inputs:
+        key: !cel "inputs.key"
+        inputs:
+          key: !cel "inputs.key"
+          writer: !cel "inputs.writer"
+          fail: !cel "inputs.fail"
+---
+kind: Run.Sequence
+metadata: { name: holder }
+steps:
+  - name: record
+    invoke: !ref guarded
+---
+kind: Run.Sequence
+metadata: { name: late }
+steps:
+  - name: start
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 1s }
+  - name: record
+    invoke: !ref guarded

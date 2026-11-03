@@ -1,0 +1,91 @@
+kind: Telo.Application
+metadata:
+  name: QueueStaticSurface
+  version: 1.0.0
+  description: |
+    What `telo check` says about the queue kinds before anything runs: the
+    documented use checks clean, and each refusal the module's surface makes is
+    reported where it is written. The kinds are exercised through a fixture
+    library of concrete queue kinds; the behaviour against real storage is a
+    backend's own suite.
+imports:
+  Assert: ../../assert
+targets:
+  - !ref documentedUse
+  - !ref streamInMessageType
+  - !ref workerWithoutTimeoutOrRetry
+  - !ref statusOnPlainQueue
+  - !ref enqueueCallSite
+  - !ref nonRetryableNotThrown
+  - !ref deadMessageNullable
+  - !ref statusMessageReads
+---
+kind: Assert.Manifest
+metadata: { name: documentedUse }
+source: ./__fixtures__/valid/telo.yaml
+expect: {}
+---
+kind: Assert.Manifest
+metadata: { name: streamInMessageType }
+source: ./__fixtures__/not-serializable/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_NOT_SERIALIZABLE
+      message: "it holds a live Telo.Stream at /parts/*"
+---
+kind: Assert.Manifest
+metadata: { name: workerWithoutTimeoutOrRetry }
+source: ./__fixtures__/worker-required/telo.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "is missing required property 'timeout'"
+    - code: SCHEMA_VIOLATION
+      message: "is missing required property 'retry'"
+---
+kind: Assert.Manifest
+metadata: { name: statusOnPlainQueue }
+source: ./__fixtures__/status-base-queue/telo.yaml
+expect:
+  errors:
+    - code: REFERENCE_KIND_MISMATCH
+      message: "does not implement 'Queues.AddressableQueue'"
+---
+kind: Assert.Manifest
+metadata: { name: enqueueCallSite }
+source: ./__fixtures__/call-site/telo.yaml
+expect:
+  errors:
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/message is missing required property 'orderId'"
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: "/after must be a Telo.Duration"
+---
+kind: Assert.Manifest
+metadata: { name: nonRetryableNotThrown }
+source: ./__fixtures__/non-retryable/telo.yaml
+expect:
+  warnings:
+    - code: NON_RETRYABLE_CODE_NOT_THROWN
+      message: "names 'ERR_CARD_EXPIRED', which the retried dispatch cannot throw — its throw union is {ERR_PAYMENT_DECLINED, ERR_QUEUE_LEASE_EXPIRED, ERR_QUEUE_TIMEOUT}"
+---
+kind: Assert.Manifest
+metadata: { name: deadMessageNullable }
+source: ./__fixtures__/dead-message-nullable/telo.yaml
+expect:
+  errors:
+    - code: CEL_NULLABLE_ACCESS
+      message: "'message' may be null"
+---
+# A status answer's message is null when the stored body no longer has the
+# queue's message type: a mistyped member and an unguarded read are refused,
+# the guarded read checks clean.
+kind: Assert.Manifest
+metadata: { name: statusMessageReads }
+source: ./__fixtures__/status-message-reads/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'steps.s.result.message.orderIdd' is not defined (available: orderId)"
+    - code: CEL_NULLABLE_ACCESS
+      message: "'steps.s.result.message' may be null"

@@ -1,0 +1,41 @@
+# Two queues claiming one name in one table. Checked only: nothing connects.
+kind: Telo.Library
+metadata:
+  name: QueueNameDuplicate
+imports:
+  Queue: ../../..
+  Postgres: ../../../../postgres
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url: postgres://postgres:postgres@localhost:5432/postgres
+---
+kind: Queue.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: Postgres.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref messages]
+---
+kind: Queue.Queue
+metadata: { name: emails }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: outbound
+retention: 1h
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Queue.Queue
+metadata: { name: emailsAgain }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: outbound
+retention: 1h
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }

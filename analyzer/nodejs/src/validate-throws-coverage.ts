@@ -1,7 +1,7 @@
 import type { CelEnvironment } from "@telorun/cel";
 import { listRequests } from "./declaration-requests.js";
 import { isKindDocument } from "./kind-declaration.js";
-import { isRefSentinel } from "@telorun/templating";
+import { celExpressionsOf, isRefSentinel, isTaggedSentinel } from "@telorun/templating";
 import {
   AMBIENT_CONTRACT_ERROR_CODES,
   isAmbientContractErrorCode,
@@ -9,7 +9,13 @@ import {
 } from "@telorun/sdk";
 import type { AliasResolver } from "./alias-resolver.js";
 import type { DefinitionRegistry } from "./definition-registry.js";
-import { handsFailureBack, throwsUses, type ThrowsUnion } from "./resolve-throws-union.js";
+import {
+  forEachRetriedDispatch,
+  handsFailureBack,
+  throwsUses,
+  type ThrowsCodeMeta,
+  type ThrowsUnion,
+} from "./resolve-throws-union.js";
 import { forEachDeclaredSlot } from "./schema-walk.js";
 import {
   CatchLadder,
@@ -25,6 +31,8 @@ import { createAjv } from "./schema-compat.js";
 import { builtinDocumentSchema } from "./builtins.js";
 import { declarableCapabilities, throwsAllowedCapabilities } from "./capability-roster.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
+import { intersectDataSchemas } from "./caught-member.js";
+import { extractAccessChains, validateChainAgainstSchema } from "./validate-cel-context.js";
 
 const SOURCE = "telo-analyzer";
 
@@ -302,6 +310,125 @@ function schemaDrivesInvocables(schema: Record<string, any> | undefined): boolea
   return drives;
 }
 
+interface CelString {
+  expr: string;
+  path: string;
+}
+
+/** Every CEL expression `value` holds, with its path — the whole `!cel`
+ *  scalar, each hole of a tag with holes. */
+function collectCelStrings(value: unknown, path: string): CelString[] {
+  const out: CelString[] = [];
+  if (isTaggedSentinel(value)) {
+    for (const expr of celExpressionsOf(value.engine, value.source)) {
+      out.push({ expr: expr.trim(), path });
+    }
+    return out;
+  }
+  if (Array.isArray(value)) {
+    for (const [i, v] of value.entries()) {
+      out.push(...collectCelStrings(v, `${path}[${i}]`));
+    }
+    return out;
+  }
+  if (value !== null && typeof value === "object") {
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out.push(...collectCelStrings(v, path ? `${path}.${k}` : k));
+    }
+  }
+  return out;
+}
+
+/** Each `error.data.<field>` chain of `entry` against the data the retried
+ *  dispatch's codes declare. */
+function checkCelChainAgainstDataSchema(
+  entry: CelString,
+  dataSchema: Record<string, any>,
+  resource: { kind: string; name: string },
+  filePath: string | undefined,
+  env: CelEnvironment,
+  routing: { kind: string; name: string } = resource,
+): AnalysisDiagnostic[] {
+  const parsed = env.parse(entry.expr);
+  if (parsed.diagnostics.length > 0) return [];
+  const diagnostics: AnalysisDiagnostic[] = [];
+  for (const chain of extractAccessChains(parsed.root)) {
+    if (chain[0] !== "error" || chain[1] !== "data" || chain.length <= 2) continue;
+    const err = validateChainAgainstSchema(chain.slice(2), dataSchema);
+    if (err) {
+      diagnostics.push({
+        severity: DiagnosticSeverity.Error,
+        code: "CEL_UNKNOWN_FIELD",
+        source: SOURCE,
+        message: `${resource.kind}/${resource.name}: CEL at '${entry.path}': error.data.${err}`,
+        data: { resource: routing, filePath, path: entry.path },
+      });
+    }
+  }
+  return diagnostics;
+}
+
+/**
+ * A retry policy against what its dispatch can throw — a step's own, and one a
+ * kind holds beside the slot it re-attempts (`x-telo-retry-for`): each literal
+ * `nonRetryable` code the target's union cannot produce (a warning — the code
+ * ends nothing, so the re-attempts it was meant to stop still happen), and every
+ * `error.data` chain `retryAfter` reads, typed against the data the union's codes
+ * declare. Only a BOUNDED union is judged; an unbounded one could throw anything.
+ */
+function checkRetriedDispatches(
+  ladder: CatchLadder,
+  env: CelEnvironment,
+  rootModules: Set<string>,
+): AnalysisDiagnostic[] {
+  const diagnostics: AnalysisDiagnostic[] = [];
+  for (const manifest of ladder.allManifests) {
+    if (!manifest.kind || !manifest.metadata?.name) continue;
+    // A dependency's policy is its own author's to fix.
+    const module = (manifest.metadata as { module?: string }).module;
+    if (module && rootModules.size > 0 && !rootModules.has(module)) continue;
+    if (isKindDocument(manifest)) continue;
+    const definition = ladder.definitionOf(manifest);
+    if (!definition?.schema) continue;
+    const enclosing = ladder.scopedBy.get(manifest);
+    const anchor = enclosing?.owner ?? manifest;
+    const pathPrefix = enclosing ? `${enclosing.path}.` : "";
+    const resource = { kind: manifest.kind, name: manifest.metadata.name as string };
+    const routing = enclosing ? { kind: anchor.kind, name: anchor.metadata!.name as string } : resource;
+    const filePath = (anchor.metadata as { source?: string } | undefined)?.source;
+    forEachRetriedDispatch(manifest, definition, ladder.resolveCtx, ({ policy, path, union }) => {
+      if (union.unbounded) return;
+      const codes = union.codes;
+      const at = `${pathPrefix}${path}`;
+      const nonRetryable = policy.nonRetryable;
+      if (Array.isArray(nonRetryable)) {
+        nonRetryable.forEach((code: unknown, i: number) => {
+          if (typeof code !== "string" || codes.has(code) || isAmbientContractErrorCode(code)) return;
+          diagnostics.push({
+            severity: DiagnosticSeverity.Warning,
+            code: "NON_RETRYABLE_CODE_NOT_THROWN",
+            source: SOURCE,
+            message:
+              `retry.nonRetryable names '${code}', which the retried dispatch cannot throw — its ` +
+              `throw union is {${[...codes.keys()].sort().join(", ") || "∅"}}. A code nothing ` +
+              `raises ends nothing, so the re-attempts it was meant to stop still happen.`,
+            data: { resource: routing, filePath, path: `${at}.nonRetryable[${i}]` },
+          });
+        });
+      }
+      const schemas = [...codes.values()]
+        .map((meta) => (meta as ThrowsCodeMeta).data)
+        .filter(Boolean) as Record<string, any>[];
+      if (policy.retryAfter === undefined || schemas.length === 0) return;
+      const dataSchema = intersectDataSchemas(schemas);
+      for (const entry of collectCelStrings(policy.retryAfter, `${at}.retryAfter`)) {
+        diagnostics.push(...checkCelChainAgainstDataSchema(entry, dataSchema, resource, filePath, env, routing));
+      }
+    });
+  }
+  return diagnostics;
+}
+
 /** Entry point — invoked once per analyze() run. */
 export function validateThrowsCoverage(
   manifests: ResourceManifest[],
@@ -409,5 +536,6 @@ export function validateThrowsCoverage(
     diagnostics.push(...checkCoverage(site, union, ladder, generatedKinds));
   }
 
+  diagnostics.push(...checkRetriedDispatches(ladder, env, rootModules));
   return diagnostics;
 }

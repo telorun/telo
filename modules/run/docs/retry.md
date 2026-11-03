@@ -15,13 +15,13 @@ steps:
       amount: !cel "inputs.amount"
     retry:
       attempts: 3          # re-attempts AFTER the first try, so up to 4 calls
-      initialDelay: 250    # ms before the first re-attempt
-      factor: 2            # 250 → 500 → 1000 …
-      maxDelay: 32000      # ceiling per wait
+      initialDelay: 250ms  # before the first re-attempt
+      factor: 2            # 250ms → 500ms → 1s …
+      maxDelay: 32s        # ceiling per wait
       jitter: full         # each wait picked uniformly from [0, delay]
 ```
 
-Every field above is its default, so `retry: { attempts: 3 }` is the whole policy in the common case. The field names are `Http.Request`'s, deliberately: two spellings of backoff in one standard library would make the word change meaning depending on where it is written.
+Every field above is its default, so `retry: { attempts: 3 }` is the whole policy in the common case. `initialDelay` and `maxDelay` are durations (`250ms`, `1m30s`), and an integer is read as that many milliseconds, so `initialDelay: 250` — the spelling older manifests carry — is the same policy. A negative delay is refused by `telo check`, and when the resource holding it is created: both slots are `Telo.Duration` bounded `minimum: 0s`, as a `retryAfter` result is, and `timeout:` is bounded `exclusiveMinimum: 0s`. The field names are `Http.Request`'s, deliberately: two spellings of backoff in one standard library would make the word change meaning depending on where it is written.
 
 `jitter: full` is the default because retries that failed together should not re-attempt together — a fleet that lost a dependency at the same instant otherwise rebuilds the same thundering herd on every wait. Set `jitter: none` when a test needs a deterministic schedule.
 
@@ -46,18 +46,32 @@ The two built-in exclusions are the ones decidable *without judgement*. Whether 
     nonRetryable: [ERR_PAYMENT_DECLINED, ERR_CARD_EXPIRED]
 ```
 
-A named code ends the loop at the first failure and propagates unchanged. Without it a terminal failure consumes the whole budget — which for a non-idempotent target is not merely wasted time but N extra attempts at a side effect.
+A named code ends the loop at the first failure and propagates unchanged. `telo check` warns about a code the target cannot throw — its declared throw union is bounded and lacks it (the step's own `ERR_STEP_TIMEOUT` counts when it declares `timeout:`) — since a code nothing raises ends nothing. Without it a terminal failure consumes the whole budget — which for a non-idempotent target is not merely wasted time but N extra attempts at a side effect.
 
 It **narrows** the loop rather than disabling it: a code the list does not name is retried exactly as before. And it is per-code rather than a predicate because a code is what crosses every boundary this has to survive — a manifest declares it, `catches:` already matches on it, and a durable backend ships it as data. Both hosted engines express the same knob (Temporal's non-retryable error types, Restate's terminal-versus-retryable split), so a policy written here means the same thing wherever the step ends up running.
 
+## Waiting what the failure asks: `retryAfter:`
+
+A failure sometimes says when to come back — a rate limit's reset time, a lease's expiry — and the computed backoff knows nothing of it. `retryAfter:` is CEL over the failure just caught, `error` (`code`, `message`, `data`): a duration it yields is waited before the next re-attempt instead of the backoff, and `null` keeps the backoff:
+
+```yaml
+- name: Charge
+  invoke: !ref PaymentApi
+  retry:
+    attempts: 5
+    retryAfter: !cel "error.code == 'ERR_RATE_LIMITED' ? duration(string(error.data.retryInSeconds) + 's') : dyn(null)"
+```
+
+The wait is taken as stated — no jitter, since spreading it would come back early half the time — and capped by `maxDelay`. A CEL conditional's two branches answer one type, so the branch keeping the backoff is `dyn(null)`. `telo check` types `error.data` against the data each code of the target's throw union declares, so a misspelled field is caught before anything runs; a result that is neither a duration nor null fails the step with `ERR_INVALID_VALUE`.
+
 ## Bounding one attempt: `timeout:`
 
-`timeout:` (milliseconds) says how long **one attempt** may take. On elapse the dispatch is cancelled and the step fails `ERR_STEP_TIMEOUT` — and so does an answer that arrives at or past the deadline before the timer has run, so the outcome never depends on which of the two the runtime happened to process first:
+`timeout:` (a positive duration, or integer milliseconds) says how long **one attempt** may take. On elapse the dispatch is cancelled and the step fails `ERR_STEP_TIMEOUT` — and so does an answer that arrives at or past the deadline before the timer has run, so the outcome never depends on which of the two the runtime happened to process first:
 
 ```yaml
 - name: Fetch
   invoke: !ref upstream
-  timeout: 2000
+  timeout: 2s
   retry: { attempts: 3 }
 ```
 
@@ -119,4 +133,4 @@ Step "Charge": cancelled while waiting to re-attempt (interrupted).
 
 ## Limits
 
-`delay:` is a deprecated duration-string spelling of `initialDelay` (`"250ms"`, `"1s"`), read only when `initialDelay` is absent. It is kept because published manifests carry it; a malformed value fails `telo check` rather than silently becoming a different backoff.
+`delay:` is a deprecated duration-string spelling of `initialDelay` (`"250ms"`, `"1s"`), read only when `initialDelay` is absent — write `initialDelay`, which takes a duration. It is kept because published manifests carry it; a malformed value fails `telo check` rather than silently becoming a different backoff.

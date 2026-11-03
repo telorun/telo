@@ -17,6 +17,7 @@ import {
   type RefSlot,
   type RefUse,
 } from "./ref-slot.js";
+import { retryForSites, retryForTargetField } from "./retry-for-slot.js";
 import { forEachDrivenSlot } from "./schema-walk.js";
 import type { StepSlot } from "./step-slot.js";
 
@@ -492,6 +493,86 @@ function drivenOrigin(
 ): RefOrigin {
   const writer = configured.writerOf(data);
   return writer !== undefined ? { module: writer } : refOrigin(manifest, path);
+}
+
+/** The code a step raises itself when one attempt overruns its `timeout:` —
+ *  part of what its own retry sees fail, whatever the target declares. */
+const STEP_TIMEOUT_CODE = "ERR_STEP_TIMEOUT";
+
+/** A retry policy over one dispatch, with everything its re-attempts can see
+ *  fail. */
+export interface RetriedDispatch {
+  /** The policy object as written. */
+  readonly policy: Record<string, any>;
+  /** Where the policy is written, from the resource root (`steps[1].retry`,
+   *  `retry`). */
+  readonly path: string;
+  /** The target's union, plus what the holder raises into the loop itself — a
+   *  step's `timeout:`, the codes an `x-telo-retry-for` annotation lists. */
+  readonly union: ThrowsUnion;
+}
+
+/**
+ * Every retry policy of `manifest` over a dispatch, with that dispatch's union:
+ * each step of its step bodies carrying a `retry:` object, at every nesting
+ * depth the throws walk descends, and each field its kind annotates
+ * `x-telo-retry-for`, over the slot the annotation names. The union is the one
+ * `catches:` coverage reads for the same dispatch, so a retry policy and a catch
+ * list are judged against one answer.
+ */
+export function forEachRetriedDispatch(
+  manifest: ResourceManifest,
+  definition: ResourceDefinition,
+  ctx: ResolveCtx,
+  visit: (site: RetriedDispatch) => void,
+): void {
+  const configured = receivedConfiguration(manifest, definition, ctx);
+  const walk = (steps: unknown[], invokeField: string, path: string, origin: RefOrigin): void => {
+    steps.forEach((raw, i) => {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+      const step = raw as Record<string, any>;
+      const at = `${path}[${i}]`;
+      if (step[invokeField]) {
+        if (step.retry && typeof step.retry === "object" && !Array.isArray(step.retry)) {
+          const union = cloneUnion(resolveStepInvokeThrows(step, invokeField, undefined, ctx, origin));
+          if (step.timeout !== undefined) union.codes.set(STEP_TIMEOUT_CODE, {});
+          visit({ policy: step.retry, path: `${at}.retry`, union });
+        }
+        return;
+      }
+      for (const key of ["try", "catch", "finally", "then", "else", "do", "default"]) {
+        if (Array.isArray(step[key])) walk(step[key], invokeField, `${at}.${key}`, origin);
+      }
+      if (Array.isArray(step.elseif)) {
+        step.elseif.forEach((branch: any, b: number) => {
+          if (Array.isArray(branch?.then)) {
+            walk(branch.then, invokeField, `${at}.elseif[${b}].then`, origin);
+          }
+        });
+      }
+      if (step.cases && typeof step.cases === "object") {
+        for (const [key, arr] of Object.entries(step.cases as Record<string, unknown>)) {
+          if (Array.isArray(arr)) walk(arr, invokeField, `${at}.cases.${key}`, origin);
+        }
+      }
+    });
+  };
+  forEachDrivenSlot(configured.schema, configured.data, (driven) => {
+    if (driven.kind !== "step") return;
+    const origin = drivenOrigin(manifest, configured, driven.data, driven.path);
+    for (const invoke of new Set(driven.slots.map((slot) => slot.invoke))) {
+      walk(driven.data, invoke, driven.path, origin);
+    }
+  });
+  const fields = manifest as unknown as Record<string, unknown>;
+  for (const { field, retryFor } of retryForSites(definition.schema)) {
+    const policy = fields[field];
+    if (!policy || typeof policy !== "object" || Array.isArray(policy)) continue;
+    const target = retryForTargetField(retryFor);
+    const union = cloneUnion(resolveRefTargetThrows(fields[target], ctx, refOrigin(manifest, target)));
+    for (const [code, meta] of retryFor.codes) union.codes.set(code, meta);
+    visit({ policy: policy as Record<string, any>, path: field, union });
+  }
 }
 
 /** The union a step-body site reaches — once per distinct invoke field, since

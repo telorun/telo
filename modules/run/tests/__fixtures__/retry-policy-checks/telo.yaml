@@ -1,0 +1,48 @@
+kind: Telo.Library
+metadata:
+  name: RetryPolicyChecks
+  version: 1.0.0
+  description: Step retry policies judged against what their target can throw.
+imports:
+  Run: ../../../
+---
+kind: Telo.Definition
+metadata:
+  name: Limited
+  description: A sequence whose one declared failure carries how long to wait.
+extends: Run.Sequence
+throws:
+  codes:
+    ERR_RATE_LIMITED:
+      description: Asked to come back later.
+      data:
+        type: object
+        properties:
+          waitMs: { type: integer }
+---
+kind: Self.Limited
+metadata: { name: limited }
+steps:
+  - name: refuse
+    throw:
+      code: ERR_RATE_LIMITED
+      data: { waitMs: 5 }
+---
+kind: Run.Sequence
+metadata: { name: caller }
+steps:
+  - name: call
+    invoke: !ref limited
+    timeout: 5s
+    retry:
+      attempts: 2
+      # The target's own code and the step's timeout code are both thrown; the
+      # third is thrown by nothing.
+      nonRetryable: [ERR_RATE_LIMITED, ERR_STEP_TIMEOUT, ERR_NEVER_THROWN]
+      retryAfter: !cel "duration(string(error.data.wait) + 'ms')"
+  - name: outOfRange
+    invoke: !ref limited
+    timeout: 0
+    retry:
+      attempts: 1
+      initialDelay: -5

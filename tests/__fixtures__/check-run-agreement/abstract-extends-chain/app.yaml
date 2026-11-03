@@ -1,0 +1,12 @@
+# Declares a leaf with the field the chain's root abstract declares.
+kind: Telo.Application
+metadata:
+  name: AbstractExtendsChainApp
+  version: 1.0.0
+imports:
+  Leaf: ./leaf
+---
+kind: Leaf.Leaf
+metadata: { name: leaf }
+x: 1
+label: deep

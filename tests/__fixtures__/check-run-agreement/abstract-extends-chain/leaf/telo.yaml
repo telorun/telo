@@ -1,0 +1,19 @@
+# A concrete kind extending the middle abstract; it imports the middle module
+# only, so it has no alias for the base.
+kind: Telo.Library
+metadata:
+  name: ChainLeaf
+  version: 1.0.0
+  description: Fixture concrete kind at the end of an abstract chain.
+imports:
+  Mid: ../mid
+exports:
+  kinds: [Leaf]
+---
+kind: Telo.Definition
+metadata:
+  name: Leaf
+  description: Implements the chain with no behaviour of its own.
+extends: Mid.Mid
+controllers:
+  - pkg:telo/local/js?path=./leaf.mjs#Leaf

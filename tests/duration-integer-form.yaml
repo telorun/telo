@@ -1,0 +1,119 @@
+kind: Telo.Application
+metadata:
+  name: DurationIntegerForm
+  version: 1.0.0
+  description: |
+    A `Telo.Duration` slot reads an integer written in the manifest as that many
+    milliseconds, through the same encoding its text is read by: `5400000` and
+    `1h30m` are one duration. Each row writes both forms at one kind of decode
+    site — a resource's own config, a step's `inputs:`, an
+    `x-telo-value-schema-from` row, an import's `variables:` and a library's
+    `default:` — and reads both back as text, which only a duration renders as
+    `5400s`. A number the encoding does not read (a fraction of a millisecond,
+    one past the range) and a digit-only STRING are refused by `telo check`:
+    text stays text, read only as a CEL duration string.
+imports:
+  Run: ../modules/run
+  Assert: ../modules/assert
+  WithInteger:
+    source: ./__fixtures__/duration-integer-form/lib
+    variables:
+      pause: 250
+  WithText:
+    source: ./__fixtures__/duration-integer-form/lib
+    variables:
+      pause: 250ms
+      fallback: 1500ms
+targets:
+  - !ref verifyIntegerForm
+---
+kind: Assert.Equals
+metadata:
+  name: assertEquals
+---
+# A duration read back as its text, from a resource's own config.
+kind: Telo.Definition
+metadata:
+  name: Span
+  description: Reads back the duration it is configured with, as its canonical text.
+extends: Run.Value
+schema:
+  type: object
+  required: [lasts]
+  properties:
+    lasts: { x-telo-type: Telo.Duration }
+base:
+  value: !cel "string(self.lasts)"
+---
+# A call's argument, read back as text.
+kind: Run.Value
+metadata:
+  name: render
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [lasts]
+    properties:
+      lasts: { x-telo-type: Telo.Duration }
+value: !cel "string(inputs.lasts)"
+---
+kind: Run.Sequence
+metadata:
+  name: verifyIntegerForm
+steps:
+  - name: configInteger
+    invoke: { kind: Self.Span, lasts: 5400000 }
+  - name: configText
+    invoke: { kind: Self.Span, lasts: 1h30m }
+  - name: stepInteger
+    invoke: !ref render
+    inputs: { lasts: 5400000 }
+  - name: stepText
+    invoke: !ref render
+    inputs: { lasts: 1h30m }
+  - name: rowBoth
+    invoke:
+      kind: Run.Value
+      outputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [integer, text]
+          properties:
+            integer: { x-telo-type: Telo.Duration }
+            text: { x-telo-type: Telo.Duration }
+      value: { integer: -1500, text: -1.5s }
+  - name: importInteger
+    invoke: !ref WithInteger.pauses
+  - name: importText
+    invoke: !ref WithText.pauses
+  - name: check
+    invoke: !ref assertEquals
+    inputs:
+      actual:
+        config: [!cel "steps.configInteger.result", !cel "steps.configText.result"]
+        step: [!cel "steps.stepInteger.result", !cel "steps.stepText.result"]
+        row:
+          - !cel "string(steps.rowBoth.result.integer)"
+          - !cel "string(steps.rowBoth.result.text)"
+        import: [!cel "steps.importInteger.result", !cel "steps.importText.result"]
+      expected:
+        config: [5400s, 5400s]
+        step: [5400s, 5400s]
+        row: [-1.5s, -1.5s]
+        import:
+          - { pause: 0.25s, fallback: 1.5s }
+          - { pause: 0.25s, fallback: 1.5s }
+  - name: refusedByCheck
+    invoke:
+      kind: Assert.Manifest
+      source: ./__fixtures__/duration-integer-form/refused-lib/telo.yaml
+      expect:
+        errors:
+          - code: SCHEMA_VIOLATION
+            message: "a number written in the manifest only as an integer, read as that many ms"
+          - code: SCHEMA_VIOLATION
+            message: "a number written in the manifest only as an integer, read as that many ms"
+          - code: SCHEMA_VIOLATION
+            message: "is read only as a CEL duration string"

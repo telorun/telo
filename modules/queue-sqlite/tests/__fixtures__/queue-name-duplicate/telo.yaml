@@ -1,0 +1,38 @@
+# Two queues claiming one name in one table.
+kind: Telo.Library
+metadata:
+  name: QueueNameDuplicate
+imports:
+  Queue: ../../..
+  SQLite: ../../../../sqlite
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Queue.Table
+metadata: { name: messages }
+table: queue_messages
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref messages]
+---
+kind: Queue.Queue
+metadata: { name: emails }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: outbound
+retention: 1h
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Queue.Queue
+metadata: { name: emailsAgain }
+connection: !ref db
+schema: !ref appSchema
+table: !ref messages
+name: outbound
+retention: 1h
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }

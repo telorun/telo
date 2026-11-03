@@ -15,7 +15,8 @@
  * consumer's import alias rather than anything the rule author controls.
  *
  * The CEL scope is `self` (the declaring resource) and `referrer` (the one that
- * references it) — with `resolve:`, the referrer with the reference slots it
+ * references it), plus `peers` / `entry` with `peers:` and `coReferrers` with
+ * `coReferrers:` — with `resolve:`, the referrer with the reference slots it
  * names replaced by the declarations they name, one level deep. Deliberately NOT `this`: in a resource rule `this` is an
  * ELEMENT of a collection, and binding it to a whole foreign manifest would give
  * one word two meanings across the two families.
@@ -66,6 +67,17 @@ export interface ReferrerRule {
    * from the item schema and there is no second pointer to write.
    */
   readonly peers?: string;
+  /**
+   * JSON Pointer to a reference slot OF THE REFERRER kind — the slot through
+   * which it reaches `self`. Declaring it binds `coReferrers`: the OTHER
+   * declarations reaching this same resolved declaration through that slot,
+   * each with the references inside it resolved one level, as `peers` resolves
+   * them. The rule then applies only to referrers reaching `self` through that
+   * slot, judged once each, the referrer itself excluded — so two stores
+   * claiming one name in one table can be told apart from two stores on two
+   * tables.
+   */
+  readonly coReferrers?: string;
   /** JSON Pointers to the REFERRER kind's own reference slots whose
    *  declarations `referrer` reads in place of the references, resolved one
    *  level — the resource-rule `resolve:`, pointed at the referrer. */
@@ -104,11 +116,14 @@ export function readReferrerRules(schema: unknown): ReferrerRule[] {
   raw.forEach((entry, index) => {
     if (!isObject(entry)) return;
     const condition = celSourceOf(entry.condition);
-    const { code, message, referrer, peers } = entry;
+    const { code, message, referrer, peers, coReferrers } = entry;
     if (!condition || typeof code !== "string" || typeof message !== "string") return;
     if (code.length === 0 || message.length === 0) return;
     if (referrer !== undefined && typeof referrer !== "string") return;
     if (peers !== undefined && typeof peers !== "string") return;
+    if (coReferrers !== undefined && (typeof coReferrers !== "string" || !pointerSegments(coReferrers))) {
+      return;
+    }
     const { resolve, resolveSelf } = entry;
     const pointers = (value: unknown) =>
       value === undefined ||
@@ -120,6 +135,7 @@ export function readReferrerRules(schema: unknown): ReferrerRule[] {
     rules.push({
       ...(referrer === undefined ? {} : { referrer }),
       ...(peers === undefined ? {} : { peers }),
+      ...(coReferrers === undefined ? {} : { coReferrers: coReferrers as string }),
       ...(resolve === undefined ? {} : { resolve: resolve as string[] }),
       ...(resolveSelf === undefined ? {} : { resolveSelf: resolveSelf as string[] }),
       condition,

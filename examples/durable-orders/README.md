@@ -66,6 +66,7 @@ The closing line is not guesswork either: `Local.Result` reports `replayed` off 
 | --- | --- |
 | `ORDER_ID=A-2 pnpm run telo examples/durable-orders/telo.yaml` | a different order is a different run, and executes from the top |
 | run the same order twice more | the second says *finished* immediately — a caller-chosen run id is an idempotent start |
+| `ORDER_ID=A-3 CARD=declined pnpm run telo examples/durable-orders/telo.yaml` | the charge fails once and is not retried: the step's `retry:` names the decline (and `CARD=expired`'s code) as `nonRetryable` |
 | `rm -rf .telo/orders` | start over |
 | kill it during *shipping* instead | the charge is not repeated, which is the whole point |
 

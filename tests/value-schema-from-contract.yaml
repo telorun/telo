@@ -1,0 +1,32 @@
+# `x-telo-value-schema-from: /invoke/outputType` reads the invoked resource's
+# output contract as a contract resolves — the instance's own field, else its
+# kind's, nearest along `extends` — so a wrapper's `result` is closed to what the
+# body declares even when only the body's kind (or its parent) declares it.
+kind: Telo.Application
+metadata:
+  name: ValueSchemaFromContract
+  version: 1.0.0
+imports:
+  Assert: ../modules/assert
+targets:
+  - !ref undeclaredMember
+  - !ref declaredMember
+---
+kind: Assert.Manifest
+metadata:
+  name: undeclaredMember
+source: ./__fixtures__/value-schema-from-contract/undeclared.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "'steps.call.result.result.missing' is not defined (available: total)"
+    - code: CEL_UNKNOWN_FIELD
+      message: "'steps.callChild.result.result.missing' is not defined (available: total)"
+---
+kind: Assert.Manifest
+metadata:
+  name: declaredMember
+source: ./__fixtures__/value-schema-from-contract/declared.yaml
+expect:
+  errors: []
+  runs: true

@@ -23,6 +23,9 @@ whatever its ecosystem provides.
 | `SqlSchema` / `isSqlSchema` | The contract an engine's `Schema` instance implements for consumers addressing its tables. |
 | `assertListedTable` | The membership check behind `SqlSchema.qualifiedTableName`. |
 | `SqlInstantSchema` / `rendersCurrentInstant` | A schema instance that also renders the current instant, and the guard a consumer recording database time refuses others with. |
+| `SqlInstantArithmeticSchema` / `rendersInstantArithmetic` | A schema instance that also renders the current instant shifted by a duration and a bound timestamp, and the guard a consumer needing those refuses others with. |
+| `SqlLockSchema` / `rendersLockSkipping` | A schema instance that also renders the lock-skipping clause of a row selection, and the guard a consumer claiming rows concurrently refuses others with. |
+| `storeDurationNanos` / `storeTimestampNanos` / `utcInstantText` / `signedSecondsText` | For an engine implementing the instant members: read the `Telo.Duration` / `Telo.Timestamp` a controller is handed, and spell either as bound text at the engine's precision. |
 | `readInt64Column` / `readTimestampColumn` | Read a 64-bit integer column and a timestamp column whatever form the engine's driver hands them over in. |
 | `SqlFragments` / `sqlComparison` / `sqlWhere` | Build the fragments-and-values argument of `executeTemplate`: statement text with a bound value in every gap, one null-aware comparison, and the `WHERE` joiner. |
 
@@ -119,36 +122,91 @@ schema's pass has run. A consumer addressing a declared table resolves the
 schema instance and refuses one without the member — an engine module written
 before it existed must add it — rather than falling back to an unqualified name.
 
-## The schema instance renders the current instant
+## The schema instance renders instants
 
 A consumer that records *when* something happened by the database's clock must
-not spell a clock function itself — that names an engine. The engine's `Schema`
-instance renders it:
+not spell a clock function, interval arithmetic or timestamp text itself — each
+names an engine. The engine's `Schema` instance renders all three:
 
 ```ts
 interface SqlInstantSchema extends SqlSchema {
   /** The SQL expression for the instant the statement holding it runs. */
   currentInstant(): string;
 }
+
+interface SqlInstantArithmeticSchema extends SqlInstantSchema {
+  /** That instant shifted by a signed Telo.Duration, the duration bound. */
+  currentInstantPlus(duration: CelDuration): SqlFragments;
+  /** A bound Telo.Timestamp in the column's storage form. */
+  instantParameter(timestamp: CelTimestamp): SqlFragments;
+}
 ```
 
-The expression is read when its statement executes, never frozen at a
-transaction's start, and yields the storage form of that engine's timestamp
-column, so values written through it sort chronologically under a plain
-comparison of the column:
+They are two levels so that a consumer is refused only for what it uses: one
+that only records "now" asks for `SqlInstantSchema`, and keeps working over an
+engine module written before the arithmetic members existed.
 
-| Engine | Column type | Expression | Stored as |
-| --- | --- | --- | --- |
-| PostgreSQL | `timestamptz` | `clock_timestamp()` | a native timestamp, to the microsecond |
-| SQLite | `text` | `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` | fixed-width UTC text, `YYYY-MM-DDTHH:MM:SS.sssZ` |
+`currentInstant()` is read when its statement executes, never frozen at a
+transaction's start. `currentInstantPlus` is the same reading shifted by a
+duration — a `Telo.Duration` as the SDK hands it to a controller (`isCelDuration`),
+negative for the past — that is a bound value in the returned fragments, never
+statement text. `instantParameter` binds a `Telo.Timestamp` (`isCelTimestamp`).
+Both check their argument at run time and throw for anything else. All three
+yield the storage form of the engine's timestamp column, so values written
+through any of them order chronologically against each other under a plain
+comparison of the column, to the engine's precision:
 
-SQLite has no timestamp type and a millisecond clock: two statements inside one
-millisecond record one instant, so order within a millisecond needs a second
-ordering column. A consumer writes the expression into its statement text —
-it is the engine's own, never a value from a caller — and refuses a schema
-instance without the member (`rendersCurrentInstant`) rather than fall back to
-a clock of its own; an engine module written before the member existed must add
-it.
+| Engine | Column type | `currentInstant()` | `currentInstantPlus(d)` | `instantParameter(t)` | Precision |
+| --- | --- | --- | --- | --- | --- |
+| PostgreSQL | `timestamptz` | `clock_timestamp()` | `clock_timestamp()` plus an interval cast from bound hours and seconds | a `timestamptz` cast from bound UTC text | microsecond |
+| SQLite | `text` | `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` | the same, with the duration bound as a date modifier | bound text, `YYYY-MM-DDTHH:MM:SS.sssZ` | millisecond |
+
+A duration finer than the engine's unit is truncated toward zero, a timestamp
+toward the past. SQLite's `'now'` is one reading per statement, so within a
+statement a shift of one millisecond is visible and exact; PostgreSQL's
+`clock_timestamp()` is read at each evaluation, so two instants in one
+statement are moments apart. Two statements inside one millisecond on SQLite
+record one instant, so order within a millisecond needs a second ordering
+column. A shift whose result the column cannot hold fails — PostgreSQL's own
+range error, and on SQLite (whose date functions answer NULL there) a refusal
+before the statement runs. A consumer writes `currentInstant()` into its
+statement text and appends the other two members' fragments to its own
+(`SqlFragments.append`), and refuses a schema instance without the members it
+uses — `rendersCurrentInstant` for `currentInstant()` alone,
+`rendersInstantArithmetic` for all three — rather than fall back to a clock or a
+timestamp text of its own; an engine module written before a member existed must
+add it.
+
+## The schema instance renders lock skipping
+
+A consumer that lets several claimants take rows from one table at once (a work
+queue, a batched purge) must not wait on rows another transaction holds, and
+must not spell the clause that says so — it is an engine's. The engine's
+`Schema` instance renders it:
+
+```ts
+interface SqlLockSchema extends SqlSchema {
+  /** The lock-skipping clause, or "" for an engine with no row locks. */
+  skipLockedClause(): string;
+}
+```
+
+The consumer appends it to a plain one-table selection and uses that selection
+inside the statement that changes the rows:
+
+```sql
+UPDATE <table> SET … WHERE id IN (SELECT id FROM <table> WHERE … ORDER BY … LIMIT ? <clause>)
+DELETE FROM <table> WHERE id IN (SELECT id FROM <table> WHERE … ORDER BY … LIMIT ? <clause>)
+```
+
+| Engine | Clause | Why |
+| --- | --- | --- |
+| PostgreSQL | `FOR UPDATE SKIP LOCKED` | rows another open transaction locked are passed over; the selected rows stay locked until this transaction ends |
+| SQLite | (empty) | one writer per database: a writing transaction holds the whole file, so there is no row lock to skip and claimants are serialized |
+
+PostgreSQL refuses the clause beside `DISTINCT`, `GROUP BY`, an aggregate or
+`UNION`, so the selection stays a plain row selection. A consumer refuses a
+schema instance without the member (`rendersLockSkipping`).
 
 ## Reading integers and instants back
 

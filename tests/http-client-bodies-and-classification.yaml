@@ -13,7 +13,10 @@ metadata:
       - `success:` decides what counts as a failure, so a 308 can be returned
         rather than treated as one,
       - `retryOn:` + `retry:` re-attempt a failing status and eventually succeed,
-        which also proves the backoff loop terminates.
+        which also proves the backoff loop terminates,
+      - `retry.retryAfter` reads the failure and replaces an hour's backoff with
+        what it yields — on a client, a fixed wait resolved when it is created —
+        and a code in `retry.nonRetryable` ends the loop at once.
 imports:
   Server: ../modules/http-server
   Http: ../modules/http-client
@@ -278,5 +281,64 @@ steps:
       expected:
         status: 503
         requests: 3
+    invoke:
+      kind: Assert.Equals
+
+  # The policy's own backoff is an hour, so this returns only because
+  # `retryAfter` read the failure — a retried response is `ERR_HTTP_STATUS` with
+  # its status in `data` — and waited what it yielded instead. Two requests.
+  - name: waitAsAsked
+    inputs:
+      url: http://localhost:8871/api/flaky
+      method: GET
+    invoke:
+      kind: Http.Request
+      retryOn: [503]
+      retry:
+        attempts: 1
+        initialDelay: 1h
+        maxDelay: 2h
+        honorRetryAfter: false
+        retryAfter: !cel "error.code == 'ERR_HTTP_STATUS' && error.data.status == 503 ? duration('5ms') : dyn(null)"
+  # The same response's code named non-retryable: one request, whatever the budget.
+  - name: notRetried
+    inputs:
+      url: http://localhost:8871/api/flaky
+      method: GET
+    invoke:
+      kind: Http.Request
+      retryOn: [503]
+      retry:
+        attempts: 3
+        initialDelay: 1
+        nonRetryable: [ERR_HTTP_STATUS]
+  # A client's `retryAfter` is resolved when the client is created, so it reads
+  # no failure: a fixed wait every request through it inherits.
+  - name: clientWait
+    inputs:
+      url: /api/flaky
+      method: GET
+    invoke:
+      kind: Http.Request
+      client:
+        kind: Http.Client
+        baseUrl: http://localhost:8871
+        retry:
+          attempts: 1
+          initialDelay: 1h
+          maxDelay: 2h
+          honorRetryAfter: false
+          retryAfter: !cel "duration('5ms')"
+      retryOn: [503]
+  - name: assertPolicyRead
+    inputs:
+      actual:
+        waited: !cel "steps.waitAsAsked.result.body.attempt"
+        notRetried: !cel "steps.notRetried.result.body.attempt"
+        clientWaited: !cel "steps.clientWait.result.body.attempt"
+      expected:
+        waited: 5
+        notRetried: 6
+        clientWaited: 8
     invoke:
       kind: Assert.Equals

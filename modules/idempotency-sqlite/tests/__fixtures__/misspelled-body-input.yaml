@@ -1,0 +1,66 @@
+# A guarded body declaring its input contract, called with a misspelled input.
+kind: Telo.Application
+metadata:
+  name: MisspelledBodyInput
+  version: 1.0.0
+imports:
+  IdempotencySql: ../../../idempotency-sql
+  Idempotency: ../..
+  Sql: ../../../sql
+  SQLite: ../../../sqlite
+  Run: ../../../run
+targets:
+  - !ref appSchema
+  - invoke: !ref placeOrder
+    inputs: { key: order-1 }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Idempotency.Table
+metadata: { name: keys }
+table: idempotency_keys
+---
+kind: SQLite.Schema
+metadata: { name: appSchema }
+connection: !ref db
+tables: [!ref keys]
+---
+kind: Idempotency.Ledger
+metadata: { name: ledger }
+connection: !ref db
+schema: !ref appSchema
+table: !ref keys
+name: orders
+retention: 1h
+---
+kind: Sql.Transaction
+metadata: { name: placeOrder }
+connection: !ref db
+inputs:
+  key: !cel "inputs.key"
+steps:
+  kind: Run.Sequence
+  steps:
+    - name: once
+      invoke:
+        kind: IdempotencySql.Once
+        ledger: !ref ledger
+        invoke:
+          kind: Run.Sequence
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              additionalProperties: false
+              required: [orderId]
+              properties:
+                orderId: { type: string }
+          steps:
+            - name: noted
+              value: !cel "inputs.orderId"
+      inputs:
+        key: !cel "inputs.key"
+        inputs:
+          ordrId: !cel "inputs.key"

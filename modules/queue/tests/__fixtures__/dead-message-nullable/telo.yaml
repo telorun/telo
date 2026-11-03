@@ -1,0 +1,48 @@
+kind: Telo.Application
+metadata:
+  name: QueueDeadMessageNullable
+  version: 1.0.0
+  description: A dead-letter handler reading the message without a null guard.
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+---
+kind: Fixture.PlainQueue
+metadata: { name: orders }
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [orderId]
+    properties:
+      orderId: { type: string }
+---
+kind: Run.Sequence
+metadata: { name: handle }
+steps:
+  - name: done
+    value: true
+---
+kind: Run.Sequence
+metadata: { name: park }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    properties:
+      orderId: { type: string }
+steps:
+  - name: done
+    value: true
+---
+kind: Queue.Worker
+metadata: { name: worker }
+queue: !ref orders
+invoke: !ref handle
+timeout: 30s
+retry: { attempts: 2 }
+onDead:
+  invoke: !ref park
+  inputs:
+    orderId: !cel "message.orderId"

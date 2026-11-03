@@ -1,0 +1,116 @@
+# Every kind of the module used as documented: checks clean.
+kind: Telo.Application
+metadata:
+  name: QueueValid
+  version: 1.0.0
+  description: The queue kinds in ordinary use.
+requires:
+  telo: ">=0.129.0"
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+targets:
+  - !ref placeOrder
+---
+kind: Telo.JsonSchema
+metadata: { name: Order }
+schema:
+  type: object
+  additionalProperties: false
+  required: [orderId, customerId]
+  properties:
+    orderId: { type: string }
+    customerId: { type: string }
+    placedAt: { x-telo-type: Telo.Timestamp }
+---
+kind: Fixture.KeyedQueue
+metadata: { name: orders }
+messageType: !ref Order
+retention: 168h
+groupBy: !cel "message.customerId"
+---
+kind: Fixture.PlainQueue
+metadata: { name: emails }
+messageType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [to]
+    properties:
+      to: { type: string }
+maxMessageBytes: 4096
+---
+kind: Queue.Enqueue
+metadata: { name: enqueueOrder }
+queue: !ref orders
+---
+kind: Run.Sequence
+metadata: { name: placeOrder }
+steps:
+  - name: enqueue
+    invoke: !ref enqueueOrder
+    inputs:
+      id: order-1
+      message: { orderId: order-1, customerId: c-1 }
+      after: 30s
+  - name: later
+    invoke: !ref enqueueOrder
+    inputs:
+      message: { orderId: order-2, customerId: c-1 }
+      after: "2030-01-01T00:00:00Z"
+  - name: status
+    invoke:
+      kind: Queue.Status
+      queue: !ref orders
+    inputs:
+      id: !cel "steps.enqueue.result.id"
+---
+kind: Run.Sequence
+metadata: { name: fulfil }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [orderId, messageId]
+    properties:
+      orderId: { type: string }
+      messageId: { type: string }
+steps:
+  - name: done
+    value: !cel "inputs.orderId"
+---
+kind: Run.Sequence
+metadata: { name: park }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [code]
+    properties:
+      orderId: { type: [string, "null"] }
+      code: { type: string }
+steps:
+  - name: done
+    value: !cel "inputs.code"
+---
+kind: Queue.Worker
+metadata: { name: fulfilment }
+queue: !ref orders
+concurrency: 4
+lease: 30s
+timeout: 2m
+shutdownGrace: 10s
+invoke: !ref fulfil
+inputs:
+  orderId: !cel "message.orderId"
+  messageId: !cel "delivery.messageId"
+retry:
+  attempts: 5
+  initialDelay: 1s
+  nonRetryable: [ERR_QUEUE_TIMEOUT]
+onDead:
+  invoke: !ref park
+  inputs:
+    orderId: !cel "message != null ? message.orderId : null"
+    code: !cel "error.code"

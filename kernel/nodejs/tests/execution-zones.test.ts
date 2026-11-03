@@ -144,6 +144,34 @@ describe("execution zones — a correlated zone answers only its own key", () =>
   });
 });
 
+describe("execution zones — a requirement at the schema root", () => {
+  it("discharges through the field-less form, correlated across a reference", async () => {
+    const kernel = await bootKernel(false);
+    const result = await kernel.invoke("ZoneFixture.Batch.rootBatchA", {});
+    expect(result).toEqual({ zone: "ZoneFixture.Batch", correlatedOn: "sessionA" });
+    await kernel.teardown();
+  });
+
+  it("raises ERR_ZONE_REQUIRED outside every zone, naming the target and the reason", async () => {
+    const kernel = await bootKernel(false);
+    await expect(kernel.invoke("ZoneFixture.RootEnqueue.rootInsideA", {})).rejects.toMatchObject({
+      code: "ERR_ZONE_REQUIRED",
+      message: expect.stringMatching(
+        /no ZoneFixture\.Batch zone open on ZoneFixture\.Session 'sessionA': the root message would be written outside its batch/,
+      ),
+    });
+    await kernel.teardown();
+  });
+
+  it("refuses a zone open on a different correlation target", async () => {
+    const kernel = await bootKernel(false);
+    await expect(kernel.invoke("ZoneFixture.Batch.rootCrossBatch", {})).rejects.toMatchObject({
+      code: "ERR_ZONE_REQUIRED",
+    });
+    await kernel.teardown();
+  });
+});
+
 describe("execution zones — zone attributes", () => {
   it("reports what an open zone declares about its contents, read off the declaring kind", async () => {
     const kernel = await bootKernel(false);

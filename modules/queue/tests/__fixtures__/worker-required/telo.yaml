@@ -1,0 +1,24 @@
+kind: Telo.Application
+metadata:
+  name: QueueWorkerRequired
+  version: 1.0.0
+  description: A worker that sets neither a timeout nor a retry policy.
+imports:
+  Queue: ../../..
+  Fixture: ../kinds
+  Run: ../../../../run
+---
+kind: Fixture.PlainQueue
+metadata: { name: jobs }
+messageType: { kind: Telo.JsonSchema, schema: { type: object } }
+---
+kind: Run.Sequence
+metadata: { name: handle }
+steps:
+  - name: done
+    value: true
+---
+kind: Queue.Worker
+metadata: { name: worker }
+queue: !ref jobs
+invoke: !ref handle

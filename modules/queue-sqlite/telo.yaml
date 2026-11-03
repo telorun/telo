@@ -1,0 +1,168 @@
+kind: Telo.Library
+metadata:
+  name: QueueSqlite
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Reliability, Coordination]
+  description: >-
+    Durable background-job queues stored in a SQLite table beside the
+    application's own data, so a job can be enqueued in the same transaction as
+    the rows it is about. Workers poll for messages, with leases, retries with
+    backoff, delayed delivery, deduplication by id and per-group ordering.
+requires:
+  # The table kind's duplicate-name rule binds `coReferrers:`, which an older
+  # analyzer evaluates unbound and reports as a defect in this module (verified
+  # with 0.128.0). Forward-declared: 0.129.0 is the release that carries the
+  # binding.
+  telo: ">=0.129.0"
+imports:
+  QueueSql: ../queue-sql
+  SQLite: ../sqlite
+exports:
+  kinds:
+    - Table
+    - Queue
+---
+# QueueSqlite.Table — a `SQLite.Table` holding the messages of every queue that
+# names it. The author names only the physical table; every column and index is
+# the queue's own, added by `base:` as internal, so no row contract sees them.
+# List it in the `SQLite.Schema` that creates and migrates it.
+#
+# The duplicate-name rule is declared here, on the engine table kind, and not
+# once in `queue-sql`: this kind must extend `SQLite.Table` to be listed in a
+# `SQLite.Schema`, a kind has one parent, and a `base:`-form kind inherits no
+# rule — so an engine-neutral table kind the rule could live on would be one no
+# table could ever be.
+kind: Telo.Definition
+metadata:
+  name: Table
+  description: >-
+    The SQLite table a work queue keeps its messages in, shared by any number of
+    queues under different names. The application names the table; its columns
+    and indexes belong to the queue and appear in no contract. Created and
+    migrated by the schema that lists it.
+extends: SQLite.Table
+schema:
+  type: object
+  additionalProperties: false
+  required: [table]
+  examples:
+    - table: queue_messages
+  properties:
+    table:
+      title: Table
+      description: The physical table name.
+      type: string
+      pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+  x-telo-referrer-rules:
+    - referrer: QueueSql.Queue
+      coReferrers: /table
+      condition: !cel "!coReferrers.exists(o, o.name == referrer.name)"
+      code: QUEUE_NAME_DUPLICATE
+      message: >-
+        claims a queue name another queue in this table already claims. Two
+        queues with one name in one table would deliver, deduplicate and purge
+        each other's messages — give each queue a name of its own.
+base:
+  table: !cel "self.table"
+  columns: {}
+  # Instants are fixed-width UTC text, the form the schema's instant members
+  # write, so a plain comparison is chronological. A recorded failure is a
+  # typed frame, its generation beside it.
+  internalColumns:
+    seq: { type: integer, primaryKey: true, identity: always }
+    queue_name: { type: text, nullable: false }
+    message_id: { type: text, nullable: false }
+    group_key: { type: text }
+    state: { type: text, nullable: false }
+    body: { type: text, nullable: false }
+    digest: { type: text, nullable: false }
+    envelope_generation: { type: integer, nullable: false }
+    attempts: { type: integer, nullable: false }
+    enqueued_at: { type: text, nullable: false }
+    visible_at: { type: text, nullable: false }
+    lease_until: { type: text }
+    claim_token: { type: text }
+    settled_at: { type: text }
+    last_error: { type: text }
+    dying_error: { type: text }
+    error_generation: { type: integer }
+    cancel_requested: { type: integer, nullable: false }
+    cancel_reason: { type: text }
+    traceparent: { type: text }
+    tracestate: { type: text }
+  # Ids are unique per queue; listings and counts read one state in enqueue
+  # order; a claim reads the claimable range of one state by the instant it is
+  # due (`visible_at`, `lease_until`), and an idle claim the first entry beyond
+  # now; a group's oldest unsettled message and a group's held message are found
+  # among unsettled and running rows alone, so the settled messages kept for
+  # retention are never read; the purge reads settled rows by settle time. Each
+  # partial index's `where:` is the predicate the queue's statements write, word
+  # for word, which is how the engine matches a statement to it.
+  indexes: !cel >-
+    { 'queue_' + self.table + '_id':
+        { 'columns': ['queue_name', 'message_id'], 'unique': true },
+      'queue_' + self.table + '_state':
+        { 'columns': ['queue_name', 'state', 'seq'] },
+      'queue_' + self.table + '_visible':
+        { 'columns': ['queue_name', 'state', 'visible_at', 'seq'] },
+      'queue_' + self.table + '_lease':
+        { 'columns': ['queue_name', 'state', 'lease_until'] },
+      'queue_' + self.table + '_group_unsettled':
+        { 'columns': ['queue_name', 'group_key', 'seq'],
+          'where': "state IN ('pending', 'running', 'dead')" },
+      'queue_' + self.table + '_group_running':
+        { 'columns': ['queue_name', 'group_key'], 'where': "state = 'running'" },
+      'queue_' + self.table + '_settled':
+        { 'columns': ['queue_name', 'state', 'settled_at'] } }
+---
+kind: Telo.Definition
+metadata:
+  name: Queue
+  description: >-
+    A durable queue of typed messages in a SQLite table, on the same connection
+    as the application's data, so enqueueing joins its transactions. Workers
+    poll it for work; messages are deduplicated by id within a retention window
+    and can be delivered in order per group.
+capability: Telo.Provider
+extends: QueueSql.Queue
+controllers:
+  - pkg:telo/local/js?path=./nodejs/queue-sqlite.mjs&local_path=./nodejs/src/index.ts#Queue
+# Narrows the three storage slots to this engine's own kinds; `name`,
+# `messageType`, `maxMessageBytes`, `retention` and `groupBy` are the abstract's,
+# merged in unchanged.
+schema:
+  type: object
+  required: [connection, schema, table]
+  additionalProperties: false
+  examples:
+    - connection: !ref db
+      schema: !ref appSchema
+      table: !ref queueMessages
+      name: emails
+      messageType: !ref Email
+      retention: 168h
+  properties:
+    connection:
+      title: Connection
+      description: >-
+        The connection the queue's table lives on, and the one a transactional
+        enqueue must run inside a transaction of.
+      x-telo-ref:
+        kind: SQLite.Connection
+        use: dependency
+    schema:
+      title: Schema
+      description: >-
+        The schema that lists the queue's table, on the same connection. It
+        creates and migrates the table; the queue issues no DDL.
+      x-telo-ref:
+        kind: SQLite.Schema
+        use: dependency
+    table:
+      title: Table
+      description: The table the messages are stored in.
+      x-telo-ref:
+        kind: Self.Table
+        use: dependency

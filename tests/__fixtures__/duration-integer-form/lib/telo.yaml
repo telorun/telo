@@ -1,0 +1,22 @@
+kind: Telo.Library
+metadata:
+  name: Pauses
+  version: 1.0.0
+  description: Reads back the durations it is handed, one supplied and one left to its default.
+imports:
+  Run: ../../../../modules/run
+variables:
+  pause:
+    x-telo-type: Telo.Duration
+  fallback:
+    x-telo-type: Telo.Duration
+    default: 1500
+exports:
+  resources: [pauses]
+---
+kind: Run.Value
+metadata:
+  name: pauses
+value:
+  pause: !cel "string(variables.pause)"
+  fallback: !cel "string(variables.fallback)"
