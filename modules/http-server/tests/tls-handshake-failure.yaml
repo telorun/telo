@@ -1,0 +1,108 @@
+kind: Telo.Application
+metadata:
+  name: HttpServerTlsHandshakeFailureTest
+  version: 1.0.0
+  description: >-
+    A TLS connection that is never served is logged as
+    http.server.tls_handshake.failed with its peer and reason: plain HTTP sent to
+    a TLS port, and a client certificate clientCa did not sign under
+    clientCertificate: required. Certificates are test fixtures in __fixtures__/tls.
+logging:
+  level: info
+  sinks:
+    - kind: Telo.FileSink
+      destination: /tmp/telo-http-tls-handshake-failure.jsonl
+      flush_interval: 20ms
+imports:
+  Http: ../
+  Client: ../../http-client
+  Fs: ../../fs
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Client.Client
+metadata: { name: plaintext }
+baseUrl: http://127.0.0.1:8922
+---
+kind: Client.Client
+metadata: { name: rogueCert }
+baseUrl: https://localhost:8923
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+  cert: { file: !module-path ./__fixtures__/tls/rogue-client.pem }
+  key: { file: !module-path ./__fixtures__/tls/rogue-client.key }
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /ping, method: GET }
+    returns:
+      - { status: 200, content: { application/json: { body: { ok: true } } } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: tlsServer }
+    listen: { address: 127.0.0.1, port: 8922 }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+    mounts: [{ path: /, mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: mutualServer }
+    listen: { address: 127.0.0.1, port: 8923 }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+      clientCa: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+      clientCertificate: required
+    mounts: [{ path: /, mount: !ref api }]
+targets:
+  - !ref tlsServer
+  - !ref mutualServer
+steps:
+  # `Telo.FileSink.destination` is not a CEL slot, so the path is fixed: this run's
+  # records are those after what is there now, and the fixed ports keep a second
+  # run from writing beside this one.
+  - name: started
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "100ms", value: {} }
+  - name: before
+    invoke: { kind: Fs.File }
+    inputs: { path: /tmp/telo-http-tls-handshake-failure.jsonl }
+  - name: plaintext
+    try:
+      - name: call
+        invoke: { kind: Client.Request, client: !ref plaintext, url: /ping }
+    catch:
+      - { name: refused, value: true }
+  - name: rogue
+    try:
+      - name: call
+        invoke: { kind: Client.Request, client: !ref rogueCert, url: /ping }
+    catch:
+      - { name: refused, value: true }
+  - name: settle
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: "250ms", value: {} }
+  - name: after
+    invoke: { kind: Fs.File }
+    inputs: { path: /tmp/telo-http-tls-handshake-failure.jsonl }
+  - name: failures
+    value: !cel >-
+      steps.after.result.content.substring(steps.before.result.content.size())
+      .split("\n")
+      .filter(line, line.contains('"http.server.tls_handshake.failed"'))
+      .map(line, parseJson(line).attributes)
+  - name: assertFailures
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        {'plaintext': steps.failures.result.exists(a, a['server.port'] == 8922
+        && a['network.peer.address'] == '127.0.0.1' && a['error.type'] == 'ERR_SSL_HTTP_REQUEST'),
+        'rogue': steps.failures.result.exists(a, a['server.port'] == 8923
+        && a['network.peer.address'] == '127.0.0.1' && a['error.type'] == 'UNABLE_TO_VERIFY_LEAF_SIGNATURE')}
+      expected: { plaintext: true, rogue: true }

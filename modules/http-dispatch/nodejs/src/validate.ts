@@ -10,14 +10,13 @@ type ResourceLike = {
   }>;
 };
 
-/** Rejects `Content-Type` (case-insensitive) anywhere in entry-level or
- *  per-MIME `headers:` blocks. The matched `content[mime]` map key IS the
- *  canonical Content-Type — declaring it again in `headers:` would either be
- *  redundant or contradictory.
+/** Rejects `Content-Type` and `Set-Cookie` (case-insensitive) anywhere in
+ *  entry-level or per-MIME `headers:` blocks. The matched `content[mime]` map
+ *  key IS the canonical Content-Type, and an entry's `cookies:` the only
+ *  Set-Cookie source — a raw string would bypass the checked cookie shape.
  *
- *  Defense-in-depth: the rule is expressible as JSON Schema `propertyNames`,
- *  but the runtime check is cheap and gives a clearer error message than
- *  AJV's generic `propertyNames` failure. */
+ *  The runtime twin of the carrier's `propertyNames` exclusion, which a
+ *  dependency's routes reach only here. */
 export function validateNoContentTypeHeader(resource: ResourceLike): void {
   for (const route of resource.routes ?? []) {
     const path = route.request?.path ?? "<unknown>";
@@ -40,9 +39,15 @@ function rejectContentTypeIn(
 ): void {
   if (!headers) return;
   for (const key of Object.keys(headers)) {
-    if (key.toLowerCase() === "content-type") {
+    const name = key.toLowerCase();
+    if (name === "content-type") {
       throw new Error(
         `Http.Api: '${where}' declares 'Content-Type' — forbidden. The matched content[mime] map key is the only Content-Type source.`,
+      );
+    }
+    if (name === "set-cookie") {
+      throw new Error(
+        `Http.Api: '${where}' declares 'Set-Cookie' — forbidden. Declare the cookie and list it in the entry's 'cookies:'.`,
       );
     }
   }

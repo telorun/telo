@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: HostCookieDomain, version: 1.0.0 }
+imports: { HttpDispatch: ../.. }
+---
+# A host cookie is bound to the exact host that set it.
+kind: HttpDispatch.HostCookie
+metadata: { name: session }
+name: session
+domain: example.test

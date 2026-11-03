@@ -146,10 +146,14 @@ function makeFastifySink(): SinkHandle {
               body.set(c, off);
               off += c.byteLength;
             }
-            const headers: Record<string, string> = {};
-            for (const [k, v] of Object.entries(res.headers)) {
-              if (v == null) continue;
-              headers[k.toLowerCase()] = Array.isArray(v) ? v.join(", ") : String(v);
+            // Read from the raw lines, so a header sent on several lines is
+            // seen as those lines rather than as Node's comma-joined value.
+            const headers: Record<string, string | string[]> = {};
+            for (let i = 0; i < res.rawHeaders.length; i += 2) {
+              const key = res.rawHeaders[i]!.toLowerCase();
+              const line = res.rawHeaders[i + 1]!;
+              const held = headers[key];
+              headers[key] = held === undefined ? line : [...(Array.isArray(held) ? held : [held]), line];
             }
             return {
               status: res.statusCode ?? 0,

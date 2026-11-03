@@ -1,0 +1,147 @@
+kind: Telo.Application
+metadata:
+  name: HttpServerForwardedClientCertificateTest
+  version: 1.0.0
+  description: >-
+    Behind a trusted proxy, Http.Server reads the client certificate the proxy
+    forwards — Envoy's XFCC, URL-escaped PEM or base64 DER — into
+    request.clientCertificate as verified: false, via: proxy; an unreadable
+    header yields null, and declaring the field without trustProxy is refused.
+imports:
+  Http: ../
+  Client: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+targets:
+  - !ref untrusted
+  - !ref untrustedAtRuntime
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: untrusted }
+source: ./__fixtures__/forwarded-client-certificate/untrusted-lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: reads a forwarded client certificate but trusts no proxy
+---
+kind: Assert.Manifest
+metadata: { name: untrustedAtRuntime }
+source: ./__fixtures__/forwarded-client-certificate/untrusted-consumer.yaml
+expect: { errors: [], runFails: "ERR_HTTP_FORWARDED_CERTIFICATE_UNTRUSTED" }
+---
+kind: Client.Client
+metadata: { name: viaEnvoy }
+baseUrl: http://localhost:8934
+---
+kind: Client.Client
+metadata: { name: viaNginx }
+baseUrl: http://localhost:8935
+---
+kind: Client.Client
+metadata: { name: viaTraefik }
+baseUrl: http://localhost:8936
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /whoami, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              certificate: !cel "request.clientCertificate"
+---
+kind: Run.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: envoyFronted }
+    listen: { address: 127.0.0.1, port: 8934 }
+    trustProxy: true
+    forwardedClientCertificate: { header: x-forwarded-client-cert, format: xfcc }
+    mounts: [{ path: /, mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: nginxFronted }
+    listen: { address: 127.0.0.1, port: 8935 }
+    trustProxy: true
+    forwardedClientCertificate: { header: x-ssl-client-cert, format: pem }
+    mounts: [{ path: /, mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: traefikFronted }
+    listen: { address: 127.0.0.1, port: 8936 }
+    trustProxy: true
+    forwardedClientCertificate: { header: x-forwarded-tls-client-cert, format: base64-der }
+    mounts: [{ path: /, mount: !ref api }]
+targets:
+  - !ref envoyFronted
+  - !ref nginxFronted
+  - !ref traefikFronted
+steps:
+  - name: pem
+    value: !include-text ./__fixtures__/tls/client.pem
+  - name: roguePem
+    value: !include-text ./__fixtures__/tls/rogue-client.pem
+  # Two elements, one per proxy: the last is the one the proxy in front wrote.
+  - name: envoy
+    invoke: { kind: Client.Request, client: !ref viaEnvoy, url: /whoami }
+    inputs:
+      headers:
+        x-forwarded-client-cert: !cel >-
+          'By=spiffe://edge.test;Cert="' + urlEncode(steps.roguePem.result) + '";Subject="CN=rogue",'
+          + 'By=spiffe://proxy.test;Cert="' + urlEncode(steps.pem.result) + '";Subject="CN=telo-client"'
+  - name: assertEnvoy
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.envoy.result.body.certificate"
+      expected:
+        subject: { CN: telo-client }
+        issuer: { CN: Telo Test CA }
+        serialNumber: 286F27C9F0108BDA158C51FB9B2FE371036CCAA0
+        fingerprint256: 13:30:AC:AA:1C:34:E0:F2:5D:AE:D7:72:84:07:98:19:02:7F:B1:95:2A:21:B8:75:B5:59:83:ED:2B:0B:A8:54
+        validFrom: "2026-10-30T16:08:27Z"
+        validTo: "2126-10-06T16:08:27Z"
+        subjectAltNames: ["DNS:telo-client"]
+        pem: !cel "steps.pem.result"
+        verified: false
+        via: proxy
+  - name: nginx
+    invoke: { kind: Client.Request, client: !ref viaNginx, url: /whoami }
+    inputs:
+      headers: { x-ssl-client-cert: !cel "urlEncode(steps.pem.result)" }
+  - name: assertNginx
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.nginx.result.body.certificate"
+      expected: !cel "steps.envoy.result.body.certificate"
+  - name: traefik
+    invoke: { kind: Client.Request, client: !ref viaTraefik, url: /whoami }
+    inputs:
+      headers:
+        x-forwarded-tls-client-cert: !cel >-
+          steps.pem.result.split('\n').filter(line, !line.startsWith('-----')).join('')
+  - name: assertTraefik
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.traefik.result.body.certificate"
+      expected: !cel "steps.envoy.result.body.certificate"
+  - name: absent
+    invoke: { kind: Client.Request, client: !ref viaEnvoy, url: /whoami }
+  - name: envoyMalformed
+    invoke: { kind: Client.Request, client: !ref viaEnvoy, url: /whoami }
+    inputs:
+      headers: { x-forwarded-client-cert: 'By=spiffe://proxy.test;Subject="CN=telo-client"' }
+  - name: nginxMalformed
+    invoke: { kind: Client.Request, client: !ref viaNginx, url: /whoami }
+    inputs: { headers: { x-ssl-client-cert: "%E0%A4%A" } }
+  - name: traefikMalformed
+    invoke: { kind: Client.Request, client: !ref viaTraefik, url: /whoami }
+    inputs: { headers: { x-forwarded-tls-client-cert: TUlJQ2Jhcm4= } }
+  - name: assertUnread
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        [steps.absent.result.body, steps.envoyMalformed.result.body,
+        steps.nginxMalformed.result.body, steps.traefikMalformed.result.body]
+      expected: [{ certificate: null }, { certificate: null }, { certificate: null }, { certificate: null }]

@@ -24,7 +24,10 @@ mounts:
 - `listen.port` is required. `listen.address` defaults to `0.0.0.0`, which
   accepts connections from other machines — a container, a runner session or
   any proxy needs that, so leave it unset in an application. `127.0.0.1`
-  accepts the same machine only, for a mock server inside a test.
+  accepts the same machine only, for a mock server inside a test. A hostname
+  (`localhost`) is bound on every address it resolves to — `127.0.0.1` and `::1`
+  alike — on the one port; an address the host has no interface for is skipped
+  and logged (`http.server.address_unavailable`).
 - The top-level `port:` / `host:` spelling is refused by the resource rule
   `HTTP_SERVER_LISTEN_MOVED` (reported as `RESOURCE_RULE_VIOLATED`;
   `ERR_HTTP_SERVER_LISTEN_MOVED` when the server is created), naming

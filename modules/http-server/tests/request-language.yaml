@@ -8,9 +8,9 @@ metadata:
     by quality, then the application's own language; a malformed or unserved
     tag is skipped. With more than one language served, a response whose
     production read the language carries `Content-Language` and
-    `Vary: Accept-Language`, plus every header `preferredLanguages` reads (`*` for
-    a computed header name); a response that never read it carries neither. A
-    problem's `detail` is shown in the request language.
+    `Vary: Accept-Language`, plus every header `preferredLanguages` reads (`Cookie`
+    for a cookie, `*` for a computed header name); a response that never read it
+    carries neither. A problem's `detail` is shown in the request language.
 lang: en
 translations:
   catalogs:
@@ -77,6 +77,11 @@ with:
     preferredLanguages: !cel "'x-lang' in request.headers ? [request.headers['x-lang']] : []"
     mounts: [{ mount: !ref api }]
   - kind: Http.Server
+    metadata: { name: cookieServer }
+    listen: { address: 127.0.0.1, port: 8987 }
+    preferredLanguages: !cel "'lang' in request.cookies ? [request.cookies.lang] : []"
+    mounts: [{ mount: !ref api }]
+  - kind: Http.Server
     metadata: { name: computedServer }
     listen: { address: 127.0.0.1, port: 8962 }
     preferredLanguages: !cel "[request.headers[request.query.header]]"
@@ -94,6 +99,7 @@ with:
 targets:
   - !ref server
   - !ref headerServer
+  - !ref cookieServer
   - !ref computedServer
   - !ref invalidServer
   - !ref mixedServer
@@ -127,6 +133,11 @@ steps:
       kind: HttpClient.Request
       client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8961, throwOnHttpError: false }
     inputs: { url: /lang, headers: { x-lang: pl } }
+  - name: cookieRead
+    invoke:
+      kind: HttpClient.Request
+      client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8987, throwOnHttpError: false }
+    inputs: { url: /lang, headers: { cookie: "theme=dark; lang=pl", accept-language: en } }
   - name: computedRead
     invoke:
       kind: HttpClient.Request
@@ -172,6 +183,9 @@ steps:
         headerRead:
           body: !cel "steps.headerRead.result.body"
           vary: !cel "steps.headerRead.result.headers['vary']"
+        cookieRead:
+          body: !cel "steps.cookieRead.result.body"
+          vary: !cel "steps.cookieRead.result.headers['vary']"
         computedRead:
           vary: !cel "steps.computedRead.result.headers['vary']"
         notAList: { status: !cel "steps.notAList.result.status", code: !cel "steps.notAList.result.body.code" }
@@ -190,6 +204,7 @@ steps:
           vary: Accept-Language
         problemFallback: { detail: "Order 42 does not exist.", language: en }
         headerRead: { body: { lang: pl }, vary: "Accept-Language, X-Lang" }
+        cookieRead: { body: { lang: pl }, vary: "Accept-Language, Cookie" }
         computedRead: { vary: "*" }
         notAList: { status: 500, code: ERR_PREFERRED_LANGUAGES_INVALID }
         nonStringEntry: { status: 500, code: ERR_PREFERRED_LANGUAGES_INVALID }

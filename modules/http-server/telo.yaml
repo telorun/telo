@@ -193,7 +193,7 @@ schema:
       x-telo-eval: compile
       if:
         required: [clientCertificate]
-        properties: { clientCertificate: { const: required } }
+        properties: { clientCertificate: { enum: [optional, required] } }
       then: { required: [clientCa], properties: { clientCa: { minItems: 1 } } }
       else: { not: { required: [clientCa] } }
       properties:
@@ -217,15 +217,23 @@ schema:
           items: { $ref: "#/$defs/PemSource" }
           description: >-
             Authorities that sign accepted client certificates. Required with
-            `clientCertificate` other than `none`.
+            `clientCertificate` `optional` or `required`, refused with `none`.
         clientCertificate:
           title: Client certificate
           type: string
-          enum: [none, required]
+          enum: [none, optional, required]
           default: none
           description: >-
             Mutual TLS. `required` rejects a connection that presents no
-            certificate signed by `clientCa`; `none` does not ask.
+            certificate signed by `clientCa`; `optional` asks, completes the
+            handshake whatever is presented and records it in
+            `request.clientCertificate`; `none` does not ask.
+        minVersion:
+          title: Minimum TLS version
+          type: string
+          enum: [TLSv1.2, TLSv1.3]
+          default: TLSv1.2
+          description: The oldest protocol version the server negotiates.
     trustForwardedHeaders:
       title: Trust Forwarded Headers
       description: >-
@@ -248,13 +256,39 @@ schema:
         enable behind a trusted proxy — otherwise clients can spoof their IP.
       type: ["boolean", "integer"]
       x-telo-eval: compile
+    forwardedClientCertificate:
+      title: Forwarded Client Certificate
+      description: >-
+        Read the client certificate a TLS-terminating proxy forwards in a header
+        into `request.clientCertificate`, with `verified: false, via: proxy`.
+        Needs `trustProxy`. A header that cannot be read yields null; a
+        certificate this listener verified itself wins.
+      type: object
+      additionalProperties: false
+      required: [header, format]
+      x-telo-eval: compile
+      properties:
+        header:
+          title: Header
+          type: string
+          minLength: 1
+          description: The request header holding the certificate, e.g. `x-forwarded-client-cert`.
+        format:
+          title: Format
+          type: string
+          enum: [xfcc, pem, base64-der]
+          description: >-
+            `xfcc` — Envoy's `x-forwarded-client-cert`, its last element's `Cert`;
+            `pem` — URL-escaped PEM (nginx); `base64-der` — base64 DER, optionally
+            URL-escaped, the first of a comma-separated chain (Traefik).
     preferredLanguages:
       title: Preferred Languages
       description: >-
-        CEL over the request (`headers`, `query`, `path`, `host`, `method`, `ip`)
-        returning language tags in preference order — a cookie, a path prefix, a
-        query parameter. They are tried before `Accept-Language`; a malformed or
-        unserved tag is skipped. Evaluated per request; the headers it reads are
+        CEL over the request (`headers`, `cookies`, `query`, `path`, `host`,
+        `method`, `ip`, `tls`, `clientCertificate`) returning language tags in
+        preference order — a cookie, a path prefix, a query parameter. They are
+        tried before `Accept-Language`; a malformed or unserved tag is skipped.
+        Evaluated per request; the headers it reads, `Cookie` for a cookie, are
         added to the response's `Vary`.
       type: array
       items: { type: string }
@@ -270,6 +304,27 @@ schema:
               query: { type: object, additionalProperties: true }
               path: { type: string }
               host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+              cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+              tls:
+                description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                type: [object, "null"]
+                additionalProperties: false
+                properties: { protocol: { type: string } }
+              clientCertificate:
+                description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                type: [object, "null"]
+                additionalProperties: false
+                properties:
+                  subject: { type: object, additionalProperties: { type: string } }
+                  issuer: { type: object, additionalProperties: { type: string } }
+                  serialNumber: { type: string }
+                  fingerprint256: { type: string }
+                  validFrom: { x-telo-type: Telo.Timestamp }
+                  validTo: { x-telo-type: Telo.Timestamp }
+                  subjectAltNames: { type: array, items: { type: string } }
+                  pem: { type: string }
+                  verified: { type: boolean }
+                  via: { type: string, enum: [listener, proxy] }
               method: { type: string }
               ip: { type: string }
     maxBodyBytes:
@@ -445,6 +500,27 @@ schema:
                         query: { type: object, additionalProperties: true }
                         path: { type: string }
                         host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                        cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                        tls:
+                          description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                          type: [object, "null"]
+                          additionalProperties: false
+                          properties: { protocol: { type: string } }
+                        clientCertificate:
+                          description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                          type: [object, "null"]
+                          additionalProperties: false
+                          properties:
+                            subject: { type: object, additionalProperties: { type: string } }
+                            issuer: { type: object, additionalProperties: { type: string } }
+                            serialNumber: { type: string }
+                            fingerprint256: { type: string }
+                            validFrom: { x-telo-type: Telo.Timestamp }
+                            validTo: { x-telo-type: Telo.Timestamp }
+                            subjectAltNames: { type: array, items: { type: string } }
+                            pem: { type: string }
+                            verified: { type: boolean }
+                            via: { type: string, enum: [listener, proxy] }
                         lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                         method: { type: string }
                         ip: { type: string }
@@ -453,8 +529,8 @@ schema:
                 description: >-
                   Rendering rules for the guard's structured throws — a 401 or a
                   403. Tried before the server's `catches:`. Entries see `error`,
-                  `problem` and the request's `headers` / `query` / `path` / `method` /
-                  `ip`.
+                  `problem` and the request's `headers` / `cookies` / `query` / `path` /
+                  `method` / `ip`.
                 x-telo-outcome-list: catches
                 x-telo-catches-for: invoke
                 x-telo-schema-from: "HttpDispatch.Outcomes/$defs/Catches"
@@ -470,6 +546,27 @@ schema:
                         query: { type: object, additionalProperties: true }
                         path: { type: string }
                         host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                        cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                        tls:
+                          description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                          type: [object, "null"]
+                          additionalProperties: false
+                          properties: { protocol: { type: string } }
+                        clientCertificate:
+                          description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                          type: [object, "null"]
+                          additionalProperties: false
+                          properties:
+                            subject: { type: object, additionalProperties: { type: string } }
+                            issuer: { type: object, additionalProperties: { type: string } }
+                            serialNumber: { type: string }
+                            fingerprint256: { type: string }
+                            validFrom: { x-telo-type: Telo.Timestamp }
+                            validTo: { x-telo-type: Telo.Timestamp }
+                            subjectAltNames: { type: array, items: { type: string } }
+                            pem: { type: string }
+                            verified: { type: boolean }
+                            via: { type: string, enum: [listener, proxy] }
                         lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                         method: { type: string }
                         ip: { type: string }
@@ -529,7 +626,7 @@ schema:
         router's, then these. A throw no entry claims is answered 500 with its
         problem (`application/problem+json`).
 
-        Entries see `error`, `problem` and the request's `path` / `method` / `ip`. There is
+        Entries see `error`, `problem` and the request's `path` / `method` / `ip` / `cookies`. There is
         no route here to type `request.query` / `body` / `params` from — those
         belong to a route's own list.
       x-telo-outcome-list: catches
@@ -547,6 +644,27 @@ schema:
             properties:
               path: { type: string }
               host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+              cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+              tls:
+                description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                type: [object, "null"]
+                additionalProperties: false
+                properties: { protocol: { type: string } }
+              clientCertificate:
+                description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                type: [object, "null"]
+                additionalProperties: false
+                properties:
+                  subject: { type: object, additionalProperties: { type: string } }
+                  issuer: { type: object, additionalProperties: { type: string } }
+                  serialNumber: { type: string }
+                  fingerprint256: { type: string }
+                  validFrom: { x-telo-type: Telo.Timestamp }
+                  validTo: { x-telo-type: Telo.Timestamp }
+                  subjectAltNames: { type: array, items: { type: string } }
+                  pem: { type: string }
+                  verified: { type: boolean }
+                  via: { type: string, enum: [listener, proxy] }
               lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
               method: { type: string }
               ip: { type: string }
@@ -723,6 +841,27 @@ schema:
                   params: { type: object, additionalProperties: true }
                   path: { type: string }
                   host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                  tls:
+                    description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                    type: [object, "null"]
+                    additionalProperties: false
+                    properties: { protocol: { type: string } }
+                  clientCertificate:
+                    description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                    type: [object, "null"]
+                    additionalProperties: false
+                    properties:
+                      subject: { type: object, additionalProperties: { type: string } }
+                      issuer: { type: object, additionalProperties: { type: string } }
+                      serialNumber: { type: string }
+                      fingerprint256: { type: string }
+                      validFrom: { x-telo-type: Telo.Timestamp }
+                      validTo: { x-telo-type: Telo.Timestamp }
+                      subjectAltNames: { type: array, items: { type: string } }
+                      pem: { type: string }
+                      verified: { type: boolean }
+                      via: { type: string, enum: [listener, proxy] }
                   lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                   method: { type: string }
                   ip: { type: string }
@@ -741,6 +880,27 @@ schema:
                   method: { type: string }
                   path: { type: string }
                   host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                  tls:
+                    description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                    type: [object, "null"]
+                    additionalProperties: false
+                    properties: { protocol: { type: string } }
+                  clientCertificate:
+                    description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                    type: [object, "null"]
+                    additionalProperties: false
+                    properties:
+                      subject: { type: object, additionalProperties: { type: string } }
+                      issuer: { type: object, additionalProperties: { type: string } }
+                      serialNumber: { type: string }
+                      fingerprint256: { type: string }
+                      validFrom: { x-telo-type: Telo.Timestamp }
+                      validTo: { x-telo-type: Telo.Timestamp }
+                      subjectAltNames: { type: array, items: { type: string } }
+                      pem: { type: string }
+                      verified: { type: boolean }
+                      via: { type: string, enum: [listener, proxy] }
                   lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                   params: { type: object, additionalProperties: true }
                   query: { type: object, additionalProperties: true }
@@ -765,6 +925,27 @@ schema:
                 properties:
                   path: { type: string }
                   host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                  cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                  tls:
+                    description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                    type: [object, "null"]
+                    additionalProperties: false
+                    properties: { protocol: { type: string } }
+                  clientCertificate:
+                    description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                    type: [object, "null"]
+                    additionalProperties: false
+                    properties:
+                      subject: { type: object, additionalProperties: { type: string } }
+                      issuer: { type: object, additionalProperties: { type: string } }
+                      serialNumber: { type: string }
+                      fingerprint256: { type: string }
+                      validFrom: { x-telo-type: Telo.Timestamp }
+                      validTo: { x-telo-type: Telo.Timestamp }
+                      subjectAltNames: { type: array, items: { type: string } }
+                      pem: { type: string }
+                      verified: { type: boolean }
+                      via: { type: string, enum: [listener, proxy] }
                   lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                   method: { type: string }
                   ip: { type: string }
@@ -824,6 +1005,15 @@ schema:
       message: >-
         writes the socket it binds at the top level, which moved under `listen:` — `port` is now
         `listen.port` and `host` is now `listen.address`: write `listen: { port: … }`.
+    - condition: !cel >-
+        !has(self.forwardedClientCertificate) || (has(self.trustProxy)
+        ? self.trustProxy == true || (self.trustProxy != false && self.trustProxy > 0)
+        : has(self.trustForwardedHeaders) && self.trustForwardedHeaders)
+      code: HTTP_FORWARDED_CERTIFICATE_UNTRUSTED
+      message: >-
+        reads a forwarded client certificate but trusts no proxy, so any client could send
+        that header. Set `trustProxy` to the proxy in front of this server, or drop
+        `forwardedClientCertificate`.
     - condition: !cel "!has(self.unknownHosts) || self.unknownHosts != 'reject' || self.mounts.exists(m, has(m.hostnames))"
       code: HTTP_UNKNOWN_HOSTS_NO_HOSTNAMES
       message: >-
@@ -868,7 +1058,7 @@ schema:
         deliberate full override — it makes these entries unreachable for that
         route alone.
 
-        Entries see `error`, `problem` and the request's `path` / `method` / `ip`. There is
+        Entries see `error`, `problem` and the request's `path` / `method` / `ip` / `cookies`. There is
         no single route here to type `request.query` / `body` / `params` from —
         those belong to a route's own list.
       x-telo-outcome-list: catches
@@ -886,6 +1076,27 @@ schema:
             properties:
               path: { type: string }
               host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+              cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+              tls:
+                description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                type: [object, "null"]
+                additionalProperties: false
+                properties: { protocol: { type: string } }
+              clientCertificate:
+                description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                type: [object, "null"]
+                additionalProperties: false
+                properties:
+                  subject: { type: object, additionalProperties: { type: string } }
+                  issuer: { type: object, additionalProperties: { type: string } }
+                  serialNumber: { type: string }
+                  fingerprint256: { type: string }
+                  validFrom: { x-telo-type: Telo.Timestamp }
+                  validTo: { x-telo-type: Telo.Timestamp }
+                  subjectAltNames: { type: array, items: { type: string } }
+                  pem: { type: string }
+                  verified: { type: boolean }
+                  via: { type: string, enum: [listener, proxy] }
               lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
               method: { type: string }
               ip: { type: string }
@@ -942,8 +1153,8 @@ schema:
             title: Request
             description: >-
               Route matcher — `method` and `path` (required). Declare a nested
-              `schema:` block ({ params, query, body, headers }, each a JSON
-              Schema) to document and validate the request: it types the CEL
+              `schema:` block ({ params, query, body, headers, cookies }, each a
+              JSON Schema) to document and validate the request: it types the CEL
               `request.*` context AND is rendered into the generated OpenAPI
               document. Fill the schemas with `type`, `description`, and
               `examples` so the OpenAPI spec is complete.
@@ -981,6 +1192,27 @@ schema:
                     params: { type: object, additionalProperties: true }
                     path: { type: string }
                     host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                    cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                    tls:
+                      description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                      type: [object, "null"]
+                      additionalProperties: false
+                      properties: { protocol: { type: string } }
+                    clientCertificate:
+                      description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                      type: [object, "null"]
+                      additionalProperties: false
+                      properties:
+                        subject: { type: object, additionalProperties: { type: string } }
+                        issuer: { type: object, additionalProperties: { type: string } }
+                        serialNumber: { type: string }
+                        fingerprint256: { type: string }
+                        validFrom: { x-telo-type: Telo.Timestamp }
+                        validTo: { x-telo-type: Telo.Timestamp }
+                        subjectAltNames: { type: array, items: { type: string } }
+                        pem: { type: string }
+                        verified: { type: boolean }
+                        via: { type: string, enum: [listener, proxy] }
                     lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
@@ -1019,6 +1251,27 @@ schema:
                   properties:
                     path: { type: string }
                     host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                    cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                    tls:
+                      description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                      type: [object, "null"]
+                      additionalProperties: false
+                      properties: { protocol: { type: string } }
+                    clientCertificate:
+                      description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                      type: [object, "null"]
+                      additionalProperties: false
+                      properties:
+                        subject: { type: object, additionalProperties: { type: string } }
+                        issuer: { type: object, additionalProperties: { type: string } }
+                        serialNumber: { type: string }
+                        fingerprint256: { type: string }
+                        validFrom: { x-telo-type: Telo.Timestamp }
+                        validTo: { x-telo-type: Telo.Timestamp }
+                        subjectAltNames: { type: array, items: { type: string } }
+                        pem: { type: string }
+                        verified: { type: boolean }
+                        via: { type: string, enum: [listener, proxy] }
                     lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }
@@ -1043,6 +1296,27 @@ schema:
                   properties:
                     path: { type: string }
                     host: { type: string, description: "The request's host, lowercased and without its port — from X-Forwarded-Host only behind a trusted proxy." }
+                    cookies: { type: object, additionalProperties: { type: string }, description: "The request's cookies by name, the first of a repeated name, each value as sent." }
+                    tls:
+                      description: "The TLS session of the socket the request arrived on: `{ protocol }`, null on a plain socket."
+                      type: [object, "null"]
+                      additionalProperties: false
+                      properties: { protocol: { type: string } }
+                    clientCertificate:
+                      description: "The client certificate the listener received or a trusted proxy forwarded; null when there is none."
+                      type: [object, "null"]
+                      additionalProperties: false
+                      properties:
+                        subject: { type: object, additionalProperties: { type: string } }
+                        issuer: { type: object, additionalProperties: { type: string } }
+                        serialNumber: { type: string }
+                        fingerprint256: { type: string }
+                        validFrom: { x-telo-type: Telo.Timestamp }
+                        validTo: { x-telo-type: Telo.Timestamp }
+                        subjectAltNames: { type: array, items: { type: string } }
+                        pem: { type: string }
+                        verified: { type: boolean }
+                        via: { type: string, enum: [listener, proxy] }
                     lang: { type: string, description: "The language negotiated for the request: a served language tag, always present." }
                     method: { type: string }
                     ip: { type: string }

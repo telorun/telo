@@ -1,11 +1,12 @@
 # http-dispatch
 
-The canonical HTTP response value-shapes, and the dispatcher that renders them.
+The canonical HTTP response value-shapes, the dispatcher that renders them, and
+the cookie declarations a response sets.
 
-This module declares no resource kinds you instantiate. It is a **schema carrier**
-plus a small runtime library, shared by every HTTP-shaped transport so that the
-entry shape, the MIME negotiation rules and the buffer/stream split live in one
-place rather than once per transport.
+It is a **schema carrier** plus a small runtime library, shared by every
+HTTP-shaped transport so that the entry shape, the MIME negotiation rules, the
+buffer/stream split and the cookie rules live in one place rather than once per
+transport. Its only instantiable kinds are the cookie declarations.
 
 ## What it publishes
 
@@ -14,13 +15,53 @@ place rather than once per transport.
   `x-telo-schema-from`, so `Http.Api`'s routes, `Http.Server`'s `notFoundHandler`
   and both scope-level catch lists all validate against the same entries.
 - **`HttpDispatch.Request`** — `$defs/Matcher`, the canonical request matcher
-  (`method` + `path`, with an optional `schema` block), and `$defs/Hostname`,
+  (`method` + `path`, with an optional `schema` block of `params`, `query`,
+  `body`, `headers` and `cookies`), and `$defs/Hostname`,
   one entry of a host matcher: a `!ref` to a `Telo.PublicUrl` or
   `Telo.PublicHostPattern` need, never a domain name. `Http.Server`'s
   `mounts[].hostnames` anchors at it, so every HTTP transport reads the same
   matcher with the same meaning.
 
 Both are `capability: Telo.Type`: they are never instantiated.
+
+- **`HttpDispatch.Cookie`** — the abstract every cookie declaration extends, and
+  the kind an entry's `cookies[].cookie` slot takes. Its kinds `HostCookie`
+  (`__Host-<name>`), `SecureCookie` (`__Secure-<name>`) and `UnprefixedCookie`
+  are providers whose attributes are fixed at creation and refused as
+  `SCHEMA_VIOLATION` where a browser would reject or weaken them. What each
+  renders, and the rules, are in [cookie declarations](docs/cookie-declarations.md);
+  how a server sets and reads them is in
+  [`modules/http-server/docs/cookies.md`](../http-server/docs/cookies.md).
+
+## Cookies
+
+`Outcomes`' return and catch entries carry `cookies:`, a list of
+`{ cookie, value?, maxAge?, expires? }`. `dispatchReturns` / `dispatchCatches`
+read each declaration through the attribute record it publishes
+(`CookieAttributes`: `name` as sent, prefix included, `secure`, `httpOnly`,
+`sameSite`, `partitioned`, `domain` — null when host-only — and `path`), expand the
+three per-response fields, and write the entry's lines as ONE
+`setHeader("Set-Cookie", lines)` call. They never ask which kind declared a cookie,
+so another implementation of `Cookie` needs only to publish the record as its
+reading.
+
+- `setCookieLine(attributes, { value, maxAge, expires })` — one `Set-Cookie` line.
+  A max age of zero or less clears the cookie (`Max-Age=0`, a past `Expires`
+  unless one is given, an empty value unless one is given). A value that is not
+  RFC 6265 cookie-octets, or a max age or expiry of the wrong type, throws the
+  `InvokeError` `ERR_COOKIE_VALUE_INVALID` (exported), naming the cookie.
+- `parseCookieHeader(header)` — a `Cookie` request header as a map of name to
+  value: the first occurrence of a name kept, values as written, no decoding. A
+  transport binds it as `request.cookies` in every request context.
+
+## The response sink
+
+A transport writes a response through a `ResponseSink`: `setStatus`, `setHeader`,
+then one `send(body?)` or `stream(iter, onError?)`. `setHeader(name, value)` is
+last-write-wins; `value` is a string, or a list that is the header's complete set
+of lines, written one line per member in order and never comma-joined — an empty
+list removes the header. `runSinkContract(name, makeSink)` from
+`@telorun/http-dispatch/test-utils` holds an implementation to all of it.
 
 ## Hostname matching
 
@@ -44,6 +85,26 @@ so two transports cannot route one host differently:
 What a transport does with a match — mounts, precedence classes,
 `unknownHosts` — is in
 [`modules/http-server/docs/host-routing.md`](../http-server/docs/host-routing.md).
+
+## The request scope
+
+A transport hands every mount a `RequestScope` as the third argument of
+`register(app, prefix, requestScope)`; `forRequest(request)` returns the
+request's `RequestTrace`:
+
+- `context` — the request span's context, carrying its cancellation.
+- `lang` — the negotiated language; reading it makes the response vary by it.
+- `tls` — `{ protocol }` (a `RequestTls`) for a request on a TLS socket, `null`
+  on a plain one. It describes the socket only.
+- `clientCertificate` — the `ClientCertificate` the listener received or a
+  trusted proxy forwarded, `null` when there is none: `subject` / `issuer`
+  (attribute to value), `serialNumber`, `fingerprint256`, `validFrom` /
+  `validTo` (CEL timestamps), `subjectAltNames`, `pem`, `verified` (true only
+  when the listener validated the chain) and `via` (`listener` | `proxy`).
+- `reject(error)` — report the error that decided the response.
+
+A mount binds `tls` and `clientCertificate` into its `request` CEL contexts
+from here, so the transport alone decides where they come from.
 
 ## The rendering contract
 

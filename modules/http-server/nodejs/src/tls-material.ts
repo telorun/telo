@@ -9,16 +9,20 @@ export interface ServerTlsSettings {
   key: PemSource;
   passphrase?: string;
   clientCa?: PemSource[];
-  clientCertificate?: "none" | "required";
+  clientCertificate?: "none" | "optional" | "required";
+  minVersion?: "TLSv1.2" | "TLSv1.3";
 }
 
 export interface HttpsOptions {
   cert: string;
   key: string;
   passphrase?: string;
+  minVersion: "TLSv1.2" | "TLSv1.3";
   ca?: string[];
   requestCert?: boolean;
   rejectUnauthorized?: boolean;
+  /** Judged by the listener once the handshake completes, never by the TLS layer. */
+  requireVerifiedClient?: boolean;
 }
 
 export const ERR_HTTP_TLS_INVALID = "ERR_HTTP_TLS_INVALID";
@@ -72,7 +76,7 @@ export function resolveHttpsOptions(tls: ServerTlsSettings): HttpsOptions {
   if (!new X509Certificate(certs[0]).checkPrivateKey(privateKey)) {
     throw new TlsMaterialError("Http.Server tls: 'key' does not match 'cert'.");
   }
-  const options: HttpsOptions = { cert: certPem, key: keyPem };
+  const options: HttpsOptions = { cert: certPem, key: keyPem, minVersion: tls.minVersion ?? "TLSv1.2" };
   if (tls.passphrase !== undefined) options.passphrase = tls.passphrase;
 
   const mode = tls.clientCertificate ?? "none";
@@ -86,9 +90,14 @@ export function resolveHttpsOptions(tls: ServerTlsSettings): HttpsOptions {
       certificatesOf(read(source, `clientCa[${i}]`), `clientCa[${i}]`),
     );
     options.requestCert = true;
-    options.rejectUnauthorized = true;
+    // Every handshake completes; the listener refuses an unverified client under
+    // `required`, so the refusal is reported with its peer and reason on every host.
+    options.rejectUnauthorized = false;
+    options.requireVerifiedClient = mode === "required";
   } else if (tls.clientCa && tls.clientCa.length > 0) {
-    throw new TlsMaterialError("Http.Server tls: 'clientCa' is set but 'clientCertificate' is 'none'.");
+    throw new TlsMaterialError(
+      "Http.Server tls: 'clientCa' is set but 'clientCertificate' is 'none'; set it to 'optional' or 'required'.",
+    );
   }
   return options;
 }

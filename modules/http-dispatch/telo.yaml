@@ -7,14 +7,17 @@ metadata:
   categories: [Transport]
   description: >-
     The shared value shapes every HTTP transport anchors against: the canonical
-    request matcher — method, path, query, body, headers — the hostname an entry is
-    selected by, and the rules that render a handler's result or error into a status,
-    headers and body. Schema only; nothing here is instantiated.
+    request matcher — method, path, query, cookies, body, headers — the hostname an
+    entry is selected by, the rules that render a handler's result or error into a
+    status, headers, cookies and body, and cookie declarations whose prefix, scope
+    and Secure, HttpOnly and SameSite attributes are checked before the app runs.
 imports:
   # The response-encoder contract the Outcomes carrier's `content[mime].encoder`
   # slot pins. Naming it by alias is what makes the coupling a declared edge.
   Codec: ../codec
-exports: { kinds: [Outcomes, Request] }
+exports:
+  kinds: [Cookie, HostCookie, Outcomes, Request, SecureCookie, UnprefixedCookie]
+  resources: [CookieAttributeValue]
 ---
 # Pure schema carrier. Never instantiated as a resource. Publishes
 # $defs/Matcher — the canonical HTTP request matcher value-shape — as a single
@@ -22,11 +25,11 @@ exports: { kinds: [Outcomes, Request] }
 # anchors against via x-telo-schema-from. Consumers keep their own
 # x-telo-topology-role / x-telo-context-from annotations on the field they
 # declare; the carrier owns only the structural value-shape (method, path,
-# query, body, headers).
+# query, body, headers, cookies).
 kind: Telo.Definition
 metadata:
   name: Request
-  description: Schema-only carrier publishing the canonical HTTP request matcher shapes — method, path, query, body and headers, and the hostname an entry is selected by.
+  description: Schema-only carrier publishing the canonical HTTP request matcher shapes — method, path, query, body, headers and cookies, and the hostname an entry is selected by.
 capability: Telo.Type
 schema:
   type: object
@@ -69,7 +72,7 @@ schema:
             (2) the server registers these as the route's request validation
             schema and renders them into the generated OpenAPI document
             (`query` → query parameters, `params` → path parameters, `body` →
-            request body, `headers` → header params).
+            request body, `headers` → header params, `cookies` → cookie params).
             For a good OpenAPI spec, write full property schemas with `type`,
             `description`, and `examples` on each field, not bare `{}`.
             Distinct from the top-level `query`/`body`/`headers` fields above,
@@ -81,6 +84,7 @@ schema:
             query:   { type: object }
             body:    { type: object }
             headers: { type: object }
+            cookies: { type: object }
       required: ["path", "method"]
     Hostname:
       title: Hostname
@@ -96,7 +100,8 @@ schema:
 # every HTTP-shaped transport (http-server, lambda, ...) anchors against via
 # x-telo-schema-from. Consumers keep their own x-telo-outcome-list /
 # x-telo-catches-for / x-telo-context annotations on the field they declare;
-# the carrier owns only the value-shape (status, when, mode, headers, content).
+# the carrier owns only the value-shape (status, when, mode, headers, cookies,
+# content).
 kind: Telo.Definition
 metadata:
   name: Outcomes
@@ -136,9 +141,45 @@ schema:
             enum: ["buffer", "stream"]
           headers:
             title: Headers
-            description: Entry-level response headers; merged with per-MIME content[mime].headers (per-MIME wins). Content-Type is forbidden — the matched content map key is the only Content-Type source.
+            description: >-
+              Entry-level response headers; merged with per-MIME content[mime].headers
+              (per-MIME wins). Content-Type and Set-Cookie are refused — the matched
+              content key is the only Content-Type source, and `cookies` the only
+              Set-Cookie one.
             type: object
+            propertyNames: { not: { pattern: "^([Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Tt][Yy][Pp][Ee]|[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee])$" } }
             additionalProperties: { type: string }
+          cookies:
+            title: Cookies
+            description: >-
+              Cookies this response sets or clears, each written as its own
+              `Set-Cookie` header, in the order listed. A `maxAge` of zero or less
+              clears the cookie.
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [cookie]
+              properties:
+                cookie:
+                  title: Cookie
+                  description: The cookie declaration — its name, scope and attributes.
+                  x-telo-ref: { kind: Self.Cookie, use: dependency }
+                value:
+                  title: Value
+                  description: >-
+                    The cookie's value, RFC 6265 cookie-octets, optionally in double
+                    quotes. Omitted, the value is empty.
+                  type: string
+                  pattern: '^(?:[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*|"[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*")$'
+                maxAge:
+                  title: Max age
+                  description: How long the cookie lives, sent as whole seconds; zero or less clears it.
+                  x-telo-type: Telo.Duration
+                expires:
+                  title: Expires
+                  description: When the cookie expires.
+                  x-telo-type: Telo.Timestamp
           content:
             title: Content
             description: Per-MIME response shape. Map key is the canonical Content-Type. Required when status carries a body; omit for 204/304-style empty responses.
@@ -176,8 +217,9 @@ schema:
                     use: call
                 headers:
                   title: Headers
-                  description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                  description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type and Set-Cookie are refused.
                   type: object
+                  propertyNames: { not: { pattern: "^([Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Tt][Yy][Pp][Ee]|[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee])$" } }
                   additionalProperties: { type: string }
         required: ["status"]
         oneOf:
@@ -222,9 +264,44 @@ schema:
             type: boolean
           headers:
             title: Headers
-            description: Entry-level response headers. Content-Type is forbidden — the matched content map key is the only Content-Type source.
+            description: >-
+              Entry-level response headers. Content-Type and Set-Cookie are refused —
+              the matched content key is the only Content-Type source, and `cookies`
+              the only Set-Cookie one.
             type: object
+            propertyNames: { not: { pattern: "^([Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Tt][Yy][Pp][Ee]|[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee])$" } }
             additionalProperties: { type: string }
+          cookies:
+            title: Cookies
+            description: >-
+              Cookies this response sets or clears, each written as its own
+              `Set-Cookie` header, in the order listed. A `maxAge` of zero or less
+              clears the cookie.
+            type: array
+            items:
+              type: object
+              additionalProperties: false
+              required: [cookie]
+              properties:
+                cookie:
+                  title: Cookie
+                  description: The cookie declaration — its name, scope and attributes.
+                  x-telo-ref: { kind: Self.Cookie, use: dependency }
+                value:
+                  title: Value
+                  description: >-
+                    The cookie's value, RFC 6265 cookie-octets, optionally in double
+                    quotes. Omitted, the value is empty.
+                  type: string
+                  pattern: '^(?:[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*|"[\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]*")$'
+                maxAge:
+                  title: Max age
+                  description: How long the cookie lives, sent as whole seconds; zero or less clears it.
+                  x-telo-type: Telo.Duration
+                expires:
+                  title: Expires
+                  description: When the cookie expires.
+                  x-telo-type: Telo.Timestamp
           content:
             title: Content
             description: >-
@@ -255,8 +332,9 @@ schema:
                     type: object
                   headers:
                     title: Headers
-                    description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                    description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type and Set-Cookie are refused.
                     type: object
+                    propertyNames: { not: { pattern: "^([Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Tt][Yy][Pp][Ee]|[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee])$" } }
                     additionalProperties: { type: string }
             additionalProperties:
               type: object
@@ -272,7 +350,139 @@ schema:
                   type: object
                 headers:
                   title: Headers
-                  description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type is forbidden.
+                  description: Per-MIME header overrides (merge over entry-level headers; per-MIME wins). Content-Type and Set-Cookie are refused.
                   type: object
+                  propertyNames: { not: { pattern: "^([Cc][Oo][Nn][Tt][Ee][Nn][Tt]-[Tt][Yy][Pp][Ee]|[Ss][Ee][Tt]-[Cc][Oo][Oo][Kk][Ii][Ee])$" } }
                   additionalProperties: { type: string }
         required: ["status"]
+---
+# One cookie a response sets: the attributes are the declaration's, so a cookie
+# set by one route and cleared by another is sent with the same scope and the
+# browser actually drops it. Only value and lifetime vary per response.
+#
+# Each kind's controller publishes the whole normalized attribute record, so a
+# transport writes `Set-Cookie` from the record alone and never asks which kind
+# declared it.
+kind: Telo.Abstract
+metadata:
+  name: Cookie
+  description: >-
+    An HTTP cookie a response sets or clears, declared once with its name and the
+    protections browsers enforce — HttpOnly, SameSite, Partitioned — so every
+    response writing it sends the same attributes and scope. Secure by default:
+    HttpOnly and SameSite=Lax unless the declaration relaxes them.
+capability: Telo.Provider
+schema:
+  type: object
+  additionalProperties: false
+  required: [name]
+  properties:
+    name:
+      title: Name
+      description: >-
+        The cookie's name, an RFC 6265 token. A `__Host-` or `__Secure-` prefix is
+        never written here: the kind that renders it adds it.
+      type: string
+      pattern: "^[!#$%&'*+.^_`|~0-9A-Za-z-]+$"
+      not: { pattern: "^__([Hh][Oo][Ss][Tt]|[Ss][Ee][Cc][Uu][Rr][Ee])-" }
+    httpOnly:
+      title: HttpOnly
+      description: Hide the cookie from page scripts. Set false only for a cookie a script must read.
+      type: boolean
+      default: true
+    sameSite:
+      title: SameSite
+      description: >-
+        Which cross-site requests carry the cookie: `Strict` none, `Lax` top-level
+        navigations, `None` all of them, which needs a secure cookie.
+      type: string
+      enum: [Strict, Lax, None]
+      default: Lax
+    partitioned:
+      title: Partitioned
+      description: Keep the cookie per top-level site (CHIPS); needs a secure cookie.
+      type: boolean
+      default: false
+---
+kind: Telo.Definition
+metadata:
+  name: HostCookie
+  description: >-
+    A host-only cookie, the strongest scope a browser offers: sent as `__Host-<name>`
+    over HTTPS only, on every path of exactly the host that set it, never shared
+    with subdomains. The right choice for a session cookie.
+capability: Telo.Provider
+extends: Self.Cookie
+controllers: [pkg:telo/local/js?path=./nodejs/http-dispatch.mjs&local_path=./nodejs/src/index.ts#HostCookieController]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata:
+  name: SecureCookie
+  description: >-
+    A cookie sent only over HTTPS, as `__Secure-<name>`, which a browser refuses
+    to accept from an insecure origin. It may name a domain to share the cookie
+    with subdomains and a path to narrow where it is sent.
+capability: Telo.Provider
+extends: Self.Cookie
+controllers: [pkg:telo/local/js?path=./nodejs/http-dispatch.mjs&local_path=./nodejs/src/index.ts#SecureCookieController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    domain:
+      title: Domain
+      description: The domain the cookie is shared with, its subdomains included. Omitted, only the host that set it.
+      $ref: "telo://Self/CookieAttributeValue"
+    path:
+      title: Path
+      description: The path prefix the cookie is sent on.
+      $ref: "telo://Self/CookieAttributeValue"
+      pattern: "^/"
+      default: /
+---
+kind: Telo.Definition
+metadata:
+  name: UnprefixedCookie
+  description: >-
+    A cookie with no name prefix, for a name an existing client or protocol
+    dictates. Secure by default; SameSite=None and Partitioned both need it secure.
+    It may name a domain and a path.
+capability: Telo.Provider
+extends: Self.Cookie
+controllers: [pkg:telo/local/js?path=./nodejs/http-dispatch.mjs&local_path=./nodejs/src/index.ts#UnprefixedCookieController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    domain:
+      title: Domain
+      description: The domain the cookie is shared with, its subdomains included. Omitted, only the host that set it.
+      $ref: "telo://Self/CookieAttributeValue"
+    path:
+      title: Path
+      description: The path prefix the cookie is sent on.
+      $ref: "telo://Self/CookieAttributeValue"
+      pattern: "^/"
+      default: /
+    secure:
+      title: Secure
+      description: >-
+        Send the cookie over HTTPS only. Required by `sameSite: None` and
+        `partitioned: true`.
+      type: boolean
+      default: true
+  allOf:
+    - if: { required: [sameSite], properties: { sameSite: { const: None } } }
+      then: { properties: { secure: { const: true } } }
+    - if: { required: [partitioned], properties: { partitioned: { const: true } } }
+      then: { properties: { secure: { const: true } } }
+---
+# A cookie attribute's value as RFC 6265 allows it: printable ASCII without `;`.
+kind: Telo.JsonSchema
+metadata: { name: CookieAttributeValue }
+schema:
+  type: string
+  description: A cookie attribute value — printable ASCII, no `;`.
+  minLength: 1
+  pattern: '^[\x20-\x3A\x3C-\x7E]+$'

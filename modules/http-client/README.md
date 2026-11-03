@@ -36,13 +36,14 @@ tls:
 | `Http.Client` | Long-lived client carrying base URL, default headers, timeout, redirect policy, and an optional credential. |
 | `Http.Credential` | Abstract: given the request about to be sent, return the headers or query parameters to merge into it. |
 | `Http.BearerToken` | A fixed token in the `Authorization` header — the scheme most APIs accept. |
+| `Http.BasicAuth` | A username and password as `Authorization: Basic …` (RFC 7617, UTF-8); an empty or `:`-bearing username is refused before the app runs (`SCHEMA_VIOLATION`), and a computed one when the credential is created. |
 | `Http.ApiKeyHeader` | A fixed key in a header the service names (`x-api-key` and its equivalents). |
 | `Http.QueryKey` | A fixed key in a query parameter, for services that offer only that. |
 | `Http.Request` | Per-call HTTP request invocable; references an `Http.Client` for shared defaults. |
 
 ## Authenticating requests
 
-`Http.Credential` is a contract. Three static implementations ship here for the
+`Http.Credential` is a contract. Four static implementations ship here for the
 cases where the material is a value you already hold; `OAuthClient.Credential`
 covers OAuth 2.0, and a scheme that signs the request (HMAC, SigV4) implements
 the same contract. Attach one to a client and the calls through it need no
@@ -57,6 +58,11 @@ kind: Http.ApiKeyHeader
 metadata: { name: anthropicKey }
 header: x-api-key
 key: !cel "secrets.anthropicKey"
+---
+kind: Http.BasicAuth
+metadata: { name: serviceLogin }
+username: !cel "secrets.serviceUser"
+password: !cel "secrets.servicePassword"
 ---
 kind: Http.QueryKey
 metadata: { name: studioKey }

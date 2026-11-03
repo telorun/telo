@@ -3,9 +3,10 @@ metadata:
   name: HttpServerTlsTest
   version: 1.0.0
   description: >-
-    Http.Server serves HTTPS, and with clientCertificate: required admits only
-    clients presenting a certificate signed by clientCa. Certificates are test
-    fixtures in __fixtures__/tls.
+    Http.Server serves HTTPS, with clientCertificate: required admits only
+    clients presenting a certificate signed by clientCa, and reports the
+    request's TLS session as request.tls — null on a plain socket. Certificates
+    are test fixtures in __fixtures__/tls.
 imports:
   Http: ../
   Client: ../../http-client
@@ -42,6 +43,16 @@ tls:
   cert: { file: !module-path ./__fixtures__/tls/rogue-client.pem }
   key: { file: !module-path ./__fixtures__/tls/rogue-client.key }
 ---
+kind: Client.Client
+metadata: { name: tls13 }
+baseUrl: https://localhost:8948
+tls:
+  ca: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
+---
+kind: Client.Client
+metadata: { name: plainHttp }
+baseUrl: http://localhost:8949
+---
 kind: Http.Api
 metadata: { name: api }
 routes:
@@ -50,6 +61,13 @@ routes:
     inputs: {}
     returns:
       - { status: 200, content: { application/json: { body: { ok: true } } } }
+  - request: { path: /session, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body:
+              tls: !cel "request.tls"
 ---
 kind: Run.Value
 metadata: { name: pong }
@@ -76,9 +94,23 @@ with:
       clientCa: [{ file: !module-path ./__fixtures__/tls/ca.pem }]
       clientCertificate: required
     mounts: [{ path: /, mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: modernServer }
+    listen: { address: 127.0.0.1, port: 8948 }
+    tls:
+      cert: { file: !module-path ./__fixtures__/tls/server.pem }
+      key: { file: !module-path ./__fixtures__/tls/server.key }
+      minVersion: TLSv1.3
+    mounts: [{ path: /, mount: !ref api }]
+  - kind: Http.Server
+    metadata: { name: plainServer }
+    listen: { address: 127.0.0.1, port: 8949 }
+    mounts: [{ path: /, mount: !ref api }]
 targets:
   - !ref tlsServer
   - !ref mutualServer
+  - !ref modernServer
+  - !ref plainServer
 steps:
   - name: https
     invoke: { kind: Client.Request, client: !ref plain, url: /ping }
@@ -114,3 +146,17 @@ steps:
         inputs:
           actual: !cel "error.message"
           value: UND_ERR_SOCKET
+  - name: modern
+    invoke: { kind: Client.Request, client: !ref tls13, url: /session }
+  - name: assertModern
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.modern.result.body"
+      expected: { tls: { protocol: TLSv1.3 } }
+  - name: plain
+    invoke: { kind: Client.Request, client: !ref plainHttp, url: /session }
+  - name: assertPlain
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.plain.result.body"
+      expected: { tls: null }

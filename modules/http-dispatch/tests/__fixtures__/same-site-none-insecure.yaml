@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: SameSiteNoneInsecure, version: 1.0.0 }
+imports: { HttpDispatch: ../.. }
+---
+# A browser drops a SameSite=None cookie that is not Secure.
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: embed }
+name: embed
+sameSite: None
+secure: false

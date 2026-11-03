@@ -22,6 +22,7 @@ lang: en
 # them again once they ship.
 imports:
   Http: ../../../../../modules/http-server
+  HttpDispatch: ../../../../../modules/http-dispatch
   Run: ../../../../../modules/run
   DataModel: ../../../../../modules/data-model
   Ui: ../../../../../modules/ui

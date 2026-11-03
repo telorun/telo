@@ -4,7 +4,7 @@ import addFormats from "ajv-formats";
 import type { FastifyServerOptions } from "fastify";
 
 /** Where in a request a refused value arrived — its member of `request` in CEL. */
-export type RequestLocation = "query" | "params" | "body" | "headers";
+export type RequestLocation = "query" | "params" | "body" | "headers" | "cookies";
 
 /** A validator over the schemas the server shares; `coerceTypes` as Ajv reads it. */
 function validatorOver(sharedSchemas: Record<string, unknown>, coerceTypes: false | "array"): Ajv {
@@ -80,13 +80,33 @@ export function fastifyValidationIssues(error: unknown): ValueIssue[] | null {
   if (!refusal || typeof refusal !== "object" || refusal.code !== "FST_ERR_VALIDATION") return null;
   const location = VALIDATED_PARTS[refusal.validationContext as string];
   if (!location || !Array.isArray(refusal.validation) || refusal.validation.length === 0) return null;
-  return (refusal.validation as ValidatorFinding[]).map((finding) => {
+  return findingIssues(location, refusal.validation as ValidatorFinding[]);
+}
+
+function findingIssues(location: RequestLocation, findings: readonly ValidatorFinding[]): ValueIssue[] {
+  return findings.map((finding) => {
     const named = namedProperty(finding);
     const pointer =
       `/${location}${finding.instancePath ?? ""}` +
       (typeof named === "string" ? `/${jsonPointerSegment(named)}` : "");
     return valueIssue(pointer, finding.keyword, finding.params);
   });
+}
+
+const textValidation = validatorOver({}, "array");
+
+/**
+ * A validator for a part of a request the transport itself does not validate
+ * (the cookies), read as text the way a query is: it reads each value into the
+ * type its schema declares, in place, and answers the findings of a refused one
+ * as issues at `location`, or null when it holds.
+ */
+export function textPartValidator(
+  location: RequestLocation,
+  schema: AnySchema,
+): (value: unknown) => ValueIssue[] | null {
+  const validate = textValidation.compile(schema);
+  return (value) => (validate(value) ? null : findingIssues(location, validate.errors ?? []));
 }
 
 /**

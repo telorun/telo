@@ -1,0 +1,27 @@
+modules:
+  modules/http-server: Added
+body: "Http.Server serves client certificates fully: tls.clientCertificate takes
+  optional, which asks for a certificate and completes the handshake without a valid
+  one, and needs clientCa as required does; tls.minVersion (TLSv1.2, the default, or
+  TLSv1.3) sets the oldest protocol negotiated; every request context carries
+  request.tls ({ protocol }, null on a plain socket) and request.clientCertificate
+  (null, or subject, issuer, serialNumber, fingerprint256, validFrom, validTo,
+  subjectAltNames, pem, verified and via), read the same on Node and Bun; and
+  forwardedClientCertificate { header, format: xfcc | pem | base64-der } reads a
+  certificate a TLS-terminating proxy forwards, as verified: false, via: proxy, an
+  unreadable header yielding null and logging
+  http.server.forwarded_certificate.unreadable. Declaring forwardedClientCertificate on
+  a server that trusts no proxy is refused by telo check
+  (HTTP_FORWARDED_CERTIFICATE_UNTRUSTED) and at creation
+  (ERR_HTTP_FORWARDED_CERTIFICATE_UNTRUSTED). Every server now accepts connections on a
+  listener it owns and hands each to HTTP once its TLS handshake completes: a TLS
+  connection closed before it is served (a handshake error, the 120-second handshake
+  timeout, a peer hanging up, or a certificate refused under required) is logged as
+  http.server.tls_handshake.failed with the peer address and the reason; under required
+  the certificate is judged after the handshake, so a refused client sees its connection
+  closed rather than a TLS alert; stopping closes idle and handshaking connections at
+  once and each busy one after its response, running the app's close hooks while it
+  waits so a hook ending a long-lived response (an event stream) lets the stop finish;
+  and a hostname listen.address (localhost) is bound on every address it resolves to on
+  one port, an address the host has no interface for skipped and logged as
+  http.server.address_unavailable."

@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: CookieDeclarationsTest
+  version: 1.0.0
+  description: |
+    A cookie declaration the browser would reject or silently weaken is refused
+    before the app runs, by `telo check` and by the kernel alike: a host cookie
+    naming a domain, `sameSite: None` without `secure`, a name that is not an
+    RFC 6265 token or that spells a prefix the kind does not render, and an
+    attribute computed from the request. A computed attribute that breaks the
+    same constraints is refused when the declaration is created.
+imports: { Assert: ../../assert }
+targets:
+  - !ref hostCookieDomain
+  - !ref sameSiteNoneInsecure
+  - !ref nameNotToken
+  - !ref nameCarriesPrefix
+  - !ref attributeReadsRequest
+  - !ref computedDomainInvalid
+---
+kind: Assert.Manifest
+metadata: { name: hostCookieDomain }
+source: ./__fixtures__/host-cookie-domain.yaml
+expect:
+  errors: [{ code: SCHEMA_VIOLATION, message: "'domain' is not allowed" }]
+  runFails: "'domain' is not allowed"
+---
+kind: Assert.Manifest
+metadata: { name: sameSiteNoneInsecure }
+source: ./__fixtures__/same-site-none-insecure.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "/secure must be equal to constant" }
+    - { code: SCHEMA_VIOLATION, message: "must match \"then\" schema" }
+  runFails: "/secure must be equal to constant"
+---
+kind: Assert.Manifest
+metadata: { name: nameNotToken }
+source: ./__fixtures__/name-not-token.yaml
+expect:
+  errors: [{ code: SCHEMA_VIOLATION, message: "/name must match pattern" }]
+  runFails: "/name must match pattern"
+---
+kind: Assert.Manifest
+metadata: { name: nameCarriesPrefix }
+source: ./__fixtures__/name-carries-prefix.yaml
+expect:
+  errors: [{ code: SCHEMA_VIOLATION, message: "/name matches a shape that is not allowed here" }]
+  runFails: "/name matches a shape that is not allowed here"
+---
+kind: Assert.Manifest
+metadata: { name: attributeReadsRequest }
+source: ./__fixtures__/attribute-reads-request.yaml
+expect:
+  errors: [{ code: CEL_UNKNOWN_IDENTIFIER, message: "unknown identifier 'request'" }]
+  runFails: "unknown identifier 'request'"
+---
+kind: Assert.Manifest
+metadata: { name: computedDomainInvalid }
+source: ./__fixtures__/computed-domain-invalid.yaml
+expect: { runFails: "domain must match pattern" }

@@ -6,7 +6,7 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 
 - **Framework-neutral** — the underlying engine (Fastify, Actix, …) is an implementation detail; the same manifest runs on any compliant adapter.
 - **OpenAPI-style paths** — `/users/{id}` syntax everywhere; the adapter translates to its native router.
-- **Schema-driven validation** — `request.schema` (`body`, `query`, `params`, `headers`) yields a standard HTTP 400 whose findings point at the refused field.
+- **Schema-driven validation** — `request.schema` (`body`, `query`, `params`, `headers`, `cookies`) yields a standard HTTP 400 whose findings point at the refused field.
 - **Typed returns and catches** — render successful values and structured `InvokeError`s into status + headers + per-MIME bodies via CEL.
 - **Standard error responses** — every error the server builds itself is an RFC 9457 problem (`application/problem+json`) carrying the error's code, data and its display message as `detail`; the developer message never reaches the client.
 - **OpenAPI operation metadata** — a route may declare `operationId`, `summary`, `description`, and `tags`; they are rendered into the generated OpenAPI document.
@@ -15,7 +15,9 @@ Language- and framework-agnostic HTTP server for Telo. Declarative routes, schem
 - **Inbound guards** — a mount's `guard:` runs one invocable for every request to that mount's routes, before the body is read, so authentication or an origin check is declared once and a refusal renders through `catches:`.
 - **Browsable API docs** — `Http.Reference` renders the generated OpenAPI document as an interactive page under a prefix you choose, and a mount's `when:` leaves it out of a production deployment.
 - **Serve a frontend** — `Http.Static` serves a directory of assets (a built SPA, plain HTML) so one application delivers both its API and its UI.
+- **Cookies with checked attributes** — a cookie is declared once (`HttpDispatch.HostCookie`, `SecureCookie`, `UnprefixedCookie`) with secure defaults, an entry's `cookies:` sets or clears it, and every handler reads `request.cookies`; a cookie a browser would reject is refused before the app runs.
 - **CORS and content-type parsers** — first-class manifest fields; no controller code needed.
+- **HTTPS and mutual TLS** — `tls:` serves HTTPS with a `minVersion` floor and client certificates `required` or `optional`; handlers read `request.tls` and `request.clientCertificate` (subject, issuer, validity, whether this listener verified it), and `forwardedClientCertificate` reads one a TLS-terminating proxy forwards (Envoy XFCC, nginx PEM, Traefik base64 DER) behind `trustProxy`.
 - **Request language** — `request.lang` is negotiated per request from `preferredLanguages` (a cookie, a query parameter), then `Accept-Language`, against the application's `translations:`; a response that depends on it carries `Content-Language` and `Vary`, and a problem's `detail` is shown in it.
 - **Bounded request bodies** — no more than `maxBodyBytes` (1 MiB by default, replaceable per route) of a body, buffered, streamed or multipart, is ever buffered or handed to a handler; a larger one is answered 413 by the server itself, and a body nobody reads to its end is never handed on: its connection is closed rather than drained.
 
@@ -99,7 +101,8 @@ value:
 - [Mount guards](docs/mount-guard.md) — `mounts[].guard`: per-mount inbound checks, their CEL context, ordering against CORS and body parsing, and how a refusal renders.
 - [API reference docs](docs/api-reference.md) — `Http.Reference`, choosing its prefix, and leaving the docs out of production with `when:`.
 - [Serving static files & frontends](docs/static-files.md) — `Http.Static`, `!module-path` and host-path roots, SPA fallback, asset caching.
-- [Serving HTTPS](docs/tls.md) — `tls`: the server certificate and key, mutual TLS with `clientCa` / `clientCertificate`,.
+- [Serving HTTPS](docs/tls.md) — `tls`: the server certificate and key, `minVersion`, mutual TLS with `clientCa` / `clientCertificate` (`none`, `optional`, `required`), `request.tls`, `request.clientCertificate`, and `forwardedClientCertificate` behind a terminating proxy.
+- [Cookies](docs/cookies.md) — declaring a cookie, setting and clearing it from `returns:` / `catches:`, reading `request.cookies`, `request.schema.cookies`, and what is refused.
 - [Request language](docs/request-language.md) — `request.lang`, `preferredLanguages`, the order of preference, `Content-Language` / `Vary`, and problem details in the request language.
 - [Log events](docs/log-events.md) — the `event_name` and attributes every implementation of this kind emits, and how to turn request logging off.
 - [Tracing](docs/tracing.md) — the one span each request is, its name, attributes and outcome, what runs beneath it, and continuing a caller's `traceparent`.
@@ -138,6 +141,7 @@ When an incoming HTTP request is received, the underlying framework must normali
       "content-type": "application/json",
       "authorization": "Bearer token..."
     },
+    "cookies": { "__Host-session": "abc123" },
     "body": {
       "name": "Alice",
       "age": 30
@@ -148,6 +152,8 @@ When an incoming HTTP request is received, the underlying framework must normali
 
 - All `headers` keys MUST be normalized to lowercase.
 - `host` is the host the server routed the request by: `Host` (or `:authority` on HTTP/2), lowercased, without its port or a trailing dot — replaced by `X-Forwarded-Host` only when the server trusts the proxy in front (`trustProxy`, or `trustForwardedHeaders: true`). A handler reads its tenant there, never from the raw header.
+- `cookies` is the `Cookie` header read per RFC 6265 — a map of name to value, the first occurrence of a repeated name kept, each value as sent with no decoding. A route's `request.schema.cookies` validates it as text, like a query, and documents each cookie as an `in: cookie` parameter. See [cookies](docs/cookies.md#reading-cookies).
+- `tls` is `{ protocol }` when the request arrived on a TLS socket and `null` on a plain one; `clientCertificate` is the client certificate the listener received or a trusted proxy forwarded, or `null` — its members are in [Serving HTTPS](docs/tls.md#what-a-handler-reads). Like `lang`, both are read only when an expression reads them.
 - **Every member of `request` MUST be a value in the CEL value domain**, because `request` is a CEL binding: a map is handed over in the form a host hands a map over — for the Node adapter a plain object — and the member-read seam answers *this value holds no members* for anything else rather than performing a host property read, which is what stops a computed key (`request.query[k]`) from ever reaching a prototype, a method or `constructor`. A framework's own request bags are routinely NOT that: Fastify's query parser builds each one with a prototype of its own, so the adapter copies each bag's own entries over before binding it. An adapter that skips this does not mis-render anything — every expression reading the bag fails, and the route answers 500.
 - If the `content-type` is `application/json`, the `body` MUST be parsed into its native JSON value before evaluation — an object, an array, a string, a number.
 - `request.body` is **untyped** in a route's `inputs:` until the route's `request.schema.body` declares it, and always untyped in `notFoundHandler.inputs`, which has no route to declare one. A body is whatever the client sent, so an undeclared one passes `telo check` into a handler argument of any type (`items: !cel "request.body"` into an array) and its members are read unchecked; what the handler then receives is held to its `inputType` at dispatch. Declaring `request.schema.body` types `request.body` and everything beneath it, so a misspelled field is `CEL_UNKNOWN_FIELD` and a body wired into an argument of another type is `CEL_TYPE_ERROR`. `request.query`, `request.headers` and `request.params` are maps in `inputs:` whether or not a schema is declared; in a route's `returns:` / `catches:` a bag is in scope only when `request.schema` declares it.
@@ -173,6 +179,8 @@ After the handler executes and the `response.mapping` evaluates, the engine retu
 }
 ```
 
+The matched entry's `cookies:` are written as `Set-Cookie` header lines, one per cookie in written order and never comma-joined; an adapter writes them through the dispatcher's sink as one list (see [cookies](docs/cookies.md)).
+
 A JSON body's reader is not Telo, so a CEL value in it is written in its plain encoding and never type-tagged, whether or not the route declares a response schema: a timestamp as RFC 3339 text in UTC (`"2026-01-15T07:30:00.000Z"`), a duration as seconds (`"5400s"`), bytes as base64url without padding, a `uint` as its digits, NaN and ±Infinity as `"NaN"` / `"Infinity"` / `"-Infinity"`, and a map with int or bool keys as an object keyed by their text. A response schema slot declaring such a type is documented as that text.
 
 ### 3. Validation and error handling
@@ -194,7 +202,7 @@ When a request fails schema validation (defined in the `request.schema` of the m
 
 - **A JSON body is not coerced; query, path and header values are.** `{"n": "5"}` or `{"n": null}` against `n: { type: integer }` is refused with `{ "pointer": "/body/n", "keyword": "type", "params": { "type": "integer" } }`, while `?n=5` is accepted and read as `5`.
 - **One finding per finding of the validator.** The validator stops at the first part of the request it refuses (path parameters, then the body, then the query, then the headers) and at the first finding in it.
-- **`pointer`** — a JSON Pointer into the request as CEL reads it: the part (`/body`, `/query`, `/params`, `/headers`), then the refused value's place inside it (`/body/address/street`, `/body/items/0/name`, `/query/limit`). A missing required property and a property the schema does not declare are each named themselves.
+- **`pointer`** — a JSON Pointer into the request as CEL reads it: the part (`/body`, `/query`, `/params`, `/headers`, `/cookies`), then the refused value's place inside it (`/body/address/street`, `/body/items/0/name`, `/query/limit`). A missing required property and a property the schema does not declare are each named themselves.
 - **`keyword` / `params`** — what was violated, from the closed issue vocabulary (`type`, `required`, `maxLength`, `format`, …, each with its params; anything else `invalid`). A finding carries no prose: the reader words it.
 - **Module responsibility:** the module builds `data.issues` from the validator's structured findings, never from the text of its error message.
 
@@ -244,7 +252,8 @@ request:
 network interface. Leave the address unset for an application: the default
 `0.0.0.0` accepts connections from other machines, which a container, a runner
 session or a proxy in front of the app requires. `127.0.0.1` accepts connections
-from the same machine only — right for a mock server inside a test. The top-level
+from the same machine only — right for a mock server inside a test. A hostname
+(`localhost`) is bound on every address it resolves to. The top-level
 `host:` / `port:` spelling is refused (`HTTP_SERVER_LISTEN_MOVED`, `ERR_HTTP_SERVER_LISTEN_MOVED`
 at creation), naming where each moved.
 

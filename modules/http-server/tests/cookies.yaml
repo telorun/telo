@@ -1,0 +1,153 @@
+kind: Telo.Application
+metadata:
+  name: CookiesTest
+  version: 1.0.0
+  description: |
+    A response sets and clears cookies through `cookies:`, each its own
+    `Set-Cookie` line rendered from the declaration's attributes, defaults
+    included, and attributes computed from the app's variables rendered as their
+    values; a clear repeats the declaration's scope byte for byte. A request's
+    cookies are read as `request.cookies`, the first of a repeated name winning,
+    and a route's `schema.cookies` validates them and documents them in OpenAPI.
+    A computed value a cookie cannot carry fails the response.
+imports:
+  Http: ../
+  HttpDispatch: ../../http-dispatch
+  HttpClient: ../../http-client
+  Run: ../../run
+  Assert: ../../assert
+variables:
+  prefsName: { env: COOKIES_TEST_PREFS_NAME, type: string, default: prefs }
+  prefsDomain: { env: COOKIES_TEST_PREFS_DOMAIN, type: string, default: example.test }
+  prefsPath: { env: COOKIES_TEST_PREFS_PATH, type: string, default: /app }
+targets:
+  - !ref test
+---
+kind: HttpDispatch.HostCookie
+metadata: { name: session }
+name: session
+---
+kind: HttpDispatch.SecureCookie
+metadata: { name: prefs }
+name: !cel "variables.prefsName"
+domain: !cel "variables.prefsDomain"
+path: !cel "variables.prefsPath"
+---
+kind: Http.Api
+metadata: { name: api }
+routes:
+  - request: { path: /session, method: POST }
+    handler: { kind: Run.Value, value: { token: abc123 } }
+    returns:
+      - status: 204
+        cookies:
+          - cookie: !ref session
+            value: !cel "result.token"
+  - request: { path: /prefs, method: POST }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - status: 204
+        cookies: [{ cookie: !ref prefs, value: v1, maxAge: 3600s, expires: "2030-01-01T00:00:00Z" }]
+  - request: { path: /prefs, method: DELETE }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - status: 204
+        cookies: [{ cookie: !ref prefs, maxAge: 0s }]
+  - request: { path: /theme, method: POST }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - status: 204
+        cookies:
+          - { cookie: { kind: HttpDispatch.UnprefixedCookie, name: theme, httpOnly: false, sameSite: Strict }, value: dark }
+  - request:
+      path: /whoami
+      method: GET
+      schema:
+        cookies:
+          type: object
+          required: [session]
+          properties: { session: { type: string, description: The session id. } }
+    handler: { kind: Run.Value, value: {} }
+    returns:
+      - status: 200
+        content: { application/json: { body: { session: !cel "request.cookies.session" } } }
+  - request: { path: /bad, method: POST }
+    handler: { kind: Run.Value, value: { token: "a;b" } }
+    returns:
+      - status: 204
+        cookies:
+          - cookie: !ref session
+            value: !cel "result.token"
+---
+kind: Http.Reference
+metadata: { name: docs }
+---
+kind: HttpClient.Request
+metadata: { name: call }
+client: { kind: HttpClient.Client, baseUrl: http://127.0.0.1:8986, throwOnHttpError: false }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 8986 }
+    openapi: { info: { title: Cookies, version: 1.0.0 } }
+    mounts:
+      - { path: /v1, mount: !ref api }
+      - { path: /docs, mount: !ref docs }
+targets:
+  - !ref server
+steps:
+  - name: setSession
+    invoke: !ref call
+    inputs: { url: /v1/session, method: POST }
+  - name: setPrefs
+    invoke: !ref call
+    inputs: { url: /v1/prefs, method: POST }
+  - name: clearPrefs
+    invoke: !ref call
+    inputs: { url: /v1/prefs, method: DELETE }
+  - name: setTheme
+    invoke: !ref call
+    inputs: { url: /v1/theme, method: POST }
+  - name: whoami
+    invoke: !ref call
+    inputs: { url: /v1/whoami, headers: { cookie: "theme=dark; session=first; session=second" } }
+  - name: anonymous
+    invoke: !ref call
+    inputs: { url: /v1/whoami, headers: { cookie: "theme=dark" } }
+  - name: bad
+    invoke: !ref call
+    inputs: { url: /v1/bad, method: POST }
+  - name: document
+    invoke: !ref call
+    inputs: { url: /docs/openapi.json }
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        session: !cel "steps.setSession.result.headers['set-cookie']"
+        prefs: !cel "steps.setPrefs.result.headers['set-cookie']"
+        clearedPrefs: !cel "steps.clearPrefs.result.headers['set-cookie']"
+        theme: !cel "steps.setTheme.result.headers['set-cookie']"
+        whoami: !cel "steps.whoami.result.body"
+        anonymous:
+          status: !cel "steps.anonymous.result.status"
+          code: !cel "steps.anonymous.result.body.code"
+          issues: !cel "steps.anonymous.result.body.data.issues.map(i, i.pointer)"
+        bad: { status: !cel "steps.bad.result.status", code: !cel "steps.bad.result.body.code" }
+        cookieParameters: !cel >-
+          steps.document.result.body.paths['/v1/whoami'].get.parameters
+          .filter(p, p['in'] == 'cookie').map(p, p.name)
+        setCookieDocumented: !cel "'Set-Cookie' in steps.document.result.body.paths['/v1/session'].post.responses['204'].headers"
+      expected:
+        session: "__Host-session=abc123; Path=/; Secure; HttpOnly; SameSite=Lax"
+        prefs: "__Secure-prefs=v1; Path=/app; Domain=example.test; Max-Age=3600; Expires=Tue, 01 Jan 2030 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax"
+        clearedPrefs: "__Secure-prefs=; Path=/app; Domain=example.test; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; Secure; HttpOnly; SameSite=Lax"
+        theme: "theme=dark; Path=/; Secure; SameSite=Strict"
+        whoami: { session: first }
+        anonymous: { status: 400, code: ERR_INPUT_INVALID, issues: [/cookies/session] }
+        bad: { status: 500, code: ERR_COOKIE_VALUE_INVALID }
+        cookieParameters: [session]
+        setCookieDocumented: true

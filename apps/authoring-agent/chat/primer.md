@@ -1007,7 +1007,7 @@ functions for cursors, hints, recency windows, slicing and reading reported
 dates.
 
 Outbound auth is a credential on an `Http.Client`, never an `apiKey` field you
-invent: `Http.BearerToken`, `Http.ApiKeyHeader` and `Http.QueryKey` cover the
+invent: `Http.BearerToken`, `Http.BasicAuth` (username and password as `Authorization: Basic`), `Http.ApiKeyHeader` and `Http.QueryKey` cover the
 static cases and inherit the 401 re-acquire-and-retry.
 
 Stream pipelines compose from `Stream.Map` / `Stream.Scan` / `Stream.FlatMap`
@@ -3598,6 +3598,38 @@ to say.
   resources, so NEVER name a router like a need (`siteApi`, not `site`,
   beside a `site` need). Build an absolute link from the need
   (`resources.site.url`, `resources.tenants.pattern.replace('*', id)`).
+
+  COOKIES are declared once, never written into `headers:` (`Set-Cookie` and
+  `Content-Type` there are refused): import `HttpDispatch` (`http-dispatch`)
+  beside `Http` and declare `HttpDispatch.HostCookie` (sent `__Host-<name>`,
+  Secure, `Path=/`, no domain — the session cookie), `SecureCookie`
+  (`__Secure-<name>`, `domain?`, `path`) or `UnprefixedCookie` (`domain?`,
+  `path`, `secure`), each with `name` (no prefix — the kind adds it),
+  `httpOnly` (default true), `sameSite` (default `Lax`; `None` needs secure)
+  and `partitioned`. A `returns:` / `catches:` entry lists
+  `cookies: [{ cookie: !ref session, value: !cel "result.id", maxAge: 86400s }]`
+  (`value`, `maxAge`, `expires` are the only per-response fields; a value must
+  be cookie-octets — base64url anything else, or the response fails
+  `ERR_COOKIE_VALUE_INVALID`); `maxAge: 0s` on the same declaration clears it.
+  Every request context reads `request.cookies` (a map, first of a repeated
+  name wins; a prefixed one is `request.cookies['__Host-session']`), and a
+  route's `request.schema.cookies` types and validates it.
+
+  HTTPS is `Http.Server.tls: { cert, key }` (each `{ file: … }` or
+  `{ pem: … }`; `minVersion: TLSv1.2 | TLSv1.3`), and mutual TLS adds
+  `clientCa: [ … ]` with `clientCertificate: required` (no certificate, no
+  connection) or `optional` (asks, admits anyone). Every request context has
+  `request.tls` (`{ protocol }`, null on a plain socket) and
+  `request.clientCertificate` (null, or `{ subject, issuer, serialNumber,
+  fingerprint256, validFrom, validTo, subjectAltNames, pem, verified, via }`,
+  `subject.CN` a string, `via` `listener` | `proxy`) — both nullable, so guard
+  them: `request.clientCertificate != null && request.clientCertificate.verified`.
+  Under `optional` check `verified` yourself. Behind a TLS-terminating proxy
+  leave `tls:` out and set `trustProxy: true` with `forwardedClientCertificate:
+  { header: x-forwarded-client-cert, format: xfcc }` (`pem` for nginx,
+  `base64-der` for Traefik); without `trustProxy` it is
+  `HTTP_FORWARDED_CERTIFICATE_UNTRUSTED`. A forwarded certificate is
+  `verified: false` — this server checked nothing.
 
   PERSISTENT STORAGE ON DISK is a need of the kernel-declared type
   `Telo.DurableDirectory`, written with no import: `needs: { data: { kind:

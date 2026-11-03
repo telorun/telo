@@ -14,8 +14,11 @@ match on it.
 | `event_name` | Severity | When | Attributes |
 | --- | --- | --- | --- |
 | `http.server.started` | `info` | the socket is accepting connections | `server.address`, `server.port`, `url.scheme` |
+| `http.server.address_unavailable` | `warn` | `listen.address` is a hostname and one address it resolves to has no interface on this host (`EADDRNOTAVAIL`, `EAFNOSUPPORT` — `::1` where IPv6 is off); the server listens on the others, and fails to start when none binds | `server.address` (the resolved address), `server.port`, `error.type`, `error.message` |
 | `http.server.request.started` | `debug` | a request has been received | `http.request.method`, `http.route`, `url.path`, `httpserver.request_id` |
 | `http.server.request` | `info`, or `error` for a 5xx | the response has been sent | `http.request.method`, `http.route`, `http.response.status_code`, `http.server.request.duration`, `httpserver.request_id` |
+| `http.server.forwarded_certificate.unreadable` | `warn` | a request's `forwardedClientCertificate` header held no readable certificate, and the request reads `request.clientCertificate` as `null` | `httpserver.forwarded_certificate.header`, `httpserver.forwarded_certificate.format`, `error.message` |
+| `http.server.tls_handshake.failed` | `info` | a TLS connection closed before it was served: a handshake error, the 120-second handshake timeout, the peer hanging up mid-handshake, or a client certificate refused under `clientCertificate: required` | `network.peer.address`, `network.peer.port`, `server.port`, `error.type`, `error.message` |
 | `http.server.stopped` | `info` | the server has closed | `server.address`, `server.port` |
 
 All attribute names are OpenTelemetry semantic conventions except
@@ -24,6 +27,15 @@ request correlator these records carry: with tracing on, their `trace_id` /
 `span_id` are those of the span that started the server, not of the
 request's own span (see [Tracing](tracing.md)), and with tracing off — the
 default — they carry none.
+
+`http.server.tls_handshake.failed` is `info` for the reason a 4xx is (below): a
+client that cannot complete a handshake is ordinary traffic. Its `error.type` is
+the TLS error's code (`ERR_SSL_HTTP_REQUEST` for plain HTTP sent to the TLS
+port, `ERR_TLS_HANDSHAKE_TIMEOUT`, `ECONNRESET` for a peer that hung up), the
+certificate verification code for a refused certificate
+(`UNABLE_TO_VERIFY_LEAF_SIGNATURE`, `CERT_HAS_EXPIRED`, …), or
+`ERR_SSL_PEER_DID_NOT_RETURN_A_CERTIFICATE` when none was presented. A
+connection still in its handshake when the server stops is closed without one.
 
 `http.server.request.duration` is **seconds, as a double** — OTel's unit for that
 name. A framework that measures in milliseconds converts.
@@ -102,7 +114,7 @@ threshold override; it is a compatible extension if it is ever wanted.
 
 ## Implementing this kind in another language
 
-Register the equivalent middleware and emit the same four events:
+Register the equivalent middleware and emit the same events:
 
 - **Rust** — a `tower` layer, or `axum`'s `TraceLayer` with its own `on_response`.
 - **Go** — an `http.Handler` wrapper around the mux.

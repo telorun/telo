@@ -37,24 +37,10 @@ export interface FastifyLogger {
   child(bindings: Record<string, unknown>, options?: unknown): FastifyLogger;
 }
 
-/**
- * The text the controller substitutes for Fastify's listen announcement, via
- * `listenTextResolver` on `app.listen()`. The controller emits
- * `http.server.started` with the address in attributes, so this line is dropped
- * rather than shipped beside it.
- *
- * A constant this module PRODUCES, not a pattern matched against Fastify's
- * wording. That distinction is the whole point: this kind's contract says a
- * message is prose and nothing should match on it, so suppressing by matching
- * Fastify's own sentence would break the rule it exists to state.
- */
-export const LISTEN_SUPERSEDED = "\x00telo:listen-superseded";
-
 export function createFastifyTeloLogger(log: Logger): FastifyLogger {
   const emit = (severity: number, args: unknown[]): void => {
     if (!log.enabled(severity)) return;
     const { message, attributes, error } = splitPinoArgs(args);
-    if (message === LISTEN_SUPERSEDED) return;
     log.log(severity, message, attributes, error === undefined ? undefined : { error });
   };
 

@@ -10,6 +10,16 @@ import { Invocable, KindRef, Ref } from "@telorun/sdk";
  *  about CEL — the same trap `when:` documents one field below. */
 const HeaderValue = Type.Unknown();
 
+/** One cookie an entry writes. After Phase-5 injection `cookie` is the live
+ *  declaration; `value`, `maxAge` and `expires` are what the dispatcher expands. */
+export const CookieEntry = Type.Object({
+  cookie: Type.Unsafe<KindRef>(Ref("HttpDispatch.Cookie")),
+  value: Type.Optional(Type.Unknown()),
+  maxAge: Type.Optional(Type.Unknown()),
+  expires: Type.Optional(Type.Unknown()),
+});
+export type CookieEntry = Static<typeof CookieEntry>;
+
 /** Per-MIME content-map entry. Buffer-mode responses use `body` (with optional
  *  `schema` for AJV validation); stream-mode responses use `encoder` (a ref to
  *  any `Codec.Encoder` implementation). The two are mutually exclusive per
@@ -43,6 +53,7 @@ export const ReturnEntry = Type.Object({
   when: Type.Optional(Type.Unknown()),
   mode: Type.Optional(Type.Union([Type.Literal("buffer"), Type.Literal("stream")])),
   headers: Type.Optional(Type.Record(Type.String(), HeaderValue)),
+  cookies: Type.Optional(Type.Array(CookieEntry)),
   content: Type.Optional(Type.Record(Type.String(), ContentEntry)),
 });
 export type ReturnEntry = Static<typeof ReturnEntry>;
@@ -51,6 +62,7 @@ export const CatchEntry = Type.Object({
   status: Type.Integer({ minimum: 100, maximum: 599 }),
   when: Type.Optional(Type.Unknown()),
   headers: Type.Optional(Type.Record(Type.String(), HeaderValue)),
+  cookies: Type.Optional(Type.Array(CookieEntry)),
   content: Type.Optional(Type.Record(Type.String(), CatchContentEntry)),
 });
 export type CatchEntry = Static<typeof CatchEntry>;

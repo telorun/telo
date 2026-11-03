@@ -1,0 +1,10 @@
+kind: Telo.Application
+metadata: { name: AttributeReadsRequest, version: 1.0.0 }
+imports: { HttpDispatch: ../.. }
+---
+# A declaration's attributes are fixed when it is created; only a response's
+# value and lifetime see the request.
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: theme }
+name: theme
+httpOnly: !cel "request.headers['x-script'] == 'yes'"

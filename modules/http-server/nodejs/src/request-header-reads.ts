@@ -4,9 +4,10 @@ import { isCompiledValue } from "@telorun/sdk";
 /**
  * Which request headers an expression evaluated per request reads — what its
  * answer varies by. Read off the parsed expression: `request.headers.<name>`,
- * `request.headers['<name>']`, `'<name>' in request.headers` read one header; any
- * other use of `request.headers` or of `request` whole — a computed name, the map
- * handed on — may read any, which is `*`.
+ * `request.headers['<name>']`, `'<name>' in request.headers` read one header, and
+ * any read of `request.cookies` reads `Cookie`; any other use of `request.headers`
+ * or of `request` whole — a computed name, the map handed on — may read any,
+ * which is `*`.
  */
 export type HeaderReads = ReadonlySet<string> | "*";
 
@@ -43,7 +44,11 @@ function treeReads(root: CelNode): HeaderReads {
       any = true;
       return;
     }
-    if (node.kind === "select" && isRequest(node.operand)) return;
+    if (node.kind === "select" && isRequest(node.operand)) {
+      // Every cookie is one header's.
+      if (node.field === "cookies") names.add("cookie");
+      return;
+    }
     if (isRequest(node)) {
       any = true;
       return;

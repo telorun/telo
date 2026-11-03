@@ -6,6 +6,16 @@
 #
 # A session is a cookie the consent route sets; a refused or expired consent
 # is remembered in a second cookie, which the sign-in check reports.
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: sessionCookie }
+name: report_session
+secure: false
+---
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: signinCookie }
+name: report_signin
+secure: false
+---
 kind: Telo.Function
 metadata:
   name: signedIn
@@ -183,13 +193,12 @@ routes:
     returns:
       - status: 302
         when: !cel "result.outcome == 'granted'"
-        headers:
-          Location: /
-          Set-Cookie: report_session=signed-in; Path=/; HttpOnly; SameSite=Lax
+        headers: { Location: / }
+        cookies: [{ cookie: !ref sessionCookie, value: signed-in }]
       - status: 302
         headers:
           Location: !interpolate "/?signin=${{ result.outcome }}"
-          Set-Cookie: !interpolate "report_signin=${{ result.outcome }}; Path=/; HttpOnly; SameSite=Lax"
+        cookies: [{ cookie: !ref signinCookie, value: !cel "result.outcome" }]
   - request:
       method: POST
       path: /signout
@@ -197,7 +206,7 @@ routes:
     handler: { kind: Run.Value, value: {} }
     returns:
       - status: 200
-        headers: { Set-Cookie: report_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax }
+        cookies: [{ cookie: !ref sessionCookie, maxAge: 0s }]
         content: { application/json: { body: {} } }
 ---
 # Everything a signed-in console calls. The server's guard on this mount

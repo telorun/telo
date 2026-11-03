@@ -1,0 +1,9 @@
+kind: Telo.Application
+metadata: { name: NameCarriesPrefix, version: 1.0.0 }
+imports: { HttpDispatch: ../.. }
+---
+# Browsers match the prefix case-insensitively, so a lowercase spelling would
+# promise a guarantee the unprefixed kind does not give.
+kind: HttpDispatch.UnprefixedCookie
+metadata: { name: spoof }
+name: __host-x

@@ -94,7 +94,7 @@ steps:
         connect: { url: /api/auth/consent }
         signOut:
           status: 200
-          cookie: report_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax
+          cookie: "report_session=; Path=/; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax"
         account: { email: ada.nowak@example.com }
 
   # Without a session every other route is refused, with a body the page's

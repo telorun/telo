@@ -2,6 +2,7 @@
 // these by PURL fragment, so the whole module is one bundle and its shared
 // state is one module scope.
 export * as ApiKeyHeaderController from "./api-key-header-controller.js";
+export * as BasicAuthController from "./basic-auth-controller.js";
 export * as BearerTokenController from "./bearer-token-controller.js";
 export * as HttpClientController from "./http-client-controller.js";
 export * as HttpRequestController from "./http-request-controller.js";

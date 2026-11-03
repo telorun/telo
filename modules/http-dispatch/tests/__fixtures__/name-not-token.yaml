@@ -1,0 +1,7 @@
+kind: Telo.Application
+metadata: { name: NameNotToken, version: 1.0.0 }
+imports: { HttpDispatch: ../.. }
+---
+kind: HttpDispatch.SecureCookie
+metadata: { name: broken }
+name: "a;b"
