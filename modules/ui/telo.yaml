@@ -13,25 +13,19 @@ metadata:
     custom components and design tokens — rendered into an admin panel or
     back-office screen without frontend code.
 requires:
-  # 0.120.1 refuses this file: it does not know `x-telo-context-eval` (an
-  # unknown keyword in a context binding), the relative pointer of
-  # `x-telo-context-element-from-item`, `x-telo-match-for` or format
-  # `re2-pattern`. Field kinds also need what 0.121.0 adds: bindings typed by
-  # the resource referencing them (`x-telo-context-from-referrer`), the members
-  # a list's entries fill (`x-telo-context-item-fills`), the member form of
-  # `x-telo-value-schema-from` and rules reading through several references
-  # (`resolveSelf:`), and the text vocabulary its words and displayed texts
-  # are written in (module `lang:`, the `Text` and `TextRecord` fragments,
-  # `x-telo-text-values`). Verified by execution against 0.120.1.
-  telo: ">=0.121.0"
+  # 0.128.0 refuses this file: it knows neither `Telo.KeyedTranslations`, which
+  # declares `ui`'s own texts, nor `x-telo-text-keys`. Verified by execution.
+  telo: ">=0.129.0"
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, and what a listing's read plan requests.
 files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json]
+# ui's own texts translated, one `Self.Translations` per language.
+include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
 imports: { Font: ../font, DataModel: ../data-model }
 exports:
-  kinds: [Words, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, Page, View, CollectionSource, CollectionPresentation, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [words, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, Page, View, CollectionSource, CollectionPresentation, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -151,7 +145,7 @@ schema:
 ---
 # What a request that did not succeed reads as: `status` absent when nothing
 # answered; `code` the problem body's `code`, else the renderer's own code for
-# the status; `message` the problem's `detail`, else the renderer's own word.
+# the status; `message` the problem's `detail`, else the renderer's own text.
 kind: Telo.JsonSchema
 metadata: { name: RequestError }
 schema:
@@ -1131,12 +1125,11 @@ schema:
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
     # A text as the renderer receives it from `ui`: the record a controller
-    # was handed (its renderer translates it), or one of the renderer's own
-    # words by id.
+    # was handed (its renderer translates it), or a library's keyed text.
     Text:
       anyOf:
         - { $ref: "telo://manifest#/$defs/TextRecord" }
-        - { $ref: "#/$defs/Word" }
+        - { $ref: "#/$defs/KeyedText" }
     # A text of a node: a text, or a text with the values it is formatted with.
     NodeText:
       anyOf:
@@ -1149,14 +1142,15 @@ schema:
       properties:
         text: { $ref: "telo://manifest#/$defs/TextRecord" }
         values: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
-    # One of the words a renderer shows of its own, every one a property of
-    # `Ui.Words`.
-    Word:
+    # A key of a keyed translation set, by the set's canonical kind
+    # (`Ui.Translations`); the renderer shows the set's message for the key.
+    KeyedText:
       type: object
       additionalProperties: false
-      required: [word]
+      required: [set, key]
       properties:
-        word: { enum: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, loadMore, moveTo, valueCount, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, operatorAbsent, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames] }
+        set: { type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*\\.[A-Za-z_][A-Za-z0-9_]*$" }
+        key: { type: string, minLength: 1 }
     # A text, or none.
     Description:
       anyOf:
@@ -2682,6 +2676,7 @@ extends: Self.Composite
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#DataController]
 schema:
   type: object
+  x-telo-text-keys: [Self.Translations]
   additionalProperties: false
   required: [model, source, content]
   examples:
@@ -2746,7 +2741,7 @@ schema:
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
     loading:
       title: Loading
-      description: What is drawn before the first answer. Omitted, the renderer's muted loading word.
+      description: What is drawn before the first answer. Omitted, the muted text `loading`.
       $ref: "telo://Self/Node"
       x-telo-context:
         type: object
@@ -2935,6 +2930,7 @@ extends: Self.Composite
 controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ListingController]
 schema:
   type: object
+  x-telo-text-keys: [Self.Translations]
   additionalProperties: false
   required: [presentation, model]
   properties:
@@ -3084,7 +3080,7 @@ schema:
       title: Empty
       description: >-
         Drawn where the records would be when the reads answer none. Omitted,
-        the renderer's words for no records.
+        the text `noRows`.
       $ref: "telo://Self/Node"
     layout:
       title: Layout
@@ -5292,213 +5288,291 @@ schema:
       type: string
       pattern: "^(0|[0-9]+(\\.[0-9]+)?|\\.[0-9]+)(px|rem)$"
 ---
-# The words a renderer of this vocabulary shows of its own — loading, empty
+# The texts a renderer of this vocabulary shows of its own — loading, empty
 # states, buttons, confirmations, each profile keyword's validation message, the
-# date range's — each a `Text` with the values it is formatted with, keyed by
-# word id. `words` holds them in English; a renderer sends each translated.
-kind: Telo.Definition
-metadata:
-  name: Words
-  description: >-
-    The fixed words a user interface shows of its own, keyed by id: loading and
-    empty states, save and cancel, paging, confirmations, filter captions,
-    validation messages and date range warnings, each with the values it is
-    formatted with, translated like any other text of the screen.
-capability: Telo.Provider
-controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#WordsController]
-schema:
-  type: object
-  additionalProperties: false
-  required: [loading, noRows, nothingFound, save, cancel, close, newRecord, edit, delete, deleteRowQuestion, deleteRowDetail, previousPage, pagerRange, pagerEmpty, nextPage, loadMore, moveTo, valueCount, yes, no, none, any, select, choose, more, menu, siteNavigation, collapseNavigation, expandNavigation, search, remove, clear, filters, addFilter, apply, reset, done, presets, operatorEq, operatorContains, operatorGt, operatorGte, operatorLt, operatorLte, operatorIn, operatorAbsent, filterControl, filterChip, filterGroupSummary, rangeFrom, rangeTo, rangeStartsAfterEnd, rangeLongerThanDays, rangeLongerThanWeeks, rangeLongerThanMonths, rangeLongerThanQuarters, rangeLongerThanYears, notFound, noPageAt, unsavedQuestion, unsavedDetail, discard, keepEditing, requestUnauthorized, requestForbidden, requestFailedStatus, requestFailed, recordRefused, answerNotJson, answerNotObject, answerNotModel, invalid, required, type, enum, const, not, anyOf, minLength, maxLength, pattern, minimum, maximum, exclusiveMinimum, exclusiveMaximum, multipleOf, minItems, maxItems, uniqueItems, minProperties, maxProperties, format, additionalProperties, propertyNames]
-  properties:
-    loading: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    noRows: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    nothingFound: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    save: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    cancel: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    close: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    newRecord: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    edit: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    delete: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    deleteRowQuestion: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    deleteRowDetail: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    previousPage: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    pagerRange: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"first": {"type": "integer"}, "last": {"type": "integer"}, "total": {"type": "integer"}} }
-    pagerEmpty: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"total": {"type": "integer"}} }
-    nextPage: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    loadMore: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    moveTo: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    valueCount: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "count": {"type": "integer"}} }
-    yes: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    no: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    none: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    any: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    select: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    choose: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    more: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    menu: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    siteNavigation: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    collapseNavigation: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    expandNavigation: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    search: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}} }
-    remove: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}} }
-    clear: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}} }
-    filters: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    addFilter: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    apply: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    reset: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    done: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    presets: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorEq: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorContains: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorGt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorGte: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorLt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorLte: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorIn: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    operatorAbsent: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    filterControl: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "operator": {"type": "string"}} }
-    filterChip: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "operator": {"type": "string"}, "value": {"type": "string"}} }
-    filterGroupSummary: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"label": {"type": "string"}, "summary": {"type": "string"}} }
-    rangeFrom: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    rangeTo: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    rangeStartsAfterEnd: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    rangeLongerThanDays: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
-    rangeLongerThanWeeks: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
-    rangeLongerThanMonths: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
-    rangeLongerThanQuarters: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
-    rangeLongerThanYears: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"count": {"type": "integer"}} }
-    notFound: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    noPageAt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"path": {"type": "string"}} }
-    unsavedQuestion: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    unsavedDetail: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    discard: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    keepEditing: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    requestUnauthorized: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    requestForbidden: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    requestFailedStatus: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"status": {"type": "integer"}} }
-    requestFailed: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"reason": {"type": "string"}} }
-    recordRefused: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    answerNotJson: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    answerNotObject: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    answerNotModel: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"detail": {"type": "string"}} }
-    invalid: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    required: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    type: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"types": {"type": "string"}} }
-    enum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"allowed": {"type": "string"}} }
-    const: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"value": {"type": "string"}} }
-    not: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    anyOf: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    minLength: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
-    maxLength: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
-    pattern: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    minimum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
-    maximum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
-    exclusiveMinimum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
-    exclusiveMaximum: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
-    multipleOf: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "number"}} }
-    minItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
-    maxItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
-    uniqueItems: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
-    minProperties: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
-    maxProperties: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"limit": {"type": "integer"}} }
-    format: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"format": {"type": "string"}} }
-    additionalProperties: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"additionalProperty": {"type": "string"}} }
-    propertyNames: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {"propertyName": {"type": "string"}} }
----
-kind: Self.Words
-metadata: { name: words }
-loading: "Loading…"
-noRows: "No rows."
-nothingFound: "Nothing found."
-save: "Save"
-cancel: "Cancel"
-close: "Close"
-newRecord: "New"
-edit: "Edit"
-delete: "Delete"
-deleteRowQuestion: "Delete this row?"
-deleteRowDetail: "This cannot be undone."
-previousPage: "Previous page"
-pagerRange: "{$first}–{$last} of {$total}"
-pagerEmpty: "0 of {$total}"
-nextPage: "Next page"
-loadMore: "Load more"
-moveTo: "Move to"
-valueCount: "{$label} ({$count})"
-yes: "Yes"
-no: "No"
-none: "None"
-any: "Any"
-select: "Select…"
-choose: "Choose…"
-more: "More"
-menu: "Menu"
-siteNavigation: "Site"
-collapseNavigation: "Collapse navigation"
-expandNavigation: "Expand navigation"
-search: "Search {$label}"
-remove: "Remove {$label}"
-clear: "Clear {$label}"
-filters: "Filters"
-addFilter: "Add filter"
-apply: "Apply"
-reset: "Reset"
-done: "Done"
-presets: "Presets"
-operatorEq: "is"
-operatorContains: "contains"
-operatorGt: "after"
-operatorGte: "from"
-operatorLt: "before"
-operatorLte: "to"
-operatorIn: "one of"
-operatorAbsent: "not set"
-filterControl: "{$label} {$operator}"
-filterChip: "{$label} {$operator} {$value}"
-filterGroupSummary: "{$label}: {$summary}"
-rangeFrom: "From"
-rangeTo: "To"
-rangeStartsAfterEnd: "Must not start after it ends"
-rangeLongerThanDays: {"plural": "count", "cases": {"one": "Longer than {$count} day", "other": "Longer than {$count} days"}}
-rangeLongerThanWeeks: {"plural": "count", "cases": {"one": "Longer than {$count} week", "other": "Longer than {$count} weeks"}}
-rangeLongerThanMonths: {"plural": "count", "cases": {"one": "Longer than {$count} month", "other": "Longer than {$count} months"}}
-rangeLongerThanQuarters: {"plural": "count", "cases": {"one": "Longer than {$count} quarter", "other": "Longer than {$count} quarters"}}
-rangeLongerThanYears: {"plural": "count", "cases": {"one": "Longer than {$count} year", "other": "Longer than {$count} years"}}
-notFound: "Not found"
-noPageAt: "This application has no page at {$path}."
-unsavedQuestion: "Discard unsaved changes?"
-unsavedDetail: "What you entered has not been saved."
-discard: "Discard"
-keepEditing: "Keep editing"
-requestUnauthorized: "You are not signed in, or your session has ended."
-requestForbidden: "You are not allowed to do this."
-requestFailedStatus: "The request failed with status {$status}."
-requestFailed: "The request failed: {$reason}"
-recordRefused: "The record was refused."
-answerNotJson: "The answer is not JSON."
-answerNotObject: "The answer is not a JSON object."
-answerNotModel: "The answer does not fit its model: {$detail}"
-invalid: "Is not valid"
-required: "Is required"
-type: "Must be {$types}"
-enum: "Must be one of: {$allowed}"
-const: "Must be {$value}"
-not: "Is not allowed"
-anyOf: "Is not one of the allowed forms"
-minLength: {"plural": "limit", "cases": {"one": "Must be at least {$limit} character", "other": "Must be at least {$limit} characters"}}
-maxLength: {"plural": "limit", "cases": {"one": "Must be at most {$limit} character", "other": "Must be at most {$limit} characters"}}
-pattern: "Is not in the expected format"
-minimum: "Must be at least {$limit}"
-maximum: "Must be at most {$limit}"
-exclusiveMinimum: "Must be greater than {$limit}"
-exclusiveMaximum: "Must be less than {$limit}"
-multipleOf: "Must be a multiple of {$limit}"
-minItems: {"plural": "limit", "cases": {"one": "Must have at least {$limit} item", "other": "Must have at least {$limit} items"}}
-maxItems: {"plural": "limit", "cases": {"one": "Must have at most {$limit} item", "other": "Must have at most {$limit} items"}}
-uniqueItems: "Must not repeat an item"
-minProperties: {"plural": "limit", "cases": {"one": "Must have at least {$limit} entry", "other": "Must have at least {$limit} entries"}}
-maxProperties: {"plural": "limit", "cases": {"one": "Must have at most {$limit} entry", "other": "Must have at most {$limit} entries"}}
-format: "Is not a valid {$format}"
-additionalProperties: "Is not expected here"
-propertyNames: "Has a name that is not allowed: {$propertyName}"
+# date range's — by key, in English. A translation per language is shipped
+# beside it (`translations/`).
+kind: Telo.KeyedTranslations
+metadata: { name: Translations }
+keys:
+  loading: { message: Loading…, description: Drawn while a read has not answered yet. }
+  noRows:
+    message: No rows.
+    description: Drawn where a listing's records would be when it has none.
+  nothingFound: { message: Nothing found., description: Drawn when a search finds no record. }
+  save: Save
+  cancel: Cancel
+  close: Close
+  newRecord:
+    message: New
+    description: The button opening the form that creates a record.
+  edit: Edit
+  delete: Delete
+  deleteRowQuestion: { message: Delete this row?, description: Asks to confirm deleting a row. }
+  deleteRowDetail:
+    message: This cannot be undone.
+    description: Under the question confirming a row's deletion.
+  previousPage: Previous page
+  pagerRange:
+    message: "{$first}–{$last} of {$total}"
+    values: { first: { type: integer }, last: { type: integer }, total: { type: integer } }
+    description: "The pager's position: the first and last record shown, of how many."
+  pagerEmpty:
+    message: 0 of {$total}
+    values: { total: { type: integer } }
+    description: The pager when no record is shown.
+  nextPage: Next page
+  loadMore: { message: Load more, description: Appends the next page of records. }
+  moveTo: { message: Move to, description: Opens the places a record can be moved to. }
+  valueCount:
+    message: "{$label} ({$count})"
+    values: { label: { type: string }, count: { type: integer } }
+    description: A value offered with how many records hold it.
+  yes: "Yes"
+  no: "No"
+  none: None
+  any: Any
+  select: Select…
+  choose: Choose…
+  more: More
+  menu: Menu
+  siteNavigation:
+    message: Site
+    description: Names the site's navigation for assistive technology.
+  collapseNavigation: Collapse navigation
+  expandNavigation: Expand navigation
+  search:
+    message: Search {$label}
+    values: { label: { type: string } }
+    description: Searches the options of the labelled field.
+  remove:
+    message: Remove {$label}
+    values: { label: { type: string } }
+    description: Removes the labelled value or filter.
+  clear:
+    message: Clear {$label}
+    values: { label: { type: string } }
+    description: Clears the labelled field.
+  filters: Filters
+  addFilter: Add filter
+  apply: Apply
+  reset: Reset
+  done: Done
+  presets: Presets
+  operatorEq: { message: is, description: "A filter's operator, before its value: equal to." }
+  operatorContains:
+    message: contains
+    description: "A filter's operator, before its value: contains the text."
+  operatorGt:
+    message: after
+    description: "A filter's operator, before its value: greater than."
+  operatorGte:
+    message: from
+    description: "A filter's operator, before its value: greater than or equal to."
+  operatorLt:
+    message: before
+    description: "A filter's operator, before its value: less than."
+  operatorLte:
+    message: to
+    description: "A filter's operator, before its value: less than or equal to."
+  operatorIn:
+    message: one of
+    description: "A filter's operator, before its values: any of them."
+  operatorAbsent: { message: not set, description: "A filter's operator: the value is not set." }
+  filterControl:
+    message: "{$label} {$operator}"
+    values: { label: { type: string }, operator: { type: string } }
+    description: "A filter control's caption: the field and its operator."
+  filterChip:
+    message: "{$label} {$operator} {$value}"
+    values: { label: { type: string }, operator: { type: string }, value: { type: string } }
+    description: "A chosen filter: the field, its operator and its value."
+  filterGroupSummary:
+    message: "{$label}: {$summary}"
+    values: { label: { type: string }, summary: { type: string } }
+    description: "A group of filters folded into one line: the field and what is chosen."
+  rangeFrom: { message: From, description: The start of a date range. }
+  rangeTo: { message: To, description: The end of a date range. }
+  rangeStartsAfterEnd:
+    message: Must not start after it ends
+    description: Under a date range whose start is after its end.
+  rangeLongerThanDays:
+    message:
+      plural: count
+      cases: { one: "Longer than {$count} day", other: "Longer than {$count} days" }
+    values: { count: { type: integer } }
+    description: Under a date range longer than its limit.
+  rangeLongerThanWeeks:
+    message:
+      plural: count
+      cases: { one: "Longer than {$count} week", other: "Longer than {$count} weeks" }
+    values: { count: { type: integer } }
+    description: Under a date range longer than its limit.
+  rangeLongerThanMonths:
+    message:
+      plural: count
+      cases: { one: "Longer than {$count} month", other: "Longer than {$count} months" }
+    values: { count: { type: integer } }
+    description: Under a date range longer than its limit.
+  rangeLongerThanQuarters:
+    message:
+      plural: count
+      cases: { one: "Longer than {$count} quarter", other: "Longer than {$count} quarters" }
+    values: { count: { type: integer } }
+    description: Under a date range longer than its limit.
+  rangeLongerThanYears:
+    message:
+      plural: count
+      cases: { one: "Longer than {$count} year", other: "Longer than {$count} years" }
+    values: { count: { type: integer } }
+    description: Under a date range longer than its limit.
+  notFound:
+    message: Not found
+    description: The title of the page drawn for an address the application has no page at.
+  noPageAt:
+    message: This application has no page at {$path}.
+    values: { path: { type: string } }
+    description: Under the not-found title, naming the address.
+  unsavedQuestion:
+    message: Discard unsaved changes?
+    description: Asks to confirm closing a form holding unsaved input.
+  unsavedDetail:
+    message: What you entered has not been saved.
+    description: Under the question confirming unsaved input is discarded.
+  discard: Discard
+  keepEditing: Keep editing
+  requestUnauthorized:
+    message: You are not signed in, or your session has ended.
+    description: A request answered 401.
+  requestForbidden:
+    message: You are not allowed to do this.
+    description: A request answered 403.
+  requestFailedStatus:
+    message: The request failed with status {$status}.
+    values: { status: { type: integer } }
+    description: A request answered with another failing status.
+  requestFailed:
+    message: "The request failed: {$reason}"
+    values: { reason: { type: string } }
+    description: A request that got no answer, with the reason.
+  recordRefused:
+    message: The record was refused.
+    description: A form's record refused with no issue naming a field.
+  answerNotJson:
+    message: The answer is not JSON.
+    description: An answer whose body is not JSON.
+  answerNotObject:
+    message: The answer is not a JSON object.
+    description: An answer whose body is not a JSON object.
+  answerNotModel:
+    message: "The answer does not fit its model: {$detail}"
+    values: { detail: { type: string } }
+    description: An answer its model refuses, with what was refused.
+  invalid:
+    message: Is not valid
+    description: Under a field whose value is refused for a reason no other text names.
+  required:
+    message: Is required
+    description: Under a field whose value fails `required`.
+  type:
+    message: Must be {$types}
+    values: { types: { type: string } }
+    description: Under a field whose value fails `type`.
+  enum:
+    message: "Must be one of: {$allowed}"
+    values: { allowed: { type: string } }
+    description: Under a field whose value fails `enum`.
+  const:
+    message: Must be {$value}
+    values: { value: { type: string } }
+    description: Under a field whose value fails `const`.
+  not: { message: Is not allowed, description: Under a field whose value fails `not`. }
+  anyOf:
+    message: Is not one of the allowed forms
+    description: Under a field whose value fails `anyOf`.
+  minLength:
+    message:
+      plural: limit
+      cases:
+        one: Must be at least {$limit} character
+        other: Must be at least {$limit} characters
+    values: { limit: { type: integer } }
+    description: Under a field whose value fails `minLength`.
+  maxLength:
+    message:
+      plural: limit
+      cases:
+        one: Must be at most {$limit} character
+        other: Must be at most {$limit} characters
+    values: { limit: { type: integer } }
+    description: Under a field whose value fails `maxLength`.
+  pattern:
+    message: Is not in the expected format
+    description: Under a field whose value fails `pattern`.
+  minimum:
+    message: Must be at least {$limit}
+    values: { limit: { type: number } }
+    description: Under a field whose value fails `minimum`.
+  maximum:
+    message: Must be at most {$limit}
+    values: { limit: { type: number } }
+    description: Under a field whose value fails `maximum`.
+  exclusiveMinimum:
+    message: Must be greater than {$limit}
+    values: { limit: { type: number } }
+    description: Under a field whose value fails `exclusiveMinimum`.
+  exclusiveMaximum:
+    message: Must be less than {$limit}
+    values: { limit: { type: number } }
+    description: Under a field whose value fails `exclusiveMaximum`.
+  multipleOf:
+    message: Must be a multiple of {$limit}
+    values: { limit: { type: number } }
+    description: Under a field whose value fails `multipleOf`.
+  minItems:
+    message:
+      plural: limit
+      cases:
+        one: Must have at least {$limit} item
+        other: Must have at least {$limit} items
+    values: { limit: { type: integer } }
+    description: Under a field whose value fails `minItems`.
+  maxItems:
+    message:
+      plural: limit
+      cases:
+        one: Must have at most {$limit} item
+        other: Must have at most {$limit} items
+    values: { limit: { type: integer } }
+    description: Under a field whose value fails `maxItems`.
+  uniqueItems:
+    message: Must not repeat an item
+    description: Under a field whose value fails `uniqueItems`.
+  minProperties:
+    message:
+      plural: limit
+      cases:
+        one: Must have at least {$limit} entry
+        other: Must have at least {$limit} entries
+    values: { limit: { type: integer } }
+    description: Under a field whose value fails `minProperties`.
+  maxProperties:
+    message:
+      plural: limit
+      cases:
+        one: Must have at most {$limit} entry
+        other: Must have at most {$limit} entries
+    values: { limit: { type: integer } }
+    description: Under a field whose value fails `maxProperties`.
+  format:
+    message: Is not a valid {$format}
+    values: { format: { type: string } }
+    description: Under a field whose value fails `format`.
+  additionalProperties:
+    message: Is not expected here
+    values: { additionalProperty: { type: string } }
+    description: Under a field whose value fails `additionalProperties`.
+  propertyNames:
+    message: "Has a name that is not allowed: {$propertyName}"
+    values: { propertyName: { type: string } }
+    description: Under a field whose value fails `propertyNames`.

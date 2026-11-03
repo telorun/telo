@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [modules/ui, modules/ui-react, modules/ui-react-radix, apps/plan-approval]
+---
+
 # Screens for a review app: address variables, Markdown with anchors, live refresh
 
 ## Goal

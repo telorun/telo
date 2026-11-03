@@ -1,3 +1,11 @@
+---
+status: done
+priority: high
+depends-on: []
+packages: [analyzer, kernel, sdk, modules/i18n, modules/http-server]
+tracking: feat/application-translations
+---
+
 # Application translations and request language
 
 First of four plans: application translations → keyed translations → `ui` texts by key → missing-translation reporting.

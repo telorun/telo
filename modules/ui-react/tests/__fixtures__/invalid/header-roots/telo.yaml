@@ -6,17 +6,12 @@ metadata:
   description: >-
     Test fixture exporting an application whose header node reads the query
     in its condition, though no query is in scope in the header.
-imports:
-  UiReact: ../../../../
-  Ui: ../../../../../ui
-exports:
-  resources: [headed]
+imports: { UiReact: ../../../../, Ui: ../../../../../ui }
+exports: { resources: [headed] }
 ---
 kind: UiReact.App
-metadata:
-  name: headed
+metadata: { name: headed }
 title: Headed
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 header:
   end:
@@ -29,7 +24,6 @@ pages:
   - kind: Ui.Page
     path: /
     title: Home
-    query:
-      tab: { type: string }
+    query: { tab: { type: string } }
     children:
       - { type: text, text: Home }

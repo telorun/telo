@@ -1,0 +1,33 @@
+kind: Telo.Library
+metadata:
+  name: KeyedFixture
+  version: 1.0.0
+  description: >-
+    Fixture: a library declaring its own texts by key in two sets, and a kind
+    showing one of them, whose controller answers the keyed texts it is handed.
+lang: en
+exports: { kinds: [Translations, Greetings, ShownTexts] }
+---
+kind: Telo.KeyedTranslations
+metadata: { name: Translations }
+keys:
+  save: Save
+  cancel: Cancel
+  pagerRange:
+    message: "{$first}–{$last} of {$total}"
+    values: { first: { type: integer }, last: { type: integer }, total: { type: integer } }
+---
+kind: Telo.KeyedTranslations
+metadata: { name: Greetings }
+keys: { hello: Hello }
+---
+kind: Telo.Definition
+metadata:
+  name: ShownTexts
+  description: Answers the keyed texts of the sets its schema names, per served language.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./keyed.mjs#shownTexts]
+schema:
+  type: object
+  x-telo-text-keys: [Self.Translations]
+  additionalProperties: false

@@ -6,6 +6,7 @@ import { parseAllDocuments } from "yaml";
 import { CAPTIONS } from "../src/browser/filters.js";
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { component, filtersNode, listingNode } from "./spec-nodes.js";
+import { uiKeys } from "./ui-texts.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -110,13 +111,12 @@ describe("a filter on whether a property is absent", () => {
     expect(rendered.parts("table-row").map((each) => each.textContent)).toEqual(["On compilers", "On kernels"]);
   });
 
-  it("has a caption word for every operator a filter takes", () => {
+  it("has a caption text for every operator a filter takes", () => {
     const documents = parseAllDocuments(readFileSync(join(process.cwd(), "../../ui/telo.yaml"), "utf8"), { logLevel: "silent" }).map((doc) => doc.toJS());
     const spec = documents.find((doc) => doc?.kind === "Telo.JsonSchema" && doc.metadata?.name === "SpecNode").schema;
     const filters = spec.oneOf.find((branch: { properties?: { type?: { const?: string } } }) => branch.properties?.type?.const === "filters");
     const operators: string[] = filters.properties.fields.items.properties.operator.enum;
-    const words: string[] = spec.$defs.Word.properties.word.enum;
     expect(Object.keys(CAPTIONS).sort()).toEqual([...operators].sort());
-    expect(operators.filter((operator) => !words.includes(CAPTIONS[operator as keyof typeof CAPTIONS]))).toEqual([]);
+    expect(operators.filter((operator) => !uiKeys.includes(CAPTIONS[operator as keyof typeof CAPTIONS]))).toEqual([]);
   });
 });

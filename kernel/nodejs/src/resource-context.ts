@@ -582,7 +582,7 @@ export class ResourceContextImpl implements ResourceContext {
   }
 
   get translations(): ApplicationTranslations {
-    return this.kernel.translations;
+    return this.kernel.translationsFor(this.#resolvedKind);
   }
 
   /** The root context for runtime-driven inbound work — inherits nothing from

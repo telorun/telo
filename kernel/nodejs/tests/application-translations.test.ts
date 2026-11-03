@@ -29,7 +29,7 @@ describe("the layered translation set", () => {
     ]),
     catalog("PL", [{ text: "Save", translation: "Zapisz" }]),
     catalog("de", [{ text: "Save", translation: "Speichern" }]),
-  ]);
+  ], []);
 
   it("serves the fallback and every catalog's language once, compared case-insensitively", () => {
     expect(set.languages).toEqual(["en", "pl", "de"]);
@@ -61,6 +61,29 @@ describe("the layered translation set", () => {
   it("translates into the negotiated language, so an unserved one shows the fallback", () => {
     expect(set.translate("de-AT", text("Save")).text).toBe("Speichern");
     expect(set.translate("fr", text("Save")).text).toBe("Save");
+  });
+
+  it("layers the built-in catalogs beneath the listed ones, serving no language of their own", () => {
+    const layered = new TranslationSet(
+      "en",
+      [catalog("PL", [{ text: "Save", translation: "Zapisz" }])],
+      [
+        catalog("pl", [
+          { text: "Failed.", translation: "Nie udało się." },
+          { text: "Save", translation: "Zachowaj" },
+        ]),
+        catalog("fr", [{ text: "Failed.", translation: "Échec." }]),
+      ],
+    );
+    expect(layered.languages).toEqual(["en", "PL"]);
+    expect(layered.translate("pl", text("Failed."))).toEqual({
+      text: "Nie udało się.",
+      context: null,
+      lang: "PL",
+      computed: false,
+    });
+    expect(layered.translate("pl", text("Save")).text).toBe("Zapisz");
+    expect(layered.translate("fr", text("Failed.")).text).toBe("Failed.");
   });
 });
 

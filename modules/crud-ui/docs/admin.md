@@ -44,7 +44,6 @@ basePath: /api/tasks
 kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page

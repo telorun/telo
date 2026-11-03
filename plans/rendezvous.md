@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [modules/rendezvous, analyzer]
+---
+
 # Rendezvous
 
 ## Problem

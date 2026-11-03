@@ -87,6 +87,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-span-attribute": READS_NOTHING,
   "x-telo-step-context": READS_NOTHING,
   "x-telo-text-context": READS_NOTHING,
+  "x-telo-text-keys": READS_NOTHING,
   "x-telo-text-values": READS_NOTHING,
   "x-telo-text-values-for": textValuesForReads,
   "x-telo-topology-role": READS_NOTHING,

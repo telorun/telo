@@ -7,10 +7,13 @@ metadata:
     server negotiated for it (Accept-Language, a cookie or a query): the
     documents carry the translated message and its tag, a text
     with context is translated by its context, an enumeration's labels are
-    translated while its values stay as written, the renderer's own words
-    arrive translated, and the response says `Content-Language` and `Vary:
-    Accept-Language` plus the headers the negotiation reads. An application
-    serving English only sends neither. A thousand different Accept-Language
+    translated while its values stay as written, ui's own texts arrive as
+    the keyed set the App names, in the language served, and the response
+    says `Content-Language` and `Vary: Accept-Language` plus the headers the
+    negotiation reads. An application serving English only sends neither and
+    still shows ui's English texts. A catalog of ui's own texts overrides
+    them key by key, in English as in Polish, leaving a text the author
+    wrote with the same words untouched. A thousand different Accept-Language
     values produce no more documents than the application serves languages. The application's own header
     nodes travel in the application document, translated like the rest of it,
     with a composite provided, a menu's text and items translated, a node and
@@ -34,9 +37,14 @@ with:
     metadata: { name: english }
     source: ./__fixtures__/english-only/telo.yaml
     ports: { http: 8134 }
+  - kind: App.Instance
+    metadata: { name: keyed }
+    source: ./__fixtures__/keyed-texts/telo.yaml
+    ports: { http: 8135 }
 targets:
   - !ref fixture
   - !ref english
+  - !ref keyed
 steps:
   - name: polishApp
     invoke:
@@ -80,6 +88,26 @@ steps:
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8134/_telo/ui/app" }
   - name: englishOnlyShell
     invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8134/", responseType: text }
+  - name: keyedPolishApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8135/_telo/ui/app
+      headers: { accept-language: pl }
+  - name: keyedGermanApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8135/_telo/ui/app
+      headers: { accept-language: de }
+  - name: keyedPolishPage
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8135/_telo/ui/page?path=/
+      headers: { accept-language: pl }
+  - name: keyedGermanPage
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8135/_telo/ui/page?path=/
+      headers: { accept-language: de }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -89,12 +117,13 @@ steps:
           title: !cel "steps.polishApp.result.body.title"
           vary: !cel "steps.polishApp.result.headers['vary']"
           contentLanguage: !cel "steps.polishApp.result.headers['content-language']"
-          save: !cel "steps.polishApp.result.body.words.save"
+          own: !cel "steps.polishApp.result.body.texts.own"
+          save: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].save"
           header: !cel "steps.polishApp.result.body.header"
         english:
           lang: !cel "steps.englishApp.result.body.lang"
           title: !cel "steps.englishApp.result.body.title"
-          save: !cel "steps.englishApp.result.body.words.save"
+          save: !cel "steps.englishApp.result.body.texts.sets['Ui.Translations'].save"
           header: !cel "steps.englishApp.result.body.header"
         staffHeaderEnd: !cel "steps.staffApp.result.body.header.end"
         etagsDiffer: !cel "steps.polishApp.result.headers['etag'] != steps.englishApp.result.headers['etag']"
@@ -121,16 +150,24 @@ steps:
           vary: !cel "steps.cookieApp.result.headers['vary']"
         englishOnly:
           lang: !cel "steps.englishOnlyApp.result.body.lang"
-          save: !cel "steps.englishOnlyApp.result.body.words.save"
+          save: !cel "steps.englishOnlyApp.result.body.texts.sets['Ui.Translations'].save"
           varies: !cel "'vary' in steps.englishOnlyApp.result.headers"
           contentLanguage: !cel "'content-language' in steps.englishOnlyApp.result.headers"
           shellVaries: !cel "'vary' in steps.englishOnlyShell.result.headers"
+        keyed:
+          polishSave: !cel "steps.keyedPolishApp.result.body.texts.sets['Ui.Translations'].save"
+          polishCancel: !cel "steps.keyedPolishApp.result.body.texts.sets['Ui.Translations'].cancel"
+          germanLang: !cel "steps.keyedGermanApp.result.body.lang"
+          germanSave: !cel "steps.keyedGermanApp.result.body.texts.sets['Ui.Translations'].save"
+          polishAuthorSave: !cel "steps.keyedPolishPage.result.body.children[0].text"
+          germanAuthorSave: !cel "steps.keyedGermanPage.result.body.children[0].text"
       expected:
         polish:
           lang: pl
           title: { lang: pl, message: [Faktury] }
           vary: Accept-Language, X-Role
           contentLanguage: pl
+          own: Ui.Translations
           save: { lang: pl, message: [Zapisz] }
           header:
             width: contained
@@ -188,6 +225,13 @@ steps:
           varies: false
           contentLanguage: false
           shellVaries: false
+        keyed:
+          polishSave: { lang: pl, message: [Zachowaj] }
+          polishCancel: { lang: pl, message: [Anuluj] }
+          germanLang: en
+          germanSave: { lang: en, message: [Submit] }
+          polishAuthorSave: { lang: en, message: [Save] }
+          germanAuthorSave: { lang: en, message: [Save] }
   # A thousand different Accept-Language values, half asking for Polish and
   # half for a language the application lacks: two documents between them.
   - name: seen

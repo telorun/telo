@@ -6,17 +6,12 @@ metadata:
   description: >-
     Test fixture exporting an application that declares two pages at the same
     path.
-imports:
-  UiReact: ../../../../../
-  Ui: ../../../../../../ui
-exports:
-  resources: [twice]
+imports: { UiReact: ../../../../../, Ui: ../../../../../../ui }
+exports: { resources: [twice] }
 ---
 kind: UiReact.App
-metadata:
-  name: twice
+metadata: { name: twice }
 title: Twice
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page

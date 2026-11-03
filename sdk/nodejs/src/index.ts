@@ -45,7 +45,7 @@ export * from "./record-buffer.js";
 export * from "./runtime-seam.js";
 export * from "./text-channel.js";
 export * from "./text-record.js";
-export type { ApplicationTranslations } from "./application-translations.js";
+export type { ApplicationTranslations, KeyedMessages } from "./application-translations.js";
 export * from "./log-severity.js";
 export * from "./logger.js";
 export * from "./network-fetch.js";

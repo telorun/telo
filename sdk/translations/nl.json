@@ -1,0 +1,25 @@
+{
+  "lang": "nl",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "De service is onjuist geconfigureerd."
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "De service kon geen waarde berekenen."
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "Het verzoek is ongeldig."
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "De service heeft een resultaat opgeleverd dat niet kon worden afgeleverd."
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "De service kon niet bepalen hoe verder te gaan."
+    }
+  ]
+}

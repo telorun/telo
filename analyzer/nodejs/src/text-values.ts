@@ -49,6 +49,15 @@ export interface TextValuesProblem {
   readonly message: string;
 }
 
+/** Why one declared value cannot be formatted into a message — its schema is not
+ *  typed `string`, `integer` or `number` — or undefined when it can. The rule of
+ *  every place a text's values are declared. */
+export function declaredValueRefusal(name: string, schema: unknown): string | undefined {
+  const type = isSchema(schema) ? schema.type : undefined;
+  if (type === "string" || type === "integer" || type === "number") return undefined;
+  return `'${name}' typed as neither a string nor a number: a message formats only those. Declare it 'type: string', 'integer' or 'number'.`;
+}
+
 /** The text fragment a node is, or reaches through a `$ref`. */
 function fragmentAt(node: Schema, root: Schema, resolveRef: ((ref: string) => Schema | undefined) | undefined) {
   const own = textFragmentOf(node);
@@ -101,10 +110,8 @@ export function textValuesProblems(
         report(path, shape, inner, "as something other than a map of value names to their schemas. Write `{}` for a text formatted with no values.");
       } else {
         for (const [name, value] of Object.entries(declared)) {
-          const type = isSchema(value) ? value.type : undefined;
-          if (type !== "string" && type !== "integer" && type !== "number") {
-            report(path, shape, inner, `with '${name}' typed as neither a string nor a number: a message formats only those. Declare it 'type: string', 'integer' or 'number'.`);
-          }
+          const refusal = declaredValueRefusal(name, value);
+          if (refusal) report(path, shape, inner, `with ${refusal}`);
         }
       }
     }

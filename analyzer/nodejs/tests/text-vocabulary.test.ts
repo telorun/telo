@@ -28,7 +28,8 @@ function inMemorySource(files: Record<string, string>): ManifestSource {
   };
 }
 
-const TEXT_CODES = /^(MESSAGE_|TEXT_|SCHEMA_VIOLATION$)/;
+// What an application leaves untranslated is `missing-translations.test.ts`'s.
+const TEXT_CODES = /^((?!MESSAGE_TRANSLATION_MISSING$)MESSAGE_|TEXT_|SCHEMA_VIOLATION$)/;
 
 /** `[code, path]` of every text diagnostic `telo check` reports for the entry. */
 async function check(

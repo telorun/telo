@@ -1,3 +1,10 @@
+---
+status: approved
+priority: high
+depends-on: []
+packages: [analyzer, kernel, templating, apps/authoring-agent, starters, examples]
+---
+
 # Host paths, module files and tagged defaults — follow-ups
 
 Handover for the work left after the probe run over the todo starter's `dbFile` / `SQLite.Connection.file` / `Http.Static.root` wiring. Every design question below is decided; each section says what happens today, what must happen instead, and how to verify it.

@@ -47,7 +47,6 @@ targets: [!ref server]
 kind: UiReact.App
 metadata: { name: console }
 title: Reports
-words: !ref Ui.words
 theme: !ref Radix.theme
 tokens: { kind: Ui.DesignTokens, color.accent: "#1d4ed8" }
 pages:

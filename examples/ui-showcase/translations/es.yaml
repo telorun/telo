@@ -1,9 +1,6 @@
-# The showcase in Spanish: the applications' and pages' titles, every text the
-# pages write, the labels of the models they draw, and the words the renderer
-# draws on its own. A plural source is matched by the text its `other` case
-# reads and translated into Spanish's `one` and `other` cases (its `many`, for
-# large round numbers, falls back to `other`); a word told apart by its
-# context is translated once per context.
+# The showcase in Spanish: titles, every text the pages write and their models'
+# labels; ui's own texts come from `Ui.spanishTranslations`. A plural is matched
+# by its `other` case, and a word told apart by its context translated per context.
 kind: Telo.TextTranslations
 metadata: { name: spanish }
 lang: es
@@ -29,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: Logotipo del muestrario de interfaz }
   - { text: Language, translation: Idioma }
   - { text: Theme, translation: Tema }
@@ -537,102 +535,52 @@ texts:
   - { text: Use the Acme brand, translation: Usar la marca Acme }
   - { text: "Use the theme's own values", translation: Usar los valores propios del tema }
 
-  # The renderer's own words, as `Ui.words` writes them.
-  - { text: Loading…, translation: Cargando… }
-  - { text: No rows., translation: No hay filas. }
-  - { text: Nothing found., translation: No se encontró nada. }
-  - { text: Save, translation: Guardar }
-  - { text: Cancel, translation: Cancelar }
+  # Labels the pages write that ui also shows of its own.
   - { text: Close, translation: Cerrar }
-  - { text: New, translation: Nuevo }
   - { text: Edit, translation: Editar }
   - { text: Delete, translation: Eliminar }
-  - { text: Delete this row?, translation: "¿Eliminar esta fila?" }
-  - { text: This cannot be undone., translation: Esta acción no se puede deshacer. }
-  - { text: Previous page, translation: Página anterior }
-  - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} de {$total}" }
-  - { text: "0 of {$total}", translation: "0 de {$total}" }
-  - { text: Next page, translation: Página siguiente }
-  - { text: "Yes", translation: Sí }
-  - { text: "No", translation: "No" }
-  - { text: None, translation: Ninguno }
-  - { text: Any, translation: Cualquiera }
-  - { text: Select…, translation: Seleccionar… }
-  - { text: Choose…, translation: Elegir… }
-  - { text: More, translation: Más }
-  - { text: Menu, translation: Menú }
-  - { text: Site, translation: Sitio }
-  - { text: Collapse navigation, translation: Contraer la navegación }
-  - { text: Expand navigation, translation: Expandir la navegación }
-  - { text: "Search {$label}", translation: "Buscar: {$label}" }
-  - { text: "Remove {$label}", translation: "Quitar: {$label}" }
-  - { text: "Clear {$label}", translation: "Borrar: {$label}" }
-  - { text: Add filter, translation: Añadir filtro }
-  - { text: Apply, translation: Aplicar }
-  - { text: Reset, translation: Restablecer }
-  - { text: Done, translation: Listo }
-  - { text: Presets, translation: Predefinidos }
-  - { text: is, translation: es }
-  - { text: contains, translation: contiene }
-  - { text: after, translation: después de }
-  - { text: from, translation: desde }
-  - { text: before, translation: antes de }
-  - { text: to, translation: hasta }
-  - { text: one of, translation: uno de }
-  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
-  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
-  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
   - { text: From, translation: Desde }
   - { text: To, translation: Hasta }
-  - { text: Must not start after it ends, translation: No puede empezar después de terminar }
-  - text: "Longer than {$count} days"
-    translation: { plural: count, cases: { one: "Más de {$count} día", other: "Más de {$count} días" } }
-  - text: "Longer than {$count} weeks"
-    translation: { plural: count, cases: { one: "Más de {$count} semana", other: "Más de {$count} semanas" } }
-  - text: "Longer than {$count} months"
-    translation: { plural: count, cases: { one: "Más de {$count} mes", other: "Más de {$count} meses" } }
-  - text: "Longer than {$count} quarters"
-    translation: { plural: count, cases: { one: "Más de {$count} trimestre", other: "Más de {$count} trimestres" } }
-  - text: "Longer than {$count} years"
-    translation: { plural: count, cases: { one: "Más de {$count} año", other: "Más de {$count} años" } }
-  - { text: Not found, translation: No encontrado }
-  - { text: "This application has no page at {$path}.", translation: "Esta aplicación no tiene ninguna página en {$path}." }
-  - { text: Discard unsaved changes?, translation: "¿Descartar los cambios sin guardar?" }
-  - { text: What you entered has not been saved., translation: Lo que has introducido no se ha guardado. }
-  - { text: Discard, translation: Descartar }
-  - { text: Keep editing, translation: Seguir editando }
-  - { text: "You are not signed in, or your session has ended.", translation: "No has iniciado sesión o tu sesión ha terminado." }
-  - { text: You are not allowed to do this., translation: No tienes permiso para hacer esto. }
-  - { text: "The request failed with status {$status}.", translation: "La solicitud falló con el estado {$status}." }
-  - { text: "The request failed: {$reason}", translation: "La solicitud falló: {$reason}" }
-  - { text: The record was refused., translation: El registro fue rechazado. }
-  - { text: The answer is not JSON., translation: La respuesta no es JSON. }
-  - { text: The answer is not a JSON object., translation: La respuesta no es un objeto JSON. }
-  - { text: "The answer does not fit its model: {$detail}", translation: "La respuesta no se ajusta a su modelo: {$detail}" }
-  - { text: Is not valid, translation: No es válido }
-  - { text: Is required, translation: Es obligatorio }
-  - { text: "Must be {$types}", translation: "Debe ser de tipo {$types}" }
-  - { text: "Must be one of: {$allowed}", translation: "Debe ser uno de: {$allowed}" }
-  - { text: "Must be {$value}", translation: "Debe ser {$value}" }
-  - { text: Is not allowed, translation: No está permitido }
-  - { text: Is not one of the allowed forms, translation: No tiene ninguna de las formas permitidas }
-  - text: "Must be at least {$limit} characters"
-    translation: { plural: limit, cases: { one: "Debe tener al menos {$limit} carácter", other: "Debe tener al menos {$limit} caracteres" } }
-  - text: "Must be at most {$limit} characters"
-    translation: { plural: limit, cases: { one: "Debe tener como máximo {$limit} carácter", other: "Debe tener como máximo {$limit} caracteres" } }
-  - { text: Is not in the expected format, translation: No tiene el formato esperado }
-  - { text: "Must be at least {$limit}", translation: "Debe ser al menos {$limit}" }
-  - { text: "Must be at most {$limit}", translation: "Debe ser como máximo {$limit}" }
-  - { text: "Must be greater than {$limit}", translation: "Debe ser mayor que {$limit}" }
-  - { text: "Must be less than {$limit}", translation: "Debe ser menor que {$limit}" }
-  - { text: "Must be a multiple of {$limit}", translation: "Debe ser múltiplo de {$limit}" }
-  - text: "Must have at least {$limit} items"
-    translation: { plural: limit, cases: { one: "Debe tener al menos {$limit} elemento", other: "Debe tener al menos {$limit} elementos" } }
-  - text: "Must have at most {$limit} items"
-    translation: { plural: limit, cases: { one: "Debe tener como máximo {$limit} elemento", other: "Debe tener como máximo {$limit} elementos" } }
-  - { text: Must not repeat an item, translation: No puede repetir ningún elemento }
-  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
-  - { text: "Load more", translation: "Cargar más" }
-  - { text: "Move to", translation: "Mover a" }
-  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
-  - { text: "not set", translation: "sin valor" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "No existe el proyecto '{$code}'." }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 ya tiene la etiqueta '{$tag}'." }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} no es el correo electrónico de nadie del equipo." }
+  - { text: "{$email} has left the team.", translation: "{$email} ha dejado el equipo." }
+  - { text: "Another request is already titled '{$title}'.", translation: "Otra solicitud ya se titula '{$title}'." }
+  - { text: "The period must not start after it ends.", translation: "El periodo no puede empezar después de terminar." }
+  - { text: "The period must end within a year of its start.", translation: "El periodo debe terminar en el plazo de un año desde su inicio." }
+  - { text: "Name someone to give the task to.", translation: "Indica a quién asignar la tarea." }
+  - { text: "There is no task {$id}.", translation: "No existe la tarea {$id}." }
+  - { text: "{$name} has left the team.", translation: "{$name} ha dejado el equipo." }
+  - { text: "Task {$id} is already {$status}.", translation: "La tarea {$id} ya está {$status}." }
+  - { text: "There is no post {$id}.", translation: "No existe la publicación {$id}." }
+  - { text: "There is no comment {$id}.", translation: "No existe el comentario {$id}." }
+  - { text: "Write the new text of the comment.", translation: "Escribe el nuevo texto del comentario." }
+  - { text: "The session closed.", translation: "La sesión se cerró." }
+  - { text: "Only a manager may pause a project.", translation: "Solo un gerente puede pausar un proyecto." }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "El cuerpo de la solicitud supera los {$maxBodyBytes} bytes que acepta este servidor." }
+  - { text: "This server does not serve the host {$host}.", translation: "Este servidor no atiende el host {$host}." }
+  - { text: "The list request is not valid.", translation: "La solicitud de la lista no es válida." }

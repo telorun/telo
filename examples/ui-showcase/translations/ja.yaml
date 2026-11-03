@@ -1,9 +1,6 @@
-# The showcase in Japanese: the applications' and pages' titles, every text the
-# pages write, the labels of the models they draw, and the words the renderer
-# draws on its own. A plural source is matched by the text its `other` case
-# reads and translated into Japanese's single form, `other`, with an `=0` case
-# where it reads better; a word told apart by its context is translated once
-# per context.
+# The showcase in Japanese: titles, every text the pages write and their models'
+# labels; ui's own texts come from `Ui.japaneseTranslations`. A plural is matched
+# by its `other` case, and a word told apart by its context translated per context.
 kind: Telo.TextTranslations
 metadata: { name: japanese }
 lang: ja
@@ -29,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: "UI ショーケースのロゴ" }
   - { text: Language, translation: "言語" }
   - { text: Theme, translation: "テーマ" }
@@ -518,93 +516,52 @@ texts:
   - { text: Use the Acme brand, translation: "Acme ブランドを使用" }
   - { text: "Use the theme's own values", translation: "テーマの値を使用" }
 
-  # The renderer's own words, as `Ui.words` writes them.
-  - { text: Loading…, translation: "読み込み中…" }
-  - { text: No rows., translation: "行がありません。" }
-  - { text: Nothing found., translation: "見つかりませんでした。" }
-  - { text: Save, translation: "保存" }
-  - { text: Cancel, translation: "キャンセル" }
+  # Labels the pages write that ui also shows of its own.
   - { text: Close, translation: "閉じる" }
-  - { text: New, translation: "新規" }
   - { text: Edit, translation: "編集" }
   - { text: Delete, translation: "削除" }
-  - { text: Delete this row?, translation: "この行を削除しますか？" }
-  - { text: This cannot be undone., translation: "この操作は元に戻せません。" }
-  - { text: Previous page, translation: "前のページ" }
-  - { text: "{$first}–{$last} of {$total}", translation: "{$total} 件中 {$first}–{$last} 件" }
-  - { text: "0 of {$total}", translation: "{$total} 件中 0 件" }
-  - { text: Next page, translation: "次のページ" }
-  - { text: "Yes", translation: "はい" }
-  - { text: "No", translation: "いいえ" }
-  - { text: None, translation: "なし" }
-  - { text: Any, translation: "すべて" }
-  - { text: Select…, translation: "選択…" }
-  - { text: Choose…, translation: "指定…" }
-  - { text: More, translation: "さらに表示" }
-  - { text: Menu, translation: "メニュー" }
-  - { text: Site, translation: "サイト" }
-  - { text: Collapse navigation, translation: "ナビゲーションを折りたたむ" }
-  - { text: Expand navigation, translation: "ナビゲーションを展開" }
-  - { text: "Search {$label}", translation: "{$label}を検索" }
-  - { text: "Remove {$label}", translation: "{$label}を削除" }
-  - { text: "Clear {$label}", translation: "{$label}をクリア" }
-  - { text: Add filter, translation: "フィルターを追加" }
-  - { text: Apply, translation: "適用" }
-  - { text: Reset, translation: "リセット" }
-  - { text: Done, translation: "完了" }
-  - { text: Presets, translation: "プリセット" }
-  - { text: is, translation: "と一致" }
-  - { text: contains, translation: "を含む" }
-  - { text: after, translation: "より後" }
-  - { text: from, translation: "から" }
-  - { text: before, translation: "より前" }
-  - { text: to, translation: "まで" }
-  - { text: one of, translation: "のいずれか" }
-  - { text: "{$label} {$operator}", translation: "{$label}（{$operator}）" }
-  - { text: "{$label} {$operator} {$value}", translation: "{$label}: {$value} {$operator}" }
-  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
   - { text: From, translation: "開始" }
   - { text: To, translation: "終了" }
-  - { text: Must not start after it ends, translation: "終了より後に開始することはできません" }
-  - { text: "Longer than {$count} days", translation: "{$count} 日を超えています" }
-  - { text: "Longer than {$count} weeks", translation: "{$count} 週間を超えています" }
-  - { text: "Longer than {$count} months", translation: "{$count} か月を超えています" }
-  - { text: "Longer than {$count} quarters", translation: "{$count} 四半期を超えています" }
-  - { text: "Longer than {$count} years", translation: "{$count} 年を超えています" }
-  - { text: Not found, translation: "見つかりません" }
-  - { text: "This application has no page at {$path}.", translation: "このアプリケーションには {$path} のページがありません。" }
-  - { text: Discard unsaved changes?, translation: "未保存の変更を破棄しますか？" }
-  - { text: What you entered has not been saved., translation: "入力した内容は保存されていません。" }
-  - { text: Discard, translation: "破棄" }
-  - { text: Keep editing, translation: "編集を続ける" }
-  - { text: "You are not signed in, or your session has ended.", translation: "サインインしていないか、セッションが終了しています。" }
-  - { text: You are not allowed to do this., translation: "この操作を行う権限がありません。" }
-  - { text: "The request failed with status {$status}.", translation: "リクエストはステータス {$status} で失敗しました。" }
-  - { text: "The request failed: {$reason}", translation: "リクエストが失敗しました: {$reason}" }
-  - { text: The record was refused., translation: "レコードは拒否されました。" }
-  - { text: The answer is not JSON., translation: "応答が JSON ではありません。" }
-  - { text: The answer is not a JSON object., translation: "応答が JSON オブジェクトではありません。" }
-  - { text: "The answer does not fit its model: {$detail}", translation: "応答がモデルに適合しません: {$detail}" }
-  - { text: Is not valid, translation: "無効です" }
-  - { text: Is required, translation: "必須です" }
-  - { text: "Must be {$types}", translation: "{$types} 型である必要があります" }
-  - { text: "Must be one of: {$allowed}", translation: "次のいずれかである必要があります: {$allowed}" }
-  - { text: "Must be {$value}", translation: "{$value} である必要があります" }
-  - { text: Is not allowed, translation: "許可されていません" }
-  - { text: Is not one of the allowed forms, translation: "許可された形式のいずれにも一致しません" }
-  - { text: "Must be at least {$limit} characters", translation: "{$limit} 文字以上で入力してください" }
-  - { text: "Must be at most {$limit} characters", translation: "{$limit} 文字以下で入力してください" }
-  - { text: Is not in the expected format, translation: "形式が正しくありません" }
-  - { text: "Must be at least {$limit}", translation: "{$limit} 以上である必要があります" }
-  - { text: "Must be at most {$limit}", translation: "{$limit} 以下である必要があります" }
-  - { text: "Must be greater than {$limit}", translation: "{$limit} より大きい必要があります" }
-  - { text: "Must be less than {$limit}", translation: "{$limit} より小さい必要があります" }
-  - { text: "Must be a multiple of {$limit}", translation: "{$limit} の倍数である必要があります" }
-  - { text: "Must have at least {$limit} items", translation: "{$limit} 個以上の項目が必要です" }
-  - { text: "Must have at most {$limit} items", translation: "項目は {$limit} 個以下にしてください" }
-  - { text: Must not repeat an item, translation: "項目を重複させることはできません" }
-  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
-  - { text: "Load more", translation: "さらに読み込む" }
-  - { text: "Move to", translation: "移動先" }
-  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
-  - { text: "not set", translation: "未設定" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "プロジェクト「{$code}」はありません。" }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 にはすでにタグ「{$tag}」が付いています。" }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} はチームの誰のメールアドレスでもありません。" }
+  - { text: "{$email} has left the team.", translation: "{$email} はチームを離れました。" }
+  - { text: "Another request is already titled '{$title}'.", translation: "別のリクエストがすでに「{$title}」というタイトルです。" }
+  - { text: "The period must not start after it ends.", translation: "期間は終了より後に開始できません。" }
+  - { text: "The period must end within a year of its start.", translation: "期間は開始から 1 年以内に終了する必要があります。" }
+  - { text: "Name someone to give the task to.", translation: "タスクを割り当てる相手を指定してください。" }
+  - { text: "There is no task {$id}.", translation: "タスク {$id} はありません。" }
+  - { text: "{$name} has left the team.", translation: "{$name} はチームを離れました。" }
+  - { text: "Task {$id} is already {$status}.", translation: "タスク {$id} はすでに {$status} です。" }
+  - { text: "There is no post {$id}.", translation: "投稿 {$id} はありません。" }
+  - { text: "There is no comment {$id}.", translation: "コメント {$id} はありません。" }
+  - { text: "Write the new text of the comment.", translation: "コメントの新しい本文を入力してください。" }
+  - { text: "The session closed.", translation: "セッションが終了しました。" }
+  - { text: "Only a manager may pause a project.", translation: "プロジェクトを一時停止できるのはマネージャーだけです。" }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "リクエスト本文が、このサーバーが受け付ける {$maxBodyBytes} バイトを超えています。" }
+  - { text: "This server does not serve the host {$host}.", translation: "このサーバーはホスト {$host} を処理しません。" }
+  - { text: "The list request is not valid.", translation: "一覧のリクエストが無効です。" }

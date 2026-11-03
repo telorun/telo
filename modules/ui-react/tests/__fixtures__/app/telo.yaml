@@ -1,14 +1,10 @@
-# The fixture application: every node, composite and host capability on a page
-# of its own, over a collection held in memory. Start it with
-#   pnpm run telo ./modules/ui-react/tests/__fixtures__/app/telo.yaml
-# and open http://127.0.0.1:19310/admin/
+# Every node, composite and host capability on a page of its own, over a
+# collection held in memory. Run it with `pnpm run telo` and open
+# http://127.0.0.1:19310/admin/.
 kind: Telo.Application
-metadata:
-  name: UiFixtureApp
-  version: 1.0.0
+metadata: { name: UiFixtureApp, version: 1.0.0 }
 # Module `lang:` is read from 0.121.0.
-requires:
-  telo: ">=0.121.0"
+requires: { telo: ">=0.121.0" }
 lang: en
 imports:
   Http: ../../../../http-server
@@ -19,14 +15,12 @@ imports:
   Widgets: ../components
   Views: ../views
   Api: ../collection-api
-ports:
-  http: { env: PORT, default: 19310 }
+ports: { http: { env: PORT, default: 19310 } }
 targets:
   - !ref server
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id, text]
@@ -41,8 +35,7 @@ schema:
 ---
 # What a todo is written as: everything but its key.
 kind: Telo.JsonSchema
-metadata:
-  name: TodoInput
+metadata: { name: TodoInput }
 schema:
   type: object
   required: [text]
@@ -55,18 +48,14 @@ schema:
     notes: { type: string, title: Notes, contentMediaType: text/plain }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Note
+metadata: { name: Note }
 schema:
   type: object
   required: [id]
-  properties:
-    id: { type: integer }
-    text: { type: string, title: Text }
+  properties: { id: { type: integer }, text: { type: string, title: Text } }
 ---
 kind: Api.Collection
-metadata:
-  name: todosApi
+metadata: { name: todosApi }
 required: [text]
 rows:
   - { id: 1, text: Write the plan, isDone: true, priority: 2, status: done, dueOn: "2026-10-01", notes: "" }
@@ -76,20 +65,17 @@ rows:
   - { id: 5, text: Record the demo, isDone: false, priority: 5, status: open, dueOn: "2026-10-15", notes: "" }
 ---
 kind: Api.Collection
-metadata:
-  name: notesApi
+metadata: { name: notesApi }
 rows:
   - { id: 1, text: A note }
 ---
 kind: Http.Static
-metadata:
-  name: files
+metadata: { name: files }
 root: !module-path ./public
 ---
 # What the todos collection's list accepts.
 kind: DataModel.Collection
-metadata:
-  name: todoCollection
+metadata: { name: todoCollection }
 model: !ref Todo
 query:
   filters:
@@ -106,20 +92,17 @@ query:
     - { property: notes }
 ---
 kind: Ui.CollectionPresentation
-metadata:
-  name: todoPresentation
+metadata: { name: todoPresentation }
 source: { kind: Ui.CollectionSource, collection: !ref todoCollection, basePath: /api/todos }
 ---
 kind: Ui.Form
-metadata:
-  name: todoForm
+metadata: { name: todoForm }
 model: !ref TodoInput
 presentation: !ref todoPresentation
 fields: [text, isDone, priority, status, dueOn, notes]
 ---
 kind: Ui.Listing
-metadata:
-  name: todos
+metadata: { name: todos }
 presentation: !ref todoPresentation
 model: !ref Todo
 pageSize: 2
@@ -147,8 +130,7 @@ edit: { form: !ref todoForm }
 delete: true
 ---
 kind: Ui.Filters
-metadata:
-  name: todoFilters
+metadata: { name: todoFilters }
 presentation: !ref todoPresentation
 content:
   type: composite
@@ -156,15 +138,13 @@ content:
 ---
 # The whole row model, with nothing listed.
 kind: Ui.Listing
-metadata:
-  name: allColumns
+metadata: { name: allColumns }
 presentation: !ref todoPresentation
 model: !ref Todo
 ---
 # The same table, one column shorter.
 kind: Ui.Listing
-metadata:
-  name: publicColumns
+metadata: { name: publicColumns }
 presentation: !ref todoPresentation
 model: !ref Todo
 layout:
@@ -174,8 +154,7 @@ layout:
     - value: !cel "row.dueOn"
 ---
 kind: Ui.Listing
-metadata:
-  name: internalColumns
+metadata: { name: internalColumns }
 presentation: !ref todoPresentation
 model: !ref Todo
 layout:
@@ -186,35 +165,29 @@ layout:
     - value: !cel "row.priority"
 ---
 kind: Font.Family
-metadata:
-  name: testSans
+metadata: { name: testSans }
 family: Test Sans
 faces:
   normal: !include-bytes ./fonts/TestSans-Regular.ttf
 ---
 kind: Font.Family
-metadata:
-  name: systemMono
+metadata: { name: systemMono }
 family: Menlo
 ---
 kind: Ui.DesignTokens
-metadata:
-  name: redBrand
+metadata: { name: redBrand }
 color.accent: "#c4341b"
 font.body: !ref testSans
 font.mono: !ref systemMono
 ---
 kind: Ui.DesignTokens
-metadata:
-  name: blueBrand
+metadata: { name: blueBrand }
 color.accent: "#1f8fff"
 radius.md: 2px
 ---
 kind: UiReact.App
-metadata:
-  name: admin
+metadata: { name: admin }
 title: Fixture Admin
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 tokens:
   - tokens: !ref redBrand
@@ -341,10 +314,8 @@ pages:
 ---
 # An application that sets nothing it does not have to.
 kind: UiReact.App
-metadata:
-  name: plain
+metadata: { name: plain }
 title: Plain
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page
@@ -355,10 +326,8 @@ pages:
 ---
 # Full-width pages and header nodes, its header's width left to `pageWidth`.
 kind: UiReact.App
-metadata:
-  name: wide
+metadata: { name: wide }
 title: Wide
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pageWidth: full
 header:
@@ -374,10 +343,8 @@ pages:
 # A look of its own: a stylesheet, token defaults and a control set drawing
 # the box control in place of the built-in.
 kind: UiReact.App
-metadata:
-  name: themed
+metadata: { name: themed }
 title: Themed
-words: !ref Ui.words
 theme:
   kind: UiReact.Theme
   tokens: { kind: Ui.DesignTokens, color.accent: "#1f8a4c" }
@@ -385,8 +352,7 @@ theme:
     - !module-path ./look.css
   controls:
     - !ref Widgets.controls
-header:
-  width: full
+header: { width: full }
 pages:
   - kind: Ui.Page
     path: /
@@ -395,8 +361,7 @@ pages:
       - { type: composite, ref: !ref todoForm }
 ---
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   address: 127.0.0.1
   port: !cel "ports.http"

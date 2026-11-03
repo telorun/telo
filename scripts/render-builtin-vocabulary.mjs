@@ -50,6 +50,7 @@ const SECTION_SRC = {
   zoneAttributes: join(ROOT, "sdk", "zone-attributes"),
   formats: join(ROOT, "sdk", "formats"),
   errorCodes: join(ROOT, "sdk", "error-codes"),
+  translations: join(ROOT, "sdk", "translations"),
 };
 const LICENSE_SRC = join(ROOT, "sdk", "LICENSE");
 
@@ -69,7 +70,7 @@ for (const path of [SRC, FRAGMENT_SRC, ...Object.values(SECTION_SRC), LICENSE_SR
       `'${path}' does not exist. The built-in vocabulary is data that ships beside the ` +
         `language halves — if this is a container or package build, its file allowlist ` +
         `has to include 'sdk/builtins', 'sdk/value-types', 'sdk/zone-attributes', ` +
-        `'sdk/formats', 'sdk/error-codes' and 'sdk/LICENSE'.`,
+        `'sdk/formats', 'sdk/error-codes', 'sdk/translations' and 'sdk/LICENSE'.`,
     );
   }
 }
@@ -142,6 +143,11 @@ const literal = (data) => JSON.stringify(data, null, 2).replace(/\n/g, "\n  ");
 const documentTuples = documents
   .map(({ file, data }) => `  ["${file}", ${literal(derive(data, file))}],`)
   .join("\n");
+const translations = readSection("translations", SECTION_SRC.translations, "lang");
+const translationTuples = Object.keys(translations)
+  .sort()
+  .map((lang) => `  ["${lang}", ${literal(translations[lang])}],`)
+  .join("\n");
 const fragmentTuples = fragments
   .map(
     ({ file, data }) =>
@@ -164,6 +170,12 @@ ${documentTuples}
 export const BUILTIN_FRAGMENT_FILES: ReadonlyArray<readonly [name: string, data: unknown]> = [
 ${fragmentTuples}
 ];
+
+/** Every built-in translation catalog, by language, in lexical order — the
+ *  archive's \`translations\` section. Source: sdk/translations/*.json. */
+export const BUILTIN_TRANSLATION_FILES: ReadonlyArray<readonly [lang: string, data: unknown]> = [
+${translationTuples}
+];
 `,
   "utf8",
 );
@@ -180,7 +192,7 @@ const ROOT_DESCRIPTION =
   "roles a kind may take; log and trace destinations; named schema shapes, CEL " +
   "functions and ordered step sequences; public address needs; and the schema fragments, value types, zone " +
   "attributes and string formats they reference; and the error codes the runtime raises " +
-  "itself, with the text a person is shown for each.";
+  "itself, with the text a person is shown for each and its translations.";
 
 /**
  * The fixed YAML emitter. Block style, two-space indent, LF, no anchors, tags or
@@ -267,6 +279,9 @@ function readSection(section, dir, key = "name") {
       fail(`${dir}/${file}: an entry of '${section}' declares no string '${key}'.`);
     }
     if (Object.hasOwn(entries, name)) fail(`${dir}/${file}: '${section}' declares '${name}' twice.`);
+    if (section === "translations" && file !== `${name}.json`) {
+      fail(`${dir}/${file}: a catalog is named by its lang ('${name}.json').`);
+    }
     entries[name] = data;
   }
   return entries;
@@ -285,6 +300,7 @@ const sections = {
   zoneAttributes: sortedByKey(readSection("zoneAttributes", SECTION_SRC.zoneAttributes)),
   formats: sortedByKey(readSection("formats", SECTION_SRC.formats)),
   errorCodes: sortedByKey(readSection("errorCodes", SECTION_SRC.errorCodes, "code")),
+  translations: sortedByKey(translations),
 };
 
 let version;
@@ -312,6 +328,7 @@ const SECTION_CLASS = {
   zoneAttributes: "zone attribute",
   formats: "format",
   errorCodes: "error code",
+  translations: "translation",
 };
 for (const [section, entries] of Object.entries(sections)) {
   const head = `${scalarText(section, "root")}:`;

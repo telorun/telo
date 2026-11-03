@@ -1,0 +1,99 @@
+# ui's own texts in Chinese.
+kind: Self.Translations
+metadata: { name: chineseTranslations }
+lang: zh
+messages:
+  loading: 加载中…
+  noRows: 暂无数据。
+  nothingFound: 未找到任何内容。
+  save: 保存
+  cancel: 取消
+  close: 关闭
+  newRecord: 新建
+  edit: 编辑
+  delete: 删除
+  deleteRowQuestion: 删除此行？
+  deleteRowDetail: 此操作无法撤销。
+  previousPage: 上一页
+  pagerRange: 第 {$first}–{$last} 条，共 {$total} 条
+  pagerEmpty: 0 条，共 {$total} 条
+  nextPage: 下一页
+  loadMore: 加载更多
+  moveTo: 移动到
+  valueCount: "{$label}（{$count}）"
+  yes: 是
+  no: 否
+  none: 无
+  any: 任意
+  select: 请选择…
+  choose: 选取…
+  more: 更多
+  menu: 菜单
+  siteNavigation: 站点
+  collapseNavigation: 收起导航
+  expandNavigation: 展开导航
+  search: 搜索{$label}
+  remove: 移除{$label}
+  clear: 清除{$label}
+  filters: 筛选
+  addFilter: 添加筛选器
+  apply: 应用
+  reset: 重置
+  done: 完成
+  presets: 预设
+  operatorEq: 为
+  operatorContains: 包含
+  operatorGt: 晚于
+  operatorGte: 从
+  operatorLt: 早于
+  operatorLte: 至
+  operatorIn: 属于
+  operatorAbsent: 未设置
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label}：{$summary}"
+  rangeFrom: 开始
+  rangeTo: 结束
+  rangeStartsAfterEnd: 开始时间不能晚于结束时间
+  rangeLongerThanDays: 超过 {$count} 天
+  rangeLongerThanWeeks: 超过 {$count} 周
+  rangeLongerThanMonths: 超过 {$count} 个月
+  rangeLongerThanQuarters: 超过 {$count} 个季度
+  rangeLongerThanYears: 超过 {$count} 年
+  notFound: 未找到
+  noPageAt: 本应用在 {$path} 没有页面。
+  unsavedQuestion: 放弃未保存的更改？
+  unsavedDetail: 你输入的内容尚未保存。
+  discard: 放弃
+  keepEditing: 继续编辑
+  requestUnauthorized: 你尚未登录，或会话已过期。
+  requestForbidden: 你无权执行此操作。
+  requestFailedStatus: 请求失败，状态码 {$status}。
+  requestFailed: 请求失败：{$reason}
+  recordRefused: 记录被拒绝。
+  answerNotJson: 响应不是 JSON 格式。
+  answerNotObject: 响应不是 JSON 对象。
+  answerNotModel: 响应不符合其模型：{$detail}
+  invalid: 无效
+  required: 必填
+  type: 必须是 {$types} 类型
+  enum: 必须是以下之一：{$allowed}
+  const: 必须等于 {$value}
+  not: 不允许
+  anyOf: 不符合任何允许的形式
+  minLength: 至少 {$limit} 个字符
+  maxLength: 最多 {$limit} 个字符
+  pattern: 格式不正确
+  minimum: 不能小于 {$limit}
+  maximum: 不能大于 {$limit}
+  exclusiveMinimum: 必须大于 {$limit}
+  exclusiveMaximum: 必须小于 {$limit}
+  multipleOf: 必须是 {$limit} 的倍数
+  minItems: 至少 {$limit} 项
+  maxItems: 最多 {$limit} 项
+  uniqueItems: 不能有重复项
+  minProperties: 至少 {$limit} 个条目
+  maxProperties: 最多 {$limit} 个条目
+  format: 不是有效的 {$format}
+  additionalProperties: 此处不应出现
+  propertyNames: 包含不允许的名称：{$propertyName}

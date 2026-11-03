@@ -1,0 +1,5 @@
+# Imports declarations naming keyed sets where nothing reads them: the kernel
+# refuses each when it creates the resource.
+kind: Telo.Application
+metadata: { name: TextKeysOutsideApp, version: 1.0.0 }
+imports: { Lib: ../outside-schema-lib }

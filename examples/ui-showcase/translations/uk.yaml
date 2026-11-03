@@ -1,8 +1,6 @@
-# The showcase in Ukrainian: the applications' and pages' titles, every text the
-# pages write, the labels of the models they draw, and the words the renderer
-# draws on its own. A plural source is matched by the text its `other` case
-# reads and translated into Ukrainian's four cases (`other` holding fractions);
-# a word told apart by its context is translated once per context.
+# The showcase in Ukrainian: titles, every text the pages write and their models'
+# labels; ui's own texts come from `Ui.ukrainianTranslations`. A plural is matched
+# by its `other` case, and a word told apart by its context translated per context.
 kind: Telo.TextTranslations
 metadata: { name: ukrainian }
 lang: uk
@@ -28,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: Логотип вітрини інтерфейсу }
   - { text: Language, translation: Мова }
   - { text: Theme, translation: Тема }
@@ -547,102 +546,52 @@ texts:
   - { text: Use the Acme brand, translation: Використати бренд Acme }
   - { text: "Use the theme's own values", translation: Використати власні значення теми }
 
-  # The renderer's own words, as `Ui.words` writes them.
-  - { text: Loading…, translation: Завантаження… }
-  - { text: No rows., translation: Немає рядків. }
-  - { text: Nothing found., translation: Нічого не знайдено. }
-  - { text: Save, translation: Зберегти }
-  - { text: Cancel, translation: Скасувати }
+  # Labels the pages write that ui also shows of its own.
   - { text: Close, translation: Закрити }
-  - { text: New, translation: Створити }
   - { text: Edit, translation: Редагувати }
   - { text: Delete, translation: Видалити }
-  - { text: Delete this row?, translation: Видалити цей рядок? }
-  - { text: This cannot be undone., translation: Цю дію не можна скасувати. }
-  - { text: Previous page, translation: Попередня сторінка }
-  - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} з {$total}" }
-  - { text: "0 of {$total}", translation: "0 з {$total}" }
-  - { text: Next page, translation: Наступна сторінка }
-  - { text: "Yes", translation: Так }
-  - { text: "No", translation: Ні }
-  - { text: None, translation: Немає }
-  - { text: Any, translation: Будь-яке }
-  - { text: Select…, translation: Виберіть… }
-  - { text: Choose…, translation: Оберіть… }
-  - { text: More, translation: Більше }
-  - { text: Menu, translation: Меню }
-  - { text: Site, translation: Сайт }
-  - { text: Collapse navigation, translation: Згорнути навігацію }
-  - { text: Expand navigation, translation: Розгорнути навігацію }
-  - { text: "Search {$label}", translation: "Пошук: {$label}" }
-  - { text: "Remove {$label}", translation: "Вилучити: {$label}" }
-  - { text: "Clear {$label}", translation: "Очистити: {$label}" }
-  - { text: Add filter, translation: Додати фільтр }
-  - { text: Apply, translation: Застосувати }
-  - { text: Reset, translation: Скинути }
-  - { text: Done, translation: Готово }
-  - { text: Presets, translation: Готові набори }
-  - { text: is, translation: є }
-  - { text: contains, translation: містить }
-  - { text: after, translation: після }
-  - { text: from, translation: від }
-  - { text: before, translation: раніше за }
-  - { text: to, translation: до }
-  - { text: one of, translation: одне з }
-  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
-  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
-  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
   - { text: From, translation: Від }
   - { text: To, translation: До }
-  - { text: Must not start after it ends, translation: Не може починатися після свого кінця }
-  - text: "Longer than {$count} days"
-    translation: { plural: count, cases: { one: "Довше ніж {$count} день", few: "Довше ніж {$count} дні", many: "Довше ніж {$count} днів", other: "Довше ніж {$count} дня" } }
-  - text: "Longer than {$count} weeks"
-    translation: { plural: count, cases: { one: "Довше ніж {$count} тиждень", few: "Довше ніж {$count} тижні", many: "Довше ніж {$count} тижнів", other: "Довше ніж {$count} тижня" } }
-  - text: "Longer than {$count} months"
-    translation: { plural: count, cases: { one: "Довше ніж {$count} місяць", few: "Довше ніж {$count} місяці", many: "Довше ніж {$count} місяців", other: "Довше ніж {$count} місяця" } }
-  - text: "Longer than {$count} quarters"
-    translation: { plural: count, cases: { one: "Довше ніж {$count} квартал", few: "Довше ніж {$count} квартали", many: "Довше ніж {$count} кварталів", other: "Довше ніж {$count} кварталу" } }
-  - text: "Longer than {$count} years"
-    translation: { plural: count, cases: { one: "Довше ніж {$count} рік", few: "Довше ніж {$count} роки", many: "Довше ніж {$count} років", other: "Довше ніж {$count} року" } }
-  - { text: Not found, translation: Не знайдено }
-  - { text: "This application has no page at {$path}.", translation: "У цьому застосунку немає сторінки за адресою {$path}." }
-  - { text: Discard unsaved changes?, translation: Відкинути незбережені зміни? }
-  - { text: What you entered has not been saved., translation: Введене не збережено. }
-  - { text: Discard, translation: Відкинути }
-  - { text: Keep editing, translation: Продовжити редагування }
-  - { text: "You are not signed in, or your session has ended.", translation: "Ви не ввійшли, або ваш сеанс завершився." }
-  - { text: You are not allowed to do this., translation: У вас немає дозволу на цю дію. }
-  - { text: "The request failed with status {$status}.", translation: "Запит не виконано, статус {$status}." }
-  - { text: "The request failed: {$reason}", translation: "Запит не виконано: {$reason}" }
-  - { text: The record was refused., translation: Запис відхилено. }
-  - { text: The answer is not JSON., translation: Відповідь не у форматі JSON. }
-  - { text: The answer is not a JSON object., translation: "Відповідь не є обʼєктом JSON." }
-  - { text: "The answer does not fit its model: {$detail}", translation: "Відповідь не відповідає своїй моделі: {$detail}" }
-  - { text: Is not valid, translation: Некоректне значення }
-  - { text: Is required, translation: "Обовʼязкове поле" }
-  - { text: "Must be {$types}", translation: "Має бути типу {$types}" }
-  - { text: "Must be one of: {$allowed}", translation: "Має бути одним із: {$allowed}" }
-  - { text: "Must be {$value}", translation: "Має дорівнювати {$value}" }
-  - { text: Is not allowed, translation: Недозволене значення }
-  - { text: Is not one of the allowed forms, translation: Не відповідає жодній із дозволених форм }
-  - text: "Must be at least {$limit} characters"
-    translation: { plural: limit, cases: { one: "Щонайменше {$limit} символ", few: "Щонайменше {$limit} символи", many: "Щонайменше {$limit} символів", other: "Щонайменше {$limit} символу" } }
-  - text: "Must be at most {$limit} characters"
-    translation: { plural: limit, cases: { one: "Щонайбільше {$limit} символ", few: "Щонайбільше {$limit} символи", many: "Щонайбільше {$limit} символів", other: "Щонайбільше {$limit} символу" } }
-  - { text: Is not in the expected format, translation: Неправильний формат }
-  - { text: "Must be at least {$limit}", translation: "Має бути щонайменше {$limit}" }
-  - { text: "Must be at most {$limit}", translation: "Має бути щонайбільше {$limit}" }
-  - { text: "Must be greater than {$limit}", translation: "Має бути більше за {$limit}" }
-  - { text: "Must be less than {$limit}", translation: "Має бути менше за {$limit}" }
-  - { text: "Must be a multiple of {$limit}", translation: "Має бути кратним {$limit}" }
-  - text: "Must have at least {$limit} items"
-    translation: { plural: limit, cases: { one: "Щонайменше {$limit} елемент", few: "Щонайменше {$limit} елементи", many: "Щонайменше {$limit} елементів", other: "Щонайменше {$limit} елемента" } }
-  - text: "Must have at most {$limit} items"
-    translation: { plural: limit, cases: { one: "Щонайбільше {$limit} елемент", few: "Щонайбільше {$limit} елементи", many: "Щонайбільше {$limit} елементів", other: "Щонайбільше {$limit} елемента" } }
-  - { text: Must not repeat an item, translation: Елементи не можуть повторюватися }
-  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
-  - { text: "Load more", translation: "Завантажити ще" }
-  - { text: "Move to", translation: "Перемістити до" }
-  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
-  - { text: "not set", translation: "не задано" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "Проєкту «{$code}» не існує." }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 уже має тег «{$tag}»." }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} не є адресою електронної пошти нікого з команди." }
+  - { text: "{$email} has left the team.", translation: "{$email} залишив(ла) команду." }
+  - { text: "Another request is already titled '{$title}'.", translation: "Інший запит уже має назву «{$title}»." }
+  - { text: "The period must not start after it ends.", translation: "Період не може починатися після свого завершення." }
+  - { text: "The period must end within a year of its start.", translation: "Період має завершитися протягом року після початку." }
+  - { text: "Name someone to give the task to.", translation: "Вкажіть, кому доручити завдання." }
+  - { text: "There is no task {$id}.", translation: "Завдання {$id} не існує." }
+  - { text: "{$name} has left the team.", translation: "{$name} залишив(ла) команду." }
+  - { text: "Task {$id} is already {$status}.", translation: "Завдання {$id} уже має статус {$status}." }
+  - { text: "There is no post {$id}.", translation: "Допису {$id} не існує." }
+  - { text: "There is no comment {$id}.", translation: "Коментаря {$id} не існує." }
+  - { text: "Write the new text of the comment.", translation: "Напишіть новий текст коментаря." }
+  - { text: "The session closed.", translation: "Сеанс завершено." }
+  - { text: "Only a manager may pause a project.", translation: "Призупинити проєкт може лише менеджер." }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "Тіло запиту перевищує {$maxBodyBytes} байт, які приймає цей сервер." }
+  - { text: "This server does not serve the host {$host}.", translation: "Цей сервер не обслуговує хост {$host}." }
+  - { text: "The list request is not valid.", translation: "Запит списку недійсний." }

@@ -35,7 +35,7 @@ const root = {
     },
   ],
   $defs: {
-    Text: { anyOf: [RECORD, { $ref: "#/$defs/Word" }] },
+    Text: { anyOf: [RECORD, { $ref: "#/$defs/KeyedText" }] },
     NodeText: { anyOf: [{ $ref: "#/$defs/Text" }, { $ref: "#/$defs/BoundText" }] },
     BoundText: {
       type: "object",
@@ -43,7 +43,7 @@ const root = {
       required: ["text", "values"],
       properties: { text: RECORD, values: { type: "object", additionalProperties: {} } },
     },
-    Word: { type: "object", additionalProperties: false, required: ["word"], properties: { word: { enum: ["loading"] } } },
+    KeyedText: { type: "object", additionalProperties: false, required: ["set", "key"], properties: { set: { type: "string" }, key: { type: "string" } } },
     Labels: {
       type: "array",
       items: { type: "object", properties: { value: {}, label: { $ref: "#/$defs/Text" } } },
@@ -61,7 +61,7 @@ describe("a node's texts", () => {
       children: [
         { type: "text", text: record("Hello") },
         { type: "text", text: { text: record("{$n} items"), values: { n: { root: "data", path: ["count"] } } } },
-        { type: "text", text: { word: "loading" } },
+        { type: "text", text: { set: "Ui.Translations", key: "loading" } },
       ],
     };
     expect(translator.node(node)).toEqual({
@@ -69,7 +69,7 @@ describe("a node's texts", () => {
       children: [
         { type: "text", text: { translated: "Hello" } },
         { type: "text", text: { translated: "{$n} items", values: { n: { root: "data", path: ["count"] } } } },
-        { type: "text", text: { word: "loading" } },
+        { type: "text", text: { set: "Ui.Translations", key: "loading" } },
       ],
     });
   });

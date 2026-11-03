@@ -1,0 +1,165 @@
+# ui's own texts in Ukrainian.
+kind: Self.Translations
+metadata: { name: ukrainianTranslations }
+lang: uk
+messages:
+  loading: Завантаження…
+  noRows: Немає рядків.
+  nothingFound: Нічого не знайдено.
+  save: Зберегти
+  cancel: Скасувати
+  close: Закрити
+  newRecord: Створити
+  edit: Редагувати
+  delete: Видалити
+  deleteRowQuestion: Видалити цей рядок?
+  deleteRowDetail: Цю дію не можна скасувати.
+  previousPage: Попередня сторінка
+  pagerRange: "{$first}–{$last} з {$total}"
+  pagerEmpty: 0 з {$total}
+  nextPage: Наступна сторінка
+  loadMore: Завантажити ще
+  moveTo: Перемістити до
+  valueCount: "{$label} ({$count})"
+  yes: Так
+  no: Ні
+  none: Немає
+  any: Будь-яке
+  select: Виберіть…
+  choose: Оберіть…
+  more: Більше
+  menu: Меню
+  siteNavigation: Сайт
+  collapseNavigation: Згорнути навігацію
+  expandNavigation: Розгорнути навігацію
+  search: "Пошук: {$label}"
+  remove: "Вилучити: {$label}"
+  clear: "Очистити: {$label}"
+  filters: Фільтри
+  addFilter: Додати фільтр
+  apply: Застосувати
+  reset: Скинути
+  done: Готово
+  presets: Готові набори
+  operatorEq: є
+  operatorContains: містить
+  operatorGt: після
+  operatorGte: від
+  operatorLt: раніше за
+  operatorLte: до
+  operatorIn: одне з
+  operatorAbsent: не задано
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: Від
+  rangeTo: До
+  rangeStartsAfterEnd: Не може починатися після свого кінця
+  rangeLongerThanDays:
+    plural: count
+    cases:
+      one: Довше ніж {$count} день
+      few: Довше ніж {$count} дні
+      many: Довше ніж {$count} днів
+      other: Довше ніж {$count} дня
+  rangeLongerThanWeeks:
+    plural: count
+    cases:
+      one: Довше ніж {$count} тиждень
+      few: Довше ніж {$count} тижні
+      many: Довше ніж {$count} тижнів
+      other: Довше ніж {$count} тижня
+  rangeLongerThanMonths:
+    plural: count
+    cases:
+      one: Довше ніж {$count} місяць
+      few: Довше ніж {$count} місяці
+      many: Довше ніж {$count} місяців
+      other: Довше ніж {$count} місяця
+  rangeLongerThanQuarters:
+    plural: count
+    cases:
+      one: Довше ніж {$count} квартал
+      few: Довше ніж {$count} квартали
+      many: Довше ніж {$count} кварталів
+      other: Довше ніж {$count} кварталу
+  rangeLongerThanYears:
+    plural: count
+    cases:
+      one: Довше ніж {$count} рік
+      few: Довше ніж {$count} роки
+      many: Довше ніж {$count} років
+      other: Довше ніж {$count} року
+  notFound: Не знайдено
+  noPageAt: У цьому застосунку немає сторінки за адресою {$path}.
+  unsavedQuestion: Відкинути незбережені зміни?
+  unsavedDetail: Введене не збережено.
+  discard: Відкинути
+  keepEditing: Продовжити редагування
+  requestUnauthorized: Ви не ввійшли, або ваш сеанс завершився.
+  requestForbidden: У вас немає дозволу на цю дію.
+  requestFailedStatus: Запит не виконано, статус {$status}.
+  requestFailed: "Запит не виконано: {$reason}"
+  recordRefused: Запис відхилено.
+  answerNotJson: Відповідь не у форматі JSON.
+  answerNotObject: Відповідь не є обʼєктом JSON.
+  answerNotModel: "Відповідь не відповідає своїй моделі: {$detail}"
+  invalid: Некоректне значення
+  required: Обовʼязкове поле
+  type: Має бути типу {$types}
+  enum: "Має бути одним із: {$allowed}"
+  const: Має дорівнювати {$value}
+  not: Недозволене значення
+  anyOf: Не відповідає жодній із дозволених форм
+  minLength:
+    plural: limit
+    cases:
+      one: Щонайменше {$limit} символ
+      few: Щонайменше {$limit} символи
+      many: Щонайменше {$limit} символів
+      other: Щонайменше {$limit} символу
+  maxLength:
+    plural: limit
+    cases:
+      one: Щонайбільше {$limit} символ
+      few: Щонайбільше {$limit} символи
+      many: Щонайбільше {$limit} символів
+      other: Щонайбільше {$limit} символу
+  pattern: Неправильний формат
+  minimum: Має бути щонайменше {$limit}
+  maximum: Має бути щонайбільше {$limit}
+  exclusiveMinimum: Має бути більше за {$limit}
+  exclusiveMaximum: Має бути менше за {$limit}
+  multipleOf: Має бути кратним {$limit}
+  minItems:
+    plural: limit
+    cases:
+      one: Щонайменше {$limit} елемент
+      few: Щонайменше {$limit} елементи
+      many: Щонайменше {$limit} елементів
+      other: Щонайменше {$limit} елемента
+  maxItems:
+    plural: limit
+    cases:
+      one: Щонайбільше {$limit} елемент
+      few: Щонайбільше {$limit} елементи
+      many: Щонайбільше {$limit} елементів
+      other: Щонайбільше {$limit} елемента
+  uniqueItems: Елементи не можуть повторюватися
+  minProperties:
+    plural: limit
+    cases:
+      one: Щонайменше {$limit} запис
+      few: Щонайменше {$limit} записи
+      many: Щонайменше {$limit} записів
+      other: Щонайменше {$limit} запису
+  maxProperties:
+    plural: limit
+    cases:
+      one: Щонайбільше {$limit} запис
+      few: Щонайбільше {$limit} записи
+      many: Щонайбільше {$limit} записів
+      other: Щонайбільше {$limit} запису
+  format: Не є дійсним значенням {$format}
+  additionalProperties: Тут не очікується
+  propertyNames: "Містить недозволену назву: {$propertyName}"

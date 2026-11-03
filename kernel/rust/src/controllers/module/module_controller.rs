@@ -41,6 +41,8 @@ const NEED_TYPE: &str = "Telo.NeedType";
 const SEQUENCE: &str = "Telo.Sequence";
 /// The built-in kind holding one language's translations of texts.
 const TEXT_TRANSLATIONS: &str = "Telo.TextTranslations";
+/// The built-in document a library declares its own texts by key with.
+const KEYED_TRANSLATIONS: &str = "Telo.KeyedTranslations";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
@@ -140,6 +142,7 @@ pub fn load_module(
     }
 
     reject_need_types(&documents, &loaded.source)?;
+    reject_keyed_translations(&documents, &loaded.source)?;
 
     let from_artifact = is_oci_ref(path) || is_oci_ref(&loaded.source);
     let imports = load_imports(env, module_doc, &loaded.source, from_artifact)?;
@@ -344,6 +347,26 @@ fn reject_need_types(documents: &[Value], source: &str) -> Result<(), KernelErro
             "ERR_UNSUPPORTED_MANIFEST_FEATURE",
             format!(
                 "'{source}' declares `{NEED_TYPE}` '{name}'; this kernel does not implement need types yet"
+            ),
+        ));
+    }
+    Ok(())
+}
+
+/// A `Telo.KeyedTranslations` registers the kind its keys are translated by, which
+/// this kernel does not read. Refused before any resource is resolved, so a
+/// catalog of that kind — in this module or in one importing it — never reaches
+/// the unknown-kind refusal ahead of this one.
+fn reject_keyed_translations(documents: &[Value], source: &str) -> Result<(), KernelError> {
+    for document in documents.iter().skip(1) {
+        if kind_of(document) != Some(KEYED_TRANSLATIONS) {
+            continue;
+        }
+        let name = name_of(document).unwrap_or("<unnamed>");
+        return Err(KernelError::new(
+            "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+            format!(
+                "'{source}' declares `{KEYED_TRANSLATIONS}` '{name}'; this kernel does not read translations yet"
             ),
         ));
     }

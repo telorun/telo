@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Added
+body: The primer teaches that telo check warns an application for every text and library
+  key a language it serves has no translation for (MESSAGE_TRANSLATION_MISSING), and
+  that a library's shipped catalogs cover its keys once listed.

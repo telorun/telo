@@ -179,7 +179,6 @@ with:
         mount:
           kind: UiReact.App
           title: Tasks
-          words: !ref Ui.words
           theme: !ref UiReact.defaultTheme
           pages:
             - kind: Ui.Page
@@ -252,7 +251,6 @@ with:
         mount:
           kind: UiReact.App
           title: Tasks
-          words: !ref Ui.words
           theme: !ref UiReact.defaultTheme
           pages:
             - kind: Ui.Page

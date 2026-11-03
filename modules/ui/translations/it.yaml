@@ -1,0 +1,121 @@
+# ui's own texts in Italian.
+kind: Self.Translations
+metadata: { name: italianTranslations }
+lang: it
+messages:
+  loading: Caricamento…
+  noRows: Nessuna riga.
+  nothingFound: Nessun risultato.
+  save: Salva
+  cancel: Annulla
+  close: Chiudi
+  newRecord: Nuovo
+  edit: Modifica
+  delete: Elimina
+  deleteRowQuestion: Eliminare questa riga?
+  deleteRowDetail: L'operazione non può essere annullata.
+  previousPage: Pagina precedente
+  pagerRange: "{$first}–{$last} di {$total}"
+  pagerEmpty: 0 di {$total}
+  nextPage: Pagina successiva
+  loadMore: Carica altri
+  moveTo: Sposta in
+  valueCount: "{$label} ({$count})"
+  yes: Sì
+  no: No
+  none: Nessuno
+  any: Qualsiasi
+  select: Seleziona…
+  choose: Scegli…
+  more: Altro
+  menu: Menu
+  siteNavigation: Sito
+  collapseNavigation: Comprimi la navigazione
+  expandNavigation: Espandi la navigazione
+  search: "Cerca: {$label}"
+  remove: "Rimuovi: {$label}"
+  clear: "Cancella: {$label}"
+  filters: Filtri
+  addFilter: Aggiungi filtro
+  apply: Applica
+  reset: Reimposta
+  done: Fine
+  presets: Preimpostazioni
+  operatorEq: è
+  operatorContains: contiene
+  operatorGt: dopo
+  operatorGte: da
+  operatorLt: prima
+  operatorLte: a
+  operatorIn: uno tra
+  operatorAbsent: non impostato
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: Da
+  rangeTo: A
+  rangeStartsAfterEnd: Non può iniziare dopo la sua fine
+  rangeLongerThanDays:
+    plural: count
+    cases: { one: "Più di {$count} giorno", other: "Più di {$count} giorni" }
+  rangeLongerThanWeeks:
+    plural: count
+    cases: { one: "Più di {$count} settimana", other: "Più di {$count} settimane" }
+  rangeLongerThanMonths:
+    plural: count
+    cases: { one: "Più di {$count} mese", other: "Più di {$count} mesi" }
+  rangeLongerThanQuarters:
+    plural: count
+    cases: { one: "Più di {$count} trimestre", other: "Più di {$count} trimestri" }
+  rangeLongerThanYears:
+    plural: count
+    cases: { one: "Più di {$count} anno", other: "Più di {$count} anni" }
+  notFound: Non trovato
+  noPageAt: Questa applicazione non ha alcuna pagina in {$path}.
+  unsavedQuestion: Scartare le modifiche non salvate?
+  unsavedDetail: Ciò che hai inserito non è stato salvato.
+  discard: Scarta
+  keepEditing: Continua a modificare
+  requestUnauthorized: Non hai effettuato l'accesso, oppure la sessione è scaduta.
+  requestForbidden: Non hai l'autorizzazione per farlo.
+  requestFailedStatus: La richiesta non è riuscita, con stato {$status}.
+  requestFailed: "La richiesta non è riuscita: {$reason}"
+  recordRefused: Il record è stato rifiutato.
+  answerNotJson: La risposta non è in formato JSON.
+  answerNotObject: La risposta non è un oggetto JSON.
+  answerNotModel: "La risposta non corrisponde al suo modello: {$detail}"
+  invalid: Non è valido
+  required: È obbligatorio
+  type: Deve essere di tipo {$types}
+  enum: "Deve essere uno tra: {$allowed}"
+  const: Deve essere uguale a {$value}
+  not: Non è consentito
+  anyOf: Non corrisponde a nessuna delle forme consentite
+  minLength:
+    plural: limit
+    cases: { one: "Almeno {$limit} carattere", other: "Almeno {$limit} caratteri" }
+  maxLength:
+    plural: limit
+    cases: { one: "Al massimo {$limit} carattere", other: "Al massimo {$limit} caratteri" }
+  pattern: Non è nel formato previsto
+  minimum: Deve essere almeno {$limit}
+  maximum: Deve essere al massimo {$limit}
+  exclusiveMinimum: Deve essere maggiore di {$limit}
+  exclusiveMaximum: Deve essere minore di {$limit}
+  multipleOf: Deve essere un multiplo di {$limit}
+  minItems:
+    plural: limit
+    cases: { one: "Almeno {$limit} elemento", other: "Almeno {$limit} elementi" }
+  maxItems:
+    plural: limit
+    cases: { one: "Al massimo {$limit} elemento", other: "Al massimo {$limit} elementi" }
+  uniqueItems: Gli elementi non devono ripetersi
+  minProperties:
+    plural: limit
+    cases: { one: "Almeno {$limit} voce", other: "Almeno {$limit} voci" }
+  maxProperties:
+    plural: limit
+    cases: { one: "Al massimo {$limit} voce", other: "Al massimo {$limit} voci" }
+  format: Non è un valore {$format} valido
+  additionalProperties: Non è previsto qui
+  propertyNames: "Ha un nome non consentito: {$propertyName}"

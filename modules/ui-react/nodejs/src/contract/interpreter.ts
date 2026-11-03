@@ -97,7 +97,7 @@ export interface Scene {
   path: string;
   /** Whether the viewport is below the application's breakpoint. */
   compact?: boolean;
-  /** The application document, less its bundle, digest and words. */
+  /** The application document, less its bundle, digest and texts. */
   app: Record<string, unknown>;
   /** Each page document by path, less its bundle and digest. */
   pages: Record<string, Record<string, unknown>>;
@@ -641,7 +641,8 @@ function cannedFor(responses: Record<string, CannedResponse>, method: string, pa
 export async function runScene(options: {
   window: Window;
   scene: Scene;
-  words: Record<string, unknown>;
+  /** The application document's `texts`: the keyed texts the scenes are drawn with. */
+  texts: Record<string, unknown>;
   mount: SceneHost;
   /** The application document's controls, in place of the scene's. */
   controls?: Record<string, unknown>;
@@ -659,7 +660,7 @@ export async function runScene(options: {
   let responses = { ...scene.responses };
   const json = (body: unknown, status = 200) =>
     new ResponseOf(body === undefined ? null : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-  const app = { ...scene.app, ...(options.controls ? { controls: options.controls } : {}), bundle: "scene", digest: "scene", words: options.words };
+  const app = { ...scene.app, ...(options.controls ? { controls: options.controls } : {}), bundle: "scene", digest: "scene", texts: options.texts };
   scope.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     const url = new URL(String(input instanceof Request ? input.url : input), view.location.href);

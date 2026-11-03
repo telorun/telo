@@ -9,7 +9,7 @@ import { modelSchema, modelShape, type JsonSchema, type ShapeReader } from "./mo
 import { resolveNode, type AuthoredNode, type RootShapes } from "./node-resolution.js";
 import { DEFAULT_FAILURE, NOTHING } from "./request-failure.js";
 import type { Binding } from "./row-binding.js";
-import { word } from "./spec-texts.js";
+import { uiText } from "./spec-texts.js";
 
 type Reload = "focus" | "unauthorized";
 
@@ -23,8 +23,8 @@ type DataResource = RuntimeResource & {
   reloadOn?: Reload[] | null;
 };
 
-/** What `loading` is when the author leaves it out: the renderer's own word. */
-export const DEFAULT_LOADING: SpecNode = { type: "text", text: word("loading"), style: "muted" };
+/** What `loading` is when the author leaves it out. */
+export const DEFAULT_LOADING: SpecNode = { type: "text", text: uiText("loading"), style: "muted" };
 
 /** A record read when it is drawn, under the record contract, and the trees
  *  drawn over it. */

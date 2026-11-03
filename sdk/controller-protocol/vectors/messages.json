@@ -1305,7 +1305,27 @@
             "lang": "pl",
             "computed": false
           }
-        ]
+        ],
+        "keyed": {
+          "Ui.Translations": {
+            "en": {
+              "save": {
+                "text": "Save",
+                "context": null,
+                "lang": "en",
+                "computed": false
+              }
+            },
+            "pl": {
+              "save": {
+                "text": "Zapisz",
+                "context": null,
+                "lang": "pl",
+                "computed": false
+              }
+            }
+          }
+        }
       }
     },
     {
@@ -1894,7 +1914,8 @@
         "fallback": "en",
         "languages": [],
         "lang": "en",
-        "texts": []
+        "texts": [],
+        "keyed": {}
       },
       "pointer": "/languages"
     }

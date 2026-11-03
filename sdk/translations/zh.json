@@ -1,0 +1,25 @@
+{
+  "lang": "zh",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "服务配置有误。"
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "服务未能计算出值。"
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "请求无效。"
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "服务生成了结果，但无法将其送达。"
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "服务无法决定如何继续。"
+    }
+  ]
+}

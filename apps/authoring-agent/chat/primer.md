@@ -1720,7 +1720,11 @@ whole (`MESSAGE_ENTRY_COMPUTED`), one entry per text and
 context (`MESSAGE_ENTRY_DUPLICATE`), a translation reading only the source's
 placeholders (`MESSAGE_PLACEHOLDER_UNKNOWN`); an entry matching no text the
 catalog's module imports is warned (`MESSAGE_TEXT_UNUSED`), so a language-pack
-library imports the module whose texts it translates. Titles, descriptions and
+library imports the module whose texts it translates. An application serving a
+language (its `lang:` or a listed catalog's) is warned for every keyed set's key
+and every literal `Text` written in another language that nothing translates into
+it (`MESSAGE_TRANSLATION_MISSING`); a library's shipped catalogs cover its keys
+when listed under `translations.catalogs`. The runtime's own error display messages (`ERR_INPUT_INVALID` and the other built-in codes) arrive translated into de, es, fr, hi, it, ja, ko, nl, pl, pt, ru, tr, uk and zh, beneath every listed catalog; they never add a served language, and a listed catalog translating the same text rewords it. Titles, descriptions and
 string enum values of a data schema are texts too; `x-telo-text-context: <context>`
 on a node gives them a context. A controller receives every `Text` as
 `{ text, context, lang, computed }`, attributed to the module that wrote it — a
@@ -1755,6 +1759,21 @@ is `MESSAGE_ENTRY_DUPLICATE`. The served languages are the Application's `lang:`
 translated by the application's set. `I18n.Catalog` is deprecated for
 `Telo.TextTranslations`.
 
+A library's OWN texts (labels, messages with stable ids) are declared by key in a
+built-in `Telo.KeyedTranslations` document, conventionally named `Translations`:
+`keys: { save: Save, pagerRange: { message: "{$first}–{$last} of {$total}",
+values: { first: { type: integer }, … }, description? } }`, written in the
+library's `lang:` (required). It declares the kind `<Module>.Translations`
+(`lang` + a closed `messages:` map, every key optional, checked against the
+key's values), which an application lists in `translations.catalogs` after
+import; per key the source wording is the lowest layer, then the catalogs in
+order. A kind shows such a set by naming it with `x-telo-text-keys:
+[<Alias>.<Kind>]` on its schema root — anywhere else (below the root, `status:`,
+a contract, a named shape, a parameter) is `TEXT_KEYS_INVALID`; its controller
+reads `ctx.translations.keyed()`. A kind naming none shows the sets of the
+nearest kind along `extends` naming any, with or without `base:`. The Rust
+kernel refuses it.
+
 The transport chooses the request's language: in HTTP it is `request.lang` (a
 tag, always present), negotiated from `Accept-Language` by RFC 4647 lookup
 (`pl-PL` finds `pl`) and landing on the fallback. `Http.Server.preferredLanguages`
@@ -1762,7 +1781,13 @@ tag, always present), negotiated from `Accept-Language` by RFC 4647 lookup
 first — a cookie, a path prefix, a query parameter. With several served languages
 the response carries `Content-Language` and `Vary`; a problem's `detail` is in
 `request.lang`. `UiReact.App` reads it, with no `translator:`, `lang:` or
-`catalogs:`.
+`catalogs:`. What the renderer draws on its own — Save, the pager, validation
+messages — is `ui`'s keyed set `Ui.Translations`: English with nothing written
+(there is no `words:`), translated by listing `ui`'s shipped
+`Ui.<language>Translations` (`Ui.germanTranslations`, `Ui.polishTranslations`, …,
+fourteen languages) in `translations.catalogs`, one key reworded by a
+`kind: Ui.Translations` (`lang`, `messages: { save: Submit }`) listed after them
+— never by translating ui's English as a `TextTranslations` text.
 
 To translate outside a UI, call `I18n.translate(text, lang, values?)` (module
 `i18n`, imported): `text` is written at the call (a message or `{'text': …,

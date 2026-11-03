@@ -90,6 +90,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-span-attribute",
   "x-telo-step-context",
   "x-telo-text-context",
+  "x-telo-text-keys",
   "x-telo-text-values",
   "x-telo-text-values-for",
   "x-telo-topology-role",

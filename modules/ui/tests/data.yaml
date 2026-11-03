@@ -163,7 +163,7 @@ steps:
               labels:
                 - { value: denied, label: { text: denied, context: null, lang: und, computed: false } }
                 - { value: expired, label: { text: expired, context: null, lang: und, computed: false } }
-        loading: { type: text, text: { word: loading }, style: muted }
+        loading: { type: text, text: { set: Ui.Translations, key: loading }, style: muted }
         failure:
           type: value
           labels: []
@@ -182,7 +182,7 @@ steps:
         source: { path: /api/plain, params: {} }
         query: {}
         content: { type: text, text: { text: Ready, context: null, lang: und, computed: false } }
-        loading: { type: text, text: { word: loading }, style: muted }
+        loading: { type: text, text: { set: Ui.Translations, key: loading }, style: muted }
         failure:
           type: stack
           style: danger

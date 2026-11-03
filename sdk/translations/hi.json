@@ -1,0 +1,25 @@
+{
+  "lang": "hi",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "सेवा गलत तरीके से कॉन्फ़िगर की गई है।"
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "सेवा एक मान की गणना नहीं कर सकी।"
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "अनुरोध मान्य नहीं है।"
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "सेवा ने एक ऐसा परिणाम बनाया जिसे वह पहुँचा नहीं सकी।"
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "सेवा यह तय नहीं कर सकी कि आगे कैसे बढ़ना है।"
+    }
+  ]
+}

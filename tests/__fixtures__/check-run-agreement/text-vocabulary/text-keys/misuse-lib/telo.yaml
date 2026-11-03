@@ -1,0 +1,31 @@
+# A kind naming the keyed sets it shows below its schema's root, and one naming a
+# kind that translates texts by their source text rather than by key.
+kind: Telo.Library
+metadata:
+  name: TextKeysMisuseLib
+  version: 1.0.0
+  description: Fixture kinds misplacing the keyed sets they show.
+lang: en
+exports: { kinds: [Nested, ByText] }
+---
+kind: Telo.KeyedTranslations
+metadata: { name: Translations }
+keys: { save: Save }
+---
+kind: Telo.Definition
+metadata: { name: Nested }
+capability: Telo.Provider
+schema:
+  type: object
+  properties: { label: { type: string, x-telo-text-keys: [Self.Translations] } }
+provide: !ref shape
+resources:
+  - { kind: Telo.JsonSchema, metadata: { name: shape }, schema: { type: object } }
+---
+kind: Telo.Definition
+metadata: { name: ByText }
+capability: Telo.Provider
+schema: { type: object, x-telo-text-keys: [Telo.TextTranslations] }
+provide: !ref shape
+resources:
+  - { kind: Telo.JsonSchema, metadata: { name: shape }, schema: { type: object } }

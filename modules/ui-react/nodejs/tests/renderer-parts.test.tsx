@@ -5,11 +5,11 @@ import controls from "../src/contract/controls.json" with { type: "json" };
 import { runScene, type Scene, type SceneHost } from "../src/contract/interpreter.js";
 import contract from "../src/contract/parts.json" with { type: "json" };
 import data from "../src/contract/scenes.json" with { type: "json" };
-import { englishWords } from "./words.js";
+import { uiTexts } from "./ui-texts.js";
 
 const listed = Object.values(contract.parts).flat();
 const scenes = data.scenes as unknown as Scene[];
-const words = data.words as Record<string, unknown>;
+const texts = data.texts as unknown as Record<string, unknown>;
 
 /** The renderer, mounted as a page mounts it. */
 const renderer: SceneHost = (root, loadModule) => {
@@ -31,8 +31,8 @@ function controlStates(): { attribute: string; values: string[]; parts: string[]
 }
 
 describe("the styling contract", () => {
-  it("is drawn by scenes written with the renderer's own words as ui gives them", () => {
-    expect(words).toEqual(englishWords);
+  it("is drawn by scenes written with ui's own texts as ui declares them", () => {
+    expect(texts).toEqual(uiTexts());
   });
 
   // One test per scene, so each is bounded on its own rather than all of them by one timeout.
@@ -43,7 +43,7 @@ describe("the styling contract", () => {
     };
     for (const scene of scenes) {
       it(`scene '${scene.name}'`, async () => {
-        expect(await runScene({ window, scene, words, mount: renderer, afterStep: collect })).toEqual([]);
+        expect(await runScene({ window, scene, texts, mount: renderer, afterStep: collect })).toEqual([]);
       });
     }
     it("every part listed, and only those", () => {
@@ -81,7 +81,7 @@ describe("the styling contract", () => {
         }
       }
     };
-    expect(await runScene({ window, scene, words, mount: renderer, afterStep: (step) => step === scene.steps.length - 1 && judge() })).toEqual([]);
+    expect(await runScene({ window, scene, texts, mount: renderer, afterStep: (step) => step === scene.steps.length - 1 && judge() })).toEqual([]);
     expect(problems).toEqual([]);
     expect(Object.keys(own).filter((attribute) => !carried.has(attribute))).toEqual([]);
   });

@@ -14,24 +14,24 @@ Rules that hold throughout:
   a library ships, not code in the manifest.
 - **Take every field from `get_kinds`.** The exact schema of each kind, and
   the `imports:` line to write for each module, come from `get_kinds` on the
-  `ui`, `ui-react`, `http-server`, `data-model` and — for a generated admin
-  screen — `crud` and `crud-ui`. A `Telo.*` kind is built in and needs no import.
-- **The API comes first.** A screen calls routes; it never reaches a database
-  or an invocable directly. Declare the routes, then the screen over them.
+  `ui`, `ui-react`, `http-server`, `data-model` and, for a generated admin
+  screen, `crud` and `crud-ui`. A `Telo.*` kind is built in; it needs no import.
+- **The API comes first.** A screen calls routes, never a database or an
+  invocable directly. Declare the routes, then the screen over them.
 
 ## When a screen is the answer
 
 Reach for `ui` when a person needs to browse, filter, create, edit or delete
 records, or press a button that runs an operation. For a static page or an
-HTML email, use a template or HTML module; for a machine, the API alone.
+email, use a template module; for a machine, the API alone.
 
 Who imports what:
 
 - The **application** imports `ui`, `ui-react` and `http-server`, mounts the
   renderer's application on its server, and owns the pages.
-- A **library** that describes the interface of its own domain imports `ui`
-  alone and exports composites (a listing, a form, a `Ui.View`) as instances.
-  It never imports a renderer, so the application chooses one.
+- A **library** describing the interface of its own domain imports `ui` alone
+  and exports composites (a listing, a form, a `Ui.View`) as instances; it
+  never imports a renderer, so the application chooses one.
 
 ## The application
 
@@ -55,7 +55,6 @@ targets:
 kind: UiReact.App
 metadata: { name: admin }
 title: Tasks
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page
@@ -80,11 +79,10 @@ mounts:
 ```
 
 `UiReact.App` stays named, like any router a server mounts. A composite used
-once is declared inline at its node (`ref: { kind: Ui.Listing, … }`); `taskTable`
-below is named because a page and a filter bar both use it.
+once is declared inline (`ref: { kind: Ui.Listing, … }`); `taskTable` below is
+named because a page and a filter bar both use it.
 
-- `title` (required) names the application. `words` (required) is what the
-  renderer draws on its own — `!ref Ui.words`, English. `theme` (required) is
+- `title` (required) names the application. `theme` (required) is
   the look — `!ref UiReact.defaultTheme`, or another theme. `pages` (at least
   one) are `Ui.Page`s — `{ path, title, query?, width?, children }`, each path
   unique — inline or `!ref`, a library's included.
@@ -97,9 +95,13 @@ below is named because a page and a filter bar both use it.
   `Ui.SidebarNavigation` (`side`, `rail`, `store`), or a compact one —
   `Ui.OverlayNavigation`, `Ui.TabBarNavigation` — which a header's or a
   sidebar's `compact` names for a narrow screen.
-- Optional: list `Telo.TextTranslations` in the Application's
+- Optional: list `Telo.TextTranslations` under the Application's
   `translations: { catalogs }` and texts are served in the negotiated
-  `request.lang` (`Accept-Language`, `Http.Server.preferredLanguages`); `tokens` (the brand),
+  `request.lang` (`Accept-Language`, `Http.Server.preferredLanguages`). The
+  renderer's own texts (Save, the pager, validation) are English; list `ui`'s
+  `Ui.polishTranslations`, `Ui.germanTranslations`, … (fourteen languages) to
+  translate them, and a `kind: Ui.Translations` (`lang`, `messages: { save:
+  Submit }`) after them to reword a key; `tokens` (the brand),
   `stylesheets` (`!module-path ./ui.css`), `compactBelow` (the narrow-viewport
   breakpoint), `pageWidth` (`contained` or `full`; a page's `width` wins),
   `header: { start?, end?, width? }` (nodes on every page).
@@ -125,21 +127,20 @@ Every node also takes `style` (not `tabs`; one or a list of `heading`,
 `subheading`, `muted`, `strong`, `accent`, `danger`, `warning`, `success`), `when` (a
 boolean deciding on the server whether the node is delivered) and `shown` (a
 condition deciding in the browser whether it is drawn — see "Data and
-conditions"). There is no spacing field (gap, alignment, width): that is the
-renderer's styling.
+conditions"). There is no spacing field: that is the renderer's styling.
 
 **Texts.** Every label, heading and node text is a text in the module's
 `lang:`. A text over data names its values (`text: { text: { plural: n,
-cases: { one: "{$n} open task", other: "{$n} open tasks" } }, values: { n:
-!cel "data.open" } }`), so a translation chooses the plural.
+cases: { one: "{$n} task", other: "{$n} tasks" } }, values: { n: !cel
+"data.open" } }`), so a translation chooses the plural.
 
 **Addresses.** An address inside the application — a page `path`, a `link`'s
 `href`, an `image`'s `src`, a collection's `basePath`, an action's `source.path` —
 is app-relative: `/` followed by anything but `/` or `\`, with no control
 character: `//host` and `/\host` are refused. A `link` may also start
-`https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. An app-relative address
-resolves under the mount: at `/admin`, `source.path: /api/reports` is requested
-at `/admin/api/reports`, so serve the API there.
+`https://`, `http://` or `mailto:`; an `image`, `https://` or `http://`. An
+app-relative address resolves under the mount: at `/admin`, `/api/reports` is
+requested at `/admin/api/reports`, so serve the API there.
 
 **Per request.** Inside a page's `children` and `header`, a node's `when` and its leaf
 values (`text`, `href`, `src`, `alt`, `markup`, `style`) may be `!cel`,
@@ -158,8 +159,8 @@ becomes an `error` node for that request.
 
 Every listing, form, filter bar and action is drawn from a JSON Schema shape — a
 `Telo.JsonSchema` resource. Declare the shapes once and give the same ones to
-the routes and to the screen, so a rename is a `telo check` error rather than a
-blank column. A property's `title` is its label and column header; its `type`,
+the routes and the screen, so a rename is a `telo check` error, not a blank
+column. A property's `title` is its label and column header; its `type`,
 `format` and `enum` decide how it is entered and shown.
 
 ```yaml
@@ -483,8 +484,8 @@ the request shape out there and keep it equal to `inputModel`.
 
 ### Row actions
 
-`rowActions` on a listing — or on a `list` node, anywhere a list is drawn —
-puts one button per entry on every row, before edit and delete:
+`rowActions` on a listing or a `list` node puts one button per entry on every
+row, before edit and delete:
 
 ```yaml
 rowActions:
@@ -505,8 +506,8 @@ rowActions:
   over `row`, with `disabledText`) governs the row's button; the action's own
   `enabled` does not.
 - A pressed row draws its action's `result` in place of the button and its
-  `failure` beside it; every listing over the same source `basePath` reloads,
-  and the action's `onSuccess` applies too.
+  `failure` beside it; every listing over the same `basePath` reloads, and the
+  action's `onSuccess` applies.
 
 ## Data and conditions — `Ui.Data`
 
@@ -536,15 +537,15 @@ page. A sign-in gate is a reader plus conditions, not a kind:
 ```
 
 - `loading` / `failure` are node trees too; left out, `ui` fills them.
-- `reloadOn: [focus]` reads again on window focus; `[unauthorized]` when any
+- `reloadOn: [focus]` reads again on window focus; `[unauthorized]` when a
   request inside `content` answers 401. A form or listing hidden by a condition
-  keeps what it holds, so the screen comes back as it was after signing in.
+  keeps what it holds, so the screen returns as it was after sign-in.
 - A condition is `{ at, matches }`: `at` a plain chain over the roots in
   scope, `matches` a schema in a closed profile (`type`, `const`, `enum`,
   `not`, `allOf`, `anyOf`, `required`, `properties`, `items`, `minItems`,
   `maxItems`, `uniqueItems`, `minLength`, `maxLength`, `pattern`, numeric
-  bounds). A missing value never matches, even under `not`; test absence on
-  the parent: `{ at: !cel "data", matches: { not: { required: [email] } } }`.
+  bounds). A missing value never matches, even under `not`; test absence on the
+  parent: `{ at: !cel "data", matches: { not: { required: [email] } } }`.
 - Roots: `data` (a reader's `content`), `error` (its `failure`), `query`,
   `values` (a form's or an action's fields), `row` (a `list` column). Each is
   read only by a condition, a `value` / `list` node or `source.params` — never
@@ -552,7 +553,7 @@ page. A sign-in gate is a reader plus conditions, not a kind:
 - A field's `shown` reads `values`: a hidden field is not sent, but a
   property the model requires still blocks submitting. An action's
   `enabled: { at, matches, disabledText }` disables its button until it holds.
-- A `list` draws the rows of one answer and never pages; a growing set is a
+- A `list` draws one answer's rows and never pages; a growing set is a
   `Ui.Listing`.
 
 ## An admin screen over one table — `crud` and `crud-ui`

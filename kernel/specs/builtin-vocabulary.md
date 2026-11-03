@@ -1,5 +1,5 @@
 ---
-description: "Normative: the Telo.Builtins archive — the built-in vocabulary of one telo release as a YAML stream: its root and documents, the byte layout every reader slices, what refuses it, telo builtins, and its publication as oci://ghcr.io/telorun/telo."
+description: "Normative: the Telo.Builtins archive — the built-in vocabulary of one telo release as a YAML stream: its root and documents, the built-in translations, the byte layout every reader slices, what refuses it, telo builtins, and its publication as oci://ghcr.io/telorun/telo."
 ---
 
 # The built-in vocabulary archive
@@ -23,7 +23,7 @@ A YAML stream. The first document is the **root**; every later document is one b
      for a build of a tree whose release is still pending;
    - `description` — search text;
    - `license: MIT`.
-2. The root carries five sections, each a map keyed by name:
+2. The root carries six sections, each a map keyed by name:
    - `$defs` — every shared schema fragment, unexpanded. A fragment refers to another as
      `$ref: telo://manifest#/$defs/<Name>`. No key starts with `telo:` (that prefix is the
      analyzer's for a fragment it hoists into a schema). Eight of them are the grammar of the
@@ -42,6 +42,11 @@ A YAML stream. The first document is the **root**; every later document is one b
      its `code` (`ERR_INPUT_INVALID`), verbatim (`sdk/error-codes/`): its `description`, the
      `displayMessage` a person is shown for it, written in English, and an optional `data`
      schema.
+   - `translations` — every built-in translation catalog, keyed by its `lang` (`pl`), verbatim
+     (`sdk/translations/`): a text catalog — `{ lang, texts: [{ text, context?, translation }] }`,
+     the `$defs/TextCatalog` shape — translating the `errorCodes` display messages into a
+     language other than `en`. A runtime that translates layers them beneath every catalog an
+     Application lists (§6).
 3. Every later document is a built-in in its authored form: `kind` is `Telo.Abstract`,
    `Telo.Definition` or `Telo.NeedType`, and no document carries `controllers:` — the root's
    kind says once that the runtime implements every kind in the archive. A fragment reference
@@ -51,8 +56,9 @@ A YAML stream. The first document is the **root**; every later document is one b
 4. **Closure.** Every `telo://manifest#/$defs/<Name>` the archive holds names an entry of
    `$defs`; every `x-telo-type` — and every type argument naming one — an entry of
    `valueTypes`; every zone attribute an entry of `zoneAttributes`; every `format:` that is no
-   JSON Schema format an entry of `formats`. A reader of one release's archive needs no other
-   source.
+   JSON Schema format an entry of `formats`; every `text` and `context` of a `translations`
+   entry the identity of an `errorCodes` display message. A reader of one release's archive
+   needs no other source.
 5. Neither the `x-telo-*` annotation vocabulary nor the CEL function catalog is in the archive:
    an annotation's meaning is its reader's behaviour, and no definition names a function.
 
@@ -86,6 +92,13 @@ way of using it as a module is refused:
 | A document of that kind in a module file | `UNDEFINED_KIND` | `ERR_MANIFEST_VALIDATION_FAILED` carrying it | — |
 | An import whose target is an archive | `INVALID_IMPORT_TARGET` at the `imports:` entry | `ERR_INVALID_IMPORT_TARGET` carrying it | `ERR_INVALID_IMPORT_TARGET` |
 
+`readBuiltinVocabulary` — what `telo publish` refuses an archive with — also refuses a
+`translations` entry that is not a `$defs/TextCatalog` value, is keyed by anything but its own
+`lang`, is written in `en`, fails the catalog judgement every text catalog is held to (a
+placeholder its source lacks, a plural case its language lacks, one text and context
+translated twice), translates a text no `errorCodes` entry shows, or leaves one of them
+untranslated.
+
 The entry's and the document's message is *"Telo.Builtins is the published built-in vocabulary
 of a telo release; it is read, never declared, run or imported."* The import's is *"'<source>'
 is the built-in vocabulary of telo <X>; its kinds need no import — remove this `imports:` entry
@@ -102,8 +115,8 @@ and the Rust CLI embeds the same file at build, refusing to build without it.
 2. Each name selects one entry. A kind or need type is selected by its name with or without
    `Telo.` (`Application`, `Telo.Application`) and prints its whole document. A fragment
    (`Step`), a value type (`Telo.Url`), a zone attribute (`atomic`), a format
-   (`css-selector`) or an error code (`ERR_INPUT_INVALID`) prints its section's line followed
-   by the entry's line and body. No name
+   (`css-selector`), an error code (`ERR_INPUT_INVALID`) or a translation (`pl`) prints its
+   section's line followed by the entry's line and body. No name
    selects two entries; the renderer refuses an archive in which one would.
 3. Several names print their entries in argument order, joined by a line holding `---`.
 4. A name that selects nothing writes nothing to stdout, writes *"No built-in is named
@@ -134,3 +147,20 @@ Every telo release `X` at or above the first that ships the archive is published
 4. The publish workflow reconciles on every push to main: for each released `X` whose tag is
    missing, it publishes the directory taken out of `@telorun/analyzer@X`'s tarball with the
    checkout's CLI. There is no backfill below the first release that ships the archive.
+
+## 6. The built-in translations at run time
+
+A runtime that translates — the Node kernel; the Rust kernel refuses `translations:` and
+translates nothing — layers the `translations` catalogs as the lowest layer of every
+application's translations:
+
+1. Per language, they apply first and every catalog the root Application lists in
+   `translations.catalogs` after them, so a listed catalog translating the same text and
+   context replaces their translation.
+2. They add no served language. The served languages stay the Application's `lang:` (`und`
+   without one) and each listed catalog's `lang`: an application written in `pl` shows a
+   built-in display message in Polish with no catalog listed, and one written in `en` with no
+   catalog answers a request for `pl` in English.
+3. `telo check` reads the same layer when it reports `MESSAGE_TRANSLATION_MISSING`: the
+   built-in display messages count as shown by every application, so a served language the
+   archive translates is never warned about them, and any other is.

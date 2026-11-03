@@ -1,0 +1,5 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer teaches ui's own texts as the keyed set Ui.Translations: English with
+  nothing written, translated by listing ui's shipped Ui.*Translations, one key reworded
+  by a Ui.Translations of the application's own; UiReact.App has no words:."

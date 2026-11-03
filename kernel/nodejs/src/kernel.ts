@@ -82,6 +82,10 @@ import {
   readProjectionRef,
   reservedModuleNameMessage,
   scopeSlotProblems,
+  keyedTranslationsOf,
+  textKeysDeclarer,
+  textKeysOf,
+  textKeysProblems,
   textSlotAccessorProblems,
   textValuesProblems,
   type NamedContractShape,
@@ -188,7 +192,14 @@ import { parseRef, seedInvokeSource } from "./invoke-dispatch.js";
 import { stripCompiledValues } from "./schema-compiled-values.js";
 import { injectAtSite, resolveReference } from "./dependency-injection.js";
 import { declarationOnlyNames, recordDeclarationReads } from "./declaration-reads.js";
-import { readListedCatalogs, TranslationSet, type ListedCatalog } from "./application-translations.js";
+import {
+  BUILTIN_CATALOGS,
+  readListedCatalogs,
+  TranslationSet,
+  type KeyedSource,
+  type ListedCatalog,
+} from "./application-translations.js";
+import { canonicalKindOf, keyedSetOf, refuseKeyedTexts, refuseMisplacedTextKeys } from "./keyed-translations.js";
 import {
   deliverDataSites,
   receivedConfigurationOf,
@@ -589,6 +600,12 @@ export class Kernel implements IKernel {
     );
     if (textValues) {
       throw new RuntimeError("ERR_TEXT_VALUES_INVALID", `${definition.kind} ${textValues.message}`);
+    }
+    const [textKeys] = textKeysProblems(String(definition.metadata?.name), definition.schema, (kind) =>
+      this.registry.resolveDefinitionIn(kind, definition.metadata?.module),
+    );
+    if (textKeys) {
+      throw new RuntimeError("ERR_TEXT_KEYS_INVALID", `${definition.kind} ${textKeys.message}`);
     }
     const [browserExport] = browserExportAnnotationProblems(String(definition.metadata?.name), definition.schema);
     if (browserExport) {
@@ -1785,19 +1802,65 @@ export class Kernel implements IKernel {
     this.translationSet = undefined;
   }
 
-  /** `ctx.translations` — one object for every controller of this kernel. */
-  readonly translations: ApplicationTranslations = ((kernel: Kernel): ApplicationTranslations => ({
-    get fallback(): string {
-      return kernel.translationFallback;
-    },
-    languages: () => kernel.layeredTranslations().languages,
-    negotiate: (preferences) => kernel.layeredTranslations().negotiate(preferences),
-    translate: (lang, text) => kernel.layeredTranslations().translate(lang, text),
-    translateAll: (lang, texts) => {
-      const set = kernel.layeredTranslations();
-      return texts.map((text) => set.translate(lang, text));
-    },
-  }))(this);
+  /** `ctx.translations` per resolved kind, which decides what `keyed()` answers. */
+  private readonly translationViews = new Map<string | undefined, ApplicationTranslations>();
+
+  /** The translations as a caller that is no resource reads them: `keyed()` answers nothing. */
+  get translations(): ApplicationTranslations {
+    return this.translationsFor(undefined);
+  }
+
+  /** `ctx.translations` for a resource of `kind` (canonical; undefined for none). */
+  translationsFor(kind: string | undefined): ApplicationTranslations {
+    let view = this.translationViews.get(kind);
+    if (view) return view;
+    const kernel = this;
+    view = {
+      get fallback(): string {
+        return kernel.translationFallback;
+      },
+      languages: () => kernel.layeredTranslations().languages,
+      negotiate: (preferences) => kernel.layeredTranslations().negotiate(preferences),
+      translate: (lang, text) => kernel.layeredTranslations().translate(lang, text),
+      translateAll: (lang, texts) => {
+        const set = kernel.layeredTranslations();
+        return texts.map((text) => set.translate(lang, text));
+      },
+      keyed: () => {
+        const sources = kernel.keyedSourcesOf(kind);
+        if (sources.length === 0) return Object.freeze({});
+        const set = kernel.layeredTranslations();
+        return Object.freeze(Object.fromEntries(sources.map((source) => [source.kind, set.keyed(source)])));
+      },
+    };
+    this.translationViews.set(kind, view);
+    return view;
+  }
+
+  /** The keyed sets `kind` shows — named in `x-telo-text-keys` by its own schema
+   *  root or the nearest along `extends` naming any, resolved in the declaring
+   *  definition's module — each with its source wording in its module's language. */
+  private keyedSourcesOf(kind: string | undefined): KeyedSource[] {
+    const definition = kind === undefined ? undefined : this.registry.resolveDefinition(kind);
+    const declarer = textKeysDeclarer(definition, this.scopedDefResolver());
+    if (!declarer) return [];
+    return textKeysOf(declarer.schema).map((named) => {
+      const set = this.registry.resolveDefinitionIn(named, declarer.metadata.module);
+      const shape = keyedTranslationsOf(set);
+      if (!set || !shape) {
+        throw new RuntimeError(
+          "ERR_TEXT_KEYS_INVALID",
+          `${kind} declares 'x-telo-text-keys' naming '${named}', which names no kind a ` +
+            `'Telo.KeyedTranslations' document declares.`,
+        );
+      }
+      return {
+        kind: canonicalKindOf(set),
+        lang: recordLangOf(this.moduleLang((set.metadata as { source?: string }).source)),
+        keys: shape.keys,
+      };
+    });
+  }
 
   /**
    * The layered set over the listed catalogs' instances. A catalog not created
@@ -1828,9 +1891,20 @@ export class Kernel implements IKernel {
         );
       }
       const configuration = receivedConfigurationOf(declaration);
-      return { lang: String(configuration.lang), configuration };
+      const keyedSet = keyedSetOf(
+        this.registry.resolveDefinitionIn(
+          String(declaration.kind),
+          (declaration.metadata as { module?: string } | undefined)?.module,
+        ),
+        (kind, module) => this.registry.resolveDefinitionIn(kind, module),
+      );
+      return {
+        lang: String(configuration.lang),
+        configuration,
+        ...(keyedSet ? { keyedSet: canonicalKindOf(keyedSet) } : {}),
+      };
     });
-    return (this.translationSet = new TranslationSet(this.translationFallback, catalogs));
+    return (this.translationSet = new TranslationSet(this.translationFallback, catalogs, BUILTIN_CATALOGS));
   }
 
   /** True when a declaration's kind is `Telo.Translations` or reaches it through `extends`. */
@@ -2968,6 +3042,13 @@ export class Kernel implements IKernel {
       textSite,
       this.moduleLang(kindModule.source),
       textProvenanceOf(resource),
+    );
+    refuseMisplacedTextKeys(resource);
+    refuseKeyedTexts(
+      resource,
+      resourceLabel,
+      this.moduleLang(kindModule.source),
+      !!keyedSetOf(definition, (kind, module) => this.registry.resolveDefinitionIn(kind, module)),
     );
 
     // An expression at or above a reference slot is refused BEFORE it is

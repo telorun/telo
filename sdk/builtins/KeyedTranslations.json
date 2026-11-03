@@ -1,0 +1,73 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "KeyedTranslations",
+    "description": "Declares a library's own texts by stable key — a button label, a pager range, a validation message — each with its source wording, the values it is formatted with and a hint for the translator. It registers a kind whose resources translate those keys into one language, checked per key."
+  },
+  "capability": "Telo.Template",
+  "schema": {
+    "type": "object",
+    "properties": {
+      "kind": {
+        "type": "string"
+      },
+      "metadata": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "additionalProperties": true
+      },
+      "keys": {
+        "title": "Keys",
+        "description": "Each key's source wording in the module's `lang:`: a message, or `{ message, values?, description? }`. The declared kind's `messages:` translates exactly these keys.",
+        "type": "object",
+        "additionalProperties": {
+          "anyOf": [
+            {
+              "$ref": "telo://manifest#/$defs/Message"
+            },
+            {
+              "type": "object",
+              "required": [
+                "message"
+              ],
+              "properties": {
+                "message": {
+                  "$ref": "telo://manifest#/$defs/Message"
+                },
+                "values": {
+                  "title": "Values",
+                  "description": "The values whoever shows the text formats it with, by name, each a JSON Schema typed `string`, `integer` or `number`. Without it the text is formatted with no values.",
+                  "type": "object",
+                  "additionalProperties": {
+                    "$ref": "telo://manifest#/$defs/JsonSchema7"
+                  }
+                },
+                "description": {
+                  "title": "Description",
+                  "description": "A hint for the translator: where the text is shown and what it means.",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        }
+      }
+    },
+    "required": [
+      "metadata",
+      "keys"
+    ],
+    "additionalProperties": false
+  }
+}

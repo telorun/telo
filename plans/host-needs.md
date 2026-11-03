@@ -1,3 +1,11 @@
+---
+status: in-progress
+priority: medium
+depends-on: []
+packages: [kernel, analyzer, cli, packages/runner-core, apps/docker-runner, apps/k8s-runner]
+tracking: feat/generated-secrets-child-needs
+---
+
 # Host needs — remaining work
 
 ## Kernel-declared types

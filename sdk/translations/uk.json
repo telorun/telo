@@ -1,0 +1,25 @@
+{
+  "lang": "uk",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "Службу налаштовано неправильно."
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "Службі не вдалося обчислити значення."
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "Запит недійсний."
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "Служба отримала результат, який не змогла передати."
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "Службі не вдалося вирішити, як продовжити."
+    }
+  ]
+}

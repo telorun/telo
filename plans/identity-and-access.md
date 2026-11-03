@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [modules/http-server, modules/oauth-client, modules/auth, modules/crypto, modules/jose, modules/mail, modules/sms]
+---
+
 # Identity & access — roadmap
 
 ## Problem

@@ -1,0 +1,12 @@
+modules:
+  modules/ui-react: Added
+body: "UiReact.App names ui's keyed texts (x-telo-text-keys: [Ui.Translations]) and
+  sends the browser every set its kind names, in the request's language, as the
+  application document's `texts`: `sets`, each key's message per set, and `own`, the
+  first set the kind names, which the renderer's own texts are drawn from. The renderer
+  draws a node's `{ set, key }` text from them and names no set itself. Breaking:
+  UiReact.App loses `words:` (ui's texts are English with nothing written, and
+  translated by listing ui's shipped Ui.*Translations in the application's translations:
+  block), the application document's `words` is replaced by `texts`, and
+  `@telorun/ui-react-contract`'s `scenes.words` and runScene's `words` option are now
+  `texts`."

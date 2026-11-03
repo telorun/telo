@@ -1,0 +1,133 @@
+# ui's own texts in Hindi.
+kind: Self.Translations
+metadata: { name: hindiTranslations }
+lang: hi
+messages:
+  loading: लोड हो रहा है…
+  noRows: कोई पंक्ति नहीं।
+  nothingFound: कुछ नहीं मिला।
+  save: सहेजें
+  cancel: रद्द करें
+  close: बंद करें
+  newRecord: नया
+  edit: संपादित करें
+  delete: हटाएँ
+  deleteRowQuestion: यह पंक्ति हटाएँ?
+  deleteRowDetail: इसे पूर्ववत नहीं किया जा सकता।
+  previousPage: पिछला पेज
+  pagerRange: "{$total} में से {$first}–{$last}"
+  pagerEmpty: "{$total} में से 0"
+  nextPage: अगला पेज
+  loadMore: और लोड करें
+  moveTo: यहाँ ले जाएँ
+  valueCount: "{$label} ({$count})"
+  yes: हाँ
+  no: नहीं
+  none: कोई नहीं
+  any: कोई भी
+  select: चुनें…
+  choose: चयन करें…
+  more: और
+  menu: मेनू
+  siteNavigation: साइट
+  collapseNavigation: नेविगेशन समेटें
+  expandNavigation: नेविगेशन फैलाएँ
+  search: "{$label} खोजें"
+  remove: "{$label} हटाएँ"
+  clear: "{$label} साफ़ करें"
+  filters: फ़िल्टर
+  addFilter: फ़िल्टर जोड़ें
+  apply: लागू करें
+  reset: रीसेट करें
+  done: हो गया
+  presets: प्रीसेट
+  operatorEq: है
+  operatorContains: शामिल करता है
+  operatorGt: के बाद
+  operatorGte: से
+  operatorLt: से पहले
+  operatorLte: तक
+  operatorIn: में से एक
+  operatorAbsent: सेट नहीं
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$value} {$operator}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: से
+  rangeTo: तक
+  rangeStartsAfterEnd: समाप्ति के बाद शुरू नहीं हो सकता
+  rangeLongerThanDays:
+    plural: count
+    cases: { one: "{$count} दिन से अधिक", other: "{$count} दिन से अधिक" }
+  rangeLongerThanWeeks:
+    plural: count
+    cases: { one: "{$count} सप्ताह से अधिक", other: "{$count} सप्ताह से अधिक" }
+  rangeLongerThanMonths:
+    plural: count
+    cases: { one: "{$count} महीने से अधिक", other: "{$count} महीनों से अधिक" }
+  rangeLongerThanQuarters:
+    plural: count
+    cases: { one: "{$count} तिमाही से अधिक", other: "{$count} तिमाहियों से अधिक" }
+  rangeLongerThanYears:
+    plural: count
+    cases: { one: "{$count} साल से अधिक", other: "{$count} साल से अधिक" }
+  notFound: नहीं मिला
+  noPageAt: इस ऐप्लिकेशन में {$path} पर कोई पेज नहीं है।
+  unsavedQuestion: बिना सहेजे बदलाव छोड़ दें?
+  unsavedDetail: आपने जो दर्ज किया, वह सहेजा नहीं गया है।
+  discard: छोड़ें
+  keepEditing: संपादन जारी रखें
+  requestUnauthorized: आप साइन इन नहीं हैं, या आपका सेशन समाप्त हो गया है।
+  requestForbidden: आपको ऐसा करने की अनुमति नहीं है।
+  requestFailedStatus: अनुरोध स्टेटस {$status} के साथ विफल हुआ।
+  requestFailed: "अनुरोध विफल हुआ: {$reason}"
+  recordRefused: रिकॉर्ड अस्वीकार कर दिया गया।
+  answerNotJson: उत्तर JSON नहीं है।
+  answerNotObject: उत्तर JSON ऑब्जेक्ट नहीं है।
+  answerNotModel: "उत्तर अपने मॉडल से मेल नहीं खाता: {$detail}"
+  invalid: मान्य नहीं है
+  required: आवश्यक है
+  type: "{$types} होना चाहिए"
+  enum: "इनमें से एक होना चाहिए: {$allowed}"
+  const: "{$value} के बराबर होना चाहिए"
+  not: अनुमति नहीं है
+  anyOf: किसी भी अनुमत रूप में नहीं है
+  minLength:
+    plural: limit
+    cases:
+      one: कम से कम {$limit} वर्ण होना चाहिए
+      other: कम से कम {$limit} वर्ण होने चाहिए
+  maxLength:
+    plural: limit
+    cases:
+      one: अधिकतम {$limit} वर्ण हो सकता है
+      other: अधिकतम {$limit} वर्ण हो सकते हैं
+  pattern: अपेक्षित प्रारूप में नहीं है
+  minimum: कम से कम {$limit} होना चाहिए
+  maximum: अधिकतम {$limit} होना चाहिए
+  exclusiveMinimum: "{$limit} से अधिक होना चाहिए"
+  exclusiveMaximum: "{$limit} से कम होना चाहिए"
+  multipleOf: "{$limit} का गुणज होना चाहिए"
+  minItems:
+    plural: limit
+    cases:
+      one: कम से कम {$limit} आइटम होना चाहिए
+      other: कम से कम {$limit} आइटम होने चाहिए
+  maxItems:
+    plural: limit
+    cases:
+      one: अधिकतम {$limit} आइटम हो सकता है
+      other: अधिकतम {$limit} आइटम हो सकते हैं
+  uniqueItems: कोई आइटम दोहराया नहीं जाना चाहिए
+  minProperties:
+    plural: limit
+    cases:
+      one: कम से कम {$limit} प्रविष्टि होनी चाहिए
+      other: कम से कम {$limit} प्रविष्टियाँ होनी चाहिए
+  maxProperties:
+    plural: limit
+    cases:
+      one: अधिकतम {$limit} प्रविष्टि हो सकती है
+      other: अधिकतम {$limit} प्रविष्टियाँ हो सकती हैं
+  format: मान्य {$format} नहीं है
+  additionalProperties: यहाँ अपेक्षित नहीं है
+  propertyNames: "ऐसा नाम है जिसकी अनुमति नहीं है: {$propertyName}"

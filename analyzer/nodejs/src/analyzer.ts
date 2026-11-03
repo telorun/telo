@@ -357,6 +357,7 @@ import type { ModuleDocuments } from "./module-documents.js";
 import { optionalInputReferenceMessage, optionalInputReferences } from "./optional-input-references.js";
 import { isKindDocument, kindDeclarationOf } from "./kind-declaration.js";
 import { needTableReportsFinding, needTypeOf } from "./need-type.js";
+import { keyedTranslationsOf } from "./keyed-translations.js";
 import { importNeedsSlotSchema, needTableDiagnostics, registeredNeedTable } from "./validate-needs.js";
 import { observesProblems } from "./observing-slot.js";
 import { validateResourceInputs } from "./validate-resource-inputs.js";
@@ -407,6 +408,7 @@ import { validateScopedKindDocuments } from "./validate-scoped-kind-documents.js
 import { importAnchoredDiagnostic, importReach } from "./reaching-import.js";
 import { textSlotAccessorProblems } from "./text-slot-accessor.js";
 import { textValuesProblems } from "./text-values.js";
+import { misplacedTextKeys, textKeysProblems } from "./text-keys.js";
 import { celTypeValueKind, schemaValueKind } from "./text-judgement.js";
 import { isForwardedDeclaration, isForwardedExport } from "./forwarded-declaration.js";
 import { validateThrowsCoverage } from "./validate-throws-coverage.js";
@@ -7067,10 +7069,10 @@ export class StaticAnalyzer {
     for (const m of manifests) {
       const declared = kindDeclarationOf(m);
       if (!declared) continue;
-      // A need type registers the Provider kind its fulfilments are — the
-      // synthesized definition the kernel's need-type controller registers
-      // from the same document.
-      if (needTypeOf(declared)) {
+      // A need type registers the Provider kind its fulfilments are, and a keyed
+      // declaration the translations kind of its keys — the synthesized
+      // definition the kernel registers from the same document.
+      if (needTypeOf(declared) || keyedTranslationsOf(declared)) {
         defs.register(declared);
         continue;
       }
@@ -9441,8 +9443,8 @@ export class StaticAnalyzer {
       ),
     );
 
-    // A text slot at or beneath an accessor field, and a malformed
-    // `x-telo-browser-export`. The kernel refuses the kind when it registers
+    // A text slot at or beneath an accessor field, a misplaced text annotation,
+    // and a malformed `x-telo-browser-export`. The kernel refuses the kind when it registers
     // it, so a dependency's is reported at the `imports:` entry reaching it; a
     // named shape is read from the registry, else from the library's own
     // documents.
@@ -9455,6 +9457,31 @@ export class StaticAnalyzer {
         }
       }
     }
+    // Reported where written for the entry's own modules, and at the `imports:`
+    // entry first reaching a dependency.
+    const pushKindDocumentProblem = (
+      m: ResourceManifest,
+      ownModule: string | undefined,
+      problem: { code: string; message: string; path: string },
+    ): void => {
+      const message = `${m.kind} ${problem.message}`;
+      const via = ownModule ? reach.of(ownModule) : undefined;
+      diagnostics.push(
+        ownModule && via
+          ? importAnchoredDiagnostic(problem.code, ownModule, via, message)
+          : {
+              severity: DiagnosticSeverity.Error,
+              code: problem.code,
+              source: SOURCE,
+              message,
+              data: {
+                resource: { kind: m.kind, name: m.metadata?.name as string },
+                filePath: (m.metadata as { source?: string } | undefined)?.source,
+                path: problem.path,
+              },
+            },
+      );
+    };
     const textAccessorKinds = new Set<string>();
     for (const m of allManifests as unknown as ResourceManifest[]) {
       if (m.kind !== "Telo.Definition" && m.kind !== "Telo.Abstract") continue;
@@ -9472,6 +9499,10 @@ export class StaticAnalyzer {
           code: "TEXT_VALUES_INVALID",
           ...problem,
         })),
+        ...textKeysProblems(String(m.metadata?.name), m.schema, (kind) => defs.resolve(kind)).map((problem) => ({
+          code: "TEXT_KEYS_INVALID",
+          ...problem,
+        })),
         ...browserExportAnnotationProblems(String(m.metadata?.name), m.schema).map((problem) => ({
           code: "BROWSER_EXPORT_ANNOTATION_INVALID",
           ...problem,
@@ -9481,25 +9512,25 @@ export class StaticAnalyzer {
           ...problem,
         })),
       ];
-      for (const problem of kindProblems) {
-        const message = `${m.kind} ${problem.message}`;
-        const via = ownModule ? reach.of(ownModule) : undefined;
-        diagnostics.push(
-          ownModule && via
-            ? importAnchoredDiagnostic(problem.code, ownModule, via, message)
-            : {
-                severity: DiagnosticSeverity.Error,
-                code: problem.code,
-                source: SOURCE,
-                message,
-                data: {
-                  resource: { kind: m.kind, name: m.metadata?.name as string },
-                  filePath: (m.metadata as { source?: string } | undefined)?.source,
-                  path: problem.path,
-                },
-              },
-        );
+      for (const problem of kindProblems) pushKindDocumentProblem(m, ownModule, problem);
+    }
+    // `x-telo-text-keys` outside a kind's `schema:` — every document the kernel
+    // creates, a dependency's too (its full documents where the analysis holds
+    // them), since the kernel refuses each when it creates the resource.
+    const placementJudged = new Set<string>();
+    const judgePlacement = (m: ResourceManifest, module: string | undefined): void => {
+      const key = `${module ?? ""}\0${String(m.kind)}\0${String(m.metadata?.name)}`;
+      if (placementJudged.has(key)) return;
+      placementJudged.add(key);
+      for (const problem of misplacedTextKeys(m as unknown as Record<string, unknown>)) {
+        pushKindDocumentProblem(m, module, { code: "TEXT_KEYS_INVALID", ...problem });
       }
+    };
+    for (const m of allManifests as unknown as ResourceManifest[]) {
+      judgePlacement(m, (m.metadata as { module?: string } | undefined)?.module);
+    }
+    for (const library of options?.moduleDocuments ?? []) {
+      for (const m of library.manifests as ResourceManifest[]) judgePlacement(m, library.module);
     }
 
     // A browser export an imported library's resource names, judged against

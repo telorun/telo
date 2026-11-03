@@ -1,9 +1,6 @@
-# The showcase in Russian: the applications' and pages' titles, every text the
-# pages write, the labels of the models they draw, and the words the renderer
-# draws on its own. A plural source is matched by the text its `other` case
-# reads and translated into Russian's four cases (`one`, `few`, `many`, and
-# `other` for fractions); a word told apart by its context is translated once
-# per context.
+# The showcase in Russian: titles, every text the pages write and their models'
+# labels; ui's own texts come from `Ui.russianTranslations`. A plural is matched
+# by its `other` case, and a word told apart by its context translated per context.
 kind: Telo.TextTranslations
 metadata: { name: russian }
 lang: ru
@@ -29,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: Логотип витрины интерфейса }
   - { text: Language, translation: Язык }
   - { text: Theme, translation: Тема }
@@ -548,102 +546,52 @@ texts:
   - { text: Use the Acme brand, translation: Использовать бренд Acme }
   - { text: "Use the theme's own values", translation: "Использовать значения темы" }
 
-  # The renderer's own words, as `Ui.words` writes them.
-  - { text: Loading…, translation: Загрузка… }
-  - { text: No rows., translation: Нет строк. }
-  - { text: Nothing found., translation: Ничего не найдено. }
-  - { text: Save, translation: Сохранить }
-  - { text: Cancel, translation: Отмена }
+  # Labels the pages write that ui also shows of its own.
   - { text: Close, translation: Закрыть }
-  - { text: New, translation: Создать }
   - { text: Edit, translation: Изменить }
   - { text: Delete, translation: Удалить }
-  - { text: Delete this row?, translation: Удалить эту строку? }
-  - { text: This cannot be undone., translation: Это действие нельзя отменить. }
-  - { text: Previous page, translation: Предыдущая страница }
-  - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} из {$total}" }
-  - { text: "0 of {$total}", translation: "0 из {$total}" }
-  - { text: Next page, translation: Следующая страница }
-  - { text: "Yes", translation: Да }
-  - { text: "No", translation: Нет }
-  - { text: None, translation: Не задано }
-  - { text: Any, translation: Любое }
-  - { text: Select…, translation: Выберите… }
-  - { text: Choose…, translation: Укажите… }
-  - { text: More, translation: Ещё }
-  - { text: Menu, translation: Меню }
-  - { text: Site, translation: Сайт }
-  - { text: Collapse navigation, translation: Свернуть навигацию }
-  - { text: Expand navigation, translation: Развернуть навигацию }
-  - { text: "Search {$label}", translation: "Поиск: {$label}" }
-  - { text: "Remove {$label}", translation: "Удалить: {$label}" }
-  - { text: "Clear {$label}", translation: "Очистить: {$label}" }
-  - { text: Add filter, translation: Добавить фильтр }
-  - { text: Apply, translation: Применить }
-  - { text: Reset, translation: Сбросить }
-  - { text: Done, translation: Готово }
-  - { text: Presets, translation: Пресеты }
-  - { text: is, translation: равно }
-  - { text: contains, translation: содержит }
-  - { text: after, translation: после }
-  - { text: from, translation: от }
-  - { text: before, translation: до }
-  - { text: to, translation: по }
-  - { text: one of, translation: одно из }
-  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
-  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
-  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
   - { text: From, translation: От }
   - { text: To, translation: До }
-  - { text: Must not start after it ends, translation: Не может начинаться после окончания }
-  - text: "Longer than {$count} days"
-    translation: { plural: count, cases: { one: "Дольше {$count} дня", few: "Дольше {$count} дней", many: "Дольше {$count} дней", other: "Дольше {$count} дня" } }
-  - text: "Longer than {$count} weeks"
-    translation: { plural: count, cases: { one: "Дольше {$count} недели", few: "Дольше {$count} недель", many: "Дольше {$count} недель", other: "Дольше {$count} недели" } }
-  - text: "Longer than {$count} months"
-    translation: { plural: count, cases: { one: "Дольше {$count} месяца", few: "Дольше {$count} месяцев", many: "Дольше {$count} месяцев", other: "Дольше {$count} месяца" } }
-  - text: "Longer than {$count} quarters"
-    translation: { plural: count, cases: { one: "Дольше {$count} квартала", few: "Дольше {$count} кварталов", many: "Дольше {$count} кварталов", other: "Дольше {$count} квартала" } }
-  - text: "Longer than {$count} years"
-    translation: { plural: count, cases: { one: "Дольше {$count} года", few: "Дольше {$count} лет", many: "Дольше {$count} лет", other: "Дольше {$count} года" } }
-  - { text: Not found, translation: Не найдено }
-  - { text: "This application has no page at {$path}.", translation: "В этом приложении нет страницы по адресу {$path}." }
-  - { text: Discard unsaved changes?, translation: Отбросить несохранённые изменения? }
-  - { text: What you entered has not been saved., translation: Введённые данные не сохранены. }
-  - { text: Discard, translation: Отбросить }
-  - { text: Keep editing, translation: Продолжить редактирование }
-  - { text: "You are not signed in, or your session has ended.", translation: "Вы не вошли в систему, или ваш сеанс завершился." }
-  - { text: You are not allowed to do this., translation: У вас нет прав на это действие. }
-  - { text: "The request failed with status {$status}.", translation: "Запрос завершился ошибкой, статус {$status}." }
-  - { text: "The request failed: {$reason}", translation: "Запрос завершился ошибкой: {$reason}" }
-  - { text: The record was refused., translation: Запись отклонена. }
-  - { text: The answer is not JSON., translation: Ответ не в формате JSON. }
-  - { text: The answer is not a JSON object., translation: Ответ не является объектом JSON. }
-  - { text: "The answer does not fit its model: {$detail}", translation: "Ответ не соответствует модели: {$detail}" }
-  - { text: Is not valid, translation: Некорректное значение }
-  - { text: Is required, translation: Обязательное поле }
-  - { text: "Must be {$types}", translation: "Должно иметь тип {$types}" }
-  - { text: "Must be one of: {$allowed}", translation: "Должно быть одним из: {$allowed}" }
-  - { text: "Must be {$value}", translation: "Должно быть равно {$value}" }
-  - { text: Is not allowed, translation: Недопустимое значение }
-  - { text: Is not one of the allowed forms, translation: Не соответствует ни одной из допустимых форм }
-  - text: "Must be at least {$limit} characters"
-    translation: { plural: limit, cases: { one: "Не менее {$limit} символа", few: "Не менее {$limit} символов", many: "Не менее {$limit} символов", other: "Не менее {$limit} символа" } }
-  - text: "Must be at most {$limit} characters"
-    translation: { plural: limit, cases: { one: "Не более {$limit} символа", few: "Не более {$limit} символов", many: "Не более {$limit} символов", other: "Не более {$limit} символа" } }
-  - { text: Is not in the expected format, translation: Неверный формат }
-  - { text: "Must be at least {$limit}", translation: "Должно быть не меньше {$limit}" }
-  - { text: "Must be at most {$limit}", translation: "Должно быть не больше {$limit}" }
-  - { text: "Must be greater than {$limit}", translation: "Должно быть больше {$limit}" }
-  - { text: "Must be less than {$limit}", translation: "Должно быть меньше {$limit}" }
-  - { text: "Must be a multiple of {$limit}", translation: "Должно быть кратно {$limit}" }
-  - text: "Must have at least {$limit} items"
-    translation: { plural: limit, cases: { one: "Не менее {$limit} элемента", few: "Не менее {$limit} элементов", many: "Не менее {$limit} элементов", other: "Не менее {$limit} элемента" } }
-  - text: "Must have at most {$limit} items"
-    translation: { plural: limit, cases: { one: "Не более {$limit} элемента", few: "Не более {$limit} элементов", many: "Не более {$limit} элементов", other: "Не более {$limit} элемента" } }
-  - { text: Must not repeat an item, translation: Элементы не должны повторяться }
-  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
-  - { text: "Load more", translation: "Загрузить ещё" }
-  - { text: "Move to", translation: "Переместить в" }
-  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
-  - { text: "not set", translation: "не задано" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "Проекта «{$code}» не существует." }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "У TEL-42 уже есть тег «{$tag}»." }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} не является адресом электронной почты никого из команды." }
+  - { text: "{$email} has left the team.", translation: "{$email} покинул(а) команду." }
+  - { text: "Another request is already titled '{$title}'.", translation: "Другой запрос уже называется «{$title}»." }
+  - { text: "The period must not start after it ends.", translation: "Период не может начинаться после своего окончания." }
+  - { text: "The period must end within a year of its start.", translation: "Период должен закончиться в течение года после начала." }
+  - { text: "Name someone to give the task to.", translation: "Укажите, кому поручить задачу." }
+  - { text: "There is no task {$id}.", translation: "Задачи {$id} не существует." }
+  - { text: "{$name} has left the team.", translation: "{$name} покинул(а) команду." }
+  - { text: "Task {$id} is already {$status}.", translation: "Задача {$id} уже имеет статус {$status}." }
+  - { text: "There is no post {$id}.", translation: "Записи {$id} не существует." }
+  - { text: "There is no comment {$id}.", translation: "Комментария {$id} не существует." }
+  - { text: "Write the new text of the comment.", translation: "Напишите новый текст комментария." }
+  - { text: "The session closed.", translation: "Сеанс завершён." }
+  - { text: "Only a manager may pause a project.", translation: "Приостановить проект может только менеджер." }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "Тело запроса превышает {$maxBodyBytes} байт, принимаемых этим сервером." }
+  - { text: "This server does not serve the host {$host}.", translation: "Этот сервер не обслуживает хост {$host}." }
+  - { text: "The list request is not valid.", translation: "Запрос списка недействителен." }

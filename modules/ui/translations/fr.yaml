@@ -1,0 +1,154 @@
+# ui's own texts in French.
+kind: Self.Translations
+metadata: { name: frenchTranslations }
+lang: fr
+messages:
+  loading: Chargement…
+  noRows: Aucune ligne.
+  nothingFound: Aucun résultat.
+  save: Enregistrer
+  cancel: Annuler
+  close: Fermer
+  newRecord: Nouveau
+  edit: Modifier
+  delete: Supprimer
+  deleteRowQuestion: Supprimer cette ligne ?
+  deleteRowDetail: Cette action est irréversible.
+  previousPage: Page précédente
+  pagerRange: "{$first}–{$last} sur {$total}"
+  pagerEmpty: 0 sur {$total}
+  nextPage: Page suivante
+  loadMore: En charger plus
+  moveTo: Déplacer vers
+  valueCount: "{$label} ({$count})"
+  yes: Oui
+  no: Non
+  none: Aucun
+  any: Indifférent
+  select: Sélectionner…
+  choose: Choisir…
+  more: Plus
+  menu: Menu
+  siteNavigation: Site
+  collapseNavigation: Réduire la navigation
+  expandNavigation: Développer la navigation
+  search: "Rechercher : {$label}"
+  remove: "Retirer : {$label}"
+  clear: "Effacer : {$label}"
+  filters: Filtres
+  addFilter: Ajouter un filtre
+  apply: Appliquer
+  reset: Réinitialiser
+  done: OK
+  presets: Préréglages
+  operatorEq: est
+  operatorContains: contient
+  operatorGt: après
+  operatorGte: à partir de
+  operatorLt: avant
+  operatorLte: jusqu'à
+  operatorIn: parmi
+  operatorAbsent: non renseigné
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label} : {$summary}"
+  rangeFrom: De
+  rangeTo: À
+  rangeStartsAfterEnd: Ne doit pas commencer après sa fin
+  rangeLongerThanDays:
+    plural: count
+    cases:
+      one: Plus de {$count} jour
+      many: Plus de {$count} de jours
+      other: Plus de {$count} jours
+  rangeLongerThanWeeks:
+    plural: count
+    cases:
+      one: Plus de {$count} semaine
+      many: Plus de {$count} de semaines
+      other: Plus de {$count} semaines
+  rangeLongerThanMonths:
+    plural: count
+    cases:
+      one: Plus de {$count} mois
+      many: Plus de {$count} de mois
+      other: Plus de {$count} mois
+  rangeLongerThanQuarters:
+    plural: count
+    cases:
+      one: Plus de {$count} trimestre
+      many: Plus de {$count} de trimestres
+      other: Plus de {$count} trimestres
+  rangeLongerThanYears:
+    plural: count
+    cases:
+      one: Plus de {$count} an
+      many: Plus de {$count} d'années
+      other: Plus de {$count} ans
+  notFound: Introuvable
+  noPageAt: Cette application n'a pas de page à l'adresse {$path}.
+  unsavedQuestion: Abandonner les modifications non enregistrées ?
+  unsavedDetail: Votre saisie n'a pas été enregistrée.
+  discard: Abandonner
+  keepEditing: Continuer la modification
+  requestUnauthorized: Vous n'êtes pas connecté, ou votre session a expiré.
+  requestForbidden: Vous n'êtes pas autorisé à effectuer cette action.
+  requestFailedStatus: La requête a échoué avec le statut {$status}.
+  requestFailed: "La requête a échoué : {$reason}"
+  recordRefused: L'enregistrement a été refusé.
+  answerNotJson: La réponse n'est pas du JSON.
+  answerNotObject: La réponse n'est pas un objet JSON.
+  answerNotModel: "La réponse ne correspond pas à son modèle : {$detail}"
+  invalid: N'est pas valide
+  required: Est obligatoire
+  type: Doit être de type {$types}
+  enum: "Doit être l'une des valeurs suivantes : {$allowed}"
+  const: Doit valoir {$value}
+  not: N'est pas autorisé
+  anyOf: Ne correspond à aucune des formes autorisées
+  minLength:
+    plural: limit
+    cases:
+      one: Doit comporter au moins {$limit} caractère
+      many: Doit comporter au moins {$limit} de caractères
+      other: Doit comporter au moins {$limit} caractères
+  maxLength:
+    plural: limit
+    cases:
+      one: Doit comporter au plus {$limit} caractère
+      many: Doit comporter au plus {$limit} de caractères
+      other: Doit comporter au plus {$limit} caractères
+  pattern: N'a pas le format attendu
+  minimum: Doit être au moins égal à {$limit}
+  maximum: Doit être au plus égal à {$limit}
+  exclusiveMinimum: Doit être supérieur à {$limit}
+  exclusiveMaximum: Doit être inférieur à {$limit}
+  multipleOf: Doit être un multiple de {$limit}
+  minItems:
+    plural: limit
+    cases:
+      one: Doit contenir au moins {$limit} élément
+      many: Doit contenir au moins {$limit} d'éléments
+      other: Doit contenir au moins {$limit} éléments
+  maxItems:
+    plural: limit
+    cases:
+      one: Doit contenir au plus {$limit} élément
+      many: Doit contenir au plus {$limit} d'éléments
+      other: Doit contenir au plus {$limit} éléments
+  uniqueItems: Ne doit pas contenir d'élément en double
+  minProperties:
+    plural: limit
+    cases:
+      one: Doit contenir au moins {$limit} entrée
+      many: Doit contenir au moins {$limit} d'entrées
+      other: Doit contenir au moins {$limit} entrées
+  maxProperties:
+    plural: limit
+    cases:
+      one: Doit contenir au plus {$limit} entrée
+      many: Doit contenir au plus {$limit} d'entrées
+      other: Doit contenir au plus {$limit} entrées
+  format: N'est pas une valeur {$format} valide
+  additionalProperties: N'est pas attendu ici
+  propertyNames: "A un nom non autorisé : {$propertyName}"

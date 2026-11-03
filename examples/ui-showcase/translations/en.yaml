@@ -1,0 +1,7 @@
+# The showcase in English, its source language: only what a module without a
+# `lang` of its own writes, so that language is covered too.
+kind: Telo.TextTranslations
+metadata: { name: english }
+lang: en
+texts:
+  - { text: "The list request is not valid.", translation: "The list request is not valid." }

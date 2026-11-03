@@ -471,7 +471,29 @@ steps:
         brand: [ --telo-font-body, --telo-font-heading ]
         faces: 4
 
-  # In Polish: the applications' and pages' titles and the renderer's words.
+  # Every language the showcase serves draws ui's own texts in that language,
+  # from ui's shipped translations.
+  - name: served
+    value: { n: !cel "0", langs: [] }
+  - name: askEachLanguage
+    while: !cel "steps.served.result.n < 14"
+    do:
+      - name: asked
+        invoke: { kind: HttpClient.Request, client: !ref browser, url: /_telo/ui/app }
+        inputs:
+          headers:
+            accept-language: !cel "['de', 'es', 'fr', 'hi', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ru', 'tr', 'uk', 'zh'][steps.served.result.n]"
+      - name: served
+        value:
+          n: !cel "steps.served.result.n + 1"
+          langs: !cel "steps.served.result.langs + [[steps.asked.result.body.lang, steps.asked.result.body.texts.sets['Ui.Translations'].save.lang]]"
+  - name: verifyLanguages
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.served.result.langs"
+      expected: [ [ de, de ], [ es, es ], [ fr, fr ], [ hi, hi ], [ it, it ], [ ja, ja ], [ ko, ko ], [ nl, nl ], [ pl, pl ], [ pt, pt ], [ ru, ru ], [ tr, tr ], [ uk, uk ], [ zh, zh ] ]
+
+  # In Polish: the applications' and pages' titles and ui's own texts.
   - name: verifyPolish
     invoke: { kind: Assert.Equals }
     inputs:
@@ -479,7 +501,7 @@ steps:
         lang: !cel "steps.polishApp.result.body.lang"
         title: !cel "steps.polishApp.result.body.title"
         pages: !cel "steps.polishApp.result.body.pages.map(p, p.title.message[0])"
-        save: !cel "steps.polishApp.result.body.words.save"
+        save: !cel "steps.polishApp.result.body.texts.sets['Ui.Translations'].save"
         heading: !cel "steps.polishOverview.result.body.children[0].children[0].text"
       expected:
         lang: pl

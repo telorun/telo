@@ -1,4 +1,4 @@
-import type { WordCall } from "./ui-error.js";
+import type { OwnText } from "./ui-error.js";
 
 export type JsonSchema = Record<string, any>;
 
@@ -8,8 +8,8 @@ export const plainTypes = (schema: JsonSchema): string[] => [schema.type ?? []].
 export interface Finding {
   /** Member names from the value's root to what failed. */
   path: string[];
-  /** What failed, as the word named after the keyword that refused it. */
-  word: WordCall;
+  /** What failed, as the renderer's own text named after the keyword that refused it. */
+  text: OwnText;
 }
 
 const typeOf = (value: unknown): string =>
@@ -44,7 +44,7 @@ const show = (value: unknown) => JSON.stringify(value);
  */
 export function validate(schema: JsonSchema, value: unknown, path: string[] = []): Finding[] {
   const findings: Finding[] = [];
-  const fail = (id: string, values?: WordCall["values"]) => findings.push({ path, word: values ? { id, values } : { id } });
+  const fail = (key: string, values?: OwnText["values"]) => findings.push({ path, text: values ? { key, values } : { key } });
   if (schema.type !== undefined && ![schema.type].flat().some((type: string) => fitsType(value, type))) {
     fail("type", { types: [schema.type].flat().join(", ") });
     return findings;
@@ -83,7 +83,7 @@ export function validate(schema: JsonSchema, value: unknown, path: string[] = []
   }
   if (isObject(value)) {
     for (const name of (schema.required ?? []) as string[]) {
-      if (value[name] === undefined) findings.push({ path: [...path, name], word: { id: "required" } });
+      if (value[name] === undefined) findings.push({ path: [...path, name], text: { key: "required" } });
     }
     for (const [name, member] of Object.entries((schema.properties ?? {}) as Record<string, JsonSchema>)) {
       if (value[name] !== undefined) findings.push(...validate(member, value[name], [...path, name]));

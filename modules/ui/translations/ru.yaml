@@ -1,0 +1,165 @@
+# ui's own texts in Russian.
+kind: Self.Translations
+metadata: { name: russianTranslations }
+lang: ru
+messages:
+  loading: Загрузка…
+  noRows: Нет строк.
+  nothingFound: Ничего не найдено.
+  save: Сохранить
+  cancel: Отмена
+  close: Закрыть
+  newRecord: Создать
+  edit: Изменить
+  delete: Удалить
+  deleteRowQuestion: Удалить эту строку?
+  deleteRowDetail: Это действие нельзя отменить.
+  previousPage: Предыдущая страница
+  pagerRange: "{$first}–{$last} из {$total}"
+  pagerEmpty: 0 из {$total}
+  nextPage: Следующая страница
+  loadMore: Загрузить ещё
+  moveTo: Переместить в
+  valueCount: "{$label} ({$count})"
+  yes: Да
+  no: Нет
+  none: Не задано
+  any: Любое
+  select: Выберите…
+  choose: Укажите…
+  more: Ещё
+  menu: Меню
+  siteNavigation: Сайт
+  collapseNavigation: Свернуть навигацию
+  expandNavigation: Развернуть навигацию
+  search: "Поиск: {$label}"
+  remove: "Удалить: {$label}"
+  clear: "Очистить: {$label}"
+  filters: Фильтры
+  addFilter: Добавить фильтр
+  apply: Применить
+  reset: Сбросить
+  done: Готово
+  presets: Пресеты
+  operatorEq: равно
+  operatorContains: содержит
+  operatorGt: после
+  operatorGte: от
+  operatorLt: до
+  operatorLte: по
+  operatorIn: одно из
+  operatorAbsent: не задано
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: От
+  rangeTo: До
+  rangeStartsAfterEnd: Не может начинаться после окончания
+  rangeLongerThanDays:
+    plural: count
+    cases:
+      one: Дольше {$count} дня
+      few: Дольше {$count} дней
+      many: Дольше {$count} дней
+      other: Дольше {$count} дня
+  rangeLongerThanWeeks:
+    plural: count
+    cases:
+      one: Дольше {$count} недели
+      few: Дольше {$count} недель
+      many: Дольше {$count} недель
+      other: Дольше {$count} недели
+  rangeLongerThanMonths:
+    plural: count
+    cases:
+      one: Дольше {$count} месяца
+      few: Дольше {$count} месяцев
+      many: Дольше {$count} месяцев
+      other: Дольше {$count} месяца
+  rangeLongerThanQuarters:
+    plural: count
+    cases:
+      one: Дольше {$count} квартала
+      few: Дольше {$count} кварталов
+      many: Дольше {$count} кварталов
+      other: Дольше {$count} квартала
+  rangeLongerThanYears:
+    plural: count
+    cases:
+      one: Дольше {$count} года
+      few: Дольше {$count} лет
+      many: Дольше {$count} лет
+      other: Дольше {$count} года
+  notFound: Не найдено
+  noPageAt: В этом приложении нет страницы по адресу {$path}.
+  unsavedQuestion: Отбросить несохранённые изменения?
+  unsavedDetail: Введённые данные не сохранены.
+  discard: Отбросить
+  keepEditing: Продолжить редактирование
+  requestUnauthorized: Вы не вошли в систему, или ваш сеанс завершился.
+  requestForbidden: У вас нет прав на это действие.
+  requestFailedStatus: Запрос завершился ошибкой, статус {$status}.
+  requestFailed: "Запрос завершился ошибкой: {$reason}"
+  recordRefused: Запись отклонена.
+  answerNotJson: Ответ не в формате JSON.
+  answerNotObject: Ответ не является объектом JSON.
+  answerNotModel: "Ответ не соответствует модели: {$detail}"
+  invalid: Некорректное значение
+  required: Обязательное поле
+  type: Должно иметь тип {$types}
+  enum: "Должно быть одним из: {$allowed}"
+  const: Должно быть равно {$value}
+  not: Недопустимое значение
+  anyOf: Не соответствует ни одной из допустимых форм
+  minLength:
+    plural: limit
+    cases:
+      one: Не менее {$limit} символа
+      few: Не менее {$limit} символов
+      many: Не менее {$limit} символов
+      other: Не менее {$limit} символа
+  maxLength:
+    plural: limit
+    cases:
+      one: Не более {$limit} символа
+      few: Не более {$limit} символов
+      many: Не более {$limit} символов
+      other: Не более {$limit} символа
+  pattern: Неверный формат
+  minimum: Должно быть не меньше {$limit}
+  maximum: Должно быть не больше {$limit}
+  exclusiveMinimum: Должно быть больше {$limit}
+  exclusiveMaximum: Должно быть меньше {$limit}
+  multipleOf: Должно быть кратно {$limit}
+  minItems:
+    plural: limit
+    cases:
+      one: Не менее {$limit} элемента
+      few: Не менее {$limit} элементов
+      many: Не менее {$limit} элементов
+      other: Не менее {$limit} элемента
+  maxItems:
+    plural: limit
+    cases:
+      one: Не более {$limit} элемента
+      few: Не более {$limit} элементов
+      many: Не более {$limit} элементов
+      other: Не более {$limit} элемента
+  uniqueItems: Элементы не должны повторяться
+  minProperties:
+    plural: limit
+    cases:
+      one: Не менее {$limit} записи
+      few: Не менее {$limit} записей
+      many: Не менее {$limit} записей
+      other: Не менее {$limit} записи
+  maxProperties:
+    plural: limit
+    cases:
+      one: Не более {$limit} записи
+      few: Не более {$limit} записей
+      many: Не более {$limit} записей
+      other: Не более {$limit} записи
+  format: Не является допустимым значением {$format}
+  additionalProperties: Здесь не ожидается
+  propertyNames: "Содержит недопустимое имя: {$propertyName}"

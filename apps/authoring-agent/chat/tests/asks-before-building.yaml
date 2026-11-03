@@ -16,7 +16,7 @@ metadata:
     The second turn is the answers, as an ordinary message. It is asserted: (1)
     the reply carries no `telo-questions` block, (2) a file was written, (3) no
     `UiReact.App` was written — the answers rule a UI out, which is the user
-    overriding the agent's default (assumes-ui.yaml pins the default itself),
+    overriding the agent's default,
     and (4) the last check the agent's own tools ran on what it wrote is clean. Asking
     alone was once all this case pinned, and an agent that answered every reply
     to its questions by asking them again passed it.
@@ -26,11 +26,9 @@ metadata:
     tests. What is under test is that a build FOLLOWS the answers, and every
     import and every route beyond the first is turn count this case pays for.
 
-    This is the counterpart to authors-manifest.yaml, which sends a FULLY
-    SPECIFIED request and asserts the agent writes immediately. The pair is the
-    real assertion: the question turn is conditional on the request leaving
-    something material unsaid, so a specified request must never pay for a
-    round-trip. Skips silently when ANTHROPIC_API_KEY is unset.
+    This is the suite's only live case: the question turn is conditional on
+    the request leaving something material unsaid, and the build that follows
+    must not ask again. Skips silently when ANTHROPIC_API_KEY is unset.
 secrets:
   anthropicApiKey:
     env: ANTHROPIC_API_KEY
@@ -67,7 +65,7 @@ imports:
     variables:
       workspaceDir: !cel "variables.workspaceDir"
       # No `model:` — inherited from the library. `low` effort: the case pins
-      # behaviour, not answer quality, and `authors-manifest` keeps the shipped default.
+      # behaviour, not answer quality.
       # Resolved from the agent's cwd, which IS the workspace directory above —
       # two levels below the repo root.
       teloProgram: [bun, ../../cli/nodejs/bin/telo.ts]

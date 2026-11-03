@@ -1,3 +1,11 @@
+---
+status: in-progress
+priority: medium
+depends-on: []
+packages: [analyzer, kernel, sdk, modules/run]
+tracking: feat/telo-sequence
+---
+
 # Telo.Sequence — the sequence kind as a built-in
 
 ## Problem

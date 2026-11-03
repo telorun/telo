@@ -1,0 +1,25 @@
+{
+  "lang": "ko",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "서비스 구성이 잘못되었습니다."
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "서비스가 값을 계산하지 못했습니다."
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "요청이 유효하지 않습니다."
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "서비스가 결과를 생성했지만 전달하지 못했습니다."
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "서비스가 어떻게 진행할지 결정하지 못했습니다."
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+# ui's own texts in Dutch.
+kind: Self.Translations
+metadata: { name: dutchTranslations }
+lang: nl
+messages:
+  loading: Laden…
+  noRows: Geen rijen.
+  nothingFound: Niets gevonden.
+  save: Opslaan
+  cancel: Annuleren
+  close: Sluiten
+  newRecord: Nieuw
+  edit: Bewerken
+  delete: Verwijderen
+  deleteRowQuestion: Deze rij verwijderen?
+  deleteRowDetail: Dit kan niet ongedaan worden gemaakt.
+  previousPage: Vorige pagina
+  pagerRange: "{$first}–{$last} van {$total}"
+  pagerEmpty: 0 van {$total}
+  nextPage: Volgende pagina
+  loadMore: Meer laden
+  moveTo: Verplaatsen naar
+  valueCount: "{$label} ({$count})"
+  yes: Ja
+  no: Nee
+  none: Geen
+  any: Alle
+  select: Selecteren…
+  choose: Kiezen…
+  more: Meer
+  menu: Menu
+  siteNavigation: Site
+  collapseNavigation: Navigatie inklappen
+  expandNavigation: Navigatie uitklappen
+  search: "{$label} zoeken"
+  remove: "{$label} verwijderen"
+  clear: "{$label} wissen"
+  filters: Filters
+  addFilter: Filter toevoegen
+  apply: Toepassen
+  reset: Herstellen
+  done: Gereed
+  presets: Voorinstellingen
+  operatorEq: is
+  operatorContains: bevat
+  operatorGt: na
+  operatorGte: vanaf
+  operatorLt: voor
+  operatorLte: tot
+  operatorIn: een van
+  operatorAbsent: niet ingesteld
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: Van
+  rangeTo: Tot
+  rangeStartsAfterEnd: Mag niet na het einde beginnen
+  rangeLongerThanDays:
+    plural: count
+    cases: { one: "Langer dan {$count} dag", other: "Langer dan {$count} dagen" }
+  rangeLongerThanWeeks:
+    plural: count
+    cases: { one: "Langer dan {$count} week", other: "Langer dan {$count} weken" }
+  rangeLongerThanMonths:
+    plural: count
+    cases: { one: "Langer dan {$count} maand", other: "Langer dan {$count} maanden" }
+  rangeLongerThanQuarters:
+    plural: count
+    cases: { one: "Langer dan {$count} kwartaal", other: "Langer dan {$count} kwartalen" }
+  rangeLongerThanYears:
+    plural: count
+    cases: { one: "Langer dan {$count} jaar", other: "Langer dan {$count} jaar" }
+  notFound: Niet gevonden
+  noPageAt: Deze applicatie heeft geen pagina op {$path}.
+  unsavedQuestion: Niet-opgeslagen wijzigingen verwerpen?
+  unsavedDetail: Wat je hebt ingevoerd, is niet opgeslagen.
+  discard: Verwerpen
+  keepEditing: Verder bewerken
+  requestUnauthorized: Je bent niet ingelogd, of je sessie is beëindigd.
+  requestForbidden: Je hebt geen toestemming om dit te doen.
+  requestFailedStatus: Het verzoek is mislukt met status {$status}.
+  requestFailed: "Het verzoek is mislukt: {$reason}"
+  recordRefused: Het record is geweigerd.
+  answerNotJson: Het antwoord is geen JSON.
+  answerNotObject: Het antwoord is geen JSON-object.
+  answerNotModel: "Het antwoord past niet bij zijn model: {$detail}"
+  invalid: Is ongeldig
+  required: Is verplicht
+  type: Moet van het type {$types} zijn
+  enum: "Moet een van deze zijn: {$allowed}"
+  const: Moet {$value} zijn
+  not: Is niet toegestaan
+  anyOf: Heeft geen van de toegestane vormen
+  minLength:
+    plural: limit
+    cases: { one: "Minstens {$limit} teken", other: "Minstens {$limit} tekens" }
+  maxLength:
+    plural: limit
+    cases: { one: "Hoogstens {$limit} teken", other: "Hoogstens {$limit} tekens" }
+  pattern: Heeft niet het verwachte formaat
+  minimum: Moet minstens {$limit} zijn
+  maximum: Moet hoogstens {$limit} zijn
+  exclusiveMinimum: Moet groter zijn dan {$limit}
+  exclusiveMaximum: Moet kleiner zijn dan {$limit}
+  multipleOf: Moet een veelvoud van {$limit} zijn
+  minItems:
+    plural: limit
+    cases: { one: "Minstens {$limit} item", other: "Minstens {$limit} items" }
+  maxItems:
+    plural: limit
+    cases: { one: "Hoogstens {$limit} item", other: "Hoogstens {$limit} items" }
+  uniqueItems: Items mogen niet herhaald worden
+  minProperties:
+    plural: limit
+    cases: { one: "Minstens {$limit} vermelding", other: "Minstens {$limit} vermeldingen" }
+  maxProperties:
+    plural: limit
+    cases:
+      one: Hoogstens {$limit} vermelding
+      other: Hoogstens {$limit} vermeldingen
+  format: Is geen geldige {$format}
+  additionalProperties: Wordt hier niet verwacht
+  propertyNames: "Heeft een niet-toegestane naam: {$propertyName}"

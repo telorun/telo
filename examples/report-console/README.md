@@ -10,7 +10,7 @@ else.
 | --- | --- |
 | `telo.yaml` | the application: the shapes the screen and the routes share, the pages, the server |
 | `stub-api.yaml` | the routes the screen calls, over fixture functions |
-| `polish.yaml` | the Polish translations — the console's texts and the renderer's own words |
+| `polish.yaml` | the Polish translations of the console's own texts (ui's come from `Ui.polishTranslations`) |
 | `console.css` | the dark-blue table header, over the renderer's part names |
 
 ## Run
@@ -83,9 +83,10 @@ Http.Server (:8140)
 
 Every text is written in English (`lang: en`). `polish.yaml` holds one
 `Telo.TextTranslations` with the Polish for each of them — page and node texts, the
-models' titles, descriptions and option labels, plural headings in Polish's
-four forms, and every word the renderer draws on its own (`Ui.words`). The
-application lists them in its `translations:` block, and the server negotiates
+models' titles, descriptions and option labels, and plural headings in Polish's
+four forms. What the renderer draws on its own is `ui`'s, translated by the
+shipped `Ui.polishTranslations`. The application lists both in its
+`translations:` block, and the server negotiates
 each request's language from `Accept-Language`, so the application serves its
 documents in it; `telo check` warns about a catalog entry that matches no
 text.

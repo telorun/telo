@@ -16,15 +16,12 @@ metadata:
     on a phone. The data is a small studio's team, people, projects, tasks,
     requests, bookings, comments, blog posts and reporting lines in SQLite,
     with real sessions behind a sign-in gate.
-# Module `lang:`, `UiReact.App.words` and every key of the data-driven screen
-# vocabulary are read from 0.121.0.
-# 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
-requires: { telo: ">=0.128.0" }
+# 0.129.0: ui's shipped translations, which an older runtime cannot load.
+requires: { telo: ">=0.129.0" }
 lang: en
-# The UI modules, `data-model`, `crud` and `crud-ui` come from this repository
-# while their changes are unreleased, with every module they reach in it:
-# `http-server`, `sql`, `sqlite`, `font` and `i18n`; `telo upgrade --pin-local`
-# pins them again once they ship.
+# The UI modules, `data-model`, `crud`, `crud-ui` and every module they reach
+# come from this repository while their changes are unreleased;
+# `telo upgrade --pin-local` pins them again once they ship.
 imports:
   Run: ../../modules/run
   Http: ../../modules/http-server
@@ -46,11 +43,26 @@ imports:
 # The database, the routes crud does not give, the translations with one file
 # per language, and one file per page holding the view every application
 # places there.
-include: [./data.yaml, ./api.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-themes.yaml]
-# The texts are written in English, the module's `lang`, so English has no
-# catalog.
+include: [./data.yaml, ./api.yaml, ./translations/en.yaml, ./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml, ./pages-overview.yaml, ./pages-conditions.yaml, ./pages-data.yaml, ./pages-tables.yaml, ./pages-filters.yaml, ./pages-forms.yaml, ./pages-actions.yaml, ./pages-components.yaml, ./pages-crud.yaml, ./pages-records.yaml, ./pages-themes.yaml]
+# The texts are written in English, the module's `lang`; `english` covers the
+# one text crud writes with no `lang`, and ui's own texts come translated with ui.
 translations:
   catalogs:
+    - !ref Ui.germanTranslations
+    - !ref Ui.spanishTranslations
+    - !ref Ui.frenchTranslations
+    - !ref Ui.italianTranslations
+    - !ref Ui.dutchTranslations
+    - !ref Ui.polishTranslations
+    - !ref Ui.portugueseTranslations
+    - !ref Ui.turkishTranslations
+    - !ref Ui.russianTranslations
+    - !ref Ui.ukrainianTranslations
+    - !ref Ui.hindiTranslations
+    - !ref Ui.japaneseTranslations
+    - !ref Ui.koreanTranslations
+    - !ref Ui.chineseTranslations
+    - !ref english
     - !ref german
     - !ref spanish
     - !ref french
@@ -113,24 +125,12 @@ kind: Ui.View
 metadata: { name: logo }
 content: { type: image, src: /files/mark.svg, alt: UI showcase logo }
 ---
-# The showcase under the built-in look. Its brand follows the request: with the
-# `showcase-brand=acme` cookie (set by `/api/brand?set=acme`) the Acme tokens
-# apply, and with none the theme's own values do. Two pages carry nodes of
-# their own beside the shared view — the per-request nodes and the page's
-# query — because a view is resolved once at start and reads neither.
-#
-# Each of the four applications is answered in the language the server
-# negotiates — the `showcase-lang` cookie (set by `/api/lang?set=pl` under its
-# mount), else the Accept-Language header — and draws the same header: the mark, then two menus, Language with the language
-# in effect marked, and Theme with the four mounts' home pages — another
-# mount's by an absolute address built from the request's `Self.origin`, since an app-relative
-# link resolves under the mount it is drawn in — and this mount marked. This
-# one adds the brand switch to its Theme menu, each item delivered only while
-# it changes something.
+# The built-in look, its brand chosen per request by the `showcase-brand`
+# cookie; two pages add per-request nodes a shared view cannot read. Languages,
+# the shared header and its Language and Theme menus: README.md.
 kind: UiReact.App
 metadata: { name: showcase }
 title: UI showcase
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 tokens:
   - when: !cel "'cookie' in request.headers && Self.cookie(request.headers['cookie'], 'showcase-brand') == 'acme'"
@@ -367,7 +367,6 @@ children:
 kind: UiReact.App
 metadata: { name: radixShowcase }
 title: UI showcase — Radix
-words: !ref Ui.words
 theme: !ref Radix.theme
 compactBelow: 48rem
 header:
@@ -487,14 +486,12 @@ navigation:
     - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
-# The same pages under a theme of the example's own (`brand/`): Radix's
-# controls under a stylesheet written for this example, with token values of
-# its own. The application's brand is one token set, which ships the Inter
+# The same pages under the example's own theme (`brand/`): Radix's controls
+# under a stylesheet of its own, and one brand token set shipping the Inter
 # faces the theme names.
 kind: UiReact.App
 metadata: { name: brandShowcase }
 title: UI showcase — brand
-words: !ref Ui.words
 theme: !ref Brand.theme
 tokens:
   kind: Ui.DesignTokens
@@ -618,16 +615,12 @@ navigation:
     - { type: page, page: !ref recordsScreen, icon: !ref recordsIcon }
     - { type: page, page: !ref themesScreen, icon: !ref themesIcon }
 ---
-# The same pages under the built-in look, their navigation in a sidebar beside
-# the page instead of the header: groups open in place, several at once, and
-# the sidebar collapses to a rail. The page fills the width beside it
-# (`pageWidth: full`) rather than the theme's centred column. Which groups are open
-# and whether it is collapsed are kept in the browser's local storage. Below the breakpoint it
-# becomes a tab bar along the bottom edge, its fourth tab More holding the rest.
+# The built-in look with its navigation in a sidebar that collapses to a rail
+# (kept in local storage) beside a full-width page; below the breakpoint, a
+# bottom tab bar whose fourth tab, More, holds the rest.
 kind: UiReact.App
 metadata: { name: sidebarShowcase }
 title: UI showcase — sidebar
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 stylesheets:
   - !module-path ./showcase.css
@@ -828,10 +821,9 @@ kind: Http.Static
 metadata: { name: files }
 root: !module-path ./files
 ---
-# The session check behind every `/api/private` mount: a request whose cookie
-# names no row of `sessions` is refused, which each mount answers 401 with no
-# body, a reader shows as ERR_UI_UNAUTHORIZED and the sign-in gate around it
-# reads again on.
+# The session check behind every `/api/private` mount: a cookie naming no row
+# of `sessions` is answered 401 with no body, which a reader shows as
+# ERR_UI_UNAUTHORIZED and its sign-in gate reads again on.
 kind: Telo.Sequence
 metadata: { name: sessionGuard }
 inputType:
@@ -899,10 +891,9 @@ singular: employee
 plural: employees
 collection: !ref employees
 ---
-# The four applications share their pages, whose request paths are
-# app-relative: each application reads and writes them under its own mount, so
-# the API is served under each mount, as the files are. The brand switch
-# belongs to the root application alone.
+# The pages' request paths are app-relative, so the API and the files are
+# served under each of the four mounts; the brand switch is the root
+# application's alone.
 kind: Http.Server
 metadata: { name: server }
 listen:

@@ -1,0 +1,99 @@
+# ui's own texts in Turkish.
+kind: Self.Translations
+metadata: { name: turkishTranslations }
+lang: tr
+messages:
+  loading: Yükleniyor…
+  noRows: Satır yok.
+  nothingFound: Hiçbir şey bulunamadı.
+  save: Kaydet
+  cancel: İptal
+  close: Kapat
+  newRecord: Yeni
+  edit: Düzenle
+  delete: Sil
+  deleteRowQuestion: Bu satır silinsin mi?
+  deleteRowDetail: Bu işlem geri alınamaz.
+  previousPage: Önceki sayfa
+  pagerRange: "{$first}–{$last} / {$total}"
+  pagerEmpty: 0 / {$total}
+  nextPage: Sonraki sayfa
+  loadMore: Daha fazla yükle
+  moveTo: Şuraya taşı
+  valueCount: "{$label} ({$count})"
+  yes: Evet
+  no: Hayır
+  none: Yok
+  any: Herhangi
+  select: Seçin…
+  choose: Seçim yapın…
+  more: Daha fazla
+  menu: Menü
+  siteNavigation: Site
+  collapseNavigation: Gezinmeyi daralt
+  expandNavigation: Gezinmeyi genişlet
+  search: "Ara: {$label}"
+  remove: "Kaldır: {$label}"
+  clear: "Temizle: {$label}"
+  filters: Filtreler
+  addFilter: Filtre ekle
+  apply: Uygula
+  reset: Sıfırla
+  done: Tamam
+  presets: Hazır ayarlar
+  operatorEq: =
+  operatorContains: "şunu içerir:"
+  operatorGt: ">"
+  operatorGte: ≥
+  operatorLt: <
+  operatorLte: ≤
+  operatorIn: "şunlardan biri:"
+  operatorAbsent: ayarlanmamış
+  filterControl: "{$label} {$operator}"
+  filterChip: "{$label} {$operator} {$value}"
+  filterGroupSummary: "{$label}: {$summary}"
+  rangeFrom: Başlangıç
+  rangeTo: Bitiş
+  rangeStartsAfterEnd: Bitişinden sonra başlayamaz
+  rangeLongerThanDays: "{$count} günden uzun"
+  rangeLongerThanWeeks: "{$count} haftadan uzun"
+  rangeLongerThanMonths: "{$count} aydan uzun"
+  rangeLongerThanQuarters: "{$count} çeyrekten uzun"
+  rangeLongerThanYears: "{$count} yıldan uzun"
+  notFound: Bulunamadı
+  noPageAt: Bu uygulamada {$path} adresinde bir sayfa yok.
+  unsavedQuestion: Kaydedilmemiş değişiklikler atılsın mı?
+  unsavedDetail: Girdikleriniz kaydedilmedi.
+  discard: Değişiklikleri at
+  keepEditing: Düzenlemeye devam et
+  requestUnauthorized: Oturum açmadınız ya da oturumunuz sona erdi.
+  requestForbidden: Bunu yapma izniniz yok.
+  requestFailedStatus: "İstek başarısız oldu, durum kodu: {$status}."
+  requestFailed: "İstek başarısız oldu: {$reason}"
+  recordRefused: Kayıt reddedildi.
+  answerNotJson: Yanıt JSON değil.
+  answerNotObject: Yanıt bir JSON nesnesi değil.
+  answerNotModel: "Yanıt modeline uymuyor: {$detail}"
+  invalid: Geçerli değil
+  required: Zorunlu
+  type: "{$types} türünde olmalı"
+  enum: "Şunlardan biri olmalı: {$allowed}"
+  const: Değeri {$value} olmalı
+  not: İzin verilmiyor
+  anyOf: İzin verilen biçimlerin hiçbirine uymuyor
+  minLength: En az {$limit} karakter olmalı
+  maxLength: En fazla {$limit} karakter olmalı
+  pattern: Beklenen biçimde değil
+  minimum: En az {$limit} olmalı
+  maximum: En fazla {$limit} olmalı
+  exclusiveMinimum: "{$limit} değerinden büyük olmalı"
+  exclusiveMaximum: "{$limit} değerinden küçük olmalı"
+  multipleOf: "{$limit} değerinin katı olmalı"
+  minItems: En az {$limit} öğe içermeli
+  maxItems: En fazla {$limit} öğe içermeli
+  uniqueItems: Öğeler tekrarlanmamalı
+  minProperties: En az {$limit} girdi içermeli
+  maxProperties: En fazla {$limit} girdi içermeli
+  format: Geçerli bir {$format} değil
+  additionalProperties: Burada beklenmiyor
+  propertyNames: "İzin verilmeyen bir ad içeriyor: {$propertyName}"

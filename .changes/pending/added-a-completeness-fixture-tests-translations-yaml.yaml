@@ -1,0 +1,5 @@
+modules:
+  modules/ui: Added
+body: A completeness fixture, `tests/translations.yaml`, serves all fourteen shipped
+  translations and checks clean; `telo check` reports no missing translation for it, and
+  the texts docs describe how an application learns of one.

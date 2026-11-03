@@ -44,4 +44,22 @@ export interface ApplicationTranslations {
   translate(lang: string, text: TextRecord): TextRecord;
   /** {@link translate} over several texts at once, in order. */
   translateAll(lang: string, texts: readonly TextRecord[]): TextRecord[];
+  /**
+   * The keyed texts this resource's kind shows — every set its schema root names in
+   * `x-telo-text-keys`, and nothing for any other — layered per served language
+   * (see {@link KeyedMessages}).
+   */
+  keyed(): KeyedMessages;
 }
+
+/**
+ * Keyed texts, by the canonical kind of each set (`<Module>.<Kind>`), then by
+ * every served language, then by key. Per key, a language's message is the
+ * listed catalog of the set reached from it by RFC 4647 lookup — the last such
+ * catalog in `translations.catalogs` order — else the source wording its
+ * `Telo.KeyedTranslations` declaration writes; each as a record whose `lang` is
+ * the language it is written in.
+ */
+export type KeyedMessages = Readonly<
+  Record<string, Readonly<Record<string, Readonly<Record<string, TextRecord>>>>>
+>;

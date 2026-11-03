@@ -764,7 +764,9 @@ this module, beside the interpreter that runs it:
   the design tokens the renderer's own layer reads (`rendererTokens`) (see
   [the styling contract](styling.md));
 - `scenes` — applications that between them draw every part: their documents,
-  the answers their requests get, and the steps taken on them;
+  the answers their requests get, and the steps taken on them, with `texts`, the
+  application document's keyed texts they are drawn with, which `runScene`
+  takes as its `texts` option;
 - `runVector` and `runScene` — the interpreter, which drives a DOM window and
   touches nothing else: a host draws the control, or mounts the renderer;
 - `tokenProperty` — how a design token is spelled as the custom property the

@@ -1,9 +1,6 @@
-# The showcase in Turkish: the applications' and pages' titles, every text the
-# pages write, the labels of the models they draw, and the words the renderer
-# draws on its own. A plural source is matched by the text its `other` case
-# reads; Turkish keeps a noun after a number singular, so a plural is one form,
-# with an `=0` case where nothing reads better; a word told apart by its
-# context is translated once per context.
+# The showcase in Turkish: titles, every text the pages write and their models'
+# labels; ui's own texts come from `Ui.turkishTranslations`. A plural is matched
+# by its `other` case, and a word told apart by its context translated per context.
 kind: Telo.TextTranslations
 metadata: { name: turkish }
 lang: tr
@@ -29,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: Arayüz vitrini logosu }
   - { text: Language, translation: Dil }
   - { text: Theme, translation: Tema }
@@ -523,93 +521,52 @@ texts:
   - { text: Use the Acme brand, translation: Acme markasını kullan }
   - { text: "Use the theme's own values", translation: Temanın kendi değerlerini kullan }
 
-  # The renderer's own words, as `Ui.words` writes them.
-  - { text: Loading…, translation: Yükleniyor… }
-  - { text: No rows., translation: Satır yok. }
-  - { text: Nothing found., translation: Hiçbir şey bulunamadı. }
-  - { text: Save, translation: Kaydet }
-  - { text: Cancel, translation: İptal }
+  # Labels the pages write that ui also shows of its own.
   - { text: Close, translation: Kapat }
-  - { text: New, translation: Yeni }
   - { text: Edit, translation: Düzenle }
   - { text: Delete, translation: Sil }
-  - { text: Delete this row?, translation: Bu satır silinsin mi? }
-  - { text: This cannot be undone., translation: Bu işlem geri alınamaz. }
-  - { text: Previous page, translation: Önceki sayfa }
-  - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} / {$total}" }
-  - { text: "0 of {$total}", translation: "0 / {$total}" }
-  - { text: Next page, translation: Sonraki sayfa }
-  - { text: "Yes", translation: Evet }
-  - { text: "No", translation: Hayır }
-  - { text: None, translation: Yok }
-  - { text: Any, translation: Herhangi }
-  - { text: Select…, translation: Seçin… }
-  - { text: Choose…, translation: Seçim yapın… }
-  - { text: More, translation: Daha fazla }
-  - { text: Menu, translation: Menü }
-  - { text: Site, translation: Site }
-  - { text: Collapse navigation, translation: Gezinmeyi daralt }
-  - { text: Expand navigation, translation: Gezinmeyi genişlet }
-  - { text: "Search {$label}", translation: "Ara: {$label}" }
-  - { text: "Remove {$label}", translation: "Kaldır: {$label}" }
-  - { text: "Clear {$label}", translation: "Temizle: {$label}" }
-  - { text: Add filter, translation: Filtre ekle }
-  - { text: Apply, translation: Uygula }
-  - { text: Reset, translation: Sıfırla }
-  - { text: Done, translation: Tamam }
-  - { text: Presets, translation: Hazır ayarlar }
-  - { text: is, translation: "=" }
-  - { text: contains, translation: "şunu içerir:" }
-  - { text: after, translation: ">" }
-  - { text: from, translation: "≥" }
-  - { text: before, translation: "<" }
-  - { text: to, translation: "≤" }
-  - { text: one of, translation: "şunlardan biri:" }
-  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
-  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
-  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
   - { text: From, translation: Başlangıç }
   - { text: To, translation: Bitiş }
-  - { text: Must not start after it ends, translation: Bitişinden sonra başlayamaz }
-  - { text: "Longer than {$count} days", translation: "{$count} günden uzun" }
-  - { text: "Longer than {$count} weeks", translation: "{$count} haftadan uzun" }
-  - { text: "Longer than {$count} months", translation: "{$count} aydan uzun" }
-  - { text: "Longer than {$count} quarters", translation: "{$count} çeyrekten uzun" }
-  - { text: "Longer than {$count} years", translation: "{$count} yıldan uzun" }
-  - { text: Not found, translation: Bulunamadı }
-  - { text: "This application has no page at {$path}.", translation: "Bu uygulamada {$path} adresinde bir sayfa yok." }
-  - { text: Discard unsaved changes?, translation: Kaydedilmemiş değişiklikler atılsın mı? }
-  - { text: What you entered has not been saved., translation: Girdikleriniz kaydedilmedi. }
-  - { text: Discard, translation: Değişiklikleri at }
-  - { text: Keep editing, translation: Düzenlemeye devam et }
-  - { text: "You are not signed in, or your session has ended.", translation: "Oturum açmadınız ya da oturumunuz sona erdi." }
-  - { text: You are not allowed to do this., translation: Bunu yapma izniniz yok. }
-  - { text: "The request failed with status {$status}.", translation: "İstek başarısız oldu, durum kodu: {$status}." }
-  - { text: "The request failed: {$reason}", translation: "İstek başarısız oldu: {$reason}" }
-  - { text: The record was refused., translation: Kayıt reddedildi. }
-  - { text: The answer is not JSON., translation: Yanıt JSON değil. }
-  - { text: The answer is not a JSON object., translation: Yanıt bir JSON nesnesi değil. }
-  - { text: "The answer does not fit its model: {$detail}", translation: "Yanıt modeline uymuyor: {$detail}" }
-  - { text: Is not valid, translation: Geçerli değil }
-  - { text: Is required, translation: Zorunlu }
-  - { text: "Must be {$types}", translation: "{$types} türünde olmalı" }
-  - { text: "Must be one of: {$allowed}", translation: "Şunlardan biri olmalı: {$allowed}" }
-  - { text: "Must be {$value}", translation: "Değeri {$value} olmalı" }
-  - { text: Is not allowed, translation: İzin verilmiyor }
-  - { text: Is not one of the allowed forms, translation: İzin verilen biçimlerin hiçbirine uymuyor }
-  - { text: "Must be at least {$limit} characters", translation: "En az {$limit} karakter olmalı" }
-  - { text: "Must be at most {$limit} characters", translation: "En fazla {$limit} karakter olmalı" }
-  - { text: Is not in the expected format, translation: Beklenen biçimde değil }
-  - { text: "Must be at least {$limit}", translation: "En az {$limit} olmalı" }
-  - { text: "Must be at most {$limit}", translation: "En fazla {$limit} olmalı" }
-  - { text: "Must be greater than {$limit}", translation: "{$limit} değerinden büyük olmalı" }
-  - { text: "Must be less than {$limit}", translation: "{$limit} değerinden küçük olmalı" }
-  - { text: "Must be a multiple of {$limit}", translation: "{$limit} değerinin katı olmalı" }
-  - { text: "Must have at least {$limit} items", translation: "En az {$limit} öğe içermeli" }
-  - { text: "Must have at most {$limit} items", translation: "En fazla {$limit} öğe içermeli" }
-  - { text: Must not repeat an item, translation: Öğeler tekrarlanmamalı }
-  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
-  - { text: "Load more", translation: "Daha fazla yükle" }
-  - { text: "Move to", translation: "Şuraya taşı" }
-  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
-  - { text: "not set", translation: "ayarlanmamış" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "'{$code}' adlı bir proje yok." }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 zaten '{$tag}' etiketini taşıyor." }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email}, ekipteki hiç kimsenin e-posta adresi değil." }
+  - { text: "{$email} has left the team.", translation: "{$email} ekipten ayrıldı." }
+  - { text: "Another request is already titled '{$title}'.", translation: "Başka bir istek zaten '{$title}' başlığını taşıyor." }
+  - { text: "The period must not start after it ends.", translation: "Dönem, bitiminden sonra başlayamaz." }
+  - { text: "The period must end within a year of its start.", translation: "Dönem, başlangıcından itibaren bir yıl içinde bitmelidir." }
+  - { text: "Name someone to give the task to.", translation: "Görevi vereceğiniz kişiyi belirtin." }
+  - { text: "There is no task {$id}.", translation: "{$id} numaralı görev yok." }
+  - { text: "{$name} has left the team.", translation: "{$name} ekipten ayrıldı." }
+  - { text: "Task {$id} is already {$status}.", translation: "{$id} numaralı görev zaten {$status} durumunda." }
+  - { text: "There is no post {$id}.", translation: "{$id} numaralı gönderi yok." }
+  - { text: "There is no comment {$id}.", translation: "{$id} numaralı yorum yok." }
+  - { text: "Write the new text of the comment.", translation: "Yorumun yeni metnini yazın." }
+  - { text: "The session closed.", translation: "Oturum kapandı." }
+  - { text: "Only a manager may pause a project.", translation: "Bir projeyi yalnızca yönetici duraklatabilir." }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "İstek gövdesi, bu sunucunun kabul ettiği {$maxBodyBytes} baytı aşıyor." }
+  - { text: "This server does not serve the host {$host}.", translation: "Bu sunucu {$host} ana bilgisayarına hizmet vermiyor." }
+  - { text: "The list request is not valid.", translation: "Liste isteği geçerli değil." }

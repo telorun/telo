@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
+import { stringify } from "yaml";
 import { PLATFORM_AXES } from "../src/artifact-axes.js";
 import { BUILTIN_FRAGMENT_FILES } from "../src/builtin-entries/index.js";
 import { readBuiltinVocabulary, type BuiltinVocabulary } from "../src/builtin-vocabulary.js";
 import { BUILTIN_VOCABULARY_ARCHIVE } from "../src/builtin-vocabulary/index.js";
+import { builtinTranslationCatalogs } from "../src/builtin-translations.js";
 import { builtinDefinitions, KERNEL_BUILTINS } from "../src/builtins.js";
 import { declarableCapabilities, throwsAllowedCapabilities } from "../src/capability-roster.js";
 
@@ -47,6 +49,12 @@ describe("the built-in vocabulary archive", () => {
     expect(definition.if.properties.capability.not.enum).toEqual(throwsAllowedCapabilities());
     expect(definition.then).toEqual({ properties: { throws: { properties: { inherit: false, passthrough: false } } } });
     expect(documentNamed(vocabulary, "Abstract").schema.if).toBeUndefined();
+  });
+
+  it("carries exactly the built-in translations the analyzer and the kernel layer", () => {
+    expect(rendered().translations).toEqual(
+      Object.fromEntries(builtinTranslationCatalogs().map(({ lang, catalog }) => [lang, catalog])),
+    );
   });
 
   it("names the platform axes the artifact selectors read", () => {
@@ -145,6 +153,39 @@ describe("readBuiltinVocabulary", () => {
     ],
   ])("refuses %s", (_case, lines, problem) => {
     const reading = readBuiltinVocabulary(`${lines.join("\n")}\n`);
+    expect(reading.vocabulary).toBeUndefined();
+    expect(reading.problems.join("\n")).toContain(problem);
+  });
+
+  // The rendered root with its `translations` replaced, so a catalog is judged
+  // against the archive's own fragments and error codes.
+  const withTranslations = (edit: (polish: { lang: string; texts: any[] }) => Record<string, unknown>) => {
+    const root = structuredClone(rendered().root) as Record<string, any>;
+    root.translations = edit(structuredClone(root.translations.pl));
+    return readBuiltinVocabulary(stringify(root));
+  };
+
+  it.each([
+    ["an entry that is no text catalog", (pl: any) => ({ pl: { ...pl, texts: "none" } }), "`translations.pl` is not a text catalog"],
+    ["an entry keyed by another language", (pl: any) => ({ de: pl }), "declares `lang: pl`; an entry is keyed by its own lang"],
+    ["a catalog written in English", (pl: any) => ({ en: { ...pl, lang: "en" } }), "is written in 'en'"],
+    [
+      "a text no error code shows",
+      (pl: any) => ({ pl: { ...pl, texts: [...pl.texts, { text: "Hello.", translation: "Cześć." }] } }),
+      `translates "Hello.", which no entry of \`errorCodes\` shows`,
+    ],
+    [
+      "a catalog its own judgement refuses",
+      (pl: any) => ({ pl: { ...pl, texts: [...pl.texts, { ...pl.texts[0], translation: "Inna." }] } }),
+      "(MESSAGE_ENTRY_DUPLICATE)",
+    ],
+    [
+      "a built-in text left untranslated",
+      (pl: any) => ({ pl: { ...pl, texts: pl.texts.slice(1) } }),
+      `\`translations.pl\` leaves "The service is misconfigured." untranslated`,
+    ],
+  ])("refuses %s among the translations", (_case, edit, problem) => {
+    const reading = withTranslations(edit);
     expect(reading.vocabulary).toBeUndefined();
     expect(reading.problems.join("\n")).toContain(problem);
   });

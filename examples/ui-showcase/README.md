@@ -109,7 +109,7 @@ brand switch, `/api/brand`, is the root's alone.
 | `telo.yaml` | the application, the four `UiReact.App` mounts with their header and navigation, the navigation's icons, the root's own overview, conditions and themes pages, the logo view they share, the `Callout` composite kind, the session check, the three collections, the server serving the API under each mount, the Inter family the brand serves |
 | `data.yaml` | the SQLite connection, schema, tables with their seed rows (the posts' and the reporting lines' with foreign keys), the projects, tasks, people, authors, posts and employees `Crud.Collection`s, the sources the browser reads them from, and the tasks' and posts' presentations |
 | `api.yaml` | the routes `crud` does not give and the shapes they share with the pages: record reads, the task board, the tag action, the forms' writes and lists, every action of the actions page, the session, the language and brand switches, and the request origin and redirect target rules (`origin`, `sameOriginTarget`) |
-| `translations/` | one `Telo.TextTranslations` per language, listed in the application's `translations:` block, each file named by its language tag (`pl.yaml`, `ja.yaml`, …) |
+| `translations/` | one `Telo.TextTranslations` per language for the example's own texts, listed in the application's `translations:` block after ui's shipped `Ui.*Translations`, each file named by its language tag (`pl.yaml`, `ja.yaml`, …); `en.yaml` covers the one text crud writes with no `lang` |
 | `pages-*.yaml` | one view per page and the `Ui.Page` placing it, with the resources only that page uses (the tables page's two task forms and page surface, the filters page's task listing, the forms page's team and project option sources and the requests' presentation, the actions page's assign action, the related-records page's post and employee forms and the reporting lines' presentation) |
 | `showcase.css` | the `/` and `/sidebar` applications' stylesheet |
 | `components/` | a library of the example's own: four browser components written in TSX (`nodejs/src/components.tsx`, with the stylesheet they import) against the `ui_react-1` host, built by the kernel and published as `Ui.ComponentExport`s — `taskDesk`, `priorityMeter`, `tokenSheet` and `typefaceSamples`. Its `nodejs/package.json` exists only to type-check the sources |
@@ -231,7 +231,7 @@ why it is not shown.
 | Line | Capability | Where |
 | --- | --- | --- |
 | A1 | `title` | every mount |
-| A2 | `words: !ref Ui.words` | every mount. A custom `Ui.Words` set is not shown: the example words the renderer in every language it speaks by translating the exported set through the application's translations |
+| A2 | ui's own texts, keyed | every mount: the fourteen `Ui.*Translations` ui ships are listed in the application's `translations:` block. Overriding one key with a `Ui.Translations` of the application's own is not shown |
 | A3 | `theme`: the default, Radix's, one of the example's own | `/`, `/radix`, `/brand`. The example's own theme is declared in `brand/` and named by `!ref`, not written inline at the application, so `tests/brand-theme.yaml` checks the very theme the mount draws with |
 | A4 | `tokens` as one `Ui.DesignTokens`, inline | `/brand` (the Inter typeface) |
 | A5 | `tokens` as a `{ tokens, when }` list over a cookie | `/`, switched on its Themes page |
@@ -258,7 +258,7 @@ why it is not shown.
 | C35 | texts that take no values: action labels, column headers, group labels, preset labels | `/actions`, `/tables`, `/forms`, `/filters`; the refusal is out of scope |
 | C36 | `disabledText` and `confirm` | `/conditions`, `/actions` |
 | C37 | schema titles and enum labels, `x-telo-text-context` | Overview (`plan`), every model drawn |
-| C38, C39 | the renderer's words, translated, plurals included | `translations/`, every mount |
+| C38, C39 | the renderer's own texts, translated, plurals included | `telo.yaml` (ui's shipped translations), every mount |
 | C40 | check codes | out of scope |
 | D41–D43 | conditions, every `Ui.Match` keyword, missing against null | `/conditions`; the codes are out of scope |
 | D44 | hidden content stays mounted and reads nothing | `/data` (the sign-in gate), `/forms` (a field and a group shown on a condition) |

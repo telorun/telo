@@ -7,7 +7,7 @@ import { useEndReached, useWindowedBlock } from "../record-window.js";
 /**
  * What the built-in layouts share: a record's entry, the end of a read, a
  * read's state, the sort control, the "Move to" menu and drag and drop. Each
- * is drawn from the layout contract's props, inside the renderer's words and
+ * is drawn from the layout contract's props, inside the renderer's own texts and
  * controls, so a built-in layout is a component of `ui_react_layouts-1` like
  * any other.
  */

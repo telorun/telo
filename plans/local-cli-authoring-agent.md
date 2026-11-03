@@ -1,3 +1,10 @@
+---
+status: in-progress
+priority: medium
+depends-on: []
+packages: [cli, packages/runner-core, apps/studio, apps/authoring-agent]
+---
+
 # Authoring agent on the local CLI runner
 
 ## Goal

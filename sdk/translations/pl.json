@@ -1,0 +1,25 @@
+{
+  "lang": "pl",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "Usługa jest nieprawidłowo skonfigurowana."
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "Usłudze nie udało się obliczyć wartości."
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "Żądanie jest nieprawidłowe."
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "Usługa wygenerowała wynik, którego nie mogła dostarczyć."
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "Usłudze nie udało się zdecydować, jak kontynuować."
+    }
+  ]
+}

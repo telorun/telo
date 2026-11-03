@@ -4,15 +4,11 @@
 # in a panel, a placement whose compact placement does not fold, and a filters
 # node whose placement and whose store are no kind's.
 kind: Telo.Application
-metadata:
-  name: UiInvalidSpecShapesApp
-  version: 1.0.0
-imports:
-  Echo: ../../spec-echo
+metadata: { name: UiInvalidSpecShapesApp, version: 1.0.0 }
+imports: { Echo: ../../spec-echo }
 ---
 kind: Echo.TypedSurface
-metadata:
-  name: overlayCompact
+metadata: { name: overlayCompact }
 spec:
   type: dialog
   size: medium
@@ -27,8 +23,7 @@ spec:
     address: { name: todo }
 ---
 kind: Echo.TypedSurface
-metadata:
-  name: panelCompact
+metadata: { name: panelCompact }
 spec:
   type: panel
   side: end
@@ -37,8 +32,7 @@ spec:
   compact: { type: popover, side: bottom, align: start, dismiss: { escape: true, outside: true } }
 ---
 kind: Echo.TypedNode
-metadata:
-  name: listingSurface
+metadata: { name: listingSurface }
 node:
   type: listing
   schema: {}
@@ -50,7 +44,7 @@ node:
   sort: []
   rowActions: []
   relations: {}
-  empty: { type: text, text: { word: noRows } }
+  empty: { type: text, text: { set: Ui.Translations, key: noRows } }
   layout: { type: table, columns: [], reads: {} }
   delete: false
   create:
@@ -60,27 +54,22 @@ node:
     unsaved: confirm
 ---
 kind: Echo.TypedPlacement
-metadata:
-  name: placementSurface
+metadata: { name: placementSurface }
 spec:
   type: overlay
   surface: { type: panel, side: end, size: medium, dismiss: { escape: true, closeButton: true } }
 ---
 kind: Echo.TypedPlacement
-metadata:
-  name: placementCompact
-spec:
-  type: above
-  compact: { type: aside, side: start }
+metadata: { name: placementCompact }
+spec: { type: above, compact: { type: aside, side: start } }
 ---
 kind: Echo.TypedNode
-metadata:
-  name: filtersPlacement
+metadata: { name: filtersPlacement }
 node:
   type: filters
   basePath: /api/todos
   fields: []
-  content: { type: text, text: { word: loading } }
+  content: { type: text, text: { set: Ui.Translations, key: loading } }
   show: all
   placement: { type: nowhere }
   controls: direct
@@ -90,13 +79,12 @@ node:
   presets: []
 ---
 kind: Echo.TypedNode
-metadata:
-  name: filtersStore
+metadata: { name: filtersStore }
 node:
   type: filters
   basePath: /api/todos
   fields: []
-  content: { type: text, text: { word: loading } }
+  content: { type: text, text: { set: Ui.Translations, key: loading } }
   show: all
   placement: { type: above }
   controls: direct

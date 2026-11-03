@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { formatWord } from "../src/browser/texts.js";
+import { formatOwn } from "../src/browser/texts.js";
 import { holds, validate } from "../src/browser/validation.js";
-import { englishWords } from "./words.js";
+import { uiTexts } from "./ui-texts.js";
 
 const messages = (schema: object, value: unknown) =>
-  validate(schema, value).map((finding) => `${finding.path.join(".")}: ${formatWord(englishWords, finding.word.id, finding.word.values)}`);
+  validate(schema, value).map((finding) => `${finding.path.join(".")}: ${formatOwn(uiTexts(), finding.text.key, finding.text.values)}`);
 
 describe("the schema interpreter", () => {
   it.each([

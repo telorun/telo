@@ -36,23 +36,76 @@ the number the browser reads — "3 nieopłacone faktury", "5 nieopłaconych fak
 `values` and every plural selector must read a number; a missing one is refused
 by `telo check`, and `values` binds nothing the text does not name.
 
-## The renderer's own words
+## `ui`'s own texts
 
 What a renderer draws on its own — "Loading…", "Save", a pager's
-"1–25 of 340", each validation message — is one of `ui`'s **words**: a `Text`
-per id, declared by the `Ui.Words` kind and shipped in English as the exported
-instance `Ui.words`. A renderer's application names the words it draws
-(`UiReact.App.words: !ref Ui.words`), and a text `ui` fills in for you — a
-reader's `loading`, a form's submit label — is the word reference
-`{ word: <id> }`.
+"1–25 of 340", each validation message — and what `ui` fills in for you — a
+reader's `loading`, a listing's `empty` — are `ui`'s own texts. They are
+declared by key in `ui`'s `Telo.KeyedTranslations` document `Translations`,
+which declares the kind `Ui.Translations`: each key with its English wording
+and the values it is formatted with. An application writes nothing to show
+them in English.
 
-Translate a word as any other text: a catalog entry whose `text` is the word as
-`ui` writes it (`{ text: Save, translation: Zapisz }`). A word with a
-placeholder keeps it, and a plural word is translated as a plural. To replace
-the words wholesale, declare a `kind: Ui.Words` of your own — every id is
-required — and name it instead.
+`ui` ships them translated, one exported `Ui.Translations` per language:
 
-| Id | English |
+| Language | Resource |
+| --- | --- |
+| Chinese (`zh`) | `Ui.chineseTranslations` |
+| Dutch (`nl`) | `Ui.dutchTranslations` |
+| French (`fr`) | `Ui.frenchTranslations` |
+| German (`de`) | `Ui.germanTranslations` |
+| Hindi (`hi`) | `Ui.hindiTranslations` |
+| Italian (`it`) | `Ui.italianTranslations` |
+| Japanese (`ja`) | `Ui.japaneseTranslations` |
+| Korean (`ko`) | `Ui.koreanTranslations` |
+| Polish (`pl`) | `Ui.polishTranslations` |
+| Portuguese (`pt`) | `Ui.portugueseTranslations` |
+| Russian (`ru`) | `Ui.russianTranslations` |
+| Spanish (`es`) | `Ui.spanishTranslations` |
+| Turkish (`tr`) | `Ui.turkishTranslations` |
+| Ukrainian (`uk`) | `Ui.ukrainianTranslations` |
+
+An application lists the languages it serves in its `translations:` block. To
+change a wording, list a `Ui.Translations` of your own after the shipped one:
+only the keys it names change, and no text the author wrote is touched — an
+author's own "Save" stays as it is. One in `lang: en` changes the English
+wording.
+
+```yaml
+kind: Telo.Application
+metadata: { name: Invoices, version: 1.0.0 }
+lang: en
+imports: { Ui: oci://ghcr.io/telorun/ui@0.9.0 }
+translations:
+  catalogs:
+    - !ref Ui.polishTranslations
+    - !ref wording
+---
+kind: Ui.Translations
+metadata: { name: wording }
+lang: pl
+messages:
+  save: Zachowaj
+```
+
+A key the declaration does not have, a placeholder outside its key's values and
+a plural case the catalog's language does not have are refused by
+`telo check`. A key nothing translates into a served language is shown in
+English, and `telo check` warns `MESSAGE_TRANSLATION_MISSING` for it at the
+Application's `translations` key, per language and keyed set, before the app
+runs.
+
+`modules/ui/tests/translations.yaml` is `ui`'s completeness proof: an application
+listing all fourteen shipped catalogs, on which `telo check` reports no
+`MESSAGE_TRANSLATION_MISSING`. Do the same for a library of your own: keep a
+fixture application that lists every translation you ship.
+
+A kind showing these texts names the set with `x-telo-text-keys` on its
+schema root: `Ui.Data` and `Ui.Listing`, which fill `loading` and `empty`, name
+`[Self.Translations]`, and a renderer's application names `[Ui.Translations]` to
+receive the messages of every served language.
+
+| Key | English |
 | --- | --- |
 | `loading` | Loading… |
 | `noRows` | No rows. |
@@ -149,7 +202,7 @@ required — and name it instead.
 | `additionalProperties` | Is not expected here |
 | `propertyNames` | Has a name that is not allowed: {$propertyName} |
 
-The words from `invalid` to the end are the validation words: what the
+The keys from `invalid` to the end are the validation texts: what the
 browser's own validation says of a keyword, and what a renderer says of each
 issue of a 400 problem (`data.issues`, `{ pointer, keyword, params }`), so a
 refusal the API finds reads as one the browser finds. Every keyword an
@@ -163,8 +216,9 @@ rest by their own names.
 A provided node carries each text as a **text record** —
 `{ text, context, lang, computed }`, the same record a controller receives —
 typed by the built-in `TextRecord` fragment; a `{ text, values }` text is the
-record with `values` beside it, each value a binding; a word is
-`{ word: <id> }`. A model's title, description and enumeration labels are records
+record with `values` beside it, each value a binding; a text `ui` fills itself
+is the keyed text `{ set: Ui.Translations, key }`, which a renderer shows as
+that set's message for the key in the request's language. A model's title, description and enumeration labels are records
 of language `und`: they are matched against a catalog by their words.
 
 - Every `value` node, `list` column, table layout column, filter field and form or

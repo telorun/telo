@@ -93,7 +93,8 @@ written into a native controller's PURL as `abi=telo-<n>`.
   and no artifact could declare one, so each is superseded rather than kept
   readable.
 - **Generation `8` is the generation this specification defines.** It is `7`'s
-  message set with `Translations.Lookup` (§7.7) added, with the same value
+  message set with `Translations.Lookup` (§7.7) added, its answer carrying the
+  keyed texts of the instance's kind, with the same value
   encoding: `durable-execution.md` §6's typed frame, whose timestamp payload is
   RFC 3339 with a trimmed nanosecond fraction. It is the value in
   `sdk/controller-protocol/generation.json`, and every `Session.Hello` a
@@ -1005,6 +1006,19 @@ translation as a record carrying the text's `context` and `computed` and the
 there. A record with `computed: true` is never looked up. Every answer also
 carries `fallback` and `languages`, so a transport negotiating a request
 language and a renderer showing texts are both one request.
+
+Every answer also carries `keyed`: the **keyed texts** the instance's kind shows
+— a library's own texts, declared by key in a `Telo.KeyedTranslations` document
+— for every set its schema root names in `x-telo-text-keys`, and for no other,
+so a kind naming none gets an empty object. They are keyed by the set's
+canonical kind (`<Module>.<Kind>`), then by every served language, then by key.
+A set's source wording, written in its declaring module's language, is the
+lowest layer; each listed catalog of the set applies over it in list order. Per
+key and served language, the answer is the translation reached from that
+language by RFC 4647 lookup among the languages the set's catalogs translate the
+key into and the source's — the last such catalog winning — else the source
+wording, each a text record (§7.4) with `context: null`, `computed: false` and
+the `lang` it is written in.
 
 Asked during startup, before every listed catalog has been created, the request
 fails with the deferral the kernel's initialization retries —

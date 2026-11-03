@@ -19,6 +19,12 @@ leaving a dispatch that carries none, so `error.displayMessage` holds it and a
 translator may translate it. A catalog entry translating one of these texts is
 never `MESSAGE_TEXT_UNUSED`: the built-in texts count as shown by every module.
 
+Their translations live beside them in `sdk/translations/`, one text catalog per
+language, layered beneath every catalog an application lists. Changing a
+`displayMessage` here means changing its translation in every one of those files:
+the archive is refused while a catalog translates a text no entry shows or leaves
+one untranslated.
+
 The files live **here**, beside the language halves, for the reason
 `sdk/zone-attributes/` does: both kernels raise these codes and must attach the
 same texts. `scripts/copy-error-code-entries.mjs` (the root `prepare`) copies them

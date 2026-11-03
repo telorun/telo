@@ -1,0 +1,25 @@
+{
+  "lang": "ru",
+  "texts": [
+    {
+      "text": "The service is misconfigured.",
+      "translation": "Служба настроена неправильно."
+    },
+    {
+      "text": "The service failed to compute a value.",
+      "translation": "Службе не удалось вычислить значение."
+    },
+    {
+      "text": "The request is not valid.",
+      "translation": "Запрос недействителен."
+    },
+    {
+      "text": "The service produced a result it could not deliver.",
+      "translation": "Служба получила результат, который не смогла передать."
+    },
+    {
+      "text": "The service failed to decide how to continue.",
+      "translation": "Службе не удалось решить, как продолжить."
+    }
+  ]
+}

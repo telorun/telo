@@ -1,9 +1,6 @@
-# The showcase in Simplified Chinese: the applications' and pages' titles,
-# every text the pages write, the labels of the models they draw, and the words
-# the renderer draws on its own. A plural source is matched by the text its
-# `other` case reads; Chinese has a single plural form, so a plural is a plain
-# string or an `other` case beside an explicit `=0`. A word told apart by its
-# context is translated once per context.
+# The showcase in Simplified Chinese: titles, every text the pages write and their models'
+# labels; ui's own texts come from `Ui.chineseTranslations`. A plural is matched
+# by its `other` case, and a word told apart by its context translated per context.
 kind: Telo.TextTranslations
 metadata: { name: chinese }
 lang: zh
@@ -29,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: "界面展示标志" }
   - { text: Language, translation: "语言" }
   - { text: Theme, translation: "主题" }
@@ -516,93 +514,52 @@ texts:
   - { text: Use the Acme brand, translation: "使用 Acme 品牌" }
   - { text: "Use the theme's own values", translation: "使用主题自身的值" }
 
-  # The renderer's own words, as `Ui.words` writes them.
-  - { text: Loading…, translation: "加载中…" }
-  - { text: No rows., translation: "暂无数据。" }
-  - { text: Nothing found., translation: "未找到任何内容。" }
-  - { text: Save, translation: "保存" }
-  - { text: Cancel, translation: "取消" }
+  # Labels the pages write that ui also shows of its own.
   - { text: Close, translation: "关闭" }
-  - { text: New, translation: "新建" }
   - { text: Edit, translation: "编辑" }
   - { text: Delete, translation: "删除" }
-  - { text: Delete this row?, translation: "删除此行？" }
-  - { text: This cannot be undone., translation: "此操作无法撤销。" }
-  - { text: Previous page, translation: "上一页" }
-  - { text: "{$first}–{$last} of {$total}", translation: "第 {$first}–{$last} 条，共 {$total} 条" }
-  - { text: "0 of {$total}", translation: "0 条，共 {$total} 条" }
-  - { text: Next page, translation: "下一页" }
-  - { text: "Yes", translation: "是" }
-  - { text: "No", translation: "否" }
-  - { text: None, translation: "无" }
-  - { text: Any, translation: "任意" }
-  - { text: Select…, translation: "请选择…" }
-  - { text: Choose…, translation: "选取…" }
-  - { text: More, translation: "更多" }
-  - { text: Menu, translation: "菜单" }
-  - { text: Site, translation: "站点" }
-  - { text: Collapse navigation, translation: "收起导航" }
-  - { text: Expand navigation, translation: "展开导航" }
-  - { text: "Search {$label}", translation: "搜索{$label}" }
-  - { text: "Remove {$label}", translation: "移除{$label}" }
-  - { text: "Clear {$label}", translation: "清除{$label}" }
-  - { text: Add filter, translation: "添加筛选器" }
-  - { text: Apply, translation: "应用" }
-  - { text: Reset, translation: "重置" }
-  - { text: Done, translation: "完成" }
-  - { text: Presets, translation: "预设" }
-  - { text: is, translation: "为" }
-  - { text: contains, translation: "包含" }
-  - { text: after, translation: "晚于" }
-  - { text: from, translation: "从" }
-  - { text: before, translation: "早于" }
-  - { text: to, translation: "至" }
-  - { text: one of, translation: "属于" }
-  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
-  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
-  - { text: "{$label}: {$summary}", translation: "{$label}：{$summary}" }
   - { text: From, translation: "开始" }
   - { text: To, translation: "结束" }
-  - { text: Must not start after it ends, translation: "开始时间不能晚于结束时间" }
-  - { text: "Longer than {$count} days", translation: "超过 {$count} 天" }
-  - { text: "Longer than {$count} weeks", translation: "超过 {$count} 周" }
-  - { text: "Longer than {$count} months", translation: "超过 {$count} 个月" }
-  - { text: "Longer than {$count} quarters", translation: "超过 {$count} 个季度" }
-  - { text: "Longer than {$count} years", translation: "超过 {$count} 年" }
-  - { text: Not found, translation: "未找到" }
-  - { text: "This application has no page at {$path}.", translation: "本应用在 {$path} 没有页面。" }
-  - { text: Discard unsaved changes?, translation: "放弃未保存的更改？" }
-  - { text: What you entered has not been saved., translation: "你输入的内容尚未保存。" }
-  - { text: Discard, translation: "放弃" }
-  - { text: Keep editing, translation: "继续编辑" }
-  - { text: "You are not signed in, or your session has ended.", translation: "你尚未登录，或会话已过期。" }
-  - { text: You are not allowed to do this., translation: "你无权执行此操作。" }
-  - { text: "The request failed with status {$status}.", translation: "请求失败，状态码 {$status}。" }
-  - { text: "The request failed: {$reason}", translation: "请求失败：{$reason}" }
-  - { text: The record was refused., translation: "记录被拒绝。" }
-  - { text: The answer is not JSON., translation: "响应不是 JSON 格式。" }
-  - { text: The answer is not a JSON object., translation: "响应不是 JSON 对象。" }
-  - { text: "The answer does not fit its model: {$detail}", translation: "响应不符合其模型：{$detail}" }
-  - { text: Is not valid, translation: "无效" }
-  - { text: Is required, translation: "必填" }
-  - { text: "Must be {$types}", translation: "必须是 {$types} 类型" }
-  - { text: "Must be one of: {$allowed}", translation: "必须是以下之一：{$allowed}" }
-  - { text: "Must be {$value}", translation: "必须等于 {$value}" }
-  - { text: Is not allowed, translation: "不允许" }
-  - { text: Is not one of the allowed forms, translation: "不符合任何允许的形式" }
-  - { text: "Must be at least {$limit} characters", translation: "至少 {$limit} 个字符" }
-  - { text: "Must be at most {$limit} characters", translation: "最多 {$limit} 个字符" }
-  - { text: Is not in the expected format, translation: "格式不正确" }
-  - { text: "Must be at least {$limit}", translation: "不能小于 {$limit}" }
-  - { text: "Must be at most {$limit}", translation: "不能大于 {$limit}" }
-  - { text: "Must be greater than {$limit}", translation: "必须大于 {$limit}" }
-  - { text: "Must be less than {$limit}", translation: "必须小于 {$limit}" }
-  - { text: "Must be a multiple of {$limit}", translation: "必须是 {$limit} 的倍数" }
-  - { text: "Must have at least {$limit} items", translation: "至少 {$limit} 项" }
-  - { text: "Must have at most {$limit} items", translation: "最多 {$limit} 项" }
-  - { text: Must not repeat an item, translation: "不能有重复项" }
-  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
-  - { text: "Load more", translation: "加载更多" }
-  - { text: "Move to", translation: "移动到" }
-  - { text: "{$label} ({$count})", translation: "{$label}（{$count}）" }
-  - { text: "not set", translation: "未设置" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "没有项目“{$code}”。" }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 已有标签“{$tag}”。" }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} 不是团队中任何人的电子邮件。" }
+  - { text: "{$email} has left the team.", translation: "{$email} 已离开团队。" }
+  - { text: "Another request is already titled '{$title}'.", translation: "另一个请求已使用标题“{$title}”。" }
+  - { text: "The period must not start after it ends.", translation: "期间不能在结束之后开始。" }
+  - { text: "The period must end within a year of its start.", translation: "期间必须在开始后一年内结束。" }
+  - { text: "Name someone to give the task to.", translation: "请指定要将任务交给谁。" }
+  - { text: "There is no task {$id}.", translation: "没有任务 {$id}。" }
+  - { text: "{$name} has left the team.", translation: "{$name} 已离开团队。" }
+  - { text: "Task {$id} is already {$status}.", translation: "任务 {$id} 已经是 {$status}。" }
+  - { text: "There is no post {$id}.", translation: "没有帖子 {$id}。" }
+  - { text: "There is no comment {$id}.", translation: "没有评论 {$id}。" }
+  - { text: "Write the new text of the comment.", translation: "请填写评论的新内容。" }
+  - { text: "The session closed.", translation: "会话已关闭。" }
+  - { text: "Only a manager may pause a project.", translation: "只有经理才能暂停项目。" }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "请求正文超过了此服务器接受的 {$maxBodyBytes} 字节。" }
+  - { text: "This server does not serve the host {$host}.", translation: "此服务器不提供主机 {$host} 的服务。" }
+  - { text: "The list request is not valid.", translation: "列表请求无效。" }

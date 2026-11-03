@@ -1,18 +1,12 @@
 # A page whose path, and a link whose address, begin `//`: a browser reads
 # either as another host, not as a place in the application.
 kind: Telo.Application
-metadata:
-  name: UiReactInvalidAppRelativeApp
-  version: 1.0.0
-imports:
-  UiReact: ../../../../
-  Ui: ../../../../../ui
+metadata: { name: UiReactInvalidAppRelativeApp, version: 1.0.0 }
+imports: { UiReact: ../../../../, Ui: ../../../../../ui }
 ---
 kind: UiReact.App
-metadata:
-  name: offsitePath
+metadata: { name: offsitePath }
 title: Off-site path
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page
@@ -21,10 +15,8 @@ pages:
     children: []
 ---
 kind: UiReact.App
-metadata:
-  name: offsiteLink
+metadata: { name: offsiteLink }
 title: Off-site link
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - kind: Ui.Page

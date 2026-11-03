@@ -6,4 +6,5 @@ export const singleLanguageTranslations: ApplicationTranslations = {
   negotiate: () => "en",
   translate: (_lang, record) => record,
   translateAll: (_lang, records) => records,
+  keyed: () => ({}),
 };

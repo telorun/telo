@@ -1,8 +1,6 @@
-# The showcase in Dutch: the applications' and pages' titles, every text the
-# pages write, the labels of the models they draw, and the words the renderer
-# draws on its own. A plural source is matched by the text its `other` case
-# reads and translated into Dutch's two cases, one and other; a word told
-# apart by its context is translated once per context.
+# The showcase in Dutch: titles, every text the pages write and their models'
+# labels; ui's own texts come from `Ui.dutchTranslations`. A plural is matched
+# by its `other` case, and a word told apart by its context translated per context.
 kind: Telo.TextTranslations
 metadata: { name: dutch }
 lang: nl
@@ -28,7 +26,8 @@ texts:
 
   # The header of every application: the mark, the Language and Theme
   # menus and the Theme menu's items. The language names are each written
-  # in its own language, so neither is translated.
+  # in its own language, so neither is translated; they are listed as identical
+  # below on purpose.
   - { text: UI showcase logo, translation: Logo van de UI-showcase }
   - { text: Language, translation: Taal }
   - { text: Theme, translation: Thema }
@@ -536,102 +535,52 @@ texts:
   - { text: Use the Acme brand, translation: Merk Acme gebruiken }
   - { text: "Use the theme's own values", translation: Eigen waarden van het thema gebruiken }
 
-  # The renderer's own words, as `Ui.words` writes them.
-  - { text: Loading…, translation: Laden… }
-  - { text: No rows., translation: Geen rijen. }
-  - { text: Nothing found., translation: Niets gevonden. }
-  - { text: Save, translation: Opslaan }
-  - { text: Cancel, translation: Annuleren }
+  # Labels the pages write that ui also shows of its own.
   - { text: Close, translation: Sluiten }
-  - { text: New, translation: Nieuw }
   - { text: Edit, translation: Bewerken }
   - { text: Delete, translation: Verwijderen }
-  - { text: Delete this row?, translation: Deze rij verwijderen? }
-  - { text: This cannot be undone., translation: Dit kan niet ongedaan worden gemaakt. }
-  - { text: Previous page, translation: Vorige pagina }
-  - { text: "{$first}–{$last} of {$total}", translation: "{$first}–{$last} van {$total}" }
-  - { text: "0 of {$total}", translation: "0 van {$total}" }
-  - { text: Next page, translation: Volgende pagina }
-  - { text: "Yes", translation: "Ja" }
-  - { text: "No", translation: "Nee" }
-  - { text: None, translation: Geen }
-  - { text: Any, translation: Alle }
-  - { text: Select…, translation: Selecteren… }
-  - { text: Choose…, translation: Kiezen… }
-  - { text: More, translation: Meer }
-  - { text: Menu, translation: Menu }
-  - { text: Site, translation: Site }
-  - { text: Collapse navigation, translation: Navigatie inklappen }
-  - { text: Expand navigation, translation: Navigatie uitklappen }
-  - { text: "Search {$label}", translation: "{$label} zoeken" }
-  - { text: "Remove {$label}", translation: "{$label} verwijderen" }
-  - { text: "Clear {$label}", translation: "{$label} wissen" }
-  - { text: Add filter, translation: Filter toevoegen }
-  - { text: Apply, translation: Toepassen }
-  - { text: Reset, translation: Herstellen }
-  - { text: Done, translation: Gereed }
-  - { text: Presets, translation: Voorinstellingen }
-  - { text: is, translation: is }
-  - { text: contains, translation: bevat }
-  - { text: after, translation: na }
-  - { text: from, translation: vanaf }
-  - { text: before, translation: voor }
-  - { text: to, translation: tot }
-  - { text: one of, translation: een van }
-  - { text: "{$label} {$operator}", translation: "{$label} {$operator}" }
-  - { text: "{$label} {$operator} {$value}", translation: "{$label} {$operator} {$value}" }
-  - { text: "{$label}: {$summary}", translation: "{$label}: {$summary}" }
   - { text: From, translation: Van }
   - { text: To, translation: Tot }
-  - { text: Must not start after it ends, translation: Mag niet na het einde beginnen }
-  - text: "Longer than {$count} days"
-    translation: { plural: count, cases: { one: "Langer dan {$count} dag", other: "Langer dan {$count} dagen" } }
-  - text: "Longer than {$count} weeks"
-    translation: { plural: count, cases: { one: "Langer dan {$count} week", other: "Langer dan {$count} weken" } }
-  - text: "Longer than {$count} months"
-    translation: { plural: count, cases: { one: "Langer dan {$count} maand", other: "Langer dan {$count} maanden" } }
-  - text: "Longer than {$count} quarters"
-    translation: { plural: count, cases: { one: "Langer dan {$count} kwartaal", other: "Langer dan {$count} kwartalen" } }
-  - text: "Longer than {$count} years"
-    translation: { plural: count, cases: { one: "Langer dan {$count} jaar", other: "Langer dan {$count} jaar" } }
-  - { text: Not found, translation: Niet gevonden }
-  - { text: "This application has no page at {$path}.", translation: "Deze applicatie heeft geen pagina op {$path}." }
-  - { text: Discard unsaved changes?, translation: Niet-opgeslagen wijzigingen verwerpen? }
-  - { text: What you entered has not been saved., translation: "Wat je hebt ingevoerd, is niet opgeslagen." }
-  - { text: Discard, translation: Verwerpen }
-  - { text: Keep editing, translation: Verder bewerken }
-  - { text: "You are not signed in, or your session has ended.", translation: "Je bent niet ingelogd, of je sessie is beëindigd." }
-  - { text: You are not allowed to do this., translation: Je hebt geen toestemming om dit te doen. }
-  - { text: "The request failed with status {$status}.", translation: "Het verzoek is mislukt met status {$status}." }
-  - { text: "The request failed: {$reason}", translation: "Het verzoek is mislukt: {$reason}" }
-  - { text: The record was refused., translation: Het record is geweigerd. }
-  - { text: The answer is not JSON., translation: Het antwoord is geen JSON. }
-  - { text: The answer is not a JSON object., translation: Het antwoord is geen JSON-object. }
-  - { text: "The answer does not fit its model: {$detail}", translation: "Het antwoord past niet bij zijn model: {$detail}" }
-  - { text: Is not valid, translation: Is ongeldig }
-  - { text: Is required, translation: Is verplicht }
-  - { text: "Must be {$types}", translation: "Moet van het type {$types} zijn" }
-  - { text: "Must be one of: {$allowed}", translation: "Moet een van deze zijn: {$allowed}" }
-  - { text: "Must be {$value}", translation: "Moet {$value} zijn" }
-  - { text: Is not allowed, translation: Is niet toegestaan }
-  - { text: Is not one of the allowed forms, translation: Heeft geen van de toegestane vormen }
-  - text: "Must be at least {$limit} characters"
-    translation: { plural: limit, cases: { one: "Minstens {$limit} teken", other: "Minstens {$limit} tekens" } }
-  - text: "Must be at most {$limit} characters"
-    translation: { plural: limit, cases: { one: "Hoogstens {$limit} teken", other: "Hoogstens {$limit} tekens" } }
-  - { text: Is not in the expected format, translation: Heeft niet het verwachte formaat }
-  - { text: "Must be at least {$limit}", translation: "Moet minstens {$limit} zijn" }
-  - { text: "Must be at most {$limit}", translation: "Moet hoogstens {$limit} zijn" }
-  - { text: "Must be greater than {$limit}", translation: "Moet groter zijn dan {$limit}" }
-  - { text: "Must be less than {$limit}", translation: "Moet kleiner zijn dan {$limit}" }
-  - { text: "Must be a multiple of {$limit}", translation: "Moet een veelvoud van {$limit} zijn" }
-  - text: "Must have at least {$limit} items"
-    translation: { plural: limit, cases: { one: "Minstens {$limit} item", other: "Minstens {$limit} items" } }
-  - text: "Must have at most {$limit} items"
-    translation: { plural: limit, cases: { one: "Hoogstens {$limit} item", other: "Hoogstens {$limit} items" } }
-  - { text: Must not repeat an item, translation: Items mogen niet herhaald worden }
-  # The listing's words: reading more, moving a record, a value with its count, and an unset filter.
-  - { text: "Load more", translation: "Meer laden" }
-  - { text: "Move to", translation: "Verplaatsen naar" }
-  - { text: "{$label} ({$count})", translation: "{$label} ({$count})" }
-  - { text: "not set", translation: "niet ingesteld" }
+
+  # Names, codes and the host are identical in every language, listed so each
+  # served language is seen to cover them.
+  - { text: "English", translation: "English" }
+  - { text: "Deutsch", translation: "Deutsch" }
+  - { text: "Español", translation: "Español" }
+  - { text: "Français", translation: "Français" }
+  - { text: "Italiano", translation: "Italiano" }
+  - { text: "Nederlands", translation: "Nederlands" }
+  - { text: "Polski", translation: "Polski" }
+  - { text: "Português", translation: "Português" }
+  - { text: "Türkçe", translation: "Türkçe" }
+  - { text: "Русский", translation: "Русский" }
+  - { text: "Українська", translation: "Українська" }
+  - { text: "हिन्दी", translation: "हिन्दी" }
+  - { text: "日本語", translation: "日本語" }
+  - { text: "한국어", translation: "한국어" }
+  - { text: "中文", translation: "中文" }
+  - { text: "telo.run", translation: "telo.run" }
+  - { text: "TEL-42", translation: "TEL-42" }
+  - { text: "OPS-7", translation: "OPS-7" }
+  - { text: "APP-5", translation: "APP-5" }
+
+  # The showcase API's messages and the HTTP server's.
+  - { text: "There is no project '{$code}'.", translation: "Er is geen project '{$code}'." }
+  - { text: "TEL-42 is already tagged '{$tag}'.", translation: "TEL-42 heeft al de tag '{$tag}'." }
+  - { text: "{$email} is not the e-mail of anyone on the team.", translation: "{$email} is niet het e-mailadres van iemand in het team." }
+  - { text: "{$email} has left the team.", translation: "{$email} heeft het team verlaten." }
+  - { text: "Another request is already titled '{$title}'.", translation: "Een ander verzoek heeft al de titel '{$title}'." }
+  - { text: "The period must not start after it ends.", translation: "De periode mag niet beginnen na het einde ervan." }
+  - { text: "The period must end within a year of its start.", translation: "De periode moet binnen een jaar na het begin eindigen." }
+  - { text: "Name someone to give the task to.", translation: "Noem iemand aan wie de taak wordt toegewezen." }
+  - { text: "There is no task {$id}.", translation: "Er is geen taak {$id}." }
+  - { text: "{$name} has left the team.", translation: "{$name} heeft het team verlaten." }
+  - { text: "Task {$id} is already {$status}.", translation: "Taak {$id} is al {$status}." }
+  - { text: "There is no post {$id}.", translation: "Er is geen bericht {$id}." }
+  - { text: "There is no comment {$id}.", translation: "Er is geen reactie {$id}." }
+  - { text: "Write the new text of the comment.", translation: "Schrijf de nieuwe tekst van de reactie." }
+  - { text: "The session closed.", translation: "De sessie is beëindigd." }
+  - { text: "Only a manager may pause a project.", translation: "Alleen een manager mag een project pauzeren." }
+  - { text: "The request body is larger than the {$maxBodyBytes} bytes this server accepts.", translation: "De inhoud van het verzoek is groter dan de {$maxBodyBytes} bytes die deze server accepteert." }
+  - { text: "This server does not serve the host {$host}.", translation: "Deze server bedient de host {$host} niet." }
+  - { text: "The list request is not valid.", translation: "Het lijstverzoek is ongeldig." }

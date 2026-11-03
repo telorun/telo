@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [modules/stream, modules/http-server]
+---
+
 # A stream stage that can fail
 
 ## Problem

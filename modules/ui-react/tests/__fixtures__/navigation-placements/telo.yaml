@@ -2,31 +2,25 @@
 # keeps its state in the browser's local storage, and whose one entry's icon is
 # a file of its own.
 kind: Telo.Application
-metadata:
-  name: UiReactNavigationPlacementsApp
-  version: 1.0.0
+metadata: { name: UiReactNavigationPlacementsApp, version: 1.0.0 }
 imports:
   Http: ../../../../http-server
   Ui: ../../../../ui
   UiReact: ../../../
   Lib: ./lib
-ports:
-  http: { env: PORT, default: 19319 }
+ports: { http: { env: PORT, default: 19319 } }
 targets:
   - !ref server
 ---
 kind: Ui.Page
-metadata:
-  name: home
+metadata: { name: home }
 path: /
 title: Home
 children: []
 ---
 kind: UiReact.App
-metadata:
-  name: admin
+metadata: { name: admin }
 title: Navigation placements
-words: !ref Ui.words
 theme: !ref UiReact.defaultTheme
 pages:
   - !ref home
@@ -43,8 +37,7 @@ navigation:
     compact: { kind: Lib.ThreeTabs }
 ---
 kind: Http.Server
-metadata:
-  name: server
+metadata: { name: server }
 listen:
   address: 127.0.0.1
   port: !cel "ports.http"

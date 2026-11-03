@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: [2026-11-02-http-cookies-tls-basic.md]
+packages: [modules/mail, modules/mail-resend, modules/sms, modules/sms-twilio]
+---
+
 # Delivery: `mail`, `sms` and their providers
 
 The delivery track of phase 0 in `plans/identity-and-access.md`. Four new bundled modules:

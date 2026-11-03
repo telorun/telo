@@ -1,0 +1,50 @@
+kind: Telo.Application
+metadata:
+  name: UiTranslationsTest
+  version: 1.0.0
+  description: |
+    ui's own texts are the keyed set `Ui.Translations`, in English where nothing
+    translates them. Every translation ui ships can be listed.
+
+    This application is ui's completeness proof: it serves all fourteen shipped
+    languages, and `telo check` on it reports no MESSAGE_TRANSLATION_MISSING.
+lang: en
+imports: { Ui: ../, Assert: ../../assert }
+translations:
+  catalogs:
+    - !ref Ui.chineseTranslations
+    - !ref Ui.dutchTranslations
+    - !ref Ui.frenchTranslations
+    - !ref Ui.germanTranslations
+    - !ref Ui.hindiTranslations
+    - !ref Ui.italianTranslations
+    - !ref Ui.japaneseTranslations
+    - !ref Ui.koreanTranslations
+    - !ref Ui.polishTranslations
+    - !ref Ui.portugueseTranslations
+    - !ref Ui.russianTranslations
+    - !ref Ui.spanishTranslations
+    - !ref Ui.turkishTranslations
+    - !ref Ui.ukrainianTranslations
+targets: [!ref test]
+---
+kind: Telo.Definition
+metadata: { name: ShownTexts }
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./__fixtures__/shown-texts/shown-texts.mjs#shownTexts]
+schema: { type: object, x-telo-text-keys: [Ui.Translations], additionalProperties: false }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: shown, invoke: { kind: Self.ShownTexts } }
+  - name: assertShown
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        !cel "[steps.shown.result['Ui.Translations'].size(), steps.shown.result['Ui.Translations']['en']['save'], steps.shown.result['Ui.Translations']['de']['save'], steps.shown.result['Ui.Translations']['pl']['pagerRange']]"
+      expected:
+        - 15
+        - { text: Save, context: null, lang: en, computed: false }
+        - { text: Speichern, context: null, lang: de, computed: false }
+        - { text: "{$first}–{$last} z {$total}", context: null, lang: pl, computed: false }

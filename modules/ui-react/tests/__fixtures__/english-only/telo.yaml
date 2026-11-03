@@ -16,7 +16,6 @@ mounts:
     mount:
       kind: UiReact.App
       title: Invoices
-      words: !ref Ui.words
       theme: !ref UiReact.defaultTheme
       pages:
         - kind: Ui.Page

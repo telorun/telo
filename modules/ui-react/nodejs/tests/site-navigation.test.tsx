@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { HEADER_NAVIGATION, render, type Rendered } from "./harness.js";
-import { wireText } from "./words.js";
+import { wireText } from "./ui-texts.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());

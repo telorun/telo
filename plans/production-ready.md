@@ -1,3 +1,10 @@
+---
+status: in-progress
+priority: medium
+depends-on: [per-invocation-scope-configuration.md]
+packages: [apps/authoring-agent, apps/studio]
+---
+
 # Authoring agent — production readiness
 
 ## Problem

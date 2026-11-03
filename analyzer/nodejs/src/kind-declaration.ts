@@ -1,4 +1,5 @@
 import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
+import { isKeyedTranslationsDoc, keyedTranslationsDefinition } from "./keyed-translations.js";
 import { isNeedTypeDoc, needTypeDefinition } from "./need-type.js";
 
 /**
@@ -9,8 +10,9 @@ import { isNeedTypeDoc, needTypeDefinition } from "./need-type.js";
  * `Telo.NeedType` declares a kind its document does not spell out — a
  * `Telo.Provider` served by the kernel's need-type controller — so its
  * definition is synthesized, and carries the document's authored `metadata`
- * whole (`deprecated`, `categories`, every descriptive key). Anything else
- * declares no kind.
+ * whole (`deprecated`, `categories`, every descriptive key). A
+ * `Telo.KeyedTranslations` likewise declares the `Telo.Translations` kind its
+ * keys are translated by. Anything else declares no kind.
  *
  * Memoized per document: the same document yields the same definition object,
  * because validators and forms are memoized by schema identity.
@@ -27,10 +29,15 @@ export function kindDeclarationOf(
   if (doc.kind === "Telo.Definition" || doc.kind === "Telo.Abstract") {
     return doc as unknown as ResourceDefinition;
   }
-  if (!isNeedTypeDoc(doc)) return undefined;
+  const synthesize = isNeedTypeDoc(doc)
+    ? needTypeDefinition
+    : isKeyedTranslationsDoc(doc)
+      ? keyedTranslationsDefinition
+      : undefined;
+  if (!synthesize) return undefined;
   let definition = synthesized.get(doc);
   if (!definition) {
-    definition = needTypeDefinition(doc as unknown as ResourceManifest);
+    definition = synthesize(doc as unknown as ResourceManifest);
     synthesized.set(doc, definition);
   }
   return definition;

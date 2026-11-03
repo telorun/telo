@@ -18,11 +18,17 @@
  *   `MESSAGE_TEXT_UNUSED`;
  * - an expression above a `TextCatalog` slot (`MESSAGE_ENTRY_COMPUTED`), but a
  *   bare `self.<path>` a template body or a `base:` mapping forwards;
+ * - every keyed declaration and every resource of a keyed kind
+ *   (`keyed-translations.ts`): the source language, each key's declared values,
+ *   a catalog's plural categories against its own `lang`, computed entries;
  * - every values pairing a resource writes as a map (`MESSAGE_PLACEHOLDER_UNBOUND`,
  *   `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`);
  * - the two text annotations wherever a schema holds them (`SCHEMA_VIOLATION`,
  *   `TEXT_VALUES_FOR_INVALID`), and `x-telo-text-context` written anywhere but a
  *   data schema (`TEXT_CONTEXT_MISPLACED`, a warning).
+ *
+ * Over the whole application, what a served language would show untranslated
+ * (`MESSAGE_TRANSLATION_MISSING`, a warning, `translation-coverage.ts`).
  *
  * A call's text arguments are judged where the call is (`validate-module-calls.ts`).
  *
@@ -38,16 +44,34 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { celExpressionsOf, isTaggedSentinel, writtenCalls } from "@telorun/templating";
 import { resolveSignature } from "./callable-signature.js";
 import { parseCelSource } from "./cel-environment.js";
-import { effectiveAuthorSchema, hasOwnControllerOrTemplate } from "./extends-resolution.js";
+import { effectiveAuthorSchema, hasOwnControllerOrTemplate, textKeysDeclarer } from "./extends-resolution.js";
+import {
+  isKeyedTranslationsDoc,
+  judgeKeyedCatalog,
+  judgeKeyedDeclaration,
+  keyedSetKind,
+  keyedSetOf,
+  keyedTranslationsOf,
+} from "./keyed-translations.js";
+import { isResolvedReference } from "./resolved-reference.js";
+import { textKeysOf } from "./text-keys.js";
+import {
+  missingTranslations,
+  servedLanguages,
+  type ShownKeyedSet,
+  type ShownTexts,
+  type TranslationLayer,
+} from "./translation-coverage.js";
 import { selfForwardPath } from "./template-forward.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { ModuleDocuments } from "./module-documents.js";
 import { declaringModuleKey, ROOT_MODULE_KEY, SELF_ALIAS } from "./module-call-names.js";
 import { isModuleKind } from "./module-kinds.js";
-import { moduleLangOf } from "./module-lang.js";
+import { moduleLangOf, recordLangOf } from "./module-lang.js";
 import {
   catalogComputedProblem,
   celTypeValueKind,
+  describeTextKey,
   judgeCatalog,
   judgeMessage,
   judgeText,
@@ -79,7 +103,8 @@ import {
   type TextWalk,
   type ValuePath,
 } from "./text-slot.js";
-import { builtinErrorCodes, readText } from "@telorun/sdk";
+import { BUILTIN_ERROR_TEXT_LANG, builtinErrorCodes, messageIdentity, readText, type Text } from "@telorun/sdk";
+import { builtinTranslationCatalogs } from "./builtin-translations.js";
 import { judgeDataValues, judgeDeclaredValues } from "./text-values.js";
 import { DiagnosticSeverity, type AnalysisDiagnostic } from "./types.js";
 
@@ -221,7 +246,7 @@ function diagnostic(
   };
 }
 
-function problemDiagnostic(problem: TextProblem, manifest: ResourceManifest, base: ValuePath, what: string) {
+function problemDiagnostic(problem: Pick<TextProblem, "message" | "path"> & { code: string }, manifest: ResourceManifest, base: ValuePath, what: string) {
   const path = [...base, ...problem.path];
   return diagnostic(problem.code, `${what} at '${renderValuePath(path)}' is refused: ${problem.message}.`, {
     manifest,
@@ -241,6 +266,9 @@ interface TextWriting {
   /** True for a template body entry or a `base:` mapping, where a bare
    *  `self.<path>` forwards the consumer's value. */
   readonly forwards?: boolean;
+  /** What the walked value writes beside `kind` and `metadata`, when its kind
+   *  translates a keyed set. */
+  readonly keyedCatalog?: unknown;
 }
 
 export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
@@ -258,6 +286,14 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
     return schema && typeof schema === "object" ? schema : undefined;
   };
   const walkOptions = { isExpression, resolveRef: resolveNamed };
+  const resolveFrom = (kind: string, from: ResourceDefinition) => resolveDef.in(kind, from.metadata?.module);
+  const definitionOf = (kind: unknown, module: string): ResourceDefinition | undefined =>
+    typeof kind === "string" ? resolveDef.in(kind, module === ROOT_MODULE_KEY ? undefined : module) : undefined;
+  /** True when `kind`, or a kind it extends, translates a keyed set. */
+  const translatesKeys = (kind: unknown, module: string): boolean =>
+    keyedSetOf(definitionOf(kind, module), resolveFrom) !== undefined;
+  const keyedCatalogOf = (value: Record<string, unknown>, module: string) =>
+    translatesKeys(value.kind, module) ? { keyedCatalog: siteValueOf({ path: [], value }) } : {};
   const walkOf = (schema: Record<string, any> | undefined, value: unknown): TextWalk =>
     schema ? textSites(schema, value, walkOptions) : { texts: [], values: [], expressions: [] };
 
@@ -331,7 +367,13 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
   const writingsOf = (manifest: ResourceManifest, module: string): TextWriting[] => {
     if (isModuleKind(manifest.kind as string) || manifest.kind === "Telo.Import") return [];
     const out: TextWriting[] = [
-      { manifest, base: [], module, walk: walkOf(schemaOfKind(manifest.kind, module), manifest) },
+      {
+        manifest,
+        base: [],
+        module,
+        walk: walkOf(schemaOfKind(manifest.kind, module), manifest),
+        ...keyedCatalogOf(manifest as unknown as Record<string, unknown>, module),
+      },
     ];
     const forwarded = baseForwardsOf(manifest, module);
     if (forwarded) out.push(forwarded);
@@ -350,6 +392,7 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
           module,
           walk: walkOf(schemaOfKind(entry.kind, module), entry),
           forwards: true,
+          ...keyedCatalogOf(entry, module),
         });
       });
     }
@@ -372,6 +415,17 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
     if (!set) shown.set(module, (set = new Set()));
     set.add(key);
   };
+  // The literal `Text` values each module writes — a data schema's labels and
+  // an empty text, which nothing translates, aside.
+  const written = new Map<string, Set<string>>();
+  const showText = (module: string, text: Text, counted = true) => {
+    const key = keyOfText(text);
+    show(module, key);
+    if (!counted || messageIdentity(text.message) === "") return;
+    let set = written.get(module);
+    if (!set) written.set(module, (set = new Set()));
+    set.add(key);
+  };
 
   const diagnostics: AnalysisDiagnostic[] = [];
   const catalogs: { writing: TextWriting; base: ValuePath; entries: { index: number; key: string }[] }[] = [];
@@ -381,7 +435,19 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
     // One value reached twice — typed by the kind and forwarded by its `base:` —
     // is judged once.
     const judgedPaths = new Set<string>();
+    const bodyWrote = (place: ValuePath) => options.bodyWroteWhole?.(manifest, renderValuePath(place)) === true;
+    if (judged && isKeyedTranslationsDoc(manifest)) {
+      for (const problem of judgeKeyedDeclaration(manifest, lang, isExpression)) {
+        diagnostics.push(problemDiagnostic(problem, manifest, [], "the keyed text"));
+      }
+    }
     for (const writing of writingsOf(manifest, module)) {
+      if (judged && writing.keyedCatalog !== undefined) {
+        for (const problem of judgeKeyedCatalog(writing.keyedCatalog, isExpression)) {
+          if (bodyWrote([...writing.base, ...problem.path])) continue;
+          diagnostics.push(problemDiagnostic(problem, manifest, writing.base, "the translation"));
+        }
+      }
       for (const site of writing.walk.texts) {
         const path = [...writing.base, ...site.path];
         const at = renderValuePath(path);
@@ -434,7 +500,10 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
         const writer = options.writerAt?.(manifest, at);
         const writtenIn = writer ? scope.moduleOf(writer) : module;
         const text = judgeText(site.value, writer ? scope.langOfModule(writtenIn) : lang);
-        if (text.text) show(writtenIn, keyOfText(text.text));
+        // A kind's declared display messages count only for a kind some
+        // declaration instantiates (see `instantiatedThrowsTexts`).
+        const kindThrows = isKindDocument(manifest) && writing.base.length === 0 && site.path[0] === "throws";
+        if (text.text) showText(writtenIn, text.text, !kindThrows);
         if (!judged) continue;
         if (!own) {
           for (const problem of text.problems) diagnostics.push(problemDiagnostic(problem, manifest, path, "the text"));
@@ -579,7 +648,7 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
           const argument = call.arguments[parameter.index];
           if (!argument?.literal) continue;
           const read = readText(argument.value);
-          if (read.ok) show(module, keyOfText(read.text));
+          if (read.ok) showText(module, read.text);
         }
       }
     }
@@ -602,7 +671,215 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
       );
     }
   }
+
+  const application = manifests.find((m) => m.kind === "Telo.Application" && scope.isOwned(m));
+  if (application) diagnostics.push(...missingTranslationDiagnostics(application));
   return diagnostics;
+
+  /**
+   * MESSAGE_TRANSLATION_MISSING over the whole application: every keyed set a
+   * resource of its closure shows and every `Text` its closure writes, held to
+   * the layered result of its listed catalogs in each served language.
+   */
+  function missingTranslationDiagnostics(application: ResourceManifest): AnalysisDiagnostic[] {
+    const appModule = scope.moduleOf(application);
+    const modules = closure.reach(appModule);
+    const kinds = instantiatedKinds(modules);
+    const listed = listedCatalogLayers(application, appModule);
+    // The built-in catalogs lie beneath every listed one and serve no language.
+    const served = servedLanguages(
+      recordLangOf(moduleLangOf(application)),
+      listed.map((layer) => layer.lang),
+    );
+    const layers = [...builtinTranslationLayers(), ...listed];
+    const texts: ShownTexts[] = [
+      { lang: BUILTIN_ERROR_TEXT_LANG, keys: builtinShownTexts() },
+      ...[...modules].flatMap((module) => {
+        const keys = written.get(module);
+        return keys ? [{ lang: recordLangOf(scope.langOfModule(module)), keys }] : [];
+      }),
+      ...instantiatedThrowsTexts(kinds),
+    ];
+    const findings = missingTranslations({ served, layers, texts, keyedSets: shownKeyedSets(kinds) });
+    const path = Object.hasOwn(application, "translations") ? ["translations"] : ["lang"];
+    return findings.map(({ lang, set, missing }) =>
+      diagnostic(
+        "MESSAGE_TRANSLATION_MISSING",
+        set === undefined
+          ? `'${lang}' is served, but nothing translates ${missing.length === 1 ? "this text" : `these ${missing.length} texts`} into it, so each shows in the language it is written in: ${missing.map(describeTextKey).join(", ")}. Translate them in a Telo.TextTranslations catalog of lang '${lang}' listed under translations.catalogs.`
+          : `'${lang}' is served, but nothing translates ${missing.length === 1 ? "this key" : `these ${missing.length} keys`} of '${set}' into it, so each shows its source wording: ${missing.join(", ")}. List a catalog of '${set}' in lang '${lang}' under translations.catalogs that translates them.`,
+        { manifest: application, path },
+        DiagnosticSeverity.Warning,
+      ),
+    );
+  }
+
+  /** The listed catalogs, in list order, each as the layer it adds. A catalog
+   *  that names nothing, or whose `lang` is not literal, adds none — its
+   *  reference and its schema are judged where they are written. A catalog whose
+   *  `lang` is computed adds no layer, so coverage can only be under-reported. */
+  function listedCatalogLayers(application: ResourceManifest, appModule: string): TranslationLayer[] {
+    const catalogs = (application as { translations?: { catalogs?: unknown } }).translations?.catalogs;
+    if (!Array.isArray(catalogs)) return [];
+    const importTargets = new Map<string, string>();
+    for (const m of manifests) {
+      const target = (m.metadata as { resolvedModuleName?: unknown } | undefined)?.resolvedModuleName;
+      if (m.kind === "Telo.Import" && typeof target === "string" && scope.moduleOf(m) === appModule) {
+        importTargets.set(String(m.metadata?.name), target);
+      }
+    }
+    return catalogs.flatMap((reference): TranslationLayer[] => {
+      const declared = listedCatalog(reference, appModule, importTargets);
+      if (!declared) return [];
+      const { kind, metadata, ...configuration } = declared.manifest as unknown as Record<string, unknown>;
+      const lang = configuration.lang;
+      if (typeof lang !== "string" || lang === "") return [];
+      const set = keyedSetOf(definitionOf(kind, declared.module), resolveFrom);
+      if (set) {
+        const messages = configuration.messages;
+        const keys = new Set(isPlainObject(messages) ? Object.keys(messages) : []);
+        return [{ lang, texts: new Set(), keyed: new Map([[keyedSetKind(set), keys]]) }];
+      }
+      const entries = judgeCatalog(configuration, isExpression).entries;
+      return [{ lang, texts: new Set(entries.map((entry) => entry.key)), keyed: new Map() }];
+    });
+  }
+
+  /** The declaration a `translations.catalogs` reference names: the
+   *  application's own resource, or an instance an import exports. */
+  function listedCatalog(
+    reference: unknown,
+    appModule: string,
+    importTargets: ReadonlyMap<string, string>,
+  ): { manifest: ResourceManifest; module: string } | undefined {
+    if (!isResolvedReference(reference)) return undefined;
+    if (reference.alias === undefined) {
+      const manifest = manifests.find(
+        (m) =>
+          m.metadata?.name === reference.name &&
+          scope.isOwned(m) &&
+          scope.moduleOf(m) === appModule &&
+          m.kind !== "Telo.Import" &&
+          !isModuleKind(m.kind as string) &&
+          !isKindDocument(m),
+      );
+      return manifest && { manifest, module: appModule };
+    }
+    const target = importTargets.get(reference.alias);
+    if (target === undefined) return undefined;
+    const manifest = manifests.find((m) => {
+      const meta = m.metadata as { module?: unknown; forwardedExport?: unknown; name?: unknown } | undefined;
+      return meta?.module === target && meta.forwardedExport === true && meta.name === reference.name;
+    });
+    return manifest && { manifest, module: target };
+  }
+
+  /** The display messages of the kinds `kinds` instantiate: each kind's own
+   *  `throws.codes` and its ancestors', the nearest declaration winning per
+   *  code, grouped by the language of the module that wrote them. */
+  function instantiatedThrowsTexts(kinds: readonly InstantiatedKind[]): ShownTexts[] {
+    const byLang = new Map<string, Set<string>>();
+    const seenKinds = new Set<string>();
+    for (const { kind, module } of kinds) {
+      const codes = new Set<string>();
+      const visited = new Set<ResourceDefinition>();
+      let definition = definitionOf(kind, module);
+      while (definition && !visited.has(definition)) {
+        visited.add(definition);
+        const declared = (definition as { throws?: { codes?: unknown } }).throws?.codes;
+        const definitionModule = definition.metadata?.module;
+        if (isPlainObject(declared)) {
+          for (const [code, entry] of Object.entries(declared)) {
+            if (codes.has(code)) continue;
+            codes.add(code);
+            if (!isPlainObject(entry)) continue;
+            const read = readText(entry.displayMessage);
+            if (!read.ok || messageIdentity(read.text.message) === "") continue;
+            const lang = recordLangOf(typeof definitionModule === "string" ? scope.langOfModule(definitionModule) : null);
+            const memo = `${lang}\0${keyOfText(read.text)}`;
+            if (seenKinds.has(memo)) continue;
+            seenKinds.add(memo);
+            let set = byLang.get(lang);
+            if (!set) byLang.set(lang, (set = new Set()));
+            set.add(keyOfText(read.text));
+          }
+        }
+        const parent = (definition as { extends?: unknown }).extends;
+        definition =
+          typeof parent === "string" ? resolveDef.in(parent, definition.metadata?.module) : undefined;
+      }
+    }
+    return [...byLang].map(([lang, keys]) => ({ lang, keys }));
+  }
+
+  /** Every keyed set a declaration of `kinds` shows through its kind's
+   *  `x-telo-text-keys`. */
+  function shownKeyedSets(kinds: readonly InstantiatedKind[]): ShownKeyedSet[] {
+    const sets = new Map<string, ShownKeyedSet>();
+    for (const { kind, module } of kinds) {
+      const declarer = textKeysDeclarer(definitionOf(kind, module), resolveDef);
+      if (!declarer) continue;
+      for (const named of textKeysOf(declarer.schema)) {
+        const set = keyedSetOf(resolveDef.in(named, declarer.metadata?.module), resolveFrom);
+        const shape = keyedTranslationsOf(set);
+        if (!set || !shape) continue;
+        const id = keyedSetKind(set);
+        if (sets.has(id)) continue;
+        const setModule = set.metadata?.module;
+        sets.set(id, {
+          set: id,
+          lang: recordLangOf(typeof setModule === "string" ? scope.langOfModule(setModule) : null),
+          keys: Object.keys(shape.keys),
+        });
+      }
+    }
+    return [...sets.values()];
+  }
+
+  /** Every kind a declaration of `modules` instantiates — top-level, inline at
+   *  any depth, or a template body's entry; a kind's own schema declares no
+   *  instance. */
+  function instantiatedKinds(modules: ReadonlySet<string>): InstantiatedKind[] {
+    const found = new Map<string, InstantiatedKind>();
+    const showsKind = (kind: string, module: string): void => {
+      found.set(`${module}\0${kind}`, { kind, module });
+    };
+    const seen = new Set<object>();
+    const walk = (value: unknown, module: string): void => {
+      if (!value || typeof value !== "object" || seen.has(value) || isExpression(value)) return;
+      seen.add(value);
+      if (Array.isArray(value)) {
+        for (const item of value) walk(item, module);
+        return;
+      }
+      if (!isPlainObject(value)) return;
+      if (typeof value.kind === "string" && !isResolvedReference(value)) {
+        if (isKindDocument(value as unknown as ResourceManifest)) {
+          walk(value.resources, module);
+          return;
+        }
+        showsKind(value.kind, module);
+      }
+      for (const [key, child] of Object.entries(value)) {
+        // An annotation names kinds; it declares nothing.
+        if (!key.startsWith("x-telo-")) walk(child, module);
+      }
+    };
+    for (const manifest of manifests) {
+      const module = scope.moduleOf(manifest);
+      if (modules.has(module)) walk(manifest, module);
+    }
+    for (const library of moduleDocuments) {
+      if (!modules.has(library.module)) continue;
+      for (const manifest of library.manifests) walk(manifest, library.module);
+    }
+    return [...found.values()];
+  }
+}
+
+interface InstantiatedKind {
+  kind: string;
+  module: string;
 }
 
 /** The CEL sources a manifest's values hold, in plain containers. */
@@ -681,6 +958,18 @@ function builtinShownTexts(): ReadonlySet<string> {
   return builtinShown;
 }
 
+let builtinLayers: readonly TranslationLayer[] | undefined;
+
+/** The built-in catalogs as layers, the lowest of every application's set. */
+function builtinTranslationLayers(): readonly TranslationLayer[] {
+  builtinLayers ??= builtinTranslationCatalogs().map(({ lang, catalog }) => ({
+    lang,
+    texts: new Set(judgeCatalog(catalog, () => false).entries.map((entry) => entry.key)),
+    keyed: new Map(),
+  }));
+  return builtinLayers;
+}
+
 /** The texts a module's whole import closure shows, memoized per module. */
 class ClosureTexts {
   private readonly edges = new Map<string, Set<string>>();
@@ -706,16 +995,23 @@ class ClosureTexts {
     const cached = this.memo.get(module);
     if (cached) return cached;
     const texts = new Set<string>(builtinShownTexts());
+    for (const reached of this.reach(module)) {
+      for (const key of this.shown.get(reached) ?? []) texts.add(key);
+    }
+    this.memo.set(module, texts);
+    return texts;
+  }
+
+  /** `module` and every module it imports, directly or through others. */
+  reach(module: string): ReadonlySet<string> {
     const seen = new Set<string>();
     const pending = [module];
     while (pending.length > 0) {
       const next = pending.pop()!;
       if (seen.has(next)) continue;
       seen.add(next);
-      for (const key of this.shown.get(next) ?? []) texts.add(key);
       for (const target of this.edges.get(next) ?? []) pending.push(target);
     }
-    this.memo.set(module, texts);
-    return texts;
+    return seen;
   }
 }

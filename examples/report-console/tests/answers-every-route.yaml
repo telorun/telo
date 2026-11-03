@@ -27,8 +27,7 @@ followRedirects: false
 kind: HttpClient.Client
 metadata: { name: signedIn }
 baseUrl: http://127.0.0.1:8142
-headers:
-  cookie: report_session=signed-in
+headers: { cookie: report_session=signed-in }
 ---
 kind: Run.Sequence
 metadata: { name: test }
@@ -36,8 +35,7 @@ with:
   - kind: App.Instance
     metadata: { name: app }
     source: ../telo.yaml
-    ports:
-      http: 8142
+    ports: { http: 8142 }
 targets:
   - !ref app
 steps:
@@ -46,8 +44,7 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth }
   - name: expired
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth }
-    inputs:
-      headers: { cookie: "theme=light; report_signin=expired" }
+    inputs: { headers: { cookie: "theme=light; report_signin=expired" } }
   - name: session
     invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/auth }
   - name: granted
@@ -56,12 +53,10 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/auth/consent?outcome=denied" }
   - name: connect
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/auth/connect, method: POST }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   - name: signOut
     invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/auth/signout, method: POST }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   - name: account
     invoke: { kind: HttpClient.Request, client: !ref signedIn, url: /api/auth/user }
   - name: verifySignIn
@@ -110,8 +105,7 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/drive/files }
   - name: anonymousGenerate
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/generate, method: POST }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   - name: verifyGuarded
     invoke: { kind: Assert.Equals }
     inputs:

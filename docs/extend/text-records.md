@@ -211,8 +211,11 @@ failure its display message:
 - **The runtime's own codes.** `ERR_INPUT_INVALID`, `ERR_OUTPUT_INVALID`,
   `ERR_CONTRACT_UNRESOLVABLE`, `ERR_SCHEMA_PROJECTION_UNRESOLVED`,
   `ERR_FUNCTION_FAILED` and `ERR_PREDICATE_NOT_BOOLEAN` carry built-in English
-  display messages (`telo builtins ERR_INPUT_INVALID` prints one). They count as shown by
-  every module, so a catalog translating them is never `MESSAGE_TEXT_UNUSED`.
+  display messages (`telo builtins ERR_INPUT_INVALID` prints one), translated into
+  `de`, `es`, `fr`, `hi`, `it`, `ja`, `ko`, `nl`, `pl`, `pt`, `ru`, `tr`, `uk` and `zh`
+  by the built-in translations (`telo builtins pl` prints one language's). They count
+  as shown by every module, so a catalog translating them is never
+  `MESSAGE_TEXT_UNUSED`.
 
 Every catch context's `error` — a `catch:` / `finally:` branch, a kind's
 `x-telo-error-context` — reads it as `error.displayMessage`, a nullable
@@ -270,6 +273,83 @@ and context. A text and context translated twice within one catalog is refused
 text, `{ $n }` and `{$n}` one placeholder, `pl` and `PL` one language); across
 catalogs it is an override.
 
+Beneath every listed catalog lie the built-in translations of the runtime's own
+display messages, so a catalog translating one of those texts, with the same
+context, rewords it. They serve no language of their own: an application written
+in `pl` shows a refused request in Polish with no catalog listed, while one
+written in `en` and listing no `pl` catalog answers a Polish request in English.
+
+## A library's own texts, by key
+
+A library's own texts (a button's "Save", a pager's range) have stable ids and
+should not collide with the author's. Declare them once, by key, in a built-in
+`Telo.KeyedTranslations` document, conventionally named `Translations`:
+
+```yaml
+kind: Telo.KeyedTranslations
+metadata: { name: Translations }
+keys:
+  save: Save
+  pagerRange:
+    message: "{$first}–{$last} of {$total}"
+    values: { first: { type: integer }, last: { type: integer }, total: { type: integer } }
+    description: Shown under a table.
+```
+
+Each key is its source wording in the module's `lang:` (a module with none is
+`MESSAGE_SOURCE_LANGUAGE_MISSING`), or `{ message, values?, description? }`:
+`values` declares the placeholders the code showing the text formats it with
+(the `x-telo-text-values` vocabulary), `description` is a hint for the
+translator. The document declares the kind `<Module>.Translations`, which
+extends `Telo.Translations`: `lang` plus a closed `messages:` map in which every
+declared key is optional and holds a message checked against that key's values.
+An unknown key, a placeholder outside the values, or a plural case the catalog's
+`lang` lacks is refused by `telo check`.
+
+```yaml
+kind: Self.Translations
+metadata: { name: polishTranslations }
+lang: pl
+messages:
+  save: Zapisz
+  pagerRange: "{$first}–{$last} z {$total}"
+```
+
+Layering is the application rule applied per key: the source wording is the
+lowest layer, then each listed catalog of the kind in `catalogs` order, per
+served language. Keys are the convention for a library's own texts, not a rule —
+a library may keep others as ordinary `Text` values.
+
+A kind names the keyed sets its resources show with `x-telo-text-keys:
+[<Alias>.<Kind>]` on the root of its schema (alias-qualified, as `x-telo-ref`
+is). Its controller reads them as `ctx.translations.keyed()`: set kind, then
+served language, then key, each a text record. Placed anywhere else, or naming a
+kind that is no keyed set, it is `TEXT_KEYS_INVALID` (`ERR_TEXT_KEYS_INVALID` at
+registration). The Rust kernel refuses `Telo.KeyedTranslations`.
+
+## Untranslated texts
+
+`telo check` warns `MESSAGE_TRANSLATION_MISSING` for each served language other
+than `und` that would show something in its source wording, judged on the layered
+result of the listed catalogs by the run-time lookup rule:
+
+- every key of every keyed set a resource of the application or of a library it
+  imports shows — one warning per language and set, naming each missing key;
+- every literal `Text` written in another language — a resource's texts, a kind's
+  `throws.codes.*.displayMessage` of a kind some resource instantiates, a literal text argument such as
+  `I18n.translate`'s, the runtime's own display messages — one warning per
+  language, naming each missing text. The built-in translations are the lowest
+  layer here too, so a served language they translate is never warned about the
+  runtime's texts.
+
+A text whose source language a served language's lookup reaches needs no
+translation (`en` covers `en-GB`), and a regional tag is not warned again for what
+its served shorter tag lacks (`pl` covers `pl-PL`). The warning is reported at the
+Application's `translations:`, or at its `lang:` without one. Nothing is refused
+at run time: an untranslated text shows its source, which is normal while an
+application is being translated. A library proves its own translations complete
+with a test application listing every catalog it ships.
+
 ## What is checked
 
 | Code | When |
@@ -286,7 +366,9 @@ catalogs it is an override.
 | `TEXT_VALUES_FOR_INVALID` | a values pairing names nothing, no `Text`, or a `Text` already paired |
 | `TEXT_SLOT_ACCESSOR` | a kind types a text at or beneath an accessor field |
 | `TEXT_VALUES_INVALID` | `x-telo-text-values` on a node that is no text, a value schema other than `string` / `integer` / `number`, or on a text a values pairing binds; `x-telo-text-values-from` on a node that is no text, that is no relative pointer, beside `x-telo-text-values`, or naming a sibling the object does not declare |
+| `TEXT_KEYS_INVALID` | `x-telo-text-keys` off a schema root, or naming a kind that is no keyed translation set |
 | `MESSAGE_TEXT_UNUSED` (warning) | a catalog entry matches no text its module's imports show |
+| `MESSAGE_TRANSLATION_MISSING` (warning) | a served language has no translation for a keyed set's key or a `Text` written in another language |
 | `TEXT_CONTEXT_MISPLACED` (warning) | `x-telo-text-context` where nothing reads it |
 
 `telo check` reports each where it is written; the runtime refuses the same
@@ -294,8 +376,10 @@ mistakes as `ERR_<code>` — for a text or values computed at creation or when y
 controller evaluates them, and for a dependency's own texts, which `telo check`
 of your application does not judge.
 
+A kind that names no keyed sets of its own shows those of the nearest kind along `extends` that names any — with or without `base:`, an abstract's implementation included — each name read in the module of the definition that wrote it; the annotation is never copied into a child's schema.
+
 The Rust kernel builds no text records for a resource yet, and refuses a resource
-whose kind holds a `Text`, and `translations:`. It does read a kind's
+whose kind holds a `Text`, `translations:`, and a `Telo.KeyedTranslations` document. It does read a kind's
 `throws.codes.*.displayMessage` — judged when the kind registers, with the same
 codes — and attaches it, and the built-in display messages, where an error leaves
 a dispatch.

@@ -5,7 +5,7 @@ import { modelSchema, type JsonSchema } from "./model-schema.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
 import type { Binding, StyleRule } from "./row-binding.js";
 import { pendingRowAction, providedRowActions, type RowActionConfig } from "./row-actions.js";
-import { word } from "./spec-texts.js";
+import { uiText } from "./spec-texts.js";
 import { dialogSpec, isSurface } from "./surface-spec.js";
 import { isLayout, type LayoutAnswer, type LayoutInputs } from "./listing-layout.js";
 import { tableLayout } from "./table-layout.js";
@@ -130,7 +130,7 @@ class Listing implements ResourceInstance {
       delete: resource.delete === true,
       rowActions,
       relations,
-      empty: written?.node ?? { type: "text", text: word("noRows") },
+      empty: written?.node ?? { type: "text", text: uiText("noRows") },
       layout: layout.spec!,
       ...(compact ? { compact: compact.spec! } : {}),
     };

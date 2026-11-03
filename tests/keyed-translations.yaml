@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: KeyedTranslationsTest
+  version: 1.0.0
+  description: |
+    A kind naming a keyed set in `x-telo-text-keys` receives that set's texts per
+    served language: the source wording for a key nothing translates, the later
+    catalog's message for a key two catalogs translate, and nothing of a set it
+    does not name, even one a catalog translates. A kind of another module
+    extending it, with or without `base:`, shows the sets it names.
+lang: en
+imports: { Keyed: ./__fixtures__/keyed-translations, Assert: ../modules/assert }
+translations:
+  catalogs:
+    - kind: Keyed.Translations
+      lang: pl
+      messages: { save: Zachowaj, pagerRange: "{$first}–{$last} z {$total}" }
+    - { kind: Keyed.Translations, lang: pl, messages: { save: Zapisz } }
+    - { kind: Keyed.Greetings, lang: de, messages: { hello: Hallo } }
+targets:
+  - !ref test
+---
+kind: Telo.Definition
+metadata: { name: InheritedShownTexts }
+extends: Keyed.ShownTexts
+schema: { type: object }
+---
+kind: Telo.Definition
+metadata: { name: MappedShownTexts }
+extends: Keyed.ShownTexts
+base: {}
+schema: { type: object, properties: { note: { type: string } } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - { name: shown, invoke: { kind: Keyed.ShownTexts } }
+  - name: assertShown
+    inputs:
+      actual: !cel "steps.shown.result"
+      expected:
+        KeyedFixture.Translations:
+          en:
+            save: { text: Save, context: null, lang: en, computed: false }
+            cancel: { text: Cancel, context: null, lang: en, computed: false }
+            pagerRange: { text: "{$first}–{$last} of {$total}", context: null, lang: en, computed: false }
+          pl:
+            save: { text: Zapisz, context: null, lang: pl, computed: false }
+            cancel: { text: Cancel, context: null, lang: en, computed: false }
+            pagerRange: { text: "{$first}–{$last} z {$total}", context: null, lang: pl, computed: false }
+          de:
+            save: { text: Save, context: null, lang: en, computed: false }
+            cancel: { text: Cancel, context: null, lang: en, computed: false }
+            pagerRange: { text: "{$first}–{$last} of {$total}", context: null, lang: en, computed: false }
+    invoke: !ref Assert.equals
+  - { name: inherited, invoke: { kind: Self.InheritedShownTexts } }
+  - { name: mapped, invoke: { kind: Self.MappedShownTexts, note: unused } }
+  - name: assertInherited
+    inputs:
+      actual: !cel "[steps.inherited.result, steps.mapped.result]"
+      expected: !cel "[steps.shown.result, steps.shown.result]"
+    invoke: !ref Assert.equals

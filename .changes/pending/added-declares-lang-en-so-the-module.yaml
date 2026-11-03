@@ -1,0 +1,5 @@
+modules:
+  modules/crud: Added
+body: "Declares lang: en, so the module's one text (the list request refusal) is written
+  in a known language and an English application is no longer warned that it lacks a
+  translation."

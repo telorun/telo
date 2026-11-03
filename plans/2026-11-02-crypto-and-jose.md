@@ -1,3 +1,10 @@
+---
+status: approved
+priority: high
+depends-on: []
+packages: [modules/crypto, modules/jose]
+---
+
 # Keys: `crypto` and `jose`
 
 The keys track of phase 0 in `plans/identity-and-access.md`. Two new bundled modules: `crypto`
