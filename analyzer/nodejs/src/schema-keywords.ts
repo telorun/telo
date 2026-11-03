@@ -279,6 +279,13 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
     description: "Marks an array of conditional response-rendering entries (`returns:`).",
     anyOf: [{ type: "boolean" }, { type: "string" }],
   },
+  "x-telo-text-keys": {
+    title: "Text keys",
+    description:
+      "On the schema root: the keyed text sets this kind's resources show, each an alias-qualified kind a `Telo.KeyedTranslations` document declares (`[<Alias>.Translations]`). Written anywhere else, or naming any other kind, it is refused.",
+    type: "array",
+    items: { type: "string" },
+  },
   [X_TELO_TEXT_VALUES]: {
     title: "Text values",
     description:

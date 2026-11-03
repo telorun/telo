@@ -18,6 +18,9 @@
  *   `MESSAGE_TEXT_UNUSED`;
  * - an expression above a `TextCatalog` slot (`MESSAGE_ENTRY_COMPUTED`), but a
  *   bare `self.<path>` a template body or a `base:` mapping forwards;
+ * - every keyed declaration and every resource of a keyed kind
+ *   (`keyed-translations.ts`): the source language, each key's declared values,
+ *   a catalog's plural categories against its own `lang`, computed entries;
  * - every values pairing a resource writes as a map (`MESSAGE_PLACEHOLDER_UNBOUND`,
  *   `MESSAGE_PLACEHOLDER_VALUE_UNSUPPORTED`);
  * - the two text annotations wherever a schema holds them (`SCHEMA_VIOLATION`,
@@ -38,7 +41,13 @@ import type { ResourceDefinition, ResourceManifest } from "@telorun/sdk";
 import { celExpressionsOf, isTaggedSentinel, writtenCalls } from "@telorun/templating";
 import { resolveSignature } from "./callable-signature.js";
 import { parseCelSource } from "./cel-environment.js";
-import { effectiveAuthorSchema, hasOwnControllerOrTemplate } from "./extends-resolution.js";
+import { effectiveAuthorSchema, hasOwnControllerOrTemplate, resolveParent } from "./extends-resolution.js";
+import {
+  isKeyedTranslationsDoc,
+  judgeKeyedCatalog,
+  judgeKeyedDeclaration,
+  keyedTranslationsOf,
+} from "./keyed-translations.js";
 import { selfForwardPath } from "./template-forward.js";
 import { isKindDocument } from "./kind-declaration.js";
 import type { ModuleDocuments } from "./module-documents.js";
@@ -221,7 +230,7 @@ function diagnostic(
   };
 }
 
-function problemDiagnostic(problem: TextProblem, manifest: ResourceManifest, base: ValuePath, what: string) {
+function problemDiagnostic(problem: Pick<TextProblem, "message" | "path"> & { code: string }, manifest: ResourceManifest, base: ValuePath, what: string) {
   const path = [...base, ...problem.path];
   return diagnostic(problem.code, `${what} at '${renderValuePath(path)}' is refused: ${problem.message}.`, {
     manifest,
@@ -241,6 +250,9 @@ interface TextWriting {
   /** True for a template body entry or a `base:` mapping, where a bare
    *  `self.<path>` forwards the consumer's value. */
   readonly forwards?: boolean;
+  /** What the walked value writes beside `kind` and `metadata`, when its kind
+   *  translates a keyed set. */
+  readonly keyedCatalog?: unknown;
 }
 
 export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
@@ -258,6 +270,21 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
     return schema && typeof schema === "object" ? schema : undefined;
   };
   const walkOptions = { isExpression, resolveRef: resolveNamed };
+  /** True when `kind`, or a kind it extends, translates a keyed set. */
+  const translatesKeys = (kind: unknown, module: string): boolean => {
+    if (typeof kind !== "string") return false;
+    let definition = resolveDef.in(kind, module === ROOT_MODULE_KEY ? undefined : module);
+    const seen = new Set<object>();
+    while (definition && !seen.has(definition)) {
+      if (keyedTranslationsOf(definition)) return true;
+      seen.add(definition);
+      const at = definition;
+      definition = resolveParent(at, (k) => resolveDef.in(k, at.metadata?.module));
+    }
+    return false;
+  };
+  const keyedCatalogOf = (value: Record<string, unknown>, module: string) =>
+    translatesKeys(value.kind, module) ? { keyedCatalog: siteValueOf({ path: [], value }) } : {};
   const walkOf = (schema: Record<string, any> | undefined, value: unknown): TextWalk =>
     schema ? textSites(schema, value, walkOptions) : { texts: [], values: [], expressions: [] };
 
@@ -331,7 +358,13 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
   const writingsOf = (manifest: ResourceManifest, module: string): TextWriting[] => {
     if (isModuleKind(manifest.kind as string) || manifest.kind === "Telo.Import") return [];
     const out: TextWriting[] = [
-      { manifest, base: [], module, walk: walkOf(schemaOfKind(manifest.kind, module), manifest) },
+      {
+        manifest,
+        base: [],
+        module,
+        walk: walkOf(schemaOfKind(manifest.kind, module), manifest),
+        ...keyedCatalogOf(manifest as unknown as Record<string, unknown>, module),
+      },
     ];
     const forwarded = baseForwardsOf(manifest, module);
     if (forwarded) out.push(forwarded);
@@ -350,6 +383,7 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
           module,
           walk: walkOf(schemaOfKind(entry.kind, module), entry),
           forwards: true,
+          ...keyedCatalogOf(entry, module),
         });
       });
     }
@@ -381,7 +415,19 @@ export function validateTexts(options: TextPassOptions): AnalysisDiagnostic[] {
     // One value reached twice — typed by the kind and forwarded by its `base:` —
     // is judged once.
     const judgedPaths = new Set<string>();
+    const bodyWrote = (place: ValuePath) => options.bodyWroteWhole?.(manifest, renderValuePath(place)) === true;
+    if (judged && isKeyedTranslationsDoc(manifest)) {
+      for (const problem of judgeKeyedDeclaration(manifest, lang, isExpression)) {
+        diagnostics.push(problemDiagnostic(problem, manifest, [], "the keyed text"));
+      }
+    }
     for (const writing of writingsOf(manifest, module)) {
+      if (judged && writing.keyedCatalog !== undefined) {
+        for (const problem of judgeKeyedCatalog(writing.keyedCatalog, isExpression)) {
+          if (bodyWrote([...writing.base, ...problem.path])) continue;
+          diagnostics.push(problemDiagnostic(problem, manifest, writing.base, "the translation"));
+        }
+      }
       for (const site of writing.walk.texts) {
         const path = [...writing.base, ...site.path];
         const at = renderValuePath(path);

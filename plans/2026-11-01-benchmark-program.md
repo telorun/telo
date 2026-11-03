@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [benchmarks, modules/benchmark, kernel]
+---
+
 # Benchmark program: Telo vs native, feature cost, agent authoring
 
 ## Problem

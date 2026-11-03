@@ -1,3 +1,10 @@
+---
+status: approved
+priority: high
+depends-on: []
+packages: [analyzer, kernel, packages/runner-core, modules/http-server, apps/k8s-runner]
+---
+
 # `listeners`: protocol-aware inbound declarations
 
 Replace the Application `ports:` block with a richer `listeners:` block that

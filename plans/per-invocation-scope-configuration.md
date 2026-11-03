@@ -1,3 +1,10 @@
+---
+status: draft
+priority: high
+depends-on: []
+packages: [analyzer, kernel, sdk]
+---
+
 # Per-invocation scope configuration
 
 ## Problem

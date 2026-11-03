@@ -9,6 +9,9 @@
  * repeat within one catalog is that catalog's own `MESSAGE_ENTRY_DUPLICATE`,
  * refused where it is created. Texts are matched by the message core's identity,
  * so a library's text is translated whichever module wrote it.
+ *
+ * A keyed catalog is layered by the same rule per key, over its set's source
+ * wording, and is read only by the kinds naming its set in `x-telo-text-keys`.
  */
 import { isResolvedReference, judgeCatalog, teloFormatFailure, textKey } from "@telorun/analyzer";
 import {
@@ -16,6 +19,7 @@ import {
   messageIdentity,
   readMessage,
   RuntimeError,
+  type KeyedMessages,
   type MessageSource,
   type TextRecord,
 } from "@telorun/sdk";
@@ -48,8 +52,20 @@ export function readListedCatalogs(block: unknown): ListedCatalog[] {
 /** One listed catalog, read: its language and its configuration. */
 export interface ReadCatalog {
   readonly lang: string;
-  /** The configuration its controller received — a `texts:` list is read from it. */
+  /** The configuration its controller received — a `texts:` list, or a keyed
+   *  catalog's `messages:` map, is read from it. */
   readonly configuration: unknown;
+  /** The canonical kind of the keyed set it translates, for a keyed catalog. */
+  readonly keyedSet?: string;
+}
+
+/** One keyed set as its declaration writes it: the source wording of each key,
+ *  in the language of the module declaring it. */
+export interface KeyedSource {
+  /** The set's canonical kind. */
+  readonly kind: string;
+  readonly lang: string;
+  readonly keys: Readonly<Record<string, { readonly message: unknown }>>;
 }
 
 interface Translation {
@@ -68,6 +84,10 @@ export class TranslationSet {
   readonly languages: readonly string[];
   /** Text key → language key → the translation the last catalog gives. */
   private readonly byText = new Map<string, Map<string, Translation>>();
+  /** Keyed set → key → language key → the translation the last catalog gives. */
+  private readonly byKey = new Map<string, Map<string, Map<string, Translation>>>();
+  /** Each keyed set's layered messages, built the first time it is asked for. */
+  private readonly layeredKeys = new Map<string, KeyedMessages[string]>();
 
   constructor(
     readonly fallback: string,
@@ -77,6 +97,10 @@ export class TranslationSet {
     for (const catalog of catalogs) {
       const language = asciiLowercase(catalog.lang);
       if (!served.has(language)) served.set(language, catalog.lang);
+      if (catalog.keyedSet !== undefined) {
+        this.layerKeyed(catalog.keyedSet, language, served.get(language)!, catalog.configuration);
+        continue;
+      }
       const texts = (catalog.configuration as { texts?: unknown } | null)?.texts;
       if (!Array.isArray(texts)) continue;
       for (const entry of judgeCatalog(catalog.configuration, () => false).entries) {
@@ -87,6 +111,47 @@ export class TranslationSet {
       }
     }
     this.languages = [...served.values()];
+  }
+
+  private layerKeyed(set: string, language: string, lang: string, configuration: unknown): void {
+    const messages = (configuration as { messages?: unknown } | null)?.messages;
+    if (!messages || typeof messages !== "object") return;
+    let keys = this.byKey.get(set);
+    if (!keys) this.byKey.set(set, (keys = new Map()));
+    for (const [key, text] of Object.entries(messages as Record<string, MessageSource>)) {
+      let languages = keys.get(key);
+      if (!languages) keys.set(key, (languages = new Map()));
+      languages.set(language, { lang, text });
+    }
+  }
+
+  /**
+   * The application translations rule applied per key: for every served language,
+   * each key's message is the translation reached from it by RFC 4647 lookup among
+   * the languages translating that key and the source's, else the source wording.
+   */
+  keyed(source: KeyedSource): KeyedMessages[string] {
+    const known = this.layeredKeys.get(source.kind);
+    if (known) return known;
+    const translated = this.byKey.get(source.kind);
+    const byLanguage: Record<string, Readonly<Record<string, TextRecord>>> = {};
+    for (const served of this.languages) {
+      const messages: Record<string, TextRecord> = {};
+      for (const [key, entry] of Object.entries(source.keys)) {
+        const languages = translated?.get(key);
+        const reached = languages
+          ? lookupLanguage(served, [...[...languages.values()].map((translation) => translation.lang), source.lang])
+          : null;
+        const translation = reached === null ? undefined : languages!.get(asciiLowercase(reached));
+        messages[key] = translation
+          ? { text: translation.text, context: null, lang: translation.lang, computed: false }
+          : { text: entry.message as MessageSource, context: null, lang: source.lang, computed: false };
+      }
+      byLanguage[served] = Object.freeze(messages);
+    }
+    const layered = Object.freeze(byLanguage);
+    this.layeredKeys.set(source.kind, layered);
+    return layered;
   }
 
   negotiate(preferences: Iterable<string>): string {

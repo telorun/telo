@@ -42,6 +42,9 @@ const BUILTIN_CONTROLLERS: Readonly<Record<string, () => Promise<ControllerInsta
   // The application's translations are core vocabulary, so a library ships its
   // own without importing a module to describe them.
   "Telo.TextTranslations": () => import("./controllers/translations/text-translations-controller.js"),
+  // A library's own texts, declared by key: registers the kind translating them.
+  "Telo.KeyedTranslations": () =>
+    import("./controllers/translations/keyed-translations-controller.js"),
 };
 
 /** Every controller entry this kernel registers at boot. */

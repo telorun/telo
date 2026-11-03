@@ -1,3 +1,10 @@
+---
+status: in-progress
+priority: high
+depends-on: []
+packages: [analyzer, kernel, modules/run]
+---
+
 # Effective kind schema — one answer for what an inheriting kind accepts
 
 ## Problem

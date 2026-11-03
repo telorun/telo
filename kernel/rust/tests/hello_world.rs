@@ -130,6 +130,16 @@ fn refuses_text_translations() {
 }
 
 #[test]
+fn refuses_keyed_translations_before_a_catalog_of_their_kind() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-keyed-translations"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("declares `Telo.KeyedTranslations` 'Translations'"), "{err}");
+}
+
+#[test]
 fn reports_a_kind_whose_controller_this_kernel_cannot_host() {
     let mut kernel = Kernel::new();
     let err = kernel

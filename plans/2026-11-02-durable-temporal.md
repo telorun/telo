@@ -1,3 +1,10 @@
+---
+status: approved
+priority: low
+depends-on: [2026-11-02-durable-restate.md, 2026-11-02-durable-execution-remainder.md]
+packages: [modules/temporal]
+---
+
 # Durable execution on Temporal — `modules/temporal`
 
 This adds a third durable backend: Temporal. It is the first backend where the step engine runs

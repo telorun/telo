@@ -446,6 +446,33 @@ importer.
   import of a shared library must then agree on its configuration and its
   needs (`SHARED_LIBRARY_CONFLICT`).
 
+## A library's own texts — by key
+
+Texts an importer writes (a page title, a label in its manifest) are `Text`
+values, translated by their source text. Texts the LIBRARY shows on its own —
+a button's "Save", a pager's range, a validation message — have stable ids and
+are declared once by key, so translating them never collides with an
+importer's identical text:
+
+```yaml
+kind: Telo.KeyedTranslations
+metadata: { name: Translations }
+keys:
+  save: Save
+  pagerRange:
+    message: "{$first}–{$last} of {$total}"
+    values: { first: { type: integer }, last: { type: integer }, total: { type: integer } }
+```
+
+The source wording is in the library's `lang:`, which it must declare. The
+document declares the kind `<Library>.Translations`: export it, and an
+application translates the keys in a catalog of it (`lang:` plus `messages:`)
+listed in its `translations:`. A kind whose resources show the set names it on
+its schema root, `x-telo-text-keys: [Self.Translations]`, and its controller
+reads each key per served language from `ctx.translations.keyed()`; a kind
+extending it shows the same sets unless it names its own. Written anywhere else
+the annotation is refused.
+
 ## Names, descriptions and metadata
 
 - **Case encodes what a name denotes.** `PascalCase` for types — the

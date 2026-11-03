@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [modules/ai, modules/text-diff, modules/fs, apps/authoring-agent]
+---
+
 # Raw-text edits and moves for the authoring agent
 
 ## Problem

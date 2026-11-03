@@ -1,3 +1,10 @@
+---
+status: in-progress
+priority: high
+depends-on: [2026-11-02-application-translations.md]
+packages: [analyzer, kernel, sdk]
+---
+
 # Keyed translations
 
 Second of four plans. It builds on application translations: the `translations:` block, layering and the controller seam.
@@ -78,10 +85,10 @@ keys:
   save: Save
   pagerRange:
     message: "{$first}–{$last} of {$total}"
-    values: { first: integer, last: integer, total: integer }
+    values: { first: { type: integer }, last: { type: integer }, total: { type: integer } }
   minLength:
     message: { plural: limit, cases: { one: "Must be at least {$limit} character", other: "Must be at least {$limit} characters" } }
-    values: { limit: integer }
+    values: { limit: { type: integer } }
     description: Shown under a field whose value is too short.
 ---
 kind: Self.Translations

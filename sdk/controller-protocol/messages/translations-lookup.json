@@ -4,7 +4,7 @@
   "spec": "7. Resolution & schema",
   "request": {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "Negotiate a language from a preference list, and show texts in it through the application's layered translations. Both lists may be empty: no preferences lands on the fallback, no texts asks only for the languages.",
+    "description": "Negotiate a language from a preference list, and show texts in it through the application's layered translations. Both lists may be empty: no preferences lands on the fallback, no texts asks only for the languages and the keyed texts.",
     "type": "object",
     "properties": {
       "instance": {
@@ -65,7 +65,7 @@
   },
   "response": {
     "$schema": "http://json-schema.org/draft-07/schema#",
-    "description": "The served languages, the language negotiated, and each text in it — the translation as a record whose `lang` is the language reached, or the text's own record when nothing translates it there.",
+    "description": "The served languages, the language negotiated, each text in it — the translation as a record whose `lang` is the language reached, or the text's own record when nothing translates it there — and the keyed texts the instance's kind shows.",
     "type": "object",
     "properties": {
       "fallback": {
@@ -93,13 +93,27 @@
         "items": {
           "$ref": "#/definitions/textRecord"
         }
+      },
+      "keyed": {
+        "description": "The keyed texts of every set the instance's kind names in `x-telo-text-keys`, and of no other: by the set's canonical kind, then every served language, then key. Per key, the translation reached from the language by RFC 4647 lookup, the last listed catalog of the set winning, else the set's source wording; empty when the kind names no set.",
+        "type": "object",
+        "additionalProperties": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/textRecord"
+            }
+          }
+        }
       }
     },
     "required": [
       "fallback",
       "languages",
       "lang",
-      "texts"
+      "texts",
+      "keyed"
     ],
     "additionalProperties": false,
     "definitions": {

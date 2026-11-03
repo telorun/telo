@@ -1,3 +1,10 @@
+---
+status: in-progress
+priority: high
+depends-on: []
+packages: [modules/http-server, modules/http-client]
+---
+
 # HTTP transport: cookies, TLS finish, client certificates, Basic credentials
 
 The transport track of phase 0 in `plans/identity-and-access.md`. These are the HTTP pieces

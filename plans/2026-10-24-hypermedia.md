@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [modules/http-dispatch, modules/http-server, modules/hal]
+---
+
 # Hypermedia: links that name routes, and pluggable representations
 
 ## Problem

@@ -1,3 +1,10 @@
+---
+status: approved
+priority: high
+depends-on: []
+packages: [analyzer, modules/durable-local]
+---
+
 # Durable execution — what `durable-local` and the analyzer still owe
 
 The seam, the spec (`kernel/specs/durable-execution.md`), `durable`, `durable-local` and both

@@ -6,6 +6,7 @@ import {
   hasReferrerRules,
   rewriteReferrerRuleKinds,
 } from "./referrer-rule.js";
+import { hasTextKeys, rewriteTextKeysKinds } from "./text-keys.js";
 import { hasRequiresZone, rewriteRequiresZoneKind } from "./zone-slot.js";
 
 const REF_ANNOTATION = "x-telo-ref";
@@ -49,7 +50,8 @@ export function isLegacyRefIdentity(ref: string): boolean {
 }
 
 /**
- * Rewrites the `x-telo-ref` constraints on one definition doc from the alias
+ * Rewrites the `x-telo-ref` constraints (and the kinds `x-telo-requires-zone`,
+ * `x-telo-referrer-rules` and `x-telo-text-keys` name) on one definition doc from the alias
  * form (`KvStore.Store`, `Self.Store`, `Telo.Invocable`) to the canonical
  * `<module>.<Kind>` key the definition registry is keyed by.
  *
@@ -157,6 +159,15 @@ export function resolveSchemaRefKinds(
         if (result.status === "ok") return result.kind;
         record(kind, `${path}.${REFERRER_RULES_ANNOTATION}`, "referrer");
         return undefined;
+      });
+    }
+    if (hasTextKeys(obj)) {
+      // The keyed sets a kind shows are named through the same grammar; one
+      // that does not canonicalize is `TEXT_KEYS_INVALID`, reported with the
+      // annotation's other refusals (`text-keys.ts`).
+      rewriteTextKeysKinds(obj, (kind) => {
+        const result = resolver.resolveKindResult(kind);
+        return result.status === "ok" ? result.kind : undefined;
       });
     }
     for (const key of Object.keys(obj)) {

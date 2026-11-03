@@ -1,0 +1,18 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedKeyedTranslations
+  version: 1.0.0
+  description: |
+    Declares texts by key and, before the declaration, a catalog of the kind it
+    declares. This kernel reads neither, so the load must fail naming the
+    declaration rather than the catalog's kind as unknown.
+lang: en
+---
+kind: Self.Translations
+metadata: { name: polish }
+lang: pl
+messages: { save: Zapisz }
+---
+kind: Telo.KeyedTranslations
+metadata: { name: Translations }
+keys: { save: Save }

@@ -1,3 +1,10 @@
+---
+status: approved
+priority: high
+depends-on: [2026-11-02-application-translations.md, 2026-11-02-keyed-translations.md]
+packages: [modules/ui]
+---
+
 # `ui` texts by key
 
 Third of four plans. It builds on application translations and keyed translations.

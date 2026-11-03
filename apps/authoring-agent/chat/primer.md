@@ -1755,6 +1755,21 @@ is `MESSAGE_ENTRY_DUPLICATE`. The served languages are the Application's `lang:`
 translated by the application's set. `I18n.Catalog` is deprecated for
 `Telo.TextTranslations`.
 
+A library's OWN texts (labels, messages with stable ids) are declared by key in a
+built-in `Telo.KeyedTranslations` document, conventionally named `Translations`:
+`keys: { save: Save, pagerRange: { message: "{$first}–{$last} of {$total}",
+values: { first: { type: integer }, … }, description? } }`, written in the
+library's `lang:` (required). It declares the kind `<Module>.Translations`
+(`lang` + a closed `messages:` map, every key optional, checked against the
+key's values), which an application lists in `translations.catalogs` after
+import; per key the source wording is the lowest layer, then the catalogs in
+order. A kind shows such a set by naming it with `x-telo-text-keys:
+[<Alias>.<Kind>]` on its schema root — anywhere else (below the root, `status:`,
+a contract, a named shape, a parameter) is `TEXT_KEYS_INVALID`; its controller
+reads `ctx.translations.keyed()`. A kind naming none shows the sets of the
+nearest kind along `extends` naming any, with or without `base:`. The Rust
+kernel refuses it.
+
 The transport chooses the request's language: in HTTP it is `request.lang` (a
 tag, always present), negotiated from `Accept-Language` by RFC 4647 lookup
 (`pl-PL` finds `pl`) and landing on the fallback. `Http.Server.preferredLanguages`

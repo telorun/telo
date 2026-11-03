@@ -1,3 +1,11 @@
+---
+status: in-progress
+priority: medium
+depends-on: []
+packages: [modules/ui, modules/ui-react, modules/i18n, message-format, sdk]
+tracking: feat/data-driven-screens
+---
+
 # Data-driven screens and translation
 
 A screen that is not one table's records — a sign-in gate, a context card, an

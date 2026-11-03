@@ -1,6 +1,7 @@
 import type { ResourceDefinition } from "@telorun/sdk";
 import { mergeTypeSchemas } from "@telorun/sdk";
 import { joinInheritedRules, RULE_ANNOTATIONS } from "./rule-inheritance.js";
+import { hasTextKeys, TEXT_KEYS_ANNOTATION } from "./text-keys.js";
 
 /** Resolves a kind string (canonical or alias form, depending on the caller's
  *  registry) to its `Telo.Definition` / `Telo.Abstract`, or undefined.
@@ -132,7 +133,9 @@ export function inheritedCapability(
  *    additive extension; child overrides on key conflicts), reusing the same
  *    `mergeTypeSchemas` that `Type.JsonSchema.extends` uses — except the two
  *    rule annotations, which join the parent's rules and the child's
- *    (`rule-inheritance.ts`).
+ *    (`rule-inheritance.ts`), and `x-telo-text-keys`, which is the child's own
+ *    or absent: its names are spelled in the declaring module's scope, so it is
+ *    inherited by {@link textKeysDeclarer}, never copied.
  *  - no `extends` → the own schema unchanged. */
 export function effectiveAuthorSchema(
   def: ResourceDefinition | undefined,
@@ -148,7 +151,28 @@ export function effectiveAuthorSchema(
     const joined = joinInheritedRules(annotation, parentSchema[annotation], own[annotation]);
     if (joined !== undefined) merged[annotation] = joined;
   }
+  if (hasTextKeys(own)) merged[TEXT_KEYS_ANNOTATION] = own[TEXT_KEYS_ANNOTATION];
+  else delete merged[TEXT_KEYS_ANNOTATION];
   return merged;
+}
+
+/**
+ * The definition whose own schema root names the keyed sets `def`'s resources
+ * show (`x-telo-text-keys`): `def` itself, else the nearest along `extends` that
+ * names any — a merge-form child, a `base:` child and an abstract's
+ * implementation alike. Its names are read in ITS module's scope, the one that
+ * wrote them. Undefined when nothing in the chain names one.
+ */
+export function textKeysDeclarer(
+  def: ResourceDefinition | undefined,
+  resolve: DefResolver,
+): ResourceDefinition | undefined {
+  const names = (candidate: ResourceDefinition) => {
+    const schema = body(candidate).schema;
+    return !!schema && typeof schema === "object" && hasTextKeys(schema);
+  };
+  if (def && names(def)) return def;
+  return ancestorChain(def, resolve).find(names);
 }
 
 /**

@@ -1,3 +1,10 @@
+---
+status: approved
+priority: low
+depends-on: []
+packages: [modules/restate]
+---
+
 # Durable execution on Restate — `modules/restate`
 
 This adds a second durable backend: a Restate server instead of a journal the app owns. The same

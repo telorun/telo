@@ -1,0 +1,35 @@
+# `x-telo-text-keys` written outside a kind's schema root, where nothing reads it:
+# in a kind's observed state and contract, a named shape and a function's
+# parameter.
+kind: Telo.Library
+metadata:
+  name: TextKeysOutsideLib
+  version: 1.0.0
+  description: Fixture declarations naming keyed sets where nothing reads them.
+lang: en
+exports: { kinds: [Reporting], resources: [Shape, echo] }
+---
+kind: Telo.KeyedTranslations
+metadata: { name: Translations }
+keys: { save: Save }
+---
+kind: Telo.Definition
+metadata: { name: Reporting }
+capability: Telo.Provider
+schema: { type: object }
+status: { type: object, x-telo-text-keys: [Self.Translations] }
+outputType: { type: object, x-telo-text-keys: [Self.Translations] }
+provide: !ref inner
+resources:
+  - { kind: Telo.JsonSchema, metadata: { name: inner }, schema: { type: object } }
+---
+kind: Telo.JsonSchema
+metadata: { name: Shape }
+schema: { type: object, x-telo-text-keys: [Self.Translations] }
+---
+kind: Telo.Function
+metadata: { name: echo }
+params:
+  - { name: word, schema: { type: string, x-telo-text-keys: [Self.Translations] } }
+returns: { schema: { type: string } }
+body: !cel "word"

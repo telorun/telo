@@ -515,6 +515,10 @@ targets:
   - !ref textValuesSelectorStringAtRuntime
   - !ref textValuesInvalid
   - !ref textValuesInvalidAtRuntime
+  - !ref textKeysInvalid
+  - !ref textKeysInvalidAtRuntime
+  - !ref textKeysOutsideSchema
+  - !ref textKeysOutsideSchemaAtRuntime
   - !ref textValuesClean
   - !ref matchUnsatisfiable
   - !ref matchUnsatisfiableAtRun
@@ -4812,6 +4816,62 @@ expect:
     - code: TEXT_VALUES_INVALID
       message: "reached through import 'Kinds': Telo.Definition 'Notice' declares 'schema.properties.text.x-telo-text-values' with 'done' typed as neither a string nor a number"
   runFails: "[TEXT_VALUES_INVALID] Imported library 'TextValuesMisuseLib', reached through import 'Kinds': Telo.Definition 'Counter' declares 'schema.properties.count.x-telo-text-values' on a node that is no text"
+---
+# `x-telo-text-keys` below a schema's root, and naming a kind that translates
+# texts by their source text: refused at the library declaring the kinds…
+kind: Assert.Manifest
+metadata: { name: textKeysInvalid }
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-keys/misuse-lib/telo.yaml
+expect:
+  errors:
+    - code: TEXT_KEYS_INVALID
+      message: "Telo.Definition 'Nested' declares 'schema.properties.label.x-telo-text-keys' below the schema's root"
+    - code: TEXT_KEYS_INVALID
+      message: "Telo.Definition 'ByText' declares 'schema.x-telo-text-keys[0]' naming 'Telo.TextTranslations', which translates no keyed set"
+---
+# …and at the import reaching them, where the run is refused.
+kind: Assert.Manifest
+metadata: { name: textKeysInvalidAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-keys/misuse/telo.yaml
+expect:
+  errors:
+    - code: TEXT_KEYS_INVALID
+      message: "reached through import 'Kinds': Telo.Definition 'Nested' declares 'schema.properties.label.x-telo-text-keys' below the schema's root"
+    - code: TEXT_KEYS_INVALID
+      message: "reached through import 'Kinds': Telo.Definition 'ByText' declares 'schema.x-telo-text-keys[0]' naming 'Telo.TextTranslations'"
+  runFails: "[TEXT_KEYS_INVALID] Imported library 'TextKeysMisuseLib', reached through import 'Kinds': Telo.Definition 'Nested' declares 'schema.properties.label.x-telo-text-keys' below the schema's root"
+---
+# `x-telo-text-keys` outside a kind's schema root — a kind's `status:` and
+# contract, a named shape, a function's parameter: refused at the library…
+kind: Assert.Manifest
+metadata: { name: textKeysOutsideSchema }
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-keys/outside-schema-lib/telo.yaml
+expect:
+  errors:
+    - code: TEXT_KEYS_INVALID
+      message: "Telo.Definition 'Reporting' declares 'status.x-telo-text-keys' where nothing reads it"
+    - code: TEXT_KEYS_INVALID
+      message: "Telo.Definition 'Reporting' declares 'outputType.x-telo-text-keys' where nothing reads it"
+    - code: TEXT_KEYS_INVALID
+      message: "Telo.JsonSchema 'Shape' declares 'schema.x-telo-text-keys' where nothing reads it"
+    - code: TEXT_KEYS_INVALID
+      message: "Telo.Function 'echo' declares 'params[0].schema.x-telo-text-keys' where nothing reads it"
+---
+# …and at the import reaching it, where the run is refused.
+kind: Assert.Manifest
+metadata: { name: textKeysOutsideSchemaAtRuntime }
+source: ./__fixtures__/check-run-agreement/text-vocabulary/text-keys/outside-schema/telo.yaml
+expect:
+  errors:
+    - code: TEXT_KEYS_INVALID
+      message: "reached through import 'Lib': Telo.Definition 'Reporting' declares 'status.x-telo-text-keys' where nothing reads it"
+    - code: TEXT_KEYS_INVALID
+      message: "reached through import 'Lib': Telo.Definition 'Reporting' declares 'outputType.x-telo-text-keys' where nothing reads it"
+    - code: TEXT_KEYS_INVALID
+      message: "reached through import 'Lib': Telo.JsonSchema 'Shape' declares 'schema.x-telo-text-keys' where nothing reads it"
+    - code: TEXT_KEYS_INVALID
+      message: "reached through import 'Lib': Telo.Function 'echo' declares 'params[0].schema.x-telo-text-keys' where nothing reads it"
+  runFails: "[TEXT_KEYS_INVALID] Imported library 'TextKeysOutsideLib', reached through import 'Lib': Telo.Definition 'Reporting' declares 'status.x-telo-text-keys' where nothing reads it"
 ---
 kind: Assert.Manifest
 metadata: { name: textValuesClean }

@@ -167,11 +167,13 @@ list — RFC 4647 lookup per entry against the served languages, a malformed or
 unserved entry skipped, the application's `lang:` when none is left — and shows
 each text record you send in it: the translation as a record whose `lang` is the
 language reached, or your own record when nothing translates it. Every answer
-carries the fallback and the served languages too. An inbound transport
+carries the fallback and the served languages too, and `keyed`: the layered keyed
+texts of every set the instance's kind names in `x-telo-text-keys` (set kind,
+then language, then key), empty when it names none. An inbound transport
 negotiates once per request and exposes the result as `lang`. Asked from `init()`
 before every catalog exists, it fails with the deferral the kernel retries. In
 Node it is `ctx.translations` (`negotiate`, `translate`, `translateAll`,
-`languages()`, `fallback`).
+`languages()`, `fallback`, `keyed()`).
 
 ## Pointing a failure at the input it is about
 

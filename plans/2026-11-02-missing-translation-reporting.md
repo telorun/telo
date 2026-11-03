@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: [2026-11-02-application-translations.md, 2026-11-02-keyed-translations.md, 2026-11-02-ui-keyed-texts.md]
+packages: [analyzer]
+---
+
 # Missing-translation reporting
 
 Last of four plans. It builds on application translations, keyed translations and `ui` texts by key.

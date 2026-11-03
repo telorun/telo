@@ -1,3 +1,10 @@
+---
+status: in-progress
+priority: high
+depends-on: []
+packages: [analyzer, kernel, sdk, kernel/rust, sdk/rust/core, modules/cache, modules/cache-redis, modules/durable, modules/durable-local, modules/http-client, modules/idempotency, modules/kv-store-redis, modules/lease, modules/oauth-client, modules/otlp, modules/rate-limit, modules/scheduler, modules/sql]
+---
+
 # A duration value type
 
 ## Problem

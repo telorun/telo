@@ -1,3 +1,10 @@
+---
+status: approved
+priority: medium
+depends-on: []
+packages: [modules/data-model, modules/crud, modules/ui, modules/ui-react, modules/ui-react-radix]
+---
+
 # Search box with filter tokens
 
 ## Goal

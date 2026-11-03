@@ -1,3 +1,11 @@
+---
+status: in-progress
+priority: high
+depends-on: []
+packages: [analyzer, kernel, sdk, templating, modules/crud, modules/http-server, blueprints]
+tracking: feature/template-expansion
+---
+
 # Template expansion — `!for-each`, `!if`, `!switch`, configurations, and what is built on them
 
 ## Problem

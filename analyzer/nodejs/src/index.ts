@@ -233,6 +233,7 @@ export {
   needsContractMapping,
   publishedOwnFields,
   resolveParent,
+  textKeysDeclarer,
 } from "./extends-resolution.js";
 export type {
   ContractDirection,
@@ -689,7 +690,28 @@ export type {
   TextParameter,
 } from "./text-schemas.js";
 export { textSlotAccessorProblems } from "./text-slot-accessor.js";
-export { dataTextValues, declaredValueKinds, judgeDataValues, judgeDeclaredValues, textValuesProblems } from "./text-values.js";
+export {
+  dataTextValues,
+  declaredValueKinds,
+  declaredValueRefusal,
+  judgeDataValues,
+  judgeDeclaredValues,
+  textValuesProblems,
+} from "./text-values.js";
+export {
+  isKeyedTranslationsDoc,
+  judgeKeyedCatalog,
+  judgeKeyedDeclaration,
+  KEYED_SOURCE_LANGUAGE_MISSING_MESSAGE,
+  KEYED_TRANSLATIONS_CONTROLLER_ENTRY,
+  KEYED_TRANSLATIONS_KIND,
+  keyedTranslationsDefinition,
+  keyedTranslationsOf,
+  readKeyedTranslations,
+} from "./keyed-translations.js";
+export type { KeyedTextEntry, KeyedTranslationsProblem, KeyedTranslationsShape } from "./keyed-translations.js";
+export { hasTextKeys, misplacedTextKeys, TEXT_KEYS_ANNOTATION, textKeysOf, textKeysProblems } from "./text-keys.js";
+export type { TextKeysProblem } from "./text-keys.js";
 export type { TextSlotAccessorProblem } from "./text-slot-accessor.js";
 export { moduleLangOf, moduleLangs, recordLangOf } from "./module-lang.js";
 export { TextLanguageScope } from "./validate-texts.js";
