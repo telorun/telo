@@ -173,6 +173,11 @@ team does not have to build or remember, each described in detail below:
 - **Schedules.** `Schedule.Interval` and `Schedule.Cron` with a timezone and a per-tick `when:`; a failing tick re-arms, ticks never overlap, and shutdown waits for the tick in flight.
 - **Long polling.** `Watch.Wait` / `Watch.Publish` with capped timeouts.
 
+### Messaging
+
+- **Transactional email and SMS behind one contract.** `Mail.Transport` and `Sms.Transport` take one message shape and answer one result, so an application or library sends through whichever transport the deployment configures (`Mail.Smtp`, `MailResend.Transport`, `SmsTwilio.Transport`) and a failed send is reported as one of two kinds — refused, or unavailable and worth retrying. A phone number that is not E.164 and an email with no body are refused before anything is sent.
+- **Capture transports for tests.** `Mail.Capture` / `Sms.Capture` record what was sent and `CaptureRead` hands it back, so a flow that mails a link or texts a code is tested end to end with nothing sent.
+
 ### Translation
 
 - **The request language, chosen for you.** List your languages once in the Application's `translations:` and each request's language is negotiated from `Accept-Language` (by quality, `pl-PL` finding `pl`) and read as `request.lang`; `preferredLanguages` on `Http.Server` adds your own choice from a cookie, path prefix or query parameter. Responses that depend on the language carry `Content-Language` and `Vary`, problem details are worded in it, and a library's texts are translated by the application's catalogs — no per-handler negotiation code.

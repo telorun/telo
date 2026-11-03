@@ -20,7 +20,7 @@ const execFileAsync = promisify(execFile);
 const scratch: string[] = [];
 
 afterAll(() => {
-  for (const dir of scratch) fs.rmSync(dir, { recursive: true, force: true });
+  for (const dir of scratch) fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
 /** Run `program` with `args` and `env` laid over this process's environment. */

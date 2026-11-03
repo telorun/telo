@@ -1,0 +1,18 @@
+# A transport its own timeout contradicts. `telo check` reports it here; a
+# consumer's check sees nothing, so there the transport refuses itself when it
+# is created.
+kind: Telo.Library
+metadata:
+  name: MailTimeoutNotPositive
+  version: 1.0.0
+  description: Test fixture exporting a transport refused as MAIL_SMTP_TIMEOUT_NOT_POSITIVE.
+imports:
+  Mail: ../../../../
+exports:
+  resources: [mail]
+---
+kind: Mail.Smtp
+metadata: { name: mail }
+host: 127.0.0.1
+from: telo@example.com
+timeout: 0s

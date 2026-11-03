@@ -1,0 +1,173 @@
+kind: Telo.Application
+metadata:
+  name: MailSmtpTest
+  version: 1.0.0
+  description: |
+    `Mail.Smtp` against a real SMTP server, Mailpit, read back through its HTTP
+    API: a message with cc, reply-to, headers, both bodies and an attachment
+    arrives as sent; a recipient the server refuses is reported as rejected
+    beside the accepted one; a message whose every recipient is refused is
+    `ERR_MAIL_REJECTED`; a port nothing listens on is `ERR_MAIL_UNAVAILABLE`.
+
+    NEEDS A CONTAINER ENGINE: it starts its own Mailpit, which is why it is under `tests/integration/`.
+imports:
+  Mail: ../..
+  Container: ../../../container
+  Docker: ../../../docker
+  HttpClient: ../../../http-client
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref test
+---
+kind: Docker.Engine
+metadata: { name: engine }
+endpoint: !cel "variables.engineUrl"
+token: !cel "secrets.engineToken"
+---
+kind: Container.Instance
+metadata: { name: mailpit }
+engine: !ref engine
+image: axllent/mailpit:v1.33.0
+user: "1000:1000"
+# Recipients outside example.com are refused at RCPT, which is how a rejected
+# recipient is produced.
+env: { MP_SMTP_ALLOWED_RECIPIENTS: '@example\.com$' }
+ports: [1025, 8025]
+readiness: { kind: Container.LogReady, text: accessible via }
+lifetime: 1h
+---
+kind: Container.Port
+metadata: { name: smtpPort }
+container: !ref mailpit
+port: 1025
+---
+kind: Container.Port
+metadata: { name: apiPort }
+container: !ref mailpit
+port: 8025
+---
+kind: Mail.Smtp
+metadata: { name: mail }
+host: !cel "resources.smtpPort.status.host"
+port: !cel "resources.smtpPort.status.port"
+starttls: never
+from: { name: Telo, address: telo@example.com }
+timeout: 10s
+---
+kind: Mail.Smtp
+metadata: { name: closedPort }
+host: 127.0.0.1
+port: 1
+starttls: never
+from: telo@example.com
+timeout: 5s
+---
+kind: HttpClient.Client
+metadata: { name: mailpitApi }
+baseUrl: !interpolate "http://${{ resources.apiPort.status.host }}:${{ resources.apiPort.status.port }}/api/v1"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: sent
+    invoke: !ref mail
+    inputs:
+      to: { name: Ada Lovelace, address: ada@example.com }
+      cc: carol@example.com
+      replyTo: support@example.com
+      subject: Your receipt
+      text: Thanks for your order.
+      html: <p>Thanks for your order.</p>
+      headers: { X-Order: "42" }
+      attachments:
+        - { filename: receipt.txt, content: !cel "bytes('order 42')", contentType: text/plain }
+  - name: assertSent
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { accepted: !cel "steps.sent.result.accepted", rejected: !cel "steps.sent.result.rejected" }
+      expected: { accepted: [ada@example.com, carol@example.com], rejected: [] }
+  # The server is this test's own, so the latest message is the one just sent;
+  # its id is asserted below.
+  - name: message
+    invoke: { kind: HttpClient.Request, client: !ref mailpitApi, throwOnHttpError: true }
+    inputs: { url: /message/latest }
+  - name: assertReceived
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        messageId: !cel "'<' + steps.message.result.body.MessageID + '>'"
+        from: !cel "steps.message.result.body.From"
+        to: !cel "steps.message.result.body.To"
+        cc: !cel "steps.message.result.body.Cc"
+        replyTo: !cel "steps.message.result.body.ReplyTo"
+        subject: !cel "steps.message.result.body.Subject"
+        text: !cel "steps.message.result.body.Text.trim()"
+        html: !cel "steps.message.result.body.HTML.trim()"
+        attachments: !cel "steps.message.result.body.Attachments.map(a, {'FileName': a.FileName, 'ContentType': a.ContentType})"
+      expected:
+        messageId: !cel "steps.sent.result.messageId"
+        from: { Name: Telo, Address: telo@example.com }
+        to: [{ Name: Ada Lovelace, Address: ada@example.com }]
+        cc: [{ Name: "", Address: carol@example.com }]
+        replyTo: [{ Name: "", Address: support@example.com }]
+        subject: Your receipt
+        text: Thanks for your order.
+        html: <p>Thanks for your order.</p>
+        attachments: [{ FileName: receipt.txt, ContentType: text/plain }]
+  - name: headers
+    invoke: { kind: HttpClient.Request, client: !ref mailpitApi, throwOnHttpError: true }
+    inputs: { url: !interpolate "/message/${{ steps.message.result.body.ID }}/headers" }
+  - name: attachment
+    invoke: { kind: HttpClient.Request, client: !ref mailpitApi, throwOnHttpError: true }
+    inputs:
+      url: !interpolate "/message/${{ steps.message.result.body.ID }}/part/${{ steps.message.result.body.Attachments[0].PartID }}"
+      responseType: text
+  - name: assertHeaderAndAttachment
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { order: !cel "steps.headers.result.body['X-Order']", attachment: !cel "steps.attachment.result.body" }
+      expected: { order: ["42"], attachment: order 42 }
+
+  - name: partlyRejected
+    invoke: !ref mail
+    inputs:
+      to: [ada@example.com, nobody@elsewhere.test]
+      subject: Partly delivered
+      text: One of two.
+  - name: assertPartlyRejected
+    invoke: !ref Assert.equals
+    inputs:
+      actual: { accepted: !cel "steps.partlyRejected.result.accepted", rejected: !cel "steps.partlyRejected.result.rejected" }
+      expected: { accepted: [ada@example.com], rejected: [nobody@elsewhere.test] }
+
+  - name: allRejected
+    try:
+      - name: send
+        invoke: !ref mail
+        inputs: { to: nobody@elsewhere.test, subject: Undeliverable, text: Nobody. }
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a message with every recipient refused was sent }
+    catch:
+      - name: assertRejected
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MAIL_REJECTED
+
+  - name: unreachable
+    try:
+      - name: send
+        invoke: !ref closedPort
+        inputs: { to: ada@example.com, subject: Unreachable, text: Nobody listens. }
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a message was sent to a closed port }
+    catch:
+      - name: assertUnavailable
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_MAIL_UNAVAILABLE

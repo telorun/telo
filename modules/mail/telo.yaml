@@ -1,0 +1,309 @@
+kind: Telo.Library
+metadata:
+  name: Mail
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Messaging]
+  description: >-
+    Send transactional email — verification links, password resets, receipts,
+    notifications — through one contract every provider implements: sender,
+    recipients, subject, text and HTML bodies, headers and attachments. Includes
+    SMTP delivery with a connection pool and an in-memory capture transport that
+    records each message so tests can read it back.
+requires:
+  # 0.82.0: the SMTP pool is created in `init()` as a returned effect.
+  # 0.100.0: `throws:` on a Telo.Abstract, the ceiling every transport falls within.
+  # 0.108.0: the SMTP controller reads `timeout` through the value domain
+  # (`isCelDuration`, `durationNanos`), which older SDKs do not export.
+  telo: ">=0.108.0"
+exports: { kinds: [Transport, Smtp, Capture, CaptureRead] }
+---
+# Shapes are written inline (and in `$defs`) so a consumer's CEL is typed by them.
+kind: Telo.Abstract
+metadata:
+  name: Transport
+  description: >-
+    Sends one email: an optional sender, recipients in to, cc and bcc, a reply-to,
+    a subject, a plain-text and/or HTML body, extra headers and attachments.
+    Returns the message id and which recipients were accepted and rejected; some
+    recipients being rejected is a result, not an error. A refused message and an
+    unreachable or failing service are distinct errors.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_MAIL_REJECTED:
+      description: >-
+        The server or provider refused the message, its sender, its credentials or
+        every recipient. Sending the same message again is unlikely to succeed.
+    ERR_MAIL_UNAVAILABLE:
+      description: >-
+        The transport could not be reached, timed out, or failed on its own side,
+        including a temporary refusal. The same message may succeed if retried.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [to, subject]
+    anyOf: [{ required: [text] }, { required: [html] }]
+    examples:
+      - { to: ada@example.com, subject: Welcome, text: Your account is ready. }
+    properties:
+      from:
+        description: The sender. Omitted, the transport's own default sender is used.
+        $ref: "#/$defs/Address"
+      to: { description: The primary recipients., $ref: "#/$defs/Addresses" }
+      cc: { description: Recipients receiving a visible copy., $ref: "#/$defs/Addresses" }
+      bcc: { description: Recipients receiving a hidden copy., $ref: "#/$defs/Addresses" }
+      replyTo: { description: Where replies are addressed., $ref: "#/$defs/Address" }
+      subject: { type: string, description: The subject line. }
+      text: { type: string, description: The plain-text body. }
+      html: { type: string, description: The HTML body. }
+      headers:
+        type: object
+        additionalProperties: { type: string }
+        description: Extra message headers, by name.
+      attachments:
+        type: array
+        items: { $ref: "#/$defs/Attachment" }
+        description: Files attached to the message, in order.
+    $defs:
+      Address:
+        anyOf:
+          - { type: string, minLength: 1, description: An email address. }
+          - type: object
+            additionalProperties: false
+            required: [name, address]
+            properties:
+              name: { type: string, description: The display name. }
+              address: { type: string, minLength: 1, description: The email address. }
+      Addresses:
+        anyOf:
+          - { $ref: "#/$defs/Address" }
+          - { type: array, minItems: 1, items: { $ref: "#/$defs/Address" } }
+      Attachment:
+        type: object
+        additionalProperties: false
+        required: [filename, content]
+        properties:
+          filename: { type: string, minLength: 1, description: The file name shown to the recipient. }
+          content: { x-telo-type: Telo.Bytes, description: The file's bytes. }
+          contentType:
+            type: string
+            description: The media type. Omitted, it is derived from the file name.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, accepted, rejected]
+    properties:
+      messageId: { type: string, description: The message id the transport assigned. }
+      accepted:
+        type: array
+        items: { type: string }
+        description: The email addresses the transport accepted the message for.
+      rejected:
+        type: array
+        items: { type: string }
+        description: The email addresses the transport refused while accepting the rest.
+---
+kind: Telo.Definition
+metadata:
+  name: Smtp
+  description: >-
+    Sends email through an SMTP server over a pool of reused connections, with
+    implicit TLS or STARTTLS and optional username and password authentication. A
+    message without a sender is sent from the configured default. A permanent
+    refusal is a rejection; a temporary refusal, a timeout or a lost connection is
+    unavailability.
+extends: Self.Transport
+controllers: [pkg:telo/local/js?path=./nodejs/mail.mjs&local_path=./nodejs/src/index.ts#Smtp]
+schema:
+  type: object
+  additionalProperties: false
+  required: [host, from]
+  examples:
+    - host: smtp.example.com
+      port: 587
+      starttls: require
+      auth: { user: mailer, pass: !cel "secrets.smtpPassword" }
+      from: { name: Example, address: no-reply@example.com }
+  properties:
+    host:
+      title: Host
+      type: string
+      minLength: 1
+      x-telo-eval: compile
+      description: The SMTP server's host name or IP address.
+    port:
+      title: Port
+      type: integer
+      minimum: 1
+      maximum: 65535
+      x-telo-type: Telo.TcpPort
+      x-telo-eval: compile
+      description: The server's port. Omitted, 465 when `secure` and 587 otherwise.
+    secure:
+      title: Implicit TLS
+      type: boolean
+      default: false
+      x-telo-eval: compile
+      description: >-
+        Whether the connection is TLS from its first byte (usually port 465). When
+        true, `starttls` does not apply.
+    starttls:
+      title: STARTTLS
+      type: string
+      enum: [require, opportunistic, never]
+      default: require
+      x-telo-eval: compile
+      description: >-
+        How a plain connection upgrades to TLS: `require` (the default) fails when
+        the server does not offer STARTTLS, `opportunistic` upgrades when it is
+        offered, and `never` stays in plain text.
+    auth:
+      title: Authentication
+      type: object
+      additionalProperties: false
+      required: [user, pass]
+      description: Username and password the server is signed in to with. Omitted, no sign-in.
+      properties:
+        user: { type: string, x-telo-eval: compile, description: The username. }
+        pass: { type: string, x-telo-eval: compile, description: The password, typically from `secrets:`. }
+    from:
+      title: Default sender
+      x-telo-eval: compile
+      description: The sender of every message that names none.
+      anyOf:
+        - { type: string, minLength: 1, description: An email address. }
+        - type: object
+          additionalProperties: false
+          required: [name, address]
+          properties:
+            name: { type: string, description: The display name. }
+            address: { type: string, minLength: 1, description: The email address. }
+    pool:
+      title: Pool
+      type: object
+      additionalProperties: false
+      description: How many connections are kept open and how long each is reused.
+      properties:
+        maxConnections:
+          type: integer
+          minimum: 1
+          default: 5
+          x-telo-eval: compile
+          description: The most connections open to the server at once.
+        maxMessages:
+          type: integer
+          minimum: 1
+          default: 100
+          x-telo-eval: compile
+          description: How many messages one connection sends before it is replaced.
+    # No `default:` — the kernel fills defaults without decoding them into an
+    # instance type, so a written `30s` default fails validation at boot.
+    timeout:
+      title: Timeout
+      x-telo-type: Telo.Duration
+      x-telo-eval: compile
+      description: >-
+        How long connecting, the server's greeting and each wait for a reply may
+        take before the send fails as unavailable. Must be longer than zero; 30s
+        when omitted.
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.timeout) || duration(self.timeout) > duration('0s')"
+      code: MAIL_SMTP_TIMEOUT_NOT_POSITIVE
+      message: sets a timeout that is not longer than zero.
+---
+kind: Telo.Definition
+metadata:
+  name: Capture
+  description: >-
+    Records every message in memory instead of delivering it, answering a fresh
+    message id with every recipient accepted, so tests can read back exactly what
+    an application sent. Messages live until the application stops and are never
+    shared between processes.
+extends: Self.Transport
+controllers: [pkg:telo/local/js?path=./nodejs/mail.mjs&local_path=./nodejs/src/index.ts#Capture]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata:
+  name: CaptureRead
+  description: >-
+    Reads back the messages a capture transport recorded, oldest first, each as it
+    was handed to the transport plus its message id. Optionally only the messages
+    addressed to one recipient in their to list, compared case-insensitively.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/mail.mjs&local_path=./nodejs/src/index.ts#CaptureRead]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      to:
+        type: string
+        minLength: 1
+        description: >-
+          Only messages with this email address among their `to` recipients. Omitted,
+          every message.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messages]
+    properties:
+      messages:
+        type: array
+        description: The recorded messages, newest last.
+        items:
+          type: object
+          additionalProperties: false
+          required: [messageId, to, subject]
+          properties:
+            messageId: { type: string, description: The id the capture answered the send with. }
+            from: { $ref: "#/$defs/Address" }
+            to: { $ref: "#/$defs/Addresses" }
+            cc: { $ref: "#/$defs/Addresses" }
+            bcc: { $ref: "#/$defs/Addresses" }
+            replyTo: { $ref: "#/$defs/Address" }
+            subject: { type: string }
+            text: { type: string }
+            html: { type: string }
+            headers: { type: object, additionalProperties: { type: string } }
+            attachments: { type: array, items: { $ref: "#/$defs/Attachment" } }
+    $defs:
+      Address:
+        anyOf:
+          - { type: string, minLength: 1 }
+          - type: object
+            additionalProperties: false
+            required: [name, address]
+            properties: { name: { type: string }, address: { type: string, minLength: 1 } }
+      Addresses:
+        anyOf:
+          - { $ref: "#/$defs/Address" }
+          - { type: array, minItems: 1, items: { $ref: "#/$defs/Address" } }
+      Attachment:
+        type: object
+        additionalProperties: false
+        required: [filename, content]
+        properties:
+          filename: { type: string, minLength: 1 }
+          content: { x-telo-type: Telo.Bytes }
+          contentType: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+  required: [capture]
+  examples:
+    - capture: !ref mail
+  properties:
+    capture:
+      title: Capture
+      description: The capture transport whose messages are read.
+      x-telo-ref: { kind: Self.Capture, use: dependency }

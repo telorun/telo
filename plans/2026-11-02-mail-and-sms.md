@@ -1,5 +1,5 @@
 ---
-status: approved
+status: done
 priority: medium
 depends-on: [2026-11-02-http-cookies-tls-basic.md]
 packages: [modules/mail, modules/mail-resend, modules/sms, modules/sms-twilio]

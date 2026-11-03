@@ -1,0 +1,135 @@
+kind: Telo.Library
+metadata:
+  name: Sms
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Messaging]
+  description: >-
+    Send text messages — one-time codes, verification and sign-in links, alerts,
+    notifications — to phone numbers in international E.164 form through one
+    contract every provider implements. Tells a refused message apart from an
+    unreachable or failing service, and includes an in-memory capture transport
+    that records each message so tests can read it back.
+requires:
+  # 0.100.0: `throws:` on a Telo.Abstract, the ceiling every transport falls within.
+  telo: ">=0.100.0"
+exports: { kinds: [Transport, Capture, CaptureRead] }
+---
+# The provider-neutral contract. Anything that sends a text message types its
+# slot against this abstract; a transport extends it and is chosen where the
+# application declares it.
+kind: Telo.Abstract
+metadata:
+  name: Transport
+  description: >-
+    Sends one text message to one phone number, from an optional sender number.
+    Returns the provider's message id and whether the message was already sent or
+    only queued for sending. A refused message and an unreachable or failing
+    service are distinct errors.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_SMS_REJECTED:
+      description: >-
+        The provider refused the message, its sender, its recipient or the
+        credentials. Sending the same message again is unlikely to succeed.
+    ERR_SMS_UNAVAILABLE:
+      description: >-
+        The transport could not be reached, timed out, or failed on its own side,
+        including a temporary refusal or a rate limit. The same message may succeed
+        if retried.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [to, text]
+    examples:
+      - { to: "+15551234567", text: "Your code is 123456." }
+    properties:
+      to:
+        type: string
+        pattern: "^\\+[1-9][0-9]{1,14}$"
+        description: The recipient's number in E.164 form, such as `+15551234567`.
+      from:
+        type: string
+        pattern: "^\\+[1-9][0-9]{1,14}$"
+        description: The sender's number in E.164 form. Omitted, the transport's own default sender.
+      text: { type: string, minLength: 1, description: The message text. }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messageId, status]
+    properties:
+      messageId: { type: string, description: The message id the transport assigned. }
+      status:
+        type: string
+        enum: [queued, sent]
+        description: >-
+          `sent` when the message has already left for the carrier, `queued` when
+          the transport accepted it for sending later.
+---
+kind: Telo.Definition
+metadata:
+  name: Capture
+  description: >-
+    Records every text message in memory instead of sending it, answering a fresh
+    message id with status sent, so tests can read back exactly what an
+    application sent. Messages live until the application stops and are never
+    shared between processes.
+extends: Self.Transport
+controllers: [pkg:telo/local/js?path=./nodejs/sms.mjs&local_path=./nodejs/src/index.ts#Capture]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata:
+  name: CaptureRead
+  description: >-
+    Reads back the text messages a capture transport recorded, oldest first, each
+    as it was handed to the transport plus its message id. Optionally only the
+    messages sent to one phone number.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/sms.mjs&local_path=./nodejs/src/index.ts#CaptureRead]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      to:
+        type: string
+        pattern: "^\\+[1-9][0-9]{1,14}$"
+        description: Only messages sent to this number, in E.164 form. Omitted, every message.
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [messages]
+    properties:
+      messages:
+        type: array
+        description: The recorded messages, newest last.
+        items:
+          type: object
+          additionalProperties: false
+          required: [messageId, to, text]
+          properties:
+            messageId: { type: string, description: The id the capture answered the send with. }
+            to: { type: string }
+            from: { type: string }
+            text: { type: string }
+schema:
+  type: object
+  additionalProperties: false
+  required: [capture]
+  examples:
+    - capture: !ref sms
+  properties:
+    capture:
+      title: Capture
+      description: The capture transport whose messages are read.
+      x-telo-ref: { kind: Self.Capture, use: dependency }

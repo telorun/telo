@@ -1,0 +1,232 @@
+kind: Telo.Library
+metadata:
+  name: MailResend
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Messaging]
+  description: >-
+    Send transactional email — verification links, password resets, receipts,
+    notifications — through the Resend email API, authenticated with an API key.
+    Handles display names, copies, reply-to, plain-text and HTML bodies, custom
+    headers and file attachments, and tells a refused message apart from an
+    unreachable or failing service.
+requires:
+  # 0.128.0: the body is a built-in `Telo.Sequence`, which 0.127.0 does not know.
+  telo: ">=0.128.0"
+imports: { Mail: ../mail, Http: ../http-client }
+exports: { kinds: [Transport] }
+---
+# Resend takes each address as one string, so `{ name, address }` is written as
+# `Name <address>`, the name quoted when it holds a character that would split it.
+kind: Telo.Function
+metadata:
+  name: mailbox
+  description: One address as the single string Resend takes, with its display name when it has one.
+params:
+  - name: address
+    schema:
+      anyOf:
+        - { type: string, minLength: 1 }
+        - type: object
+          additionalProperties: false
+          required: [name, address]
+          properties: { name: { type: string }, address: { type: string, minLength: 1 } }
+returns: { schema: { type: string } }
+body: !cel >-
+  type(address) == type('') ? address :
+  address.name == '' ? address.address :
+  address.name.matches('^[^()<>\\[\\]:;@\\\\,."]*$') ? address.name + ' <' + address.address + '>' :
+  '"' + replace(replace(address.name, '\\', '\\\\'), '"', '\\"') + '" <' + address.address + '>'
+---
+kind: Telo.Function
+metadata:
+  name: mailboxes
+  description: One address or a list of them as the list of strings Resend takes.
+params:
+  - name: addresses
+    schema:
+      anyOf:
+        - { type: string, minLength: 1 }
+        - { type: object, additionalProperties: false, required: [name, address], properties: { name: { type: string }, address: { type: string, minLength: 1 } } }
+        - type: array
+          items:
+            anyOf:
+              - { type: string, minLength: 1 }
+              - { type: object, additionalProperties: false, required: [name, address], properties: { name: { type: string }, address: { type: string, minLength: 1 } } }
+returns: { schema: { type: array, items: { type: string } } }
+body: !cel "type(addresses) == type([]) ? addresses.map(a, Self.mailbox(a)) : [Self.mailbox(addresses)]"
+---
+# The email address alone: an object's `address`, or the `<…>` part of a string
+# written `Name <address>`.
+kind: Telo.Function
+metadata:
+  name: bareAddresses
+  description: One address or a list of them as the bare email addresses they name.
+params:
+  - name: addresses
+    schema:
+      anyOf:
+        - { type: string, minLength: 1 }
+        - { type: object, additionalProperties: false, required: [name, address], properties: { name: { type: string }, address: { type: string, minLength: 1 } } }
+        - type: array
+          items:
+            anyOf:
+              - { type: string, minLength: 1 }
+              - { type: object, additionalProperties: false, required: [name, address], properties: { name: { type: string }, address: { type: string, minLength: 1 } } }
+returns: { schema: { type: array, items: { type: string } } }
+body: !cel >-
+  (type(addresses) == type([]) ? addresses : [addresses]).map(a,
+    type(a) == type('')
+      ? cel.bind(g, regexGroups(a, '<([^<>]+)>\\s*$'), size(g) > 0 ? g[0] : a).trim()
+      : a.address.trim())
+---
+kind: Telo.Definition
+metadata:
+  name: Transport
+  description: >-
+    Sends one email through the Resend API with a bearer API key. A message without
+    a sender is sent from the configured default. Every recipient is reported
+    accepted, since Resend accepts or refuses a message whole; a refused request is
+    a rejection, while a timeout, a rate limit, an unreachable or failing service
+    is unavailability.
+extends: Mail.Transport
+schema:
+  type: object
+  additionalProperties: false
+  required: [apiKey, from]
+  examples:
+    - apiKey: !cel "secrets.resendApiKey"
+      from: { name: Example, address: no-reply@example.com }
+  properties:
+    apiKey:
+      title: API key
+      type: string
+      minLength: 1
+      x-telo-eval: compile
+      description: The Resend API key, sent as a bearer token. Take it from `secrets:`.
+    from:
+      title: Default sender
+      x-telo-eval: compile
+      description: The sender of every message that names none, on a domain verified with Resend.
+      anyOf:
+        - { type: string, minLength: 1, description: An email address. }
+        - type: object
+          additionalProperties: false
+          required: [name, address]
+          properties:
+            name: { type: string, description: The display name. }
+            address: { type: string, minLength: 1, description: The email address. }
+    baseUrl:
+      title: Base URL
+      type: string
+      pattern: "^https?://.*[^/]$"
+      default: https://api.resend.com
+      x-telo-eval: compile
+      description: Where the API is reached, without a trailing slash; messages are posted to `<baseUrl>/emails`.
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: send }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        additionalProperties: false
+        required: [body, recipients]
+        properties: { body: { type: object }, recipients: { type: array, items: { type: string } } }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        additionalProperties: false
+        required: [id, recipients]
+        properties: { id: { type: string }, recipients: { type: array, items: { type: string } } }
+    steps:
+      - name: post
+        try:
+          - name: http
+            invoke:
+              kind: Http.Request
+              client:
+                kind: Http.Client
+                baseUrl: !cel "self.baseUrl"
+                credential: { kind: Http.BearerToken, token: !cel "self.apiKey" }
+            inputs: { url: /emails, method: POST, body: !cel "inputs.body" }
+        catch:
+          - name: unreachable
+            throw:
+              code: ERR_MAIL_UNAVAILABLE
+              message: !interpolate "The request to Resend failed: ${{ error.message }}"
+      # Resend's error body is `{ statusCode, name, message }`.
+      - name: detail
+        value: !cel >-
+          cel.bind(body, steps.http.result.body,
+            type(body) == type({}) && 'message' in body && type(body.message) == type('')
+              ? ('name' in body && type(body.name) == type('') ? body.name + ': ' : '') + body.message
+              : '')
+      # 408 and 429 are temporary refusals; any other 4xx refuses the message.
+      - name: outcome
+        switch: !cel >-
+          cel.bind(status, steps.http.result.status,
+            status >= 200 && status < 300 ? 'accepted' :
+            status >= 400 && status < 500 && status != 408 && status != 429 ? 'rejected' : 'unavailable')
+        cases:
+          accepted:
+            - name: readable
+              if: !cel >-
+                !(type(steps.http.result.body) == type({}) && 'id' in steps.http.result.body &&
+                  type(steps.http.result.body.id) == type(''))
+              then:
+                - name: unreadable
+                  throw:
+                    code: ERR_MAIL_UNAVAILABLE
+                    message: !interpolate "Resend answered HTTP ${{ steps.http.result.status }} without a message id; the message may already have been accepted."
+          rejected:
+            - name: refused
+              throw:
+                code: ERR_MAIL_REJECTED
+                message: !cel >-
+                  'Resend refused the message with HTTP ' + string(steps.http.result.status) +
+                  (steps.detail.result != '' ? ': ' + steps.detail.result : '')
+          unavailable:
+            - name: failed
+              throw:
+                code: ERR_MAIL_UNAVAILABLE
+                message: !cel >-
+                  'Resend answered HTTP ' + string(steps.http.result.status) +
+                  (steps.detail.result != '' ? ': ' + steps.detail.result : '')
+    outputs:
+      id: !cel "string(steps.http.result.body.id)"
+      recipients: !cel "inputs.recipients"
+invoke: !ref send
+inputs:
+  body: !cel >-
+    merge(
+      merge(
+        {
+          'from': Self.mailbox(has(inputs.from) ? inputs.from : self.from),
+          'to': Self.mailboxes(inputs.to),
+          'subject': inputs.subject
+        },
+        compact({
+          'cc': has(inputs.cc) ? dyn(Self.mailboxes(inputs.cc)) : null,
+          'bcc': has(inputs.bcc) ? dyn(Self.mailboxes(inputs.bcc)) : null,
+          'reply_to': has(inputs.replyTo) ? dyn(Self.mailbox(inputs.replyTo)) : null,
+          'headers': has(inputs.headers) ? dyn(inputs.headers) : null,
+          'attachments': has(inputs.attachments)
+            ? dyn(inputs.attachments.map(a, merge(
+                {'filename': a.filename, 'content': bytesToBase64(a.content)},
+                has(a.contentType) ? {'content_type': a.contentType} : {})))
+            : null
+        })),
+      merge(
+        has(inputs.text) ? {'text': inputs.text} : {},
+        has(inputs.html) ? {'html': inputs.html} : {}))
+  recipients: !cel >-
+    Self.bareAddresses(inputs.to) +
+    (has(inputs.cc) ? Self.bareAddresses(inputs.cc) : []) +
+    (has(inputs.bcc) ? Self.bareAddresses(inputs.bcc) : [])
+result:
+  messageId: !cel "result.id"
+  accepted: !cel "result.recipients"
+  rejected: []
