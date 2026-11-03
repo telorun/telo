@@ -1701,6 +1701,9 @@ importers:
       '@sinclair/typebox':
         specifier: ^0.34.48
         version: 0.34.48
+      '@telorun/cel':
+        specifier: workspace:*
+        version: link:../../../cel/nodejs
       '@telorun/http-dispatch':
         specifier: workspace:*
         version: link:../../http-dispatch/nodejs
@@ -2684,9 +2687,6 @@ importers:
       '@floating-ui/react-dom':
         specifier: 2.1.8
         version: 2.1.8(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
-      '@telorun/i18n':
-        specifier: workspace:*
-        version: link:../../i18n/nodejs
       '@telorun/message-format':
         specifier: workspace:*
         version: link:../../../message-format/nodejs

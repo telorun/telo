@@ -1,0 +1,23 @@
+{
+  "kind": "Telo.Abstract",
+  "metadata": {
+    "name": "Translations",
+    "description": "Translations of an application's texts into one language, listed once in the application's translations block and used for every text the application and its libraries show. Each source of translations specializes it and states the language it translates into."
+  },
+  "capability": "Telo.Provider",
+  "schema": {
+    "type": "object",
+    "required": [
+      "lang"
+    ],
+    "properties": {
+      "lang": {
+        "title": "Language",
+        "description": "The language the translations are written in, as an RFC 5646 language tag.",
+        "type": "string",
+        "format": "language-tag"
+      }
+    },
+    "additionalProperties": true
+  }
+}

@@ -1617,6 +1617,7 @@ schema:
             properties:
               headers: { type: object, additionalProperties: { type: string } }
               ip: { type: string }
+              lang: { type: string, description: The language negotiated for the request. }
     placement:
       title: Placement
       description: >-
@@ -2571,6 +2572,7 @@ inputType:
         properties:
           headers: { type: object, additionalProperties: { type: string } }
           ip: { type: string }
+          lang: { type: string, description: The language negotiated for the request. }
       # The application's width, used when the page declares none.
       pageWidth: { $ref: "telo://Self/PageWidth" }
 outputType:
@@ -2637,6 +2639,7 @@ schema:
             properties:
               headers: { type: object, additionalProperties: { type: string } }
               ip: { type: string }
+              lang: { type: string, description: The language negotiated for the request. }
           query:
             x-telo-context-eval: accessor
             x-telo-context-from: query

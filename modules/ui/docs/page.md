@@ -33,7 +33,7 @@ children:
   are paths, and `//reports` or `/\reports` are refused by `telo check`
   (`SCHEMA_VIOLATION`), since a browser reads them as another host.
 - Inside `children`, each node's `when:` and its leaf values may read
-  `request` — `request.headers` (lower-case names) and `request.ip` — and are
+  `request` — `request.headers` (lower-case names), `request.ip` and `request.lang` (the language the server negotiated) — and are
   evaluated for every request. A `shown` condition and a `value` or `list`
   node read `query` in the browser instead, and never `request`
   (`CEL_UNKNOWN_IDENTIFIER`).
@@ -48,7 +48,7 @@ provides is judged against [`Ui.SpecNode`](nodes.md) once and stands for every
 request, and one that is not valid is replaced by an `error` node
 (`ERR_UI_NODE_INVALID`) and logged.
 
-Invoked with `{ request: { headers, ip? }, pageWidth? }`, the page answers
+Invoked with `{ request: { headers, ip?, lang? }, pageWidth? }`, the page answers
 `{ path, title, query, width, children }`: `title` the record of its text,
 `query` the declared parameters (`{}` with none), `width` as under
 [Width](#width), and `children` its nodes for that

@@ -1121,7 +1121,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 7,
+        "generation": 8,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1135,7 +1135,7 @@
       "message": "Session.Hello",
       "part": "response",
       "body": {
-        "generation": 7,
+        "generation": 8,
         "controller": {
           "telo": "0.103.2",
           "runtime": {
@@ -1259,6 +1259,54 @@
       "message": "Throws.DisplayMessage",
       "part": "response",
       "body": {}
+    },
+    {
+      "message": "Translations.Lookup",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "preferences": [
+          "pl-PL",
+          "en"
+        ],
+        "texts": [
+          {
+            "text": "Invoice {$number} is overdue",
+            "context": null,
+            "lang": "en",
+            "computed": false
+          }
+        ]
+      }
+    },
+    {
+      "message": "Translations.Lookup",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "preferences": [],
+        "texts": []
+      }
+    },
+    {
+      "message": "Translations.Lookup",
+      "part": "response",
+      "body": {
+        "fallback": "en",
+        "languages": [
+          "en",
+          "pl"
+        ],
+        "lang": "pl",
+        "texts": [
+          {
+            "text": "Faktura {$number} jest przeterminowana",
+            "context": null,
+            "lang": "pl",
+            "computed": false
+          }
+        ]
+      }
     },
     {
       "message": "Value.Decode",
@@ -1509,7 +1557,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": "7",
+        "generation": "8",
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1541,7 +1589,7 @@
       "message": "Session.Hello",
       "part": "request",
       "body": {
-        "generation": 7,
+        "generation": 8,
         "kernel": {
           "telo": "0.103.2",
           "runtime": {
@@ -1818,6 +1866,37 @@
         "code": ""
       },
       "pointer": "/code"
+    },
+    {
+      "name": "a translation lookup whose text is no record",
+      "message": "Translations.Lookup",
+      "part": "request",
+      "body": {
+        "instance": "h1",
+        "preferences": [
+          "pl"
+        ],
+        "texts": [
+          {
+            "text": "Save",
+            "lang": "en",
+            "computed": false
+          }
+        ]
+      },
+      "pointer": "/texts/0"
+    },
+    {
+      "name": "a translation answer serving no language",
+      "message": "Translations.Lookup",
+      "part": "response",
+      "body": {
+        "fallback": "en",
+        "languages": [],
+        "lang": "en",
+        "texts": []
+      },
+      "pointer": "/languages"
     }
   ]
 }

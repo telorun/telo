@@ -4,9 +4,8 @@
 # reads; Korean has a single plural form, so a plural is translated as one
 # text, or with an explicit `=0` case where that reads better. A word told
 # apart by its context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: korean
+kind: Telo.TextTranslations
+metadata: { name: korean }
 lang: ko
 texts:
   # Applications and pages.
@@ -99,9 +98,7 @@ texts:
   - text: "{$count} projects so far."
     translation:
       plural: count
-      cases:
-        "=0": "아직 프로젝트가 없습니다."
-        other: "지금까지 프로젝트 {$count}개."
+      cases: { "=0": "아직 프로젝트가 없습니다.", other: "지금까지 프로젝트 {$count}개." }
   - { text: "{$team} started {$project} most recently.", translation: "{$team} 팀이 가장 최근에 시작한 프로젝트: {$project}." }
   - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "브라우저가 읽은 숫자에 맞게 고른 복수형과, 값이 레코드에서 오는 텍스트입니다." }
   - { text: Open, context: state, translation: "열림" }
@@ -572,16 +569,11 @@ texts:
   - { text: From, translation: "시작" }
   - { text: To, translation: "끝" }
   - { text: Must not start after it ends, translation: "끝난 후에 시작할 수 없습니다" }
-  - text: "Longer than {$count} days"
-    translation: "{$count}일보다 깁니다"
-  - text: "Longer than {$count} weeks"
-    translation: "{$count}주보다 깁니다"
-  - text: "Longer than {$count} months"
-    translation: "{$count}개월보다 깁니다"
-  - text: "Longer than {$count} quarters"
-    translation: "{$count}분기보다 깁니다"
-  - text: "Longer than {$count} years"
-    translation: "{$count}년보다 깁니다"
+  - { text: "Longer than {$count} days", translation: "{$count}일보다 깁니다" }
+  - { text: "Longer than {$count} weeks", translation: "{$count}주보다 깁니다" }
+  - { text: "Longer than {$count} months", translation: "{$count}개월보다 깁니다" }
+  - { text: "Longer than {$count} quarters", translation: "{$count}분기보다 깁니다" }
+  - { text: "Longer than {$count} years", translation: "{$count}년보다 깁니다" }
   - { text: Not found, translation: "찾을 수 없음" }
   - { text: "This application has no page at {$path}.", translation: "이 애플리케이션에는 {$path} 페이지가 없습니다." }
   - { text: Discard unsaved changes?, translation: "저장하지 않은 변경 사항을 버릴까요?" }

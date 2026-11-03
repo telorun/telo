@@ -10,7 +10,7 @@ else.
 | --- | --- |
 | `telo.yaml` | the application: the shapes the screen and the routes share, the pages, the server |
 | `stub-api.yaml` | the routes the screen calls, over fixture functions |
-| `polish.yaml` | the translator and its Polish catalog — the console's texts and the renderer's own words |
+| `polish.yaml` | the Polish translations — the console's texts and the renderer's own words |
 | `console.css` | the dark-blue table header, over the renderer's part names |
 
 ## Run
@@ -26,7 +26,7 @@ Google** goes to a consent stand-in that grants at once;
 or lapsed consent would.
 
 The UI, data-model and translation modules are not released yet, so this
-example imports `http-server`, `i18n`, `data-model`, `ui` and `ui-react` from
+example imports `http-server`, `data-model`, `ui` and `ui-react` from
 this workspace by relative path and runs only from a checkout. Its other import
 is pinned.
 
@@ -82,11 +82,11 @@ Http.Server (:8140)
 ## Translation
 
 Every text is written in English (`lang: en`). `polish.yaml` holds one
-`I18n.Catalog` with the Polish for each of them — page and node texts, the
+`Telo.TextTranslations` with the Polish for each of them — page and node texts, the
 models' titles, descriptions and option labels, plural headings in Polish's
 four forms, and every word the renderer draws on its own (`Ui.words`). The
-`I18n.Negotiator` named `language` picks the catalog language the
-`Accept-Language` header falls back to, and the application serves its
+application lists them in its `translations:` block, and the server negotiates
+each request's language from `Accept-Language`, so the application serves its
 documents in it; `telo check` warns about a catalog entry that matches no
 text.
 

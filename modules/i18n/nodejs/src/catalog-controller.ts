@@ -6,9 +6,9 @@ interface CatalogResource extends ResourceManifest {
 }
 
 /**
- * `I18n.Catalog`: configuration a translator reads as data. The kernel judges
- * every entry when the catalog is created; the instance only publishes what was
- * declared.
+ * `I18n.Catalog`: translations the application's set reads as data. The kernel
+ * judges every entry when the catalog is created; the instance only publishes
+ * what was declared.
  */
 export function create(resource: CatalogResource): ResourceInstance {
   return {

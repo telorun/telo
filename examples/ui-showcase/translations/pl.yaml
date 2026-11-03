@@ -3,9 +3,8 @@
 # draws on its own. A plural source is matched by the text its `other` case
 # reads and translated into Polish's four cases; a word told apart by its
 # context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: polish
+kind: Telo.TextTranslations
+metadata: { name: polish }
 lang: pl
 texts:
   # Applications and pages.

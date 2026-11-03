@@ -159,6 +159,20 @@ declares (or the built-in one for an ambient code), or nothing. The kernel holds
 `data` to the code's declared `data` schema first; a mismatch is
 `ERR_OUTPUT_INVALID`. In Node it is `ctx.declaredDisplayMessage(code, data)`.
 
+## Showing a text in the request's language
+
+The application lists its translations once, and every module is translated
+through that set. `Translations.Lookup` negotiates a language from a preference
+list — RFC 4647 lookup per entry against the served languages, a malformed or
+unserved entry skipped, the application's `lang:` when none is left — and shows
+each text record you send in it: the translation as a record whose `lang` is the
+language reached, or your own record when nothing translates it. Every answer
+carries the fallback and the served languages too. An inbound transport
+negotiates once per request and exposes the result as `lang`. Asked from `init()`
+before every catalog exists, it fails with the deferral the kernel retries. In
+Node it is `ctx.translations` (`negotiate`, `translate`, `translateAll`,
+`languages()`, `fallback`).
+
 ## Pointing a failure at the input it is about
 
 A failure may carry `inputPointer`, an RFC 6901 pointer into the inputs of the
@@ -173,18 +187,19 @@ of your own. A failure you rethrow keeps its `inputPointer` and `location`
 unchanged. In Node the options are `new InvokeError(code, message, data,
 { inputPointer })` and the context member `inputsAt`.
 
-## Generations, and `abi=telo-7`
+## Generations, and `abi=telo-8`
 
 Generation `3` is the shape shipping today: JSON in ABI buffers, described only by
-the ABI crate's layout. Generation `7` is the one this specification defines, and
-it is the generation in which the C ABI carries the protocol's messages. `4`, `5`
-and `6` were withdrawn before any carrier spoke them: `4`'s value encoding named
-the typed frame's millisecond timestamp payload (now RFC 3339 with a trimmed
-nanosecond fraction), `6` was `5` plus the two need messages, and `7` is `6` with
-a child run's inputs carrying the child's needs. Every handshake in the vectors
-states `7`, and `pnpm run check:controller-protocol` refuses a conformance vector
-whose handshake states another generation.
+the ABI crate's layout. Generation `8` is the one this specification defines, and
+it is the generation in which the C ABI carries the protocol's messages. `4` to `7`
+were withdrawn before any carrier spoke them: `4`'s value encoding named the typed
+frame's millisecond timestamp payload (now RFC 3339 with a trimmed nanosecond
+fraction), `6` was `5` plus the two need messages, `7` was `6` with a child run's
+inputs carrying the child's needs and the declared display message, and `8` is `7`
+with the translations lookup. Every handshake in the vectors states `8`, and
+`pnpm run check:controller-protocol` refuses a conformance vector whose handshake
+states another generation.
 
-**Do not write `abi=telo-7` into a module yet.** The ABI carrier has not landed,
+**Do not write `abi=telo-8` into a module yet.** The ABI carrier has not landed,
 and a kernel meeting that declaration refuses it. Published `abi=telo-3`
 candidates stay valid — specifying a new generation does not retire the old one.

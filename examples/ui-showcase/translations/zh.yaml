@@ -4,9 +4,8 @@
 # `other` case reads; Chinese has a single plural form, so a plural is a plain
 # string or an `other` case beside an explicit `=0`. A word told apart by its
 # context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: chinese
+kind: Telo.TextTranslations
+metadata: { name: chinese }
 lang: zh
 texts:
   # Applications and pages.
@@ -97,11 +96,7 @@ texts:
   - { text: Project, translation: "项目" }
   - { text: Texts, translation: "文本" }
   - text: "{$count} projects so far."
-    translation:
-      plural: count
-      cases:
-        "=0": "还没有项目。"
-        other: "目前共有 {$count} 个项目。"
+    translation: { plural: count, cases: { "=0": "还没有项目。", other: "目前共有 {$count} 个项目。" } }
   - { text: "{$team} started {$project} most recently.", translation: "{$team} 最近启动了 {$project}。" }
   - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "根据读取到的数字在浏览器中选择的复数形式，以及取值来自记录的文本。" }
   - { text: Open, context: state, translation: "未关闭" }

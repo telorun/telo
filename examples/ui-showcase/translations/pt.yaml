@@ -4,9 +4,8 @@
 # by the text its `other` case reads and translated into Portuguese's cases —
 # `one` (0 and 1) and `other`, with `=0` where a sentence of its own reads
 # better; a word told apart by its context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: portuguese
+kind: Telo.TextTranslations
+metadata: { name: portuguese }
 lang: pt
 texts:
   # Applications and pages.

@@ -40,20 +40,17 @@ with:
     source: ../telo.yaml
     variables:
       dbFile: !cel "variables.dbFile.joinPath('ui-showcase-late-' + uuidv4() + '.db')"
-    ports:
-      http: 8156
+    ports: { http: 8156 }
 targets:
   - !ref app
 steps:
   # ---- Where a success goes ----
   - name: links
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/team-links, method: POST }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   - name: selfRedirect
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/loop, method: POST, responseType: text }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   - name: verifyAddresses
     invoke: { kind: Assert.Equals }
     inputs:
@@ -67,16 +64,13 @@ steps:
   # ---- Pausing a project: a manager's alone ----
   - name: anonymous
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/private/pause, method: POST, responseType: text }
-    inputs:
-      body: { code: OPS-7 }
+    inputs: { body: { code: OPS-7 } }
   - name: jamesSignIn
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/session/signin, method: POST }
-    inputs:
-      body: { email: james@northwind.example }
+    inputs: { body: { email: james@northwind.example } }
   - name: adaSignIn
     invoke: { kind: HttpClient.Request, client: !ref page, url: /api/session/signin, method: POST }
-    inputs:
-      body: { email: ada@northwind.example }
+    inputs: { body: { email: ada@northwind.example } }
   - name: cookies
     value:
       james: !cel "string(steps.jamesSignIn.result.headers['set-cookie']).split(';')[0]"
@@ -135,10 +129,10 @@ steps:
         anonymous: [ 401, "" ]
         notManager: [ 403, "" ]
         pause: [ 200, { code: OPS-7, name: Billing migration, status: paused } ]
-        pauseAgain: [ 409, en, { type: about:blank, title: Conflict, status: 409, detail: "OPS-7 is not running, so it cannot be paused.", code: PROJECT_NOT_ACTIVE, data: { lang: en } } ]
-        pauseAgainPolish: [ 409, pl, { type: about:blank, title: Conflict, status: 409, detail: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać.", code: PROJECT_NOT_ACTIVE, data: { lang: pl } } ]
+        pauseAgain: [ 409, en, { type: about:blank, title: Conflict, status: 409, detail: "OPS-7 is not running, so it cannot be paused.", code: PROJECT_NOT_ACTIVE, data: null } ]
+        pauseAgainPolish: [ 409, pl, { type: about:blank, title: Conflict, status: 409, detail: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać.", code: PROJECT_NOT_ACTIVE, data: null } ]
         # The language cookie wins over Accept-Language, as in every application.
-        pauseAgainChosenPolish: [ 409, pl, { type: about:blank, title: Conflict, status: 409, detail: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać.", code: PROJECT_NOT_ACTIVE, data: { lang: pl } } ]
+        pauseAgainChosenPolish: [ 409, pl, { type: about:blank, title: Conflict, status: 409, detail: "Projekt OPS-7 nie jest w toku, więc nie można go wstrzymać.", code: PROJECT_NOT_ACTIVE, data: null } ]
         unknown: [ 404, { type: about:blank, title: Not Found, status: 404, detail: "There is no project 'NOPE-1'.", code: PROJECT_UNKNOWN, data: { code: NOPE-1 } } ]
         malformed: [ 400, [ /body/code ] ]
         stored: [ paused ]

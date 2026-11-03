@@ -1,0 +1,143 @@
+{
+  "name": "Translations.Lookup",
+  "direction": "controller-to-kernel",
+  "spec": "7. Resolution & schema",
+  "request": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "Negotiate a language from a preference list, and show texts in it through the application's layered translations. Both lists may be empty: no preferences lands on the fallback, no texts asks only for the languages.",
+    "type": "object",
+    "properties": {
+      "instance": {
+        "type": "string",
+        "minLength": 1
+      },
+      "preferences": {
+        "description": "Language tags in preference order. A malformed or unserved entry is skipped, never refused.",
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "texts": {
+        "description": "The texts to show in the negotiated language, as their records.",
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/textRecord"
+        }
+      }
+    },
+    "required": [
+      "instance",
+      "preferences",
+      "texts"
+    ],
+    "additionalProperties": false,
+    "definitions": {
+      "textRecord": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "description": "The Message in its fragment spelling: a pattern, or a plural selection."
+          },
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lang": {
+            "type": "string",
+            "minLength": 1
+          },
+          "computed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "context",
+          "lang",
+          "computed"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "response": {
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "description": "The served languages, the language negotiated, and each text in it — the translation as a record whose `lang` is the language reached, or the text's own record when nothing translates it there.",
+    "type": "object",
+    "properties": {
+      "fallback": {
+        "description": "The application's own language: its `lang:`, else `und`.",
+        "type": "string",
+        "minLength": 1
+      },
+      "languages": {
+        "description": "Every served language, the fallback first.",
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "minItems": 1
+      },
+      "lang": {
+        "description": "The served language the preferences landed on.",
+        "type": "string",
+        "minLength": 1
+      },
+      "texts": {
+        "description": "One record per requested text, in order.",
+        "type": "array",
+        "items": {
+          "$ref": "#/definitions/textRecord"
+        }
+      }
+    },
+    "required": [
+      "fallback",
+      "languages",
+      "lang",
+      "texts"
+    ],
+    "additionalProperties": false,
+    "definitions": {
+      "textRecord": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "description": "The Message in its fragment spelling: a pattern, or a plural selection."
+          },
+          "context": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lang": {
+            "type": "string",
+            "minLength": 1
+          },
+          "computed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "text",
+          "context",
+          "lang",
+          "computed"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "errors": [
+    "ERR_LOCAL_REF_PENDING",
+    "ERR_CROSS_MODULE_REF_PENDING",
+    "ERR_MESSAGE_SYNTAX_INVALID"
+  ],
+  "synchronous": true,
+  "reentrant": false
+}

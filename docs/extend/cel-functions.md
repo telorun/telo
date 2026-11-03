@@ -214,7 +214,8 @@ export const Hmac: FunctionController<HmacResource, { key: string; message: stri
 ```
 
 - `create(resource, ctx)` may be asynchronous. `ctx` offers only
-  `resolveControllerFile`, `resolveNativeFile`, `log` and `effect`; register what
+  `resolveControllerFile`, `resolveNativeFile`, `log`, `effect` and `translations`
+  (the application's translation set: `negotiate`, `translate`); register what
   `create` allocates with `ctx.effect(…).perform()` so teardown and reload
   release it.
 - `call(args)` is **synchronous** — it runs inside one CEL expression. A `call`

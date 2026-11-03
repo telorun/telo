@@ -1,0 +1,13 @@
+# A library shipping translations with no import of the i18n module.
+kind: Telo.Library
+metadata:
+  name: ShippedTranslations
+  version: 1.0.0
+  description: Fixture library exporting Spanish translations.
+exports: { resources: [spanish] }
+---
+kind: Telo.TextTranslations
+metadata: { name: spanish }
+lang: es
+texts:
+  - { text: "Rate not found for {$user}", translation: "No se encontró la tarifa de {$user}" }

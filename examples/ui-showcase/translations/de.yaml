@@ -3,9 +3,8 @@
 # draws on its own. A plural source is matched by the text its `other` case
 # reads and translated into German's two cases, `one` and `other`; a word told
 # apart by its context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: german
+kind: Telo.TextTranslations
+metadata: { name: german }
 lang: de
 texts:
   # Applications and pages.

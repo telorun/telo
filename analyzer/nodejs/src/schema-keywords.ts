@@ -297,13 +297,6 @@ export const TELO_SCHEMA_ANNOTATIONS: Record<
       "This field holds a JSON Schema matched against the value an accessor field names: a JSON Pointer, relative to the object enclosing this field, to that `x-telo-eval: accessor` field. A schema that can never hold for the accessor's type is refused.",
     type: "string",
   },
-  "x-telo-text-catalog-set": {
-    title: "Text catalog set",
-    description:
-      "The catalogs at and beneath this node form one lookup set: each catalog written here, and the catalogs of every resource a reference here names (through that resource's own catalog sets). A text and context translated twice in one language across the set is refused. Only `true`; never nested under another catalog set.",
-    type: "boolean",
-    const: true,
-  },
   "x-telo-catches-for": {
     title: "Catches for",
     description:

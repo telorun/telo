@@ -43,8 +43,7 @@ with:
     source: ../telo.yaml
     variables:
       dbFile: !cel "variables.dbFile.joinPath('ui-showcase-routes-' + uuidv4() + '.db')"
-    ports:
-      http: 8152
+    ports: { http: 8152 }
 targets:
   - !ref app
 steps:
@@ -205,8 +204,7 @@ steps:
       body: { code: QA-1, name: Release checklist, status: active, budget: 2500, leadEmail: sofia@northwind.example }
   - name: refusedCreate
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/projects, method: POST }
-    inputs:
-      body: { code: not a code, name: Broken, status: active }
+    inputs: { body: { code: not a code, name: Broken, status: active } }
   - name: replace
     invoke: { kind: HttpClient.Request, client: !ref visitor, method: PUT }
     inputs:
@@ -244,16 +242,13 @@ steps:
   # ---- Tagging a project ----
   - name: tag
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/tags, method: POST }
-    inputs:
-      body: { tag: brand }
+    inputs: { body: { tag: brand } }
   - name: tagAgain
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/tags, method: POST }
-    inputs:
-      body: { tag: brand }
+    inputs: { body: { tag: brand } }
   - name: badTag
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/tags, method: POST }
-    inputs:
-      body: { tag: Brand }
+    inputs: { body: { tag: Brand } }
   - name: taggedSummary
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/project-summary }
   - name: verifyTags
@@ -277,20 +272,16 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/private/account, responseType: text }
   - name: anonymousPing
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/private/ping, method: POST, responseType: text }
-    inputs:
-      body: {}
+    inputs: { body: {} }
   - name: stranger
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session/signin, method: POST }
-    inputs:
-      body: { email: nobody@example.com }
+    inputs: { body: { email: nobody@example.com } }
   - name: formerMember
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session/signin, method: POST }
-    inputs:
-      body: { email: tomas@northwind.example }
+    inputs: { body: { email: tomas@northwind.example } }
   - name: signIn
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/session/signin, method: POST }
-    inputs:
-      body: { email: ada@northwind.example }
+    inputs: { body: { email: ada@northwind.example } }
   - name: session
     value:
       cookie: !cel "'theme=dark; ' + string(steps.signIn.result.headers['set-cookie']).split(';')[0]"
@@ -360,20 +351,17 @@ steps:
   # served under.
   - name: langPolish
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/lang?set=pl" }
-    inputs:
-      headers: { referer: "http://127.0.0.1:8152/tables?mode=compact#top" }
+    inputs: { headers: { referer: "http://127.0.0.1:8152/tables?mode=compact#top" } }
   - name: langElsewhere
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/lang?set=pl" }
-    inputs:
-      headers: { referer: "http://elsewhere.example/tables" }
+    inputs: { headers: { referer: "http://elsewhere.example/tables" } }
   - name: langOtherHost
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/api/lang?set=pl" }
-    inputs:
-      headers: { referer: "http://127.0.0.1:8152//elsewhere.example/tables" }
+    inputs: { headers: { referer: "http://127.0.0.1:8152//elsewhere.example/tables" } }
   - name: langEnglish
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/lang?set=en" }
   - name: langOther
-    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/lang?set=eo" }
+    invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/lang?set=not%20a%20tag" }
   - name: langMissing
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /api/lang }
   - name: verifyLanguage
@@ -423,8 +411,7 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/projects?limit=4" }
   - name: radixTag
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /radix/api/tags, method: POST }
-    inputs:
-      body: { tag: radix }
+    inputs: { body: { tag: radix } }
   - name: radixCounts
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/radix/api/task-counts?code=OPS-7" }
   - name: radixTasks
@@ -439,8 +426,7 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/projects?limit=4" }
   - name: brandTag
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /brand/api/tags, method: POST }
-    inputs:
-      body: { tag: mounted }
+    inputs: { body: { tag: mounted } }
   - name: brandCounts
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/brand/api/task-counts?code=OPS-7" }
   - name: brandTasks
@@ -455,8 +441,7 @@ steps:
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/sidebar/api/projects?limit=4" }
   - name: sidebarTag
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: /sidebar/api/tags, method: POST }
-    inputs:
-      body: { tag: sidebar }
+    inputs: { body: { tag: sidebar } }
   - name: sidebarCounts
     invoke: { kind: HttpClient.Request, client: !ref visitor, url: "/sidebar/api/task-counts?code=OPS-7" }
   - name: sidebarTasks

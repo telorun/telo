@@ -4,9 +4,8 @@
 # reads; Turkish keeps a noun after a number singular, so a plural is one form,
 # with an `=0` case where nothing reads better; a word told apart by its
 # context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: turkish
+kind: Telo.TextTranslations
+metadata: { name: turkish }
 lang: tr
 texts:
   # Applications and pages.
@@ -99,9 +98,7 @@ texts:
   - text: "{$count} projects so far."
     translation:
       plural: count
-      cases:
-        "=0": Henüz proje yok.
-        other: "Şu ana kadar {$count} proje."
+      cases: { "=0": Henüz proje yok., other: "Şu ana kadar {$count} proje." }
   - { text: "{$team} started {$project} most recently.", translation: "En son {$project} projesini {$team} başlattı." }
   - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "Tarayıcıda, okuduğu sayıya göre seçilen bir çoğul biçim ve değerleri kayıttan gelen bir metin." }
   - { text: Open, context: state, translation: Açık }

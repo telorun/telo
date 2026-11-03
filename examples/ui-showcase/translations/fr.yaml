@@ -4,9 +4,8 @@
 # reads and translated into French's cases — `one` (0 and 1), `many` (large
 # round numbers such as a million) and `other`; a word told apart by its
 # context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: french
+kind: Telo.TextTranslations
+metadata: { name: french }
 lang: fr
 texts:
   # Applications and pages.

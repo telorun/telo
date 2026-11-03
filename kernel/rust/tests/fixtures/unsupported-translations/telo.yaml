@@ -1,0 +1,14 @@
+kind: Telo.Application
+metadata:
+  name: UnsupportedTranslations
+  version: 1.0.0
+  description: |
+    Lists the application's translations. This kernel reads none, so the load
+    must fail naming the block rather than show every text untranslated.
+lang: en
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: pl
+      texts:
+        - { text: Save, translation: Zapisz }

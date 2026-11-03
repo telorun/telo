@@ -16,7 +16,6 @@ import {
   loadGenerated,
   nameReadPadding,
   rulePadding,
-  catalogSetPadding,
   zonePadding,
   referentPadding,
   relationPadding,
@@ -107,9 +106,9 @@ import {
  *    by name holds each declaration as the places its reading is typed from,
  *    so both stay flat in P.
  *  - `reference-read padding`: an annotation reading through a reference — a
- *    resource rule's `resolve:` past a slot (keys of `form`), a text catalog
- *    set reaching another's (`set`), a zone requirement whose key crosses a
- *    reference (`work`) — each declaration it reads there padded with P = 0,
+ *    resource rule's `resolve:` past a slot (keys of `form`), a zone
+ *    requirement whose key crosses a reference (`work`) — each declaration it
+ *    reads there padded with P = 0,
  *    100 and 1000 entries nothing reads: per family, the door counter over the
  *    reader's keys and their door time per key. Such a read holds each
  *    declaration as the places its reader reads in it, so both stay flat in P.
@@ -671,7 +670,6 @@ const referenceReads = await Promise.all(
   (
     [
       ["rule", "form", rulePadding],
-      ["catalog set", "set", catalogSetPadding],
       ["zone", "work", zonePadding],
     ] as const
   ).flatMap(([label, reader, fixture]) =>

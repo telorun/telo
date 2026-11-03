@@ -2,8 +2,5 @@
 # does not run, so the kernel's refusal when the import creates the catalog is
 # what fails the run.
 kind: Telo.Application
-metadata:
-  name: CatalogPlaceholderApp
-  version: 1.0.0
-imports:
-  Lib: ./lib
+metadata: { name: CatalogPlaceholderApp, version: 1.0.0 }
+imports: { Lib: ./lib }

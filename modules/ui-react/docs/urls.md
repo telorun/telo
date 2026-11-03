@@ -202,7 +202,7 @@ entries share onto a single address, so the page holds one React and one host.
 }
 ```
 
-`lang` is present only when the application sets one. `stylesheets` is in
+`lang` is present unless the negotiated language is `und` (the application declares none and serves no other). `stylesheets` is in
 cascade order — the renderer's layout, each of the theme's control sets'
 stylesheets, the theme's token values and stylesheets, the token set chosen
 for this request, then the application's own — so two requests may get

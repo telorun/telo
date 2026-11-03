@@ -3,14 +3,15 @@ metadata:
   name: UiReactTranslatedTest
   version: 1.0.0
   description: |
-    An application with a translator serves each request in the language it
-    asks for: the documents carry the translated message and its tag, a text
+    An application with translations serves each request in the language the
+    server negotiated for it (Accept-Language, a cookie or a query): the
+    documents carry the translated message and its tag, a text
     with context is translated by its context, an enumeration's labels are
     translated while its values stay as written, the renderer's own words
-    arrive translated, and `Vary` names exactly the header the language is
-    read from — none when the language is one fixed tag. A
-    thousand different Accept-Language values produce no more documents than
-    the translator has languages plus the source. The application's own header
+    arrive translated, and the response says `Content-Language` and `Vary:
+    Accept-Language` plus the headers the negotiation reads. An application
+    serving English only sends neither. A thousand different Accept-Language
+    values produce no more documents than the application serves languages. The application's own header
     nodes travel in the application document, translated like the rest of it,
     with a composite provided, a menu's text and items translated, a node and
     a menu item delivered per request, and the header they read joins `Vary`.
@@ -28,9 +29,14 @@ with:
   - kind: App.Instance
     metadata: { name: fixture }
     source: ./__fixtures__/translated/telo.yaml
-    ports: { http: 8132 }
+    ports: { http: 8132, cookie: 8133 }
+  - kind: App.Instance
+    metadata: { name: english }
+    source: ./__fixtures__/english-only/telo.yaml
+    ports: { http: 8134 }
 targets:
   - !ref fixture
+  - !ref english
 steps:
   - name: polishApp
     invoke:
@@ -52,15 +58,28 @@ steps:
       kind: HttpClient.Request
       url: http://127.0.0.1:8132/_telo/ui/page?path=/
       headers: { accept-language: pl }
+  - name: germanApp
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8132/_telo/ui/app
+      headers: { accept-language: de }
+  - name: queryApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8132/_telo/ui/app?lang=pl" }
+  - name: polishShell
+    invoke:
+      kind: HttpClient.Request
+      url: http://127.0.0.1:8132/
+      headers: { accept-language: pl }
+      responseType: text
   - name: cookieApp
     invoke:
       kind: HttpClient.Request
-      url: http://127.0.0.1:8132/cookie/_telo/ui/app
+      url: http://127.0.0.1:8133/_telo/ui/app
       headers: { cookie: lang=pl }
-  - name: fixedApp
-    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8132/fixed/_telo/ui/app" }
-  - name: fixedShell
-    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8132/fixed/", responseType: text }
+  - name: englishOnlyApp
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8134/_telo/ui/app" }
+  - name: englishOnlyShell
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8134/", responseType: text }
   - name: verify
     invoke: { kind: Assert.Equals }
     inputs:
@@ -69,6 +88,7 @@ steps:
           lang: !cel "steps.polishApp.result.body.lang"
           title: !cel "steps.polishApp.result.body.title"
           vary: !cel "steps.polishApp.result.headers['vary']"
+          contentLanguage: !cel "steps.polishApp.result.headers['content-language']"
           save: !cel "steps.polishApp.result.body.words.save"
           header: !cel "steps.polishApp.result.body.header"
         english:
@@ -85,18 +105,32 @@ steps:
           label: !cel "steps.polishPage.result.body.children[2].fields[0].label"
           states: !cel "steps.polishPage.result.body.children[2].fields[1].labels"
           badge: !cel "steps.polishPage.result.body.children[3].text"
+        german:
+          lang: !cel "steps.germanApp.result.body.lang"
+          title: !cel "steps.germanApp.result.body.title"
+          contentLanguage: !cel "steps.germanApp.result.headers['content-language']"
+        query:
+          lang: !cel "steps.queryApp.result.body.lang"
+          vary: !cel "steps.queryApp.result.headers['vary']"
+          contentLanguage: !cel "steps.queryApp.result.headers['content-language']"
+        shell:
+          lang: !cel "steps.polishShell.result.body.contains('<html lang=\"pl\">')"
+          contentLanguage: !cel "steps.polishShell.result.headers['content-language']"
         cookie:
           lang: !cel "steps.cookieApp.result.body.lang"
           vary: !cel "steps.cookieApp.result.headers['vary']"
-        fixed:
-          lang: !cel "steps.fixedApp.result.body.lang"
-          varies: !cel "'vary' in steps.fixedApp.result.headers"
-          shellLang: !cel "steps.fixedShell.result.body.contains('<html lang=\"pl\">')"
+        englishOnly:
+          lang: !cel "steps.englishOnlyApp.result.body.lang"
+          save: !cel "steps.englishOnlyApp.result.body.words.save"
+          varies: !cel "'vary' in steps.englishOnlyApp.result.headers"
+          contentLanguage: !cel "'content-language' in steps.englishOnlyApp.result.headers"
+          shellVaries: !cel "'vary' in steps.englishOnlyShell.result.headers"
       expected:
         polish:
           lang: pl
           title: { lang: pl, message: [Faktury] }
           vary: Accept-Language, X-Role
+          contentLanguage: pl
           save: { lang: pl, message: [Zapisz] }
           header:
             width: contained
@@ -144,10 +178,18 @@ steps:
             - { value: open, label: { lang: pl, message: [Otwarta] } }
             - { value: paid, label: { lang: pl, message: [Opłacona] } }
           badge: { lang: pl, message: [Otwarte] }
-        cookie: { lang: pl, vary: Cookie }
-        fixed: { lang: pl, varies: false, shellLang: true }
+        german: { lang: en, title: { lang: en, message: [Invoices] }, contentLanguage: en }
+        query: { lang: pl, vary: "Accept-Language, X-Role", contentLanguage: pl }
+        shell: { lang: true, contentLanguage: pl }
+        cookie: { lang: pl, vary: "Accept-Language, Cookie, X-Role" }
+        englishOnly:
+          lang: en
+          save: { lang: en, message: [Save] }
+          varies: false
+          contentLanguage: false
+          shellVaries: false
   # A thousand different Accept-Language values, half asking for Polish and
-  # half for a language the translator lacks: two documents between them.
+  # half for a language the application lacks: two documents between them.
   - name: seen
     value: { n: !cel "0", etags: [] }
   - name: ask

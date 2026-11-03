@@ -4,9 +4,8 @@
 # reads and translated into Japanese's single form, `other`, with an `=0` case
 # where it reads better; a word told apart by its context is translated once
 # per context.
-kind: I18n.Catalog
-metadata:
-  name: japanese
+kind: Telo.TextTranslations
+metadata: { name: japanese }
 lang: ja
 texts:
   # Applications and pages.
@@ -99,9 +98,7 @@ texts:
   - text: "{$count} projects so far."
     translation:
       plural: count
-      cases:
-        "=0": "まだプロジェクトはありません。"
-        other: "これまでに {$count} 件のプロジェクトがあります。"
+      cases: { "=0": "まだプロジェクトはありません。", other: "これまでに {$count} 件のプロジェクトがあります。" }
   - { text: "{$team} started {$project} most recently.", translation: "最近では {$team} が {$project} を開始しました。" }
   - { text: "A plural chosen in the browser for the number it reads, and a text whose values come from the record.", translation: "読み取った数値に応じてブラウザーで選ばれる複数形と、値をレコードから得るテキストです。" }
   - { text: Open, context: state, translation: "オープン" }

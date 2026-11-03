@@ -1,0 +1,9 @@
+modules:
+  modules/http-server: Added
+body: "The request language is negotiated once per request and read as request.lang in
+  every request context (inputs, returns, catches, guards): Accept-Language by quality
+  and RFC 4647 lookup over the application's served languages, landing on the
+  application's lang:. Http.Server.preferredLanguages (a CEL expression over request
+  returning tags) is tried first, for a cookie, path prefix or query parameter. With
+  more than one served language a response whose production read the language carries
+  Content-Language and Vary, and a problem's detail is worded in request.lang."

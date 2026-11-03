@@ -3,9 +3,8 @@
 # draws on its own. A plural source is matched by the text its `other` case
 # reads and translated into Ukrainian's four cases (`other` holding fractions);
 # a word told apart by its context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: ukrainian
+kind: Telo.TextTranslations
+metadata: { name: ukrainian }
 lang: uk
 texts:
   # Applications and pages.

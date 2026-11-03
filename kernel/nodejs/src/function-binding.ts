@@ -76,6 +76,9 @@ export function functionContextOf(ctx: ResourceContext): FunctionContext {
       return ctx.log;
     },
     effect: (reason, body) => ctx.effect(reason, body),
+    get translations() {
+      return ctx.translations;
+    },
   };
 }
 

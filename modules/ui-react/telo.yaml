@@ -22,8 +22,10 @@ requires:
   # and so does the repeated group of a rule's `in:` pointer
   # (`/navigation/items(/*/items)*`), which 0.120.1 reads as a field this kind
   # does not declare (RESOURCE_RULE_INVALID).
-  telo: ">=0.121.0"
-imports: { Ui: ../ui, I18n: ../i18n, SseCodec: ../sse-codec }
+  # 0.129.0: the App reads the application's translations through ctx.translations,
+  # which an older runtime does not have.
+  telo: ">=0.129.0"
+imports: { Ui: ../ui, SseCodec: ../sse-codec }
 exports:
   kinds: [App, Theme, Controls]
   resources: [defaultTheme]
@@ -121,30 +123,6 @@ schema:
       $ref: "telo://manifest#/$defs/Text"
       x-telo-text-values: {}
       x-telo-eval: compile
-    lang:
-      title: Language
-      description: >-
-        The language a request asks for, read per request — a negotiator's
-        answer over its Accept-Language header — or one fixed tag. The documents
-        are in the catalog language it lands on through the translator, else in
-        the language the application module's `lang:` declares, else in none.
-      type: string
-      format: language-tag
-      x-telo-context:
-        type: object
-        properties:
-          request:
-            type: object
-            properties:
-              headers: { type: object, additionalProperties: { type: string } }
-              ip: { type: string }
-    translator:
-      title: Translator
-      description: >-
-        The catalogs every text of the application is looked up in: its titles,
-        its pages' texts, the labels of its data shapes and the renderer's own
-        words. A text no catalog translates is shown as written.
-      x-telo-ref: { kind: I18n.Translator, use: dependency }
     words:
       title: Words
       description: >-
@@ -186,6 +164,7 @@ schema:
                       properties:
                         headers: { type: object, additionalProperties: { type: string } }
                         ip: { type: string }
+                        lang: { type: string, description: The language negotiated for the request. }
     stylesheets:
       title: Stylesheets
       description: Stylesheets of the application's own, applied after everything else.
@@ -241,6 +220,7 @@ schema:
                 properties:
                   headers: { type: object, additionalProperties: { type: string } }
                   ip: { type: string }
+                  lang: { type: string, description: The language negotiated for the request. }
         end:
           title: End
           description: Nodes after the navigation, such as language or theme switches.
@@ -255,6 +235,7 @@ schema:
                 properties:
                   headers: { type: object, additionalProperties: { type: string } }
                   ip: { type: string }
+                  lang: { type: string, description: The language negotiated for the request. }
     pages:
       title: Pages
       description: >-

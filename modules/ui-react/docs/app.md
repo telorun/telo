@@ -7,8 +7,6 @@ An application of pages. A `Telo.Mount`: list it under an `Http.Server`'s
 | --- | --- | --- |
 | `title` | required | the application's name, a text shown in its header and as the document title |
 | `words` | required | the [`Ui.Words`](../../ui/docs/texts.md#the-renderers-own-words) the renderer draws on its own — `!ref Ui.words` for English |
-| `translator` | | an [`I18n.Translator`](../../i18n/README.md): every text is looked up in its catalogs |
-| `lang` | | the language a request is served in: a language tag, or an expression over `request` |
 | `theme` | required | one [`UiReact.Theme`](theme.md): `!ref UiReact.defaultTheme`, a theme another module publishes, or one of your own |
 | `tokens` | | your brand: one [`Ui.DesignTokens`](../../ui/docs/design-tokens.md), or a list of `{ tokens, when? }` |
 | `stylesheets` | | your own stylesheets, as host paths: `!module-path ./ui.css` |
@@ -301,42 +299,44 @@ provides is checked once, when it is resolved.
 
 Every text the application shows — page titles, node texts, labels, a model's
 titles and enumeration labels, the renderer's own words — is written in the
-`lang:` of the module that wrote it. With a `translator`, the server looks each
-one up and sends the browser the message it chose, already parsed, with the
-language it is written in; the browser formats it — plural forms,
-placeholders, numbers — with no catalog of its own. A text with no translation
-is shown as written, and a text an expression computed is never looked up.
-
-`lang` says which language a request asks for, evaluated per request like a
-node's `when`:
+`lang:` of the module that wrote it. The application translates them through its
+own `translations:` block, the one set every surface of the application shares:
 
 ```yaml
-kind: I18n.Negotiator
-metadata: { name: language }
-translator: !ref t
-default: en
----
-kind: UiReact.App
-metadata: { name: app }
-title: Invoices
-words: !ref Ui.words
-translator: !ref t
-lang: !cel "'accept-language' in request.headers ? Self.language(request.headers['accept-language']) : 'en'"
+kind: Telo.Application
+metadata: { name: Invoices, version: 1.0.0 }
+lang: en
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: pl
+      texts:
+        - { text: Invoices, translation: Faktury }
+        - { text: Save, translation: Zapisz }
 ```
 
-What is served is the **effective language**: the translator's catalog
-language the request's tag falls back to (`pl-PL` finds `pl`), else the
-language the application's `title` is written in. The documents carry it as
-`lang`, the shell as `<html lang>`, and the server keeps one copy of every
-document per effective language — a thousand different `Accept-Language`
-values make at most one more copy than the translator has languages.
+`UiReact.App` takes no language setting of its own. It serves each request in the
+language the HTTP server negotiated for it (`request.lang`: `Http.Server.preferredLanguages`,
+then `Accept-Language`, then the application's `lang:`), so a cookie or a
+`?lang=` query is chosen with the server's `preferredLanguages`. The same language is `request.lang` in every per-request expression (page nodes, tokens, header and navigation), and reading it adds the headers the negotiation used to `Vary`. The server looks
+each text up and sends the browser the message it chose, already parsed, with the
+language it is written in; the browser formats it — plural forms, placeholders,
+numbers — with no catalog of its own. A text with no translation is shown as
+written, and a text an expression computed is never looked up.
 
-Each document's `Vary` names exactly the request headers its per-request
-expressions read — `lang`, a token set's `when`, a navigation entry's `when`, a
-page or header node's `when` and its values — read off the expressions themselves: `request.headers.cookie` or
-`'cookie' in request.headers` gives `Vary: Cookie`, a header name computed at
-request time `Vary: *`, and an application reading no header sends none. A
-literal `lang` serves every request in that language.
+The documents carry the negotiated tag as `lang`, the shell as `<html lang>`, and
+the server keeps one copy of every document per served language — a thousand
+different `Accept-Language` values make no more copies than the application
+serves languages.
+
+With more than one language served, every shell, application and page response
+carries `Content-Language` and `Vary: Accept-Language`; an application serving
+one language sends neither. Each document's `Vary` also names exactly the other
+request headers its per-request expressions read — a token set's `when`, a
+navigation entry's `when`, a page or header node's `when` and its values — read
+off the expressions themselves: `request.headers.cookie` or
+`'cookie' in request.headers` gives `Cookie`, a header name computed at request
+time `*`, and an application reading no header adds none.
 
 ## What the page draws when a node is wrong
 

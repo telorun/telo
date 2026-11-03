@@ -24,7 +24,6 @@ import { refSlotReads } from "./ref-slot.js";
 import { referrerRulesReads } from "./referrer-rule.js";
 import { projectionFromReads } from "./schema-projection.js";
 import { scopeReads } from "./scope-declarations.js";
-import { catalogSetReads } from "./text-catalog-set.js";
 import { textValuesForReads } from "./text-values.js";
 import {
   contextCollectionReads,
@@ -87,7 +86,6 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-sensitive": READS_NOTHING,
   "x-telo-span-attribute": READS_NOTHING,
   "x-telo-step-context": READS_NOTHING,
-  "x-telo-text-catalog-set": catalogSetReads,
   "x-telo-text-context": READS_NOTHING,
   "x-telo-text-values": READS_NOTHING,
   "x-telo-text-values-for": textValuesForReads,

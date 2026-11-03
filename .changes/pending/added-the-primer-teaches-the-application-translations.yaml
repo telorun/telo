@@ -1,0 +1,4 @@
+modules:
+  apps/authoring-agent: Added
+body: "The primer teaches the application translations: block, Telo.TextTranslations,
+  request.lang, preferredLanguages and I18n.translate."

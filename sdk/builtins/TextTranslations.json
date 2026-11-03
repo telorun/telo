@@ -1,0 +1,12 @@
+{
+  "kind": "Telo.Definition",
+  "metadata": {
+    "name": "TextTranslations",
+    "description": "Translations of texts into one language, matched by source text: each entry names a source text, with an optional context telling the same words apart, and the message translating it, plural cases included. Every value is written literally and checked against its source's placeholders and the language's plural categories; one text translated twice in one list is refused."
+  },
+  "capability": "Telo.Provider",
+  "extends": "Telo.Translations",
+  "schema": {
+    "$ref": "telo://manifest#/$defs/TextCatalog"
+  }
+}

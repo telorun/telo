@@ -107,16 +107,26 @@ fn refuses_a_resource_whose_kind_holds_a_text() {
     assert!(err.message.contains("holds a `Text`"), "{err}");
 }
 
-/// Catalog sets are not gathered here: a duplicate translation across a set's
-/// catalogs would go unrefused.
+/// Translations are not read here: an application listing them would show
+/// every text untranslated.
 #[test]
-fn refuses_a_resource_whose_kind_marks_a_catalog_set() {
+fn refuses_an_application_listing_translations() {
     let mut kernel = Kernel::new();
     let err = kernel
-        .load(&fixture("unsupported-catalog-set"))
+        .load(&fixture("unsupported-translations"))
         .expect_err("load must fail");
     assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
-    assert!(err.message.contains("marks a text catalog set"), "{err}");
+    assert!(err.message.contains("`translations:`"), "{err}");
+}
+
+#[test]
+fn refuses_text_translations() {
+    let mut kernel = Kernel::new();
+    let err = kernel
+        .load(&fixture("unsupported-text-translations"))
+        .expect_err("load must fail");
+    assert_eq!(err.code, "ERR_UNSUPPORTED_MANIFEST_FEATURE", "{err}");
+    assert!(err.message.contains("'polish' declares `Telo.TextTranslations`"), "{err}");
 }
 
 #[test]

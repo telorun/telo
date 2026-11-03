@@ -4,9 +4,8 @@
 # reads and translated into Spanish's `one` and `other` cases (its `many`, for
 # large round numbers, falls back to `other`); a word told apart by its
 # context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: spanish
+kind: Telo.TextTranslations
+metadata: { name: spanish }
 lang: es
 texts:
   # Applications and pages.

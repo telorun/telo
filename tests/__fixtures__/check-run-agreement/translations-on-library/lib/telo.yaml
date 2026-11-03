@@ -1,0 +1,14 @@
+# A library declaring its own translations block. The set of translations is the
+# application's, so `translations:` is a root-Application key a library may not
+# carry.
+kind: Telo.Library
+metadata:
+  name: TranslationsOnLibrary
+  version: 1.0.0
+  description: Fixture library declaring a translations block it may not carry.
+translations:
+  catalogs:
+    - kind: Telo.TextTranslations
+      lang: pl
+      texts:
+        - { text: "Save", translation: "Zapisz" }

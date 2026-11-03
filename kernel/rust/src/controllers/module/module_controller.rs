@@ -39,6 +39,8 @@ use crate::controllers::module::import_controller::parse_import;
 const NEED_TYPE: &str = "Telo.NeedType";
 /// The built-in kind that runs an ordered list of steps.
 const SEQUENCE: &str = "Telo.Sequence";
+/// The built-in kind holding one language's translations of texts.
+const TEXT_TRANSLATIONS: &str = "Telo.TextTranslations";
 use crate::controllers::resource_definition::resource_definition_controller::register_definition;
 use crate::error::KernelError;
 use crate::evaluation_context::EvaluationContext;
@@ -236,6 +238,7 @@ const UNSUPPORTED_MODULE_FIELDS: &[(&str, &str)] = &[
     ("resources", "resource inputs supplied by the importer"),
     ("needs", "needs, which a host or an importer supplies"),
     ("tracing", "exporting trace spans"),
+    ("translations", "the application's translations"),
 ];
 
 fn reject_unsupported_module_fields(module_doc: &Value, source: &str) -> Result<(), KernelError> {
@@ -639,6 +642,14 @@ fn resolve_resource_kind(
             "ERR_UNSUPPORTED_MANIFEST_FEATURE",
             format!(
                 "resource '{name}' declares `{SEQUENCE}`; this kernel does not run the step grammar yet"
+            ),
+        ));
+    }
+    if kind == TEXT_TRANSLATIONS {
+        return Err(KernelError::new(
+            "ERR_UNSUPPORTED_MANIFEST_FEATURE",
+            format!(
+                "resource '{name}' declares `{TEXT_TRANSLATIONS}`; this kernel does not read translations yet"
             ),
         ));
     }

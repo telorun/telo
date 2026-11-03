@@ -4,9 +4,8 @@
 # reads and translated into Russian's four cases (`one`, `few`, `many`, and
 # `other` for fractions); a word told apart by its context is translated once
 # per context.
-kind: I18n.Catalog
-metadata:
-  name: russian
+kind: Telo.TextTranslations
+metadata: { name: russian }
 lang: ru
 texts:
   # Applications and pages.

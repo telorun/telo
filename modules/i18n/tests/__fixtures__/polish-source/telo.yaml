@@ -1,4 +1,4 @@
-# A library whose texts are written in Polish, with no catalogs: its translator
+# A library whose texts are written in Polish: translating them into nothing
 # formats them as written, choosing plural cases by Polish rules whatever
 # language is asked for.
 kind: Telo.Library
@@ -7,22 +7,14 @@ metadata:
   version: 1.0.0
   description: Fixture library writing its texts in Polish.
 lang: pl
-imports:
-  I18n: ../../../
-exports:
-  resources: [t, files]
----
-kind: I18n.Translator
-metadata: { name: t }
+imports: { I18n: ../../../ }
+exports: { resources: [files] }
 ---
 kind: Telo.Function
 metadata: { name: files }
 params:
-  - name: n
-    schema: { type: integer }
-  - name: lang
-    schema: { type: string }
-returns:
-  schema: { type: string }
+  - { name: n, schema: { type: integer } }
+  - { name: lang, schema: { type: string } }
+returns: { schema: { type: string } }
 body: !cel >-
-  Self.t({'plural': 'n', 'cases': {'one': '{$n} plik', 'few': '{$n} pliki', 'many': '{$n} plików', 'other': '{$n} pliku'}}, lang, {'n': n})
+  I18n.translate({'plural': 'n', 'cases': {'one': '{$n} plik', 'few': '{$n} pliki', 'many': '{$n} plików', 'other': '{$n} pliku'}}, lang, {'n': n})

@@ -40,7 +40,7 @@ import {
   parseCanonicalTypeSchemaId,
   canonicalTypeSchemaId,
 } from "@telorun/sdk";
-import type { TextRecord } from "@telorun/sdk";
+import type { ApplicationTranslations, TextRecord } from "@telorun/sdk";
 import { EffectScope } from "./effect-scope.js";
 import { declarationOfInstance } from "./instance-declaration.js";
 import { authoredDeclarationOf, declarationScopeOf } from "./declaration-scope.js";
@@ -579,6 +579,10 @@ export class ResourceContextImpl implements ResourceContext {
 
   declaredDisplayMessage(code: string, data?: unknown): TextRecord | undefined {
     return this.kernel.declaredDisplayMessage(this.#resolvedKind, code, data, this.#describeSelf());
+  }
+
+  get translations(): ApplicationTranslations {
+    return this.kernel.translations;
   }
 
   /** The root context for runtime-driven inbound work — inherits nothing from

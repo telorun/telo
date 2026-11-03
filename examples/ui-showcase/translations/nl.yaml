@@ -3,9 +3,8 @@
 # draws on its own. A plural source is matched by the text its `other` case
 # reads and translated into Dutch's two cases, one and other; a word told
 # apart by its context is translated once per context.
-kind: I18n.Catalog
-metadata:
-  name: dutch
+kind: Telo.TextTranslations
+metadata: { name: dutch }
 lang: nl
 texts:
   # Applications and pages.

@@ -19,6 +19,10 @@ export interface RequestTrace {
   /** The request span's context, carrying the request's cancellation (a client
    *  disconnect cancels it). Every dispatch the request drives runs on it. */
   readonly context: InvokeContext;
+  /** The language negotiated for the request, always a served tag. Reading it
+   *  records that the response depends on the language, which is what makes the
+   *  transport send `Content-Language` and `Vary`: read it only to use it. */
+  readonly lang: string;
   /** Report the error that decided the response, when the mount renders it
    *  itself (a `catches:` rung, a request-validation refusal). An error the mount
    *  rethrows reaches the transport, which reports it. */

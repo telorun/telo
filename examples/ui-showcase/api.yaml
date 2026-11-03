@@ -6,7 +6,7 @@
 #
 # Three cookies carry state between requests: `showcase-session`, the token of
 # a row in `sessions` that signing in writes and signing out deletes,
-# `showcase-lang`, which every application's `lang` reads before the
+# `showcase-lang`, which the server's `preferredLanguages` reads before the
 # Accept-Language header, and `showcase-brand`, which picks the brand tokens of
 # the `/` application.
 
@@ -580,25 +580,6 @@ params:
   - { name: name, schema: { type: string } }
 returns: { schema: { type: string } }
 body: !cel "cel.bind(found, regexGroups(header, '(?:^|;[ ]*)' + name + '=([^;]*)'), size(found) > 0 ? found[0] : '')"
----
-# The language a request is answered in, the one rule every application's
-# `lang` and its language menu share: the `showcase-lang` cookie when it names
-# a language the showcase speaks (one `Self.language` answers unchanged, so the
-# translator's catalogs are the only list of them), else the Accept-Language
-# negotiation, else English. Each header is handed over as its own argument (empty when absent),
-# so the headers a call reads stay visible to the documents' `Vary`.
-kind: Telo.Function
-metadata:
-  name: chosenLanguage
-  description: The language a request is answered in, from its Cookie and Accept-Language headers.
-params:
-  - { name: cookie, schema: { type: string } }
-  - { name: acceptLanguage, schema: { type: string } }
-returns: { schema: { type: string } }
-body: !cel >-
-  cel.bind(chosen, Self.cookie(cookie, 'showcase-lang'),
-  chosen != '' && Self.language(chosen) == chosen ? chosen
-  : acceptLanguage != '' ? Self.language(acceptLanguage) : 'en')
 ---
 # The origin a request was made to, from its Host and X-Forwarded-Proto headers
 # (each empty when absent). A proxy chain may list several schemes; the first
@@ -1728,8 +1709,9 @@ routes:
       - *commentUnknown
 
   # ---- The language switch ----
-  # Sets the cookie every application's `lang` reads first when the value is a
-  # language the showcase speaks, or clears it for any other value, and goes back to the page it was pressed on — the
+  # Sets the cookie the server's `preferredLanguages` reads first when the value
+  # is a well-formed language tag, or clears it for any other value (a tag the
+  # showcase does not speak is skipped by the negotiation), and goes back to the page it was pressed on — the
   # Referer's path and query when the Referer is of this request's own origin,
   # else the mount's home, so the switch never redirects to another site.
   - request:
@@ -1759,7 +1741,7 @@ routes:
       value: { set: !cel "inputs.set", back: !cel "inputs.back" }
     returns:
       - status: 302
-        when: !cel "result.set != '' && Self.language(result.set) == result.set"
+        when: !cel "result.set.matches('^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8})*$')"
         headers:
           Location: !cel "result.back"
           Set-Cookie: !interpolate "showcase-lang=${{ result.set }}; Path=/; Max-Age=31536000; SameSite=Lax"
@@ -1838,8 +1820,8 @@ routes:
             body: !cel "result"
   # Pauses a project: open to a manager alone. The guard has let a session
   # through; a session whose person is no manager is answered 403 with no body.
-  # A refusal is worded in the language the applications answer in, which the
-  # answer names.
+  # A refusal is worded in the request's language, and the server names it in
+  # `Content-Language`.
   - request:
       method: POST
       path: /pause
@@ -1852,9 +1834,7 @@ routes:
     inputs:
       code: !cel "request.body.code"
       token: !cel "Self.cookie('cookie' in request.headers ? request.headers['cookie'] : '', 'showcase-session')"
-      lang: !cel >-
-        Self.chosenLanguage('cookie' in request.headers ? request.headers['cookie'] : '',
-        'accept-language' in request.headers ? request.headers['accept-language'] : '')
+      lang: !cel "request.lang"
     handler:
       kind: Telo.Sequence
       inputType:
@@ -1899,8 +1879,7 @@ routes:
             - name: notRunning
               throw:
                 code: PROJECT_NOT_ACTIVE
-                message: !cel "Self.t('{$code} is not running, so it cannot be paused.', inputs.lang, {'code': inputs.code})"
-                data: { lang: !cel "inputs.lang" }
+                message: !cel "I18n.translate('{$code} is not running, so it cannot be paused.', inputs.lang, {'code': inputs.code})"
         - name: pause
           invoke: { kind: Sql.Command, connection: !ref db }
           inputs:
@@ -1924,8 +1903,6 @@ routes:
         content: { application/problem+json: {} }
       - when: !cel "error.code == 'PROJECT_NOT_ACTIVE'"
         status: 409
-        headers:
-          Content-Language: !cel "error.data.lang"
         content:
           # Its words are computed per language, so they are the developer
           # message, written into the problem as its `detail`.
