@@ -1,0 +1,62 @@
+kind: Telo.Application
+metadata:
+  name: JoseSignVerifyTest
+  version: 1.0.0
+  description: |
+    A static key set signs and verifies a JWT with each signing algorithm
+    (ES256, RS256, EdDSA, HS256): the token verifies, carries its claims and the
+    signing key's id. An asymmetric set publishes its public keys without their
+    private members, and an HS256 set publishes none.
+include: [./__fixtures__/static-key-sets.yaml]
+imports: { Jose: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: es
+    invoke: { kind: Jose.Sign, keys: !ref esKeys, issuer: https://issuer.test }
+    inputs: { subject: alice, claims: { role: admin } }
+  - name: esVerified
+    invoke: { kind: Jose.Verify, keys: !ref esKeys, algorithms: [ES256], issuer: https://issuer.test }
+    inputs: { token: !cel "steps.es.result.token" }
+  - name: rs
+    invoke: { kind: Jose.Sign, keys: !ref rsKeys, issuer: https://issuer.test }
+    inputs: { subject: alice, claims: { role: admin } }
+  - name: rsVerified
+    invoke: { kind: Jose.Verify, keys: !ref rsKeys, algorithms: [RS256], issuer: https://issuer.test }
+    inputs: { token: !cel "steps.rs.result.token" }
+  - name: ed
+    invoke: { kind: Jose.Sign, keys: !ref edKeys, issuer: https://issuer.test }
+    inputs: { subject: alice, claims: { role: admin } }
+  - name: edVerified
+    invoke: { kind: Jose.Verify, keys: !ref edKeys, algorithms: [EdDSA], issuer: https://issuer.test }
+    inputs: { token: !cel "steps.ed.result.token" }
+  - name: hs
+    invoke: { kind: Jose.Sign, keys: !ref hsKeys, issuer: https://issuer.test }
+    inputs: { subject: alice, claims: { role: admin } }
+  - name: hsVerified
+    invoke: { kind: Jose.Verify, keys: !ref hsKeys, algorithms: [HS256], issuer: https://issuer.test }
+    inputs: { token: !cel "steps.hs.result.token" }
+  - name: hsPublished
+    invoke: { kind: Jose.PublicKeys, keys: !ref hsKeys }
+  - name: esPublished
+    invoke: { kind: Jose.PublicKeys, keys: !ref esKeys }
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "[steps.esVerified.result.valid, steps.esVerified.result.payload.sub, steps.esVerified.result.payload.role, steps.esVerified.result.header.alg, steps.esVerified.result.header.kid, steps.es.result.kid]"
+        - !cel "[steps.rsVerified.result.valid, steps.rsVerified.result.payload.sub, steps.rsVerified.result.payload.role, steps.rsVerified.result.header.alg, steps.rsVerified.result.header.kid, steps.rs.result.kid]"
+        - !cel "[steps.edVerified.result.valid, steps.edVerified.result.payload.sub, steps.edVerified.result.payload.role, steps.edVerified.result.header.alg, steps.edVerified.result.header.kid, steps.ed.result.kid]"
+        - !cel "[steps.hsVerified.result.valid, steps.hsVerified.result.payload.sub, steps.hsVerified.result.payload.role, steps.hsVerified.result.header.alg, steps.hsVerified.result.header.kid, steps.hs.result.kid]"
+        - !cel "steps.hsPublished.result.keys"
+        - !cel "steps.esPublished.result.keys.map(k, [k.kid, k.alg, k.use, has(k.d)])"
+      expected:
+        - [true, alice, admin, ES256, es1, es1]
+        - [true, alice, admin, RS256, rs1, rs1]
+        - [true, alice, admin, EdDSA, ed1, ed1]
+        - [true, alice, admin, HS256, k1, k1]
+        - []
+        - [[es1, ES256, sig, false]]

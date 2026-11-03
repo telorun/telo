@@ -1,0 +1,35 @@
+kind: Telo.Application
+metadata:
+  name: CryptoCompareTest
+  version: 1.0.0
+  description: Crypto.Compare reports equal and unequal inputs, including different lengths and bytes against text.
+imports: { Crypto: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: same
+    invoke: { kind: Crypto.Compare }
+    inputs: { a: s3cret-token, b: s3cret-token }
+  - name: differs
+    invoke: { kind: Crypto.Compare }
+    inputs: { a: s3cret-token, b: s3cret-tokeN }
+  - name: prefix
+    invoke: { kind: Crypto.Compare }
+    inputs: { a: s3cret, b: s3cret-token }
+  - { name: empty, invoke: { kind: Crypto.Compare }, inputs: { a: "", b: s3cret } }
+  - name: bytesAgainstText
+    invoke: { kind: Crypto.Compare }
+    inputs: { a: !cel "bytes('abc')", b: abc }
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.same.result.equal"
+        - !cel "steps.differs.result.equal"
+        - !cel "steps.prefix.result.equal"
+        - !cel "steps.empty.result.equal"
+        - !cel "steps.bytesAgainstText.result.equal"
+      expected: [true, false, false, false, true]

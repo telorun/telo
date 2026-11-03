@@ -1,0 +1,61 @@
+kind: Telo.Application
+metadata:
+  name: JoseEncryptDecryptTest
+  version: 1.0.0
+  description: |
+    A sealed value opens to what was sealed; a tampered token is refused; a
+    token sealed under a previous secret opens once that secret is listed in
+    `previousSecrets` and is refused as an unknown key without it.
+imports: { Jose: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Jose.Decrypt
+metadata: { name: openCurrentOnly }
+secret: current-secret-0123456789
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: sealed
+    invoke: { kind: Jose.Encrypt, secret: current-secret-0123456789 }
+    inputs: { payload: { user: alice, admin: false, tags: [a, b] } }
+  - name: opened
+    invoke: !ref openCurrentOnly
+    inputs: { token: !cel "steps.sealed.result.token" }
+  # The authentication tag replaced with sixteen zero bytes.
+  - name: tampered
+    invoke: !ref openCurrentOnly
+    inputs: { token: !cel "regexReplace(steps.sealed.result.token, '[^.]+$', 'AAAAAAAAAAAAAAAAAAAAAA')" }
+  - name: sealedBefore
+    invoke: { kind: Jose.Encrypt, secret: previous-secret-0123456789 }
+    inputs: { payload: session-7 }
+  - name: openedAfterRotation
+    invoke:
+      kind: Jose.Decrypt
+      secret: current-secret-0123456789
+      previousSecrets: [previous-secret-0123456789]
+    inputs: { token: !cel "steps.sealedBefore.result.token" }
+  - name: refusedWithoutPrevious
+    invoke: !ref openCurrentOnly
+    inputs: { token: !cel "steps.sealedBefore.result.token" }
+  # Sealed by another implementation with a critical header this one does not understand.
+  - name: criticalHeader
+    invoke: { kind: Jose.Decrypt, secret: crit-secret-0123456789 }
+    inputs:
+      token: eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIiwia2lkIjoiUUY2T2VNTGE4VHc2X2kzbCIsImNyaXQiOlsieCJdLCJ4IjoxfQ..GdcttIZ_voKe_8m0.-g.kMGdJqoLPWFmNSETu-cZsw
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        opened: !cel "steps.opened.result"
+        tampered: !cel "steps.tampered.result"
+        openedAfterRotation: !cel "steps.openedAfterRotation.result"
+        refusedWithoutPrevious: !cel "steps.refusedWithoutPrevious.result"
+        criticalHeader: !cel "steps.criticalHeader.result"
+      expected:
+        opened: { valid: true, payload: { user: alice, admin: false, tags: [a, b] } }
+        tampered: { valid: false, reason: decryption }
+        openedAfterRotation: { valid: true, payload: session-7 }
+        refusedWithoutPrevious: { valid: false, reason: unknownKey }
+        criticalHeader: { valid: false, reason: malformed }

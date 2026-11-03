@@ -85,6 +85,13 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | [console](./console/README.md) | Console I/O via `Console.WriteLine` and `Console.ReadLine`. |
 | [benchmark](./benchmark/README.md) | Load benchmarking for any invocable Telo resource. |
 
+### Security
+
+| Module | Description |
+| --- | --- |
+| [crypto](./crypto/README.md) | Random tokens, digests, HMAC, password hashing with transparent upgrade, constant-time comparison and HKDF via `Crypto.*`. |
+| [jose](./jose/README.md) | JWT signing and verification with rotating key sets, published and remote JWKS, and sealed values via `Jose.*`. |
+
 ### Testing
 
 | Module | Description |

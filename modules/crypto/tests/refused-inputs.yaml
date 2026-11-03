@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata:
+  name: CryptoRefusedInputs
+  version: 1.0.0
+  description: |
+    A verify call without `expected` / `hash`, a DeriveKey length past the hash's
+    limit and a scrypt cost that is not a power of two are refused by `telo check`.
+imports: { Assert: ../../assert }
+targets:
+  - !ref refusedAtCheck
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtCheck }
+source: ./__fixtures__/refused-inputs.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: must be one of 30 allowed values }
+    - code: CONTRACT_INPUTS_MISMATCH
+      message: is missing required property 'expected'
+    - { code: CONTRACT_INPUTS_MISMATCH, message: is missing required property 'hash' }
+    - { code: CONTRACT_INPUTS_MISMATCH, message: /length must be <= 8160 }

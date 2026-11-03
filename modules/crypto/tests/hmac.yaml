@@ -1,0 +1,57 @@
+kind: Telo.Application
+metadata:
+  name: CryptoHmacTest
+  version: 1.0.0
+  description: |
+    Crypto.Hmac signs to the exact RFC 4231 test case 2 values, and verify accepts
+    the signature, rejects a one-character change and an undecodable one.
+imports: { Crypto: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: sha256
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, key: Jefe, input: what do ya want for nothing? }
+  - name: sha384
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, algorithm: sha384, key: Jefe, input: what do ya want for nothing? }
+  - name: sha512
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: sign, algorithm: sha512, key: Jefe, input: what do ya want for nothing? }
+  - name: accepted
+    invoke: { kind: Crypto.Hmac }
+    inputs:
+      op: verify
+      key: Jefe
+      input: what do ya want for nothing?
+      expected: 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+  - name: changed
+    invoke: { kind: Crypto.Hmac }
+    inputs:
+      op: verify
+      key: Jefe
+      input: what do ya want for nothing?
+      expected: 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3844
+  - name: undecodable
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: verify, key: Jefe, input: what do ya want for nothing?, expected: not-hex }
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        sha256: !cel "steps.sha256.result.value"
+        sha384: !cel "steps.sha384.result.value"
+        sha512: !cel "steps.sha512.result.value"
+        accepted: !cel "steps.accepted.result.valid"
+        changed: !cel "steps.changed.result.valid"
+        undecodable: !cel "steps.undecodable.result.valid"
+      expected:
+        sha256: 5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843
+        sha384: af45d2e376484031617f78d2b58a6b1b9c7ef464f5a01b47e42ec3736322445e8e2240ca5e69e2c78b3239ecfab21649
+        sha512: 164b7a7bfcf819e2e395fbe73b56e0a387bd64222e831fd610270cd7ea2505549758bf75c05a994a6d034f65f8f0e6fdcaeab1a34d4a6b4b636e070a38bce737
+        accepted: true
+        changed: false
+        undecodable: false

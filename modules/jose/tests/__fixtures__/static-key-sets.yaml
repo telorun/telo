@@ -1,0 +1,25 @@
+# Static key sets over literal test keys, one per signing algorithm. Real keys
+# come from `secrets:`; these exist only for the tests that include this file.
+kind: Jose.KeySet
+metadata: { name: esKeys }
+algorithm: ES256
+keys:
+  - { kty: EC, x: J0k_d62PT7Wrl6emr3vrA1nHnWablWaHx2SIXDPK148, y: I44mAUi1zEMRdhTxiNNckPyaLTWoCb5_hyLFno2Dl7I, crv: P-256, d: 1Lj0H3tsR83jEeDaIbYTW3LrXjpOBxw-Uit_-j0Ai9k, kid: es1 }
+---
+kind: Jose.KeySet
+metadata: { name: rsKeys }
+algorithm: RS256
+keys:
+  - { kty: RSA, n: 1dQ3Ind9qGP8-MX08egWv-hH9J4OJwitJY35Ieo9pIF_-ZNv37ZLnYGmyDfW3rkrOWTH4k-hVVQSWVTrZU1WLI5ddlh-16jnPrXNDOvy2UnMXBfuWx53YFBDGcp9cBrZ8XyTaAcxWtGUVHnL-kiOQ85narJTDMtXeEElEvM2d8WoriMi5PAHZlr8BQZSzbauNbR7PY7jL_5zHq6QV5wnnVfjU-ySPZVFwx5tLcff6tFGxaWoaxUbbr-92r9AvfqkEICTNSr7M474eKhcESnvQhAmpir9XWCuAZ1-YfQ2oTLqnqdc8fvEZxe598jxbxCv93tMm0prgeVpg7So9CxDUQ, e: AQAB, d: HlhN9L25Xu7FpTZOkw_pPpXDtGLDxmVUURqLSvVXhyN7mlsCiuBvbaxLE2ndO-FSUYRMW4EKd7YFHplPCKLHgm43tEZNxeQp4Pvi3B0V6yEud7lLsbGqpkftpdjXIVQmLr-Lmb0_k1BfuPdJ67xlOBkwEvO4ln267Y1tKfnK9ocbTFU0BL3ob7WYHgvUcWpHF8r9NNSGotaIhnSWybw7vkF5Pectwx1h3oRAKi4kAqRGr_d6h-LCY5nfaNOLhESnftElWG6U385kZPwluPQQ5j40RBDcydy0BwZR6_kdDQxH2nnUbrhJal2C4839IJ98fmI9e-iHNGt5h0D7H3Ikaw, p: _lLeSOYkmnypHKixsxn3xKK9J2Z4vM520KP0m9De18C-5vYYSe8gV56XHjuEpTvsQeokgFDiU96MTiE-qfRfK2KIWldm_onWTzKlK52hxXKX_99KRfJrwCyssrfcBamOVfs-KoDSw2n0c_gem0KV9qwkATjrUK_M4rbfx8zkTnM, q: 1z0EvDbdq30XrhKT5Cox-2wgIkkhsqBrsz4gRi9tp28fhCqe0tVv9lyfPJpBaEVv2Rlghn2ctBfIqkQC6Y_CCn8FaoUbtzu1b2shGonORkpsJnBqvyHrF3w3d_AXMx-n293z0UanqISbJz5-1aeR4hqyedtYZjNPgo4PQ6e1Eis, dp: T6ZKYZBaVFvIZuZaSNpQI7BIB0frdk4_HdbLa-U9dVqzLwhR0Q3oFijf8SL4xvr-YiJfbiRmzZd8X5e_1WBoUeEZDRokcoFesg0Nd5x1pq3d9s_Kph9nKZeUOqCkcs2Ie1slPBB-cZ8EZTGG_F8dMlT1LcDSycFVLIfTi_Kaags, dq: siE_r_zAS9KFLH0XhDcfknKTzYw0pT56o6cA0tUhrPYcYSdctiQKOxvAdUk8ZG1C-as05VlDvRAJ9E_BEUb2UfV5qARtQaHasFE63lm6KxYgl1dmILSTeaZFya8bpCXIp__ybvpIewDz3vCry2qZI0Tw_ER5zmscnHGxVE6RXm0, qi: HiLY_k5TkyDu2e4eA69nAtiCIkt188QasgN73s7mPPfUGBS6NEcTHGZbIEh0fEc0-mj8F-VN3b2Rs87oNbc7uueXLKlJlPMvTuYGLSMx3xPdYwVvsL_2xc7nkxcxC4jRSIwnADVoYhqWfjcv7769sefmeD-hcQ5gmtqr5WVDl8Q, kid: rs1 }
+---
+kind: Jose.KeySet
+metadata: { name: edKeys }
+algorithm: EdDSA
+keys:
+  - { crv: Ed25519, d: oUv2rlD-7occ-NMtcnrqDFW9W5mxJDCCrGcAp2VfL0Y, x: MVtbw5gbuNaY2aLWy068GdAyCNeXLbIBhP5I6j_pZAA, kty: OKP, kid: ed1 }
+---
+kind: Jose.KeySet
+metadata: { name: hsKeys }
+algorithm: HS256
+keys:
+  - { kty: oct, k: -lSCS0gR0CUkrl3O2TpraZS_Vq2AlkR1GDfp0o_dY64, kid: k1 }

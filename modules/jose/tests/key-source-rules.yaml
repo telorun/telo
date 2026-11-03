@@ -1,0 +1,55 @@
+kind: Telo.Application
+metadata:
+  name: JoseKeySourceRules
+  version: 1.0.0
+  description: |
+    A key set must name exactly one of `store` and `keys`, and a remote key set
+    exactly one of `url` and `issuer`: each is refused by `telo check` at the
+    library declaring it, and at creation for an importer whose check is silent
+    about that library's internals.
+imports: { Assert: ../../assert }
+targets:
+  - !ref keySetRefusedAtCheck
+  - !ref keySetRefusedAtCreation
+  - !ref remoteRefusedAtCheck
+  - !ref remoteRefusedAtCreation
+  - !ref sourceShapesRefusedAtCheck
+---
+kind: Assert.Manifest
+metadata: { name: keySetRefusedAtCheck }
+source: ./__fixtures__/keyset-form/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: must declare either `store` (a managed, rotating set) or `keys` (a static
+---
+kind: Assert.Manifest
+metadata: { name: keySetRefusedAtCreation }
+source: ./__fixtures__/keyset-form-app.yaml
+expect:
+  errors: []
+  runFails: "declare either `store` (a managed, rotating set) or `keys` (a static set), not both and not neither"
+---
+kind: Assert.Manifest
+metadata: { name: remoteRefusedAtCheck }
+source: ./__fixtures__/remote-keyset-source/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: must declare either `url` (a JWKS) or `issuer`
+---
+kind: Assert.Manifest
+metadata: { name: remoteRefusedAtCreation }
+source: ./__fixtures__/remote-keyset-source-app.yaml
+expect:
+  errors: []
+  runFails: "declare either `url` (a JWKS) or `issuer` (discovered through its metadata), not both and not neither"
+---
+kind: Assert.Manifest
+metadata: { name: sourceShapesRefusedAtCheck }
+source: ./__fixtures__/static-keys-invalid.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "is missing required property 'kty'" }
+    - { code: SCHEMA_VIOLATION, message: "must be equal to one of the allowed values (EC | RSA | OKP | oct)" }
+    - { code: URL_INVALID, message: "its scheme must be one of http, https" }

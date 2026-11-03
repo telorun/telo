@@ -1,0 +1,13 @@
+# A remote key set naming both a JWKS URL and an issuer: refused here by
+# `telo check`, and at creation for an importer.
+kind: Telo.Library
+metadata:
+  name: RemoteKeySetSourceFixture
+  version: 1.0.0
+  description: Fixture declaring a remote key set with both a URL and an issuer.
+imports: { Jose: ../../.. }
+---
+kind: Jose.RemoteKeySet
+metadata: { name: keys }
+url: https://issuer.test/.well-known/jwks.json
+issuer: https://issuer.test

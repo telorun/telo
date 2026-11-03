@@ -1,0 +1,17 @@
+kind: Telo.Application
+metadata: { name: StaticKeysInvalid, version: 1.0.0 }
+imports: { Jose: ../../ }
+---
+kind: Jose.KeySet
+metadata: { name: untyped }
+keys:
+  - { k: c2VjcmV0 }
+---
+kind: Jose.KeySet
+metadata: { name: unknownType }
+keys:
+  - { kty: DSA }
+---
+kind: Jose.RemoteKeySet
+metadata: { name: ftp }
+url: ftp://issuer.test/jwks.json

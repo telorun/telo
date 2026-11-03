@@ -1,0 +1,5 @@
+modules:
+  modules/crypto: Added
+body: "New module: random tokens, SHA-2 digests, HMAC, password hashing (argon2id,
+  bcrypt, scrypt, PBKDF2) with pepper and rehash-on-login, constant-time comparison and
+  HKDF key derivation, plus an @telorun/crypto code library."

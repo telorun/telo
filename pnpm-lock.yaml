@@ -1152,6 +1152,25 @@ importers:
         specifier: ^2.8.3
         version: 2.8.3
 
+  modules/crypto/nodejs:
+    dependencies:
+      hash-wasm:
+        specifier: ^4.12.0
+        version: 4.12.0
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
   modules/data-model/nodejs:
     devDependencies:
       '@telorun/sdk':
@@ -1858,6 +1877,31 @@ importers:
         version: 2.1.9(@types/node@20.19.30)(happy-dom@21.0.4)(jsdom@25.0.1)(lightningcss@1.32.0)(terser@5.46.0)
 
   modules/javascript/nodejs:
+    devDependencies:
+      '@telorun/sdk':
+        specifier: workspace:*
+        version: link:../../../sdk/nodejs
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.30
+      esbuild:
+        specifier: ^0.25.12
+        version: 0.25.12
+      typescript:
+        specifier: ^5.0.0
+        version: 5.9.3
+
+  modules/jose/nodejs:
+    dependencies:
+      '@telorun/crypto':
+        specifier: workspace:*
+        version: link:../../crypto/nodejs
+      '@telorun/kv-store':
+        specifier: workspace:*
+        version: link:../../kv-store/nodejs
+      jose:
+        specifier: ^6.2.3
+        version: 6.2.3
     devDependencies:
       '@telorun/sdk':
         specifier: workspace:*
@@ -9482,6 +9526,9 @@ packages:
   has-yarn@3.0.0:
     resolution: {integrity: sha512-IrsVwUHhEULx3R8f/aA8AHuEzAorplsab/v8HBzEiIukwq5i/EC+xmOW+HfP1OaDP+2JkgT1yILHN2O3UFIbcA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  hash-wasm@4.12.0:
+    resolution: {integrity: sha512-+/2B2rYLb48I/evdOIhP+K/DD2ca2fgBjp6O+GBEnCDk2e4rpeXIK8GvIyRPjTezgmWn9gmKwkQjjx6BtqDHVQ==}
 
   hasown@2.0.2:
     resolution: {integrity: sha512-0hJU9SCPvmMzIBdZFqNPXWa6dqh7WdH0cII9y+CyS8rG3nL48Bclra9HmKhVVUHyPWNH5Y7xDwAB7bfgSjkUMQ==}
@@ -20832,6 +20879,8 @@ snapshots:
       has-symbols: 1.1.0
 
   has-yarn@3.0.0: {}
+
+  hash-wasm@4.12.0: {}
 
   hasown@2.0.2:
     dependencies:

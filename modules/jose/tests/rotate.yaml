@@ -1,0 +1,143 @@
+kind: Telo.Application
+metadata:
+  name: JoseRotateTest
+  version: 1.0.0
+  description: |
+    A managed key set over an in-memory store: a token signed before a rotation
+    and one signed after both verify; once the replaced key's grace period has
+    passed its token reports `unknownKey` and the next rotation removes it. Two
+    replicas of one set rotating at once leave one current key and one new key.
+imports:
+  Jose: ../
+  KvStoreMemory: ../../kv-store-memory
+  Run: ../../run
+  Timer: ../../timer
+  Assert: ../../assert
+targets:
+  - !ref rotation
+  - !ref concurrentRotation
+---
+kind: KvStoreMemory.Store
+metadata: { name: store }
+---
+kind: Jose.KeySet
+metadata: { name: signing }
+store: !ref store
+name: signing
+wrapKey: test-wrap-key-0123456789
+rotation: { retireAfter: 1s }
+---
+kind: Jose.Verify
+metadata: { name: verify }
+keys: !ref signing
+algorithms: [ES256]
+---
+kind: Jose.Rotate
+metadata: { name: rotate }
+keys: !ref signing
+---
+kind: Jose.Sign
+metadata: { name: sign }
+keys: !ref signing
+---
+kind: Telo.Sequence
+metadata: { name: rotation }
+steps:
+  - name: before
+    invoke: !ref sign
+  - name: rotated
+    invoke: !ref rotate
+  - name: after
+    invoke: !ref sign
+  - name: beforeVerified
+    invoke: !ref verify
+    inputs: { token: !cel "steps.before.result.token" }
+  - name: afterVerified
+    invoke: !ref verify
+    inputs: { token: !cel "steps.after.result.token" }
+  - name: graceVerdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rotated: !cel "steps.rotated.result.rotated"
+        newKey: !cel "steps.rotated.result.currentKid != steps.before.result.kid"
+        signsWithNewKey: !cel "steps.after.result.kid == steps.rotated.result.currentKid"
+        before: !cel "steps.beforeVerified.result.valid"
+        after: !cel "steps.afterVerified.result.valid"
+      expected: { rotated: true, newKey: true, signsWithNewKey: true, before: true, after: true }
+  - name: graceElapses
+    invoke: { kind: Timer.Delay }
+    inputs: { duration: 1200ms }
+  - name: beforeRetired
+    invoke: !ref verify
+    inputs: { token: !cel "steps.before.result.token" }
+  - name: afterStillValid
+    invoke: !ref verify
+    inputs: { token: !cel "steps.after.result.token" }
+  - name: pruned
+    invoke: !ref rotate
+  - name: retirementVerdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        before: !cel "steps.beforeRetired.result"
+        after: !cel "steps.afterStillValid.result.valid"
+        retiredKids: !cel "steps.pruned.result.retiredKids"
+      expected:
+        before: { valid: false, reason: unknownKey }
+        after: true
+        retiredKids: [!cel "steps.before.result.kid"]
+---
+# Two resources over one store and one name are two replicas of one set.
+kind: Jose.KeySet
+metadata: { name: replicaA }
+store: !ref store
+name: shared
+wrapKey: test-wrap-key-0123456789
+rotation: { retireAfter: 1h }
+---
+kind: Jose.KeySet
+metadata: { name: replicaB }
+store: !ref store
+name: shared
+wrapKey: test-wrap-key-0123456789
+rotation: { retireAfter: 1h }
+---
+kind: Telo.Sequence
+metadata: { name: concurrentRotation }
+steps:
+  - name: first
+    invoke: { kind: Jose.Sign, keys: !ref replicaA }
+  - name: both
+    invoke:
+      kind: Run.Projection
+      collection: [a, b]
+      concurrency: 2
+      steps:
+        - name: pick
+          switch: !cel "item"
+          cases:
+            a:
+              - name: viaA
+                invoke: { kind: Jose.Rotate, keys: !ref replicaA }
+                inputs: { force: true }
+            b:
+              - name: viaB
+                invoke: { kind: Jose.Rotate, keys: !ref replicaB }
+                inputs: { force: true }
+      outputs: !cel "item == 'a' ? steps.viaA.result : steps.viaB.result"
+  - name: publishedByB
+    invoke: { kind: Jose.PublicKeys, keys: !ref replicaB }
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rotations: !cel "steps.both.result.filter(r, r.rotated).size()"
+        oneCurrentKey: !cel "steps.both.result[0].currentKid == steps.both.result[1].currentKid"
+        newKey: !cel "steps.both.result[0].currentKid != steps.first.result.kid"
+        published: !cel "sort(steps.publishedByB.result.keys.map(k, k.kid))"
+      expected:
+        rotations: 1
+        oneCurrentKey: true
+        newKey: true
+        published: !cel "sort([steps.first.result.kid, steps.both.result[0].currentKid])"
