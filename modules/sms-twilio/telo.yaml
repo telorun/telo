@@ -1,0 +1,156 @@
+kind: Telo.Library
+metadata:
+  name: SmsTwilio
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Messaging]
+  description: >-
+    Send text messages — one-time codes, verification and sign-in links, alerts,
+    notifications — to phone numbers through the Twilio Messaging API,
+    authenticated with an account SID and auth token. Reports whether a message
+    was sent or queued, and tells a refused message apart from a rate limit or an
+    unreachable or failing service.
+requires:
+  # 0.128.0: the body is a built-in `Telo.Sequence`, which 0.127.0 does not know.
+  telo: ">=0.128.0"
+imports: { Sms: ../sms, Http: ../http-client }
+exports: { kinds: [Transport] }
+---
+kind: Telo.Definition
+metadata:
+  name: Transport
+  description: >-
+    Sends one text message through Twilio's Messages API with the account SID and
+    auth token as Basic credentials. A message without a sender is sent from the
+    configured default number. Returns Twilio's message SID, with status sent once
+    Twilio reports it sent or delivered and queued otherwise; a refused request is
+    a rejection, while a timeout, a rate limit, an unreachable or failing service
+    is unavailability.
+extends: Sms.Transport
+schema:
+  type: object
+  additionalProperties: false
+  required: [accountSid, authToken, from]
+  examples:
+    - accountSid: !cel "secrets.twilioAccountSid"
+      authToken: !cel "secrets.twilioAuthToken"
+      from: "+15557654321"
+  properties:
+    accountSid:
+      title: Account SID
+      type: string
+      pattern: "^AC[0-9a-fA-F]{32}$"
+      x-telo-eval: compile
+      description: The Twilio account SID (`AC` and 32 hex digits), the Basic username and part of the request path.
+    authToken:
+      title: Auth token
+      type: string
+      minLength: 1
+      x-telo-eval: compile
+      description: The account's auth token, the Basic password. Take it from `secrets:`.
+    from:
+      title: Default sender
+      type: string
+      pattern: "^\\+[1-9][0-9]{1,14}$"
+      x-telo-eval: compile
+      description: The sender of every message that names none, a Twilio number of the account in E.164 form.
+    baseUrl:
+      title: Base URL
+      type: string
+      pattern: "^https?://.*[^/]$"
+      default: https://api.twilio.com
+      x-telo-eval: compile
+      description: >-
+        Where the API is reached, without a trailing slash; messages are posted to
+        `<baseUrl>/2010-04-01/Accounts/<accountSid>/Messages.json`.
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: send }
+    inputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        additionalProperties: false
+        required: [body]
+        properties: { body: { type: object } }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        additionalProperties: false
+        required: [sid, status]
+        properties: { sid: { type: string }, status: { type: string } }
+    steps:
+      - name: post
+        try:
+          - name: http
+            invoke:
+              kind: Http.Request
+              client:
+                kind: Http.Client
+                baseUrl: !cel "self.baseUrl"
+                credential: { kind: Http.BasicAuth, username: !cel "self.accountSid", password: !cel "self.authToken" }
+            inputs:
+              url: !interpolate "/2010-04-01/Accounts/${{ self.accountSid }}/Messages.json"
+              method: POST
+              headers: { content-type: application/x-www-form-urlencoded }
+              body: !cel "inputs.body"
+        catch:
+          - name: unreachable
+            throw:
+              code: ERR_SMS_UNAVAILABLE
+              message: !interpolate "The request to Twilio failed: ${{ error.message }}"
+      # Twilio's error body is `{ code, message, more_info, status }`.
+      - name: detail
+        value: !cel >-
+          cel.bind(body, steps.http.result.body,
+            type(body) == type({}) && 'message' in body && type(body.message) == type('')
+              ? ('code' in body && (type(body.code) == type(1) || type(body.code) == type(1.0))
+                  ? string(int(body.code)) + ': ' : '') + body.message
+              : '')
+      # 408 and 429 are temporary refusals; any other 4xx refuses the message.
+      - name: outcome
+        switch: !cel >-
+          cel.bind(status, steps.http.result.status,
+            status >= 200 && status < 300 ? 'accepted' :
+            status >= 400 && status < 500 && status != 408 && status != 429 ? 'rejected' : 'unavailable')
+        cases:
+          accepted:
+            - name: readable
+              if: !cel >-
+                !(type(steps.http.result.body) == type({}) && 'sid' in steps.http.result.body &&
+                  type(steps.http.result.body.sid) == type(''))
+              then:
+                - name: unreadable
+                  throw:
+                    code: ERR_SMS_UNAVAILABLE
+                    message: !interpolate "Twilio answered HTTP ${{ steps.http.result.status }} without a message SID; the message may already have been accepted."
+          rejected:
+            - name: refused
+              throw:
+                code: ERR_SMS_REJECTED
+                message: !cel >-
+                  'Twilio refused the message with HTTP ' + string(steps.http.result.status) +
+                  (steps.detail.result != '' ? ': ' + steps.detail.result : '')
+          unavailable:
+            - name: failed
+              throw:
+                code: ERR_SMS_UNAVAILABLE
+                message: !cel >-
+                  'Twilio answered HTTP ' + string(steps.http.result.status) +
+                  (steps.detail.result != '' ? ': ' + steps.detail.result : '')
+    outputs:
+      sid: !cel "string(steps.http.result.body.sid)"
+      status: !cel >-
+        'status' in steps.http.result.body && type(steps.http.result.body.status) == type('')
+          ? string(steps.http.result.body.status) : ''
+invoke: !ref send
+inputs:
+  body:
+    To: !cel "inputs.to"
+    From: !cel "has(inputs.from) ? inputs.from : self.from"
+    Body: !cel "inputs.text"
+result:
+  messageId: !cel "result.sid"
+  status: !cel "result.status in ['sent', 'delivered'] ? 'sent' : 'queued'"

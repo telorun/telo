@@ -23,6 +23,15 @@ For how modules are defined, imported, and composed, see the [Module Specificati
 | [mcp-server](./mcp-server/README.md) | Model Context Protocol server transports and tool bundles. |
 | [mcp-client](./mcp-client/README.md) | MCP client transports plus `tools/call` and `tools/list` dispatch. |
 
+### Messaging
+
+| Module | Description |
+| --- | --- |
+| [mail](./mail/README.md) | Transactional email through one transport contract (`Mail.Transport`), with `Mail.Smtp` and the `Mail.Capture` test transport. |
+| [mail-resend](./mail-resend/README.md) | Email through Resend's HTTP API (`MailResend.Transport`). |
+| [sms](./sms/README.md) | Text messages through one transport contract (`Sms.Transport`), with the `Sms.Capture` test transport. |
+| [sms-twilio](./sms-twilio/README.md) | Text messages through Twilio's HTTP API (`SmsTwilio.Transport`). |
+
 ### Storage & Data
 
 | Module | Description |

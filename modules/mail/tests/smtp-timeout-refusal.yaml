@@ -1,0 +1,27 @@
+kind: Telo.Application
+metadata:
+  name: MailSmtpTimeoutRefusalTest
+  version: 1.0.0
+  description: |
+    An SMTP transport whose `timeout` is not longer than zero is refused by
+    `telo check` where it is declared, and refused by the transport itself when
+    a manifest reaches it without that check.
+imports: { Assert: ../../assert }
+targets:
+  - !ref refusedByCheck
+  - !ref refusedAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: refusedByCheck }
+source: ./__fixtures__/timeout-not-positive/lib/telo.yaml
+expect:
+  errors:
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Mail.Smtp/mail: sets a timeout that is not longer than zero."
+---
+kind: Assert.Manifest
+metadata: { name: refusedAtRuntime }
+source: ./__fixtures__/timeout-not-positive/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_RESOURCE_INITIALIZATION_FAILED] 1 resource failed to initialize"

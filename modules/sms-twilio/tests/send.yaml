@@ -1,0 +1,285 @@
+kind: Telo.Application
+metadata:
+  name: SmsTwilioSendTest
+  version: 1.0.0
+  description: |
+    `SmsTwilio.Transport` against a local stand-in for Twilio:
+
+      - the stand-in answers `POST …/Accounts/{account}/Messages.json` with a SID
+        echoing the path, the `authorization` header and the raw form body it
+        received, so the request is asserted as Twilio would see it: the account
+        SID in the path, Basic credentials of the SID and the auth token, `To`,
+        `From` and `Body` form-encoded, the default sender used for a message
+        naming none;
+      - the result carries Twilio's SID as `messageId`, `sent` for Twilio's `sent`
+        and `delivered`, `queued` for any other status;
+      - a 400 is `ERR_SMS_REJECTED` carrying Twilio's explanation, a 503, a 429, a 408, a
+        2xx without a SID and an endpoint nothing listens on `ERR_SMS_UNAVAILABLE`.
+imports: { SmsTwilio: ../, Server: ../../http-server, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: SmsTwilio.Transport
+metadata: { name: twilio }
+accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+authToken: test-token
+from: "+15557654321"
+baseUrl: http://127.0.0.1:18872/ok
+---
+kind: Telo.Sequence
+metadata: { name: noop }
+steps: []
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: fakeTwilio }
+    routes:
+      - request:
+          path: /ok/2010-04-01/Accounts/{account}/Messages.json
+          method: POST
+          schema:
+            body: { type: string }
+            headers: { type: object, properties: { authorization: { type: string } } }
+        handler: !ref noop
+        returns:
+          - status: 201
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  sid: !cel "json({'path': request.path, 'authorization': request.headers['authorization'], 'body': request.body})"
+                  status: queued
+      - request: { path: "/sent/2010-04-01/Accounts/{account}/Messages.json", method: POST }
+        handler: !ref noop
+        returns:
+          - status: 201
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { sid: SM-sent, status: sent }
+      - request: { path: "/delivered/2010-04-01/Accounts/{account}/Messages.json", method: POST }
+        handler: !ref noop
+        returns:
+          - status: 201
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { sid: SM-delivered, status: delivered }
+      - request: { path: "/rejecting/2010-04-01/Accounts/{account}/Messages.json", method: POST }
+        handler: !ref noop
+        returns:
+          - status: 400
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  code: 21211
+                  message: The 'To' number is not a valid phone number.
+                  more_info: https://www.twilio.com/docs/errors/21211
+                  status: 400
+      - request: { path: "/limited/2010-04-01/Accounts/{account}/Messages.json", method: POST }
+        handler: !ref noop
+        returns:
+          - status: 429
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { code: 20429, message: Too Many Requests, status: 429 }
+      - request: { path: "/failing/2010-04-01/Accounts/{account}/Messages.json", method: POST }
+        handler: !ref noop
+        returns:
+          - status: 503
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { code: 20503, message: Service unavailable, status: 503 }
+      - request: { path: "/timeout/2010-04-01/Accounts/{account}/Messages.json", method: POST }
+        handler: !ref noop
+        returns:
+          - status: 408
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { code: 20408, message: Request Timeout, status: 408 }
+      - request: { path: "/noid/2010-04-01/Accounts/{account}/Messages.json", method: POST }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              application/json: { schema: { type: object, additionalProperties: true }, body: {} }
+  - kind: Server.Server
+    metadata: { name: fakeServer }
+    listen: { port: 18872 }
+    contentTypeParsers:
+      - { contentType: application/x-www-form-urlencoded }
+    mounts:
+      - { path: /, mount: !ref fakeTwilio }
+targets:
+  - !ref fakeServer
+steps:
+  - name: explicit
+    invoke: !ref twilio
+    inputs: { to: "+447700900123", from: "+15550001111", text: Your code is 123456 & valid. }
+  - name: defaulted
+    invoke: !ref twilio
+    inputs: { to: "+15551234567", text: Hi }
+  - name: assertSent
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - !cel "parseJson(steps.explicit.result.messageId)"
+        - !cel "parseJson(steps.defaulted.result.messageId)"
+      expected:
+        - path: !interpolate "/ok/2010-04-01/Accounts/AC${{ '0123456789abcdef0123456789abcdef' }}/Messages.json"
+          authorization: Basic QUMwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjp0ZXN0LXRva2Vu
+          body: To=%2B447700900123&From=%2B15550001111&Body=Your+code+is+123456+%26+valid.
+        - path: !interpolate "/ok/2010-04-01/Accounts/AC${{ '0123456789abcdef0123456789abcdef' }}/Messages.json"
+          authorization: Basic QUMwMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjp0ZXN0LXRva2Vu
+          body: To=%2B15551234567&From=%2B15557654321&Body=Hi
+  - name: sent
+    invoke:
+      kind: SmsTwilio.Transport
+      accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+      authToken: test-token
+      from: "+15557654321"
+      baseUrl: http://127.0.0.1:18872/sent
+    inputs: { to: "+15551234567", text: Hi }
+  - name: delivered
+    invoke:
+      kind: SmsTwilio.Transport
+      accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+      authToken: test-token
+      from: "+15557654321"
+      baseUrl: http://127.0.0.1:18872/delivered
+    inputs: { to: "+15551234567", text: Hi }
+  - name: assertResults
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - !cel "steps.explicit.result.status"
+        - !cel "steps.sent.result"
+        - !cel "steps.delivered.result"
+      expected:
+        - queued
+        - { messageId: SM-sent, status: sent }
+        - { messageId: SM-delivered, status: sent }
+
+  - name: rejected
+    try:
+      - name: rejectedSend
+        invoke:
+          kind: SmsTwilio.Transport
+          accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+          authToken: test-token
+          from: "+15557654321"
+          baseUrl: http://127.0.0.1:18872/rejecting
+        inputs: { to: "+15551234567", text: Hi }
+      - name: rejectedSent
+        throw: { code: TEST_FAILED, message: a refused message was reported sent }
+    catch:
+      - name: rejectedSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: limited
+    try:
+      - name: limitedSend
+        invoke:
+          kind: SmsTwilio.Transport
+          accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+          authToken: test-token
+          from: "+15557654321"
+          baseUrl: http://127.0.0.1:18872/limited
+        inputs: { to: "+15551234567", text: Hi }
+      - name: limitedSent
+        throw: { code: TEST_FAILED, message: a rate-limited message was reported sent }
+    catch:
+      - name: limitedSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: unavailable
+    try:
+      - name: unavailableSend
+        invoke:
+          kind: SmsTwilio.Transport
+          accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+          authToken: test-token
+          from: "+15557654321"
+          baseUrl: http://127.0.0.1:18872/failing
+        inputs: { to: "+15551234567", text: Hi }
+      - name: unavailableSent
+        throw: { code: TEST_FAILED, message: a failing service was reported to have sent }
+    catch:
+      - name: unavailableSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: timedOut
+    try:
+      - name: timedOutSend
+        invoke:
+          kind: SmsTwilio.Transport
+          accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+          authToken: test-token
+          from: "+15557654321"
+          baseUrl: http://127.0.0.1:18872/timeout
+        inputs: { to: "+15551234567", text: Hi }
+      - name: timedOutSent
+        throw: { code: TEST_FAILED, message: a timed-out request was reported sent }
+    catch:
+      - name: timedOutSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: noSid
+    try:
+      - name: noSidSend
+        invoke:
+          kind: SmsTwilio.Transport
+          accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+          authToken: test-token
+          from: "+15557654321"
+          baseUrl: http://127.0.0.1:18872/noid
+        inputs: { to: "+15551234567", text: Hi }
+      - name: noSidSent
+        throw: { code: TEST_FAILED, message: an answer without a SID was reported sent }
+    catch:
+      - name: noSidSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: unreachable
+    try:
+      - name: unreachableSend
+        invoke:
+          kind: SmsTwilio.Transport
+          accountSid: !cel "'AC' + '0123456789abcdef0123456789abcdef'"
+          authToken: test-token
+          from: "+15557654321"
+          baseUrl: http://127.0.0.1:1
+        inputs: { to: "+15551234567", text: Hi }
+      - name: unreachableSent
+        throw: { code: TEST_FAILED, message: a call to nothing was reported sent }
+    catch:
+      - name: unreachableSeen
+        value: !cel "error.code"
+  - name: assertFailures
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        rejected: !cel "steps.rejectedSeen.result"
+        limited: !cel "steps.limitedSeen.result"
+        timedOut: !cel "steps.timedOutSeen.result"
+        noSid: !cel "steps.noSidSeen.result"
+        unavailable: !cel "steps.unavailableSeen.result"
+        unreachable: !cel "steps.unreachableSeen.result"
+      expected:
+        rejected:
+          code: ERR_SMS_REJECTED
+          message: "Twilio refused the message with HTTP 400: 21211: The 'To' number is not a valid phone number."
+        limited:
+          code: ERR_SMS_UNAVAILABLE
+          message: "Twilio answered HTTP 429: 20429: Too Many Requests"
+        timedOut:
+          code: ERR_SMS_UNAVAILABLE
+          message: "Twilio answered HTTP 408: 20408: Request Timeout"
+        noSid:
+          code: ERR_SMS_UNAVAILABLE
+          message: "Twilio answered HTTP 200 without a message SID; the message may already have been accepted."
+        unavailable:
+          code: ERR_SMS_UNAVAILABLE
+          message: "Twilio answered HTTP 503: 20503: Service unavailable"
+        unreachable: ERR_SMS_UNAVAILABLE

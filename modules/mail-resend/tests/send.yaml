@@ -1,0 +1,263 @@
+kind: Telo.Application
+metadata:
+  name: MailResendSendTest
+  version: 1.0.0
+  description: |
+    `MailResend.Transport` against a local stand-in for Resend:
+
+      - the stand-in answers `POST /emails` with an id echoing the
+        `authorization` header and the JSON body it received, so the request is
+        asserted as Resend would see it: addresses as strings with display names
+        (quoted when they hold a comma or a quote), one address or a list always
+        a list, snake_case keys, attachments base64-encoded, the default sender
+        used for a message naming none;
+      - the result carries Resend's id as `messageId` and every to, cc and bcc
+        address as accepted;
+      - a 422 is `ERR_MAIL_REJECTED` carrying Resend's explanation, a 503, a 429, a 408, a
+        2xx without an id and an endpoint nothing listens on `ERR_MAIL_UNAVAILABLE`.
+imports: { MailResend: ../, Server: ../../http-server, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: MailResend.Transport
+metadata: { name: resend }
+apiKey: re_test_key
+from: { name: 'Example, "Inc."', address: no-reply@example.com }
+baseUrl: http://127.0.0.1:18871/ok
+---
+kind: Telo.Sequence
+metadata: { name: noop }
+steps: []
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: fakeResend }
+    routes:
+      - request:
+          path: /ok/emails
+          method: POST
+          schema:
+            body: { type: object, additionalProperties: true }
+            headers: { type: object, properties: { authorization: { type: string } } }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body:
+                  id: !cel "json({'authorization': request.headers['authorization'], 'body': request.body})"
+      - request: { path: /rejecting/emails, method: POST }
+        handler: !ref noop
+        returns:
+          - status: 422
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { statusCode: 422, name: validation_error, message: The `to` field must be an email address. }
+      - request: { path: /failing/emails, method: POST }
+        handler: !ref noop
+        returns:
+          - status: 503
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { statusCode: 503, name: service_unavailable, message: Try again later. }
+      - request: { path: /limited/emails, method: POST }
+        handler: !ref noop
+        returns:
+          - status: 429
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { statusCode: 429, name: rate_limit_exceeded, message: Too many requests. }
+      - request: { path: /timeout/emails, method: POST }
+        handler: !ref noop
+        returns:
+          - status: 408
+            content:
+              application/json:
+                schema: { type: object, additionalProperties: true }
+                body: { statusCode: 408, name: request_timeout, message: Took too long. }
+      - request: { path: /noid/emails, method: POST }
+        handler: !ref noop
+        returns:
+          - status: 200
+            content:
+              application/json: { schema: { type: object, additionalProperties: true }, body: {} }
+  - kind: Server.Server
+    metadata: { name: fakeServer }
+    listen: { port: 18871 }
+    mounts:
+      - { path: /, mount: !ref fakeResend }
+targets:
+  - !ref fakeServer
+steps:
+  - name: full
+    invoke: !ref resend
+    inputs:
+      from: { name: Billing, address: billing@example.com }
+      to: [{ name: Ada Lovelace, address: ada@example.com }, bob@example.com]
+      cc: Carol <carol@example.com>
+      bcc: [audit@example.com]
+      replyTo: support@example.com
+      subject: Your receipt
+      text: Thanks for your order.
+      html: <p>Thanks for your order.</p>
+      headers: { X-Order: "42" }
+      attachments:
+        - { filename: receipt.txt, content: !cel "bytes('order 42')", contentType: text/plain }
+        - { filename: logo.png, content: !cel "bytes('png')" }
+  - name: minimal
+    invoke: !ref resend
+    inputs: { to: dana@example.com, subject: Hi, html: <p>Hi</p> }
+  - name: assertSent
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - !cel "parseJson(steps.full.result.messageId)"
+        - !cel "parseJson(steps.minimal.result.messageId)"
+      expected:
+        - authorization: Bearer re_test_key
+          body:
+            from: Billing <billing@example.com>
+            to: [Ada Lovelace <ada@example.com>, bob@example.com]
+            cc: [Carol <carol@example.com>]
+            bcc: [audit@example.com]
+            reply_to: support@example.com
+            subject: Your receipt
+            text: Thanks for your order.
+            html: <p>Thanks for your order.</p>
+            headers: { X-Order: "42" }
+            attachments:
+              - { filename: receipt.txt, content: b3JkZXIgNDI=, content_type: text/plain }
+              - { filename: logo.png, content: cG5n }
+        - authorization: Bearer re_test_key
+          body:
+            from: '"Example, \"Inc.\"" <no-reply@example.com>'
+            to: [dana@example.com]
+            subject: Hi
+            html: <p>Hi</p>
+  - name: assertResults
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        - { accepted: !cel "steps.full.result.accepted", rejected: !cel "steps.full.result.rejected" }
+        - { accepted: !cel "steps.minimal.result.accepted", rejected: !cel "steps.minimal.result.rejected" }
+      expected:
+        - { accepted: [ada@example.com, bob@example.com, carol@example.com, audit@example.com], rejected: [] }
+        - { accepted: [dana@example.com], rejected: [] }
+
+  - name: rejected
+    try:
+      - name: rejectedSend
+        invoke:
+          kind: MailResend.Transport
+          apiKey: re_test_key
+          from: no-reply@example.com
+          baseUrl: http://127.0.0.1:18871/rejecting
+        inputs: { to: nobody, subject: Hi, text: Hi }
+      - name: rejectedSent
+        throw: { code: TEST_FAILED, message: a refused message was reported sent }
+    catch:
+      - name: rejectedSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: unavailable
+    try:
+      - name: unavailableSend
+        invoke:
+          kind: MailResend.Transport
+          apiKey: re_test_key
+          from: no-reply@example.com
+          baseUrl: http://127.0.0.1:18871/failing
+        inputs: { to: ada@example.com, subject: Hi, text: Hi }
+      - name: unavailableSent
+        throw: { code: TEST_FAILED, message: a failing service was reported to have sent }
+    catch:
+      - name: unavailableSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: limited
+    try:
+      - name: limitedSend
+        invoke:
+          kind: MailResend.Transport
+          apiKey: re_test_key
+          from: no-reply@example.com
+          baseUrl: http://127.0.0.1:18871/limited
+        inputs: { to: ada@example.com, subject: Hi, text: Hi }
+      - name: limitedSent
+        throw: { code: TEST_FAILED, message: a rate-limited message was reported sent }
+    catch:
+      - name: limitedSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: timedOut
+    try:
+      - name: timedOutSend
+        invoke:
+          kind: MailResend.Transport
+          apiKey: re_test_key
+          from: no-reply@example.com
+          baseUrl: http://127.0.0.1:18871/timeout
+        inputs: { to: ada@example.com, subject: Hi, text: Hi }
+      - name: timedOutSent
+        throw: { code: TEST_FAILED, message: a timed-out request was reported sent }
+    catch:
+      - name: timedOutSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: noId
+    try:
+      - name: noIdSend
+        invoke:
+          kind: MailResend.Transport
+          apiKey: re_test_key
+          from: no-reply@example.com
+          baseUrl: http://127.0.0.1:18871/noid
+        inputs: { to: ada@example.com, subject: Hi, text: Hi }
+      - name: noIdSent
+        throw: { code: TEST_FAILED, message: an answer without an id was reported sent }
+    catch:
+      - name: noIdSeen
+        value: { code: !cel "error.code", message: !cel "error.message" }
+  - name: unreachable
+    try:
+      - name: unreachableSend
+        invoke:
+          kind: MailResend.Transport
+          apiKey: re_test_key
+          from: no-reply@example.com
+          baseUrl: http://127.0.0.1:1
+        inputs: { to: ada@example.com, subject: Hi, text: Hi }
+      - name: unreachableSent
+        throw: { code: TEST_FAILED, message: a call to nothing was reported sent }
+    catch:
+      - name: unreachableSeen
+        value: !cel "error.code"
+  - name: assertFailures
+    invoke: !ref Assert.equals
+    inputs:
+      actual:
+        rejected: !cel "steps.rejectedSeen.result"
+        limited: !cel "steps.limitedSeen.result"
+        timedOut: !cel "steps.timedOutSeen.result"
+        noId: !cel "steps.noIdSeen.result"
+        unavailable: !cel "steps.unavailableSeen.result"
+        unreachable: !cel "steps.unreachableSeen.result"
+      expected:
+        rejected:
+          code: ERR_MAIL_REJECTED
+          message: "Resend refused the message with HTTP 422: validation_error: The `to` field must be an email address."
+        limited:
+          code: ERR_MAIL_UNAVAILABLE
+          message: "Resend answered HTTP 429: rate_limit_exceeded: Too many requests."
+        timedOut:
+          code: ERR_MAIL_UNAVAILABLE
+          message: "Resend answered HTTP 408: request_timeout: Took too long."
+        noId:
+          code: ERR_MAIL_UNAVAILABLE
+          message: "Resend answered HTTP 200 without a message id; the message may already have been accepted."
+        unavailable:
+          code: ERR_MAIL_UNAVAILABLE
+          message: "Resend answered HTTP 503: service_unavailable: Try again later."
+        unreachable: ERR_MAIL_UNAVAILABLE

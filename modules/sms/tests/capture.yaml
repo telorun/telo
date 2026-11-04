@@ -1,0 +1,84 @@
+kind: Telo.Application
+metadata:
+  name: SmsCaptureTest
+  version: 1.0.0
+  description: |
+    Two messages sent through `Sms.Capture` are read back in full, oldest first,
+    with the message ids the sends answered; the `to` filter keeps only the
+    messages sent to one number; a number that is not E.164 is refused by the
+    transport contract and nothing is recorded.
+imports: { Sms: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Sms.Capture
+metadata: { name: sms }
+---
+kind: Sms.CaptureRead
+metadata: { name: read }
+capture: !ref sms
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: code
+    invoke: !ref sms
+    inputs: { to: "+15551234567", text: Your code is 123456. }
+  - name: alert
+    invoke: !ref sms
+    inputs: { to: "+447700900123", from: "+15557654321", text: Your order has shipped. }
+  - name: assertSent
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "[steps.code.result.status, steps.alert.result.status, steps.code.result.messageId != steps.alert.result.messageId]"
+      expected: [sent, sent, true]
+
+  - name: all
+    invoke: !ref read
+    inputs: {}
+  - name: assertAll
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.all.result.messages"
+      expected:
+        - { messageId: !cel "steps.code.result.messageId", to: "+15551234567", text: Your code is 123456. }
+        - messageId: !cel "steps.alert.result.messageId"
+          to: "+447700900123"
+          from: "+15557654321"
+          text: Your order has shipped.
+
+  - name: toUk
+    invoke: !ref read
+    inputs: { to: "+447700900123" }
+  - name: toNobody
+    invoke: !ref read
+    inputs: { to: "+15550000000" }
+  - name: assertFiltered
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "[steps.toUk.result.messages.map(m, m.text), steps.toNobody.result.messages.map(m, m.text)]"
+      expected: [[Your order has shipped.], []]
+
+  # `telo check` refuses the literal spelling; `dyn` hides the map's shape so the
+  # contract is judged when the message is sent.
+  - name: national
+    try:
+      - name: send
+        invoke: !ref sms
+        inputs: !cel "dyn({'to': '0555 123 4567', 'text': 'Hi'})"
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a number that is not E.164 was sent to }
+    catch:
+      - name: assertRefused
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+  - name: afterRefusal
+    invoke: !ref read
+    inputs: {}
+  - name: assertNothingRecorded
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "size(steps.afterRefusal.result.messages)"
+      expected: 2

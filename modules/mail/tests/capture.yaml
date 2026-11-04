@@ -1,0 +1,127 @@
+kind: Telo.Application
+metadata:
+  name: MailCaptureTest
+  version: 1.0.0
+  description: |
+    Two messages sent through `Mail.Capture` are read back in full, oldest first,
+    with the message ids the sends answered; the `to` filter keeps only the
+    messages addressed to one recipient, whatever its case or display name; a
+    message with neither `text` nor `html` is refused by the transport contract.
+imports: { Mail: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Mail.Capture
+metadata: { name: mail }
+---
+kind: Mail.CaptureRead
+metadata: { name: read }
+capture: !ref mail
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: welcome
+    invoke: !ref mail
+    inputs:
+      to: { name: Ada Lovelace, address: Ada@Example.com }
+      cc: [carol@example.com]
+      subject: Welcome
+      text: Your account is ready.
+  - name: receipt
+    invoke: !ref mail
+    inputs:
+      from: billing@example.com
+      to: [bob@example.com, Ada <ada@example.com>]
+      bcc: audit@example.com
+      replyTo: { name: Billing, address: billing@example.com }
+      subject: Your receipt
+      text: Thanks for your order.
+      html: <p>Thanks for your order.</p>
+      headers: { X-Order: "42" }
+      attachments:
+        - { filename: receipt.txt, content: !cel "bytes('order 42')", contentType: text/plain }
+  - name: assertSent
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "[steps.welcome.result.accepted, steps.welcome.result.rejected, steps.receipt.result.accepted, steps.receipt.result.rejected]"
+      expected:
+        - [Ada@Example.com, carol@example.com]
+        - []
+        - [bob@example.com, ada@example.com, audit@example.com]
+        - []
+
+  - name: all
+    invoke: !ref read
+    inputs: {}
+  # `Assert.Equals` compares bytes by identity, so the attachment's content is
+  # compared as text in `assertAttachment` and taken as read here.
+  - name: assertAttachment
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "string(steps.all.result.messages[1].attachments[0].content)"
+      expected: order 42
+  - name: assertAll
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "steps.all.result.messages"
+      expected:
+        - messageId: !cel "steps.welcome.result.messageId"
+          to: { name: Ada Lovelace, address: Ada@Example.com }
+          cc: [carol@example.com]
+          subject: Welcome
+          text: Your account is ready.
+        - messageId: !cel "steps.receipt.result.messageId"
+          from: billing@example.com
+          to: [bob@example.com, Ada <ada@example.com>]
+          bcc: audit@example.com
+          replyTo: { name: Billing, address: billing@example.com }
+          subject: Your receipt
+          text: Thanks for your order.
+          html: <p>Thanks for your order.</p>
+          headers: { X-Order: "42" }
+          attachments:
+            - filename: receipt.txt
+              content: !cel "steps.all.result.messages[1].attachments[0].content"
+              contentType: text/plain
+
+  # Both messages name Ada in `to`; only the receipt names Bob, and nobody names
+  # the audit address outside `bcc`.
+  - name: toAda
+    invoke: !ref read
+    inputs: { to: ADA@example.com }
+  - name: toBob
+    invoke: !ref read
+    inputs: { to: bob@example.com }
+  - name: toAudit
+    invoke: !ref read
+    inputs: { to: audit@example.com }
+  - name: assertFiltered
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "[steps.toAda.result.messages.map(m, m.subject), steps.toBob.result.messages.map(m, m.subject), steps.toAudit.result.messages.map(m, m.subject)]"
+      expected: [[Welcome, Your receipt], [Your receipt], []]
+
+  # `telo check` refuses the literal spelling; `dyn` hides the map's shape so the
+  # contract is judged when the message is sent.
+  - name: bodiless
+    try:
+      - name: send
+        invoke: !ref mail
+        inputs: !cel "dyn({'to': 'ada@example.com', 'subject': 'Nothing to read'})"
+      - name: accepted
+        throw: { code: NOT_REFUSED, message: a message with neither text nor html was sent }
+    catch:
+      - name: assertRefused
+        invoke: !ref Assert.equals
+        inputs:
+          actual: !cel "error.code"
+          expected: ERR_INPUT_INVALID
+  - name: afterRefusal
+    invoke: !ref read
+    inputs: {}
+  - name: assertNothingRecorded
+    invoke: !ref Assert.equals
+    inputs:
+      actual: !cel "size(steps.afterRefusal.result.messages)"
+      expected: 2

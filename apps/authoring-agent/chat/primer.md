@@ -2800,6 +2800,28 @@ serves many users. Do not hand-roll consent URLs, code exchange or refresh
 logic — and never ask a user to paste a refresh token into an environment
 variable.
 
+## Sending email and SMS
+
+Never call a mail or SMS provider by hand with `Http.Request`. Send through a
+transport — an invocable extending `Mail.Transport` (`mail`) or `Sms.Transport`
+(`sms`) — and invoke it from a step: `invoke: !ref mail` with
+`inputs: { to, subject, text }`. Pick the backend with the hub: `Mail.Smtp`
+(`mail`), `MailResend.Transport` (`mail-resend`), `SmsTwilio.Transport`
+(`sms-twilio`); credentials come from `secrets:`. A library that sends takes a
+transport as a resource input typed by the abstract
+(`resources: { mail: { kind: Mail.Transport } }`), so the importer chooses.
+
+- Mail inputs: `to` (and `cc`, `bcc`) an address string or `{ name, address }`,
+  or a list; `subject`; at least one of `text` and `html` (a literal message
+  with neither fails `telo check`). Output `{ messageId, accepted, rejected }`.
+- SMS inputs: `to`, optional `from`, `text`; numbers in E.164 (`+15551234567`).
+  Output `{ messageId, status }`.
+- A failed send is `ERR_MAIL_REJECTED` / `ERR_SMS_REJECTED` (will be refused
+  again) and `ERR_MAIL_UNAVAILABLE` / `ERR_SMS_UNAVAILABLE` (retry may work).
+- Tests send through `Mail.Capture` / `Sms.Capture` and read back with
+  `Mail.CaptureRead` / `Sms.CaptureRead` (`capture: !ref …`, input `{ to? }`,
+  output `{ messages }`) — never a real provider.
+
 ## Application / Library fields
 
 `metadata.name` becomes the module's canonical kind prefix. It is not a

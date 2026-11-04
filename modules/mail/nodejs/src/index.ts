@@ -1,0 +1,6 @@
+// Controller entry points. Each kind's `controllers:` candidate selects one of
+// these by PURL fragment, so the whole module is one bundle and its shared
+// state is one module scope.
+export * as Smtp from "./smtp-controller.js";
+export * as Capture from "./capture-controller.js";
+export * as CaptureRead from "./capture-read-controller.js";
