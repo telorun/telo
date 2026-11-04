@@ -1,6 +1,6 @@
 {
   "name": "@telorun/i18n",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "license": "MIT",
   "private": true,
   "description": "The std/i18n module controller bundle. Never published to npm — the code ships inside the module artifact; this package exists to TYPE-CHECK the source, which esbuild does not do.",

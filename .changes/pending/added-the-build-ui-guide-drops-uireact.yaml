@@ -1,5 +1,0 @@
-modules:
-  apps/hub: Added
-body: "The build_ui guide drops UiReact.App's words: and teaches translating ui's own
-  texts by listing its shipped Ui.*Translations, and rewording one key with a
-  Ui.Translations of the application's own."

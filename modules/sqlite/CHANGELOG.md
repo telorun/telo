@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.13.0 - 2026-11-04
+### Added
+* SQLite.Schema renders currentInstantPlus(duration) — the current instant shifted by a bound date modifier, in the same fixed-width UTC text to the millisecond, refusing a shift that leaves years 0000–9999 — and instantParameter(timestamp) — a bound Telo.Timestamp as that text, to the millisecond — and its skipLockedClause() is empty, since SQLite has a single writer.
+
 ## 0.12.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

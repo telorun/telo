@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0 - 2026-11-04
+### Added
+* Breaking: I18n.Negotiator is removed (the request language is request.lang), I18n.Translator loses catalogs and is no longer exported, the @telorun/i18n code export (catalogSetOf) is removed, and one exported instance, translate, formats a text through the application translations: I18n.translate(text, request.lang, values). I18n.Catalog is deprecated in favour of the built-in Telo.TextTranslations and still works.
+
 ## 0.2.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

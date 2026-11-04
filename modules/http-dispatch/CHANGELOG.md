@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.18.0 - 2026-11-04
+### Added
+* Cookie declarations: the abstract HttpDispatch.Cookie (name, an RFC 6265 token never spelling a __Host- or __Secure- prefix; httpOnly, default true; sameSite Strict | Lax | None, default Lax; partitioned, default false) and three kinds — HostCookie, rendered __Host-<name> with Secure, Path=/ and no Domain; SecureCookie, rendered __Secure-<name> with Secure, an optional domain and a path (default /); and UnprefixedCookie, with domain, path and secure (default true), where sameSite None and partitioned true both need secure — each refused as SCHEMA_VIOLATION by telo check and at creation, and a computed attribute breaking the same rules refused when the declaration is created. Each publishes its normalized attribute record (CookieAttributes). Outcomes return and catch entries gain cookies, a list of { cookie, value?, maxAge?, expires? } rendered as one Set-Cookie line each in written order; a maxAge of zero or less clears the cookie with Max-Age=0 and a past Expires under the declaration's own scope; a computed value that is not cookie-octets fails the response with ERR_COOKIE_VALUE_INVALID. Request.schema gains cookies. Content-Type and Set-Cookie in an entry's headers are refused statically. ResponseSink.setHeader takes a list, the header's complete set of lines in order, never comma-joined, an empty list removing it; parseCookieHeader and setCookieLine are exported.
+* RequestTrace carries lang, the request language negotiated for the request.
+* RequestTrace carries tls, the TLS session of the request's socket as a RequestTls ({ protocol }) or null, and clientCertificate, the client certificate the transport received or a trusted proxy forwarded as a ClientCertificate (subject, issuer, serialNumber, fingerprint256, validFrom, validTo, subjectAltNames, pem, verified, via) or null; both types are exported.
+
 ## 0.17.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

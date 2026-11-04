@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.31.0 - 2026-11-04
+### Added
+* Every sequence is the built-in Telo.Sequence, and the application requires telo >=0.128.0.
+* The agent knows when to use a durable queue, a workflow or Run.Detach, wires a PostgreSQL or SQLite queue and its worker, enqueues an outbox message inside the writing transaction, and makes a handler's database effects happen once per message id with IdempotencySql.Once.
+* The agent writes retry delays and step timeouts as durations, and knows retryAfter and the nonRetryable check.
+* The primer teaches sending email and SMS through a Mail.Transport / Sms.Transport and testing with the capture pair.
+* The primer teaches that telo check warns an application for every text and library key a language it serves has no translation for (MESSAGE_TRANSLATION_MISSING), and that a library's shipped catalogs cover its keys once listed.
+* The primer teaches the application translations: block, Telo.TextTranslations, request.lang, preferredLanguages and I18n.translate.
+* The primer teaches the crypto module (password hashing with rehash on login, constant-time comparison, random tokens, HMAC, digests, HKDF) and the jose module: signing and verifying JWTs with a required algorithms list, managed and static key sets, serving a JWKS from a route, scheduled rotation through Scheduler.Cron, and sealed values.
+* The primer teaches ui's own texts as the keyed set Ui.Translations: English with nothing written, translated by listing ui's shipped Ui.*Translations, one key reworded by a Ui.Translations of the application's own; UiReact.App has no words:.
+
 ## 0.30.0 - 2026-10-29
 ### Added
 * The chat library now ships inside the agent's artifact instead of as a separate artifact at oci://ghcr.io/telorun/authoring-agent/chat; the agent requires telo 0.125.0 or newer to read it.

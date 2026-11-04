@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0 - 2026-11-04
+### Fixed
+* CheckTheme runs the renderer's scenes with their keyed texts (`scenes.texts`), the shape the renderer now reads.
+
 ## 0.5.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

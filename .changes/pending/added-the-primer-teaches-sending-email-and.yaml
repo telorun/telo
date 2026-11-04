@@ -1,4 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The primer teaches sending email and SMS through a Mail.Transport / Sms.Transport
-  and testing with the capture pair.

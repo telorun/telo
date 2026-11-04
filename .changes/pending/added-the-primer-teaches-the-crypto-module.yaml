@@ -1,7 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: "The primer teaches the crypto module (password hashing with rehash on login,
-  constant-time comparison, random tokens, HMAC, digests, HKDF) and the jose module:
-  signing and verifying JWTs with a required algorithms list, managed and static key
-  sets, serving a JWKS from a route, scheduled rotation through Scheduler.Cron, and
-  sealed values."

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.0 - 2026-11-04
+### Added
+* Http.BasicAuth: a static credential rendering Authorization: Basic base64(username:password) as UTF-8 (RFC 7617); an empty username or one containing ":" is refused by telo check and at creation (SCHEMA_VIOLATION), and a computed one when the credential is created.
+* Http.Request's retry policy honours nonRetryable and retryAfter, which read each failure as error — a network failure under its own code with data.url, a retried response as ERR_HTTP_STATUS with its status, url, headers and body; a duration retryAfter yields is waited instead of both the backoff and the Retry-After header, capped by maxDelay. initialDelay and maxDelay take durations as well as integer milliseconds. On Http.Client, retryAfter is resolved once when the client is created and reads no error.
+
 ## 0.24.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

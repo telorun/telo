@@ -1,4 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The agent writes retry delays and step timeouts as durations, and knows retryAfter
-  and the nonRetryable check.

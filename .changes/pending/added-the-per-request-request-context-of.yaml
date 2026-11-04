@@ -1,5 +1,0 @@
-modules:
-  modules/ui: Added
-body: The per-request `request` context of a page, its nodes, the navigation and the
-  header declares `lang`, the language the server negotiated for the request, so a node
-  reads `request.lang` instead of parsing `Accept-Language`.
