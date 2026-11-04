@@ -1,5 +1,27 @@
 # @telorun/cli
 
+## 0.129.0
+
+### Minor Changes
+
+- a16bc53: `telo check` warns `MESSAGE_TRANSLATION_MISSING` for each language an application serves (its `lang:` and every listed catalog's, `und` aside) that would show something in its source wording: one warning per keyed set naming every untranslated key, and one per language naming every literal `Text` written in another language — a resource's texts, a kind's declared display messages, a literal text argument. It is judged on the layered result of the listed catalogs by the run-time lookup rule, so `en` covers `en-GB` and a regional tag is not warned again for what its served shorter tag lacks; it is reported at the Application's `translations:`, or at its `lang:` without one. Nothing is refused at run time.
+
+  The built-in error codes' display messages arrive translated into `de`, `es`, `fr`, `hi`, `it`, `ja`, `ko`, `nl`, `pl`, `pt`, `ru`, `tr`, `uk` and `zh`. The `Telo.Builtins` archive gains a sixth section, `translations` — one text catalog per language, keyed by its `lang`, printed by `telo builtins <lang>` — which `readBuiltinVocabulary` refuses when an entry is not a text catalog, is keyed by another language, is written in `en`, fails the catalog judgement, translates a text no built-in error code shows or leaves one untranslated. The kernel layers them beneath every catalog an Application lists, so a listed catalog translating the same text and context wins, and they add no served language: an application written in `pl` answers a refused request in Polish with no catalog listed, while an `en` one asked for `pl` answers in English. `telo check` reads the same layer: the built-in display messages count as shown by every application, so `MESSAGE_TRANSLATION_MISSING` names them for a served language the built-in translations do not cover and never for one they do.
+
+### Patch Changes
+
+- Updated dependencies [b9f2b23]
+- Updated dependencies [b9f2b23]
+- Updated dependencies [bfc0827]
+- Updated dependencies [a16bc53]
+- Updated dependencies [a16bc53]
+- Updated dependencies [bfc0827]
+  - @telorun/kernel@0.129.0
+  - @telorun/sdk@0.129.0
+  - @telorun/analyzer@0.129.0
+  - @telorun/templating@0.129.0
+  - @telorun/ide-support@0.129.0
+
 ## 0.128.0
 
 ### Patch Changes
