@@ -41,11 +41,11 @@ requires:
   # 0.128.0: `Telo.Sequence`, which an older analyzer reads as UNDEFINED_KIND.
   telo: ">=0.128.0"
 imports:
-  Durable: oci://ghcr.io/telorun/durable@0.3.0#sha256-b6kl3znBnYK9fNwLrtbmVQNNbiYoxCqKJJpr3hPvGZ0
-  Local: oci://ghcr.io/telorun/durable-local@0.5.2#sha256-soZKZblBTZFz8HovfW4e8HY3-l8uh4nhfg6av4xigDk
-  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.1#sha256-9g3_fiv6_tyQd_YOzwfA_T1fobtK9u_s3KFHMELpI7Y
-  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
-  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
+  Durable: oci://ghcr.io/telorun/durable@0.3.1#sha256-UiehHkLDGU0OvC6XlVv32Oict5oev_sKA-fiBAknxl8
+  Local: oci://ghcr.io/telorun/durable-local@0.5.3#sha256-tort2fIa-8fHNd2LRKWvdbY_1ztwZxOyck50T9RyQwg
+  Journal: oci://ghcr.io/telorun/durable-journal-file@0.7.2#sha256-NuJ3V145M6FSbY0kaGgOX7YU9C0sWfa3Vdvh9CVZaWo
+  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
+  Timer: oci://ghcr.io/telorun/timer@0.9.1#sha256-F6Tp_apDFGTnVzHXb_Jx45vtLkxZWDUCUasqE9ASBKk
 variables:
   orderId:
     env: ORDER_ID

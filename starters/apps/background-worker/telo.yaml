@@ -40,17 +40,17 @@ lang: en
 # `http-server`, `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: ../../../modules/http-server
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
-  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
-  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.15.0#sha256-PS7VTBaOLuEirlk9FgfFA7WeDwyoVS1c3PDVn7c07to
-  Lease: oci://ghcr.io/telorun/lease@0.14.0#sha256-Q9fVDAE4m7amXF8k9NolFtxjjoHH84LRpv11j5q6r1k
-  Schedule: oci://ghcr.io/telorun/scheduler@0.11.0#sha256-Q6pFuiUgMWlYX2Y8SC534yALpD20t60c9ZBj7iMKVeA
-  Timer: oci://ghcr.io/telorun/timer@0.9.0#sha256-Phjx5KkREnLAB68DlKZUx5bRkDosEO3WaMVMUS2-pfg
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Ui: oci://ghcr.io/telorun/ui@0.9.0#sha256-R22o2ZJUQCg7hpKkZiJUjvwj6ETOGDIdfyBRiRKYuPA
+  UiReact: oci://ghcr.io/telorun/ui-react@0.10.0#sha256-0Y70n6MqHB-Po1mOFQTlucCE4t1ynkL3BS9aW2lnGEs
+  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
+  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
+  KvStoreSql: oci://ghcr.io/telorun/kv-store-sql@0.16.0#sha256-L1a9LIiNvlaT5WFxG_9u_bXYnnO_kDMumyALAG91Pho
+  Lease: oci://ghcr.io/telorun/lease@0.14.1#sha256-o4Zlp_Xri8t5dCoIoJd929VwMyK6OQaJFMkG9l8IthE
+  Schedule: oci://ghcr.io/telorun/scheduler@0.11.1#sha256-vMI7JiNJp8lhcYgRIa1MRc4ilB5GC_UXTLaf_6kbpTw
+  Timer: oci://ghcr.io/telorun/timer@0.9.1#sha256-F6Tp_apDFGTnVzHXb_Jx45vtLkxZWDUCUasqE9ASBKk
+  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
+  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
 targets:
   - !ref migrate
   - !ref worker

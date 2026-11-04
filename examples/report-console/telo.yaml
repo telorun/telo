@@ -18,12 +18,12 @@ lang: en
 # repository while their changes are unreleased; `telo upgrade --pin-local` pins
 # them again once they ship.
 imports:
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-  Http: ../../modules/http-server
-  HttpDispatch: ../../modules/http-dispatch
-  DataModel: ../../modules/data-model
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
+  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  HttpDispatch: oci://ghcr.io/telorun/http-dispatch@0.18.0#sha256-_OP1570L3dOMsLikAcFt0Zmr-Mtep_adBpJYchPY3gQ
+  DataModel: oci://ghcr.io/telorun/data-model@0.2.1#sha256-gLaIW4Dof6e-IOvGrjBOfWiOoUQUEcQ8jBMjukTzb7U
+  Ui: oci://ghcr.io/telorun/ui@0.9.0#sha256-R22o2ZJUQCg7hpKkZiJUjvwj6ETOGDIdfyBRiRKYuPA
+  UiReact: oci://ghcr.io/telorun/ui-react@0.10.0#sha256-0Y70n6MqHB-Po1mOFQTlucCE4t1ynkL3BS9aW2lnGEs
 # The backend the screen calls — stub routes answering fixture data — and the
 # Polish translation, each in a file of its own.
 include: [./stub-api.yaml, ./polish.yaml]

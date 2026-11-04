@@ -9,10 +9,10 @@ metadata:
     head and heading; the slashless path redirects to the canonical one keeping
     the query; an unknown ref and an unknown `?version=` are 404s.
 imports:
-  HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
-  Html: oci://ghcr.io/telorun/html@0.3.0#sha256-X7Aqro4r2XMYOcsKlq9ddqyBHYbZPCG8TFxOFSgWHLQ
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-  Assert: oci://ghcr.io/telorun/assert@0.22.0#sha256-72ysePrZIFbPDsX6TdpS4vCuzCnGCx_KVDUunxJ_0OU
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Html: oci://ghcr.io/telorun/html@0.3.1#sha256-G81fLbqXcpYtcnNCYNd51ZlFbgQM4MMXh5DoGUpeIqs
+  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 targets:
   - !ref modulePage_RendersSeededModule
   - !ref modulePage_SlashlessRedirectsKeepingQuery

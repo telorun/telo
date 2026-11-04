@@ -26,7 +26,7 @@ requires: { telo: ">=0.128.0" }
 imports:
   PowTs: ./pow-ts
   PowRust: ./pow-rust
-  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
 variables:
   text:
     type: string

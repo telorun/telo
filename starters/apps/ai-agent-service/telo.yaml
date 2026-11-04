@@ -28,13 +28,13 @@ requires:
   # A host-path variable declaring `entry:` needs 0.121.0.
   telo: ">=0.121.0"
 imports:
-  AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.4.2#sha256-zQwrLlKIWmp4LlPnbFw49yoG9QBz04D15NJrApuV_jA
+  AgentApp: oci://ghcr.io/telorun/blueprints/agent-app@0.4.4#sha256-o26ckMRNX8Ui_LeqYe9yoQ_oIysiB05HIQYMqaF9rB8
   # The same versions the blueprint itself imports.
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-  OpenAI: oci://ghcr.io/telorun/openai@0.18.0#sha256-t1cBMD7FMjIAOEAs76SSKy-YB40ozm8S6jwdBG9z08Q
-  Http: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
-  Sql: oci://ghcr.io/telorun/sql@0.29.0#sha256-0GUgGzPO5QbrzSS1LiIfbkG4qCeOq2W03R1P2PkIsXQ
-  SQLite: oci://ghcr.io/telorun/sqlite@0.12.0#sha256-HsbZ6L56HZ9PlvE4WWcgL8qojF0P623wYLv30oUGifQ
+  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
+  OpenAI: oci://ghcr.io/telorun/openai@0.19.0#sha256-hSN3SLSlKffenUQIVyIAxLU17yP--y-33xQNzs1xZYA
+  Http: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
+  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
 targets:
   - !ref migrate
   - !ref assistant

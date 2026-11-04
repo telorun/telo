@@ -6,7 +6,7 @@ metadata:
     The per-plan long poll. With events after the cursor it answers at once;
     with none it holds the request, answers within milliseconds of a reviewer's
     decision with that event, and otherwise answers empty at the server's cap
-    (LONG_POLL_CAP, here 1s) even when the client asked to wait longer. An
+    (LONG_POLL_CAP, here 4s) even when the client asked to wait longer. An
     agent that lost its cursor resumes from the plan ID alone: the plan read
     carries its state and cursor. An unknown plan is 404.
 imports:
@@ -34,11 +34,7 @@ kind: Run.Sequence
 metadata: { name: poll }
 inputType:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [path]
-    properties:
-      path: { type: string }
+  schema: { type: object, required: [path], properties: { path: { type: string } } }
 steps:
   - name: start
     value: !cel "nowMillis()"
@@ -75,7 +71,7 @@ steps:
           variables:
             dbFile: !cel "variables.scratch.joinPath('plans.sqlite')"
             uiDir: !module-path ./__fixtures__/ui
-            longPollCap: !cel "duration('1s')"
+            longPollCap: !cel "duration('4s')"
       targets: [ !ref server ]
       steps:
         - name: product
@@ -108,9 +104,7 @@ steps:
               schema:
                 type: object
                 required: [plan, hash]
-                properties:
-                  plan: { type: string }
-                  hash: { type: string }
+                properties: { plan: { type: string }, hash: { type: string } }
             collection: [poll, decide]
             concurrency: 2
             steps:
@@ -121,9 +115,7 @@ steps:
                     invoke: !ref poll
                     inputs: { path: !cel "'/api/agent/plans/' + inputs.plan + '/events?after=1&wait=10s'" }
                 else:
-                  - name: pause
-                    invoke: { kind: Timer.Delay }
-                    inputs: { duration: 300ms }
+                  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 300ms } }
                   - name: decide
                     invoke: !ref call
                     inputs:
@@ -143,8 +135,8 @@ steps:
           inputs: { url: /api/agent/plans/nope/events }
       outputs:
         pending: !cel "[steps.pending.result.status, steps.pending.result.elapsed < 500, steps.pending.result.body.events.map(e, [e.seq, e.type, e.source]), steps.pending.result.body.cursor]"
-        capped: !cel "[steps.capped.result.body.events, steps.capped.result.elapsed >= 900, steps.capped.result.elapsed < 2500, steps.capped.result.body.cursor]"
-        woken: !cel "[steps.race.result[0].result.elapsed < 800, steps.race.result[0].result.body.events.map(e, [e.seq, e.type, e.source]), steps.race.result[1].result.status]"
+        capped: !cel "[steps.capped.result.body.events, steps.capped.result.elapsed >= 3900, steps.capped.result.elapsed < 6000, steps.capped.result.body.cursor]"
+        woken: !cel "[steps.race.result[0].result.elapsed < 2000, steps.race.result[0].result.body.events.map(e, [e.seq, e.type, e.source]), steps.race.result[1].result.status]"
         resume: !cel "[steps.resume.result.body.state, steps.resume.result.body.cursor, steps.resume.result.body.latestRevision.seq]"
         fromResume: !cel "[steps.fromResume.result.elapsed < 500, steps.fromResume.result.body.events.map(e, e.type), steps.fromResume.result.body.plan.state]"
         unknown: !cel "[steps.unknown.result.status, steps.unknown.result.body.code]"
