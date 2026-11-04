@@ -1,5 +1,49 @@
 # @telorun/kernel
 
+## 0.129.0
+
+### Minor Changes
+
+- b9f2b23: The Node kernel reads the root Application's `translations.catalogs` and layers them into one set the whole application is translated through, an imported library's texts included: per language a later catalog's translation of a text and context replaces an earlier one's. `Telo.TextTranslations` gets its built-in controller. A controller reaches the set as `ctx.translations` (also on a native function's context): `fallback` (the Application's `lang:`, `und` without one), `languages()` (the fallback and every catalog's language), `negotiate(preferences)` (RFC 4647 lookup per entry, malformed or unserved entries skipped, else the fallback) and `translate(lang, record)` / `translateAll(lang, records)` (the translation as a text record in the language reached, or the record itself). It is the controller protocol's new `Translations.Lookup`, in generation 8. The `x-telo-text-catalog-set` judgement is gone from the kernel, and with it the analyzer's `declaresTextCatalogSet`, `textCatalogSetMembers`, `textCatalogSetDuplicates` and `textCatalogSetProblems` exports and `ERR_TEXT_CATALOG_SET_INVALID`. The Rust kernel refuses `translations:` and a `Telo.TextTranslations` resource with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
+- a16bc53: A library declares its own texts by key in a built-in `Telo.KeyedTranslations` (`keys:` of a message or `{ message, values?, description? }`, in the library's `lang:`), which registers the kind `<Module>.Translations` extending `Telo.Translations` with `lang` and a closed `messages:` map checked per key against its declared values. Per key and served language the source wording is the lowest layer and the application's listed catalogs of that kind apply over it in order. `x-telo-text-keys: [<Alias>.<Kind>]` on a kind's schema root names the keyed sets its resources show, and a kind naming none shows those of the nearest kind along `extends` naming any; written anywhere else — below the root, in `status:`, a contract, a named shape or a callable's parameters — it is refused (`TEXT_KEYS_INVALID` / `ERR_TEXT_KEYS_INVALID`); a controller reads them as `ctx.translations.keyed()`. The controller protocol's `Translations.Lookup` response gains the required `keyed`. The Rust kernel refuses `Telo.KeyedTranslations` with `ERR_UNSUPPORTED_MANIFEST_FEATURE`.
+- a16bc53: `telo check` warns `MESSAGE_TRANSLATION_MISSING` for each language an application serves (its `lang:` and every listed catalog's, `und` aside) that would show something in its source wording: one warning per keyed set naming every untranslated key, and one per language naming every literal `Text` written in another language — a resource's texts, a kind's declared display messages, a literal text argument. It is judged on the layered result of the listed catalogs by the run-time lookup rule, so `en` covers `en-GB` and a regional tag is not warned again for what its served shorter tag lacks; it is reported at the Application's `translations:`, or at its `lang:` without one. Nothing is refused at run time.
+
+  The built-in error codes' display messages arrive translated into `de`, `es`, `fr`, `hi`, `it`, `ja`, `ko`, `nl`, `pl`, `pt`, `ru`, `tr`, `uk` and `zh`. The `Telo.Builtins` archive gains a sixth section, `translations` — one text catalog per language, keyed by its `lang`, printed by `telo builtins <lang>` — which `readBuiltinVocabulary` refuses when an entry is not a text catalog, is keyed by another language, is written in `en`, fails the catalog judgement, translates a text no built-in error code shows or leaves one untranslated. The kernel layers them beneath every catalog an Application lists, so a listed catalog translating the same text and context wins, and they add no served language: an application written in `pl` answers a refused request in Polish with no catalog listed, while an `en` one asked for `pl` answers in English. `telo check` reads the same layer: the built-in display messages count as shown by every application, so `MESSAGE_TRANSLATION_MISSING` names them for a served language the built-in translations do not cover and never for one they do.
+
+- bfc0827: A controller asks for the zone its kind requires at the schema ROOT with the field-less `ctx.requireZone(ctx?)` / `ctx.findZone(ctx?)` — the same matching, correlation (a key crossing a `!ref` included) and `ERR_ZONE_REQUIRED` message as the field form — so a kind whose requirement is unconditional never raises the code itself. The controller protocol's `Zone.Require` / `Zone.Find` take the same lookup with no `field`.
+
+  A referrer rule may bind `coReferrers: /<slot>`: the other declarations of the `referrer:` kind reaching the same resource through that slot, each with its references resolved one level as `peers` resolves them — so a table refuses two stores claiming one name in it (`!coReferrers.exists(o, o.name == referrer.name)`) and nothing across tables. A pointer naming no reference slot of the referrer kind, or a rule without `referrer:`, is `REFERRER_RULE_INVALID`.
+
+  A literal at a union of encoded instance types (`anyOf: [Telo.Duration, Telo.Timestamp]`) is read by the one branch whose encoding reads it — `2s` a duration, RFC 3339 text a timestamp, an integer a duration in milliseconds — at every decode site, statically and at runtime alike.
+
+  `x-telo-retry-for: { slot: /<field>, codes? }` on a kind's retry-policy field relates it to the reference slot it re-attempts, so `telo check` judges its `nonRetryable` (`NON_RETRYABLE_CODE_NOT_THROWN`) and types `retryAfter`'s `error.data` against that slot's throws plus the codes the kind raises into the loop; a malformed annotation is `RETRY_FOR_INVALID`.
+
+  `x-telo-value-schema-from: /<ref>/outputType` (or `inputType`) reads the referenced resource's contract as a contract resolves — its own field, else the nearest declaration along its kind's `extends` — and a member read through such a node, or through any `allOf` of a document-local `$ref`, is judged, so a typo there is `CEL_UNKNOWN_FIELD`.
+
+  A `Telo.Duration` slot may bound its value: `x-telo-type: { name: Telo.Duration, minimum: 0s }`, and likewise `maximum`, `exclusiveMinimum` and `exclusiveMaximum`, each written as a duration or integer milliseconds. A literal outside a bound is refused by `telo check` at a resource's field and at a call's `inputs:`, and the kernel refuses the same value when the resource is created, a computed result after evaluation and a contract at dispatch, each naming the bound and the value (`must be a Telo.Duration at least 0s, not -1s`). The bound is data on the value type's entry (a parameter's `bound`), read by the Node and Rust SDKs alike. The shared retry policy's delays are bounded `minimum: 0s` and a step's `timeout:` `exclusiveMinimum: 0s`, replacing the dedicated `DURATION_OUT_OF_RANGE` check this release had introduced.
+
+  `x-telo-serializable: true` on a slot holding a shape (`x-telo-ref` with `use: schema`, or a JSON-Schema-valued field) says that shape's values are stored or serialized: a shape holding a `Telo.Stream` at any depth is refused by `telo check` (`SCHEMA_NOT_SERIALIZABLE`, naming the path) and when the resource is created (`ERR_SCHEMA_NOT_SERIALIZABLE`); a misplaced or malformed mark is `SERIALIZABLE_ANNOTATION_INVALID`. `DURABLE_UNJOURNALABLE_RESULT` now warns for a declared output holding a stream at any depth, not only at its root.
+
+  `ctx.traceCarrier(ctx?)` returns the current span as W3C Trace Context headers (`{ traceparent, tracestate? }`), or `undefined` when tracing is off: a controller records it with work it stores or sends, and `openSpan(…, { inbound: carrier })` continues it as that span's child, in its trace. The controller protocol gains `Span.Carrier`, and its generation moves to `9`.
+
+  A context binding typed by `x-telo-context-ref-from`, `-from-root` or `-from-ref-kind` keeps the nullability its own node declares (`type: [object, "null"]`), so an unguarded member read through it is `CEL_NULLABLE_ACCESS`.
+
+  `@telorun/sdk` exports the step engine's retry pieces for every holder that runs its own loop over the shared retry policy (a queue worker re-attempting a delivery): `isRetryable(err, nonRetryable?)` — false for a cancellation, a suspension, an ambient contract error, the kernel's verdicts on the call and a listed code — `retryMaxDelayMs(policy)`, `retryErrorView(err)` (the `error` a policy's CEL reads) and `retryAfterMs(policy, err, evaluate, { describe, data? })`, beside the already exported `retryBackoffMs`. The step engine's own retry loop calls the same functions.
+
+  A literal of an encoded value type inside an object typed by `x-telo-value-schema-from` (a timestamp, a duration as text or integer milliseconds, bytes, an unsigned integer) is decoded by the type its referenced shape declares, at a call's `inputs:` and at a config field, where it was refused. A member read through a union — `anyOf: [{ type: "null" }, …]` included — is judged against every alternative that can hold an object, so a typo there is `CEL_UNKNOWN_FIELD`, and a read through a union holding `null` without a guard is `CEL_NULLABLE_ACCESS`. A `Telo.Abstract` extending another module's abstract registers with its ancestors folded in its own scope, so a kind two modules down accepts the fields the root abstract declares at run as `telo check` already did.
+
+### Patch Changes
+
+- Updated dependencies [b9f2b23]
+- Updated dependencies [b9f2b23]
+- Updated dependencies [bfc0827]
+- Updated dependencies [a16bc53]
+- Updated dependencies [a16bc53]
+- Updated dependencies [bfc0827]
+  - @telorun/analyzer@0.129.0
+  - @telorun/templating@0.129.0
+  - @telorun/cel@0.129.0
+
 ## 0.128.0
 
 ### Minor Changes
