@@ -40,17 +40,17 @@ lang: en
 # `http-server`, `ui` and `ui-react` come from this repository while their changes are
 # unreleased; `telo upgrade --pin-local` pins them again once they ship.
 imports:
-  Http: ../../../modules/http-server
-  Ui: ../../../modules/ui
-  UiReact: ../../../modules/ui-react
-  HttpClient: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
-  OpenAI: oci://ghcr.io/telorun/openai@0.18.0#sha256-t1cBMD7FMjIAOEAs76SSKy-YB40ozm8S6jwdBG9z08Q
-  Ai: oci://ghcr.io/telorun/ai@0.32.0#sha256-wFl0WwbqZ9Nq6-N2Y18VePWibYUwNKJs2pu6d5_0Zcc
-  Embedding: oci://ghcr.io/telorun/embedding@0.12.0#sha256-lQqgopkTtGP1RyYmoryM-mr1fv_Ey_xbMZsj3vlLEeM
-  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.0#sha256-lmCK8i7SQuTRupTSY-s5l89wUwQuikXpjJOxI5vbNwI
-  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.9.1#sha256-Qt-1MSGFnnKfBQKHAIavoyBAkSGh00bfQmhTbd_JGuw
-  Run: oci://ghcr.io/telorun/run@0.31.0#sha256-nwScCIsE4_c40LSm8abAb5qDKQxVnTU8ORlf7Xjyys4
-  Console: oci://ghcr.io/telorun/console@0.19.0#sha256-RC9Wlj4a8ysp1g3WS3z3CbmQuAsahNj4PdsJMaNfPZw
+  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Ui: oci://ghcr.io/telorun/ui@0.9.0#sha256-R22o2ZJUQCg7hpKkZiJUjvwj6ETOGDIdfyBRiRKYuPA
+  UiReact: oci://ghcr.io/telorun/ui-react@0.10.0#sha256-0Y70n6MqHB-Po1mOFQTlucCE4t1ynkL3BS9aW2lnGEs
+  HttpClient: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
+  OpenAI: oci://ghcr.io/telorun/openai@0.19.0#sha256-hSN3SLSlKffenUQIVyIAxLU17yP--y-33xQNzs1xZYA
+  Ai: oci://ghcr.io/telorun/ai@0.33.0#sha256-KDMSOuRajeJSspzt6IoopQcYRF9dqlpe_MHGZ7zJOQk
+  Embedding: oci://ghcr.io/telorun/embedding@0.12.1#sha256--HWfwJ_HlgbgxR5I1Pki0r45FkYhWRyfp_-UKmFbOF0
+  VectorStore: oci://ghcr.io/telorun/vector-store@0.11.1#sha256-Btmgt0SXpUDgQ7Pd2E7LyX_LoZ3_-DSNgReYO5ru0Zk
+  VectorStoreMemory: oci://ghcr.io/telorun/vector-store-memory@0.9.2#sha256-TUizRmxbVxIQA_E4TlpOK3_9fGsIS_ro4-sq9q1gCco
+  Run: oci://ghcr.io/telorun/run@0.32.0#sha256-4BOwkyKZuEAr-gDIkQWEzA1UszTNrIGHyv9GFnnUkv8
+  Console: oci://ghcr.io/telorun/console@0.19.1#sha256-OxO1ccClyEMMTXmfpkw8kWwjaEEPOZzPgmUXO1ZqWnE
 targets:
   - !ref indexCorpus
   - !ref server

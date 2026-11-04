@@ -35,7 +35,7 @@ variables:
       The PagerDuty Events v2 endpoint. Configurable so a test can point the
       whole library at a local receiver without touching a resource.
 imports:
-  Http: oci://ghcr.io/telorun/http-client@0.24.0#sha256-2jjnD8ky6BuYQxbhRdh9464c2LnR1fI29iBBXaMViFA
+  Http: oci://ghcr.io/telorun/http-client@0.25.0#sha256-bkm9YuaTBexTNH0QDyW8_O3h9Msg5vQZl9c62NIboLE
 exports:
   kinds:
     - Webhook

@@ -6,7 +6,7 @@ metadata:
     An application that uses the library's two kinds exactly like built-ins:
     one `Alerts.Webhook`, one `Alerts.PagerDuty`, each behind a route.
 imports:
-  Http: oci://ghcr.io/telorun/http-server@0.41.1#sha256-TGV1OIU5OtaAhU74roamA-r5DsdqgovsNtkxc8M4wIc
+  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
   Alerts:
     source: ../..
     variables:

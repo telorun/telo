@@ -15,7 +15,7 @@ imports:
   Fs: ../../../../modules/fs
   HttpClient: ../../../../modules/http-client
   Run: ../../../../modules/run
-  Assert: oci://ghcr.io/telorun/assert@0.22.0#sha256-72ysePrZIFbPDsX6TdpS4vCuzCnGCx_KVDUunxJ_0OU
+  Assert: oci://ghcr.io/telorun/assert@0.22.1#sha256-hhbmksorbzkkGV2LXmjug1JjzzMxQvBpOLY2RyXwlUI
 variables:
   # This test's own directory, emptied before each run, holding the agent's
   # workspace and its state directory side by side. Resolved against the

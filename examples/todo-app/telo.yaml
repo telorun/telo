@@ -21,13 +21,13 @@ lang: en
 # changes are unreleased, with `http-server`, `sql` and `sqlite`, which `crud`
 # imports from it too; `telo upgrade --pin-local` pins them once they ship.
 imports:
-  Http: ../../modules/http-server
-  Sql: ../../modules/sql
-  SQLite: ../../modules/sqlite
-  Crud: ../../modules/crud
-  CrudUi: ../../modules/crud-ui
-  Ui: ../../modules/ui
-  UiReact: ../../modules/ui-react
+  Http: oci://ghcr.io/telorun/http-server@0.42.0#sha256-wF3AHGL8hGFdy7SfxXJkaXtRzLeqKtgqTVmN9anXKTk
+  Sql: oci://ghcr.io/telorun/sql@0.30.0#sha256-NucxyVlxJy6byu-J21_UhzhKxaqauLe9BSC1ZSgP8_c
+  SQLite: oci://ghcr.io/telorun/sqlite@0.13.0#sha256-2Q2i3j_3qR2Mcd41LBUO6YuTg_tehWQa4w6Oi5P5-w4
+  Crud: oci://ghcr.io/telorun/crud@0.34.0#sha256-ZgJTH2TIcGtv_u-T8D0YKO7wUy3XVhUj6CtOcyLiTdk
+  CrudUi: oci://ghcr.io/telorun/crud-ui@0.3.0#sha256-5DMdeBicykBfCVV9Nb7p0jCR6rKWlPYC43QBMI5ne8M
+  Ui: oci://ghcr.io/telorun/ui@0.9.0#sha256-R22o2ZJUQCg7hpKkZiJUjvwj6ETOGDIdfyBRiRKYuPA
+  UiReact: oci://ghcr.io/telorun/ui-react@0.10.0#sha256-0Y70n6MqHB-Po1mOFQTlucCE4t1ynkL3BS9aW2lnGEs
 targets:
   - !ref migrate
   - !ref server
