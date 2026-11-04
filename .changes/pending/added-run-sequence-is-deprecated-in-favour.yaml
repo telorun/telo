@@ -1,5 +1,0 @@
-modules:
-  modules/run: Added
-body: Run.Sequence is deprecated in favour of the built-in Telo.Sequence, which behaves
-  identically and needs no import; declaring one reports DEPRECATED_KIND naming it. The
-  module now requires telo >=0.128.0.

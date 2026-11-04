@@ -1,3 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: RequestTrace carries lang, the request language negotiated for the request.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.32.0 - 2026-11-04
+### Added
+* Run.Sequence is deprecated in favour of the built-in Telo.Sequence, which behaves identically and needs no import; declaring one reports DEPRECATED_KIND naming it. The module now requires telo >=0.128.0.
+* The step retry guide documents duration delays and timeouts, retryAfter and the static check on nonRetryable codes.
+
 ## 0.31.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

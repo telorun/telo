@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 - 2026-11-04
+### Added
+* A completeness fixture, `tests/translations.yaml`, serves all fourteen shipped translations and checks clean; `telo check` reports no missing translation for it, and the texts docs describe how an application learns of one.
+* The per-request `request` context of a page, its nodes, the navigation and the header declares `lang`, the language the server negotiated for the request, so a node reads `request.lang` instead of parsing `Accept-Language`.
+* ui's own texts (loading, save, the pager's range, each validation message, ...) are declared by key in a `Telo.KeyedTranslations` document, `Translations`, which declares the kind `Ui.Translations`, and ship translated into 14 languages as exported instances (`Ui.germanTranslations`, `Ui.polishTranslations`, ...) an application lists in its `translations:`. `Ui.Data` and `Ui.Listing` name the set with `x-telo-text-keys`. Breaking: `Ui.Words` and `Ui.words` are removed, a text `ui` fills is the keyed text `{ set: Ui.Translations, key }` instead of `{ word }`, `@telorun/ui` no longer exports `isWords` / `Words` and exports the `KeyedText` type, and the module requires telo >=0.129.0.
+
 ## 0.8.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

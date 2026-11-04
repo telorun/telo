@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.34.0 - 2026-11-04
+### Added
+* Declares lang: en, so the module's one text (the list request refusal) is written in a known language and an English application is no longer warned that it lacks a translation.
+
 ## 0.33.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

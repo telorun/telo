@@ -1,0 +1,5 @@
+# Changelog
+
+## 0.2.0 - 2026-11-04
+### Added
+* New module: the PostgreSQL engine of the SQL work queue. QueuePostgres.Table (a Postgres.Table whose columns and indexes are all the queue's, the author naming only the table) and QueuePostgres.Queue (connection, schema and table narrowed to PostgreSQL's kinds). Claims use skipped row locks, and idle workers are woken by LISTEN/NOTIFY, an enqueue's notification delivered only when its transaction commits.

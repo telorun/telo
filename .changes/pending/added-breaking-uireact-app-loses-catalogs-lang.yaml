@@ -1,5 +1,0 @@
-modules:
-  modules/ui-react: Added
-body: "Breaking: UiReact.App loses catalogs, lang and translator. It reads request.lang,
-  keeps one document per language the application serves, and translates its texts,
-  Ui.Words included, through the application translations: block."

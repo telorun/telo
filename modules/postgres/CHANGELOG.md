@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.0 - 2026-11-04
+### Added
+* Postgres.Schema renders currentInstantPlus(duration) — clock_timestamp() plus an interval cast from a bound value in whole hours and seconds, to the microsecond — and instantParameter(timestamp) — a timestamptz cast from bound UTC text, to the microsecond — and its skipLockedClause() is FOR UPDATE SKIP LOCKED.
+
 ## 0.10.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

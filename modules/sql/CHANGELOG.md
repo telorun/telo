@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.0 - 2026-11-04
+### Added
+* The engine schema contract gains SqlInstantArithmeticSchema beside SqlInstantSchema — currentInstantPlus(duration), the store's current instant shifted by a signed bound Telo.Duration, and instantParameter(timestamp), a bound Telo.Timestamp in the column's storage form, guarded by rendersInstantArithmetic — and SqlLockSchema, whose skipLockedClause() lets a row selection pass over rows another transaction holds, guarded by rendersLockSkipping. rendersCurrentInstant still asks for currentInstant alone. The library also exports the helpers an engine uses to read and spell a bound duration or timestamp.
+
 ## 0.29.1 - 2026-11-01
 ### Fixed
 * Reformatted the manifest to the canonical layout (short lists and maps in flow style); no change in behaviour.

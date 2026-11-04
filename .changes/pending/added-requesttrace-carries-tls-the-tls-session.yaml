@@ -1,7 +1,0 @@
-modules:
-  modules/http-dispatch: Added
-body: RequestTrace carries tls, the TLS session of the request's socket as a RequestTls
-  ({ protocol }) or null, and clientCertificate, the client certificate the transport
-  received or a trusted proxy forwarded as a ClientCertificate (subject, issuer,
-  serialNumber, fingerprint256, validFrom, validTo, subjectAltNames, pem, verified, via)
-  or null; both types are exported.

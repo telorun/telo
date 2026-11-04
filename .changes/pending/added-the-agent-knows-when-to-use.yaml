@@ -1,6 +1,0 @@
-modules:
-  apps/authoring-agent: Added
-body: The agent knows when to use a durable queue, a workflow or Run.Detach, wires a
-  PostgreSQL or SQLite queue and its worker, enqueues an outbox message inside the
-  writing transaction, and makes a handler's database effects happen once per message id
-  with IdempotencySql.Once.

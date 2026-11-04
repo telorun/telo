@@ -1,4 +1,0 @@
-modules:
-  modules/ui-react-conformance: Fixed
-body: CheckTheme runs the renderer's scenes with their keyed texts (`scenes.texts`), the
-  shape the renderer now reads.

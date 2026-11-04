@@ -1,5 +1,0 @@
-modules:
-  apps/hub: Added
-body: The library-design guide describes splitting a SQL-backed store into a generic, a
-  -sql and per-engine modules, and where a rule over the stores sharing one table is
-  declared.

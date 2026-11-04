@@ -1,6 +1,0 @@
-modules:
-  modules/postgres: Added
-body: Postgres.Schema renders currentInstantPlus(duration) — clock_timestamp() plus an
-  interval cast from a bound value in whole hours and seconds, to the microsecond — and
-  instantParameter(timestamp) — a timestamptz cast from bound UTC text, to the
-  microsecond — and its skipLockedClause() is FOR UPDATE SKIP LOCKED.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.0 - 2026-11-04
+### Added
+* The build_ui guide drops UiReact.App's words: and teaches translating ui's own texts by listing its shipped Ui.*Translations, and rewording one key with a Ui.Translations of the application's own.
+* The build_ui guide teaches translating a UI through the application translations: block.
+* The library-design guide describes splitting a SQL-backed store into a generic, a -sql and per-engine modules, and where a rule over the stores sharing one table is declared.
+
 ## 0.20.0 - 2026-11-01
 ### Added
 * An application's contract carries its requiredness: each input's `required` is true only where some configuration of the application requires it, with `requiredWhen` listing those configurations, a `default` is served only where one is declared, and `dimensions` names each key's values and the environment variables it is read from. Ingest revision 10 re-ingests every tracked version to record them, and refuses an application whose `telo module manifest --json` payload carries no `dimensions`.

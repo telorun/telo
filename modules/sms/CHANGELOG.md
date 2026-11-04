@@ -1,0 +1,5 @@
+# Changelog
+
+## 0.2.0 - 2026-11-04
+### Added
+* New module. Sms sends text messages through one contract, the abstract Sms.Transport: inputs to (an E.164 number such as +15551234567), from (an E.164 number, the transport's default when omitted) and text; output { messageId, status }, status being sent or queued; its throws ceiling is ERR_SMS_REJECTED (the message, sender, recipient or credentials refused) and ERR_SMS_UNAVAILABLE (unreachable, timed out, failed on its side, or a temporary refusal such as a rate limit). A number that is not E.164 is refused by the contract. Sms.Capture records every message in memory and answers a fresh message id with status sent; Sms.CaptureRead (capture: a reference to an Sms.Capture, input { to? }) returns { messages }, oldest first, each as it was sent plus its messageId, optionally only those sent to one number. Requires telo 0.100.0 or newer.
