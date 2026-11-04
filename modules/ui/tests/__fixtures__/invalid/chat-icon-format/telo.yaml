@@ -1,0 +1,18 @@
+# A chat whose icon button points at a file that is not an image.
+kind: Telo.Application
+metadata: { name: UiInvalidChatIconFormatApp, version: 1.0.0 }
+imports: { Ui: ../../../../, Fixture: ../../conversation, Probe: ../../probe }
+targets:
+  - invoke: !ref read
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Probe.Read
+metadata: { name: read }
+source:
+  kind: Ui.Chat
+  source: { kind: Ui.ConversationSource, conversation: !ref conversation, basePath: /api/chat }
+  buttons:
+    copy: { kind: Ui.IconButton, icon: { kind: Ui.FileIcon, file: !module-path ./notes.txt } }

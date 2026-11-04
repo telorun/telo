@@ -1,3 +1,4 @@
+import { acceptedByModel } from "./accepted-content.js";
 import type { InvokeContext, OpenSpan, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
 import { addUsage, tokenCounts, withTokenQuantity } from "./usage.js";
@@ -10,7 +11,14 @@ import {
   usageAttributes,
   type AgentSpanIdentity,
 } from "./agent-spans.js";
-import { InvokeError, Stream } from "@telorun/sdk";
+import {
+  InvokeError,
+  Stream,
+  UNCANCELLABLE_CONTEXT,
+  createCancellationSource,
+  deriveContext,
+  type CancellationSource,
+} from "@telorun/sdk";
 import {
   assembleTools,
   assertUniqueCallId,
@@ -133,11 +141,38 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
 
   async invoke(
     inputs: AiAgentStreamInputs = {},
-    ctx?: InvokeContext,
+    callerCtx?: InvokeContext,
   ): Promise<AiAgentStreamOutput> {
     const name = this.resource.metadata.name;
     const label = `Ai.AgentStream "${name}"`;
     const model = this.resource.model;
+    // A run of its own cancellation, linked to the caller's: a consumer that
+    // stops reading cancels it, so the model call or the tools in flight are
+    // aborted rather than left running until their next part.
+    const stopping = createCancellationSource();
+    const unlink = callerCtx?.cancellation.onCancelled((reason) => stopping.cancel(reason));
+    const ctx = deriveContext(callerCtx ?? UNCANCELLABLE_CONTEXT, { cancellation: stopping.token });
+    const release = () => {
+      unlink?.();
+      stopping.dispose();
+    };
+    try {
+      return await this.startRun(inputs, ctx, stopping, release, label, model, name);
+    } catch (err) {
+      release();
+      throw err;
+    }
+  }
+
+  private async startRun(
+    inputs: AiAgentStreamInputs,
+    ctx: InvokeContext,
+    stopping: CancellationSource,
+    release: () => void,
+    label: string,
+    model: AiModelStreamInstance,
+    name: string,
+  ): Promise<AiAgentStreamOutput> {
     if (!model || typeof model.invoke !== "function") {
       throw new InvokeError(
         "ERR_INVALID_REFERENCE",
@@ -205,9 +240,12 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
             spans,
             first,
             ctx,
+            release,
           ),
           first,
           agentSpan,
+          stopping,
+          release,
         ),
       ),
     };
@@ -223,11 +261,17 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     run: AsyncGenerator<AgentStreamPart>,
     first: OpenedCall | undefined,
     agentSpan: OpenSpan,
+    stopping: CancellationSource,
+    release: () => void,
   ): AsyncIterable<AgentStreamPart> {
     let started = false;
     const closeUnread = async (): Promise<void> => {
+      // A pull may be pending inside the run, where `return()` would wait for
+      // it: cancelling first ends the model call or the tools it is awaiting.
+      stopping.cancel(ABANDONED);
       if (started) return;
       started = true;
+      release();
       const abandoned = { "telo.cancellation.reason": ABANDONED };
       try {
         await first?.output[Symbol.asyncIterator]().return?.();
@@ -315,7 +359,8 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
     approver: Approver | undefined,
     spans: CallSpans,
     first: OpenedCall | undefined,
-    ctx?: InvokeContext,
+    ctx: InvokeContext,
+    release: () => void,
   ): AsyncGenerator<AgentStreamPart> {
     const { agentSpan, agent, label } = spans;
     const { maxSteps, onMaxSteps, conclusionPrompt } = this.budget;
@@ -492,6 +537,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
         await agentSpan.settle("cancelled", {
           attributes: { ...runAttributes(), "telo.cancellation.reason": ABANDONED },
         });
+        release();
       }
     }
   }
@@ -597,7 +643,7 @@ class AiAgentStream implements ResourceInstance<AiAgentStreamInputs, AiAgentStre
   }
 
   snapshot(): Record<string, unknown> {
-    return {};
+    return { accepts: acceptedByModel(this.resource.model) };
   }
 }
 

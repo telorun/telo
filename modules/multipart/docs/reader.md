@@ -27,7 +27,9 @@ Reach for `Reader` when that bound is the problem: a file upload is exactly the 
 
 Each limit is an integer of at least 1; a literal below that is `CONTRACT_INPUTS_MISMATCH`. The two byte limits have no default because nothing is held: a part is streamed, so its size costs no memory here. Set them when the destination is what must be protected — and note that over HTTP the server's `maxBodyBytes` (1 MiB by default) bounds the whole request before any of these do.
 
-`parts` is a stream of `{content, headers, contentType?, name?, filename?}`, where `content` is itself a byte stream.
+`parts` is a stream of `Multipart.Part` — `{content, headers, contentType?, name?, filename?}`, where `content` is itself a byte stream. `contentType` is the part's header exactly as sent, `application/octet-stream` included: deciding what a catch-all type claims is the reader of the bytes' business.
+
+For an upload that carries one file under a known field name, [`Multipart.ReadPart`](./read-part.md) returns that part directly, without iterating.
 
 ## Skipping a part is safe
 

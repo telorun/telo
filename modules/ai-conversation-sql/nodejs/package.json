@@ -1,0 +1,20 @@
+{
+  "name": "@telorun/ai-conversation-sql",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "description": "Build-only package for the ai-conversation-sql module's bundled controller. Never published — the controller ships inside the module artifact as a pkg:telo/local/js bundle. This package declares the dependencies esbuild inlines and type-checks the source.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.lib.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@telorun/ai-conversation": "workspace:*",
+    "@telorun/sdk": "workspace:*",
+    "@types/node": "^20.0.0",
+    "esbuild": "catalog:",
+    "typescript": "^5.0.0",
+    "vitest": "^2.1.8"
+  }
+}

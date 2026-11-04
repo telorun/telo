@@ -91,6 +91,20 @@ by a React renderer this module ships prebuilt.
   the language the HTTP server negotiated for the request, the browser choosing
   plural forms and formatting numbers; one copy of each document is kept per
   served language, with `Content-Language` and `Vary` set.
+- **Markdown, drawn safely.** A [`markdown` node](docs/markdown.md) draws
+  CommonMark with tables, task lists, strikethrough and autolinks as
+  elements — raw HTML is text, a link or image failing the address rule is
+  plain text — with highlighted code blocks and a copy button, from a chunk
+  fetched only when a page draws one.
+- **A chat, drawn from what the endpoint offers.** A [`chat` node](docs/chat.md)
+  is a full client of the conversation contract — streamed replies, reasoning,
+  tool calls, approvals, attachments, branches — whose upload control exists only
+  when the node's spec offers it, and which follows a query parameter of the page,
+  so a listing of conversations beside it chooses the one shown.
+- **A fold-out side panel that never unmounts.** A `split` node draws an aside
+  beside its content, folding away on request, kept between visits, and moving
+  into a drawer or dialog below the breakpoint with its state — a listing on
+  page 2 stays on page 2 — and starting no request while it is out of sight.
 - **An open seam.** A module ships its own React components, and they get
   navigation, requests and refresh from the host — and its own listing layouts
   (a map, a seat plan), given the records the renderer reads under the
@@ -108,7 +122,8 @@ by a React renderer this module ships prebuilt.
 | --- | --- |
 | [`UiReact.defaultTheme`](docs/theme.md#the-default-theme) | The built-in look: every part styled, light and dark. |
 
-Also: [what it serves](docs/urls.md), [the styling contract](docs/styling.md),
+Also: [what it serves](docs/urls.md), [Markdown](docs/markdown.md), [the chat](docs/chat.md),
+[the styling contract](docs/styling.md),
 [the controls contract](docs/controls-abi.md) every text box, choice, list,
 overlay and glyph is drawn under, [the component ABI](docs/component-abi.md),
 and [the layout contract](docs/layouts-abi.md) a module's listing layout is

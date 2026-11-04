@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import reportRequest from "../../tests/__fixtures__/action/report-request.json" with { type: "json" };
 import { HostStore } from "../src/browser/host.js";
 import { render, type Rendered } from "./harness.js";
-import { actionNode, reportSchema } from "./spec-nodes.js";
+import { actionNode, reportSchema, address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -271,7 +271,7 @@ describe("an action", () => {
 
   it("leaves the page for an absolute address its answer names, and moves within it for a declared page", async () => {
     const leave = vi.spyOn(HostStore.prototype, "leave").mockImplementation(() => {});
-    const going = (to: unknown) => actionNode({ result: undefined, onSuccess: { navigate: { root: "result", path: ["next"] }, refreshes: [] } });
+    const going = (to: unknown) => actionNode({ result: undefined, onSuccess: { navigate: address({ root: "result", path: ["next"] }), refreshes: [] } });
     rendered = await render({
       path: "/",
       prefix: "/admin",
@@ -289,7 +289,7 @@ describe("an action", () => {
 
   it("navigates nowhere for a value that is no address, and draws its answer", async () => {
     const leave = vi.spyOn(HostStore.prototype, "leave").mockImplementation(() => {});
-    rendered = await show(() => json({ ...answer, next: "javascript:alert(1)" }), actionNode({ onSuccess: { navigate: { root: "result", path: ["next"] }, refreshes: [] } }));
+    rendered = await show(() => json({ ...answer, next: "javascript:alert(1)" }), actionNode({ onSuccess: { navigate: address({ root: "result", path: ["next"] }), refreshes: [] } }));
     await rendered.enter(rendered.part("input"), "2026-09");
     await rendered.click(rendered.part("submit"));
     expect(leave).not.toHaveBeenCalled();

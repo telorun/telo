@@ -1,4 +1,6 @@
 import type { ResourceContext, ResourceInstance, RuntimeResource, TextRecord } from "@telorun/sdk";
+import { addressSpec, type AddressConfig } from "./address-spec.js";
+import type { AddressSpec } from "./address-expansion.js";
 import { isComposite, mergeAssets, type AssetFile } from "./composite.js";
 import type { LayoutAnswer, LayoutInputs, LayoutInstance } from "./listing-layout.js";
 import { headerOf, modelShape, presentation, propertiesOf, schemaAt, shapeLabels, type JsonSchema, type Shape, type ShapeReader } from "./model-schema.js";
@@ -8,6 +10,7 @@ import { schemaText, type ValueLabel } from "./spec-texts.js";
 export interface ColumnConfig {
   header?: TextRecord;
   value?: Binding;
+  href?: AddressConfig | null;
   cell?: unknown;
   style?: StyleRule;
 }
@@ -15,6 +18,7 @@ export interface ColumnConfig {
 export interface ValueColumn {
   header: TextRecord;
   value: Binding;
+  href?: AddressSpec;
   sort?: string;
   relation?: string;
   present?: JsonSchema;
@@ -33,11 +37,15 @@ export function valueColumn(
   model: Shape,
   reader: ShapeReader,
   inputs: LayoutInputs,
-  column: { header?: TextRecord; value: Binding; style?: StyleRule },
+  column: { header?: TextRecord; value: Binding; href?: AddressConfig | null; style?: StyleRule },
+  ctx: ResourceContext,
+  owner: string,
+  index: number,
 ): ValueColumn {
   const { value, style } = column;
+  const href = column.href == null ? {} : { href: addressSpec(column.href, ctx, `${owner} columns[${index}].href`) };
   if (!isChain(value)) {
-    return { header: column.header ?? schemaText("", null), value, labels: [], ...(style ? { style } : {}) };
+    return { header: column.header ?? schemaText("", null), value, ...href, labels: [], ...(style ? { style } : {}) };
   }
   const target = schemaAt(model, value.path, reader, "model");
   const last = value.path[value.path.length - 1];
@@ -46,6 +54,7 @@ export function valueColumn(
   return {
     header: column.header ?? headerOf(last ?? "", target),
     value,
+    ...href,
     ...(own !== undefined && inputs.collection.query.sort.some((sort) => sort.property === own) ? { sort: own } : {}),
     ...(own !== undefined && Object.hasOwn(inputs.relations, own) ? { relation: own } : {}),
     ...(present ? { present } : {}),
@@ -72,12 +81,12 @@ export async function tableLayout(
   const drawn: Record<string, unknown>[] = [];
   if (!columns) {
     for (const [name] of propertiesOf(inputs.model)) {
-      if (name !== inputs.collection.key) drawn.push({ ...valueColumn(model, reader, inputs, { value: { root: "row", path: [name] } }) });
+      if (name !== inputs.collection.key) drawn.push({ ...valueColumn(model, reader, inputs, { value: { root: "row", path: [name] } }, ctx, owner, drawn.length) });
     }
   } else {
     for (const [index, column] of columns.entries()) {
       if (column.value != null) {
-        drawn.push({ ...valueColumn(model, reader, inputs, { ...column, value: column.value }) });
+        drawn.push({ ...valueColumn(model, reader, inputs, { ...column, value: column.value }, ctx, owner, index) });
         continue;
       }
       const provided = await ctx

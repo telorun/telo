@@ -1,7 +1,7 @@
 import { TYPING_PAUSE } from "./typing-pause.js";
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { useControl, useControls } from "./effective-controls.js";
-import { styleAttribute } from "./bindings.js";
+import { fillAttribute, styleAttribute } from "./bindings.js";
 import type { Operator } from "./collection.js";
 import { typedValue } from "./filter-choices.js";
 import { FilterControl } from "./filter-control.js";
@@ -439,6 +439,7 @@ export function Filters({ node }: { node: SpecNode }) {
       data-placement={placement.type}
       data-side={placement.side}
       data-pending={sameValues(draft, applied) ? undefined : "true"}
+      data-fill={fillAttribute(node)}
       data-style={styleAttribute(node.style)}
     >
       {PresetGroup && (

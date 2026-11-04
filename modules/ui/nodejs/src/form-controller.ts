@@ -4,6 +4,7 @@ import { presentationAt } from "./collection-presentation.js";
 import { enteredFields, type GroupConfig } from "./entered-fields.js";
 import { modelSchema } from "./model-schema.js";
 import { stateSpec, type StateConfig } from "./state-record.js";
+import { filledProvided } from "./fill-marking.js";
 
 type FormResource = RuntimeResource & {
   model: unknown;
@@ -26,7 +27,7 @@ class Form implements ResourceInstance {
     const { fields, groups } = await enteredFields(schema, this.resource.fields, this.resource.groups, this.ctx, owner, "model", relations);
     const state = await stateSpec(this.resource.state, fields.map((field) => field.property), schema, this.ctx, owner, "state", "field");
     const node: SpecNode = { type: "form", schema, basePath, fields, groups, state };
-    return { node, assets: [] };
+    return filledProvided({ node, assets: [] });
   }
 }
 

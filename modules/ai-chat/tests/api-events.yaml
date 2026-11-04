@@ -1,0 +1,132 @@
+kind: Telo.Application
+metadata:
+  name: AiChatApiEvents
+  version: 1.0.0
+  description: |
+    The events route's exact bytes when a turn's events fail part-way: the frames
+    recorded before, each with its position as `id:`, then a final `error` frame
+    carrying the failure's code and message, and the stream ends. The turn's
+    record is removed while its events are read, which fails them with
+    ERR_CONVERSATION_TURN_NOT_FOUND. Holds for the kind and for its body written
+    with public kinds.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Stream: ../../stream
+  Timer: ../../timer
+  PlainText: ../../plain-text-codec
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+  Ejected:
+    source: ./__fixtures__/ejected-api
+    resources: { conversation: !ref chat }
+variables:
+  scratchDir:
+    env: AI_CHAT_API_EVENTS_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+# A model that writes one delta, then takes three seconds to finish.
+kind: Telo.Definition
+metadata: { name: PausingModel }
+capability: Telo.Invocable
+extends: Ai.ModelStream
+schema: { type: object, additionalProperties: false }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: rest }
+    steps:
+      - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 3s } }
+      - name: finish
+        invoke:
+          kind: Stream.Of
+          items: [{ type: finish, finishReason: stop, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } }]
+        inputs: {}
+    outputs:
+      output: !cel "steps.finish.result.output"
+  - kind: Stream.Concat
+    metadata: { name: parts }
+    sources:
+      - invoke: { kind: Stream.Of, items: [{ type: text-delta, delta: h }] }
+      - invoke: !ref rest
+  - kind: Telo.Sequence
+    metadata: { name: call }
+    steps:
+      - { name: answer, invoke: !ref parts, inputs: {} }
+    outputs:
+      output: !cel "steps.answer.result.output"
+invoke: !ref call
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+markerRetention: 1h
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent: { kind: Ai.AgentStream, model: { kind: AiChatApiEvents.PausingModel } }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal: !ref journal
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-api-events')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.Api
+metadata: { name: chatApi }
+conversation: !ref chat
+---
+# A turn's events read while its record is removed, against the endpoint at `base`.
+kind: Telo.Sequence
+metadata: { name: failure }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [base], properties: { base: { type: string } } }
+steps:
+  - name: start
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns"
+      headers: { content-type: application/json }
+      body: { message: hi, attachments: [] }
+  # The delta is recorded; the turn is still running.
+  - { name: recorded, invoke: { kind: Timer.Delay }, inputs: { duration: 500ms } }
+  - name: events
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/turns/${{ steps.start.result.body.turn }}/events", responseType: stream }
+  - name: removed
+    invoke: { kind: RecordStream.JournalRemoval, journal: !ref journal }
+    inputs: { key: !cel "steps.start.result.body.turn" }
+  - name: text
+    invoke: { kind: PlainText.Decoder }
+    inputs: { input: !cel "steps.events.result.body" }
+  - name: checkBytes
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.text.result.text"
+      expected: !interpolate "id: 1\nevent: text-delta\ndata: {\"text\":\"h\",\"type\":\"text-delta\"}\n\nevent: error\ndata: {\"type\":\"error\",\"code\":\"ERR_CONVERSATION_TURN_NOT_FOUND\",\"detail\":\"No turn '${{ steps.start.result.body.turn }}' is known, or it is past retention; read the conversation's entries instead.\"}\n\n"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19414 }
+    mounts:
+      - { path: /chat, mount: !ref chatApi }
+      - { path: /ejected, mount: !ref Ejected.api }
+targets: [!ref server]
+steps:
+  - { name: mounted, invoke: !ref failure, inputs: { base: "http://127.0.0.1:19414/chat" } }
+  - { name: ejected, invoke: !ref failure, inputs: { base: "http://127.0.0.1:19414/ejected" } }

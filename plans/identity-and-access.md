@@ -1,21 +1,19 @@
 ---
 status: approved
 priority: medium
-depends-on: []
-packages: [modules/http-server, modules/oauth-client, modules/auth, modules/crypto, modules/jose, modules/mail, modules/sms]
+depends-on: [2026-11-05-inbound-authentication.md]
+packages: [modules/identity, modules/protection, modules/authz, modules/oauth-client]
 ---
 
 # Identity & access — roadmap
 
 ## Problem
 
-Nothing serves authentication inbound. `Http.Server` / `Http.Api` have no authentication hook,
-no cookie surface and no TLS, so there are no client certificates either; `Mcp.HttpEndpoint` is
-unauthenticated, which the MCP authorization spec does not permit. The only auth code in the
-standard library is the **outbound** half — `Http.Credential` (bearer, API key, query key) and
-`oauth-client`, whose plan reserved the `OAuthServer` name for the other role. There is no
-crypto / JOSE, mail or SMS module; every password, token, session, user, organization, role and
-client concept is absent. An application that needs to know who is calling has to leave Telo.
+The inbound seam — the `auth` contracts, `authentication:` / `authorization:` on mounts, and
+the bearer, API-key, Basic and session verifiers — is its own plan. Everything past it is
+absent: users beyond a manifest-declared list, federation, strong factors, organizations,
+roles, an authorization server, enterprise protocols and the screens over them. An
+application that needs any of these has to leave Telo.
 
 The target is the whole identity-and-access surface a hosted identity platform offers — every
 authentication method, and everything around it: users, credentials, sessions, organizations,
@@ -40,8 +38,8 @@ composes by import.
   connection at runtime. The manifest declares which connection TYPES exist and which store
   holds their instances; the rows are the connections.
 - **Secure by default, statically checked.** Once a mount declares `authentication:`, every
-  route under it is protected unless it says `anonymous: allow`, and `telo check` reports a
-  route that would be public by omission. Every token, password and secret slot carries
+  route under it is protected unless it says `anonymous: allow`, and `telo check` refuses a
+  mount left without `authentication:` beside one that has it. Every token, password and secret slot carries
   `x-telo-sensitive`, so auth material never rides the debug wire.
 - **Reuse what exists.** Sessions, pending records, denylists, consents → `KvStore.Store`;
   users, organizations, roles, clients → `Sql.Schema` declarative tables; lockout and
@@ -59,80 +57,14 @@ composes by import.
 - **One contracts module.** `auth` holds both the principal and the policy contract; splitting
   authentication from authorization would put the one type both halves share on a boundary.
 
-## Prerequisites
-
-- **Sensitive contract fields** (kernel, in flight): an invoke input or output marked sensitive
-  is redacted on the debug wire. Every verifier's presentation and every token-issuing
-  output depends on it.
-- **Declarative UI** (`plans/declarative-ui.md`): the hosted login pages, the account pages
-  and the management screens are `Ui.App` mounts over the same REST APIs. The APIs ship on
-  their own phases; the screens wait for the renderer rather than shipping as static assets
-  that would be rewritten.
-
-## Phase 0 — transport-neutral primitives
-
-| Module | Adds | Why first |
-| --- | --- | --- |
-| `crypto` (`Crypto`) | Random tokens, SHA / HMAC, constant-time compare, password hashing (`argon2id` default; verifies `bcrypt` / `scrypt` / `PBKDF2` for imported hashes), key derivation | `oauth-client` kept PKCE crypto private "rather than growing a crypto module"; five modules below need one |
-| `jose` (`Jose`) | JWK / JWKS (`Jose.KeySet`: generation, rotation policy, publish, fetch + cache), JWS sign / verify, JWE encrypt / decrypt, JWT claims validation (`iss` / `aud` / `exp` / `nbf` / leeway, `typ`) | Every token-shaped credential, ID-token verification, stateless cookies, DPoP proofs, logout tokens |
-| `mail` (`Mail`), `sms` (`Sms`) | `Mail.Send` (SMTP + provider adapters), `Sms.Send` abstract + one backend, templated messages | Verification, reset, magic links, OTP and invitations all deliver something |
-| `http-dispatch` / `http-server` | `request.cookies` in every CEL context; `cookies:` on return entries (Secure / HttpOnly / SameSite / Domain / Path / `__Host-`); `tls:` on `Http.Server` (certificate, CA, `requestClientCertificate`) and `request.tls.clientCertificate`; the trusted-proxy certificate header under `trustProxy` | Sessions and mTLS have nowhere to land |
-
-**Verify:** a route sets a cookie and reads it back on the next request; a client certificate
-reaches CEL; a JWT signed under a rotated key still verifies through the published JWKS.
-
-## Phase 1 — the seam, and token-based API authentication
-
-### `auth` (`Auth`) — contracts
-
-- `Auth.Principal` (`Telo.JsonSchema`): `subject`, `issuer`, `kind: user | service | anonymous`,
-  `claims`, `scopes`, `roles`, `permissions`, `org` (nullable), `amr`, `acr`, `sessionId`,
-  `authenticatedAt`, `via` (which verifier accepted it).
-- `Auth.Presentation`: `bearer | basic | apiKey | cookie | signature | certificate | assertion`
-  plus the material, all sensitive.
-- `Auth.Verifier` (abstract): presentation → `{ principal }` or `{ refused, challenge? }`.
-- `Auth.Chain`: ordered verifiers; first acceptance wins, refusals aggregate into one
-  `WWW-Authenticate`.
-- `Auth.Policy` (abstract): `{ principal, action, resource, context }` →
-  `{ allow, reason, obligations }`.
-- `Auth.Anonymous`; `Auth.TrustedHeader` (`X-Forwarded-User` and IAP / oauth2-proxy-style
-  assertion headers, honoured only under `trustProxy`).
-
-### `http-server` integration
-
-- `authentication:` on `Http.Server.mounts[]` — which extractors (header, cookie, query,
-  certificate) feed which verifiers, and `anonymous: allow | deny` — inherited by every
-  route; `Http.Api.routes[]` overrides per route.
-- `authorization:` per route: a `!ref` to an `Auth.Policy` plus `action:` / `resource:` CEL
-  over `request`. A refused verifier renders 401 with the chain's challenge; a denied policy
-  renders 403; both through the route's own `catches:` so the body is the author's.
-- `request.principal` typed as `Auth.Principal` in `inputs:` / `returns:` / `catches:`.
-- Diagnostics: `ROUTE_IMPLICITLY_PUBLIC` (the mount authenticates and the route says nothing),
-  `AUTHZ_ACTION_MISSING` (a policy with no action or resource),
-  `PRINCIPAL_READ_ON_PUBLIC_ROUTE`.
-- `Mcp.HttpEndpoint` takes the same slot and serves RFC 9728 protected-resource metadata.
-
-### Verifier modules
-
-| Module | Methods |
-| --- | --- |
-| `auth-bearer` | JWT access tokens (JWKS, issuer, audience, algorithm allowlist, RFC 9068 `at+jwt`, DPoP-bound RFC 9449 and mTLS-bound RFC 8705 checks, `jti` denylist over `KvStore`); opaque tokens by introspection (RFC 7662); opaque tokens from an own token table |
-| `api-key` | Issuance (prefix, hashed at rest, shown once), verification, scopes, expiry, rotation, revocation, owner (user, service or organization — a personal access token is the same kind with a user owner), presentation by header, query or Basic username, key id as the `rate-limit` bucket |
-| `auth-basic` | HTTP Basic (RFC 7617) and Digest (RFC 7616) over an `Auth.PasswordVerifier` abstract, implemented later by `identity` and `ldap` |
-| `session` | Server-side sessions over `KvStore.Store` (idle and absolute expiry, device / user-agent / IP, rotation on privilege change, per-user listing and revocation, "log out everywhere", remember-me); stateless signed or encrypted cookie sessions via `jose`; CSRF (synchronizer token, double-submit, Origin and Sec-Fetch checks); `Session.Verifier` |
-
-**Verify:** an API accepts tokens from an external provider (Auth0, Okta, Entra) and its own
-API keys, rejects a tampered JWT and a revoked key, and `telo check` flags a route left public
-by omission. Example application: *API-key-only microservice*.
-
 ## Phase 2 — first-party identity
 
 | Module | Scope |
 | --- | --- |
-| `identity` (`Identity`), `identity-sql` | `Identity.Store` abstract. Users (profile, `userMetadata` / `appMetadata`, blocked, last login); identifiers (email / phone / username policies, uniqueness, verification state); linked identities (`provider`, `subject`) and account-linking rules; password credential over `crypto` with policy (length, history, breach check through the HIBP range API); the `Auth.PasswordVerifier` implementation; signup modes (open, invite-only, disabled); reset and change flows; search; import / export as NDJSON; GDPR export and erasure; lazy migration from a legacy store on first login |
+| `identity` (`Identity`), `identity-sql` | Grows beside `Identity.DeclaredUsers`, which ships with the seam. `Identity.Store` abstract. Users (profile, `userMetadata` / `appMetadata`, blocked, last login); identifiers (email / phone / username policies, uniqueness, verification state); linked identities (`provider`, `subject`) and account-linking rules; password credential over `crypto` with policy (length, history, breach check through the HIBP range API); the `Auth.PasswordVerifier` implementation; signup modes (open, invite-only, disabled); reset and change flows; search; import / export as NDJSON; GDPR export and erasure; lazy migration from a legacy store on first login |
 | `identity-external` | Bring-your-own user store: `lookup:` and `verify:` step bodies against any system — the platform "custom database script" as declarative steps, statically checked |
 | `passwordless` | One-time links and codes (single-use, TTL, bound to the requesting browser through a pending record as `oauth-client` does); magic-link login; email / SMS OTP login. Email and phone verification, password reset and invitations reuse the same kinds |
-| `protection` | Brute-force lockout per account and per IP over `rate-limit`; suspicious-IP throttling; breached-password refusal; `Captcha.Verify` abstract with Turnstile / reCAPTCHA / hCaptcha backends; IP and email-domain allow / deny lists; disposable-domain list; new-device and new-location signals consumed by MFA policy |
+| `protection` | Grows beside `Protection.PasswordThrottle`, which ships with the seam. Lockout per IP over `rate-limit`; suspicious-IP throttling; breached-password refusal; `Captcha.Verify` abstract with Turnstile / reCAPTCHA / hCaptcha backends; IP and email-domain allow / deny lists; disposable-domain list; new-device and new-location signals consumed by MFA policy |
 | `audit` | Append-only auth events (login success and failure with reason, MFA, token issued and revoked, consent, administrative action, session revocation) with actor, target, IP and user agent; an audit table plus a `Telo.Sink` so events stream through the logging pipeline; retention; a query API |
 | Login hooks | `onSignup:` / `onLogin:` / `onTokenIssue:` step bodies on the login kinds |
 
@@ -154,7 +86,7 @@ password; a policy demanding MFA rejects a session that has none.
 
 | Module | Scope |
 | --- | --- |
-| `authz` (`Authz`) | RBAC — roles, permissions per API / resource server, assignments to users and organization members — over an `Authz.Store` abstract with a SQL backend; `Authz.CelPolicy`, ABAC as CEL over `principal` / `resource` / `context`, typed statically; a permissions claim in tokens; row-level filters for `sql-repository` |
+| `authz` (`Authz`) | RBAC — roles, permissions per API / resource server, assignments to users and organization members — over an `Authz.Store` abstract with a SQL backend, beside `Authz.CelPolicy`, which ships with the seam; a permissions claim in tokens; row-level filters for `sql-repository` |
 | `authz-rebac` | Relation tuples with a schema (`viewer: user or editor`); check, expand, list-objects — the fine-grained-authorization equivalent |
 | `authz-opa`, `authz-cedar` | `Auth.Policy` over an external engine through `http-client` |
 | `organization` (`Organization`) | Organizations, members, member roles, invitations (accept flow over `passwordless`), organization-scoped connections (which login methods an organization allows; enterprise connection rows are self-service SSO), organization picker and domain routing at login, `org_id` and organization claims in tokens, branding data. Optional import |

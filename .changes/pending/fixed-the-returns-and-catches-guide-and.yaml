@@ -1,0 +1,5 @@
+modules:
+  modules/http-server: Fixed
+body: The returns-and-catches guide and the streaming test now show serving SSE as a
+  Stream.Map into Sse.Frame records piped through Sse.Encoder, which no longer takes
+  bare values.

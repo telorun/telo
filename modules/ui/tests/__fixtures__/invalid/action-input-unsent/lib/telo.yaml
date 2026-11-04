@@ -1,0 +1,21 @@
+# A `DELETE` sends no body, yet its target reads `id` and leaves `note` out.
+kind: Telo.Library
+metadata:
+  name: UiInvalidActionInputUnsent
+  version: 1.0.0
+  description: Test fixture exporting a DELETE action whose target leaves an input property unread.
+imports: { Ui: ../../../../../ }
+exports: { resources: [deleteNote] }
+---
+kind: Ui.Action
+metadata: { name: deleteNote }
+inputModel:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [id]
+    properties: { id: { type: string }, note: { type: string } }
+request:
+  method: DELETE
+  target: { path: "/api/notes/{id}", pathParams: { id: !cel "input.id" } }
+label: Delete

@@ -1,0 +1,523 @@
+kind: Telo.Application
+metadata:
+  name: AiChatApiAttachments
+  version: 1.0.0
+  description: |
+    Uploads over HTTP. A PNG within its bound is stored with no address, sent
+    with a message, and then read under that conversation alone; no frame of the
+    turn or its transcript holds its bytes. Reading it pending, under another
+    conversation, under an unknown one, by an unknown id and after its
+    conversation is deleted are one 404 problem alike, and the flat route is gone.
+    Media a model produces is read under its conversation at the address its event
+    carries while the turn is still running, and its replayed event carries the same. A file over its type's bound, a type the model does
+    not take and any file at an endpoint that offers none are 400 problems at
+    `/body/file` and store nothing. An MP3 and a WebM are told apart by their
+    content. Over a text-only model the endpoint offers no attachments and the
+    page's chat node carries none, so no upload control is drawn; declaring
+    accepted media gives both. Every upload expectation holds both for the kind
+    and for its body written with public kinds.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Multipart: ../../multipart
+  Fs: ../../fs
+  Stream: ../../stream
+  Watch: ../../watch
+  Ui: ../../ui
+  UiReact: ../../ui-react
+  Assert: ../../assert
+  Ejected:
+    source: ./__fixtures__/ejected-api
+    resources: { conversation: !ref mediaChat }
+variables:
+  scratchDir:
+    env: AI_CHAT_API_ATTACHMENTS_FIXTURES
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+markerRetention: 1h
+---
+kind: Chat.Conversation
+metadata: { name: textChat }
+agent: { kind: Ai.AgentStream, model: { kind: AiEcho.EchoModelStream, accepts: [] } }
+store: !ref store
+journal: !ref journal
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-api-text')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.Conversation
+metadata: { name: mediaChat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    echoMedia: true
+    accepts:
+      - { type: image, mediaTypes: [image/png], maxBytes: 100 }
+      - { type: audio, mediaTypes: [audio/mpeg], maxBytes: 1000 }
+      - { type: video, mediaTypes: [video/webm], maxBytes: 1000 }
+store: !ref store
+journal: !ref journal
+blobs: !ref mediaBlobs
+detector: { kind: MediaType.Detector }
+---
+kind: BlobFs.Store
+metadata: { name: mediaBlobs }
+root: !cel "variables.scratchDir.joinPath('scratch-api-media')"
+---
+# A model that answers with a picture it drew, finishing only once the picture
+# has been read, so the read happens while the turn runs.
+kind: Telo.Definition
+metadata: { name: PictureModel }
+capability: Telo.Invocable
+extends: Ai.ModelStream
+schema: { type: object, additionalProperties: false }
+resources:
+  - kind: Stream.Of
+    metadata: { name: parts }
+    items:
+      - { type: content-part, part: { type: image, data: !include-bytes __fixtures__/dot.png, mediaType: image/png } }
+      - { type: text-delta, delta: drawn }
+      - { type: finish, finishReason: stop, usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 } }
+  - kind: Stream.Tap
+    metadata: { name: held }
+    when: !cel "index == 2"
+    invoke:
+      kind: Telo.Sequence
+      steps:
+        - name: read
+          invoke: { kind: Watch.Wait, store: !ref pictureRead, maxTimeout: 10s }
+          inputs: { topic: picture-read, after: 0, timeout: 10s }
+        - name: unread
+          if: !cel "!steps.read.result.changed"
+          then:
+            - { name: late, throw: { code: ERR_PICTURE_UNREAD, message: The picture was not read while the turn ran. } }
+  - kind: Telo.Sequence
+    metadata: { name: call }
+    steps:
+      - { name: answer, invoke: !ref parts, inputs: {} }
+      - { name: hold, invoke: !ref held, inputs: { input: !cel "steps.answer.result.output" } }
+    outputs:
+      output: !cel "steps.hold.result.output"
+invoke: !ref call
+---
+kind: Watch.MemoryStore
+metadata: { name: pictureRead }
+---
+kind: Chat.Conversation
+metadata: { name: pictureChat }
+agent: { kind: Ai.AgentStream, model: { kind: AiChatApiAttachments.PictureModel } }
+store: !ref store
+journal: !ref journal
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-api-picture')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.Api
+metadata: { name: pictureApi }
+conversation: !ref pictureChat
+---
+kind: Chat.Api
+metadata: { name: textApi }
+conversation: !ref textChat
+---
+kind: Chat.Api
+metadata: { name: mediaApi }
+conversation: !ref mediaChat
+---
+kind: UiReact.App
+metadata: { name: textApp }
+title: Assistant
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Assistant
+    children:
+      - type: composite
+        ref:
+          kind: Ui.Chat
+          source: { kind: Ui.ConversationSource, conversation: !ref textChat, basePath: /api/text }
+---
+kind: UiReact.App
+metadata: { name: mediaApp }
+title: Assistant
+theme: !ref UiReact.defaultTheme
+pages:
+  - kind: Ui.Page
+    path: /
+    title: Assistant
+    children:
+      - type: composite
+        ref:
+          kind: Ui.Chat
+          source: { kind: Ui.ConversationSource, conversation: !ref mediaChat, basePath: /api/media }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19412 }
+    mounts:
+      - { path: /api/text, mount: !ref textApi }
+      - { path: /api/media, mount: !ref mediaApi }
+      - { path: /api/picture, mount: !ref pictureApi }
+      - { path: /api/ejected, mount: !ref Ejected.api }
+      - { path: /app/text, mount: !ref textApp }
+      - { path: /app/media, mount: !ref mediaApp }
+targets: [!ref server]
+steps:
+  - name: textOffer
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19412/api/text/capabilities" }
+  - name: mediaOffer
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19412/api/media/capabilities" }
+  - name: textPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19412/app/text/_telo/ui/page?path=/" }
+  - name: mediaPage
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:19412/app/media/_telo/ui/page?path=/" }
+  - name: checkOffers
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        text: { offer: !cel "steps.textOffer.result.body", node: !cel "steps.textPage.result.body.children[0].spec" }
+        media: { offer: !cel "steps.mediaOffer.result.body", node: !cel "steps.mediaPage.result.body.children[0].spec" }
+      expected:
+        text:
+          offer: { operations: [branch, cancel] }
+          node: { operations: [branch, cancel] }
+        media:
+          offer:
+            attachments:
+              accepts:
+                - { type: image, mediaTypes: [image/png], maxBytes: 100 }
+                - { type: audio, mediaTypes: [audio/mpeg], maxBytes: 1000 }
+                - { type: video, mediaTypes: [video/webm], maxBytes: 1000 }
+              maxPerMessage: 4
+            operations: [branch, cancel]
+          node:
+            attachments:
+              accepts:
+                - { type: image, mediaTypes: [image/png], maxBytes: 100 }
+                - { type: audio, mediaTypes: [audio/mpeg], maxBytes: 1000 }
+                - { type: video, mediaTypes: [video/webm], maxBytes: 1000 }
+              maxPerMessage: 4
+            operations: [branch, cancel]
+
+  # The upload expectations hold for the kind and for its body written with public kinds.
+  - { name: media, invoke: !ref uploads, inputs: { base: "http://127.0.0.1:19412/api/media" } }
+  - { name: ejected, invoke: !ref uploads, inputs: { base: "http://127.0.0.1:19412/api/ejected" } }
+
+  # Any file at a text-only endpoint is refused and stores nothing.
+  - name: textOnlyForm
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts: [{ name: file, filename: dot.png, contentType: image/png, content: !include-bytes __fixtures__/dot.png }]
+  - name: textOnly
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19412/api/text/attachments" }
+    inputs:
+      headers: { content-type: !cel "steps.textOnlyForm.result.contentType" }
+      body: !cel "steps.textOnlyForm.result.output"
+  - name: textOnlyStored
+    try:
+      - name: textOnlyListing
+        invoke: { kind: Fs.DirectoryListing, cwd: !cel "variables.scratchDir" }
+        inputs: { path: scratch-api-text, recursive: true }
+      - { name: textOnlyFiles, value: !cel "steps.textOnlyListing.result.entries.filter(e, e.type == 'file').map(e, e.path)" }
+    catch:
+      - { name: textOnlyFiles, value: [] }
+  - name: checkTextOnly
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        textOnly:
+          status: !cel "steps.textOnly.result.status"
+          pointers: !cel "steps.textOnly.result.body.data.issues.map(i, i.pointer)"
+        textOnlyStored: !cel "steps.textOnlyFiles.result"
+      expected: { textOnly: { status: 400, pointers: [/body/file] }, textOnlyStored: [] }
+
+  # A pending upload has no address: the flat route is gone, and no conversation holds it yet.
+  - name: flat
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/attachments/${{ steps.media.result.dot }}" }
+  - name: pendingRead
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/conversations/cnv_0000000000000000000none/attachments/${{ steps.media.result.dot }}" }
+
+  # A message carrying the PNG: the model is sent its bytes, no frame holds them.
+  - name: start
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19412/api/media/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: look, attachments: [!cel "steps.media.result.dot"] }
+  - name: events
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/turns/${{ steps.start.result.body.turn }}/events", responseType: text }
+  - name: entries
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/conversations/${{ steps.start.result.body.conversation }}/entries", responseType: text }
+  - name: checkWire
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        modelSaw: !cel "steps.entries.result.body.contains('image(70 bytes)')"
+        framesBase64: !cel "steps.events.result.body.contains('iVBOR')"
+        entriesBase64: !cel "steps.entries.result.body.contains('iVBOR')"
+        entriesRefer: !cel "steps.entries.result.body.contains('conversations/' + steps.start.result.body.conversation + '/attachments/' + steps.media.result.dot)"
+      expected: { modelSaw: true, framesBase64: false, entriesBase64: false, entriesRefer: true }
+
+  # Bound, the file is read under its conversation and nowhere else; deleted with it, nowhere.
+  - name: boundRead
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19412/api/media/conversations/${{ steps.start.result.body.conversation }}/attachments/${{ steps.media.result.dot }}"
+      responseType: bytes
+  - name: other
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19412/api/media/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: other, attachments: [] }
+  - name: otherEvents
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/turns/${{ steps.other.result.body.turn }}/events", responseType: text }
+  - name: elsewhereRead
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/conversations/${{ steps.other.result.body.conversation }}/attachments/${{ steps.media.result.dot }}" }
+  - name: unknownConversationRead
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/conversations/cnv_0000000000000missing/attachments/${{ steps.media.result.dot }}" }
+  - name: unknownIdRead
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/conversations/${{ steps.start.result.body.conversation }}/attachments/att_0000000000000000000000" }
+  - name: deleted
+    invoke: { kind: HttpClient.Request, method: DELETE }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/conversations/${{ steps.start.result.body.conversation }}" }
+  - name: releasedRead
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:19412/api/media/conversations/${{ steps.start.result.body.conversation }}/attachments/${{ steps.media.result.dot }}" }
+  - name: notFound
+    value: !cel "[steps.pendingRead.result, steps.elsewhereRead.result, steps.unknownConversationRead.result, steps.releasedRead.result, steps.unknownIdRead.result]"
+  - name: checkScoped
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        flat: !cel "steps.flat.result.status"
+        bound: { status: !cel "steps.boundRead.result.status", size: !cel "size(steps.boundRead.result.body)" }
+        deleted: !cel "steps.deleted.result.status"
+        # One problem for all five, apart from its detail and the id it names.
+        statuses: !cel "steps.notFound.result.map(r, r.status)"
+        alike: !cel "steps.notFound.result.map(r, r.body.filter(k, k != 'detail' && k != 'data').map(k, [k, r.body[k]])).all(p, p == steps.notFound.result[0].body.filter(k, k != 'detail' && k != 'data').map(k, [k, steps.notFound.result[0].body[k]]))"
+        codes: !cel "steps.notFound.result.map(r, r.body.code)"
+        data: !cel "steps.notFound.result.map(r, r.body.data)"
+      expected:
+        flat: 404
+        bound: { status: 200, size: 70 }
+        deleted: 204
+        statuses: [404, 404, 404, 404, 404]
+        alike: true
+        codes: [ERR_CONVERSATION_ATTACHMENT_NOT_FOUND, ERR_CONVERSATION_ATTACHMENT_NOT_FOUND, ERR_CONVERSATION_ATTACHMENT_NOT_FOUND, ERR_CONVERSATION_ATTACHMENT_NOT_FOUND, ERR_CONVERSATION_ATTACHMENT_NOT_FOUND]
+        data:
+          - { attachment: !cel "steps.media.result.dot" }
+          - { attachment: !cel "steps.media.result.dot" }
+          - { attachment: !cel "steps.media.result.dot" }
+          - { attachment: !cel "steps.media.result.dot" }
+          - { attachment: att_0000000000000000000000 }
+
+  # A picture the model drew is read at the address its event names while the turn
+  # still runs (the model finishes only once it has been read), and its replayed
+  # event names it under the conversation.
+  - name: drawn
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:19412/api/picture/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: draw, attachments: [] }
+  - name: drawnTurn
+    invoke: { kind: Chat.TurnEvents, conversation: !ref pictureChat }
+    inputs: { turn: !cel "steps.drawn.result.body.turn" }
+  - name: readLive
+    invoke:
+      kind: Stream.Tap
+      when: !cel "item.event.type == 'content'"
+      inputs: { url: !cel "item.event.part.url" }
+      invoke:
+        kind: Telo.Sequence
+        inputType:
+          kind: Telo.JsonSchema
+          schema: { type: object, required: [url], properties: { url: { type: string } } }
+        steps:
+          - name: picture
+            invoke: { kind: HttpClient.Request }
+            inputs: { url: !interpolate "http://127.0.0.1:19412/api/picture/${{ inputs.url }}", responseType: bytes }
+          - name: checkRead
+            invoke: { kind: Assert.Equals }
+            inputs:
+              actual: { status: !cel "steps.picture.result.status", size: !cel "size(steps.picture.result.body)" }
+              expected: { status: 200, size: 70 }
+          - name: released
+            invoke: { kind: Watch.Publish, store: !ref pictureRead }
+            inputs: { topic: picture-read, version: 1 }
+    inputs: { input: !cel "steps.drawnTurn.result.output" }
+  - name: drawnFrames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.readLive.result.output" }
+  - name: replayed
+    invoke: { kind: Chat.TurnEvents, conversation: !ref pictureChat }
+    inputs: { turn: !cel "steps.drawn.result.body.turn" }
+  - name: replayedFrames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.replayed.result.output" }
+  - name: pictureUrl
+    value: !cel "steps.replayedFrames.result.items.filter(f, f.event.type == 'content')[0].event.part.url"
+  - name: checkDrawn
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        scoped: !cel "steps.pictureUrl.result.startsWith('conversations/' + steps.drawn.result.body.conversation + '/attachments/att_')"
+        live: !cel "steps.pictureUrl.result == steps.drawnFrames.result.items.filter(f, f.event.type == 'content')[0].event.part.url"
+        events: !cel "steps.drawnFrames.result.items.map(f, f.event.type).filter(t, t == 'content' || t == 'error' || t == 'turn-end')"
+      expected: { scoped: true, live: true, events: [content, turn-end] }
+---
+# What an upload is answered, against the media endpoint served at `base`.
+kind: Telo.Sequence
+metadata: { name: uploads }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [base], properties: { base: { type: string } } }
+steps:
+  # A PNG of 70 bytes, within its type's bound of 100.
+  - name: dotForm
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts: [{ name: file, filename: dot.png, contentType: image/png, content: !include-bytes __fixtures__/dot.png }]
+  - name: dot
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/attachments"
+      headers: { content-type: !cel "steps.dotForm.result.contentType" }
+      body: !cel "steps.dotForm.result.output"
+  - name: stored
+    invoke: { kind: Fs.DirectoryListing, cwd: !cel "variables.scratchDir" }
+    inputs: { path: scratch-api-media, recursive: true }
+  - name: checkDot
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        status: !cel "steps.dot.result.status"
+        keys: !cel "size(steps.dot.result.body)"
+        mediaType: !cel "steps.dot.result.body.mediaType"
+        size: !cel "steps.dot.result.body.size"
+      expected:
+        status: 200
+        keys: 3
+        mediaType: image/png
+        size: 70
+
+  # Refused uploads: 110 bytes over the image bound, a text file, and a form with no file.
+  - name: largeForm
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts: [{ name: file, filename: large.png, contentType: image/png, content: !include-bytes __fixtures__/large.png }]
+  - name: large
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/attachments"
+      headers: { content-type: !cel "steps.largeForm.result.contentType" }
+      body: !cel "steps.largeForm.result.output"
+  - name: noteForm
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts: [{ name: file, filename: note.txt, contentType: text/plain, content: !include-bytes __fixtures__/note.txt }]
+  - name: note
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/attachments"
+      headers: { content-type: !cel "steps.noteForm.result.contentType" }
+      body: !cel "steps.noteForm.result.output"
+  - name: noFileForm
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts: [{ name: other, content: x }]
+  - name: noFile
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/attachments"
+      headers: { content-type: !cel "steps.noFileForm.result.contentType" }
+      body: !cel "steps.noFileForm.result.output"
+  - name: storedAfter
+    invoke: { kind: Fs.DirectoryListing, cwd: !cel "variables.scratchDir" }
+    inputs: { path: scratch-api-media, recursive: true }
+  - name: checkRefusals
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        large:
+          status: !cel "steps.large.result.status"
+          code: !cel "steps.large.result.body.code"
+          pointers: !cel "steps.large.result.body.data.issues.map(i, i.pointer)"
+        note:
+          status: !cel "steps.note.result.status"
+          code: !cel "steps.note.result.body.code"
+          pointers: !cel "steps.note.result.body.data.issues.map(i, i.pointer)"
+        noFile:
+          status: !cel "steps.noFile.result.status"
+          issues: !cel "steps.noFile.result.body.data.issues.map(i, i.pointer + ' ' + i.keyword)"
+        storedNothing: !cel "steps.storedAfter.result.entries == steps.stored.result.entries"
+      expected:
+        large: { status: 400, code: ERR_INPUT_INVALID, pointers: [/body/file] }
+        note: { status: 400, code: ERR_INPUT_INVALID, pointers: [/body/file] }
+        noFile: { status: 400, issues: ["/body/file required"] }
+        storedNothing: true
+
+  # Types told apart by content: neither upload declares one.
+  - name: mp3Form
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts: [{ name: file, filename: clip.mp3, content: !include-bytes __fixtures__/clip.mp3 }]
+  - name: mp3
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/attachments"
+      headers: { content-type: !cel "steps.mp3Form.result.contentType" }
+      body: !cel "steps.mp3Form.result.output"
+  - name: webmForm
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts: [{ name: file, filename: clip.webm, content: !include-bytes __fixtures__/clip.webm }]
+  - name: webm
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/attachments"
+      headers: { content-type: !cel "steps.webmForm.result.contentType" }
+      body: !cel "steps.webmForm.result.output"
+  - name: checkDetected
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        mp3: { status: !cel "steps.mp3.result.status", mediaType: !cel "steps.mp3.result.body.mediaType", size: !cel "steps.mp3.result.body.size" }
+        webm: { status: !cel "steps.webm.result.status", mediaType: !cel "steps.webm.result.body.mediaType", size: !cel "steps.webm.result.body.size" }
+      expected:
+        mp3: { status: 200, mediaType: audio/mpeg, size: 30 }
+        webm: { status: 200, mediaType: video/webm, size: 36 }
+outputs:
+  dot: !cel "steps.dot.result.body.id"

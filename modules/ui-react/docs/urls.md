@@ -166,6 +166,21 @@ it is ignored, and an entry whose `v` is not `2` is ignored and replaced by
 the next write. A store the browser refuses is reported in the console and
 the sidebar continues in memory.
 
+## Split view state
+
+A [split view](../../ui/docs/split-view.md#collapsing) naming `collapse.state`
+keeps one entry in the store it names; it writes nothing to the address.
+
+| | |
+| --- | --- |
+| Key | `telo.ui:<mount path>:s:<key>` — the mount path as a filter bar's; split views naming one `key` share the entry |
+| Value | `{ "v": 1, "collapsed": true }` |
+
+The entry is read when the split view mounts and beats `collapse.collapsed`,
+and written on every change the viewer makes, never at the start. An entry
+whose `v` is not `1` is ignored and replaced by the next write. A store the
+browser refuses is reported in the console and the choice stays in memory.
+
 ## The shell
 
 One HTML document, the same for every page: the cascade layer order, an
@@ -267,3 +282,47 @@ another `digest` re-renders in place, keeping what is mounted.
 every 25 seconds to keep the connection open. The renderer reads a second
 `hello` as a reconnect — the server may have restarted — and re-fetches its
 documents conditionally. Streams end when the server stops.
+
+## Addresses
+
+Every address the page document carries — a `link` or menu item `href`, a
+`value` node's `href`, a `list` or `Ui.TableLayout` column `href`, a relation
+or option source `href`, a reader's `source`, an action's `request.target`,
+`onSuccess.navigate` and `onSuccess.refreshes` — is `{ path, pathParams,
+queryParams }`, expanded in the browser over the roots its site binds (`row`,
+`query`, `data`, `input`, `result`). The renderer holds a twin of the expansion
+in `ui`, and both answer `modules/ui/conformance/addresses.json` row for row:
+a `{name}` segment is the percent-encoded value of its path parameter (an empty
+or absent value does not resolve), query parameters follow in declaration
+order with null and empty lists left out and a list repeating its key, and
+the result must be an address under the mount or an `https:`, `http:` or
+`mailto:` one. An app-relative address is requested and linked under the mount.
+
+- **Unresolved.** A link or cell is drawn as plain text, a menu item is left
+  out, a reader sends nothing and draws its `failure` tree, an action sends
+  nothing and draws its `failure` tree, a refresh is skipped and a navigation
+  goes nowhere; each is reported once in the console as
+  `ERR_UI_ADDRESS_UNRESOLVED`, naming the parameter.
+- **Following one.** An address whose path and query are exactly a declared
+  page's path moves within the application; any other is an ordinary load. A
+  cell link to anything but a declared page keeps `target="_blank"`.
+- **The page already shown.** A move to the page being shown (same path, new
+  query or fragment) fetches no document and keeps every node mounted — what a
+  form or an action holds, a listing's loaded pages — and each reader re-reads
+  the query parameters it declares from the new address.
+
+## Invalidation
+
+Readers and writers meet at one key: the resolved, percent-encoded,
+app-relative path, its query left out. After a 2xx the renderer announces an
+action's resolved target path, each resolved `refreshes` path and, inside a
+listing, its `basePath`; a listing's own edit (`PUT`) and delete also announce
+the record's path (`<basePath>/<key>`). Announcing reloads, by exact equality:
+every `data` reader whose resolved `source` path is that path (a `refreshes`
+entry whose literal path holds a `*` / `**` segment instead reads again every
+subscribed reader — `data`, listing or chat — whose key it matches, segment by
+segment: `*` one non-empty segment, `**` any number, none included), every listing
+whose `basePath` is (with its facet and relation label reads), and a `chat`
+whose open conversation path (`<basePath>/conversations/<id>`) is — read again
+unless a turn is running in it. A chat announces its own `refreshes` when a send
+is admitted and when a turn ends.

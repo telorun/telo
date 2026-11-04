@@ -34,7 +34,7 @@ with `in`.
 | `source` | required | the [`Ui.CollectionSource`](collection-source.md) the related records are read from; its collection is the relation's target |
 | `label` | required | how a related record is shown: a path into it (`row.name`) or a fixed text |
 | `hint` | none | text shown beside the label, a path into the record |
-| `href` | none | where a related record links to, a path into the record |
+| `href` | none | where a related record links to: an [address](nodes.md#addresses) over `row`, the related record — a string, or `{ path, pathParams, queryParams }` such as `{ path: "/authors/{id}", pathParams: { id: !cel "row.id" } }` |
 | `search` | none | the filter what the viewer types is sent as when choosing one: a `{ property, operator }` pair the target collection accepts |
 | `pageSize` | `25` | related records per request, 1–100: a page of choices, and at most this many keys per label lookup |
 

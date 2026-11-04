@@ -29,6 +29,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/guides/composing-behaviour", label: "Composing behaviour" },
         { type: "doc", id: "docs/guides/durable-execution", label: "Durable execution" },
         { type: "doc", id: "docs/guides/talking-to-a-database", label: "Talking to a database" },
+        { type: "doc", id: "apps/hub/guides/build-ui", label: "Building a user interface" },
         { type: "doc", id: "docs/guides/configuration", label: "Configuring an application" },
         { type: "doc", id: "docs/guides/choosing-by-configuration", label: "Choosing by configuration" },
         { type: "doc", id: "docs/guides/logging-basics", label: "Logging basics" },
@@ -53,6 +54,11 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "ide/vscode/README", label: "VS Code extension" },
         { type: "doc", id: "docs/coding-agents", label: "Working with coding agents" },
         { type: "doc", id: "docs/build/testing", label: "Testing your manifests" },
+        {
+          type: "doc",
+          id: "apps/hub/guides/write-integration-tests",
+          label: "Integration tests with real services",
+        },
         { type: "doc", id: "docs/guides/logging", label: "Logging" },
         { type: "doc", id: "docs/guides/tracing", label: "Tracing" },
       ],
@@ -77,6 +83,7 @@ const sidebars: SidebarsConfig = {
       items: [
         { type: "doc", id: "sdk/README", label: "Overview" },
         { type: "doc", id: "docs/extend/authoring-a-module", label: "Authoring a Module" },
+        { type: "doc", id: "apps/hub/guides/design-library", label: "Designing a Library" },
         { type: "doc", id: "docs/extend/templated-definitions", label: "Templated Definitions" },
         { type: "doc", id: "docs/extend/kind-inheritance", label: "Kind Inheritance" },
         { type: "doc", id: "docs/extend/step-bodies", label: "Step Bodies" },
@@ -103,6 +110,7 @@ const sidebars: SidebarsConfig = {
         { type: "doc", id: "docs/extend/native-files", label: "Native Files" },
         { type: "doc", id: "docs/extend/accessor-fields", label: "Accessor Fields" },
         { type: "doc", id: "docs/extend/browser-entries", label: "Browser Entries" },
+        { type: "doc", id: "docs/extend/path-templates", label: "Path Templates" },
         { type: "doc", id: "docs/extend/controller-protocol", label: "Controller Protocol" },
         {
           type: "doc",

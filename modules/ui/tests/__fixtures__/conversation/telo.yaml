@@ -1,0 +1,27 @@
+kind: Telo.Library
+metadata:
+  name: UiConversationFixture
+  version: 0.1.0
+  description: >-
+    Test fixture: a conversation endpoint that publishes the attachments and
+    operations it is declared with as its reading.
+imports: { Conversation: ../../../../conversation, Run: ../../../../run }
+exports: { kinds: [Endpoint] }
+---
+kind: Telo.Definition
+metadata: { name: Endpoint }
+capability: Telo.Provider
+extends: Conversation.Conversation
+schema:
+  type: object
+  additionalProperties: false
+  required: [operations]
+  properties:
+    attachments: { $ref: "telo:Conversations/AttachmentOffer" }
+    operations: { $ref: "telo:Conversations/Operations" }
+resources:
+  - kind: Run.Value
+    metadata: { name: spec }
+    outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/Spec" } }
+    value: !cel "has(self.attachments) ? {'attachments': self.attachments, 'operations': self.operations} : {'operations': self.operations}"
+provide: !ref spec

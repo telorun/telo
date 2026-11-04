@@ -1,0 +1,14 @@
+modules:
+  modules/ui: Added
+body: "Ui.Node gains a bar node (start, center and end regions, the centre centred
+  whatever the sides hold), a command node (a button running a Ui.Command — offered,
+  enabled — that the place it is written in binds, drawn by text or as an icon) and a
+  fill key on every node: fill: true stretches a node to the bottom of the page or
+  surface body it is in, and ui marks every node between it and that room as filling on
+  the wire, where every Ui.SpecNode now carries fill. Ui.Chat takes header, a list of
+  nodes over the open conversation's summary (conversation) and the chat's commands
+  (chat: exportTranscript, copyTranscript, stop, newConversation); omitted it is a bar
+  holding the export command, and [] draws none. Ui.Chat no longer takes title,
+  show.export or buttons.export (each a schema violation): the header says them. A
+  command chain to anything but a command is a CEL type error before the app runs, and a
+  fixed value is ERR_UI_COMMAND_UNRESOLVED when the chat is read."

@@ -2,7 +2,7 @@
 import { act } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Page, type Rendered } from "./harness.js";
-import { actionNode, dataNode, operation, reportSchema, listingNode, todos } from "./spec-nodes.js";
+import { actionNode, dataNode, operation, reportSchema, listingNode, todos, address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -141,10 +141,10 @@ describe("a reader", () => {
       path: "/?signin=denied",
       answers: { "/api/account": server.respond },
       pages: page(
-        { type: "link", text: "Expired", href: "/?signin=expired" },
+        { type: "link", text: "Expired", href: address("/?signin=expired") },
         dataNode({
           query: { signin: { type: "string" } },
-          source: { path: "/api/account", params: { signin: { root: "query", path: ["signin"] } } },
+          source: address("/api/account", {}, { signin: { root: "query", path: ["signin"] } }),
           content: { type: "value", value: { root: "data", path: ["email"] }, present: { type: "string" } },
         }),
       ),
@@ -170,7 +170,7 @@ describe("a reader", () => {
         dataNode({
           reloadOn: ["focus"],
           content: {
-            ...dataNode({ source: { path: "/api/inner", params: {} }, reloadOn: ["focus"] }),
+            ...dataNode({ source: address("/api/inner"), reloadOn: ["focus"] }),
             shown: { at: { root: "data", path: ["authorized"] }, matches: { const: true } },
           },
         }),
@@ -245,6 +245,28 @@ describe("a field's condition", () => {
   });
 });
 
+describe("an action's refreshes with wildcard segments", () => {
+  it("reads again every reader whose path they cover, and no other", async () => {
+    const reading = (path: string) => dataNode({ source: address(path), content: { type: "text", text: path } });
+    const archive = operation("/api/archive", "Archive", { type: "object", properties: {} }, {
+      onSuccess: { refreshes: [address("/api/projects/{id}/**", { id: { value: 7 } })] },
+    });
+    rendered = await render({
+      path: "/",
+      answers: {
+        "/api/projects/7": () => json({ authorized: true }),
+        "/api/projects/7/members": () => json({ authorized: true }),
+        "/api/projects/70": () => json({ authorized: true }),
+        "/api/archive": () => new Response(null, { status: 204 }),
+      },
+      pages: page(reading("/api/projects/7"), reading("/api/projects/7/members"), reading("/api/projects/70"), archive),
+    });
+    const readsOf = (path: string) => rendered!.requests.filter((request) => request === `GET ${path}`).length;
+    await rendered.click(rendered.part("submit"));
+    expect([readsOf("/api/projects/7"), readsOf("/api/projects/7/members"), readsOf("/api/projects/70")]).toEqual([2, 2, 1]);
+  });
+});
+
 describe("an action's enabled condition", () => {
   it("disables the button and says why while it does not hold", async () => {
     rendered = await render({
@@ -262,7 +284,7 @@ describe("an action's enabled condition", () => {
   it("offers a list's row actions over its rows, draws an answer in place of the button, and drops it with the answer it was drawn in", async () => {
     const remove = operation("/api/files/remove", "Remove", { type: "object", required: ["name"], properties: { name: { type: "string" } } }, {
       result: { type: "text", text: "Removed" },
-      onSuccess: { refreshes: ["/api/account"] },
+      onSuccess: { refreshes: [address("/api/account")] },
     });
     const files = [{ name: "a.pdf" }, { name: "b.pdf" }];
     rendered = await render({

@@ -8,8 +8,7 @@ a context card over one API answer, a sign-in gate. A reader is a
 | --- | --- | --- |
 | `model` | required | the shape of the record read: a `!ref` to a `Telo.JsonSchema`, or one inline |
 | `query` | none | the [query parameters](conditions.md#query-parameters) the reader reads, as `query` |
-| `source.path` | required | [app-relative](nodes.md#addresses) URL of the record, read under [the record contract](record-contract.md) |
-| `source.params` | none | query parameters sent with the read, by name: a path into `query`, or a fixed value |
+| `source` | required | where the record is read from with `GET`, under [the record contract](record-contract.md): a `Ui.RequestTarget` over `query` — an app-relative path string, or `{ path, pathParams, queryParams }` like an [address](nodes.md#addresses) that is never a page. `path` may be a template (`/accounts/{id}`) filled by `pathParams`; `queryParams` are sent as the query. A value that holds nothing leaves the read unsent |
 | `content` | required | the [node](nodes.md) drawn once an answer is in, over `data` and `query` |
 | `loading` | a muted "Loading…" text (the key `loading`) | what is drawn before the first answer, over `query` |
 | `failure` | the error's code and message | what is drawn when the read does not succeed, over `error` and `query` |
@@ -28,7 +27,9 @@ model:
       email: { type: string, title: Email }
 query:
   signin: { type: string, enum: [denied, expired] }
-source: { path: /api/auth }
+source:
+  path: /api/auth
+  queryParams: { signin: !cel "query.signin" }
 reloadOn: [focus, unauthorized]
 content:
   type: stack
@@ -53,7 +54,7 @@ answer, and `reloadOn: [unauthorized]` — no kind of its own.
 - `error` — a `Ui.RequestError` (`{ status?, code?, message? }`) inside
   `failure`; `status` is absent when nothing answered.
 - `query` — the declared query parameters, in all three trees and in
-  `source.params`; closed and empty with none declared.
+  `source`; closed and empty with none declared.
 
 Each is read only by what is named — a condition's `at`, a `value` or `list`
 node, a parameter. A `when` in the trees is evaluated once, when the reader is
@@ -82,8 +83,9 @@ meanwhile is read once when it is shown.
 
 ## What a renderer receives
 
-A `data` node: `{ schema, source: { path, params }, query, content, loading,
-failure, reloadOn }`, every member present — `params` a map of bindings
+A `data` node: `{ schema, source, query, content, loading, failure, reloadOn }`,
+every member present — `source` an [address](nodes.md#addresses) in its wire
+form, `{ path, pathParams, queryParams }` with each parameter a binding
 (`{ }` when none), `query` the declared parameters (`{ }` when none), the three
 trees resolved as a [view](view.md)'s are (a node whose `when` is false at
 creation left out, `shown` carried as written, each `value` and `list` node

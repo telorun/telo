@@ -1,0 +1,6 @@
+modules:
+  modules/sse-codec: Added
+body: Sse.Encoder declares its input as a stream of Sse.Frame, so telo check refuses a
+  stream whose producer declares an element of another shape. A stream that declares no
+  element is judged only at run time, where a value that is not a frame ends the stream
+  in the error frame.

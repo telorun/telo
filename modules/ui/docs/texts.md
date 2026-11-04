@@ -101,8 +101,8 @@ listing all fourteen shipped catalogs, on which `telo check` reports no
 fixture application that lists every translation you ship.
 
 A kind showing these texts names the set with `x-telo-text-keys` on its
-schema root: `Ui.Data` and `Ui.Listing`, which fill `loading` and `empty`, name
-`[Self.Translations]`, and a renderer's application names `[Ui.Translations]` to
+schema root: `Ui.Data`, `Ui.Listing` and `Ui.Chat`, which fill `loading`,
+`empty` and the default header's `chatExport`, name `[Self.Translations]`, and a renderer's application names `[Ui.Translations]` to
 receive the messages of every served language.
 
 | Key | English |
@@ -201,6 +201,79 @@ receive the messages of every served language.
 | `format` | Is not a valid {$format} |
 | `additionalProperties` | Is not expected here |
 | `propertyNames` | Has a name that is not allowed: {$propertyName} |
+| `chatMessage` | Message |
+| `chatComposerHint` | Enter to send, Shift+Enter for a new line |
+| `chatSend` | Send |
+| `chatStop` | Stop |
+| `chatAttach` | Attach files |
+| `chatDropFiles` | Drop files to attach |
+| `chatTranscript` | Conversation |
+| `chatStarters` | Suggested prompts |
+| `chatEmpty` | Send a message to start the conversation. |
+| `chatYou` | You |
+| `chatAssistant` | Assistant |
+| `chatCopy` | Copy message |
+| `chatCopied` | Copied |
+| `chatCopyCode` | Copy code |
+| `chatRegenerate` | Regenerate |
+| `chatEditMessage` | Edit message |
+| `chatResend` | Save and resend |
+| `chatBranchPrevious` | Previous version |
+| `chatBranchNext` | Next version |
+| `chatBranchPosition` | {$position} of {$total} |
+| `chatExport` | Export as Markdown |
+| `chatReasoning` | Reasoning |
+| `chatThinking` | Thinking… |
+| `chatShowDetails` | Show details |
+| `chatHideDetails` | Hide details |
+| `chatToolCall` | Tool: {$name} |
+| `chatToolRunning` | Running… |
+| `chatToolFailed` | Failed |
+| `chatToolArguments` | Arguments |
+| `chatToolResult` | Result |
+| `chatApprovalRequest` | Approval needed to run {$name} |
+| `chatApprove` | Approve |
+| `chatReject` | Reject |
+| `chatRejectReason` | Reason (optional) |
+| `chatApproved` | Approved |
+| `chatRejected` | Rejected |
+| `chatRejectedReason` | Rejected: {$reason} |
+| `chatSources` | Sources |
+| `chatRefusal` | Declined |
+| `chatUsage` | Tokens: {$input} in, {$output} out |
+| `chatUsageTotal` | Tokens: {$total} |
+| `chatTurnLength` | The reply was cut off at the length limit. |
+| `chatTurnContentFilter` | The reply was stopped by a content filter. |
+| `chatTurnLimit` | The assistant stopped at its step limit. |
+| `chatTurnApproval` | Waiting for your approval. |
+| `chatTurnCancelled` | Stopped. |
+| `chatTurnFailed` | The reply failed. |
+| `chatContinue` | Continue |
+| `chatReconnecting` | Reconnecting… |
+| `chatReconnectFailed` | Could not reconnect. |
+| `chatRetry` | Try again |
+| `chatAnnounceStarted` | The assistant is replying. |
+| `chatAnnounceDone` | The reply is complete. |
+| `chatAttachments` | Attachments |
+| `chatAttachmentRemove` | Remove {$name} |
+| `chatAttachmentUploading` | Uploading {$name}: {$percent}% |
+| `chatAttachmentFailed` | Uploading {$name} failed: {$reason} |
+| `chatAttachmentTooLarge` | {$name} is larger than {$limit} |
+| `chatAttachmentWrongType` | {$name} is not an accepted file type |
+| `chatAttachmentTooMany` | Too many files. Limit per message: {$limit} |
+| `chatAttachmentOpen` | Open {$name} |
+| `chatLoadEarlier` | Load earlier messages |
+| `mediaViewer` | Image viewer |
+| `mediaPrevious` | Previous picture |
+| `mediaNext` | Next picture |
+| `mediaPosition` | {$position} of {$total} |
+| `mediaZoomIn` | Zoom in |
+| `mediaZoomOut` | Zoom out |
+| `mediaZoomReset` | Reset zoom |
+| `mediaDownload` | Download {$name} |
+| `splitShow` | Show {$label} |
+| `splitHide` | Hide {$label} |
+| `rowActionsMenu` | Actions |
 
 The keys from `invalid` to the end are the validation texts: what the
 browser's own validation says of a keyword, and what a renderer says of each

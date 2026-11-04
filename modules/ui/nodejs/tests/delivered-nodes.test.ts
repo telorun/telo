@@ -55,7 +55,7 @@ describe("a page's nodes for a request", () => {
 
   it("place what a composite provided without judging it again: that was done once, at start", () => {
     const check = validator();
-    const provided = judgedComposite({ type: "table", columns: [] }, check, () => {});
+    const provided = judgedComposite({ type: "table", columns: [], fill: false }, check, () => {});
     expect(check.judged).toHaveLength(1);
     const placing: EvaluatedNode = { type: "stack", children: [{ type: "composite", ref: 0 }, { type: "composite", ref: 0, style: "muted" }] };
     for (let request = 0; request < 3; request++) {
@@ -87,6 +87,7 @@ describe("a page's nodes for a request", () => {
       type: "error",
       code: "ERR_UI_NODE_INVALID",
       message: "A 'composite' node is not valid for this request: style must be one of the allowed values",
+      fill: false,
     });
     expect(refused).toEqual([["composite", "style must be one of the allowed values"]]);
     expect(judged.filter((node) => node.type === "table")).toHaveLength(1);
@@ -94,11 +95,11 @@ describe("a page's nodes for a request", () => {
 
   it("place a composite under its placement's condition — around it when the composite has one of its own", () => {
     const condition = (root: string) => ({ at: { root, path: ["flag"] }, matches: { const: true } });
-    const composites = [{ type: "text", text: "plain" }, { type: "text", text: "gated", shown: condition("data") }];
+    const composites = [{ type: "text", text: "plain", fill: false }, { type: "text", text: "gated", shown: condition("data"), fill: false }];
     const produced = (ref: number) =>
       producedNode({ type: "composite", ref, shown: condition("query") }, (index) => composites[index as number], validator(), () => {});
-    expect(produced(0)).toEqual({ type: "text", text: "plain", shown: condition("query") });
-    expect(produced(1)).toEqual({ type: "box", children: [composites[1]], shown: condition("query") });
+    expect(produced(0)).toEqual({ type: "text", text: "plain", shown: condition("query"), fill: false });
+    expect(produced(1)).toEqual({ type: "box", children: [composites[1]], shown: condition("query"), fill: false });
   });
 
   it("keep a menu's items delivered for this request, leave out a menu with none, and replace one holding an item not valid", () => {
@@ -108,7 +109,7 @@ describe("a page's nodes for a request", () => {
     expect(produce([link("Default", true), link("Brand", false), link("Radix")])).toEqual({
       type: "menu",
       text: "Theme",
-      items: [link("Default"), link("Radix")],
+      items: [{ ...link("Default"), button: null }, { ...link("Radix"), button: null }],
     });
     expect(produce([link("Brand", false)])).toBeUndefined();
     expect(produce([link("Default"), link("Nowhere", true, null)])).toEqual(

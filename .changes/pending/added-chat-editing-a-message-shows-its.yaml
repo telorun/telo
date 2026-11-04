@@ -1,0 +1,5 @@
+modules:
+  modules/ui-react: Added
+body: "Chat: editing a message shows its files as removable items and takes more by the
+  attach button, drag-and-drop or paste, under the message box's limits; \"Save and
+  resend\" sends the files shown."

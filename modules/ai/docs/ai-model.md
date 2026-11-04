@@ -55,8 +55,8 @@ metadata: { name: folded }
 model: !ref someStreamingProvider
 ```
 
-It is a manifest, not a controller, which is the point of declaring the contract at all.
-Prefer a provider's own buffered kind where the endpoint offers one: collecting a stream
+It publishes the wrapped model's [`accepts`](#accepts--what-a-model-takes-beside-text) as its
+own; a value written on it is refused, since it could only disagree. Prefer a provider's own buffered kind where the endpoint offers one: collecting a stream
 to hand back a single answer pays a stream's latency for a buffer's result.
 
 ## Cancellation
@@ -226,16 +226,51 @@ shape is `CONTRACT_INPUTS_MISMATCH` under `telo check`, reported at the key at f
 computed one is `ERR_INPUT_INVALID` at dispatch. No operation and no provider checks a
 part's shape by hand.
 
-**Can this model carry it?** Only the provider knows. A well-formed part its endpoint
-cannot take — audio on a text-and-vision API, a document by reference where only bytes
-are accepted, a `uri` scheme the endpoint could never reach — is refused by the
-provider as **`ERR_MODEL_CONTENT_UNSUPPORTED`**, before it sends anything, with
-`data: { partType, scheme?, mediaType? }` and a message naming what the endpoint takes
-instead. See the provider's
-own documentation for which parts it carries.
+**Can this model carry it?** The model says, in `accepts` (below), and its provider
+refuses the rest. A well-formed part outside it — an image to a model that lists none, a
+media type it does not list, bytes over its bound — is **`ERR_MODEL_CONTENT_UNSUPPORTED`**,
+raised before anything is sent, with `data: { partType, scheme?, mediaType? }` and a
+message naming what the model takes. What a dialect cannot carry whatever `accepts`
+says — a `uri` scheme the endpoint could never reach, a document by reference where
+only bytes are accepted, a file with no name — stays the provider's call-time rule, and
+its own documentation lists it.
+
+### `accepts` — what a model takes beside text
+
+`Ai.Model` and `Ai.ModelStream` both declare `accepts`, the shape `Ai.AcceptedContent`:
+a list of `{ type, mediaTypes, maxBytes? }`, `type` one of `image`, `audio`, `video`,
+`file`. A media type is exact (`image/png`) or every subtype of a type (`image/*`);
+parameters are ignored. `maxBytes` bounds a part carrying its bytes — raw or base64 —
+and does not measure a part by `uri`. Absent means text only. Nothing is defaulted from
+a model id: what a model takes is written beside the model.
+
+```yaml
+kind: OpenAI.ChatModel
+metadata: { name: vision }
+model: gpt-4o
+request: !ref openaiRequest
+accepts:
+  - { type: image, mediaTypes: [image/png, image/jpeg], maxBytes: 5242880 }
+  - { type: file, mediaTypes: [application/pdf] }
+```
+
+Each provider narrows the list in its own schema to what its API can carry at all, so
+an entry outside that — audio to a chat API — is `SCHEMA_VIOLATION` under `telo check`
+at the line that wrote it. Within the ceiling the author declares what *their* model
+takes, and the provider holds every part it sends to it, a tool result's media
+included.
+
+The declaration is published: every provider reads back `resources.<name>.accepts`
+(`[]` for text only), and `Ai.Agent`, `Ai.AgentStream` and `Ai.Buffered` publish their
+model's, so a UI offers an upload control from `resources.<agent>.accepts` without
+knowing which provider is behind it.
 
 If you implement a provider:
 
+- Narrow `accepts` in your schema to what your API can carry, publish it in your
+  reading, and refuse a media part outside it with `modelContentUnsupported` — the
+  module's `requireAccepted(accepts, part, label)` does the type, media type and size
+  check, so call it for every part you send rather than restating it.
 - Refuse, never drop. A request quietly missing part of the message is answered
   wrongly with nothing to say why.
 - Translate a `uri`; never fetch it. Pass it on in the form your endpoint takes, or

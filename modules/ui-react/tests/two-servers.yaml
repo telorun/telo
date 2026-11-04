@@ -34,5 +34,5 @@ steps:
         first: { status: !cel "steps.first.result.status", children: !cel "steps.first.result.body.children" }
         second: { status: !cel "steps.second.result.status", children: !cel "steps.second.result.body.children" }
       expected:
-        first: { status: 200, children: [ { type: text, text: { lang: und, message: [Served twice] } } ] }
-        second: { status: 200, children: [ { type: text, text: { lang: und, message: [Served twice] } } ] }
+        first: { status: 200, children: [ { type: text, fill: false, text: { lang: und, message: [Served twice] } } ] }
+        second: { status: 200, children: [ { type: text, fill: false, text: { lang: und, message: [Served twice] } } ] }

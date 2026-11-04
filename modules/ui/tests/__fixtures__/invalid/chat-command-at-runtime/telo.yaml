@@ -1,0 +1,18 @@
+# A command node holding a fixed value: its type fits, so nothing is found
+# before it runs, and the chat refuses it when it resolves its header.
+kind: Telo.Application
+metadata: { name: UiInvalidChatCommandAtRuntimeApp, version: 1.0.0 }
+imports: { Ui: ../../../../, Fixture: ../../conversation, Probe: ../../probe }
+targets:
+  - invoke: !ref read
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Probe.Read
+metadata: { name: read }
+source:
+  kind: Ui.Chat
+  source: { kind: Ui.ConversationSource, conversation: !ref conversation, basePath: /api/chat }
+  header: [{ type: command, command: { offered: true, enabled: true }, text: Export }]

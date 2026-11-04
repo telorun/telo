@@ -23,6 +23,9 @@ export function Menu({ open, items, onOpenChange, onChange, children }: MenuProp
             <DropdownMenu.Item
               key={item.key}
               data-telo-part="menu-item"
+              disabled={item.disabled}
+              title={item.hint}
+              aria-description={item.hint}
               onSelect={() => onChange(item.key)}
             >
               {item.label}

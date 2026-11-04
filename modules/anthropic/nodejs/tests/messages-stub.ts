@@ -30,6 +30,10 @@ export async function over(behaviour: Invoke, config: Record<string, unknown> = 
       metadata: { name: "T", module: "App" },
       model: "claude-test",
       maxTokens: 1024,
+      accepts: [
+        { type: "image", mediaTypes: ["image/jpeg", "image/png", "image/gif", "image/webp"] },
+        { type: "file", mediaTypes: ["application/pdf", "text/plain"] },
+      ],
       request: { invoke },
       ...config,
     } as never,

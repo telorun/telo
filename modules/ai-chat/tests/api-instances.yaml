@@ -1,0 +1,307 @@
+kind: Telo.Application
+metadata:
+  name: AiChatApiInstances
+  version: 1.0.0
+  description: |
+    Several instances of one chat application over one SQLite file — the store
+    and the turn journal both live in it. Two starts of a turn on one
+    conversation, sent to two instances at once, admit exactly one and refuse the
+    other as running. Events opened on the second instance resume from a given
+    id; a cancel sent to it ends the turn cancelled on the first, and the model
+    receives no request after it. The same idempotency key sent to both
+    instances at once starts one turn and one model exchange. An instance shut
+    down while it runs a turn leaves it failed with the cancellation. A turn
+    whose writer died (a key claimed and never drained, named by the
+    conversation) is failed as lost once the journal's writer timeout has
+    passed, after which the other instance admits a new turn.
+imports:
+  Http: ../../http-client
+  Sql: ../../sql
+  SQLite: ../../sqlite
+  App: ../../app
+  Run: ../../run
+  AiConversation: ../../ai-conversation
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  dbFile:
+    env: AI_CHAT_API_INSTANCES_DB
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-api-instances.db
+  blobDir:
+    env: AI_CHAT_API_INSTANCES_BLOBS
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: .telo/ai-chat-api-instances-blobs
+targets: [!ref migrate, !ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.dbFile"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+markerRetention: 1h
+writerTimeout: 3s
+---
+kind: Telo.Sequence
+metadata: { name: migrate }
+steps:
+  - name: requests
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "CREATE TABLE IF NOT EXISTS model_requests (note TEXT)" }
+  - name: outcomes
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs: { sql: !sql "CREATE TABLE IF NOT EXISTS outcomes (scenario TEXT, port INTEGER, status INTEGER, result TEXT)" }
+---
+# One turn start at each instance, at once; what each answered is recorded.
+kind: Run.Iteration
+metadata: { name: startAtBoth }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [scenario, message]
+    properties:
+      scenario: { type: string }
+      conversation: { type: string }
+      message: { type: string }
+      key: { type: string }
+collection: !cel "[19421, 19422]"
+concurrency: 2
+steps:
+  - name: post
+    invoke: { kind: Http.Request, method: POST }
+    inputs:
+      url: !interpolate "http://127.0.0.1:${{ item }}/chat/turns"
+      headers: !cel "inputs.key == '' ? {'content-type': 'application/json'} : {'content-type': 'application/json', 'idempotency-key': inputs.key}"
+      body: !cel "inputs.conversation == '' ? {'message': inputs.message, 'attachments': []} : {'conversation': inputs.conversation, 'message': inputs.message, 'attachments': []}"
+  - name: record
+    invoke: { kind: Sql.Command, connection: !ref db }
+    inputs:
+      sql: !sql >-
+        INSERT INTO outcomes (scenario, port, status, result)
+        VALUES (${{ inputs.scenario }}, ${{ item }}, ${{ steps.post.result.status }},
+        ${{ 'turn' in steps.post.result.body ? steps.post.result.body.conversation + ' ' + steps.post.result.body.turn : steps.post.result.body.code }})
+---
+# An instance of its own that is shut down while it runs a turn.
+kind: Telo.Sequence
+metadata: { name: shutDownMidTurn }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [message], properties: { message: { type: string } } }
+with:
+  - kind: App.Instance
+    metadata: { name: third }
+    source: ./__fixtures__/api-instance.yaml
+    variables: { dbFile: !cel "variables.dbFile", blobDir: !cel "variables.blobDir" }
+    ports: { http: 19423 }
+targets: [!ref third]
+steps:
+  - name: start
+    invoke: { kind: Http.Request, method: POST, url: "http://127.0.0.1:19423/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: !cel "inputs.message", attachments: [] }
+  - { name: toolRunning, invoke: { kind: Timer.Delay }, inputs: { duration: 1200ms } }
+outputs:
+  turn: !cel "steps.start.result.body.turn"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: App.Instance
+    metadata: { name: first }
+    source: ./__fixtures__/api-instance.yaml
+    variables: { dbFile: !cel "variables.dbFile", blobDir: !cel "variables.blobDir" }
+    ports: { http: 19421 }
+  - kind: App.Instance
+    metadata: { name: second }
+    source: ./__fixtures__/api-instance.yaml
+    variables: { dbFile: !cel "variables.dbFile", blobDir: !cel "variables.blobDir" }
+    ports: { http: 19422 }
+targets: [!ref first, !ref second]
+steps:
+  - { name: run, value: !cel "uuidv4()" }
+
+  # A turn started at one instance, its events read at the other from id 1.
+  - name: one
+    invoke: { kind: Http.Request, method: POST, url: "http://127.0.0.1:19421/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: !cel "'one-' + steps.run.result", attachments: [] }
+  - name: oneResumedAtSecond
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19422/chat/turns/${{ steps.one.result.body.turn }}/events"
+      headers: { last-event-id: "1" }
+      responseType: text
+  - name: oneAtFirst
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19421/chat/turns/${{ steps.one.result.body.turn }}/events"
+      responseType: text
+  - name: checkResume
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        from: !cel "steps.oneAtFirst.result.body.startsWith('id: 1\\n')"
+        resumedAfter: !cel "steps.oneResumedAtSecond.result.body.startsWith('id: 2\\n')"
+        sameTail: !cel "steps.oneAtFirst.result.body.endsWith(steps.oneResumedAtSecond.result.body)"
+        ended: !cel "steps.oneResumedAtSecond.result.body.contains('\"reason\":\"stop\"')"
+      expected: { from: true, resumedAfter: true, sameTail: true, ended: true }
+
+  # Two starts on that conversation at once: one admitted, one refused as running.
+  - name: race
+    invoke: !ref startAtBoth
+    inputs:
+      scenario: !cel "'race-' + steps.run.result"
+      conversation: !cel "steps.one.result.body.conversation"
+      message: two
+      key: ""
+  - name: raceOutcomes
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: !sql "SELECT status, result FROM outcomes WHERE scenario = ${{ 'race-' + steps.run.result }} ORDER BY status" }
+  - name: checkRace
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        statuses: !cel "steps.raceOutcomes.result.rows.map(r, r.status)"
+        refusal: !cel "steps.raceOutcomes.result.rows[1].result"
+        admittedOn: !cel "steps.raceOutcomes.result.rows[0].result.startsWith(steps.one.result.body.conversation + ' trn_')"
+      expected: { statuses: [200, 409], refusal: ERR_CONVERSATION_TURN_RUNNING, admittedOn: true }
+  - name: raceTurnEnd
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19421/chat/turns/${{ split(steps.raceOutcomes.result.rows[0].result, ' ')[1] }}/events"
+      responseType: text
+
+  # A cancel sent to the other instance, once the first request is answered.
+  - name: cancelled
+    invoke: { kind: Http.Request, method: POST, url: "http://127.0.0.1:19421/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: !cel "'cancel-' + steps.run.result", attachments: [] }
+  - { name: toolRunning, invoke: { kind: Timer.Delay }, inputs: { duration: 1200ms } }
+  - name: cancel
+    invoke: { kind: Http.Request, method: POST }
+    inputs: { url: !interpolate "http://127.0.0.1:19422/chat/turns/${{ steps.cancelled.result.body.turn }}/cancel" }
+  - name: cancelledEvents
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19421/chat/turns/${{ steps.cancelled.result.body.turn }}/events"
+      responseType: text
+  # Past the tool's two seconds: a turn that went on would have asked the model again.
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 3500ms } }
+  - name: cancelRequests
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: !sql "SELECT count(*) AS n FROM model_requests WHERE note = ${{ 'cancel-' + steps.run.result }}" }
+  - name: checkCancel
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        outcome: !cel "steps.cancel.result.body.outcome"
+        ending: !cel "steps.cancelledEvents.result.body.matches('event: turn-end\\ndata: [^\\n]*\"reason\":\"cancelled\"')"
+        modelRequests: !cel "steps.cancelRequests.result.rows[0].n"
+      expected: { outcome: requested, ending: true, modelRequests: 1 }
+
+  # The same key sent to both instances at once: one turn, one exchange with the model
+  # (a request for the tool call, one for the answer).
+  - name: keyed
+    invoke: !ref startAtBoth
+    inputs:
+      scenario: !cel "'keyed-' + steps.run.result"
+      conversation: ""
+      message: !cel "'keyed-' + steps.run.result"
+      key: !cel "'key-' + steps.run.result"
+  - name: keyedOutcomes
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: !sql "SELECT status, result FROM outcomes WHERE scenario = ${{ 'keyed-' + steps.run.result }} ORDER BY port" }
+  - name: keyedEvents
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19421/chat/turns/${{ split(steps.keyedOutcomes.result.rows[0].result, ' ')[1] }}/events"
+      responseType: text
+  - name: keyedRequests
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs: { sql: !sql "SELECT count(*) AS n FROM model_requests WHERE note = ${{ 'keyed-' + steps.run.result }}" }
+  - name: checkKeyed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        statuses: !cel "steps.keyedOutcomes.result.rows.map(r, r.status)"
+        sameTurn: !cel "steps.keyedOutcomes.result.rows[0].result == steps.keyedOutcomes.result.rows[1].result"
+        modelRequests: !cel "steps.keyedRequests.result.rows[0].n"
+      expected: { statuses: [200, 200], sameTurn: true, modelRequests: 2 }
+
+  # An instance shut down mid-turn: the turn it ran is failed with the cancellation.
+  - name: shutdown
+    invoke: !ref shutDownMidTurn
+    inputs: { message: !cel "'shutdown-' + steps.run.result" }
+  - name: shutdownEvents
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19421/chat/turns/${{ steps.shutdown.result.turn }}/events"
+      responseType: text
+  - name: checkShutdown
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.shutdownEvents.result.body.matches('event: error\\ndata: [^\\n]*\"code\":\"ERR_INVOKE_CANCELLED\"[^\\n]*\\n\\nid: [0-9]+\\nevent: turn-end\\ndata: [^\\n]*\"reason\":\"failed\"')"
+      expected: true
+
+  # A writer that died mid-turn: its turn key was claimed under a writer token nothing drains
+  # or heartbeats, and the conversation's header names it. It is failed as lost once the
+  # journal's writer timeout (3s) has passed, the way a killed instance's turn is.
+  - name: lostSeed
+    invoke: { kind: Http.Request, method: POST, url: "http://127.0.0.1:19421/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: !cel "'lost-' + steps.run.result", attachments: [] }
+  - name: lostSeedEvents
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19421/chat/turns/${{ steps.lostSeed.result.body.turn }}/events"
+      responseType: text
+  - name: lostKey
+    value: !cel "'trn_' + steps.run.result.substring(0, 8) + steps.run.result.substring(9, 13) + steps.run.result.substring(14, 18) + steps.run.result.substring(19, 23) + '00'"
+  - name: lostClaim
+    invoke: { kind: RecordStream.JournalClaim, journal: !ref journal }
+    inputs: { key: !cel "steps.lostKey.result", writer: wrt_lost }
+  - name: header
+    invoke: { kind: AiConversation.Read, store: !ref store }
+    inputs: { conversation: !cel "steps.lostSeed.result.body.conversation" }
+  - name: admitLost
+    invoke: { kind: AiConversation.Admit, store: !ref store }
+    inputs:
+      conversation: !cel "steps.lostSeed.result.body.conversation"
+      version: !cel "steps.header.result.version"
+      turn: !cel "steps.lostKey.result"
+      attachments: []
+      expiredBefore: !cel "timestamp('1970-01-01T00:00:00Z')"
+  - { name: timedOut, invoke: { kind: Timer.Delay }, inputs: { duration: 3500ms } }
+  - name: afterLoss
+    invoke: { kind: Http.Request, method: POST, url: "http://127.0.0.1:19422/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { conversation: !cel "steps.lostSeed.result.body.conversation", message: after, attachments: [] }
+  - name: lostEvents
+    invoke: { kind: Http.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:19421/chat/turns/${{ steps.lostKey.result }}/events"
+      responseType: text
+  - name: checkLost
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        admitted: !cel "steps.afterLoss.result.status"
+        closing: !cel "steps.lostEvents.result.body.matches('event: error\\ndata: [^\\n]*\"code\":\"ERR_JOURNAL_WRITER_LOST\"[^\\n]*\\n\\nid: [0-9]+\\nevent: turn-end\\ndata: [^\\n]*\"reason\":\"failed\"')"
+      expected: { admitted: 200, closing: true }

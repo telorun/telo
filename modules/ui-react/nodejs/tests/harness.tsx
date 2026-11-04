@@ -28,7 +28,7 @@ export const BUNDLE = "bundle-1";
 /** The members of a node that hold a text a person reads. */
 const TEXT_MEMBERS = new Set(["text", "label", "header", "heading", "title", "alt", "confirm", "disabledText", "description"]);
 /** The members that hold data, never a text. */
-const DATA_MEMBERS = new Set(["schema", "present", "answer", "matches", "value", "inputs", "props", "values", "rows", "at", "by", "cases"]);
+const DATA_MEMBERS = new Set(["schema", "present", "answer", "matches", "value", "inputs", "props", "values", "rows", "at", "by", "cases", "buttons", "button", "toggle"]);
 
 /**
  * A page written with plain strings where a person reads text, as a server
@@ -64,7 +64,7 @@ export interface Page {
   children: SpecNode[];
 }
 
-type Responder = () => Response | Promise<Response>;
+type Responder = (request: { method: string; url: URL; init?: RequestInit }) => Response | Promise<Response>;
 
 export interface Rendered {
   container: HTMLElement;
@@ -187,7 +187,7 @@ export async function render(options: {
       sent.push({ request: requests.at(-1) as string, contentType: new Headers(init.headers).get("content-type"), body: JSON.parse(String(init.body)) });
     }
     const forced = answers.find(([start]) => url.pathname.startsWith(start));
-    if (forced) return forced[1]();
+    if (forced) return forced[1]({ method, url, init });
     if (url.pathname === `${prefix}/_telo/ui/app`) {
       return json({
         specVersion: 1,

@@ -18,6 +18,9 @@
         "pagerRange": {"message":[{"placeholder":"first"},"–",{"placeholder":"last"}," of ",{"placeholder":"total"}],"lang":"en"},
         "pagerEmpty": {"message":["0 of ",{"placeholder":"total"}],"lang":"en"},
         "nextPage": {"message":["Next page"],"lang":"en"},
+        "loadMore": {"message":["Load more"],"lang":"en"},
+        "moveTo": {"message":["Move to"],"lang":"en"},
+        "valueCount": {"message":[{"placeholder":"label"}," (",{"placeholder":"count"},")"],"lang":"en"},
         "yes": {"message":["Yes"],"lang":"en"},
         "no": {"message":["No"],"lang":"en"},
         "none": {"message":["None"],"lang":"en"},
@@ -45,35 +48,18 @@
         "operatorLt": {"message":["before"],"lang":"en"},
         "operatorLte": {"message":["to"],"lang":"en"},
         "operatorIn": {"message":["one of"],"lang":"en"},
+        "operatorAbsent": {"message":["not set"],"lang":"en"},
         "filterControl": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}],"lang":"en"},
         "filterChip": {"message":[{"placeholder":"label"}," ",{"placeholder":"operator"}," ",{"placeholder":"value"}],"lang":"en"},
         "filterGroupSummary": {"message":[{"placeholder":"label"},": ",{"placeholder":"summary"}],"lang":"en"},
         "rangeFrom": {"message":["From"],"lang":"en"},
         "rangeTo": {"message":["To"],"lang":"en"},
         "rangeStartsAfterEnd": {"message":["Must not start after it ends"],"lang":"en"},
-        "rangeLongerThanDays": {
-          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," day"],"other":["Longer than ",{"placeholder":"count"}," days"]}},
-          "lang": "en"
-        },
-        "rangeLongerThanWeeks": {
-          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," week"],"other":["Longer than ",{"placeholder":"count"}," weeks"]}},
-          "lang": "en"
-        },
-        "rangeLongerThanMonths": {
-          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," month"],"other":["Longer than ",{"placeholder":"count"}," months"]}},
-          "lang": "en"
-        },
-        "rangeLongerThanQuarters": {
-          "message": {
-            "plural": "count",
-            "cases": {"one":["Longer than ",{"placeholder":"count"}," quarter"],"other":["Longer than ",{"placeholder":"count"}," quarters"]}
-          },
-          "lang": "en"
-        },
-        "rangeLongerThanYears": {
-          "message": {"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," year"],"other":["Longer than ",{"placeholder":"count"}," years"]}},
-          "lang": "en"
-        },
+        "rangeLongerThanDays": {"message":{"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," day"],"other":["Longer than ",{"placeholder":"count"}," days"]}},"lang":"en"},
+        "rangeLongerThanWeeks": {"message":{"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," week"],"other":["Longer than ",{"placeholder":"count"}," weeks"]}},"lang":"en"},
+        "rangeLongerThanMonths": {"message":{"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," month"],"other":["Longer than ",{"placeholder":"count"}," months"]}},"lang":"en"},
+        "rangeLongerThanQuarters": {"message":{"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," quarter"],"other":["Longer than ",{"placeholder":"count"}," quarters"]}},"lang":"en"},
+        "rangeLongerThanYears": {"message":{"plural":"count","cases":{"one":["Longer than ",{"placeholder":"count"}," year"],"other":["Longer than ",{"placeholder":"count"}," years"]}},"lang":"en"},
         "notFound": {"message":["Not found"],"lang":"en"},
         "noPageAt": {"message":["This application has no page at ",{"placeholder":"path"},"."],"lang":"en"},
         "unsavedQuestion": {"message":["Discard unsaved changes?"],"lang":"en"},
@@ -95,62 +81,95 @@
         "const": {"message":["Must be ",{"placeholder":"value"}],"lang":"en"},
         "not": {"message":["Is not allowed"],"lang":"en"},
         "anyOf": {"message":["Is not one of the allowed forms"],"lang":"en"},
-        "minLength": {
-          "message": {
-            "plural": "limit",
-            "cases": {"one":["Must be at least ",{"placeholder":"limit"}," character"],"other":["Must be at least ",{"placeholder":"limit"}," characters"]}
-          },
-          "lang": "en"
-        },
-        "maxLength": {
-          "message": {
-            "plural": "limit",
-            "cases": {"one":["Must be at most ",{"placeholder":"limit"}," character"],"other":["Must be at most ",{"placeholder":"limit"}," characters"]}
-          },
-          "lang": "en"
-        },
+        "minLength": {"message":{"plural":"limit","cases":{"one":["Must be at least ",{"placeholder":"limit"}," character"],"other":["Must be at least ",{"placeholder":"limit"}," characters"]}},"lang":"en"},
+        "maxLength": {"message":{"plural":"limit","cases":{"one":["Must be at most ",{"placeholder":"limit"}," character"],"other":["Must be at most ",{"placeholder":"limit"}," characters"]}},"lang":"en"},
         "pattern": {"message":["Is not in the expected format"],"lang":"en"},
         "minimum": {"message":["Must be at least ",{"placeholder":"limit"}],"lang":"en"},
         "maximum": {"message":["Must be at most ",{"placeholder":"limit"}],"lang":"en"},
         "exclusiveMinimum": {"message":["Must be greater than ",{"placeholder":"limit"}],"lang":"en"},
         "exclusiveMaximum": {"message":["Must be less than ",{"placeholder":"limit"}],"lang":"en"},
         "multipleOf": {"message":["Must be a multiple of ",{"placeholder":"limit"}],"lang":"en"},
-        "minItems": {
-          "message": {
-            "plural": "limit",
-            "cases": {"one":["Must have at least ",{"placeholder":"limit"}," item"],"other":["Must have at least ",{"placeholder":"limit"}," items"]}
-          },
-          "lang": "en"
-        },
-        "maxItems": {
-          "message": {
-            "plural": "limit",
-            "cases": {"one":["Must have at most ",{"placeholder":"limit"}," item"],"other":["Must have at most ",{"placeholder":"limit"}," items"]}
-          },
-          "lang": "en"
-        },
+        "minItems": {"message":{"plural":"limit","cases":{"one":["Must have at least ",{"placeholder":"limit"}," item"],"other":["Must have at least ",{"placeholder":"limit"}," items"]}},"lang":"en"},
+        "maxItems": {"message":{"plural":"limit","cases":{"one":["Must have at most ",{"placeholder":"limit"}," item"],"other":["Must have at most ",{"placeholder":"limit"}," items"]}},"lang":"en"},
         "uniqueItems": {"message":["Must not repeat an item"],"lang":"en"},
-        "minProperties": {
-          "message": {
-            "plural": "limit",
-            "cases": {"one":["Must have at least ",{"placeholder":"limit"}," entry"],"other":["Must have at least ",{"placeholder":"limit"}," entries"]}
-          },
-          "lang": "en"
-        },
-        "maxProperties": {
-          "message": {
-            "plural": "limit",
-            "cases": {"one":["Must have at most ",{"placeholder":"limit"}," entry"],"other":["Must have at most ",{"placeholder":"limit"}," entries"]}
-          },
-          "lang": "en"
-        },
+        "minProperties": {"message":{"plural":"limit","cases":{"one":["Must have at least ",{"placeholder":"limit"}," entry"],"other":["Must have at least ",{"placeholder":"limit"}," entries"]}},"lang":"en"},
+        "maxProperties": {"message":{"plural":"limit","cases":{"one":["Must have at most ",{"placeholder":"limit"}," entry"],"other":["Must have at most ",{"placeholder":"limit"}," entries"]}},"lang":"en"},
         "format": {"message":["Is not a valid ",{"placeholder":"format"}],"lang":"en"},
         "additionalProperties": {"message":["Is not expected here"],"lang":"en"},
         "propertyNames": {"message":["Has a name that is not allowed: ",{"placeholder":"propertyName"}],"lang":"en"},
-        "loadMore": {"message":["Load more"],"lang":"en"},
-        "moveTo": {"message":["Move to"],"lang":"en"},
-        "valueCount": {"message":[{"placeholder":"label"}," (",{"placeholder":"count"},")"],"lang":"en"},
-        "operatorAbsent": {"message":["not set"],"lang":"en"}
+        "chatMessage": {"message":["Message"],"lang":"en"},
+        "chatComposerHint": {"message":["Enter to send, Shift+Enter for a new line"],"lang":"en"},
+        "chatSend": {"message":["Send"],"lang":"en"},
+        "chatStop": {"message":["Stop"],"lang":"en"},
+        "chatAttach": {"message":["Attach files"],"lang":"en"},
+        "chatDropFiles": {"message":["Drop files to attach"],"lang":"en"},
+        "chatTranscript": {"message":["Conversation"],"lang":"en"},
+        "chatStarters": {"message":["Suggested prompts"],"lang":"en"},
+        "chatEmpty": {"message":["Send a message to start the conversation."],"lang":"en"},
+        "chatYou": {"message":["You"],"lang":"en"},
+        "chatAssistant": {"message":["Assistant"],"lang":"en"},
+        "chatCopy": {"message":["Copy message"],"lang":"en"},
+        "chatCopied": {"message":["Copied"],"lang":"en"},
+        "chatCopyCode": {"message":["Copy code"],"lang":"en"},
+        "chatRegenerate": {"message":["Regenerate"],"lang":"en"},
+        "chatEditMessage": {"message":["Edit message"],"lang":"en"},
+        "chatResend": {"message":["Save and resend"],"lang":"en"},
+        "chatBranchPrevious": {"message":["Previous version"],"lang":"en"},
+        "chatBranchNext": {"message":["Next version"],"lang":"en"},
+        "chatBranchPosition": {"message":[{"placeholder":"position"}," of ",{"placeholder":"total"}],"lang":"en"},
+        "chatExport": {"message":["Export as Markdown"],"lang":"en"},
+        "chatReasoning": {"message":["Reasoning"],"lang":"en"},
+        "chatThinking": {"message":["Thinking…"],"lang":"en"},
+        "chatShowDetails": {"message":["Show details"],"lang":"en"},
+        "chatHideDetails": {"message":["Hide details"],"lang":"en"},
+        "chatToolCall": {"message":["Tool: ",{"placeholder":"name"}],"lang":"en"},
+        "chatToolRunning": {"message":["Running…"],"lang":"en"},
+        "chatToolFailed": {"message":["Failed"],"lang":"en"},
+        "chatToolArguments": {"message":["Arguments"],"lang":"en"},
+        "chatToolResult": {"message":["Result"],"lang":"en"},
+        "chatApprovalRequest": {"message":["Approval needed to run ",{"placeholder":"name"}],"lang":"en"},
+        "chatApprove": {"message":["Approve"],"lang":"en"},
+        "chatReject": {"message":["Reject"],"lang":"en"},
+        "chatRejectReason": {"message":["Reason (optional)"],"lang":"en"},
+        "chatApproved": {"message":["Approved"],"lang":"en"},
+        "chatRejected": {"message":["Rejected"],"lang":"en"},
+        "chatRejectedReason": {"message":["Rejected: ",{"placeholder":"reason"}],"lang":"en"},
+        "chatSources": {"message":["Sources"],"lang":"en"},
+        "chatRefusal": {"message":["Declined"],"lang":"en"},
+        "chatUsage": {"message":["Tokens: ",{"placeholder":"input"}," in, ",{"placeholder":"output"}," out"],"lang":"en"},
+        "chatUsageTotal": {"message":["Tokens: ",{"placeholder":"total"}],"lang":"en"},
+        "chatTurnLength": {"message":["The reply was cut off at the length limit."],"lang":"en"},
+        "chatTurnContentFilter": {"message":["The reply was stopped by a content filter."],"lang":"en"},
+        "chatTurnLimit": {"message":["The assistant stopped at its step limit."],"lang":"en"},
+        "chatTurnApproval": {"message":["Waiting for your approval."],"lang":"en"},
+        "chatTurnCancelled": {"message":["Stopped."],"lang":"en"},
+        "chatTurnFailed": {"message":["The reply failed."],"lang":"en"},
+        "chatContinue": {"message":["Continue"],"lang":"en"},
+        "chatReconnecting": {"message":["Reconnecting…"],"lang":"en"},
+        "chatReconnectFailed": {"message":["Could not reconnect."],"lang":"en"},
+        "chatRetry": {"message":["Try again"],"lang":"en"},
+        "chatAnnounceStarted": {"message":["The assistant is replying."],"lang":"en"},
+        "chatAnnounceDone": {"message":["The reply is complete."],"lang":"en"},
+        "chatAttachments": {"message":["Attachments"],"lang":"en"},
+        "chatAttachmentRemove": {"message":["Remove ",{"placeholder":"name"}],"lang":"en"},
+        "chatAttachmentUploading": {"message":["Uploading ",{"placeholder":"name"},": ",{"placeholder":"percent"},"%"],"lang":"en"},
+        "chatAttachmentFailed": {"message":["Uploading ",{"placeholder":"name"}," failed: ",{"placeholder":"reason"}],"lang":"en"},
+        "chatAttachmentTooLarge": {"message":[{"placeholder":"name"}," is larger than ",{"placeholder":"limit"}],"lang":"en"},
+        "chatAttachmentWrongType": {"message":[{"placeholder":"name"}," is not an accepted file type"],"lang":"en"},
+        "chatAttachmentTooMany": {"message":["Too many files. Limit per message: ",{"placeholder":"limit"}],"lang":"en"},
+        "chatAttachmentOpen": {"message":["Open ",{"placeholder":"name"}],"lang":"en"},
+        "mediaViewer": {"message":["Image viewer"],"lang":"en"},
+        "mediaPrevious": {"message":["Previous picture"],"lang":"en"},
+        "mediaNext": {"message":["Next picture"],"lang":"en"},
+        "mediaPosition": {"message":[{"placeholder":"position"}," of ",{"placeholder":"total"}],"lang":"en"},
+        "mediaZoomIn": {"message":["Zoom in"],"lang":"en"},
+        "mediaZoomOut": {"message":["Zoom out"],"lang":"en"},
+        "mediaZoomReset": {"message":["Reset zoom"],"lang":"en"},
+        "mediaDownload": {"message":["Download ",{"placeholder":"name"}],"lang":"en"},
+        "chatLoadEarlier": {"message":["Load earlier messages"],"lang":"en"},
+        "splitShow": {"message":["Show ",{"placeholder":"label"}],"lang":"en"},
+        "splitHide": {"message":["Hide ",{"placeholder":"label"}],"lang":"en"},
+        "rowActionsMenu": {"message":["Actions"],"lang":"en"}
       }
     }
   },
@@ -177,13 +196,13 @@
           "width": "contained",
           "start": [{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],
           "end": [
-            {"type":"link","text":{"message":["Help"],"lang":"en"},"href":"/"},
+            {"type":"link","text":{"message":["Help"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}}},
             {
               "type": "menu",
               "text": {"message":["Language"],"lang":"en"},
               "items": [
-                {"type":"link","text":{"message":["English"],"lang":"en"},"href":"/","style":"strong"},
-                {"type":"link","text":{"message":["Polski"],"lang":"en"},"href":"/?lang=pl"}
+                {"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"style":"strong"},
+                {"type":"link","text":{"message":["Polski"],"lang":"en"},"href":{"path":{"value":"/?lang=pl"},"pathParams":{},"queryParams":{}}}
               ]
             }
           ]
@@ -208,7 +227,7 @@
             {
               "type": "columns",
               "children": [
-                {"type":"box","children":[{"type":"link","text":{"message":["Docs"],"lang":"en"},"href":"/docs"}]},
+                {"type":"box","children":[{"type":"link","text":{"message":["Docs"],"lang":"en"},"href":{"path":{"value":"/docs"},"pathParams":{},"queryParams":{}}}]},
                 {"type":"image","src":"/logo.png","alt":{"message":[],"lang":"en"}}
               ]
             },
@@ -292,7 +311,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "pages",
-                "sort": ["text","priority","dueOn"],
+                "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+                "show": {"count": true},
                 "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
                 "create": {
                   "form": {
@@ -359,6 +379,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": true,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -486,7 +507,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "more",
-                "sort": ["text","priority","dueOn"],
+                "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+                "show": {"count": true},
                 "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
                 "create": {
                   "form": {
@@ -553,6 +575,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": true,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -641,7 +664,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "pages",
-                "sort": ["text","priority","dueOn"],
+                "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+                "show": {"count": true},
                 "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
                 "create": {
                   "form": {
@@ -708,6 +732,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": true,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -781,7 +806,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": ["text","priority","dueOn"],
+              "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "create": {
                 "form": {
@@ -848,6 +874,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -905,6 +932,7 @@
             {"type":"error","code":"ERR_EXAMPLE","message":"An error node."},
             {
               "type": "list",
+              "rowActionsDisplay": "auto",
               "rows": {"value":[]},
               "columns": [{"header":{"message":["Task"],"lang":"en"},"value":{"root":"row","path":["text"]},"labels":[]}]
             }
@@ -1033,7 +1061,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "create": {
                 "form": {
@@ -1100,6 +1129,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -1167,7 +1197,7 @@
                   "recipients": {"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}
                 }
               },
-              "path": "/api/reports",
+              "request": {"method":"POST","target":{"path":{"value":"/api/reports"},"pathParams":{},"queryParams":{}},"consumed":[]},
               "label": {"message":["Generate"],"lang":"en"},
               "fields": [
                 {"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},
@@ -1193,6 +1223,7 @@
                 "children": [
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "heading": {"message":["Files"],"lang":"en"},
                     "rows": {"root":"result","path":["files"]},
                     "columns": [
@@ -1208,6 +1239,7 @@
                   },
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "rows": {"root":"result","path":["totals"]},
                     "columns": [{"header":{"message":["Made"],"lang":"en"},"value":{"root":"row","path":["at"]},"present":{"type":"string","format":"date"}}]
                   }
@@ -1234,7 +1266,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "create": {
                 "form": {
@@ -1301,12 +1334,13 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [
                 {
                   "action": {
                     "type": "action",
                     "schema": {"type":"object","properties":{"id":{"type":"integer"}}},
-                    "path": "/api/todos/archive",
+                    "request": {"method":"POST","target":{"path":{"value":"/api/todos/archive"},"pathParams":{},"queryParams":{}},"consumed":[]},
                     "label": {"message":["Archive"],"lang":"en"},
                     "fields": [{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],
                     "groups": [],
@@ -1398,7 +1432,7 @@
                   "recipients": {"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}
                 }
               },
-              "path": "/api/reports",
+              "request": {"method":"POST","target":{"path":{"value":"/api/reports"},"pathParams":{},"queryParams":{}},"consumed":[]},
               "label": {"message":["Generate"],"lang":"en"},
               "fields": [
                 {"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},
@@ -1424,6 +1458,7 @@
                 "children": [
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "heading": {"message":["Files"],"lang":"en"},
                     "rows": {"root":"result","path":["files"]},
                     "columns": [
@@ -1439,6 +1474,7 @@
                   },
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "rows": {"root":"result","path":["totals"]},
                     "columns": [{"header":{"message":["Made"],"lang":"en"},"value":{"root":"row","path":["at"]},"present":{"type":"string","format":"date"}}]
                   }
@@ -1465,7 +1501,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "create": {
                 "form": {
@@ -1532,12 +1569,13 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [
                 {
                   "action": {
                     "type": "action",
                     "schema": {"type":"object","properties":{"id":{"type":"integer"}}},
-                    "path": "/api/todos/archive",
+                    "request": {"method":"POST","target":{"path":{"value":"/api/todos/archive"},"pathParams":{},"queryParams":{}},"consumed":[]},
                     "label": {"message":["Archive"],"lang":"en"},
                     "fields": [{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],
                     "groups": [],
@@ -1561,7 +1599,7 @@
                   "action": {
                     "type": "action",
                     "schema": {"type":"object","properties":{"id":{"type":"integer"}}},
-                    "path": "/api/todos/reject",
+                    "request": {"method":"POST","target":{"path":{"value":"/api/todos/reject"},"pathParams":{},"queryParams":{}},"consumed":[]},
                     "label": {"message":["Reject"],"lang":"en"},
                     "fields": [{"type":"input","property":"id","label":{"message":["id"],"lang":"en"},"control":"auto"}],
                     "groups": [],
@@ -1654,7 +1692,7 @@
                   "files": {"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string","format":"uri-reference"}}}}
                 }
               },
-              "source": {"path":"/api/account","params":{}},
+              "source": {"path":{"value":"/api/account"},"pathParams":{},"queryParams":{}},
               "query": {},
               "content": {
                 "type": "stack",
@@ -1667,6 +1705,7 @@
                   },
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "heading": {"message":["Files"],"lang":"en"},
                     "rows": {"root":"data","path":["files"]},
                     "columns": [{"header":{"message":["Name"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}}],
@@ -1702,7 +1741,7 @@
                   "recipients": {"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}
                 }
               },
-              "path": "/api/reports",
+              "request": {"method":"POST","target":{"path":{"value":"/api/reports"},"pathParams":{},"queryParams":{}},"consumed":[]},
               "label": {"message":["Generate"],"lang":"en"},
               "fields": [
                 {"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},
@@ -1728,6 +1767,7 @@
                 "children": [
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "heading": {"message":["Files"],"lang":"en"},
                     "rows": {"root":"result","path":["files"]},
                     "columns": [
@@ -1743,6 +1783,7 @@
                   },
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "rows": {"root":"result","path":["totals"]},
                     "columns": [{"header":{"message":["Made"],"lang":"en"},"value":{"root":"row","path":["at"]},"present":{"type":"string","format":"date"}}]
                   }
@@ -1800,7 +1841,7 @@
                   "period": {"type":"object","properties":{"from":{"type":"string","format":"date"},"to":{"type":"string","format":"date"}}}
                 }
               },
-              "path": "/api/tasks",
+              "request": {"method":"POST","target":{"path":{"value":"/api/tasks"},"pathParams":{},"queryParams":{}},"consumed":[]},
               "label": {"message":["Send"],"lang":"en"},
               "fields": [
                 {
@@ -1823,7 +1864,7 @@
                     "value": {"root":"row","path":["id"]},
                     "label": {"root":"row","path":["name"]},
                     "hint": {"root":"row","path":["team"]},
-                    "href": {"root":"row","path":["page"]},
+                    "href": {"path":{"root":"row","path":["page"]},"pathParams":{},"queryParams":{}},
                     "basePath": "/api/people",
                     "filters": {},
                     "pageSize": 1,
@@ -1840,7 +1881,7 @@
                     "value": {"root":"row","path":["id"]},
                     "label": {"root":"row","path":["name"]},
                     "hint": {"root":"row","path":["team"]},
-                    "href": {"root":"row","path":["page"]},
+                    "href": {"path":{"root":"row","path":["page"]},"pathParams":{},"queryParams":{}},
                     "basePath": "/api/people",
                     "filters": {},
                     "pageSize": 1,
@@ -1858,7 +1899,7 @@
                     "value": {"root":"row","path":["id"]},
                     "label": {"root":"row","path":["name"]},
                     "hint": {"root":"row","path":["team"]},
-                    "href": {"root":"row","path":["page"]},
+                    "href": {"path":{"root":"row","path":["page"]},"pathParams":{},"queryParams":{}},
                     "basePath": "/api/nobody",
                     "filters": {},
                     "pageSize": 1,
@@ -1967,7 +2008,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "create": {
                 "form": {
@@ -2008,6 +2050,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -2033,7 +2076,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "edit": {
                 "form": {
@@ -2075,6 +2119,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -2150,7 +2195,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": ["text","priority","dueOn"],
+              "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "create": {
                 "form": {
@@ -2217,6 +2263,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -2396,7 +2443,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "pages",
-                "sort": ["text","priority","dueOn"],
+                "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+                "show": {"count": true},
                 "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
                 "create": {
                   "form": {
@@ -2463,6 +2511,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": true,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -2474,6 +2523,7 @@
                       "value": {"root":"row","path":["text"]},
                       "sort": "text",
                       "present": {"type":"string"},
+                      "href": {"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}},
                       "labels": []
                     },
                     {
@@ -2536,7 +2586,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": ["text","priority","dueOn"],
+              "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+              "show": {"count": true},
               "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
               "create": {
                 "form": {
@@ -2603,6 +2654,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -2722,7 +2774,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "pages",
-                "sort": ["text","priority","dueOn"],
+                "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+                "show": {"count": true},
                 "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
                 "create": {
                   "form": {
@@ -2789,6 +2842,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": true,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -2877,7 +2931,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "pages",
-                "sort": ["text","priority","dueOn"],
+                "sort": {"sortable": ["text","priority","dueOn"], "initial": null},
+                "show": {"count": true},
                 "rowStyle": {"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},
                 "create": {
                   "form": {
@@ -2944,6 +2999,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": true,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -3017,7 +3073,7 @@
                   "files": {"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string","format":"uri-reference"}}}}
                 }
               },
-              "source": {"path":"/api/account","params":{}},
+              "source": {"path":{"value":"/api/account"},"pathParams":{},"queryParams":{}},
               "query": {},
               "content": {
                 "type": "stack",
@@ -3030,6 +3086,7 @@
                   },
                   {
                     "type": "list",
+                    "rowActionsDisplay": "auto",
                     "heading": {"message":["Files"],"lang":"en"},
                     "rows": {"root":"data","path":["files"]},
                     "columns": [{"header":{"message":["Name"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}}],
@@ -3052,7 +3109,9 @@
                 ]
               },
               "reloadOn": []
-            }
+            },
+            {"type":"markdown","text":{"value":"# Heading\n\n## Subheading\n\nParagraph with *emphasis*, **strong**, ~~strike~~ and `code`, a [link](https://example.com/a), a hard break\\\nhere, ![logo](/logo.png) and https://example.org/auto.\n\n> A quote\n\n- item one\n- [x] done\n- [ ] todo\n\n1. first\n2. second\n\n---\n\n| Left | Right | Centre |\n|:-----|------:|:------:|\n| a | b | c |\n\n```ts\nconst answer: number = 42; // the answer\n```\n\n<b>raw</b>"},"style":"muted"},
+            {"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"link","text":{"message":["Start"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}},"button":{"type":"text"}},{"type":"split","side":"start","size":"small","frame":"flush","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[{"type":"value","value":{"root":"conversation","path":["title"]},"present":{"type":["string","null"]},"labels":[],"style":"heading","fill":false}],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":false},{"type":"command","command":{"root":"chat","path":["copyTranscript"]},"text":{"message":["Copy all"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["stop"]},"text":{"message":["Stop"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["newConversation"]},"text":{"message":["New conversation"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false}],"fill":false}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":{"parameter":"conversation"},"refreshes":[],"fill":true},"collapse":null,"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"fill":true}
           ]
         },
         "/other": {"specVersion":1,"title":{"message":["Other"],"lang":"en"},"lang":"en","query":{},"width":"contained","children":[]}
@@ -3069,10 +3128,18 @@
             "next": "Mg"
           }
         },
-        "GET /api/account": {"status":200,"body":{"authorized":true,"email":"ada@example.com","files":[]}}
+        "GET /api/account": {"status":200,"body":{"authorized":true,"email":"ada@example.com","files":[]}},
+        "GET /api/chat/conversations/c1": {"status":200,"body":{"id":"c1","title":"Quarterly plan","archived":false,"turn":"t1","running":false}},
+        "GET /api/chat/conversations/c1/entries": {"status":200,"body":{"rows":[{"id":"e4","parent":"e3","role":"assistant","parts":[{"type":"text","text":"You are welcome."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e3","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks"}],"turn":"t1","siblings":{"position":1,"count":2,"previous":null,"next":"e5"}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":null}}
       },
       "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
       "steps": [
+        {"wait":500},
+        {"expect":{"present":[{"part":"markdown","attributes":{"data-state":"idle"}}]}},
+        {"click":{"part":"link","text":"Quarterly plan"}},
+        {"expect":{"present":[{"part":"chat-message"},{"part":"chat-tool"}]}},
+        {"click":{"part":"markdown-code-copy"}},
+        {"expect":{"text":[{"of":{"part":"markdown-code-copy"},"value":"Copied"}]}},
         {"click":{"part":"nav-menu"}},
         {"click":{"part":"nav-toggle","text":"Sections"}},
         {"click":{"part":"nav-toggle","text":"Deeper"}},
@@ -3146,7 +3213,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "pages",
-              "sort": ["text"],
+              "sort": {"sortable": ["text"], "initial": null},
+              "show": {"count": true},
               "create": {
                 "form": {
                   "type": "form",
@@ -3200,6 +3268,7 @@
                 "unsaved": "confirm"
               },
               "delete": false,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -3332,7 +3401,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "pages",
-                "sort": ["text"],
+                "sort": {"sortable": ["text"], "initial": null},
+                "show": {"count": true},
                 "create": {
                   "form": {
                     "type": "form",
@@ -3386,6 +3456,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": false,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -3535,7 +3606,8 @@
                 "query": {},
                 "pageSize": 2,
                 "paging": "pages",
-                "sort": ["text"],
+                "sort": {"sortable": ["text"], "initial": null},
+                "show": {"count": true},
                 "create": {
                   "form": {
                     "type": "form",
@@ -3589,6 +3661,7 @@
                   "unsaved": "confirm"
                 },
                 "delete": false,
+                "rowActionsDisplay": "auto",
                 "rowActions": [],
                 "relations": {},
                 "empty": {"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},
@@ -4215,9 +4288,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "more",
-              "sort": [
-                "text"
-              ],
+              "sort": {"sortable": ["text"], "initial": null},
+              "show": {"count": true},
               "edit": {
                 "form": {
                   "type": "form",
@@ -4374,6 +4446,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {
@@ -4384,6 +4457,7 @@
               },
               "layout": {
                 "type": "list",
+                "rowActionsDisplay": "auto",
                 "content": {
                   "type": "value",
                   "value": {
@@ -4396,6 +4470,7 @@
                     "type": "string"
                   }
                 },
+                "frame": "framed",
                 "reads": {}
               },
               "rowStyle": {
@@ -4478,7 +4553,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "more",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "edit": {
                 "form": {
                   "type": "form",
@@ -4635,6 +4711,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {
@@ -4740,7 +4817,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "more",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "edit": {
                 "form": {
                   "type": "form",
@@ -4897,6 +4975,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {
@@ -4930,7 +5009,7 @@
                         }
                       }
                     },
-                    "path": "/api/todos/archive",
+                    "request": {"method":"POST","target":{"path":{"value":"/api/todos/archive"},"pathParams":{},"queryParams":{}},"consumed":[]},
                     "label": {
                       "message": [
                         "Archive"
@@ -5260,7 +5339,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "more",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "edit": {
                 "form": {
                   "type": "form",
@@ -5417,6 +5497,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {
@@ -5451,7 +5532,7 @@
                         }
                       }
                     },
-                    "path": "/api/todos/archive",
+                    "request": {"method":"POST","target":{"path":{"value":"/api/todos/archive"},"pathParams":{},"queryParams":{}},"consumed":[]},
                     "label": {
                       "message": [
                         "Archive"
@@ -5615,7 +5696,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "more",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "edit": {
                 "form": {
                   "type": "form",
@@ -5772,6 +5854,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {
@@ -5806,7 +5889,7 @@
                         }
                       }
                     },
-                    "path": "/api/todos/archive",
+                    "request": {"method":"POST","target":{"path":{"value":"/api/todos/archive"},"pathParams":{},"queryParams":{}},"consumed":[]},
                     "label": {
                       "message": [
                         "Archive"
@@ -5979,7 +6062,8 @@
               "query": {},
               "pageSize": 2,
               "paging": "more",
-              "sort": [],
+              "sort": {"sortable": [], "initial": null},
+              "show": {"count": true},
               "edit": {
                 "form": {
                   "type": "form",
@@ -6136,6 +6220,7 @@
                 "unsaved": "confirm"
               },
               "delete": true,
+              "rowActionsDisplay": "auto",
               "rowActions": [],
               "relations": {},
               "empty": {
@@ -6169,7 +6254,7 @@
                         }
                       }
                     },
-                    "path": "/api/todos/archive",
+                    "request": {"method":"POST","target":{"path":{"value":"/api/todos/archive"},"pathParams":{},"queryParams":{}},"consumed":[]},
                     "label": {
                       "message": [
                         "Archive"
@@ -6594,6 +6679,666 @@
           }
         }
       ]
+    },
+    {
+      "name": "a chat over an endpoint offering everything: a transcript of every kind of part, a branch, a turn that failed, ended at its limit, asked for approval and dropped its stream, and files dropped on the message box",
+      "path": "/",
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Chat"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[{"type":"value","value":{"root":"conversation","path":["title"]},"present":{"type":["string","null"]},"labels":[],"style":"heading","fill":false}],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":false},{"type":"command","command":{"root":"chat","path":["copyTranscript"]},"text":{"message":["Copy all"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["stop"]},"text":{"message":["Stop"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false},{"type":"command","command":{"root":"chat","path":["newConversation"]},"text":{"message":["New conversation"],"lang":"en"},"button":{"type":"icon","icon":null,"label":"hidden"},"fill":false}],"fill":false}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":{"parameter":"conversation"},"refreshes":[]}]}},
+      "responses": {
+        "GET /api/chat/conversations/c1": {"status":200,"body":{"id":"c1","title":"Quarterly plan","archived":false,"turn":"t1","running":false}},
+        "GET /api/chat/conversations/c1/entries": {"status":200,"body":{"rows":[{"id":"e4","parent":"e3","role":"assistant","parts":[{"type":"text","text":"You are welcome."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e3","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks"}],"turn":"t1","siblings":{"position":1,"count":2,"previous":null,"next":"e5"}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":"p2"}},
+        "POST /api/chat/turns": {"status":200,"body":{"conversation":"c1","turn":"t1"}},
+        "POST /api/chat/turns/t1/cancel": {"status":204}
+      },
+      "steps": [
+        {"expect":{"present":[{"part":"chat-starter"},{"part":"chat-empty"},{"part":"chat-placeholder"},{"part":"chat-hint"},{"part":"chat-attach"},{"part":"chat-announcer"}]}},
+        {"respond":{"GET /api/chat/conversations/c1/entries":{"status":200,"body":{"rows":[{"id":"e4","parent":"e3","role":"assistant","parts":[{"type":"text","text":"You are welcome."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e3","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks"}],"turn":"t1","siblings":{"position":1,"count":2,"previous":null,"next":"e5"}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":"p2"}}}},
+        {"click":{"part":"link","text":"Quarterly plan"}},
+        {"expect":{"present":[{"part":"chat-message"},{"part":"chat-reasoning"},{"part":"chat-tool"},{"part":"chat-sources"},{"part":"chat-source-quote"},{"part":"chat-refusal"},{"part":"chat-image"},{"part":"chat-media"},{"part":"chat-attachment"},{"part":"chat-usage"},{"part":"chat-copy"},{"part":"chat-edit"},{"part":"chat-regenerate"}],"absent":[{"part":"chat-empty"}]}},
+        {"click":{"part":"chat-image"}},
+        {"expect":{"present":[{"part":"media-viewer"},{"part":"media-viewer-stage"},{"part":"media-viewer-image"},{"part":"media-viewer-toolbar"},{"part":"media-viewer-previous"},{"part":"media-viewer-position"},{"part":"media-viewer-next"},{"part":"media-viewer-zoom-in"},{"part":"media-viewer-zoom-out"},{"part":"media-viewer-zoom-reset"},{"part":"media-viewer-download"}],"text":[{"of":{"part":"media-viewer-position"},"value":"1 of 2"}]}},
+        {"click":{"part":"media-viewer-next"}},
+        {"expect":{"text":[{"of":{"part":"media-viewer-position"},"value":"2 of 2"}]}},
+        {"click":{"part":"surface-close"}},
+        {"expect":{"absent":[{"part":"media-viewer"}]}},
+        {"click":{"part":"chat-reasoning-toggle"}},
+        {"click":{"part":"chat-tool-toggle"}},
+        {"expect":{"present":[{"part":"chat-reasoning-body"},{"part":"chat-tool-detail"},{"part":"chat-tool-label"},{"part":"chat-tool-data"}],"attributes":[{"of":{"part":"chat-reasoning"},"name":"data-state","value":"open"}]}},
+        {"respond":{"POST /api/chat/turns":{"status":200,"body":{"conversation":"c1","turn":"t1"}},"GET /api/chat/turns/t1/events":{"status":200,"stream":"id: 1\nevent: text-delta\ndata: {\"id\": \"1\", \"type\": \"text-delta\", \"text\": \"You are welcome.\"}\n\nid: 2\nevent: turn-end\ndata: {\"id\": \"2\", \"type\": \"turn-end\", \"reason\": \"stop\", \"usage\": {\"inputTokens\": 3, \"outputTokens\": 4}}\n\n"},"GET /api/chat/conversations/c1/entries":{"status":200,"body":{"rows":[{"id":"e6","parent":"e5","role":"assistant","parts":[{"type":"text","text":"Any time."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e5","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks a lot"}],"turn":"t1","siblings":{"position":2,"count":2,"previous":"e3","next":null}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":null}}}},
+        {"click":{"part":"chat-edit"}},
+        {"fill":{"part":"textarea","within":{"part":"chat-edit-form"}},"value":"Thanks a lot"},
+        {"click":{"part":"submit","within":{"part":"chat-edit-form"}}},
+        {"wait":50},
+        {"expect":{"present":[{"part":"chat-branches"},{"part":"chat-branch-position"}],"text":[{"of":{"part":"chat-branch-position"},"value":"2 of 2"}]}},
+        {"respond":{"GET /api/chat/conversations/c1/entries":{"status":200,"body":{"rows":[{"id":"e4","parent":"e3","role":"assistant","parts":[{"type":"text","text":"You are welcome."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e3","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks"}],"turn":"t1","siblings":{"position":1,"count":2,"previous":null,"next":"e5"}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":null}}}},
+        {"click":{"part":"chat-branch-previous"}},
+        {"expect":{"text":[{"of":{"part":"chat-branch-position"},"value":"1 of 2"}]}},
+        {"click":{"part":"chat-branch-next"}},
+        {"respond":{"GET /api/chat/conversations/c1/entries":{"status":200,"body":{"rows":[{"id":"e6","parent":"e5","role":"assistant","parts":[{"type":"text","text":"Any time."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e5","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks a lot"}],"turn":"t1","siblings":{"position":2,"count":2,"previous":"e3","next":null}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":null}}}},
+        {"respond":{"POST /api/chat/turns":{"status":500,"body":{"status":500,"code":"ERR_DOWN","detail":"The assistant is down."}}}},
+        {"fill":{"part":"textarea","within":{"part":"chat-composer"}},"value":"Run the tool"},
+        {"key":"Enter","on":{"part":"textarea","within":{"part":"chat-composer"}}},
+        {"expect":{"present":[{"part":"error"},{"part":"chat-retry"}]}},
+        {"respond":{"POST /api/chat/turns":{"status":200,"body":{"conversation":"c1","turn":"t1"}},"GET /api/chat/turns/t1/events":{"status":200,"stream":"id: 1\nevent: text-delta\ndata: {\"id\": \"1\", \"type\": \"text-delta\", \"text\": \"I ran out of steps.\"}\n\nid: 2\nevent: turn-end\ndata: {\"id\": \"2\", \"type\": \"turn-end\", \"reason\": \"limit\"}\n\n"}}},
+        {"click":{"part":"chat-retry"}},
+        {"wait":50},
+        {"expect":{"present":[{"part":"chat-turn-note"},{"part":"chat-continue"}]}},
+        {"respond":{"GET /api/chat/turns/t1/events":{"status":200,"stream":"id: 1\nevent: reasoning-delta\ndata: {\"id\": \"1\", \"type\": \"reasoning-delta\", \"text\": \"Need the tool.\"}\n\nid: 2\nevent: text-delta\ndata: {\"id\": \"2\", \"type\": \"text-delta\", \"text\": \"I will run it.\"}\n\nid: 3\nevent: tool-call-delta\ndata: {\"id\": \"call_2\", \"type\": \"tool-call-delta\", \"name\": \"run\", \"argumentsDelta\": \"{\\\"cmd\\\":\"}\n\nid: 4\nevent: tool-call\ndata: {\"id\": \"call_2\", \"type\": \"tool-call\", \"name\": \"run\", \"arguments\": {\"cmd\": \"ls\"}}\n\nid: 5\nevent: approval-request\ndata: {\"id\": \"a1\", \"type\": \"approval-request\", \"toolCallId\": \"call_2\", \"name\": \"run\", \"arguments\": {\"cmd\": \"ls\"}}\n\nid: 6\nevent: step-usage\ndata: {\"id\": \"6\", \"type\": \"step-usage\", \"usage\": {\"inputTokens\": 5, \"outputTokens\": 6}}\n\nid: 7\nevent: turn-end\ndata: {\"id\": \"7\", \"type\": \"turn-end\", \"reason\": \"approval\"}\n\n"}}},
+        {"click":{"part":"chat-continue"}},
+        {"wait":50},
+        {"expect":{"present":[{"part":"chat-approval"},{"part":"chat-approve"},{"part":"chat-reject"},{"part":"chat-tool-status"},{"part":"chat-turn-note"}]}},
+        {"respond":{"GET /api/chat/turns/t1/events":{"status":200,"stream":": hold\n\n"}}},
+        {"click":{"part":"chat-approve"}},
+        {"expect":{"present":[{"part":"chat-approval-decision"},{"part":"chat-reconnecting"}]}},
+        {"respond":{"GET /api/chat/turns/t1/events":{"status":200,"stream":"id: 1\nevent: tool-result\ndata: {\"id\": \"call_2\", \"type\": \"tool-result\", \"result\": \"ok\"}\n\nid: 2\nevent: text-delta\ndata: {\"id\": \"2\", \"type\": \"text-delta\", \"text\": \"Done.\"}\n\nid: 3\nevent: turn-end\ndata: {\"id\": \"3\", \"type\": \"turn-end\", \"reason\": \"stop\"}\n\n"}}},
+        {"wait":450},
+        {"expect":{"absent":[{"part":"chat-reconnecting"},{"part":"chat-approval"}]}},
+        {"respond":{"GET /api/chat/turns/t1/events":{"pending":true}}},
+        {"fill":{"part":"textarea","within":{"part":"chat-composer"}},"value":"One more"},
+        {"click":{"part":"chat-send"}},
+        {"expect":{"present":[{"part":"chat-pending"},{"part":"chat-stop"}]}},
+        {"drop":{"part":"chat-composer"},"files":[{"name":"a.png","type":"image/png","size":1000}],"hold":true},
+        {"expect":{"present":[{"part":"chat-drop"}]}},
+        {"respond":{"POST /api/chat/attachments":{"pending":true}}},
+        {"drop":{"part":"chat-composer"},"files":[{"name":"a.png","type":"image/png","size":1000},{"name":"run.exe","type":"application/x-msdownload","size":10},{"name":"huge.png","type":"image/png","size":99999999},{"name":"notes.pdf","type":"application/pdf","size":2000},{"name":"third.png","type":"image/png","size":10}]},
+        {"expect":{"present":[{"part":"chat-attachments"},{"part":"chat-attachment-item","attributes":{"data-status":"uploading"}},{"part":"chat-attachment-progress"},{"part":"chat-attachment-thumbnail"},{"part":"chat-attachment-name"},{"part":"chat-attachment-refusals"}],"absent":[{"part":"chat-drop"}]}},
+        {"click":{"part":"chat-attachment-remove"}},
+        {"click":{"part":"chat-attachment-remove"}},
+        {"respond":{"POST /api/chat/attachments":{"status":400,"body":{"status":400,"code":"ERR_INPUT_INVALID","detail":"Refused.","data":{"issues":[{"pointer":"/body/file","keyword":"required","params":{"missingProperty":"file"}}]}}}}},
+        {"drop":{"part":"chat-composer"},"files":[{"name":"b.png","type":"image/png","size":1000}]},
+        {"wait":50},
+        {"expect":{"present":[{"part":"chat-attachment-item","attributes":{"data-status":"failed"}},{"part":"chat-attachment-problem"}]}}
+      ]
+    },
+    {
+      "name": "a chat's buttons inside the message box's frame, which is where they are unless the page says otherwise",
+      "path": "/",
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Chat"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":false}],"fill":false}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":{"parameter":"conversation"},"refreshes":[]}]}},
+      "responses": {
+        "GET /api/chat/conversations/c1": {"status":200,"body":{"id":"c1","title":"Quarterly plan","archived":false,"turn":"t1","running":false}},
+        "GET /api/chat/conversations/c1/entries": {"status":200,"body":{"rows":[{"id":"e4","parent":"e3","role":"assistant","parts":[{"type":"text","text":"You are welcome."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e3","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks"}],"turn":"t1","siblings":{"position":1,"count":2,"previous":null,"next":"e5"}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":"p2"}},
+        "POST /api/chat/turns": {"status":200,"body":{"conversation":"c1","turn":"t1"}},
+        "POST /api/chat/turns/t1/cancel": {"status":204}
+      },
+      "steps": [
+        {"expect":{"attributes":[{"of":{"part":"chat-composer"},"name":"data-actions","value":"inside"}],"present":[{"part":"chat-attach","within":{"part":"chat-input"}},{"part":"chat-send","within":{"part":"chat-input"}},{"part":"chat-hint"}],"absent":[{"part":"chat-hint","within":{"part":"chat-input"}}]}},
+        {"click":{"part":"link","text":"Quarterly plan"}},
+        {"expect":{"present":[{"part":"chat-copy"},{"part":"command","attributes":{"data-command":"chat.exportTranscript"}},{"part":"bar-end","within":{"part":"chat-header"}}]}}
+      ]
+    },
+    {
+      "name": "a chat's buttons under the message box, drawn as glyphs: a look's glyph with its text as the name and tooltip, a glyph of the page's own beside its text, and an export button switched off",
+      "path": "/",
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Chat"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"chat","path":"/","text":{"message":["Chat"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Chat"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"link","text":{"message":["Quarterly plan"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{"conversation":{"value":"c1"}}}},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"icon","icon":null,"label":"hidden"},"edit":{"type":"text"},"regenerate":{"type":"icon","icon":{"digest":"dd","name":"mark.svg"},"label":"shown"},"attach":{"type":"text"},"send":{"type":"icon","icon":null,"label":"hidden"},"stop":{"type":"text"}},"composer":{"actions":"outside"},"conversation":{"parameter":"conversation"},"refreshes":[]}]}},
+      "responses": {
+        "GET /api/chat/conversations/c1": {"status":200,"body":{"id":"c1","title":"Quarterly plan","archived":false,"turn":"t1","running":false}},
+        "GET /api/chat/conversations/c1/entries": {"status":200,"body":{"rows":[{"id":"e4","parent":"e3","role":"assistant","parts":[{"type":"text","text":"You are welcome."}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e3","parent":"e2","role":"user","parts":[{"type":"text","text":"Thanks"}],"turn":"t1","siblings":{"position":1,"count":2,"previous":null,"next":"e5"}},{"id":"e2","parent":"e1","role":"assistant","parts":[{"type":"reasoning","text":"Reading the file first."},{"type":"text","text":"Here is a summary:\n\n- one\n- two"},{"type":"image","url":"/api/chat/attachments/att_2","mediaType":"image/png","name":"chart.png"},{"type":"image","url":"/api/chat/attachments/att_6","mediaType":"image/png","name":"graph.png"},{"type":"audio","url":"/api/chat/attachments/att_3","mediaType":"audio/mpeg","name":"note.mp3"},{"type":"video","url":"/api/chat/attachments/att_4","mediaType":"video/mp4","name":"clip.mp4"},{"type":"citation","url":"https://example.com/a","title":"Example","quote":"as said"},{"type":"refusal","text":"I cannot share that."}],"toolCalls":[{"id":"call_1","name":"search","arguments":{"q":"plan"}}],"toolResults":[{"id":"call_1","result":{"hits":2}}],"usage":{"inputTokens":12,"outputTokens":34},"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}},{"id":"e1","parent":null,"role":"user","parts":[{"type":"text","text":"Summarise **this** file"},{"type":"file","url":"/api/chat/attachments/att_1","mediaType":"application/pdf","name":"notes.pdf","size":2048}],"turn":"t1","siblings":{"position":1,"count":1,"previous":null,"next":null}}],"total":4,"next":"p2"}},
+        "POST /api/chat/turns": {"status":200,"body":{"conversation":"c1","turn":"t1"}},
+        "POST /api/chat/turns/t1/cancel": {"status":204}
+      },
+      "steps": [
+        {"expect":{"attributes":[{"of":{"part":"chat-composer"},"name":"data-actions","value":"outside"},{"of":{"part":"chat-send"},"name":"aria-label","value":"Send"}],"present":[{"part":"chat-send"},{"part":"icon","within":{"part":"chat-send"}}],"absent":[{"part":"chat-send","within":{"part":"chat-input"}},{"part":"chat-header"}]}},
+        {"click":{"part":"link","text":"Quarterly plan"}},
+        {"expect":{"attributes":[{"of":{"part":"chat-copy"},"name":"aria-label","value":"Copy message"}],"present":[{"part":"icon","within":{"part":"chat-copy"}},{"part":"glyph","within":{"part":"chat-regenerate"}}],"text":[{"of":{"part":"chat-regenerate"},"value":"Regenerate"}]}},
+        {"focus":{"part":"chat-copy"}},
+        {"expect":{"present":[{"part":"tooltip"}]}},
+        {"blur":{"part":"chat-copy"}},
+        {"expect":{"absent":[{"part":"tooltip"}]}}
+      ]
+    },
+    {
+      "name": "a split view's aside beside its content, folded away by its toggle and shown again",
+      "path": "/",
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Home"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"split","side":"start","size":"small","frame":"flush","toggle":{"type":"text"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"}},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}]}},
+      "responses": {},
+      "steps": [
+        {"expect":{"present":[{"part":"split"},{"part":"link","within":{"part":"split-actions"}},{"part":"split-content","within":{"part":"split"}},{"part":"split-aside","within":{"part":"split"}},{"part":"split-toggle","within":{"part":"split-aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"split-actions"}},"name":"aria-label","value":null},{"of":{"part":"split"},"name":"data-state","value":"open"},{"of":{"part":"split"},"name":"data-side","value":"start"},{"of":{"part":"split"},"name":"data-frame","value":"flush"},{"of":{"part":"split-aside"},"name":"data-frame","value":"flush"},{"of":{"part":"split-aside"},"name":"data-size","value":"small"},{"of":{"part":"split-aside"},"name":"aria-label","value":"Filters"},{"of":{"part":"split-toggle"},"name":"aria-expanded","value":"true"}],"text":[{"of":{"part":"split-toggle"},"value":"Hide Filters"}],"absent":[{"part":"split-toggle","within":{"part":"split-content"}}]}},
+        {"click":{"part":"split-toggle","within":{"part":"split-aside"}}},
+        {"expect":{"present":[{"part":"link","within":{"part":"split-actions"}},{"part":"split-toggle","within":{"part":"split-aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"split-actions"}},"name":"aria-label","value":"New"},{"of":{"part":"link","within":{"part":"split-actions"}},"name":"data-button","value":"icon"},{"of":{"part":"split"},"name":"data-state","value":"collapsed"},{"of":{"part":"split-aside"},"name":"data-state","value":"rail"},{"of":{"part":"split-toggle"},"name":"aria-expanded","value":"false"}],"text":[{"of":{"part":"split-toggle"},"value":"Show Filters"}],"absent":[{"part":"split-toggle","within":{"part":"split-content"}}]}},
+        {"click":{"part":"split-toggle","within":{"part":"split-aside"}}},
+        {"expect":{"attributes":[{"of":{"part":"split"},"name":"data-state","value":"open"}],"present":[{"part":"split-toggle","within":{"part":"split-aside"}}]}}
+      ]
+    },
+    {
+      "name": "below the breakpoint, a split view's aside leaving the page for a drawer its toggle opens",
+      "path": "/",
+      "compact": true,
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Home"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"home","path":"/","text":{"message":["Home"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"header":{"start":[],"end":[],"width":"contained"},"compactBelow":"40rem"},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Home"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"split","side":"end","size":"large","frame":"framed","toggle":{"type":"icon","icon":null,"label":"hidden"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"}},"collapse":null,"compact":{"type":"drawer","side":"end","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}]}},
+      "responses": {},
+      "steps": [
+        {"expect":{"present":[{"part":"link","within":{"part":"split-actions"}},{"part":"split-toggle","within":{"part":"split-bar"}},{"part":"split-bar","within":{"part":"split-aside"}}],"attributes":[{"of":{"part":"link","within":{"part":"split-actions"}},"name":"aria-label","value":"New"},{"of":{"part":"split"},"name":"data-state","value":"compact"},{"of":{"part":"split"},"name":"data-side","value":"end"},{"of":{"part":"split-aside"},"name":"data-state","value":"rail"},{"of":{"part":"split"},"name":"data-frame","value":"framed"},{"of":{"part":"split-toggle"},"name":"aria-expanded","value":"false"},{"of":{"part":"split-toggle"},"name":"aria-label","value":"Show Filters"}],"text":[{"of":{"part":"split-toggle"},"value":""}],"absent":[{"part":"split-toggle","within":{"part":"split-content"}},{"part":"surface-body"}]}},
+        {"click":{"part":"split-toggle"}},
+        {"expect":{"present":[{"part":"split-aside","within":{"part":"surface-body"}}],"attributes":[{"of":{"part":"split-aside"},"name":"data-size","value":"large"},{"of":{"part":"split-aside"},"name":"data-frame","value":"framed"}],"text":[{"of":{"part":"surface-title"},"value":"Filters"}],"absent":[{"part":"link","within":{"part":"surface-body"}},{"part":"split-toggle","within":{"part":"surface-body"}}]}},
+        {"click":{"part":"surface-close"}},
+        {"expect":{"absent":[{"part":"surface-body"}]}}
+      ]
+    },
+    {
+        "name": "a listing whose records' actions are folded into a menu, opening beside its trigger",
+        "path": "/",
+        "app": {
+            "specVersion": 1,
+            "title": {
+                "message": [
+                    "Scenes"
+                ],
+                "lang": "en"
+            },
+            "lang": "en",
+            "pages": [
+                {
+                    "path": "/",
+                    "title": {
+                        "message": [
+                            "Slow"
+                        ],
+                        "lang": "en"
+                    }
+                }
+            ],
+            "navigation": {
+                "items": [
+                    {
+                        "type": "page",
+                        "key": "slow",
+                        "path": "/",
+                        "text": {
+                            "message": [
+                                "Slow"
+                            ],
+                            "lang": "en"
+                        }
+                    }
+                ],
+                "placement": {
+                    "type": "header",
+                    "compact": {
+                        "type": "overlay",
+                        "surface": {
+                            "type": "drawer",
+                            "side": "start",
+                            "size": "medium",
+                            "modal": true,
+                            "dismiss": {
+                                "escape": true,
+                                "outside": true,
+                                "closeButton": true
+                            }
+                        }
+                    }
+                }
+            },
+            "stylesheets": [],
+            "controls": {
+                "stylesheets": {},
+                "sets": []
+            },
+            "header": {
+                "start": [],
+                "end": [],
+                "width": "contained"
+            },
+            "compactBelow": "40rem"
+        },
+        "pages": {
+            "/": {
+                "specVersion": 1,
+                "title": {
+                    "message": [
+                        "Slow"
+                    ],
+                    "lang": "en"
+                },
+                "lang": "en",
+                "query": {},
+                "width": "contained",
+                "children": [
+                    {
+                        "type": "listing",
+                        "schema": {
+                            "type": "object",
+                            "required": [
+                                "text"
+                            ],
+                            "properties": {
+                                "id": {
+                                    "type": "integer"
+                                },
+                                "text": {
+                                    "type": "string",
+                                    "title": "Task",
+                                    "minLength": 2
+                                },
+                                "isDone": {
+                                    "type": "boolean",
+                                    "title": "Done"
+                                },
+                                "priority": {
+                                    "type": "integer",
+                                    "title": "Priority",
+                                    "minimum": 1,
+                                    "maximum": 5
+                                },
+                                "status": {
+                                    "title": "Status",
+                                    "enum": [
+                                        "open",
+                                        "blocked",
+                                        "done"
+                                    ]
+                                },
+                                "dueOn": {
+                                    "type": "string",
+                                    "title": "Due",
+                                    "format": "date"
+                                },
+                                "notes": {
+                                    "type": "string",
+                                    "title": "Notes",
+                                    "contentMediaType": "text/plain"
+                                }
+                            }
+                        },
+                        "basePath": "/api/todos",
+                        "key": "id",
+                        "query": {},
+                        "pageSize": 2,
+                        "paging": "pages",
+                        "sort": {
+                            "sortable": [
+                                "text",
+                                "priority",
+                                "dueOn"
+                            ],
+                            "initial": null
+                        },
+                        "show": {
+                            "count": true
+                        },
+                        "rowStyle": {
+                            "by": {
+                                "root": "row",
+                                "path": [
+                                    "isDone"
+                                ]
+                            },
+                            "cases": {
+                                "true": "muted"
+                            }
+                        },
+                        "edit": {
+                            "form": {
+                                "type": "form",
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "text"
+                                    ],
+                                    "properties": {
+                                        "id": {
+                                            "type": "integer"
+                                        },
+                                        "text": {
+                                            "type": "string",
+                                            "title": "Task",
+                                            "minLength": 2
+                                        },
+                                        "isDone": {
+                                            "type": "boolean",
+                                            "title": "Done"
+                                        },
+                                        "priority": {
+                                            "type": "integer",
+                                            "title": "Priority",
+                                            "minimum": 1,
+                                            "maximum": 5
+                                        },
+                                        "status": {
+                                            "title": "Status",
+                                            "enum": [
+                                                "open",
+                                                "blocked",
+                                                "done"
+                                            ]
+                                        },
+                                        "dueOn": {
+                                            "type": "string",
+                                            "title": "Due",
+                                            "format": "date"
+                                        },
+                                        "notes": {
+                                            "type": "string",
+                                            "title": "Notes",
+                                            "contentMediaType": "text/plain"
+                                        }
+                                    }
+                                },
+                                "basePath": "/api/todos",
+                                "fields": [
+                                    {
+                                        "type": "input",
+                                        "property": "text",
+                                        "label": {
+                                            "message": [
+                                                "Task"
+                                            ],
+                                            "lang": "en"
+                                        },
+                                        "control": "auto"
+                                    },
+                                    {
+                                        "type": "input",
+                                        "property": "isDone",
+                                        "label": {
+                                            "message": [
+                                                "Done"
+                                            ],
+                                            "lang": "en"
+                                        },
+                                        "control": "auto"
+                                    },
+                                    {
+                                        "type": "input",
+                                        "property": "priority",
+                                        "label": {
+                                            "message": [
+                                                "Priority"
+                                            ],
+                                            "lang": "en"
+                                        },
+                                        "control": "auto"
+                                    },
+                                    {
+                                        "type": "input",
+                                        "property": "status",
+                                        "label": {
+                                            "message": [
+                                                "Status"
+                                            ],
+                                            "lang": "en"
+                                        },
+                                        "control": "auto"
+                                    },
+                                    {
+                                        "type": "input",
+                                        "property": "dueOn",
+                                        "label": {
+                                            "message": [
+                                                "Due"
+                                            ],
+                                            "lang": "en"
+                                        },
+                                        "control": "auto"
+                                    },
+                                    {
+                                        "type": "input",
+                                        "property": "notes",
+                                        "label": {
+                                            "message": [
+                                                "Notes"
+                                            ],
+                                            "lang": "en"
+                                        },
+                                        "control": "auto"
+                                    }
+                                ],
+                                "groups": [],
+                                "state": {
+                                    "address": false,
+                                    "store": {
+                                        "type": "memory"
+                                    },
+                                    "fields": [
+                                        "text",
+                                        "isDone",
+                                        "priority",
+                                        "status",
+                                        "dueOn",
+                                        "notes"
+                                    ]
+                                }
+                            },
+                            "surface": {
+                                "type": "dialog",
+                                "size": "medium",
+                                "modal": true,
+                                "dismiss": {
+                                    "escape": true,
+                                    "outside": true,
+                                    "closeButton": true
+                                }
+                            },
+                            "afterSubmit": "close",
+                            "unsaved": "confirm"
+                        },
+                        "delete": true,
+                        "rowActionsDisplay": "menu",
+                        "rowActions": [],
+                        "relations": {},
+                        "empty": {
+                            "type": "text",
+                            "text": {
+                                "set": "Ui.Translations",
+                                "key": "noRows"
+                            }
+                        },
+                        "layout": {
+                            "type": "table",
+                            "columns": [
+                                {
+                                    "header": {
+                                        "message": [
+                                            "Task"
+                                        ],
+                                        "lang": "en"
+                                    },
+                                    "value": {
+                                        "root": "row",
+                                        "path": [
+                                            "text"
+                                        ]
+                                    },
+                                    "sort": "text",
+                                    "present": {
+                                        "type": "string"
+                                    },
+                                    "labels": []
+                                },
+                                {
+                                    "header": {
+                                        "message": [
+                                            "Priority"
+                                        ],
+                                        "lang": "en"
+                                    },
+                                    "value": {
+                                        "root": "row",
+                                        "path": [
+                                            "priority"
+                                        ]
+                                    },
+                                    "sort": "priority",
+                                    "present": {
+                                        "type": "integer"
+                                    },
+                                    "style": {
+                                        "by": {
+                                            "root": "row",
+                                            "path": [
+                                                "priority"
+                                            ]
+                                        },
+                                        "cases": {
+                                            "1": "danger"
+                                        },
+                                        "default": "strong"
+                                    },
+                                    "labels": []
+                                },
+                                {
+                                    "header": {
+                                        "message": [
+                                            "Due"
+                                        ],
+                                        "lang": "en"
+                                    },
+                                    "value": {
+                                        "root": "row",
+                                        "path": [
+                                            "dueOn"
+                                        ]
+                                    },
+                                    "sort": "dueOn",
+                                    "present": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "labels": []
+                                },
+                                {
+                                    "header": {
+                                        "message": [
+                                            "State"
+                                        ],
+                                        "lang": "en"
+                                    },
+                                    "cell": {
+                                        "type": "component",
+                                        "module": {
+                                            "digest": "cc",
+                                            "name": "components.js"
+                                        },
+                                        "export": "StatusPill",
+                                        "abi": "ui_react-1",
+                                        "external": [
+                                            "react"
+                                        ],
+                                        "stylesheets": [
+                                            {
+                                                "digest": "cc",
+                                                "name": "components.css"
+                                            }
+                                        ],
+                                        "props": {
+                                            "done": {
+                                                "root": "row",
+                                                "path": [
+                                                    "isDone"
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    "labels": []
+                                }
+                            ],
+                            "reads": {}
+                        }
+                    }
+                ]
+            }
+        },
+        "responses": {
+            "GET /api/todos": {
+                "status": 200,
+                "body": {
+                    "rows": [
+                        {
+                            "id": 1,
+                            "text": "Write the plan",
+                            "isDone": true,
+                            "priority": 2,
+                            "status": "done",
+                            "dueOn": "2026-10-01"
+                        },
+                        {
+                            "id": 2,
+                            "text": "Review the plan",
+                            "isDone": false,
+                            "priority": 1,
+                            "status": "open",
+                            "dueOn": "2026-10-07"
+                        }
+                    ],
+                    "total": 2,
+                    "next": null
+                }
+            }
+        },
+        "modules": {
+            "/_telo/ui/assets/cc/components.js": [
+                "Counter",
+                "StatusPill",
+                "HostProbe"
+            ]
+        },
+        "steps": [
+            {
+                "expect": {
+                    "present": [
+                        {
+                            "part": "row-menu"
+                        }
+                    ],
+                    "absent": [
+                        {
+                            "part": "row-edit"
+                        },
+                        {
+                            "part": "row-delete"
+                        }
+                    ],
+                    "attributes": [
+                        {
+                            "of": {
+                                "part": "row-actions",
+                                "index": 0
+                            },
+                            "name": "data-display",
+                            "value": "menu"
+                        }
+                    ]
+                }
+            },
+            {
+                "click": {
+                    "part": "row-menu",
+                    "index": 0
+                }
+            },
+            {
+                "expect": {
+                    "outside": [
+                        {
+                            "part": "menu"
+                        }
+                    ],
+                    "present": [
+                        {
+                            "part": "menu-item",
+                            "text": "Edit"
+                        },
+                        {
+                            "part": "menu-item",
+                            "text": "Delete"
+                        }
+                    ]
+                }
+            }
+        ]
+    },
+    {
+      "name": "every node filling the page: the page no longer scrolls as a whole, and each node and the parts passing the room on are marked",
+      "path": "/",
+      "app": {"specVersion":1,"title":{"message":["Scenes"],"lang":"en"},"lang":"en","pages":[{"path":"/","title":{"message":["Filled"],"lang":"en"}}],"navigation":{"items":[{"type":"page","key":"filled","path":"/","text":{"message":["Filled"],"lang":"en"}}],"placement":{"type":"header","compact":{"type":"overlay","surface":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}}}}},"header":{"width":"contained","start":[{"type":"badge","text":{"message":["Beta"],"lang":"en"}}],"end":[{"type":"link","text":{"message":["Help"],"lang":"en"},"href":{"path":{"value":"/"},"pathParams":{},"queryParams":{}}},{"type":"menu","text":{"message":["Language"],"lang":"en"},"items":[{"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"style":"strong"},{"type":"link","text":{"message":["Polski"],"lang":"en"},"href":{"path":{"value":"/?lang=pl"},"pathParams":{},"queryParams":{}}}]}]},"stylesheets":[],"controls":{"stylesheets":{},"sets":[]},"compactBelow":"40rem"},
+      "pages": {"/":{"specVersion":1,"title":{"message":["Filled"],"lang":"en"},"lang":"en","query":{},"width":"full","children":[{"type":"stack","fill":true,"children":[{"type":"text","text":{"message":["Heading"],"lang":"en"},"fill":true}]},{"type":"box","fill":true,"children":[{"type":"badge","text":{"message":["New"],"lang":"en"},"fill":true}]},{"type":"columns","fill":true,"children":[{"type":"link","text":{"message":["Docs"],"lang":"en"},"href":{"path":{"value":"/docs"},"pathParams":{},"queryParams":{}},"button":null,"fill":true}]},{"type":"image","src":"/logo.png","alt":{"message":[],"lang":"en"},"fill":true},{"type":"svg","markup":"<svg xmlns='http://www.w3.org/2000/svg'/>","alt":{"message":["Chart"],"lang":"en"},"fill":true},{"type":"markdown","text":{"value":"# Filled"},"fill":true},{"type":"menu","text":{"message":["Language"],"lang":"en"},"items":[{"type":"link","text":{"message":["English"],"lang":"en"},"href":{"path":{"value":"/?lang=en"},"pathParams":{},"queryParams":{}},"button":null,"fill":false}],"fill":true},{"type":"tabs","tabs":[{"key":"summary","text":{"message":["Summary"],"lang":"en"},"children":[{"type":"text","text":{"message":["Summary text"],"lang":"en"},"fill":true}]}],"fill":true},{"type":"bar","start":[{"type":"text","text":{"message":["Start"],"lang":"en"},"fill":false}],"center":[],"end":[{"type":"badge","text":{"message":["End"],"lang":"en"},"fill":false}],"fill":true},{"type":"data","schema":{"type":"object","required":["authorized"],"properties":{"authorized":{"type":"boolean"},"email":{"type":"string"},"files":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"url":{"type":"string","format":"uri-reference"}}}}}},"source":{"path":{"value":"/api/account"},"pathParams":{},"queryParams":{}},"query":{},"content":{"type":"stack","fill":true,"children":[{"type":"value","value":{"root":"data","path":["email"]},"present":{"type":"string"},"fill":true},{"type":"list","rowActionsDisplay":"auto","heading":{"message":["Files"],"lang":"en"},"rows":{"root":"data","path":["files"]},"columns":[{"header":{"message":["Name"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}}],"fill":true}]},"loading":{"type":"text","text":{"message":["Loading…"],"lang":"en"},"style":"muted"},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"reloadOn":[],"fill":true},{"type":"filters","basePath":"/api/todos","fields":[{"property":"text","operator":"contains","label":{"message":["Task"],"lang":"en"},"schema":{"type":"string","title":"Task","minLength":2},"pinned":false,"control":"auto","values":"all"},{"property":"isDone","operator":"eq","label":{"message":["Done"],"lang":"en"},"schema":{"type":"boolean","title":"Done"},"pinned":false,"control":"auto","values":"all"},{"property":"status","operator":"in","label":{"message":["Status"],"lang":"en"},"schema":{"title":"Status","enum":["open","blocked","done"]},"pinned":false,"control":"auto","values":"all"},{"property":"priority","operator":"gte","label":{"message":["Priority"],"lang":"en"},"schema":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"pinned":false,"control":"auto","values":"all"},{"property":"dueOn","operator":"gte","label":{"message":["Due"],"lang":"en"},"schema":{"type":"string","title":"Due","format":"date"},"pinned":false,"control":"auto","values":"all"},{"property":"dueOn","operator":"lte","label":{"message":["Due"],"lang":"en"},"schema":{"type":"string","title":"Due","format":"date"},"pinned":false,"control":"auto","values":"all"}],"content":{"type":"text","text":{"message":["Filtered"],"lang":"en"},"fill":true},"show":"all","placement":{"type":"above"},"controls":"direct","apply":"commit","summary":"none","state":{"address":false,"store":{"type":"memory"},"fields":["id","text","isDone","priority","status","dueOn","notes"]},"presets":[],"fill":true},{"type":"listing","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/empty","key":"id","query":{},"pageSize":2,"paging":"pages","sort":{"sortable":["text","priority","dueOn"],"initial":null},"show":{"count":true},"rowStyle":{"by":{"root":"row","path":["isDone"]},"cases":{"true":"muted"}},"create":{"form":{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]}},"surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"afterSubmit":"close","unsaved":"confirm"},"edit":{"form":{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]}},"surface":{"type":"dialog","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"afterSubmit":"close","unsaved":"confirm"},"delete":true,"rowActionsDisplay":"auto","rowActions":[],"relations":{},"empty":{"type":"text","text":{"set":"Ui.Translations","key":"noRows"}},"layout":{"type":"table","columns":[{"header":{"message":["Task"],"lang":"en"},"value":{"root":"row","path":["text"]},"sort":"text","present":{"type":"string"},"labels":[]},{"header":{"message":["Priority"],"lang":"en"},"value":{"root":"row","path":["priority"]},"sort":"priority","present":{"type":"integer"},"style":{"by":{"root":"row","path":["priority"]},"cases":{"1":"danger"},"default":"strong"},"labels":[]},{"header":{"message":["Due"],"lang":"en"},"value":{"root":"row","path":["dueOn"]},"sort":"dueOn","present":{"type":"string","format":"date"},"labels":[]},{"header":{"message":["State"],"lang":"en"},"cell":{"type":"component","module":{"digest":"cc","name":"components.js"},"export":"StatusPill","abi":"ui_react-1","external":["react"],"stylesheets":[{"digest":"cc","name":"components.css"}],"props":{"done":{"root":"row","path":["isDone"]}}},"labels":[]}],"reads":{}},"fill":true},{"type":"form","schema":{"type":"object","required":["text"],"properties":{"id":{"type":"integer"},"text":{"type":"string","title":"Task","minLength":2},"isDone":{"type":"boolean","title":"Done"},"priority":{"type":"integer","title":"Priority","minimum":1,"maximum":5},"status":{"title":"Status","enum":["open","blocked","done"]},"dueOn":{"type":"string","title":"Due","format":"date"},"notes":{"type":"string","title":"Notes","contentMediaType":"text/plain"}}},"basePath":"/api/todos","fields":[{"type":"input","property":"text","label":{"message":["Task"],"lang":"en"},"control":"auto"},{"type":"input","property":"isDone","label":{"message":["Done"],"lang":"en"},"control":"auto"},{"type":"input","property":"priority","label":{"message":["Priority"],"lang":"en"},"control":"auto"},{"type":"input","property":"status","label":{"message":["Status"],"lang":"en"},"control":"auto"},{"type":"input","property":"dueOn","label":{"message":["Due"],"lang":"en"},"control":"auto"},{"type":"input","property":"notes","label":{"message":["Notes"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["text","isDone","priority","status","dueOn","notes"]},"fill":true},{"type":"action","schema":{"type":"object","required":["month"],"properties":{"month":{"type":"string","title":"Month","pattern":"^[0-9]{4}-[0-9]{2}$"},"copies":{"type":"integer","title":"Copies","minimum":1},"formats":{"type":"array","title":"Formats","items":{"enum":["pdf","csv"]}},"recipients":{"type":"array","title":"Recipients","items":{"type":"string","minLength":3}}}},"request":{"method":"POST","target":{"path":{"value":"/api/reports"},"pathParams":{},"queryParams":{}},"consumed":[]},"label":{"message":["Generate"],"lang":"en"},"fields":[{"type":"input","property":"month","label":{"message":["Month"],"lang":"en"},"control":"auto"},{"type":"input","property":"copies","label":{"message":["Copies"],"lang":"en"},"control":"auto"},{"type":"input","property":"formats","label":{"message":["Formats"],"lang":"en"},"control":"auto"},{"type":"input","property":"recipients","label":{"message":["Recipients"],"lang":"en"},"control":"auto"}],"groups":[],"state":{"address":false,"store":{"type":"memory"},"fields":["month","copies","formats","recipients"]},"failure":{"type":"stack","style":"danger","children":[{"type":"value","value":{"root":"error","path":["code"]},"present":{"type":"string"},"style":"strong"},{"type":"value","value":{"root":"error","path":["message"]},"present":{"type":"string"}}]},"onSuccess":{"refreshes":[]},"concurrency":"parallel","clearAnswerOn":[],"result":{"type":"stack","children":[{"type":"list","rowActionsDisplay":"auto","heading":{"message":["Files"],"lang":"en"},"rows":{"root":"result","path":["files"]},"columns":[{"header":{"message":["File"],"lang":"en"},"value":{"root":"row","path":["name"]},"present":{"type":"string"}},{"header":{"message":["Download"],"lang":"en"},"value":{"root":"row","path":["url"]},"present":{"type":"string","format":"uri-reference"}},{"header":{"message":["Month"],"lang":"en"},"value":{"root":"result","path":["month"]},"present":{"type":"string"}},{"header":{"message":["Kind"],"lang":"en"},"value":{"value":"report"}}]},{"type":"list","rowActionsDisplay":"auto","rows":{"root":"result","path":["totals"]},"columns":[{"header":{"message":["Made"],"lang":"en"},"value":{"root":"row","path":["at"]},"present":{"type":"string","format":"date"}}]}]},"enabled":{"at":{"root":"values","path":["month"]},"matches":{"minLength":7},"disabledText":{"message":["Choose a month first."],"lang":"en"}},"fill":true},{"type":"component","module":{"digest":"cc","name":"components.js"},"export":"Counter","abi":"ui_react-1","external":["react"],"stylesheets":[{"digest":"cc","name":"components.css"}],"props":{"step":{"value":1}},"fill":true},{"type":"chat","spec":{"attachments":{"accepts":[{"type":"image","mediaTypes":["image/png"],"maxBytes":1048576},{"type":"file","mediaTypes":["application/pdf"],"maxBytes":5242880}],"maxPerMessage":2},"operations":["branch","cancel"]},"basePath":"/api/chat","header":[{"type":"bar","start":[],"center":[],"end":[{"type":"command","command":{"root":"chat","path":["exportTranscript"]},"text":{"set":"Ui.Translations","key":"chatExport"},"button":{"type":"text"},"fill":true}],"fill":true}],"placeholder":{"message":["Ask anything"],"lang":"en"},"starters":[{"prompt":{"message":["Summarise this file"],"lang":"en"},"onChoose":"send"}],"show":{"reasoning":true,"toolDetail":true,"usage":true,"copy":true},"buttons":{"copy":{"type":"text"},"edit":{"type":"text"},"regenerate":{"type":"text"},"attach":{"type":"text"},"send":{"type":"text"},"stop":{"type":"text"}},"composer":{"actions":"inside"},"conversation":null,"refreshes":[],"fill":true},{"type":"split","side":"start","size":"small","frame":"flush","toggle":{"type":"text"},"label":{"message":["Filters"],"lang":"en"},"aside":{"actions":[{"type":"link","text":{"message":["New"],"lang":"en"},"href":{"path":{"value":"/new"},"pathParams":{},"queryParams":{}},"button":{"type":"icon","icon":null,"label":"shown"}}],"content":{"type":"text","text":{"message":["Aside text"],"lang":"en"}}},"content":{"type":"text","text":{"message":["Content text"],"lang":"en"},"fill":true},"collapse":{"collapsed":false,"state":null},"compact":{"type":"drawer","side":"start","size":"medium","modal":true,"dismiss":{"escape":true,"outside":true,"closeButton":true}},"fill":true}]}},
+      "responses": {"GET /api/todos":{"status":200,"body":{"rows":[{"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"},{"id":2,"text":"Review the plan","isDone":false,"priority":1,"status":"open","dueOn":"2026-10-07"}],"total":5,"next":"Mg"}},"GET /api/todos/*":{"status":200,"body":{"id":1,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}},"POST /api/todos":{"status":201,"body":{"id":6,"text":"Write the plan","isDone":true,"priority":2,"status":"done","dueOn":"2026-10-01"}},"DELETE /api/todos/*":{"status":204},"GET /api/empty":{"status":200,"body":{"rows":[],"total":0,"next":null}},"GET /api/account":{"status":200,"body":{"authorized":true,"email":"ada@example.com","files":[{"name":"a.pdf"}]}}},
+      "modules": {"/_telo/ui/assets/cc/components.js":["Counter","StatusPill","HostProbe"]},
+      "steps": [{"wait":500},{"expect":{"present":[{"part":"app","attributes":{"data-fill":"true"}},{"part":"main","attributes":{"data-fill":"true"}},{"part":"page","attributes":{"data-fill":"true"}},{"part":"box","attributes":{"data-fill":"true"}},{"part":"stack","attributes":{"data-fill":"true"}},{"part":"columns","attributes":{"data-fill":"true"}},{"part":"text","attributes":{"data-fill":"true"}},{"part":"badge","attributes":{"data-fill":"true"}},{"part":"link","attributes":{"data-fill":"true"}},{"part":"image","attributes":{"data-fill":"true"}},{"part":"svg","attributes":{"data-fill":"true"}},{"part":"value","attributes":{"data-fill":"true"}},{"part":"list","attributes":{"data-fill":"true"}},{"part":"bar","attributes":{"data-fill":"true"}},{"part":"command","attributes":{"data-fill":"true"}},{"part":"data","attributes":{"data-fill":"true"}},{"part":"listing","attributes":{"data-fill":"true"}},{"part":"form","attributes":{"data-fill":"true"}},{"part":"action","attributes":{"data-fill":"true"}},{"part":"filters","attributes":{"data-fill":"true"}},{"part":"component","attributes":{"data-fill":"true"}},{"part":"chat","attributes":{"data-fill":"true"}},{"part":"split","attributes":{"data-fill":"true"}},{"part":"split-aside","attributes":{"data-fill":"true"}},{"part":"split-content","attributes":{"data-fill":"true"}},{"part":"markdown","attributes":{"data-fill":"true"}},{"part":"navigation","attributes":{"data-fill":"true"}},{"part":"tabs","attributes":{"data-fill":"true"}},{"part":"tab-panel","attributes":{"data-fill":"true"}}]}}]
     }
   ]
 }

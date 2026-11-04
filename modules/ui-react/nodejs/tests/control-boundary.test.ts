@@ -76,6 +76,49 @@ function rules(css: string, layer: string): { selector: string; properties: stri
 
 const named = (selector: string) => [...selector.matchAll(/\[data-telo-part="([^"]+)"\]/g)].map((match) => match[1]);
 
+/** The selectors of a selector list, split at its top-level commas. */
+function topLevel(list: string): string[] {
+  const selectors: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let at = 0; at < list.length; at++) {
+    if (list[at] === "(") depth++;
+    else if (list[at] === ")") depth--;
+    else if (list[at] === "," && depth === 0) {
+      selectors.push(list.slice(start, at).trim());
+      start = at + 1;
+    }
+  }
+  return [...selectors, list.slice(start).trim()];
+}
+
+/** The compound a selector styles — after its last top-level combinator — with what its `:not()` and `:has()` hold left out. */
+function subjectOf(selector: string): string {
+  let depth = 0;
+  let start = 0;
+  for (let at = 0; at < selector.length; at++) {
+    const char = selector[at];
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    else if (depth === 0 && (char === " " || char === ">" || char === "+" || char === "~")) start = at + 1;
+  }
+  let subject = selector.slice(start);
+  while (/:(not|has)\(/.test(subject)) {
+    const open = subject.search(/:(not|has)\(/);
+    let level = 0;
+    let close = open;
+    for (let at = subject.indexOf("(", open); at < subject.length; at++) {
+      if (subject[at] === "(") level++;
+      else if (subject[at] === ")" && --level === 0) {
+        close = at;
+        break;
+      }
+    }
+    subject = subject.slice(0, open) + subject.slice(close + 1);
+  }
+  return subject;
+}
+
 /** Parts only a control draws: the renderer draws a field's label and an in-flow surface itself. */
 const controlOnly = new Set(
   Object.values(controls.controls)
@@ -92,10 +135,39 @@ describe("the base layer", () => {
   });
 
   it("declares every reserved property on its part, so the documented layout holds under an empty theme", () => {
-    const missing = contract.reserved.flatMap(({ part, properties }) =>
-      properties.filter((property) => !base.some((rule) => named(rule.selector).includes(part) && rule.properties.includes(property))).map((property) => `${part} ${property}`),
-    );
+    const missing = contract.reserved
+      .filter((entry) => entry.state === undefined)
+      .flatMap(({ part, properties }) =>
+        properties.filter((property) => !base.some((rule) => named(rule.selector).includes(part as string) && rule.properties.includes(property))).map((property) => `${part} ${property}`),
+      );
     expect(missing).toEqual([]);
+  });
+
+  it("reserves, per state, exactly what its rules for that state declare: on a part with an entry of its own, else on every part carrying it", () => {
+    const states = contract.states as Record<string, { values: string[]; on: string[] }>;
+    for (const { part, state } of contract.reserved) {
+      if (state === undefined) continue;
+      expect(states[state.attribute]?.values ?? [], state.attribute).toContain(state.value);
+      if (part !== undefined) expect(states[state.attribute].on, `${part} ${state.attribute}`).toContain(part);
+    }
+    const qualified = contract.reserved.filter((entry) => entry.state !== undefined);
+    const declared = new Map<string, Set<string>>(qualified.map((entry) => [`${entry.part ?? ""} ${entry.state?.attribute}=${entry.state?.value}`, new Set()]));
+    for (const rule of base) {
+      for (const selector of topLevel(rule.selector)) {
+        const subject = subjectOf(selector);
+        for (const { state } of qualified) {
+          const marker = `[${state?.attribute}="${state?.value}"]`;
+          if (!subject.includes(marker)) continue;
+          const parts = named(subject).filter((part) => declared.has(`${part} ${state?.attribute}=${state?.value}`));
+          for (const key of parts.length > 0 ? parts.map((part) => `${part} ${state?.attribute}=${state?.value}`) : [` ${state?.attribute}=${state?.value}`]) {
+            for (const property of rule.properties) declared.get(key)?.add(property);
+          }
+        }
+      }
+    }
+    expect(Object.fromEntries([...declared].map(([key, properties]) => [key, [...properties].sort()]))).toEqual(
+      Object.fromEntries(qualified.map((entry) => [`${entry.part ?? ""} ${entry.state?.attribute}=${entry.state?.value}`, [...entry.properties].sort()])),
+    );
   });
 });
 

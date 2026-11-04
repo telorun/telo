@@ -1,5 +1,6 @@
 import { useContext, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import type { NavigationEntry } from "../contract/ui-react-controls.js";
+import { isCurrentAddress, type CurrentLocation } from "./address-wire.js";
 import { useControl } from "./effective-controls.js";
 import { useHost, useHostStore } from "./host.js";
 import { linkAddress, pageAddress } from "./link-address.js";
@@ -71,10 +72,10 @@ function glyph(address: string): ReactElement {
   return <span data-telo-part="glyph" aria-hidden="true" style={style} />;
 }
 
-/** The entries with their addresses, the shown page's entry and every group on
- *  the way to it marked current. An entry whose address does not resolve is
+/** The entries with their addresses, the shown page's entry, a link leading to where the viewer is
+ *  and every group on the way to either marked current. An entry whose address does not resolve is
  *  left out, and a group left with nothing with it. */
-function drawn(items: NavigationEntrySpec[], path: string, address: (href: string) => string | undefined, label: (text: WireText) => string): Drawn {
+function drawn(items: NavigationEntrySpec[], location: CurrentLocation, address: (href: string) => string | undefined, label: (text: WireText) => string): Drawn {
   const addresses = new Map<string, string>();
   const failing: string[] = [];
   const entries = (list: NavigationEntrySpec[]): NavigationEntry[] =>
@@ -94,7 +95,7 @@ function drawn(items: NavigationEntrySpec[], path: string, address: (href: strin
         return [];
       }
       addresses.set(key, resolved);
-      const current = entry.type === "page" && entry.path === path;
+      const current = entry.type === "page" ? entry.path === location.path : isCurrentAddress(entry.href, location);
       return [{ key, label: label(entry.text), href: resolved, ...icon, ...(current ? { current: "page" as const } : {}) }];
     });
   return { entries: entries(items), addresses, failing };
@@ -154,7 +155,7 @@ export function SiteNavigation({ navigation, path, side }: { navigation: Navigat
   // A navigation with nothing delivered draws nothing, not even its button.
   if (navigation.items.length === 0) return null;
   const tree: Tree = {
-    drawn: drawn(navigation.items, path, (href) => linkAddress(store, href), text),
+    drawn: drawn(navigation.items, { path, search: host.location.search }, (href) => linkAddress(store, href), text),
     follow: (key, then) => {
       const href = tree.drawn.addresses.get(key);
       if (href === undefined) return;
@@ -307,7 +308,7 @@ function Sidebar({ placement, tree, children }: { placement: Extract<NavigationP
             setState((now) => ({ ...now, collapsed: !now.collapsed }));
           }}
         >
-          <Icon name={collapsed ? "expand" : "collapse"} />
+          <Icon name={collapsed ? "panel-open" : "panel-close"} />
         </button>
       )}
       <Navigation

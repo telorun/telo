@@ -1,0 +1,216 @@
+kind: Telo.Application
+metadata:
+  name: ChatApp
+  version: 1.0.0
+  categories: [AI, UI]
+  description: |
+    A chat over Claude with image and PDF uploads, in a browser. The page draws
+    its upload button from what the model accepts, conversations and the turn
+    journal and uploaded files live in one state directory, and a turn keeps
+    running when the page is closed: reopening the conversation reads it back and
+    follows the turn that is still going.
+
+    Run with the Anthropic key in the environment (or in a sibling `.env.local`
+    file, which the CLI loads from the manifest's directory):
+        ANTHROPIC_API_KEY=sk-ant-...
+    then open http://localhost:8080.
+requires: { telo: ">=0.129.0" }
+lang: en
+# The chat modules come from this repository while their changes are unreleased;
+# `telo upgrade --pin-local` pins them again once they ship.
+imports:
+  Http: ../../modules/http-server
+  HttpClient: ../../modules/http-client
+  Ai: ../../modules/ai
+  Anthropic: ../../modules/anthropic
+  AiConversationSql: ../../modules/ai-conversation-sql
+  # Not `AiChat`: an alias equal to the module's own name makes its private kinds
+  # unreachable until that analyzer defect is fixed.
+  Chat: ../../modules/ai-chat
+  Conversation: ../../modules/conversation
+  RecordStream: ../../modules/record-stream
+  RecordStreamSql: ../../modules/record-stream-sql
+  Scheduler: ../../modules/scheduler
+  BlobFs: ../../modules/blob-fs
+  MediaType: ../../modules/media-type
+  SQLite: ../../modules/sqlite
+  Ui: ../../modules/ui
+  UiLucide: ../../modules/ui-lucide
+  UiReact: ../../modules/ui-react
+targets: [!ref server, !ref journalExpiry, !ref attachmentExpiry]
+ports: { http: { env: PORT, protocol: tcp, default: 8080 } }
+variables:
+  stateDir:
+    env: STATE_DIR
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: .data/chat
+  model: { env: MODEL, type: string, default: claude-sonnet-5-5 }
+  # Anthropic's API, or a gateway in front of it.
+  anthropicUrl: { env: ANTHROPIC_BASE_URL, type: string, default: "https://api.anthropic.com/v1" }
+secrets: { anthropicApiKey: { env: ANTHROPIC_API_KEY, type: string } }
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: !cel "variables.stateDir.joinPath('chat.sqlite')"
+---
+# A finished turn replays for a week and a send is remembered as long, applied by
+# the hourly expiry below; a send's marker then lingers for a day.
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, table: chat_journal }
+retention: 168h
+markerRetention: 24h
+---
+kind: Scheduler.Interval
+metadata: { name: journalExpiry }
+every: 1h
+invoke: { kind: RecordStream.JournalExpiry, journal: !ref journal }
+---
+# Removes uploads no message sent within a day, and a deleted conversation's files.
+kind: Scheduler.Interval
+metadata: { name: attachmentExpiry }
+every: 1h
+invoke: { kind: Chat.AttachmentExpiry, conversation: !ref conversation }
+---
+# Read by the page for what it offers and served by the API under /api/chat.
+kind: Chat.Conversation
+metadata: { name: conversation }
+agent:
+  kind: Ai.AgentStream
+  system: You are a concise assistant. Answer from the files the user attaches when there are any.
+  maxSteps: 8
+  model:
+    kind: Anthropic.MessagesModelStream
+    model: !cel "variables.model"
+    maxTokens: 4096
+    request:
+      kind: HttpClient.Request
+      client:
+        kind: Anthropic.Client
+        baseUrl: !cel "variables.anthropicUrl"
+        credential:
+          kind: HttpClient.ApiKeyHeader
+          header: x-api-key
+          key: !cel "secrets.anthropicApiKey"
+    # The upload button and the provider's refusal both come from this list.
+    accepts:
+      - { type: image, mediaTypes: [image/png, image/jpeg, image/gif, image/webp], maxBytes: 5242880 }
+      - { type: file, mediaTypes: [application/pdf], maxBytes: 33554432 }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal: !ref journal
+blobs:
+  kind: BlobFs.Store
+  root: !cel "variables.stateDir.joinPath('attachments')"
+detector: { kind: MediaType.Detector }
+attachments: { maxBytes: 10485760, maxPerMessage: 4, pendingRetention: 24h }
+---
+kind: UiReact.App
+metadata: { name: ui }
+title: Assistant
+theme: !ref UiReact.defaultTheme
+pages: [!ref assistant]
+---
+# The conversations beside the chat: a link per conversation and a link to start
+# a new one, both to this page, the chat reading the conversation its address names.
+kind: Ui.Page
+metadata: { name: assistant }
+path: /
+title: Assistant
+width: full
+children:
+  - type: composite
+    ref:
+      kind: Ui.SplitView
+      label: Conversations
+      size: small
+      collapse: { state: { key: conversations, store: { kind: Ui.LocalStore } } }
+      aside:
+        actions:
+          - type: link
+            text: New conversation
+            href: { path: !ref assistant }
+            button: { kind: Ui.IconButton, label: shown, icon: { kind: UiLucide.Icon, name: square-pen } }
+        content:
+          type: composite
+          ref:
+            kind: Ui.Listing
+            model: !ref Conversation.ConversationSummary
+            presentation:
+              kind: Ui.CollectionPresentation
+              source: { kind: Ui.CollectionSource, collection: !ref Conversation.conversations, basePath: /api/chat/conversations }
+            filters: { archived: false }
+            paging: scroll
+            sort: { by: { property: updatedAt, direction: descending }, choosable: false }
+            show: { count: false }
+            delete: true
+            layout:
+              kind: Ui.ListLayout
+              frame: flush
+              content:
+                type: stack
+                children:
+                  - type: value
+                    value: !cel "row.title"
+                    href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } }
+                    shown: { at: !cel "row.title", matches: { type: string } }
+                  - type: link
+                    text: Untitled conversation
+                    href: { path: !ref assistant, queryParams: { conversation: !cel "row.id" } }
+                    shown: { at: !cel "row.title", matches: { type: "null" } }
+                  - { type: badge, text: Replying, shown: { at: !cel "row.running", matches: { const: true } } }
+            rowActions:
+              - prompt: true
+                inputs: { id: !cel "row.id" }
+                action:
+                  kind: Ui.Action
+                  label: Rename
+                  inputModel:
+                    kind: Telo.JsonSchema
+                    schema: { type: object, required: [id], properties: { id: { type: string }, title: { type: string, title: Title, minLength: 1 } } }
+                  request:
+                    method: PATCH
+                    target: { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "input.id" } }
+              - inputs: { id: !cel "row.id", archived: true }
+                action:
+                  kind: Ui.Action
+                  label: Archive
+                  inputModel:
+                    kind: Telo.JsonSchema
+                    schema: { type: object, required: [id, archived], properties: { id: { type: string }, archived: { type: boolean } } }
+                  request:
+                    method: PATCH
+                    target: { path: "/api/chat/conversations/{id}", pathParams: { id: !cel "input.id" } }
+      content:
+        type: composite
+        fill: true
+        ref:
+          kind: Ui.Chat
+          source: { kind: Ui.ConversationSource, conversation: !ref conversation, basePath: /api/chat }
+          conversation: { parameter: conversation }
+          refreshes: [/api/chat/conversations]
+          placeholder: Ask anything, or drop an image or a PDF
+          starters:
+            - What can you do with an image or a PDF?
+            - { prompt: Summarise the attached PDF, onChoose: fill }
+            - { prompt: What is in this picture?, onChoose: fill }
+          show: { usage: false }
+          header:
+            - type: bar
+              start:
+                - { type: value, value: !cel "conversation.title", style: heading, shown: { at: !cel "conversation.title", matches: { type: string } } }
+                - { type: text, text: Untitled conversation, style: heading, shown: { at: !cel "conversation.title", matches: { type: "null" } } }
+                - { type: text, text: New conversation, style: heading, shown: { at: !cel "conversation", matches: { type: "null" } } }
+              end:
+                - type: command
+                  command: !cel "chat.exportTranscript"
+                  text: Export
+                  button: { kind: Ui.IconButton, icon: { kind: UiLucide.Icon, name: download } }
+---
+kind: Http.Server
+metadata: { name: server }
+listen: { port: !cel "ports.http" }
+mounts:
+  - path: /api/chat
+    mount: { kind: Chat.Api, conversation: !ref conversation }
+  - { path: /, mount: !ref ui }

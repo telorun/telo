@@ -1,7 +1,12 @@
-import { Component, useContext, type ReactNode } from "react";
-import { conditionHolds, readBinding, styleAttribute, type Condition, type Style } from "./bindings.js";
+import { Component, useContext, type CSSProperties, type ReactNode, type Ref } from "react";
+import { conditionHolds, fillAttribute, readBinding, styleAttribute, type Binding, type Condition, type Style } from "./bindings.js";
 import { Action } from "./action.js";
+import { Displayed, type ButtonSpec } from "./display-button.js";
+import { resolveAddress, type AddressWire } from "./address-wire.js";
+import { ChatNode, type ChatNodeSpec } from "./chat/chat-node.js";
+import { CommandNode } from "./command-node.js";
 import { ComponentNode } from "./component.js";
+import { CurrentAnchor } from "./current-location.js";
 import { DataNode } from "./data.js";
 import { Filters } from "./filters.js";
 import { Form } from "./form.js";
@@ -10,16 +15,19 @@ import { useHostStore } from "./host.js";
 import { linkAddress } from "./link-address.js";
 import { ListView, type ListColumn } from "./list.js";
 import { Listing } from "./listing.js";
+import type { ActionsSetting } from "./row-actions-display.js";
+import { MarkdownNode } from "./markdown/markdown-node.js";
 import { MenuNode } from "./menu-node.js";
 import { RelatedContext, RelatedValue } from "./related-labels.js";
-import { RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
+import { EmbeddedContext, RecordLinkContext, RendererContext, RootsContext, underMount, VisibleContext } from "./renderer-context.js";
+import { SplitNode, type SplitNodeSpec } from "./split-view.js";
 import { TabsNode } from "./tabs-node.js";
 import { Presented } from "./value-cell.js";
 import { formatOwn, holdsOwn, TextsContext, useSay, useText } from "./texts.js";
 import { errorSpec, type ErrorSpec } from "./ui-error.js";
 
 /** A node of a page document. */
-export type SpecNode = { type: string; style?: Style } & Record<string, any>;
+export type SpecNode = { type: string; style?: Style; fill?: boolean } & Record<string, any>;
 
 export function ErrorNode({ error }: { error: ErrorSpec }) {
   const texts = useContext(TextsContext);
@@ -63,11 +71,12 @@ function ErrorGlyph() {
   );
 }
 
-export function Loading() {
+/** The loading notice; `ref`, `index` and `style` place it as a row of a windowed list. */
+export function Loading({ ref, index, style, role = "status" }: { ref?: Ref<HTMLDivElement>; index?: number; style?: CSSProperties; role?: "status" | "presentation" }) {
   const say = useSay();
   const Icon = useControl("Icon");
   return (
-    <div data-telo-part="loading" role="status">
+    <div data-telo-part="loading" role={role} ref={ref} data-index={index} style={style}>
       <Icon name="loading" />
       {say("loading")}
     </div>
@@ -103,11 +112,14 @@ class NodeBoundary extends Component<{ node: SpecNode; children: ReactNode }, No
 
 /** One node, inside a boundary of its own. */
 export function Node({ node }: { node: SpecNode }): ReactNode {
-  const drawn = (
+  const embedded = useContext(EmbeddedContext);
+  const inside = (
     <NodeBoundary node={node}>
-      <Drawn node={node} />
+      <Drawn node={node} embedded={embedded} />
     </NodeBoundary>
   );
+  // Only the node itself is embedded: what it draws beneath is not.
+  const drawn = <EmbeddedContext.Provider value={false}>{inside}</EmbeddedContext.Provider>;
   return node.shown === undefined ? drawn : <Shown condition={node.shown as Condition}>{drawn}</Shown>;
 }
 
@@ -127,26 +139,40 @@ function Shown({ condition, children }: { condition: Condition; children: ReactN
 }
 
 /** One node, drawn as plain elements carrying the part it is. */
-function Drawn({ node }: { node: SpecNode }): ReactNode {
+function Drawn({ node, embedded }: { node: SpecNode; embedded: boolean }): ReactNode {
   const store = useHostStore();
   const environment = useContext(RendererContext);
   const roots = useContext(RootsContext);
   const related = useContext(RelatedContext);
+  const ofRecord = useContext(RecordLinkContext);
   const text = useText();
   const style = styleAttribute(node.style);
+  const fill = fillAttribute(node);
   // An app-relative address is the application's own: it lives under the mount.
   const local = (address: string) => underMount(environment.prefix, address);
   switch (node.type) {
     case "box":
     case "stack":
       return (
-        <div data-telo-part={node.type} data-style={style}>
+        <div data-telo-part={node.type} data-fill={fill} data-style={style}>
           <Nodes nodes={node.children} />
         </div>
       );
+    case "bar":
+      return (
+        <div data-telo-part="bar" data-fill={fill} data-style={style}>
+          {(["start", "center", "end"] as const).map((region) => (
+            <div key={region} data-telo-part={`bar-${region}`}>
+              <Nodes nodes={node[region]} />
+            </div>
+          ))}
+        </div>
+      );
+    case "command":
+      return <CommandNode node={node as unknown as Parameters<typeof CommandNode>[0]["node"]} />;
     case "columns":
       return (
-        <div data-telo-part="columns" data-style={style}>
+        <div data-telo-part="columns" data-fill={fill} data-style={style}>
           {(node.children as SpecNode[]).map((child, index) => (
             <div key={index} data-telo-part="column">
               <Node node={child} />
@@ -158,49 +184,56 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
       const names = [node.style ?? []].flat();
       const Element = names.includes("heading") ? "h2" : names.includes("subheading") ? "h3" : "p";
       return (
-        <Element data-telo-part="text" data-style={style}>
+        <Element data-telo-part="text" data-fill={fill} data-style={style}>
           {text(node.text)}
         </Element>
       );
     }
     case "badge":
       return (
-        <span data-telo-part="badge" data-style={style}>
+        <span data-telo-part="badge" data-fill={fill} data-style={style}>
           {text(node.text)}
         </span>
       );
     case "link": {
-      // A reference into the application lives under the mount; one that leaves
-      // it once resolved (`//host`, `/\host`) is not a link this page draws.
-      const href = linkAddress(store, node.href);
+      // An address that does not resolve inside this application, or at all, is plain text.
+      const resolved = resolveAddress(node.href as AddressWire, roots, "'link' href");
+      const href = resolved === undefined ? undefined : linkAddress(store, resolved);
       if (href === undefined) {
         return (
-          <ErrorNode
-            error={{
-              type: "error",
-              code: "ERR_UI_NODE_INVALID",
-              message: `A 'link' node's href '${node.href}' does not resolve inside this application.`,
-            }}
-          />
+          <span data-telo-part="text" data-fill={fill} data-style={style}>
+            {text(node.text)}
+          </span>
+        );
+      }
+      const button = node.button as ButtonSpec | null | undefined;
+      if (button == null) {
+        return (
+          <CurrentAnchor address={resolved} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-fill={fill} data-style={style} href={href}>
+            {text(node.text)}
+          </CurrentAnchor>
         );
       }
       return (
-        <a data-telo-part="link" data-style={style} href={href}>
-          {text(node.text)}
-        </a>
+        <Displayed display={button} text={text(node.text)} glyph="go">
+          <CurrentAnchor address={resolved} data-telo-part="link" data-record={ofRecord ? "true" : undefined} data-button={button.type} data-fill={fill} data-style={style} href={href} />
+        </Displayed>
       );
     }
+    case "markdown":
+      return <MarkdownNode node={node as unknown as { text: Binding; style?: Style; fill?: boolean }} />;
     case "menu":
       return <MenuNode node={node} />;
     case "tabs":
       return <TabsNode node={node} />;
     case "image":
-      return <img data-telo-part="image" data-style={style} src={local(node.src)} alt={text(node.alt)} />;
+      return <img data-telo-part="image" data-fill={fill} data-style={style} src={local(node.src)} alt={text(node.alt)} />;
     case "svg":
       // As an image: markup drawn this way cannot run script or reach the page.
       return (
         <img
           data-telo-part="svg"
+          data-fill={fill}
           data-style={style}
           src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(node.markup)}`}
           alt={text(node.alt)}
@@ -212,18 +245,19 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
       const relation = node.value.root === "row" && node.value.path.length === 1 ? node.value.path[0] : undefined;
       if (relation !== undefined && related && Object.hasOwn(related.relations, relation)) {
         return (
-          <span data-telo-part="value" data-style={style}>
+          <span data-telo-part="value" data-fill={fill} data-style={style}>
             <RelatedValue relation={relation} value={read.present ? read.value : undefined} />
           </span>
         );
       }
       return (
-        <span data-telo-part="value" data-style={style}>
+        <span data-telo-part="value" data-fill={fill} data-style={style}>
           <Presented
             value={read.present ? read.value : undefined}
             present={node.present}
             labels={node.labels}
             text={node.text === undefined ? undefined : text(node.text)}
+            href={node.href === undefined ? undefined : resolveAddress(node.href as AddressWire, roots, "'value' href")}
           />
         </span>
       );
@@ -235,13 +269,15 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
           rows={node.rows}
           columns={node.columns as ListColumn[]}
           rowActions={node.rowActions}
+          rowActionsDisplay={node.rowActionsDisplay as ActionsSetting}
           style={node.style}
+          fill={node.fill === true}
         />
       );
     case "data":
       return <DataNode node={node} />;
     case "listing":
-      return <Listing node={node} />;
+      return <Listing node={node} embedded={embedded} />;
     case "form":
       return <Form node={node} target={{ method: "POST", url: local(node.basePath) }} />;
     case "action":
@@ -250,6 +286,10 @@ function Drawn({ node }: { node: SpecNode }): ReactNode {
       return <Filters node={node} />;
     case "component":
       return <ComponentNode node={node} />;
+    case "chat":
+      return <ChatNode node={node as unknown as ChatNodeSpec} embedded={embedded} />;
+    case "split":
+      return <SplitNode node={node as unknown as SplitNodeSpec} />;
     case "error":
       return <ErrorNode error={node as unknown as ErrorSpec} />;
     default:

@@ -46,32 +46,60 @@ stylesheet that imports it into that layer.
 
 A property the base layer declares is reserved when documented behaviour
 depends on it: a theme does not declare it on that part, or the behaviour
-breaks — `UiReact.defaultTheme` declares none.
+breaks — `UiReact.defaultTheme` declares none. A reservation with a state in
+**While** holds only while the part carries it, and one naming no part holds on
+every part carrying the state — so a theme scopes a rule it means for parts at
+rest, `[data-telo-part="component"]:not([data-fill="true"]) { min-height: 4rem }`.
 
-| Part | Reserved | Because |
-| --- | --- | --- |
-| `filters-bar` | `display` | a closed collapsible bar is hidden |
-| `filters` | `display`, `grid-template-columns` | a bar placed aside sits beside what it filters |
-| `surface-body` | `overflow-y`, `min-height` | a surface's body scrolls while its header stays |
-| `form-actions` | `position`, `bottom` | a form's actions stay at its surface's bottom edge |
-| `table-frame` | `overflow-x` | a grid wider than its table scrolls in its frame |
-| `listing` | `display`, `grid-template-columns` | a panel sits beside the records and the pager |
-| `listing-toolbar` | `order` | the toolbar stays above a panel |
-| `surface` | `order` | a panel sits on its side |
-| `app` | `display`, `grid-template-columns` | a sidebar sits beside the page |
-| `tab-bar` | `position`, `bottom` | a tab bar stays at the bottom edge |
-| `glyph` | `background-color`, `mask-image` | a glyph is its file's shape in the colour of the text around it |
-| `page` | `max-width`, `margin-inline` | a contained page is no wider than the width.page token, centred |
-| `header` | `display`, `grid-template-columns`, `padding-inline` | beside a sidebar the header spans every column of the application, and its content holds the inset |
-| `header-content` | `padding-inline`, `grid-column` | a contained header's content starts and ends where a contained page does |
-| `main` | `padding-inline` | the page column is inset by the space.page token |
-| `calendar-grid` | `display`, `grid-template-columns` | a calendar's days are a grid of seven weekdays, or of the one day shown |
-| `timeline-axis` | `display`, `grid-template-columns` | a timeline's columns are the periods of its scale |
-| `timeline-track` | `display`, `grid-template-columns` | a bar spans the columns of the periods it lasts |
+| Part | While | Reserved | Because |
+| --- | --- | --- | --- |
+| `filters-bar` | — | `display` | a closed collapsible bar is hidden |
+| `filters` | — | `display`, `grid-template-columns` | a bar placed aside sits beside what it filters |
+| `surface-body` | — | `overflow-y`, `min-height` | a surface's body scrolls while its header stays |
+| `form-actions` | — | `position`, `bottom` | a form's actions stay at its surface's bottom edge |
+| `table-frame` | — | `overflow-x` | a grid wider than its table scrolls in its frame |
+| `markdown-table-frame` | — | `overflow-x` | a table wider than the text scrolls in its frame |
+| `markdown-code-pre` | — | `overflow-x` | a long line of code scrolls in its block, not the page |
+| `markdown-code-header` | — | `display` | a block's language and its copy control share one row |
+| `chat` | — | `display`, `grid-template-columns` | the conversations sit beside the transcript and the message box |
+| `bar` | — | `display`, `grid-template-columns` | a bar's centre stays centred whatever its start and end hold, and its regions wrap below the breakpoint |
+| `chat-transcript` | — | `overflow-y`, `overflow-anchor` | the transcript scrolls while the message box stays, and keeps its reading position itself |
+| `chat-image` | — | `width`, `height`, `object-fit` | a picture is a fixed-size square crop, so a message's height does not change when it loads |
+| `chat-attachment-thumbnail` | — | `width`, `height`, `object-fit` | a picture is a fixed-size square crop, so a file's chip does not change size when it loads |
+| `media-viewer` | — | `display`, `flex-direction` | the stage takes the room the toolbar leaves |
+| `media-viewer-stage` | — | `overflow-x`, `overflow-y`, `touch-action` | a zoomed picture is panned inside its stage, which clips it and takes the gestures itself |
+| `media-viewer-image` | — | `transform`, `max-width`, `max-height` | the renderer zooms and pans the picture, which is fitted to its stage |
+| `chat-message` | — | `margin-top`, `margin-bottom` | a message drawn stands in for the messages out of view beside it with its block margins |
+| `chat-announcer` | — | `position`, `clip-path` | announcements are read aloud and never drawn |
+| `split` | — | `display`, `grid-template-columns` | the aside sits beside the content while it is open |
+| `split-aside` | — | `display`, `width`, `grid-column` | the aside is as wide as its size says, on its side, and a folded one is a rail holding only its bar and actions |
+| `split-content` | — | `grid-column` | the content takes the column the aside leaves |
+| `listing` | — | `display`, `grid-template-columns` | a panel sits beside the records and the pager |
+| `listing-toolbar` | — | `order` | the toolbar stays above a panel |
+| `surface` | — | `order` | a panel sits on its side |
+| `app` | — | `display`, `grid-template-columns` | a sidebar sits beside the page |
+| `tab-bar` | — | `position`, `bottom` | a tab bar stays at the bottom edge |
+| `glyph` | — | `background-color`, `mask-image` | a glyph is its file's shape in the colour of the text around it |
+| `page` | — | `max-width`, `margin-inline` | a contained page is no wider than the width.page token, centred |
+| `header` | — | `display`, `grid-template-columns`, `padding-inline` | beside a sidebar the header spans every column of the application, and its content holds the inset |
+| `header-content` | — | `padding-inline`, `grid-column` | a contained header's content starts and ends where a contained page does |
+| `main` | — | `padding-inline` | the page column is inset by the space.page token |
+| `calendar-grid` | — | `display`, `grid-template-columns` | a calendar's days are a grid of seven weekdays, or of the one day shown |
+| `timeline-axis` | — | `display`, `grid-template-columns` | a timeline's columns are the periods of its scale |
+| `timeline-track` | — | `display`, `grid-template-columns` | a bar spans the columns of the periods it lasts |
+| — | `data-fill="true"` | `flex-basis`, `flex-grow`, `flex-shrink`, `height`, `min-height`, `overflow-y` | a filling node takes the room its container leaves, the last of a chain scrolling inside itself and the page scrolling below their minimum |
+| `app` | `data-fill="true"` | `grid-template-rows`, `height`, `min-height` | a filling page holds the application to the viewport's height |
+| `box` | `data-fill="true"` | `display`, `flex-direction` | a filling box passes the room on to what it holds |
+| `data` | `data-fill="true"` | `display`, `flex-direction` | a filling reader passes the room on to what it holds |
+| `columns` | `data-fill="true"` | `align-items` | filling columns are each as tall as the row |
+| `filters` | `data-fill="true"` | `align-items`, `flex-direction`, `flex-wrap`, `grid-template-rows` | a filling filter bar passes the room left under its controls on to its content |
+| `split` | `data-fill="true"` | `align-items` | a filling split view stretches its aside and its content to its height |
 
 A shorthand or a longhand that sets a reserved property counts as setting it:
 `padding`, `padding-left` or `padding-inline-start` on `header`, `grid-area` on
-`header-content`, `margin` or `margin-left` on `page`. Write a header's or the main area's block padding with
+`header-content`, `margin` or `margin-left` on `page`, `margin`,
+`margin-block` or `margin-block-start` on `chat-message`, `flex`, `flex-flow`,
+`block-size`, `min-block-size`, `overflow` or `place-items` on a filling part. Write a header's or the main area's block padding with
 `padding-block` (or `padding-top` / `padding-bottom`).
 
 ## Tokens
@@ -135,6 +163,33 @@ The default theme follows the viewer's system setting: under
 colour should set the ones that must contrast with it too — or the
 application declares a theme of its own that styles both schemes.
 
+## Filling
+
+A node the page document marks `fill` is drawn with `data-fill="true"` on its
+root part (on `navigation` for a `menu` node, on `tabs` and the shown
+`tab-panel` for a `tabs` node), and a filling split view marks `split-aside`
+and `split-content` too. While one of the page's own nodes fills, `app`, `main`
+and `page` carry it as well: the application is as tall as the viewport (in
+dynamic viewport units, so an on-screen keyboard does not hide the message box)
+and `page`, under the header and above a tab bar, is the one part that scrolls
+— only when what fills it is taller than the room. Otherwise:
+
+- a filling part takes the room its container leaves after its other children,
+  filling siblings sharing it equally;
+- a filling part holding a filling part passes the room on and never scrolls;
+  it is never shorter than what it holds;
+- the last filling part of a chain scrolls inside itself — a chat in its
+  transcript, as always, and a split view's half in itself — and is as short as
+  the room makes it, a chat no shorter than `24rem`;
+- inside a record, an action's answer, a chat's header, a split view's actions,
+  an in-line surface or a panel, a filling part grows to the room but is as tall
+  as its content: those boxes grow with what they hold;
+- a filling filter bar above its content draws its controls one under another,
+  so the content takes the room left under them.
+
+The properties this takes are reserved while `data-fill="true"` is carried; see
+[reserved properties](#reserved-properties).
+
 ## Parts
 
 ### Shell
@@ -175,7 +230,7 @@ nothing and must go through `header-content` —
 | `column` | one child of `columns` |
 | `text` | a `text` node — `p`, or `h2` / `h3` under `heading` / `subheading` |
 | `badge` | a `badge` node |
-| `link` | a `link` node |
+| `link` | a `link` node; drawn as a button, an `<a>` with `data-button`, a glyph alone named by `aria-label`, and an `Icon` the look mirrors in a right-to-left page |
 | `image` | an `image` node |
 | `svg` | an `svg` node, drawn as an image |
 | `value` | a `value` node: one value of a data scope, presented as its schema says — a `format: uri` / `uri-reference` string as a `link` |
@@ -183,17 +238,196 @@ nothing and must go through `header-content` —
 | `list-heading` | a list's heading, an `h3`; absent when the list declares none |
 | `list-empty` | the cell a list shows when its rows hold none |
 | `data` | a `data` node: a reader, holding its `loading` tree before the first answer, its `content` once one is in, its `failure` when the read did not succeed |
+| `bar` | a `bar` node: its three regions in a row, `bar-center` centred whatever the sides hold; below the breakpoint the regions wrap. A bar is as tall as every bar (`--ui-react-bar-height`) |
+| `bar-start` | the bar's `start` nodes, at its start edge |
+| `bar-center` | the bar's `center` nodes; drawn, empty, when there are none |
+| `bar-end` | the bar's `end` nodes, at its end edge |
+| `command` | a `command` node: a `<button>` running a command of the place it is in — `data-command` names it, `data-button` how it is drawn — disabled while it cannot run, not drawn where it is not offered; a glyph alone is named by `aria-label` and a tooltip |
 
 A column of a `list` whose `shown` does not hold is left out, header and cells.
 
 A `menu` node is drawn by the `Navigation` control as one group: a
 `navigation` that is no landmark, holding one `nav-toggle` that opens a
 `nav-panel` of `nav-item` links. The current choice — a link whose style holds
-`strong` — carries `aria-current="true"` and `data-current="true"`. Its
+`strong` — carries `aria-current="true"` and `data-current="true"`, and one
+whose address leads to where the viewer is carries `aria-current="page"`, which wins where both hold. Its
 `style` is on `navigation` as `data-style`.
 
 **Changed:** a `menu` node has no `menu-trigger`, and its links are no
 `menu-item`s; a rule written for either selects nothing now.
+
+### Markdown
+
+The parts of a [`markdown` node](markdown.md). The `markdown` part is the
+node's root, `data-state="loading"` while the renderer's chunk is fetched (its
+text then in one `markdown-code-pre`) and `idle` once it has drawn; its `style`
+is on it as `data-style`.
+
+| Part | Is |
+| --- | --- |
+| `markdown` | the node's root, holding its blocks |
+| `markdown-paragraph` | a paragraph, a `p`; a tight list item has none |
+| `markdown-heading` | a heading, `h1` to `h6`, its depth in `data-level` |
+| `markdown-quote` | a block quote |
+| `markdown-list` | a bulleted or numbered list, `ul` or `ol` |
+| `markdown-list-item` | one entry of it |
+| `markdown-task` | the box of a task list's entry, a read-only `role="checkbox"` named by the entry's text, `aria-checked` when ticked |
+| `markdown-rule` | a thematic break |
+| `markdown-emphasis` | emphasised text, an `em` |
+| `markdown-strong` | strong text |
+| `markdown-strike` | struck-through text, a `del` |
+| `markdown-code` | inline code |
+| `markdown-link` | a link that passed the address rule; an external one has `target="_blank"` |
+| `markdown-image` | an image that passed it |
+| `markdown-break` | a hard line break |
+| `markdown-table-frame` | the frame a table scrolls in when it is wider than the text |
+| `markdown-table` | a table |
+| `markdown-table-head` | its head |
+| `markdown-table-body` | its body |
+| `markdown-table-row` | a row of either |
+| `markdown-table-header-cell` | a head cell, its column's alignment in `data-align` |
+| `markdown-table-cell` | a body cell, with `data-align` too |
+| `markdown-code-block` | a fenced code block |
+| `markdown-code-header` | its row: the language, then the copy control |
+| `markdown-code-language` | the language the block was written with; drawn only when it names one |
+| `markdown-code-copy` | the button copying the block's code |
+| `markdown-code-pre` | the block's `pre`, focusable so a wide block scrolls from the keyboard; also the preformatted text shown before the chunk arrives |
+| `markdown-code-text` | the `code` inside it |
+| `markdown-token` | a highlighted run of code, its kind in `data-token` |
+
+### Chat
+
+The parts of a [`chat` node](chat.md). Every control the chat draws is a part:
+an element is drawn in the part named here, and the controls beneath it
+(`textarea`, `input`, `menu`, `surface`) are the ones documented elsewhere. The
+upload control and the conversations appear only where the node's spec offers
+them, so a theme styles parts that a given chat never draws.
+
+| Part | Is |
+| --- | --- |
+| `chat` | the node's root: the transcript and the message box; `data-state` is `loading` while a conversation is read, `submitting` while a reply is written, `error` after a failed request, `empty` with no messages |
+| `chat-main` | the transcript and the message box together |
+| `chat-header` | the `<header>` above the transcript holding the chat's header nodes top to bottom, as tall as a bar at least; not drawn when the header holds none. A failed export or copy is drawn under it as an `error` |
+| `chat-transcript` | the scrolling feed of messages, `role="feed"`, focusable so it scrolls from the keyboard. Only the messages near its viewport are drawn, the others standing in as the block margins of the nearest drawn one, so messages are spaced by its `gap` and never by margins of their own; while an earlier page is read a `loading` part stands above the first message |
+| `chat-empty` | shown in a conversation with no messages |
+| `chat-message` | one message, its author in `data-role`, its place in the conversation in `aria-posinset` of `aria-setsize` (`-1` while earlier messages are still to be read) |
+| `chat-message-label` | who wrote it |
+| `chat-message-body` | its blocks in order: text as `markdown`, reasoning, tool calls, approvals, media, refusals and sources |
+| `chat-message-actions` | the row of what can be done with it, under the message's card (`chat-message-body`, or `chat-edit-form` while editing), at the card's edge |
+| `chat-copy` | the button copying its text; not drawn when the page turns it off. Like every configurable chat button it holds the text, or by the page's choice a glyph — an `icon` part, or a `glyph` part for an icon of the page's own — with the text as its `aria-label` and tooltip |
+| `chat-edit` | the button editing a message you wrote and sending it again as another version |
+| `chat-edit-form` | the box a message is edited in: the text box, the message's files as `chat-attachments` (with `chat-attachment-refusals` and `chat-drop` as in the message box) where the endpoint takes attachments, a `chat-attach` button, then a `cancel` and a `submit` button |
+| `chat-regenerate` | the button asking for another reply as another version |
+| `chat-branches` | the switcher between the versions of a message seen |
+| `chat-branch-previous` | shows the previous version |
+| `chat-branch-position` | which version is shown, of how many |
+| `chat-branch-next` | shows the next version |
+| `chat-reasoning` | the model's reasoning, collapsible; `open` while its body is shown |
+| `chat-reasoning-toggle` | the button opening and closing it, `aria-expanded` |
+| `chat-reasoning-body` | the reasoning as `markdown` |
+| `chat-tool` | a tool call's card; `data-status` is `running`, `done` or `failed` |
+| `chat-tool-header` | its name, status and details button |
+| `chat-tool-name` | the tool's name |
+| `chat-tool-status` | drawn while the call runs or once it failed |
+| `chat-tool-toggle` | the button showing and hiding its arguments and result |
+| `chat-tool-detail` | the arguments and the result |
+| `chat-tool-label` | names one of them |
+| `chat-tool-data` | a block of JSON, focusable so it scrolls from the keyboard |
+| `chat-approval` | a call waiting for a decision; `data-status` is `pending`, `approved` or `rejected` |
+| `chat-approval-title` | what is asked to run |
+| `chat-approval-actions` | the reason box and the two buttons, drawn until a decision is made |
+| `chat-approval-decision` | what was decided, and why |
+| `chat-approve` | the button approving the call |
+| `chat-reject` | the button rejecting it with the reason typed beside it |
+| `chat-image` | a picture of a message, drawn only from an app-relative address as a fixed-size square crop of the original; pressing it opens the `media-viewer` at it |
+| `chat-media` | an audio or video player for an attachment, drawn only from an app-relative address |
+| `chat-attachment` | a file of a message: a link to download it, or its name alone when its address is not app-relative |
+| `chat-sources` | the citations of a message |
+| `chat-sources-title` | its heading |
+| `chat-source-list` | the list of them |
+| `chat-source` | one citation, a `markdown-link` to its address |
+| `chat-source-quote` | the passage it quotes |
+| `chat-refusal` | a refusal the model gave |
+| `chat-refusal-title` | its label |
+| `chat-usage` | the tokens a reply cost |
+| `chat-turn-note` | how a reply ended when it did not simply stop |
+| `chat-continue` | the button asking the assistant to go on after it reached its step limit |
+| `chat-pending` | shown while a reply is awaited and nothing has arrived |
+| `chat-reconnecting` | shown while the stream of events is being reopened, and when it could not be |
+| `chat-retry` | the button repeating a request that failed, or reopening a stream that could not be |
+| `chat-announcer` | a status region announcing that a reply began and that it is complete; visually hidden |
+| `chat-composer` | the form a message is written in; `data-actions` is `inside` while the buttons sit in the message box's frame, `outside` while they sit in a row under it |
+| `chat-starters` | the prompts offered on an empty conversation |
+| `chat-starter` | one of them, a button sending it |
+| `chat-attachments` | the files attached to the message |
+| `chat-attachment-item` | one of them; `data-status` is `uploading` or `failed` |
+| `chat-attachment-thumbnail` | a picture's small square crop, drawn from the file itself as soon as it is attached; pressing it opens the `media-viewer` over the pictures of that box |
+| `chat-attachment-name` | its file name |
+| `chat-attachment-progress` | its upload progress, a `progressbar` |
+| `chat-attachment-problem` | why it failed, or why a file was not attached |
+| `chat-attachment-refusals` | the files refused before any upload |
+| `chat-attachment-remove` | the button removing it |
+| `chat-placeholder` | the node's placeholder, shown over the empty message box |
+| `chat-input` | the wrapper of the message box, a `textarea` part inside; the frame around the box and its buttons while they sit inside |
+| `chat-hint` | how the message box sends |
+| `chat-composer-actions` | the row of attach and send, after the box in `chat-input` or after `chat-hint` in `chat-composer` |
+| `chat-attach` | the button choosing files to attach; drawn only where the endpoint takes attachments |
+| `chat-send` | the button sending the message |
+| `chat-stop` | the button stopping the reply, in place of send while one is written; drawn only where the endpoint can cancel |
+| `chat-drop` | covers the message box while files are dragged over it |
+
+A message's `data-role` is `user` or `assistant`.
+
+### Split view
+
+A [`Ui.SplitView`](../../ui/docs/split-view.md): an aside beside its content.
+The aside is drawn once and moves between the page and the compact surface, so
+it is the same element in each.
+
+A `flush` split view is one panel: `split` draws the border and the radius round
+both halves, `split-aside` is separated from the content by one divider, only
+tints the same surface and rounds its two outer corners itself (it is not
+clipped, so the toggle's focus ring is never cut), while `split-content` rounds
+its own outer corners to the split's radius less its border and clips with
+`overflow: clip` (no scroll container, so a sticky descendant keeps working),
+so content with a square background never paints over the split's border. The renderer marks the direct node of
+the content (and of the open aside, beside the content) with `data-embedded`,
+and a part that draws a frame of its own — `chat`, `list-layout`, `table-frame`,
+`tree-layout`, `calendar-grid`; a listing hands the mark to its layout — drops
+its outer border, radius and background while marked, so a frame is never drawn
+inside the split's — except a `Ui.ComponentLayout`'s component, which the
+[layout contract](layouts-abi.md#the-built-in-layouts) gives no mark, so it
+draws no frame of its own when meant for a flush split. A `framed` split is two panels with a gap, and nothing is
+marked.
+
+**Folding leaves a rail.** Beside the content, a folded aside is not removed: it
+collapses to a rail (`data-state="rail"` on `split-aside`, where `split` says `collapsed`) that holds only
+`split-bar` — the toggle — and under it `split-actions`, the entries stacked as glyphs. The bar is the same in
+the rail as open, so the toggle stays where it was and the content only
+widens. The rail is as wide as the bar's toggle
+plus the bar's padding, keeps the aside's divider and border (on the same side,
+mirrored for an aside at the end edge), and draws the aside's other children
+nowhere. This holds for `framed` too, where the rail is a narrow panel. Below
+the breakpoint the same rail stays (a `split-aside` with `data-state="rail"`, a
+plain element rather than a landmark, `split` saying `compact`) and its toggle opens the
+compact surface, whose aside is `data-state="compact"` with no bar; `split-content` never holds a toggle.
+
+**Bars line up.** Every bar-shaped part — `bar`, `chat-header`, `split-bar` —
+takes its height from one custom property the theme defines,
+`--ui-react-bar-height`, so bars side by side have their bottom lines on one
+row: a chat's default header beside a split view's aside ends where the aside's
+bar does. A theme defines it once and a bar part it styles uses it as its
+`min-height`, counting its bottom border in it (`box-sizing: border-box`), and
+gives a `bar` inside `chat-header` none of its own, the header being the bar.
+
+| Part | Is |
+| --- | --- |
+| `split` | the node's root; `data-frame` is how the aside is set against the content: `framed` two panels with a gap, `flush` one panel round both halves with one divider between them, `data-side` is the aside's side, `data-state` is `open` with the aside beside the content, `collapsed` with it folded to a rail, `compact` with it in the compact surface |
+| `split-aside` | the `<aside>` landmark named by the split view's `label`, with `data-side`, `data-size` and `data-frame`; `data-state` is `open` beside the content, `rail` folded to a rail, `compact` in the compact surface |
+| `split-bar` | the aside's top bar holding the toggle alone, the same open and as a rail — drawn while the aside is open or a rail and can fold; it is the height of every bar (`--ui-react-bar-height`) |
+| `split-actions` | the aside's `actions` entries (button links) drawn under `split-bar` — a wrapping row while open, a column in the rail, where each entry is a glyph alone — drawn when there is at least one |
+| `split-content` | what the aside sits beside |
+| `split-toggle` | the button folding the aside away and showing it, drawn as its display says (a glyph alone is named by `aria-label`; a look mirrors its panel glyph for an aside at the end edge or in a right-to-left page), `aria-expanded` and `aria-controls`: in `split-bar` at the top of `split-aside`, open or a rail, when it can fold; below the breakpoint it is in the rail's `split-bar` and opens the compact surface, on the split view's side, and opens the compact surface |
 
 ### Navigation
 
@@ -246,10 +480,11 @@ the [layout contract](layouts-abi.md) draws for a record.
 | `listing-empty` | where the records would be when the reads answer none: the listing's `empty` node |
 | `listing-loading` | where the records would be until the first page arrives |
 | `load-more` | the button reading the next page: under `paging: more` and `scroll`, and in a board's column and a tree's level whatever the paging; at the end of what it reads, focusable, and under `scroll` pressed by itself when it comes into view; `aria-busy` while a page is read |
-| `row-actions` | what holds a record's buttons |
+| `row-actions` | what holds a record's buttons, or its menu button; `data-display` is `inline` with each action a button, `menu` with them folded into one |
 | `row-action` | one operation a record offers, a button showing its label; before edit and delete |
 | `row-edit` | a record's edit button, an icon |
 | `row-delete` | a record's delete button, an icon |
+| `row-menu` | the button opening a record's actions as a menu, an icon named by the text `rowActionsMenu`; the menu is a `menu` with a `menu-item` per action, edit and delete, one whose condition does not hold carrying `aria-disabled` |
 | `pager` | the paging controls |
 | `pager-status` | the range of records shown and the total |
 | `pager-prev` | the previous-page button, an icon, under `paging: pages` |
@@ -296,7 +531,7 @@ the table layout alone, so `data-state` is on `listing`, and the reserved
 
 | Part | Is |
 | --- | --- |
-| `list-layout` | the records one under another: a `list` |
+| `list-layout` | the records one under another: a `list`, `data-frame` its frame |
 | `list-item` | one record: its content, its buttons, its inline form |
 
 Under `paging: more` and `scroll` the records are drawn a page at a time while
@@ -552,6 +787,24 @@ Where each sits:
 - `page` is in the `page`, where its content was; the content is not drawn
   until the surface closes.
 
+### Media viewer
+
+The full-screen viewer a picture opens, drawn in a `dialog` surface (`data-surface="dialog"`, `data-size="full"`) with the `surface-header`, `surface-title` and `surface-close` parts. It steps through every picture of the conversation loaded so far — or the pictures attached to one message box — and starts each one fitted. The renderer animates nothing in it, so reduced motion needs no rule.
+
+| Part | Is |
+| --- | --- |
+| `media-viewer` | what the surface holds under its title: the stage and the toolbar |
+| `media-viewer-stage` | the clipped area the picture is zoomed and panned in; a wheel, pinch, drag, swipe or double click acts on it |
+| `media-viewer-image` | the picture, named by its file name; its zoom and offset are set inline |
+| `media-viewer-toolbar` | the row of controls under the stage |
+| `media-viewer-previous` | shows the previous picture, wrapping to the last; drawn only over more than one picture |
+| `media-viewer-position` | `1 of 3`, a `status`; drawn only over more than one picture |
+| `media-viewer-next` | shows the next picture, wrapping to the first; drawn only over more than one picture |
+| `media-viewer-zoom-out` | zooms out about the stage's centre |
+| `media-viewer-zoom-reset` | returns the picture to its fitted size |
+| `media-viewer-zoom-in` | zooms in about the stage's centre |
+| `media-viewer-download` | a link to the original, naming its file |
+
 ### Shared
 
 | Part | Is |
@@ -581,23 +834,36 @@ listed.
 
 | Attribute | Values | On |
 | --- | --- | --- |
-| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `listing`, `form`, `filters`, `component`, `action`, `row-action` |
+| `data-state="…"` | `idle`, `loading`, `error`, `empty`, `submitting` | `page`, `data`, `listing`, `form`, `filters`, `component`, `action`, `row-action`, `markdown`, `chat` |
 | `data-invalid="…"` | `true`, while what it holds is refused; the control inside carries its own | `field`, `picker` |
 | `data-dirty="…"` | `true`, while it holds input that is not saved | `form` |
 | `data-compact="…"` | `true`, while the viewport is below the application's `compactBelow` | `app` |
 | `data-surface="…"` | `dialog`, `drawer`, `popover`, `inline`, `panel`, `page`, `confirmation` | `surface` |
-| `data-side="…"` | `start`, `end`, `top`, `bottom`: the edge a drawer or a panel sits at, the side of its control a popover opens on; `start` or `end` for the side of its content a filter bar's controls sit at, under `data-placement="aside"` only; `start` or `end` for the side of the page a sidebar sits at | `surface`, `filters`, `sidebar` |
+| `data-side="…"` | `start`, `end`, `top`, `bottom`: the edge a drawer or a panel sits at, the side of its control a popover opens on; `start` or `end` for the side of its content a filter bar's controls sit at, under `data-placement="aside"` only; `start` or `end` for the side of the page a sidebar sits at; `start` or `end` for the side of its content a split view's aside sits at | `surface`, `filters`, `sidebar`, `split`, `split-aside` |
 | `data-placement="…"` | `above`, `aside`, `collapsible`, `overlay`: where the bar's controls sit now — its compact placement's below the application's `compactBelow` | `filters` |
 | `data-active="…"` | `true`, while one of its filters holds a value | `filter`, `filter-chip` |
 | `data-pending="…"` | `true`, while what was entered in a control is not yet applied: typed text not committed, a pause under `apply: typing`, a control changed before Apply under `apply: button` | `filters` |
-| `data-size="…"` | `small`, `medium`, `large`, `full` — a dialog's, a drawer's or a panel's; `small`, `medium` or `large` — how wide a card layout's cards are | `surface`, `cards-layout` |
-| `data-align="…"` | `start`, `center`, `end` — a popover's, along its side | `surface` |
+| `data-size="…"` | `small`, `medium`, `large`, `full` — a dialog's, a drawer's or a panel's; `small`, `medium` or `large` — how wide a card layout's cards are, or a split view's aside | `surface`, `cards-layout`, `split-aside` |
+| `data-frame="…"` | `framed`, `flush`: a split view's aside, or a list layout, drawn as a bordered panel of its own spaced from its neighbours, or with no frame and no gap, set against its neighbour by a divider | `split`, `split-aside`, `list-layout` |
+| `data-display="…"` | `inline`, `menu`: a record's actions drawn as buttons, or folded into one menu button | `row-actions` |
+| `data-embedded="…"` | `true`, on a part that draws a frame of its own (an outer border, radius and background) while it is the direct content of a flush split view's aside or content — a listing's layout counting as its listing — so it draws none, the split's frame being the one panel | `chat`, `list-layout`, `table-frame`, `tree-layout`, `calendar-grid` |
+| `data-button="…"` | `text`, `icon`: a `link` node drawn as a button, by its text or by a glyph, absent on a link drawn inline; how a `command` is drawn | `link`, `command` |
+| `data-command="…"` | `chat.exportTranscript`, `chat.copyTranscript`, `chat.stop`, `chat.newConversation`: the command a `command` part runs, so a look can choose its glyph | `command` |
+| `data-fill="…"` | `true`, while the part [fills](#filling) the room it is in | `app`, `main`, `page`, `box`, `stack`, `columns`, `text`, `badge`, `link`, `image`, `svg`, `value`, `list`, `bar`, `command`, `data`, `listing`, `form`, `action`, `filters`, `component`, `chat`, `split`, `split-aside`, `split-content`, `markdown`, `navigation`, `tabs`, `tab-panel` |
+| `data-record="…"` | `true`: a link drawn from a record's own content — a layout's content, a column's or value's `href` — and never from a relation's label, an action's answer or a form; absent otherwise | `link` |
+| `data-selected="…"` | `true`, while a link the record draws leads to where the viewer is: the current location, with the same address and query; absent otherwise | `table-row`, `list-item`, `card`, `board-card`, `calendar-event`, `timeline-bar`, `tree-item` |
+| `data-align="…"` | `start`, `center`, `end` — a popover's, along its side; a table column's alignment | `surface`, `markdown-table-header-cell`, `markdown-table-cell` |
 | `data-modal="…"` | `true`, `false` — a dialog's or a drawer's | `surface` |
 | `data-sorted="…"` | `asc`, `desc` | `table-header-cell`, `listing-sort-option` |
 | `data-width="…"` | `contained`, `full`: on `page`, how wide the page's content is drawn, as its page document says — the page's own `width`, else the application's `pageWidth` — the last page's while the next loads, absent on a path no page declares; on `header`, how wide its content is drawn — the application's `header.width`, else its `pageWidth` — the same on every page | `header`, `page` |
+| `data-actions="…"` | `inside`, `outside`: where the composer's buttons sit | `chat-composer` |
+| `data-role="…"` | `user`, `assistant`: who wrote a message | `chat-message` |
+| `data-status="…"` | `running`, `done`, `failed` — a tool call's; `pending`, `approved`, `rejected` — an approval's; `uploading`, `failed` — an attached file's | `chat-tool`, `chat-approval`, `chat-attachment-item` |
+| `data-level="…"` | `1` to `6`: a heading's depth | `markdown-heading` |
+| `data-token="…"` | `comment`, `string`, `number`, `keyword`, `constant`, `function`, `type`, `operator`, `punctuation`, `property`, `variable`, `inserted`, `deleted` — what a highlighted run of code is | `markdown-token` |
 | `data-style="…"` | the node's or the rule's style names, space-separated | wherever a style applies |
 
-Three parts of the renderer's own carry `data-state` with values of their own,
+Six parts of the renderer's own carry `data-state` with values of their own,
 and every control carries the states the [controls
 contract](controls-abi.md#states) lists for it — `open` / `closed` on a list
 or an overlay, `on` / `off` on an option, `checked` / `unchecked` on a
@@ -606,13 +872,29 @@ always select a state together with its part — `[data-state="error"]` alone
 is safe, `[data-state="closed"]` alone matches a closed choice control and a
 folded filter bar alike.
 
+**The current location** is marked on the links the renderer draws, not by a
+part of its own: every link to an address under the application's mount —
+`link`, `picker-chosen`, `nav-item`, a `menu` node's items, a value or a column
+shown as a link, a related record's label — carries `aria-current="page"` while
+it leads to where the viewer is. Select `[data-telo-part="link"][aria-current="page"]`
+for one, and `[data-selected]` on a record part for a record that draws such a
+link. An address leads to where the viewer is when its path equals the current
+path exactly (the fragment is ignored) and its query equals the current query
+with every `_telo*` parameter set aside: key order is free, each key's values
+are compared in order, and an absent key is absent. A parameter the application
+did not write, such as a page number a link does not carry, therefore unmarks
+the link. A link to an `https:`, `http:` or `mailto:` address is never
+current, and a navigation `page` entry stays current by its path alone.
+
 | Values | On |
 | --- | --- |
-| `open`, `closed` | `filters-bar`, `filter-chip`, `sidebar` |
+| `open`, `closed` | `filters-bar`, `filter-chip`, `sidebar`, `chat-reasoning` |
+| `open`, `collapsed`, `compact` | `split` |
+| `open`, `rail`, `compact` | `split-aside` |
 
 `filters-bar` carries `open` / `closed` only in a collapsible bar, a
 `filter-chip` is `open` while its popover is, and a `sidebar` is `closed`
-while it is collapsed to its rail. The element a control opens
+while it is collapsed to its rail; a `chat-reasoning` is `open` while its body is shown. The element a control opens
 from — `filters-add`, an icon button — carries no state of the control's: its
 list's is on `menu`, its tooltip's on `tooltip`.
 

@@ -37,11 +37,16 @@ stylesheets and its sets' stylesheets against what was drawn:
 3. **No reserved property is set.** A rule matching a part that declares one
    of the part's [reserved properties](../../ui-react/docs/styling.md#reserved-properties)
    — directly, through a shorthand (`inset`, `overflow`, `grid`, `grid-area`,
-   `padding`, `background`, `mask`, `all`), through its logical name
-   (`inset-block-end`, `min-block-size`, `max-inline-size`,
-   `padding-inline-start`), through a physical longhand (`padding-left`,
-   `grid-column-start`) or through its prefixed one (`-webkit-mask-image`) —
-   is `property-reserved`.
+   `padding`, `margin`, `margin-block`, `background`, `mask`, `flex`,
+   `flex-flow`, `place-items`, `all`), through its logical name
+   (`inset-block-end`, `block-size`, `min-block-size`, `max-inline-size`,
+   `padding-inline-start`, `margin-block-start`), through a
+   physical longhand (`padding-left`, `grid-column-start`) or through its
+   prefixed one (`-webkit-mask-image`) — is `property-reserved`. A reservation
+   qualified by a state (`data-fill="true"`) counts a rule only where, in some
+   snapshot, it matched a part carrying that state — the named part, or any
+   part when the reservation names none — so a rule written
+   `:not([data-fill="true"])` keeps the property at rest.
 4. **Every design token has a default.** Each name of the closed token set —
    read from `ui`'s `@telorun/ui` code entry (`DESIGN_TOKENS`) — is given a
    value by the theme's own `tokens`, or its custom property (spelled by
@@ -94,7 +99,7 @@ not load, or lacks a control it implements, is `controls-load-failed`.
 | --- | --- | --- |
 | `part-unstyled` | the part | no rule of the theme styles it, and `unstyled` does not list it |
 | `unstyled-stale` | the part | `unstyled` lists a part the theme styles, or no part at all |
-| `property-reserved` | `<part>: <property>` | a rule matching the part sets a property the renderer's layout depends on |
+| `property-reserved` | `<part>: <property>`, `<part>[<state>]: <property>`, or `[<state>]: <property>` for a reservation naming no part | a rule matching the part — while it carries the state, when one is named — sets a property the renderer's layout depends on |
 | `token-default-missing` | the token's dotted name | neither the theme's `tokens` nor a `:root` rule of its stylesheets gives the token a value |
 | `token-unread` | the token's dotted name | no `var()` of the theme's stylesheets reads the token |
 | `stylesheet-unparseable` | the stylesheet's absolute path | it does not parse, or one of its selectors cannot be matched |
@@ -118,7 +123,7 @@ the built entries it loads in a directory of its own, removed when it is done:
 - the renderer, beside generated packages supplying `react`,
   `react/jsx-runtime`, `react-dom` and `react-dom/client`;
 - each set's entry, beside generated packages supplying exactly what
-  `ui_react_controls-2` supplies — `react`, `react/jsx-runtime`, `react-dom` —
+  `ui_react_controls-3` supplies — `react`, `react/jsx-runtime`, `react-dom` —
   so an entry reaching anything else, `@telorun/ui-react` included, does not
   load.
 

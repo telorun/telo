@@ -1,9 +1,10 @@
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { styleAttribute } from "./bindings.js";
+import { useContext, useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { fillAttribute, styleAttribute } from "./bindings.js";
 import { useHost, useHostStore, type HostLocation, type UnsavedGuard } from "./host.js";
 import { ErrorNode, type SpecNode } from "./nodes.js";
 import { useRecordEntry, type EntrySpec } from "./record-entry.js";
 import { Fields, refusalOf, sameValues, type EnteredValues } from "./record-fields.js";
+import { RendererContext } from "./renderer-context.js";
 import { useSay } from "./texts.js";
 import { networkError, responseError, type ErrorSpec, errorSpec } from "./ui-error.js";
 
@@ -44,6 +45,7 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
   const host = useHost();
   const store = useHostStore();
   const say = useSay();
+  const { prefix } = useContext(RendererContext);
   const id = useId();
   const spec = node as unknown as EntrySpec;
   const { schema, fields } = spec;
@@ -123,6 +125,8 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
     release();
     if (answered !== null && typeof answered === "object" && !Array.isArray(answered)) store.written(node.basePath, answered as Record<string, unknown>);
     host.notifyChanged(node.basePath);
+    // A write to one record is a change to the record's own address too.
+    if (target.method === "PUT") host.notifyChanged(target.url.startsWith(prefix) ? target.url.slice(prefix.length) : target.url);
     onSaved?.();
     if (afterSubmit === "close") return onDone?.();
     const next = afterSubmit === "keep" ? values : entry.restarted();
@@ -131,7 +135,7 @@ export function Form({ node, target, initial, afterSubmit = "again", shownAt, on
   };
 
   return (
-    <form data-telo-part="form" autoComplete="off" data-state={state} data-dirty={dirty ? "true" : undefined} data-style={styleAttribute(node.style)} noValidate onSubmit={submit}>
+    <form data-telo-part="form" autoComplete="off" data-state={state} data-dirty={dirty ? "true" : undefined} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)} noValidate onSubmit={submit}>
       {failure && <ErrorNode error={failure} />}
       <Fields id={id} schema={schema} fields={shown} groups={spec.groups} values={values} roots={entry.roots} errors={entry.errors} onChange={entry.change} />
       {entry.formError && (

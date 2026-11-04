@@ -74,12 +74,15 @@ export function LoadedComponent({
   name,
   stylesheets,
   style,
+  fill = false,
   props,
 }: {
   module: { digest: string; name: string };
   name: string;
   stylesheets: { digest: string; name: string }[];
   style?: string;
+  /** Whether the component is a node filling the room it is in. */
+  fill?: boolean;
   props: Record<string, unknown>;
 }) {
   const environment = useContext(RendererContext);
@@ -89,7 +92,7 @@ export function LoadedComponent({
   const sheets = stylesheets.map((sheet) => assetUrl(environment, sheet));
   useEffect(() => sheets.forEach(attachStylesheet), [sheets.join("\n")]);
   return (
-    <div data-telo-part="component" data-state={state} data-style={style}>
+    <div data-telo-part="component" data-state={state} data-fill={fill ? "true" : undefined} data-style={style}>
       <Boundary key={`${url}#${name}`} onError={() => setState("error")}>
         <Suspense fallback={<Loading />}>
           <Loaded {...props} />
@@ -110,5 +113,5 @@ export function ComponentNode({ node }: { node: SpecNode }) {
   for (const [name, binding] of Object.entries(node.props as Record<string, Binding>)) {
     props[name] = resolveBinding(binding, { row });
   }
-  return <LoadedComponent module={node.module} name={node.export} stylesheets={node.stylesheets} style={styleAttribute(node.style)} props={props} />;
+  return <LoadedComponent module={node.module} name={node.export} stylesheets={node.stylesheets} style={styleAttribute(node.style)} fill={node.fill === true} props={props} />;
 }

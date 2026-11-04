@@ -1,0 +1,142 @@
+kind: Telo.Application
+metadata:
+  name: ChatExampleTest
+  version: 1.0.0
+  description: >-
+    Runs `examples/chat` against a stand-in for Anthropic's API, reached through
+    the example's `ANTHROPIC_BASE_URL`: the page is a split view holding a
+    listing of conversations beside the chat that follows the page's address,
+    the chat offers the uploads the model accepts with each type's tighter bound,
+    a sent message is answered part by part over the event stream and stored as a
+    transcript, and the conversation is listed as the collection contract asks. The stand-in checks the key the example's client sends.
+imports:
+  App: ../../../modules/app
+  Server: ../../../modules/http-server
+  HttpClient: ../../../modules/http-client
+  Assert: ../../../modules/assert
+variables:
+  # The DIRECTORY each run's state goes in, anchored at the working directory;
+  # a run keeps its own subdirectory, since a chat's database outlives the test.
+  stateRoot:
+    env: CHAT_EXAMPLE_TEST_DIR
+    type: string
+    x-telo-type: { name: Telo.HostPath, entry: directory }
+    default: ./.telo
+targets: [!ref test]
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Api
+    metadata: { name: anthropic }
+    routes:
+      - request:
+          method: POST
+          path: /messages
+          schema:
+            headers:
+              type: object
+              required: [x-api-key]
+              properties: { x-api-key: { type: string, const: test-key } }
+            body: { type: object, additionalProperties: true }
+        handler: { kind: Telo.Sequence, steps: [] }
+        returns:
+          - status: 200
+            content:
+              text/event-stream:
+                schema: { type: string }
+                body: |
+                  event: message_start
+                  data: {"type":"message_start","message":{"type":"message","role":"assistant","content":[],"usage":{"input_tokens":7,"output_tokens":1}}}
+
+                  event: content_block_start
+                  data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"po"}}
+
+                  event: content_block_delta
+                  data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"ng"}}
+
+                  event: content_block_stop
+                  data: {"type":"content_block_stop","index":0}
+
+                  event: message_delta
+                  data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":3}}
+
+                  event: message_stop
+                  data: {"type":"message_stop"}
+  - kind: Server.Server
+    metadata: { name: stub }
+    listen: { address: 127.0.0.1, port: 8162 }
+    mounts:
+      - { path: /v1, mount: !ref anthropic }
+  - kind: App.Instance
+    metadata: { name: chat }
+    source: ../telo.yaml
+    variables:
+      stateDir: !cel "variables.stateRoot.joinPath('chat-' + uuidv4())"
+      anthropicUrl: http://127.0.0.1:8162/v1
+    secrets: { anthropicApiKey: test-key }
+    ports: { http: 8161 }
+targets: [!ref stub, !ref chat]
+steps:
+  - name: page
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8161/_telo/ui/page?path=/" }
+  - name: started
+    invoke: { kind: HttpClient.Request, method: POST, url: "http://127.0.0.1:8161/api/chat/turns" }
+    inputs:
+      headers: { content-type: application/json }
+      body: { message: ping, attachments: [] }
+  - name: events
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "http://127.0.0.1:8161/api/chat/turns/${{ steps.started.result.body.turn }}/events"
+      responseType: text
+  - name: entries
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "http://127.0.0.1:8161/api/chat/conversations/${{ steps.started.result.body.conversation }}/entries" }
+  - name: conversations
+    invoke: { kind: HttpClient.Request, url: "http://127.0.0.1:8161/api/chat/conversations?archived=false&sort=-updatedAt&limit=25" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        split: !cel "{'type': steps.page.result.body.children[0].type, 'side': steps.page.result.body.children[0].side, 'size': steps.page.result.body.children[0].size, 'aside': steps.page.result.body.children[0].aside.content.type, 'content': steps.page.result.body.children[0].content.type}"
+        newConversation: !cel "steps.page.result.body.children[0].aside.actions[0].href"
+        listing: !cel "steps.page.result.body.children[0].aside.content.basePath"
+        listingRow: !cel "steps.page.result.body.children[0].aside.content.layout.content.children[0].href"
+        listingBadge: !cel "steps.page.result.body.children[0].aside.content.layout.content.children[2].type"
+        chat: !cel "{'conversation': steps.page.result.body.children[0].content.conversation, 'refreshes': steps.page.result.body.children[0].content.refreshes}"
+        offer: !cel "steps.page.result.body.children[0].content.spec"
+        basePath: !cel "steps.page.result.body.children[0].content.basePath"
+        answeredInParts: !cel "steps.events.result.body.contains('\"text\":\"po\"') && steps.events.result.body.contains('\"text\":\"ng\"')"
+        ended: !cel "steps.events.result.body.contains('\"reason\":\"stop\"')"
+        transcript: !cel "steps.entries.result.body.rows.map(r, {'role': r.role, 'parts': r.parts})"
+        listed: !cel "steps.conversations.result.body.total"
+      expected:
+        split: { type: split, side: start, size: small, aside: listing, content: chat }
+        newConversation: { path: { value: / }, pathParams: {}, queryParams: {} }
+        listing: /api/chat/conversations
+        listingRow:
+          path: { value: / }
+          pathParams: {}
+          queryParams: { conversation: { root: row, path: [id] } }
+        listingBadge: badge
+        chat:
+          conversation: { parameter: conversation }
+          refreshes: [{ path: { value: /api/chat/conversations }, pathParams: {}, queryParams: {} }]
+        offer:
+          attachments:
+            accepts:
+              - { type: image, mediaTypes: [image/png, image/jpeg, image/gif, image/webp], maxBytes: 5242880 }
+              - { type: file, mediaTypes: [application/pdf], maxBytes: 10485760 }
+            maxPerMessage: 4
+          operations: [branch, cancel]
+        basePath: /api/chat
+        answeredInParts: true
+        ended: true
+        transcript:
+          - { role: assistant, parts: [{ type: text, text: pong }] }
+          - { role: user, parts: [{ type: text, text: ping }] }
+        listed: 1

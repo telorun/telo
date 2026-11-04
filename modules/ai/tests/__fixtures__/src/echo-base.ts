@@ -8,7 +8,13 @@
  */
 import { InvokeError } from "@telorun/sdk";
 import { contentToText, isMediaPart } from "@telorun/ai";
-import type { Message, MessageContent, ModelInvokeInput, ToolCall } from "@telorun/ai";
+import type {
+  AcceptedContent,
+  Message,
+  MessageContent,
+  ModelInvokeInput,
+  ToolCall,
+} from "@telorun/ai";
 
 export interface EchoFailRule {
   message: string;
@@ -18,6 +24,8 @@ export interface EchoFailRule {
 
 export interface EchoResource {
   metadata: { name: string; module?: string };
+  /** What the fixture publishes as accepted; every type when unset, since it echoes any part. */
+  accepts?: AcceptedContent;
   suffix?: string;
   failOn?: EchoFailRule;
   /** Test-only: when `tools` are present and no tool result is in the conversation yet,
@@ -64,6 +72,13 @@ export interface EchoResource {
   };
 }
 
+const ACCEPTS_EVERYTHING: AcceptedContent = [
+  { type: "image", mediaTypes: ["image/*"] },
+  { type: "audio", mediaTypes: ["audio/*"] },
+  { type: "video", mediaTypes: ["video/*"] },
+  { type: "file", mediaTypes: ["application/*", "text/*"] },
+];
+
 export const NO_USAGE = {
   promptTokens: 0,
   completionTokens: 0,
@@ -82,7 +97,7 @@ export abstract class EchoBase {
   }
 
   snapshot(): Record<string, unknown> {
-    return { suffix: this.resource.suffix ?? "" };
+    return { suffix: this.resource.suffix ?? "", accepts: this.resource.accepts ?? ACCEPTS_EVERYTHING };
   }
 
   /** A message's text, with its media parts where they stand under `echoMedia`. */

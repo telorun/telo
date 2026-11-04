@@ -83,6 +83,7 @@ relations:
   ownerId:
     source: !ref peopleSource
     label: !cel "row.name"
+    href: { path: "/people/{id}", pathParams: { id: !cel "row.id" } }
 ---
 kind: Ui.Listing
 metadata: { name: peopleList }
@@ -107,6 +108,9 @@ model: !ref Todo
 filters: { isDone: false }
 pageSize: 10
 paging: more
+sort: { by: { property: dueOn, direction: descending }, choosable: false }
+show: { count: false }
+rowActionsDisplay: menu
 rowStyle:
   by: !cel "row.isDone"
   cases: { "true": muted }
@@ -123,6 +127,7 @@ layout:
     - value: !cel "row.dueOn"
     - header: Owner
       value: !cel "row.owner.name"
+      href: { path: "/owners/{id}", pathParams: { id: !cel "row.ownerId" } }
       style:
         by: !cel "row.owner.name"
         cases: { ada: [accent, strong] }
@@ -157,6 +162,8 @@ steps:
             'pageSize': steps.derived.result.node.pageSize,
             'paging': steps.derived.result.node.paging,
             'sort': steps.derived.result.node.sort,
+            'show': steps.derived.result.node.show,
+            'rowActionsDisplay': steps.derived.result.node.rowActionsDisplay,
             'delete': steps.derived.result.node.delete,
             'rowActions': steps.derived.result.node.rowActions,
             'relations': steps.derived.result.node.relations,
@@ -185,7 +192,9 @@ steps:
           key: id
           pageSize: 25
           paging: pages
-          sort: [text, dueOn]
+          sort: { sortable: [text, dueOn], initial: null }
+          show: { count: true }
+          rowActionsDisplay: auto
           delete: false
           rowActions: []
           relations:
@@ -194,10 +203,11 @@ steps:
               schema: { type: object, required: [id, name], properties: { id: { type: integer }, name: { type: string } } }
               value: { root: row, path: [id] }
               label: { root: row, path: [name] }
+              href: { path: { value: "/people/{id}" }, pathParams: { id: { root: row, path: [id] } }, queryParams: {} }
               basePath: /api/people
               filters: {}
               pageSize: 25
-          empty: { type: text, text: { set: Ui.Translations, key: noRows } }
+          empty: { type: text, fill: false, text: { set: Ui.Translations, key: noRows } }
           compact: false
           schemaRequired: [id, text]
           assets: []
@@ -210,6 +220,9 @@ steps:
         filters: !cel "steps.written.result.node.filters"
         pageSize: !cel "steps.written.result.node.pageSize"
         paging: !cel "steps.written.result.node.paging"
+        sort: !cel "steps.written.result.node.sort"
+        show: !cel "steps.written.result.node.show"
+        rowActionsDisplay: !cel "steps.written.result.node.rowActionsDisplay"
         rowStyle: !cel "steps.written.result.node.rowStyle"
         empty: !cel "steps.written.result.node.empty"
         create: !cel "steps.written.result.node.create.form.fields"
@@ -230,6 +243,7 @@ steps:
             labels: []
           - header: { text: Owner, context: null, lang: und, computed: false }
             value: { root: row, path: [owner, name] }
+            href: { path: { value: "/owners/{id}" }, pathParams: { id: { root: row, path: [ownerId] } }, queryParams: {} }
             present: { type: string }
             style: { by: { root: row, path: [owner, name] }, cases: { ada: [accent, strong] } }
             labels: []
@@ -246,8 +260,11 @@ steps:
         filters: { isDone: { value: false } }
         pageSize: 10
         paging: more
+        sort: { sortable: [], initial: -dueOn }
+        show: { count: false }
+        rowActionsDisplay: menu
         rowStyle: { by: { root: row, path: [isDone] }, cases: { "true": muted }, default: strong }
-        empty: { type: text, text: { text: Nothing to do, context: null, lang: und, computed: false } }
+        empty: { type: text, fill: false, text: { text: Nothing to do, context: null, lang: und, computed: false } }
         create:
           - { type: input, property: text, label: { text: Task, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }
           - { type: input, property: dueOn, label: { text: dueOn, context: null, lang: und, computed: false }, description: null, labels: [], control: auto }

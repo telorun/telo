@@ -95,6 +95,9 @@ turns what it produces into a web application.
 | [`Ui.ComponentLayout`](docs/listing-layouts.md#uicomponentlayout) | A listing drawn by a browser component of your own, over the reads it declares. |
 | [`Ui.ListingLayout`](docs/listing-layouts.md#uilistinglayout) | The contract every listing layout answers through, judging its own fit to the listing using it. |
 | [`Ui.CollectionSource`](docs/collection-source.md) | A collection as the browser reaches it: the declared collection and the URL of its list endpoint. |
+| [`Ui.ConversationSource`](docs/conversation-source.md) | A conversation endpoint as the browser reaches it: the declared conversation and the URL its routes are served under. |
+| [`Ui.Chat`](docs/chat.md) | A full AI chat on a page: streamed replies, reasoning, tool calls and approvals, attachments and branches, following a query parameter of the page so a listing of conversations beside it chooses the one shown. |
+| [`Ui.SplitView`](docs/split-view.md) | A fold-out side panel beside the main content: an aside that folds away, remembers the choice, and opens in a drawer or dialog on a narrow screen. |
 | [`Ui.CollectionPresentation`](docs/collection-presentation.md) | How screens show a collection: its source, and how each related record is read and labelled. |
 | [`Ui.Form`](docs/form.md) | A form over a data model. |
 | [`Ui.InputField`, `Ui.ChoiceField`, `Ui.PickerField`, `Ui.DateRangeField`](docs/field-kinds.md) | A form's or an action's fields: a named control, a choice or a picker over options read from an API, a date range with presets. |

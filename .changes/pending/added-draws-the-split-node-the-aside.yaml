@@ -1,0 +1,9 @@
+modules:
+  modules/ui-react: Added
+body: "Draws the split node: the aside stays mounted in every state, so a listing in it
+  keeps its page and starts no request while out of sight, and a move within the
+  application started from inside the compact surface closes it. Folded beside the
+  content, the aside collapses to a rail (data-state on split-aside) holding only its
+  bar and actions, the toggle in the same place as when open, so the content only
+  widens. Adds the parts split, split-aside, split-bar, split-actions, split-content and
+  split-toggle, and the fold kept under telo.ui:<mount>:s:<key>."

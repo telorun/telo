@@ -2,12 +2,14 @@ import { useContext, type ComponentType, type ReactNode } from "react";
 import type { LayoutGroup, LayoutLevel, LayoutProps, LayoutRecord } from "../../contract/ui-react-layouts.js";
 import { readBinding, type Binding } from "../bindings.js";
 import { LoadedComponent } from "../component.js";
+import { useHost } from "../host.js";
 import type { LayoutProps as DrawnLayout } from "../listing.js";
 import type { ListedRecord, ReadView } from "../listing-engine.js";
 import { Node, type SpecNode } from "../nodes.js";
 import { optionOf, type OptionSourceSpec } from "../option-source.js";
+import { anyCurrent, drawnAddresses } from "../record-selection.js";
 import { heldValues } from "../related-labels.js";
-import { RendererContext, RootsContext, RowContext } from "../renderer-context.js";
+import { RecordLinkContext, RendererContext, RootsContext, RowContext } from "../renderer-context.js";
 import { labelFor, useSay, useText, type WireText } from "../texts.js";
 import { BoardLayout } from "./board-layout.js";
 import { CalendarLayout } from "./calendar-layout.js";
@@ -32,7 +34,9 @@ function RecordContent({ node, row }: { node: SpecNode; row: Record<string, unkn
   return (
     <RowContext.Provider value={row}>
       <RootsContext.Provider value={{ ...roots, row }}>
-        <Node node={node} />
+        <RecordLinkContext.Provider value={true}>
+          <Node node={node} />
+        </RecordLinkContext.Provider>
       </RootsContext.Provider>
     </RowContext.Provider>
   );
@@ -46,6 +50,7 @@ const rowBound = (binding: Binding) => "root" in binding && binding.root === "ro
  */
 export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode {
   const roots = useContext(RootsContext);
+  const { location } = useHost();
   const { lang } = useContext(RendererContext);
   const say = useSay();
   const text = useText();
@@ -67,9 +72,11 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
       )
     : {
         windowed: drawing.windowed,
+        embedded: drawing.embedded,
         pageSize: node.pageSize,
         recordKey: node.key,
         ...(spec.size !== undefined ? { size: spec.size } : {}),
+        ...(spec.frame !== undefined ? { frame: spec.frame } : {}),
         ...(spec.period !== undefined ? { period: spec.period } : {}),
         ...(spec.scale !== undefined ? { scale: spec.scale } : {}),
         ...(plan.groups ? { group: plan.groups.property } : {}),
@@ -105,14 +112,15 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
       labels,
       actions:
         drawing.hasActions || failure !== null ? (
-          <div data-telo-part="row-actions">
+          <div data-telo-part="row-actions" data-display={drawing.actionsArea.display} ref={drawing.actionsArea.ref}>
             {drawing.hasActions && drawing.actions(listed)}
             {failure}
           </div>
         ) : null,
       ...(drawing.detail?.key === listed.key ? { detail: <div data-telo-part="listing-detail" ref={drawing.detail.ref} /> } : {}),
       ...(style !== undefined ? { style } : {}),
-      selected: false,
+      // A component layout draws the links itself, so none is the renderer's to judge.
+      selected: !component && anyCurrent(drawnAddresses(spec.content, { ...roots, row: listed.row }, relations), location),
       movable: drawing.movable(listed),
     };
   };
@@ -143,7 +151,7 @@ export function ContractLayout({ spec, node, drawing }: DrawnLayout): ReactNode 
       const written = labelFor(labels, value.value);
       const label = value.option?.label ?? (written !== undefined ? text(written) : value.value === null || value.value === undefined ? say("none") : String(value.value));
       const count = own.total ?? value.count;
-      return { ...own, value: value.value, label, heading: count === undefined ? label : say("valueCount", { label, count }) };
+      return { ...own, value: value.value, label, heading: count === undefined || !(node.show as { count: boolean }).count ? label : say("valueCount", { label, count }) };
     });
     top = {
       records: groups.flatMap((group) => group.records),

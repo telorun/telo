@@ -1,0 +1,378 @@
+kind: Telo.Application
+metadata:
+  name: OpenaiAccepts
+  version: 1.0.0
+  description: |
+    A model refuses a media part its own `accepts` does not list — with
+    `ERR_MODEL_CONTENT_UNSUPPORTED`, before anything is sent — and sends one it
+    does. The requests go to an address nothing listens on, so a request leaving
+    a model is `ERR_MODEL_UNREACHABLE` and a refusal is the content code: a model
+    with no `accepts` refuses an image, one listing `image/png` sends it, takes
+    nothing else and nothing over `maxBytes`, and an image in a tool result is held
+    to the same list. An entry outside what the dialect can carry at all is a
+    schema violation.
+imports:
+  OpenAI: ../
+  Http: ../../http-client
+  Stream: ../../stream
+  Assert: ../../assert
+targets:
+  - !ref ceiling
+  - !ref test
+---
+kind: Assert.Manifest
+metadata: { name: ceiling }
+source: ./__fixtures__/accepts-outside-ceiling.yaml
+expect:
+  errors:
+    - code: SCHEMA_VIOLATION
+      message: "OpenAI.ChatModel/chatAudio: /accepts/0/type must be equal to one of the allowed values (image | file)"
+    - code: SCHEMA_VIOLATION
+      message: "OpenAI.ChatModelStream/chatStreamVideo: /accepts/0/type must be equal to one of the allowed values (image | file)"
+    - code: SCHEMA_VIOLATION
+      message: "OpenAI.ResponsesModel/responsesAudio: /accepts/0/type must be equal to one of the allowed values (image | file)"
+    - code: SCHEMA_VIOLATION
+      message: 'OpenAI.ResponsesModelStream/responsesStreamImage: /accepts/0/mediaTypes/0 must match pattern "^image/[a-z0-9][a-z0-9!#$&^_.+-]*$|^image/[*]$"'
+  runFails: "Manifest validation failed"
+---
+kind: Http.Client
+metadata: { name: nobody }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: Http.Request
+metadata: { name: request }
+client: !ref nobody
+---
+kind: OpenAI.ChatModel
+metadata: { name: chatPlain }
+model: gpt-test
+request: !ref request
+
+---
+kind: OpenAI.ChatModel
+metadata: { name: chatLimited }
+model: gpt-test
+request: !ref request
+accepts:
+  - { type: image, mediaTypes: [image/png], maxBytes: 2 }
+
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: chatStreamPlain }
+model: gpt-test
+request: !ref request
+
+---
+kind: OpenAI.ChatModelStream
+metadata: { name: chatStreamLimited }
+model: gpt-test
+request: !ref request
+accepts:
+  - { type: image, mediaTypes: [image/png], maxBytes: 2 }
+
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: responsesPlain }
+model: gpt-test
+request: !ref request
+
+---
+kind: OpenAI.ResponsesModel
+metadata: { name: responsesLimited }
+model: gpt-test
+request: !ref request
+accepts:
+  - { type: image, mediaTypes: [image/png], maxBytes: 2 }
+
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: responsesStreamPlain }
+model: gpt-test
+request: !ref request
+
+---
+kind: OpenAI.ResponsesModelStream
+metadata: { name: responsesStreamLimited }
+model: gpt-test
+request: !ref request
+accepts:
+  - { type: image, mediaTypes: [image/png], maxBytes: 2 }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: chatNoAccepts
+    try:
+      - name: chatNoAcceptsCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref chatPlain
+      - name: chatNoAcceptsReached
+        throw: { code: TEST_FAILED, message: chatNoAccepts reached an answer }
+    catch:
+      - name: chatNoAcceptsSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatListed
+    try:
+      - name: chatListedCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref chatLimited
+      - name: chatListedReached
+        throw: { code: TEST_FAILED, message: chatListed reached an answer }
+    catch:
+      - name: chatListedSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatWrongType
+    try:
+      - name: chatWrongTypeCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/jpeg, data: aGk= }] }] }
+        invoke: !ref chatLimited
+      - name: chatWrongTypeReached
+        throw: { code: TEST_FAILED, message: chatWrongType reached an answer }
+    catch:
+      - name: chatWrongTypeSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatTooBig
+    try:
+      - name: chatTooBigCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGVsbG8= }] }] }
+        invoke: !ref chatLimited
+      - name: chatTooBigReached
+        throw: { code: TEST_FAILED, message: chatTooBig reached an answer }
+    catch:
+      - name: chatTooBigSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatToolResult
+    try:
+      - name: chatToolResultCall
+        inputs: { messages: [{ role: user, content: hi }, { role: assistant, content: '', toolCalls: [{ id: c1, name: t, arguments: {} }] }, { role: tool, toolCallId: c1, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref chatPlain
+      - name: chatToolResultReached
+        throw: { code: TEST_FAILED, message: chatToolResult reached an answer }
+    catch:
+      - name: chatToolResultSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatStreamNoAccepts
+    try:
+      - name: chatStreamNoAcceptsCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref chatStreamPlain
+      - name: chatStreamNoAcceptsDrain
+        inputs: { input: !cel "steps.chatStreamNoAcceptsCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: chatStreamNoAcceptsReached
+        throw: { code: TEST_FAILED, message: chatStreamNoAccepts reached an answer }
+    catch:
+      - name: chatStreamNoAcceptsSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatStreamListed
+    try:
+      - name: chatStreamListedCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref chatStreamLimited
+      - name: chatStreamListedDrain
+        inputs: { input: !cel "steps.chatStreamListedCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: chatStreamListedReached
+        throw: { code: TEST_FAILED, message: chatStreamListed reached an answer }
+    catch:
+      - name: chatStreamListedSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatStreamWrongType
+    try:
+      - name: chatStreamWrongTypeCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/jpeg, data: aGk= }] }] }
+        invoke: !ref chatStreamLimited
+      - name: chatStreamWrongTypeDrain
+        inputs: { input: !cel "steps.chatStreamWrongTypeCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: chatStreamWrongTypeReached
+        throw: { code: TEST_FAILED, message: chatStreamWrongType reached an answer }
+    catch:
+      - name: chatStreamWrongTypeSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatStreamTooBig
+    try:
+      - name: chatStreamTooBigCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGVsbG8= }] }] }
+        invoke: !ref chatStreamLimited
+      - name: chatStreamTooBigDrain
+        inputs: { input: !cel "steps.chatStreamTooBigCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: chatStreamTooBigReached
+        throw: { code: TEST_FAILED, message: chatStreamTooBig reached an answer }
+    catch:
+      - name: chatStreamTooBigSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: chatStreamToolResult
+    try:
+      - name: chatStreamToolResultCall
+        inputs: { messages: [{ role: user, content: hi }, { role: assistant, content: '', toolCalls: [{ id: c1, name: t, arguments: {} }] }, { role: tool, toolCallId: c1, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref chatStreamPlain
+      - name: chatStreamToolResultDrain
+        inputs: { input: !cel "steps.chatStreamToolResultCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: chatStreamToolResultReached
+        throw: { code: TEST_FAILED, message: chatStreamToolResult reached an answer }
+    catch:
+      - name: chatStreamToolResultSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesNoAccepts
+    try:
+      - name: responsesNoAcceptsCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref responsesPlain
+      - name: responsesNoAcceptsReached
+        throw: { code: TEST_FAILED, message: responsesNoAccepts reached an answer }
+    catch:
+      - name: responsesNoAcceptsSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesListed
+    try:
+      - name: responsesListedCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref responsesLimited
+      - name: responsesListedReached
+        throw: { code: TEST_FAILED, message: responsesListed reached an answer }
+    catch:
+      - name: responsesListedSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesWrongType
+    try:
+      - name: responsesWrongTypeCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/jpeg, data: aGk= }] }] }
+        invoke: !ref responsesLimited
+      - name: responsesWrongTypeReached
+        throw: { code: TEST_FAILED, message: responsesWrongType reached an answer }
+    catch:
+      - name: responsesWrongTypeSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesTooBig
+    try:
+      - name: responsesTooBigCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGVsbG8= }] }] }
+        invoke: !ref responsesLimited
+      - name: responsesTooBigReached
+        throw: { code: TEST_FAILED, message: responsesTooBig reached an answer }
+    catch:
+      - name: responsesTooBigSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesToolResult
+    try:
+      - name: responsesToolResultCall
+        inputs: { messages: [{ role: user, content: hi }, { role: assistant, content: '', toolCalls: [{ id: c1, name: t, arguments: {} }] }, { role: tool, toolCallId: c1, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref responsesPlain
+      - name: responsesToolResultReached
+        throw: { code: TEST_FAILED, message: responsesToolResult reached an answer }
+    catch:
+      - name: responsesToolResultSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesStreamNoAccepts
+    try:
+      - name: responsesStreamNoAcceptsCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref responsesStreamPlain
+      - name: responsesStreamNoAcceptsDrain
+        inputs: { input: !cel "steps.responsesStreamNoAcceptsCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: responsesStreamNoAcceptsReached
+        throw: { code: TEST_FAILED, message: responsesStreamNoAccepts reached an answer }
+    catch:
+      - name: responsesStreamNoAcceptsSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesStreamListed
+    try:
+      - name: responsesStreamListedCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref responsesStreamLimited
+      - name: responsesStreamListedDrain
+        inputs: { input: !cel "steps.responsesStreamListedCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: responsesStreamListedReached
+        throw: { code: TEST_FAILED, message: responsesStreamListed reached an answer }
+    catch:
+      - name: responsesStreamListedSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesStreamWrongType
+    try:
+      - name: responsesStreamWrongTypeCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/jpeg, data: aGk= }] }] }
+        invoke: !ref responsesStreamLimited
+      - name: responsesStreamWrongTypeDrain
+        inputs: { input: !cel "steps.responsesStreamWrongTypeCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: responsesStreamWrongTypeReached
+        throw: { code: TEST_FAILED, message: responsesStreamWrongType reached an answer }
+    catch:
+      - name: responsesStreamWrongTypeSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesStreamTooBig
+    try:
+      - name: responsesStreamTooBigCall
+        inputs: { messages: [{ role: user, content: [{ type: image, mediaType: image/png, data: aGVsbG8= }] }] }
+        invoke: !ref responsesStreamLimited
+      - name: responsesStreamTooBigDrain
+        inputs: { input: !cel "steps.responsesStreamTooBigCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: responsesStreamTooBigReached
+        throw: { code: TEST_FAILED, message: responsesStreamTooBig reached an answer }
+    catch:
+      - name: responsesStreamTooBigSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: responsesStreamToolResult
+    try:
+      - name: responsesStreamToolResultCall
+        inputs: { messages: [{ role: user, content: hi }, { role: assistant, content: '', toolCalls: [{ id: c1, name: t, arguments: {} }] }, { role: tool, toolCallId: c1, content: [{ type: image, mediaType: image/png, data: aGk= }] }] }
+        invoke: !ref responsesStreamPlain
+      - name: responsesStreamToolResultDrain
+        inputs: { input: !cel "steps.responsesStreamToolResultCall.result.output" }
+        invoke: { kind: Stream.Collect }
+      - name: responsesStreamToolResultReached
+        throw: { code: TEST_FAILED, message: responsesStreamToolResult reached an answer }
+    catch:
+      - name: responsesStreamToolResultSeen
+        value: !cel "error.code + ':' + (has(error.data.mediaType) ? error.data.mediaType : '-')"
+  - name: assertAccepts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        chatNoAccepts: !cel "steps.chatNoAcceptsSeen.result"
+        chatListed: !cel "steps.chatListedSeen.result"
+        chatWrongType: !cel "steps.chatWrongTypeSeen.result"
+        chatTooBig: !cel "steps.chatTooBigSeen.result"
+        chatToolResult: !cel "steps.chatToolResultSeen.result"
+        chatStreamNoAccepts: !cel "steps.chatStreamNoAcceptsSeen.result"
+        chatStreamListed: !cel "steps.chatStreamListedSeen.result"
+        chatStreamWrongType: !cel "steps.chatStreamWrongTypeSeen.result"
+        chatStreamTooBig: !cel "steps.chatStreamTooBigSeen.result"
+        chatStreamToolResult: !cel "steps.chatStreamToolResultSeen.result"
+        responsesNoAccepts: !cel "steps.responsesNoAcceptsSeen.result"
+        responsesListed: !cel "steps.responsesListedSeen.result"
+        responsesWrongType: !cel "steps.responsesWrongTypeSeen.result"
+        responsesTooBig: !cel "steps.responsesTooBigSeen.result"
+        responsesToolResult: !cel "steps.responsesToolResultSeen.result"
+        responsesStreamNoAccepts: !cel "steps.responsesStreamNoAcceptsSeen.result"
+        responsesStreamListed: !cel "steps.responsesStreamListedSeen.result"
+        responsesStreamWrongType: !cel "steps.responsesStreamWrongTypeSeen.result"
+        responsesStreamTooBig: !cel "steps.responsesStreamTooBigSeen.result"
+        responsesStreamToolResult: !cel "steps.responsesStreamToolResultSeen.result"
+      expected:
+        chatNoAccepts: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        chatListed: ERR_MODEL_UNREACHABLE:-
+        chatWrongType: ERR_MODEL_CONTENT_UNSUPPORTED:image/jpeg
+        chatTooBig: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        chatToolResult: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        chatStreamNoAccepts: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        chatStreamListed: ERR_MODEL_UNREACHABLE:-
+        chatStreamWrongType: ERR_MODEL_CONTENT_UNSUPPORTED:image/jpeg
+        chatStreamTooBig: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        chatStreamToolResult: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        responsesNoAccepts: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        responsesListed: ERR_MODEL_UNREACHABLE:-
+        responsesWrongType: ERR_MODEL_CONTENT_UNSUPPORTED:image/jpeg
+        responsesTooBig: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        responsesToolResult: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        responsesStreamNoAccepts: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        responsesStreamListed: ERR_MODEL_UNREACHABLE:-
+        responsesStreamWrongType: ERR_MODEL_CONTENT_UNSUPPORTED:image/jpeg
+        responsesStreamTooBig: ERR_MODEL_CONTENT_UNSUPPORTED:image/png
+        responsesStreamToolResult: ERR_MODEL_CONTENT_UNSUPPORTED:image/png

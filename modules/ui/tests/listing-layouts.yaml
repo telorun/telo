@@ -135,7 +135,7 @@ layout:
     action:
       kind: Ui.Action
       inputModel: !ref TaskMove
-      source: { path: /api/tasks/move }
+      request: { target: /api/tasks/move }
       label: Move
     inputs:
       id: !cel "row.id"
@@ -234,7 +234,7 @@ steps:
             'type': l.type,
             'content': l.content,
             'reads': l.reads,
-            'move': {'inputs': l.move.inputs, 'prompt': has(l.move.prompt), 'action': {'type': l.move.action.type, 'path': l.move.action.path}}
+            'move': {'inputs': l.move.inputs, 'prompt': has(l.move.prompt), 'action': {'type': l.move.action.type, 'path': l.move.action.request.target.path.value}}
           })
         compact: !cel "steps.board.result.node.compact"
         presentGroups: !cel "steps.presentBoard.result.node.layout.reads"
@@ -244,9 +244,10 @@ steps:
           type: board
           content:
             type: stack
+            fill: false
             children:
-              - { type: value, value: { root: row, path: [title] }, style: strong, present: { type: string }, labels: [] }
-              - { type: value, value: { root: row, path: [assigneeId] }, present: { type: integer }, labels: [] }
+              - { type: value, fill: false, value: { root: row, path: [title] }, style: strong, present: { type: string }, labels: [] }
+              - { type: value, fill: false, value: { root: row, path: [assigneeId] }, present: { type: integer }, labels: [] }
           reads:
             groups:
               property: status
@@ -267,15 +268,17 @@ steps:
           reads: {}
           content:
             type: stack
+            fill: false
             children:
-              - { type: value, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
+              - { type: value, fill: false, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
               - type: value
+                fill: false
                 value: { root: row, path: [status] }
                 labels:
                   - { value: open, label: { text: open, context: null, lang: und, computed: false } }
                   - { value: doing, label: { text: doing, context: null, lang: und, computed: false } }
                   - { value: done, label: { text: done, context: null, lang: und, computed: false } }
-              - { type: value, value: { root: row, path: [assigneeId] }, present: { type: integer }, labels: [] }
+              - { type: value, fill: false, value: { root: row, path: [assigneeId] }, present: { type: integer }, labels: [] }
         presentGroups:
           groups:
             property: status
@@ -297,10 +300,11 @@ steps:
         reads: { span: { start: startsOn, end: endsOn, format: date } }
         content:
           type: stack
+          fill: false
           children:
-            - { type: value, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
-            - { type: value, value: { root: row, path: [startsOn] }, present: { type: string, format: date }, labels: [] }
-            - { type: value, value: { root: row, path: [endsOn] }, present: { type: [string, "null"], format: date }, labels: [] }
+            - { type: value, fill: false, value: { root: row, path: [title] }, present: { type: string }, labels: [] }
+            - { type: value, fill: false, value: { root: row, path: [startsOn] }, present: { type: string, format: date }, labels: [] }
+            - { type: value, fill: false, value: { root: row, path: [endsOn] }, present: { type: [string, "null"], format: date }, labels: [] }
   - name: checkTree
     invoke: { kind: Assert.Equals }
     inputs:
@@ -308,7 +312,7 @@ steps:
       expected:
         type: tree
         reads: { parent: managerId }
-        content: { type: value, value: { root: row, path: [name] }, present: { type: string }, labels: [] }
+        content: { type: value, fill: false, value: { root: row, path: [name] }, present: { type: string }, labels: [] }
   - name: checkComponent
     invoke: { kind: Assert.Equals }
     inputs:

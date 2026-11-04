@@ -310,7 +310,7 @@ pages:
           - { type: link, text: Telo, href: "https://telo.run" }
           - { type: image, src: /files/logo.svg, alt: Logo }
           - { type: svg, markup: "<svg xmlns='http://www.w3.org/2000/svg' width='40' height='12'><rect width='40' height='12' fill='#1f8a4c'/></svg>", alt: A green bar }
-          - { type: link, text: !cel "'unsafe'", href: !cel "'x-next' in request.headers ? request.headers['x-next'] : '/'" }
+          - { type: text, text: !cel "'unsafe'", style: !cel "'x-style' in request.headers ? request.headers['x-style'] : 'muted'" }
 ---
 # An application that sets nothing it does not have to.
 kind: UiReact.App

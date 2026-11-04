@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import abi from "../src/contract/abi.json" with { type: "json" };
 import { loadFixtureComponents, render, type Page, type Rendered } from "./harness.js";
-import { component, formNode, listingNode, todos } from "./spec-nodes.js";
+import { component, formNode, listingNode, todos, address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -69,7 +69,7 @@ describe("the host object", () => {
   });
 
   it("follows a link only to a page the application declares, and leaves any other address under the mount to the browser", async () => {
-    rendered = await show([{ type: "link", text: "A file", href: "/files/a.pdf" }, { type: "link", text: "Done", href: "/done" }], "/admin");
+    rendered = await show([{ type: "link", text: "A file", href: address("/files/a.pdf") }, { type: "link", text: "Done", href: address("/done") }], "/admin");
     const [file, done] = rendered.parts("link");
     expect([file.getAttribute("href"), file.getAttribute("target"), done.getAttribute("target")]).toEqual(["/admin/files/a.pdf", null, null]);
     expect(await rendered.click(file)).toBe(false);

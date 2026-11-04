@@ -69,7 +69,8 @@
       "lang": "en",
       "props": {
         "windowed": false,
-        "pageSize": 2
+        "pageSize": 2,
+        "frame": "framed"
       }
     },
     "vectors": [
@@ -220,6 +221,31 @@
                     "part": "listing-empty"
                   },
                   "value": "Nothing to do."
+                }
+              ]
+            }
+          }
+        ]
+      },
+      {
+        "name": "carries its frame on its root",
+        "props": {
+          "props": {
+            "windowed": false,
+            "pageSize": 2,
+            "frame": "flush"
+          }
+        },
+        "steps": [
+          {
+            "expect": {
+              "attributes": [
+                {
+                  "of": {
+                    "part": "list-layout"
+                  },
+                  "name": "data-frame",
+                  "value": "flush"
                 }
               ]
             }

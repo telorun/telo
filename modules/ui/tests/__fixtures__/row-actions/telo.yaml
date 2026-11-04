@@ -48,7 +48,7 @@ kind: Ui.Action
 metadata:
   name: remove
 inputModel: !ref Removal
-source: { path: /api/todos/remove }
+request: { target: /api/todos/remove }
 label: Remove
 ---
 kind: Ui.Action
@@ -61,7 +61,7 @@ outputModel:
     type: object
     properties:
       receipt: { type: string, format: uri-reference }
-source: { path: /api/todos/remove }
+request: { target: /api/todos/remove }
 label: Remove
 result: { type: value, value: !cel "result.receipt", text: Receipt }
 onSuccess: { refreshes: [/api/todos] }

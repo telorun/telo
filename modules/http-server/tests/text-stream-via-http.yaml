@@ -14,6 +14,8 @@ imports:
   Http: ../
   Ndjson: ../../ndjson-codec
   Sse: ../../sse-codec
+  Stream: ../../stream
+  Codec: ../../codec
   PlainText: ../../plain-text-codec
   JS: ../../javascript
   Run: ../../run
@@ -32,7 +34,32 @@ model: !ref echo
 kind: Ndjson.Encoder
 metadata: { name: ndjsonEnc }
 ---
-kind: Sse.Encoder
+# SSE writes frames, so this encoder makes each part one, named by its type.
+# A kind of its own because the negotiated route hands one stream to every
+# encoder: the mapping belongs to the SSE format, not to the handler.
+kind: Telo.Definition
+metadata: { name: PartEvents }
+capability: Telo.Invocable
+extends: Codec.Encoder
+schema: { type: object, additionalProperties: false }
+resources:
+  - kind: Telo.Sequence
+    metadata: { name: run }
+    inputType:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [input], properties: { input: { x-telo-type: Telo.Stream } } }
+    steps:
+      - name: frames
+        invoke: { kind: Stream.Map, elementType: !ref Sse.Frame, value: { event: !cel "item.type", data: !cel "item" } }
+        inputs: { input: !cel "inputs.input" }
+      - name: encode
+        invoke: { kind: Sse.Encoder }
+        inputs: { input: !cel "steps.frames.result.output" }
+    outputs:
+      output: !cel "steps.encode.result.output"
+invoke: !ref run
+---
+kind: TextStreamViaHttpTest.PartEvents
 metadata: { name: sseEnc }
 ---
 kind: PlainText.Encoder
@@ -228,7 +255,7 @@ steps:
           status: { const: 200 }
           contentType: { const: "text/event-stream" }
           body:
-            const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0,\"unit\":\"tokens\",\"total\":0},\"finishReason\":\"stop\"}\n\n"
+            const: "event: text-delta\ndata: {\"type\":\"text-delta\",\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"type\":\"text-delta\",\"delta\":\"i\"}\n\nevent: finish\ndata: {\"type\":\"finish\",\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0,\"unit\":\"tokens\",\"total\":0},\"finishReason\":\"stop\"}\n\n"
         required: [ status, contentType, body ]
 
   - name: hitPlain

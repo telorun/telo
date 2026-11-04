@@ -77,9 +77,9 @@ steps:
     invoke: { kind: Stream.Collect }
   - name: assertRoundTrip
     inputs:
-      # The encoder JSON-encodes the non-`type` fields into `data`, so what comes
-      # back is the same event name carrying that JSON as text — the decoder
-      # deliberately does not parse it.
+      # The encoder JSON-encodes each frame's `data`, so what comes back is the
+      # same event name carrying that JSON as text — the decoder deliberately
+      # does not parse it.
       actual: !cel "steps.collectRoundTrip.result.items"
       expected:
         - { event: "text-delta", data: '{"delta":"Hi"}' }
@@ -105,5 +105,5 @@ steps:
 kind: Stream.Of
 metadata: { name: sourceRecords }
 items:
-  - { type: "text-delta", delta: "Hi" }
-  - { type: finish, reason: stop }
+  - { event: "text-delta", data: { delta: Hi } }
+  - { event: finish, data: { reason: stop } }

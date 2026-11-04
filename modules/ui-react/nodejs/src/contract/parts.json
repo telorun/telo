@@ -6,14 +6,42 @@
     ],
     "structure": [
       "box", "stack", "columns", "column", "text", "badge", "link", "image", "svg", "value", "list",
-      "list-heading", "list-empty", "data"
+      "list-heading", "list-empty", "data", "bar", "bar-start", "bar-center", "bar-end", "command"
     ],
+    "markdown": [
+      "markdown", "markdown-paragraph", "markdown-heading", "markdown-quote", "markdown-list",
+      "markdown-list-item", "markdown-task", "markdown-rule", "markdown-emphasis", "markdown-strong", "markdown-strike",
+      "markdown-code", "markdown-link", "markdown-image", "markdown-break", "markdown-table-frame", "markdown-table",
+      "markdown-table-head", "markdown-table-body", "markdown-table-row", "markdown-table-header-cell",
+      "markdown-table-cell", "markdown-code-block", "markdown-code-header", "markdown-code-language",
+      "markdown-code-copy", "markdown-code-pre", "markdown-code-text", "markdown-token"
+    ],
+    "chat": [
+      "chat", "chat-main", "chat-header", "chat-transcript", "chat-empty", "chat-message", "chat-message-label", "chat-message-body",
+      "chat-message-actions", "chat-copy", "chat-edit", "chat-edit-form", "chat-regenerate", "chat-branches",
+      "chat-branch-previous", "chat-branch-position", "chat-branch-next", "chat-reasoning", "chat-reasoning-toggle",
+      "chat-reasoning-body", "chat-tool", "chat-tool-header", "chat-tool-name", "chat-tool-status", "chat-tool-toggle",
+      "chat-tool-detail", "chat-tool-label", "chat-tool-data", "chat-approval", "chat-approval-title",
+      "chat-approval-actions", "chat-approval-decision", "chat-approve", "chat-reject", "chat-image", "chat-media",
+      "chat-attachment", "chat-sources", "chat-sources-title", "chat-source-list", "chat-source", "chat-source-quote",
+      "chat-refusal", "chat-refusal-title", "chat-usage", "chat-turn-note", "chat-continue", "chat-pending",
+      "chat-reconnecting", "chat-retry", "chat-announcer", "chat-composer", "chat-starters", "chat-starter",
+      "chat-attachments", "chat-attachment-item", "chat-attachment-name", "chat-attachment-progress",
+      "chat-attachment-thumbnail", "chat-attachment-problem", "chat-attachment-refusals", "chat-attachment-remove", "chat-placeholder", "chat-input",
+      "chat-hint", "chat-composer-actions", "chat-attach", "chat-send", "chat-stop", "chat-drop"
+    ],
+    "media-viewer": [
+      "media-viewer", "media-viewer-stage", "media-viewer-image", "media-viewer-toolbar", "media-viewer-previous",
+      "media-viewer-position", "media-viewer-next", "media-viewer-zoom-out", "media-viewer-zoom-reset",
+      "media-viewer-zoom-in", "media-viewer-download"
+    ],
+    "split": ["split", "split-aside", "split-bar", "split-actions", "split-content", "split-toggle"],
     "navigation": ["navigation", "nav-toggle", "nav-item", "nav-group", "nav-panel"],
     "tabs": ["tabs", "tab-list", "tab", "tab-panel"],
     "listing": [
       "listing", "listing-toolbar", "listing-create", "listing-main", "listing-empty", "listing-loading",
       "load-more", "pager", "pager-status", "pager-prev", "pager-next", "row-actions", "row-action", "row-edit",
-      "row-delete", "listing-sort", "listing-sort-option", "listing-detail", "record-move", "record-create"
+      "row-delete", "row-menu", "listing-sort", "listing-sort-option", "listing-detail", "record-move", "record-create"
     ],
     "table": [
       "table", "table-frame", "table-grid", "table-head", "table-body", "table-row", "table-header-cell",
@@ -58,23 +86,54 @@
     "status": ["component", "error", "error-code", "error-message", "loading"]
   },
   "states": {
-    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "data", "listing", "form", "filters", "component", "action", "row-action"] },
+    "data-state": { "values": ["idle", "loading", "error", "empty", "submitting"], "on": ["page", "data", "listing", "form", "filters", "component", "action", "row-action", "markdown", "chat"] },
+    "data-actions": { "values": ["inside", "outside"], "on": ["chat-composer"] },
+    "data-role": { "values": ["user", "assistant"], "on": ["chat-message"] },
+    "data-status": {
+      "values": ["running", "done", "failed", "pending", "approved", "rejected", "uploading"],
+      "on": ["chat-tool", "chat-approval", "chat-attachment-item"]
+    },
     "data-invalid": { "values": ["true"], "on": ["field", "picker"] },
     "data-dirty": { "values": ["true"], "on": ["form"] },
     "data-compact": { "values": ["true"], "on": ["app"] },
     "data-surface": { "values": ["dialog", "drawer", "popover", "inline", "panel", "page", "confirmation"], "on": ["surface"] },
-    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["surface", "filters", "sidebar"] },
+    "data-side": { "values": ["start", "end", "top", "bottom"], "on": ["surface", "filters", "sidebar", "split", "split-aside"] },
     "data-placement": { "values": ["above", "aside", "collapsible", "overlay"], "on": ["filters"] },
     "data-active": { "values": ["true"], "on": ["filter", "filter-chip"] },
     "data-pending": { "values": ["true"], "on": ["filters"] },
-    "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface", "cards-layout"] },
-    "data-align": { "values": ["start", "center", "end"], "on": ["surface"] },
+    "data-size": { "values": ["small", "medium", "large", "full"], "on": ["surface", "cards-layout", "split-aside"] },
+    "data-frame": { "values": ["framed", "flush"], "on": ["split", "split-aside", "list-layout"] },
+    "data-embedded": { "values": ["true"], "on": ["chat", "list-layout", "table-frame", "tree-layout", "calendar-grid"] },
+    "data-button": { "values": ["text", "icon"], "on": ["link", "command"] },
+    "data-command": { "values": ["chat.exportTranscript", "chat.copyTranscript", "chat.stop", "chat.newConversation"], "on": ["command"] },
+    "data-fill": {
+      "values": ["true"],
+      "on": [
+        "app", "main", "page", "box", "stack", "columns", "text", "badge", "link", "image", "svg", "value", "list", "bar",
+        "command", "data", "listing", "form", "action", "filters", "component", "chat", "split", "split-aside", "split-content",
+        "markdown", "navigation", "tabs", "tab-panel"
+      ]
+    },
+    "data-record": { "values": ["true"], "on": ["link"] },
+    "data-selected": { "values": ["true"], "on": ["table-row", "list-item", "card", "board-card", "calendar-event", "timeline-bar", "tree-item"] },
+    "data-display": { "values": ["inline", "menu"], "on": ["row-actions"] },
+    "data-align": { "values": ["start", "center", "end"], "on": ["surface", "markdown-table-header-cell", "markdown-table-cell"] },
     "data-modal": { "values": ["true", "false"], "on": ["surface"] },
     "data-sorted": { "values": ["asc", "desc"], "on": ["table-header-cell", "listing-sort-option"] },
-    "data-width": { "values": ["contained", "full"], "on": ["header", "page"] }
+    "data-width": { "values": ["contained", "full"], "on": ["header", "page"] },
+    "data-level": { "values": ["1", "2", "3", "4", "5", "6"], "on": ["markdown-heading"] },
+    "data-token": {
+      "values": [
+        "comment", "string", "number", "keyword", "constant", "function", "type", "operator", "punctuation", "property",
+        "variable", "inserted", "deleted"
+      ],
+      "on": ["markdown-token"]
+    }
   },
   "partStates": [
-    { "values": ["open", "closed"], "on": ["filters-bar", "filter-chip", "sidebar"] }
+    { "values": ["open", "closed"], "on": ["filters-bar", "filter-chip", "sidebar", "chat-reasoning"] },
+    { "values": ["open", "collapsed", "compact"], "on": ["split"] },
+    { "values": ["open", "rail", "compact"], "on": ["split-aside"] }
   ],
   "reserved": [
     { "part": "filters-bar", "properties": ["display"], "because": "a closed collapsible bar is hidden" },
@@ -82,6 +141,22 @@
     { "part": "surface-body", "properties": ["overflow-y", "min-height"], "because": "a surface's body scrolls while its header stays" },
     { "part": "form-actions", "properties": ["position", "bottom"], "because": "a form's actions stay at its surface's bottom edge" },
     { "part": "table-frame", "properties": ["overflow-x"], "because": "a grid wider than its table scrolls in its frame" },
+    { "part": "markdown-table-frame", "properties": ["overflow-x"], "because": "a table wider than the text scrolls in its frame" },
+    { "part": "markdown-code-pre", "properties": ["overflow-x"], "because": "a long line of code scrolls in its block, not the page" },
+    { "part": "markdown-code-header", "properties": ["display"], "because": "a block's language and its copy control share one row" },
+    { "part": "chat", "properties": ["display", "grid-template-columns"], "because": "the conversations sit beside the transcript and the message box" },
+    { "part": "bar", "properties": ["display", "grid-template-columns"], "because": "a bar's centre stays centred whatever its start and end hold, and its regions wrap below the breakpoint" },
+    { "part": "chat-transcript", "properties": ["overflow-y", "overflow-anchor"], "because": "the transcript scrolls while the message box stays, and keeps its reading position itself" },
+    { "part": "chat-image", "properties": ["width", "height", "object-fit"], "because": "a picture is a fixed-size square crop, so a message's height does not change when it loads" },
+    { "part": "chat-attachment-thumbnail", "properties": ["width", "height", "object-fit"], "because": "a picture is a fixed-size square crop, so a file's chip does not change size when it loads" },
+    { "part": "media-viewer", "properties": ["display", "flex-direction"], "because": "the stage takes the room the toolbar leaves" },
+    { "part": "media-viewer-stage", "properties": ["overflow-x", "overflow-y", "touch-action"], "because": "a zoomed picture is panned inside its stage, which clips it and takes the gestures itself" },
+    { "part": "media-viewer-image", "properties": ["transform", "max-width", "max-height"], "because": "the renderer zooms and pans the picture, which is fitted to its stage" },
+    { "part": "chat-message", "properties": ["margin-top", "margin-bottom"], "because": "a message drawn stands in for the messages out of view beside it with its block margins" },
+    { "part": "chat-announcer", "properties": ["position", "clip-path"], "because": "announcements are read aloud and never drawn" },
+    { "part": "split", "properties": ["display", "grid-template-columns"], "because": "the aside sits beside the content while it is open" },
+    { "part": "split-aside", "properties": ["display", "width", "grid-column"], "because": "the aside is as wide as its size says, on its side, and a folded one is a rail holding only its bar and actions" },
+    { "part": "split-content", "properties": ["grid-column"], "because": "the content takes the column the aside leaves" },
     { "part": "listing", "properties": ["display", "grid-template-columns"], "because": "a panel sits beside the records and the pager" },
     { "part": "listing-toolbar", "properties": ["order"], "because": "the toolbar stays above a panel" },
     { "part": "surface", "properties": ["order"], "because": "a panel sits on its side" },
@@ -94,7 +169,18 @@
     { "part": "main", "properties": ["padding-inline"], "because": "the page column is inset by the space.page token" },
     { "part": "calendar-grid", "properties": ["display", "grid-template-columns"], "because": "a calendar's days are a grid of seven weekdays, or of the one day shown" },
     { "part": "timeline-axis", "properties": ["display", "grid-template-columns"], "because": "a timeline's columns are the periods of its scale" },
-    { "part": "timeline-track", "properties": ["display", "grid-template-columns"], "because": "a bar spans the columns of the periods it lasts" }
+    { "part": "timeline-track", "properties": ["display", "grid-template-columns"], "because": "a bar spans the columns of the periods it lasts" },
+    {
+      "state": { "attribute": "data-fill", "value": "true" },
+      "properties": ["flex-basis", "flex-grow", "flex-shrink", "height", "min-height", "overflow-y"],
+      "because": "a filling node takes the room its container leaves, the last of a chain scrolling inside itself and the page scrolling below their minimum"
+    },
+    { "part": "app", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["grid-template-rows", "height", "min-height"], "because": "a filling page holds the application to the viewport's height" },
+    { "part": "box", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["display", "flex-direction"], "because": "a filling box passes the room on to what it holds" },
+    { "part": "data", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["display", "flex-direction"], "because": "a filling reader passes the room on to what it holds" },
+    { "part": "columns", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["align-items"], "because": "filling columns are each as tall as the row" },
+    { "part": "filters", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["align-items", "flex-direction", "flex-wrap", "grid-template-rows"], "because": "a filling filter bar passes the room left under its controls on to its content" },
+    { "part": "split", "state": { "attribute": "data-fill", "value": "true" }, "properties": ["align-items"], "because": "a filling split view stretches its aside and its content to its height" }
   ],
   "rendererTokens": ["width.page", "space.page"]
 }

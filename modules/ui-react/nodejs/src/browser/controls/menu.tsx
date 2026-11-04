@@ -8,6 +8,7 @@ export function Menu({ open, items, onOpenChange, onChange, children }: MenuProp
   const listId = useId();
   const [trigger, setTrigger] = useState<HTMLElement | null>(null);
   const choose = (index: number) => {
+    if (items[index].disabled) return;
     onChange(items[index].key);
     onOpenChange(false, "close");
   };
@@ -33,6 +34,9 @@ export function Menu({ open, items, onOpenChange, onChange, children }: MenuProp
                 {...entryProps(index)}
                 data-telo-part="menu-item"
                 role="menuitem"
+                aria-disabled={item.disabled ? true : undefined}
+                title={item.hint}
+                aria-description={item.hint}
                 onClick={() => choose(index)}
               >
                 {item.label}

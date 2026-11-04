@@ -1,0 +1,15 @@
+modules:
+  modules/ui: Added
+body: "Addresses: a link's `href`, a menu item's, a new `href` on a `value` node, on a
+  `list` column and on a `Ui.TableLayout` column, a relation's `href` in
+  `Ui.CollectionPresentation` and `Ui.CollectionOptions` are a string or `{ path,
+  pathParams, queryParams }` (`Ui.Address`): a path template whose `{name}` segments are
+  filled from accessors, a path read from data, or a `!ref` to a `Ui.Page`, read as that
+  page's `path`. A template whose variables do not match `pathParams` is refused before
+  the app runs. A `link`'s `href` is no longer evaluated per request (`href: !cel
+  \"request…\"` is `CEL_UNKNOWN_IDENTIFIER`; a per-request choice is two links with
+  `when`), and a relation's or option source's `href` is an address rather than a bare
+  path. `Ui.Data` `source` is a `Ui.RequestTarget` and its `params` is renamed
+  `queryParams` (`params` is now a schema violation). Renderers receive every address as
+  `{ path, pathParams, queryParams }` and expand it by `conformance/addresses.json`;
+  `@telorun/ui` exports `addressSpec` and `expandAddress`."

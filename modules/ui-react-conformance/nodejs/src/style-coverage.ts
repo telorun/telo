@@ -13,11 +13,26 @@ export interface UnstyledPart {
   reason: string;
 }
 
+/** A state of the renderer's, as an element carries it. */
+export interface PartState {
+  attribute: string;
+  value: string;
+}
+
+/** Properties a theme must not declare on a part, while it carries a state, or
+ *  on any part carrying the state: at least one of `part` and `state` is named. */
+export interface Reservation {
+  part?: string;
+  state?: PartState;
+  properties: string[];
+  because: string;
+}
+
 /** What the style half is held to: the renderer's parts and the properties
  *  of them a theme must not declare. */
 export interface StyleContract {
   parts: string[];
-  reserved: { part: string; properties: string[]; because: string }[];
+  reserved: Reservation[];
 }
 
 /**
@@ -33,7 +48,10 @@ const ALSO_SETS: Record<string, string[]> = {
   "padding-right": ["padding-inline"],
   "padding-inline-start": ["padding-inline"],
   "padding-inline-end": ["padding-inline"],
-  margin: ["margin-inline"],
+  margin: ["margin-inline", "margin-top", "margin-bottom"],
+  "margin-block": ["margin-top", "margin-bottom"],
+  "margin-block-start": ["margin-top"],
+  "margin-block-end": ["margin-bottom"],
   "margin-left": ["margin-inline"],
   "margin-right": ["margin-inline"],
   "margin-inline-start": ["margin-inline"],
@@ -41,6 +59,10 @@ const ALSO_SETS: Record<string, string[]> = {
   "grid-area": ["grid-column"],
   "grid-column-start": ["grid-column"],
   "grid-column-end": ["grid-column"],
+  flex: ["flex-grow", "flex-shrink", "flex-basis"],
+  "flex-flow": ["flex-direction", "flex-wrap"],
+  "block-size": ["height"],
+  "place-items": ["align-items"],
   "overflow-block": ["overflow-y"],
   "overflow-inline": ["overflow-x"],
   inset: ["top", "right", "bottom", "left"],
@@ -48,8 +70,8 @@ const ALSO_SETS: Record<string, string[]> = {
   "inset-block-end": ["bottom"],
   "min-block-size": ["min-height"],
   "max-inline-size": ["max-width"],
-  grid: ["grid-template-columns"],
-  "grid-template": ["grid-template-columns"],
+  grid: ["grid-template-columns", "grid-template-rows"],
+  "grid-template": ["grid-template-columns", "grid-template-rows"],
   background: ["background-color"],
   mask: ["mask-image"],
   "-webkit-mask": ["mask-image"],
@@ -64,6 +86,8 @@ interface RuleCoverage {
   rule: StyleRule;
   /** The parts it matched in some snapshot. */
   parts: Set<string>;
+  /** Each `data-` attribute value a part it matched carried, as `<attribute>=<value>`, with the parts carrying it. */
+  states: Map<string, Set<string>>;
   /** Whether some part-carrying element of some snapshot is one it did not match. */
   missedAPart: boolean;
   /** Set once the window could not match the selector. */
@@ -81,7 +105,7 @@ export class StyleCoverage {
 
   constructor(sheets: readonly ReadStylesheet[]) {
     this.rules = sheets.flatMap(({ path, reading }) =>
-      reading.rules.map((rule) => ({ sheet: path, rule, parts: new Set<string>(), missedAPart: false })),
+      reading.rules.map((rule) => ({ sheet: path, rule, parts: new Set<string>(), states: new Map<string, Set<string>>(), missedAPart: false })),
     );
   }
 
@@ -100,8 +124,19 @@ export class StyleCoverage {
         continue;
       }
       for (const carrier of carriers) {
-        if (matched.has(carrier)) coverage.parts.add(carrier.getAttribute("data-telo-part") as string);
-        else coverage.missedAPart = true;
+        if (!matched.has(carrier)) {
+          coverage.missedAPart = true;
+          continue;
+        }
+        const part = carrier.getAttribute("data-telo-part") as string;
+        coverage.parts.add(part);
+        for (const { name, value } of carrier.attributes) {
+          if (!name.startsWith("data-") || name === "data-telo-part") continue;
+          const key = `${name}=${value}`;
+          const carrying = coverage.states.get(key) ?? new Set<string>();
+          carrying.add(part);
+          coverage.states.set(key, carrying);
+        }
       }
     }
   }
@@ -149,17 +184,29 @@ export class StyleCoverage {
       }
     }
     const reported = new Set<string>();
-    for (const { part, properties, because } of contract.reserved) {
+    for (const { part, state, properties, because } of contract.reserved) {
+      const where = state === undefined ? undefined : `${state.attribute}="${state.value}"`;
       for (const property of properties) {
         for (const coverage of this.rules) {
-          if (!coverage.parts.has(part) || !declares(coverage.rule, property)) continue;
-          const key = `${part}\n${property}\n${coverage.sheet}\n${coverage.rule.written}`;
+          if (!declares(coverage.rule, property)) continue;
+          // The parts the reservation reaches that this rule styled: the named part, while it carried the state when one is named.
+          const carrying = state === undefined ? undefined : coverage.states.get(`${state.attribute}=${state.value}`);
+          const reached = state === undefined ? (coverage.parts.has(part as string) ? [part as string] : []) : [...(carrying ?? [])].filter((each) => part === undefined || each === part);
+          if (reached.length === 0) continue;
+          const subject = `${part ?? `[${where}]`}${part !== undefined && where !== undefined ? `[${where}]` : ""}: ${property}`;
+          const key = `${subject}\n${coverage.sheet}\n${coverage.rule.written}`;
           if (reported.has(key)) continue;
           reported.add(key);
+          const on =
+            where === undefined
+              ? `the '${part}' part`
+              : part === undefined
+                ? `a part carrying ${where} (${reached.map((each) => `'${each}'`).join(", ")})`
+                : `the '${part}' part while it carries ${where}`;
           problems.push({
             check: "property-reserved",
-            subject: `${part}: ${property}`,
-            message: `'${coverage.rule.written}' in ${coverage.sheet} sets '${property}' on the '${part}' part, which the renderer reserves: ${because}.`,
+            subject,
+            message: `'${coverage.rule.written}' in ${coverage.sheet} sets '${property}' on ${on}, which the renderer reserves: ${because}.`,
           });
         }
       }

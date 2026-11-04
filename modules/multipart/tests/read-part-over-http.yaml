@@ -1,0 +1,104 @@
+kind: Telo.Application
+metadata:
+  name: MultipartReadPartOverHttpTest
+  version: 1.0.0
+  description: |
+    A single-file upload read with Multipart.ReadPart over HTTP: the part named
+    `file` arrives with its own name, file name and media type and its bytes
+    whole, after a form field before it; an upload with no such part is refused
+    with its own code, naming the part.
+imports:
+  Server: ../../http-server
+  Http: ../../http-client
+  Multipart: ../
+  PlainText: ../../plain-text-codec
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: upload }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [input, contentType]
+    properties: { input: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }, contentType: { type: string } }
+steps:
+  - name: part
+    invoke: { kind: Multipart.ReadPart }
+    inputs: { input: !cel "inputs.input", contentType: !cel "inputs.contentType", name: file }
+  - name: text
+    invoke: { kind: PlainText.Decoder }
+    inputs: { input: !cel "steps.part.result.content" }
+outputs:
+  name: !cel "steps.part.result.name"
+  filename: !cel "steps.part.result.filename"
+  contentType: !cel "steps.part.result.contentType"
+  text: !cel "steps.text.result.text"
+---
+kind: Server.Api
+metadata: { name: api }
+routes:
+  - request:
+      path: /upload
+      method: POST
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
+    handler: !ref upload
+    inputs: { input: !cel "request.body", contentType: !cel "request.headers['content-type']" }
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+    catches:
+      - when: !cel "error.code == 'ERR_MULTIPART_PART_MISSING'"
+        status: 400
+        content: { application/json: { body: { code: !cel "error.code", name: !cel "error.data.name" } } }
+      - when: !cel "error.code in ['ERR_MULTIPART_MALFORMED', 'ERR_MULTIPART_LIMIT_EXCEEDED']"
+        status: 400
+        content: { application/json: { body: { code: !cel "error.code" } } }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Server.Server
+    metadata: { name: server }
+    listen: { port: 18874 }
+    mounts:
+      - { path: /, mount: !ref api }
+targets:
+  - !ref server
+steps:
+  - name: withFile
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts:
+        - { name: note, content: before the file }
+        - { name: file, filename: notes.txt, contentType: text/plain, content: the file's text }
+        - { name: after, content: never read }
+  - name: sent
+    invoke: { kind: Http.Request }
+    inputs:
+      url: http://localhost:18874/upload
+      method: POST
+      headers: { content-type: !cel "steps.withFile.result.contentType" }
+      body: !cel "steps.withFile.result.output"
+  - name: withoutFile
+    invoke: { kind: Multipart.Encoder }
+    inputs:
+      parts:
+        - { name: note, content: no file here }
+  - name: missing
+    invoke: { kind: Http.Request, throwOnHttpError: false }
+    inputs:
+      url: http://localhost:18874/upload
+      method: POST
+      headers: { content-type: !cel "steps.withoutFile.result.contentType" }
+      body: !cel "steps.withoutFile.result.output"
+  - name: assertRead
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        read: !cel "steps.sent.result.body"
+        missing: { status: !cel "steps.missing.result.status", body: !cel "steps.missing.result.body" }
+      expected:
+        read: { name: file, filename: notes.txt, contentType: text/plain, text: the file's text }
+        missing: { status: 400, body: { code: ERR_MULTIPART_PART_MISSING, name: file } }

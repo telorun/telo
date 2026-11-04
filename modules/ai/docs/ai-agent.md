@@ -130,6 +130,10 @@ A call that does not satisfy them is `CONTRACT_INPUTS_MISMATCH` at its `inputs:`
 - `approvalDecisions` — what the approver answered, `{ toolCallId, name, decision, reason? }` per call it was asked about, in the order it answered; absent when it was never asked.
 - `providerState` — opaque model state to pass back as the next run's `providerState`: the last state a model call produced, or the input `providerState` when no call produced one, absent when neither.
 
+## Published reading
+
+`resources.<agent>.accepts` is the held model's [`accepts`](./ai-model.md#accepts--what-a-model-takes-beside-text), so a caller can tell what media the agent takes — `[]` for text only — without knowing the provider behind it.
+
 ## Errors
 
 The agent throws its own codes — `ERR_INVALID_INPUT`, `ERR_INVALID_REFERENCE`, `ERR_CONTRACT_VIOLATION`, `ERR_AGENT_MAX_STEPS`, `ERR_AGENT_UNKNOWN_TOOL`, `ERR_AGENT_TOOL_COLLISION`, `ERR_AGENT_APPROVAL_UNKNOWN_TOOL`, `ERR_AGENT_APPROVAL_DECISION_INVALID`, `ERR_CONTENT_RESOLUTION_INVALID` — **and whatever its model, its approver or its resolver throws**, unchanged: the kind declares `throws: { inherit: true }`, so their declared codes are part of the agent's own throw union. Every model raises the same [thirteen codes](../README.md#catching-a-models-errors), whichever provider it is. A `catch:` step or a route's `catches:` may name them, and a list with no catch-all must cover them (`UNCOVERED_THROW_CODE`). See [Ai.Text → Errors](./ai-text.md#errors) for a route that does.

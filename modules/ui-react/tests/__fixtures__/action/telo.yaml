@@ -88,7 +88,7 @@ kind: Ui.Action
 metadata: { name: generate }
 inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: list
@@ -105,7 +105,7 @@ kind: Ui.Action
 metadata: { name: archive }
 inputModel: !ref ArchiveRequest
 outputModel: !ref ArchiveAnswer
-source: { path: /api/archive }
+request: { target: /api/archive }
 label: Archive
 result: { type: value, value: !cel "result.archived" }
 ---

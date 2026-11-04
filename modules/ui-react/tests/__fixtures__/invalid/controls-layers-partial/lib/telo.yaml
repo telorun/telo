@@ -15,7 +15,7 @@ exports:
     - specifier: "@fixture/eight-layers"
       path: ./browser/eight-layers.js
       source: ./eight-layers.js
-      abi: ui_react_controls-2
+      abi: ui_react_controls-3
       external: [react, react/jsx-runtime, react-dom]
       exports: [Select, MultiSelect, Dialog, Drawer, Popover, Confirmation, Menu, Tooltip]
 ---

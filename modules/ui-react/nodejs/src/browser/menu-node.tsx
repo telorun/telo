@@ -1,15 +1,16 @@
 import { useContext, useState, type ReactNode } from "react";
+import { isCurrentAddress, resolveAddress, type AddressWire } from "./address-wire.js";
 import { conditionHolds, styleAttribute, type Condition, type Style } from "./bindings.js";
 import { useControl } from "./effective-controls.js";
 import { useHost, useHostStore } from "./host.js";
 import { linkAddress, pageAddress } from "./link-address.js";
-import { ErrorNode, type SpecNode } from "./nodes.js";
+import { type SpecNode } from "./nodes.js";
 import { RendererContext, RootsContext } from "./renderer-context.js";
 import { useSay, useText, type WireText } from "./texts.js";
 
 interface MenuLink {
   text: WireText;
-  href: string;
+  href: AddressWire;
   style?: Style;
   shown?: Condition;
 }
@@ -21,7 +22,7 @@ const GROUP = "menu";
  * A `menu` node: one group of links drawn by the `Navigation` control, a
  * disclosure that is no landmark. An item is offered while its `shown` holds;
  * following one moves within the application to one of its pages, and loads
- * anything else. An item whose style holds `strong` is the current choice. An
+ * anything else. An item is the current choice when its address leads to where the viewer is, or its style holds `strong`. An
  * item whose address is not one a link may hold makes the menu an error node.
  */
 export function MenuNode({ node }: { node: SpecNode }): ReactNode {
@@ -34,20 +35,10 @@ export function MenuNode({ node }: { node: SpecNode }): ReactNode {
   const Navigation = useControl("Navigation");
   const [open, setOpen] = useState<string[]>([]);
   const links = node.items as MenuLink[];
-  const addresses = links.map((link) => linkAddress(store, link.href));
-  const failing = links.find((_, index) => addresses[index] === undefined);
-  if (failing) {
-    return (
-      <ErrorNode
-        error={{
-          type: "error",
-          code: "ERR_UI_NODE_INVALID",
-          message: `A 'menu' node's item href '${failing.href}' does not resolve inside this application.`,
-        }}
-      />
-    );
-  }
-  const offered = links.flatMap((link, index) => (link.shown === undefined || conditionHolds(link.shown, roots) ? [{ link, index }] : []));
+  // An item whose address does not resolve is left out.
+  const expanded = links.map((link) => resolveAddress(link.href, roots, "'menu' item href"));
+  const addresses = expanded.map((resolved) => (resolved === undefined ? undefined : linkAddress(store, resolved)));
+  const offered = links.flatMap((link, index) => (addresses[index] !== undefined && (link.shown === undefined || conditionHolds(link.shown, roots)) ? [{ link, index }] : []));
   if (offered.length === 0) return null;
   const follow = (key: string) => {
     const href = addresses[Number(key)] as string;
@@ -67,7 +58,11 @@ export function MenuNode({ node }: { node: SpecNode }): ReactNode {
             key: String(index),
             label: text(link.text),
             href: addresses[index] as string,
-            ...([link.style ?? []].flat().includes("strong") ? { current: "true" as const } : {}),
+            ...(isCurrentAddress(expanded[index] as string, host.location)
+              ? { current: "page" as const }
+              : [link.style ?? []].flat().includes("strong")
+                ? { current: "true" as const }
+                : {}),
           })),
         },
       ]}
@@ -75,7 +70,7 @@ export function MenuNode({ node }: { node: SpecNode }): ReactNode {
       open={open}
       onOpenChange={setOpen}
       onChange={follow}
-      {...(style === undefined ? {} : { attributes: { "data-style": style } })}
+      {...(style === undefined && node.fill !== true ? {} : { attributes: { ...(style === undefined ? {} : { "data-style": style }), ...(node.fill === true ? { "data-fill": "true" } : {}) } })}
     />
   );
 }

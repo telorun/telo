@@ -15,6 +15,8 @@ targets:
   - !ref actionRequiredNotEnteredAtRuntime
   - !ref rowActionAnswers
   - !ref actionClearUnknownAtRuntime
+  - !ref deleteInputUnsent
+  - !ref deleteInputUnsentAtRuntime
   - !ref rowActionInputsAtRuntime
   - !ref listRowActionInputsAtRuntime
 ---
@@ -34,6 +36,10 @@ expect:
       message: "Ui.Action/rowsComputed: 'result.rows: !cel \"size(result.files)\"' is not a plain chain"
     - code: CEL_UNKNOWN_FIELD
       message: "Ui.Action/noAnswerModel: !cel: 'result.files' is not defined"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Action/sourceKept: / must NOT have additional properties ('source' is not allowed)"
+    - code: SCHEMA_VIOLATION
+      message: "Ui.Action/getMethod: /request/method must be equal to one of the allowed values (POST | PUT | PATCH | DELETE)"
     - code: SCHEMA_VIOLATION
       message: "Ui.Action/listsRemoved: / must NOT have additional properties ('lists' is not allowed)"
     - code: SCHEMA_VIOLATION
@@ -121,3 +127,15 @@ source: ./__fixtures__/invalid/list-row-action-inputs/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Data 'listRowActionInputs' content: 'rowActions[0].inputs' cannot make a record of the action's input model: 'total' is not a property of the action's input model; 'note' holds a value its property refuses (Invalid value passed: 5. Error: / must be string); required input 'count' is not bound."
+---
+kind: Assert.Manifest
+metadata: { name: deleteInputUnsent }
+source: ./__fixtures__/invalid/action-input-unsent/lib/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "Ui.Action/deleteNote: is a `DELETE`, which sends no body, yet leaves an input property out of its target" }
+---
+kind: Assert.Manifest
+metadata: { name: deleteInputUnsentAtRuntime }
+source: ./__fixtures__/invalid/action-input-unsent/telo.yaml
+expect: { errors: [], runFails: "Ui.Action 'deleteNote': a 'DELETE' sends no body, yet its target does not read 'note' of 'inputModel'." }

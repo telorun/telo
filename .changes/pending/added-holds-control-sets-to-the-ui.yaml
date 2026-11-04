@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react-conformance: Added
+body: Holds control sets to the ui_react_controls-3 contract, whose Icon control draws
+  six more glyph names.

@@ -1,0 +1,9 @@
+# A misspelt path variable: `{id}` is bound by nothing and `idd` fills nothing.
+kind: Telo.Library
+metadata: { name: PathParamUnboundLib }
+imports: { Kinds: ../../kinds }
+exports: { resources: [link] }
+---
+kind: Kinds.Link
+metadata: { name: link }
+href: { path: "/x/{id}", pathParams: { idd: a } }

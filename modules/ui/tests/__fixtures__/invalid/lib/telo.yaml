@@ -8,47 +8,18 @@ metadata:
   version: 1.0.0
   description: >-
     Test fixture exporting listings, a form and filter bars that each name a
-    property, an operator, a facet or an option source their data model or
-    their collection does not support, surfaces whose compact surface is addressed or has a
+    property, an operator, a facet, a starting sort or an option source their data model or
+    their collection does not support, surfaces and split views whose compact surface is addressed or has a
     compact surface of its own, a form and actions whose fields their model
     cannot answer for or no control can enter, an action clearing its answer on
     a property its input model does not declare, and a listing and a list whose
     row action is given inputs that make no record of its input model.
-imports:
-  Ui: ../../../../
-  DataModel: ../../../../../data-model
+imports: { Ui: ../../../../, DataModel: ../../../../../data-model }
 exports:
-  resources:
-    - sourceFilter
-    - sourceFilterNotAccepted
-    - formField
-    - formFieldUnsupported
-    - filterNotAccepted
-    - filterValuesNotFaceted
-    - filterOptionValueMismatch
-    - compactAddressed
-    - compactNested
-    - filterDuplicate
-    - filterDefaultInvalid
-    - filterControlUnsupported
-    - presetUnknownFilter
-    - presetValueInvalid
-    - presetLabelDuplicate
-    - toggleOverText
-    - toggleUntyped
-    - toggleDefaultOff
-    - togglePresetOff
-    - actionFieldUnknown
-    - actionFieldUnsupported
-    - actionRequiredNotEntered
-    - actionRequiredNotEnterable
-    - actionClearUnknown
-    - rowActionInputs
-    - listRowActionInputs
+  resources: [sourceFilter, sourceFilterNotAccepted, sortNotAccepted, formField, formFieldUnsupported, filterNotAccepted, filterValuesNotFaceted, filterOptionValueMismatch, compactAddressed, compactNested, splitCompactAddressed, splitCompactNested, filterDuplicate, filterDefaultInvalid, filterControlUnsupported, presetUnknownFilter, presetValueInvalid, presetLabelDuplicate, toggleOverText, toggleUntyped, toggleDefaultOff, togglePresetOff, actionFieldUnknown, actionFieldUnsupported, actionRequiredNotEntered, actionRequiredNotEnterable, actionClearUnknown, rowActionInputs, listRowActionInputs]
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Todo
+metadata: { name: Todo }
 schema:
   type: object
   required: [id]
@@ -80,6 +51,12 @@ model: !ref Todo
 presentation: !ref todos
 filters: { isDone: true }
 ---
+kind: Ui.Listing
+metadata: { name: sortNotAccepted }
+model: !ref Todo
+presentation: !ref todos
+sort: { by: { property: text } }
+---
 kind: Ui.Form
 metadata: { name: formField }
 model: !ref Todo
@@ -95,18 +72,26 @@ fields:
 content: { type: text, text: Todos }
 ---
 kind: Ui.Panel
-metadata:
-  name: compactAddressed
-compact:
-  kind: Ui.Dialog
-  address: { name: todo }
+metadata: { name: compactAddressed }
+compact: { kind: Ui.Dialog, address: { name: todo } }
 ---
 kind: Ui.Dialog
-metadata:
-  name: compactNested
-compact:
-  kind: Ui.Drawer
-  compact: { kind: Ui.Dialog }
+metadata: { name: compactNested }
+compact: { kind: Ui.Drawer, compact: { kind: Ui.Dialog } }
+---
+kind: Ui.SplitView
+metadata: { name: splitCompactAddressed }
+label: Conversations
+aside: { content: { type: text, text: Aside } }
+content: { type: text, text: Content }
+compact: { kind: Ui.Drawer, address: { name: aside } }
+---
+kind: Ui.SplitView
+metadata: { name: splitCompactNested }
+label: Conversations
+aside: { content: { type: text, text: Aside } }
+content: { type: text, text: Content }
+compact: { kind: Ui.Drawer, compact: { kind: Ui.Dialog } }
 ---
 # Accepts everything the bars below ask for, and facets nothing.
 kind: Ui.CollectionPresentation
@@ -152,8 +137,7 @@ model: !ref Todo
 query: { filters: [{ property: text, operator: in }], sort: [] }
 ---
 kind: Ui.Filters
-metadata:
-  name: filterDuplicate
+metadata: { name: filterDuplicate }
 presentation: !ref flags
 fields:
   - { property: text, operator: contains }
@@ -161,24 +145,21 @@ fields:
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: filterDefaultInvalid
+metadata: { name: filterDefaultInvalid }
 presentation: !ref flags
 fields:
   - { property: isDone, operator: eq, default: "yes" }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: filterControlUnsupported
+metadata: { name: filterControlUnsupported }
 presentation: !ref flags
 fields:
   - { property: count, operator: gte, control: toggle }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: presetUnknownFilter
+metadata: { name: presetUnknownFilter }
 presentation: !ref flags
 fields:
   - { property: isDone, operator: eq }
@@ -189,8 +170,7 @@ presets:
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: presetValueInvalid
+metadata: { name: presetValueInvalid }
 presentation: !ref flags
 fields:
   - { property: isDone, operator: eq }
@@ -201,8 +181,7 @@ presets:
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: presetLabelDuplicate
+metadata: { name: presetLabelDuplicate }
 presentation: !ref flags
 presets:
   - label: Done
@@ -215,8 +194,7 @@ content: { type: text, text: Todos }
 ---
 # A switch is on or holds nothing, over a property that says it is a boolean.
 kind: Telo.JsonSchema
-metadata:
-  name: Loose
+metadata: { name: Loose }
 schema:
   type: object
   required: [id]
@@ -242,32 +220,28 @@ source:
       sort: []
 ---
 kind: Ui.Filters
-metadata:
-  name: toggleOverText
+metadata: { name: toggleOverText }
 presentation: !ref loose
 fields:
   - { property: note, operator: eq, control: toggle }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: toggleUntyped
+metadata: { name: toggleUntyped }
 presentation: !ref loose
 fields:
   - { property: anything, operator: eq, control: toggle }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: toggleDefaultOff
+metadata: { name: toggleDefaultOff }
 presentation: !ref loose
 fields:
   - { property: isDone, operator: eq, control: toggle, default: false }
 content: { type: text, text: Todos }
 ---
 kind: Ui.Filters
-metadata:
-  name: togglePresetOff
+metadata: { name: togglePresetOff }
 presentation: !ref loose
 fields:
   - { property: isDone, operator: eq, control: toggle }
@@ -278,108 +252,85 @@ presets:
 content: { type: text, text: Todos }
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Report
+metadata: { name: Report }
 schema:
   type: object
   required: [month]
   properties:
     month: { type: string }
-    options:
-      type: object
-      properties:
-        compact: { type: boolean }
+    options: { type: object, properties: { compact: { type: boolean } } }
     pages: { type: array, items: { type: object } }
 ---
 kind: Ui.Form
-metadata:
-  name: formFieldUnsupported
+metadata: { name: formFieldUnsupported }
 model: !ref Report
 presentation: !ref todos
 fields: [month, options, pages]
 ---
 # A list of scalars is a field a form can enter: nothing is reported.
 kind: Ui.Form
-metadata:
-  name: formFieldList
+metadata: { name: formFieldList }
 model:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    properties:
-      tags: { type: array, items: { type: string } }
+  schema: { type: object, properties: { tags: { type: array, items: { type: string } } } }
 presentation: !ref todos
 fields: [tags]
 ---
 kind: Ui.Action
-metadata:
-  name: actionFieldUnknown
+metadata: { name: actionFieldUnknown }
 inputModel: !ref Report
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 fields: [month, year]
 ---
 kind: Ui.Action
-metadata:
-  name: actionFieldUnsupported
+metadata: { name: actionFieldUnsupported }
 inputModel: !ref Report
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 fields: [month, options, pages]
 ---
 kind: Ui.Action
-metadata:
-  name: actionRequiredNotEntered
+metadata: { name: actionRequiredNotEntered }
 inputModel: !ref Report
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 fields: []
 ---
 # No `fields`: the default set holds no field for the required `options`.
 kind: Ui.Action
-metadata:
-  name: actionRequiredNotEnterable
+metadata: { name: actionRequiredNotEnterable }
 inputModel:
   kind: Telo.JsonSchema
-  schema:
-    type: object
-    required: [options]
-    properties:
-      options: { type: object }
-source: { path: /api/reports }
+  schema: { type: object, required: [options], properties: { options: { type: object } } }
+request: { target: /api/reports }
 label: Generate
 ---
 kind: Telo.JsonSchema
-metadata:
-  name: Removal
+metadata: { name: Removal }
 schema:
   type: object
   additionalProperties: false
   required: [count]
-  properties:
-    count: { type: integer }
-    note: { type: string }
+  properties: { count: { type: integer }, note: { type: string } }
 ---
 kind: Ui.Action
-metadata:
-  name: remove
+metadata: { name: remove }
 inputModel: !ref Removal
-source: { path: /api/todos/remove }
+request: { target: /api/todos/remove }
 label: Remove
 ---
 kind: Ui.Action
-metadata:
-  name: actionClearUnknown
+metadata: { name: actionClearUnknown }
 inputModel: !ref Removal
-source: { path: /api/todos/remove }
+request: { target: /api/todos/remove }
 label: Remove
 clearAnswerOn: [count, total]
 ---
 # A key the closed model does not declare, a value its property refuses, and
 # the required input left unbound.
 kind: Ui.Listing
-metadata:
-  name: rowActionInputs
+metadata: { name: rowActionInputs }
 model: !ref Todo
 presentation: !ref todos
 rowActions:
@@ -388,8 +339,7 @@ rowActions:
 ---
 # The same inputs, given by a row of a list a reader draws.
 kind: Ui.Data
-metadata:
-  name: listRowActionInputs
+metadata: { name: listRowActionInputs }
 model:
   kind: Telo.JsonSchema
   schema:

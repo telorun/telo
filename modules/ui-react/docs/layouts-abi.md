@@ -36,7 +36,7 @@ record and delivered on it as `record.props`, every other once, as `props`.
 | `groups` | under `groups`: each group, in order |
 | `span` | under `span`: the period shown, `{ from, to }`; `null` until `onPeriodChange` names one |
 | `expanded` | under `parent`: the keys of the records whose children are read |
-| `sort` | the viewer's sort, `value`, and each property it may be by with its title, `sortable` |
+| `sort` | the viewer's sort, `value` — the order the listing starts in until another is chosen — and each property it may be by with its title, `sortable`; none when the listing's order is fixed |
 | `paging` | `more` — `onEndReached` when the viewer asks — or `scroll` — once the end is in view |
 | `empty` | the listing's `empty` node, drawn where the records would be when the reads answer none |
 | `can` | which of `open`, `create` and `move` does anything |
@@ -51,10 +51,10 @@ A record:
 | `row` | the record as read |
 | `props` | the props bound to `row`, read over this record |
 | `labels` | by property with a relation, the related record's label, once looked up |
-| `actions` | its row actions, edit, delete and a failed move's answer, drawn by the renderer; `null` when it offers none |
+| `actions` | its row actions, edit, delete and a failed move's answer, drawn by the renderer — as buttons or one menu button, the wrapping element's `data-display` saying which; `null` when it offers none |
 | `detail` | present while its edit form is open in line: drawn under it |
 | `style` | the style names `rowStyle` gives it, for its element's `data-style` |
-| `selected` | whether it is selected; nothing selects a record in this generation |
+| `selected` | whether a link the renderer draws for the record leads to where the viewer is (see [the current location](styling.md#state)); `false` for a component layout, which draws its own links |
 | `movable` | whether `onMove` may be reported for it now: the move's `enabled` holds and none of its presses is pending |
 
 A group, beside everything a read holds:
@@ -107,6 +107,12 @@ Every move a built-in layout offers has a keyboard path: a record's "Move to"
 column or a lane of the timeline, another record of the tree or none.
 Resizing an event or a bar is not offered in this generation.
 
+A listing's frame, and `data-embedded`, belong to the built-in layouts: a
+component layout draws no mark the renderer could set, so one placed directly
+in a flush split view's content draws whatever frame it draws itself, inside
+the split's. The contract carries no such mark in this generation, so a
+component that is meant to sit in a flush split draws none of its own.
+
 ## What it may leave to the page
 
 An entry may list as `external` only these specifiers; anything else is
@@ -128,7 +134,7 @@ refused as `ERR_UI_COMPONENT_ABI_UNSUPPORTED` or
 `ERR_UI_COMPONENT_IMPORT_UNSUPPLIED`, as for a `Ui.Component`, and that listing
 is drawn as the error node in its place. This renderer hosts
 `ui_react_layouts-1` alone. The component ABI `ui_react-1` and the controls
-contract `ui_react_controls-2` are separate generations, unchanged by this one.
+contract `ui_react_controls-3` are separate generations, unchanged by this one.
 
 ## The declaration
 
@@ -157,7 +163,7 @@ export interface LayoutRecord {
   detail?: ReactNode;
   /** The style names `rowStyle` gives it, for its element's `data-style`. */
   style?: string;
-  /** Whether it is selected. Nothing selects a record in this generation. */
+  /** Whether a link the renderer draws for it leads to where the viewer is; false for a component layout. */
   selected: boolean;
   /** Whether `onMove` may be reported for it. */
   movable: boolean;

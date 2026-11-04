@@ -1,26 +1,36 @@
 {
-  "generation": "ui_react_controls-2",
+  "generation": "ui_react_controls-3",
   "supplied": ["react", "react/jsx-runtime", "react-dom"],
-  "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current", "data-layout"],
+  "stateAttributes": ["data-state", "data-invalid", "data-placeholder", "data-highlighted", "data-current", "data-layout", "data-fill"],
   "icons": [
     "add",
     "alert",
+    "attach",
     "close",
     "collapse",
+    "copy",
     "delete",
+    "done",
     "edit",
     "expand",
+    "export",
     "filter",
+    "go",
     "loading",
     "menu",
     "more",
     "next",
+    "panel-close",
+    "panel-open",
     "previous",
+    "regenerate",
     "remove",
     "reset",
+    "send",
     "sort-ascending",
     "sort-descending",
-    "sortable"
+    "sortable",
+    "stop"
   ],
   "controls": {
     "TextInput": {
@@ -346,14 +356,15 @@
     "Tabs": {
       "group": "navigation",
       "description": "Content split under tabs, one shown at a time.",
-      "props": ["label", "tabs", "value", "onChange", "children"],
+      "props": ["label", "tabs", "value", "fill", "onChange", "children"],
       "roots": ["tabs"],
       "rootProp": null,
       "subParts": ["tab-list", "tab", "tab-panel"],
       "intents": { "onChange": "value" },
       "states": [
         { "attribute": "data-state", "values": ["active", "inactive"], "on": ["tab"] },
-        { "attribute": "data-state", "values": ["active"], "on": ["tab-panel"] }
+        { "attribute": "data-state", "values": ["active"], "on": ["tab-panel"] },
+        { "attribute": "data-fill", "values": ["true"], "on": ["$root", "tab-panel"] }
       ],
       "semantics": false,
       "portal": []

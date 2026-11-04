@@ -6,13 +6,15 @@ metadata:
   license: MIT
   categories: [Data, Streaming]
   description: |
-    Server-Sent Events on the wire: a stream of event records becomes the framed bytes
-    a browser's EventSource reads, one named event per record. The usual way to push
-    live updates — model tokens, progress, notifications — to a web client over plain
-    HTTP, and the reader that parses those frames back into records as they arrive.
+    Server-Sent Events on the wire: a stream of frames — each a payload with an
+    optional event name, resume id and reconnection delay — becomes the bytes a
+    browser's EventSource reads. The usual way to push live updates — model tokens,
+    progress, notifications — to a web client over plain HTTP, and the reader that
+    parses those frames back into records as they arrive.
 imports: { Codec: ../codec }
 exports:
   kinds: [Decoder, Encoder]
+  resources: [Frame]
   # The entry point a dependent module's controller bundle resolves
   # `@telorun/sse-codec` to: the frame and comment writers, so a transport that
   # writes its own event stream formats a frame exactly as the encoder does, and
@@ -24,32 +26,56 @@ exports:
       path: ./nodejs/sse-codec.mjs
       source: ./nodejs/src/index.ts
 ---
-# Encoder: `{type, ...rest}` records → SSE frame bytes. Bare strings frame as
-# `message` events. Mid-stream upstream errors emit a final
-# `event: error\ndata: {"message":"..."}\n\n` then end.
+# One frame as the encoder writes it: `id`, `event`, `retry`, then `data` and a
+# blank line. Keep-alive comments are not frames; they are transport timing.
+kind: Telo.JsonSchema
+metadata: { name: Frame }
+schema:
+  type: object
+  additionalProperties: false
+  required: [data]
+  properties:
+    data: { description: "The payload, written on one `data:` line as its plain JSON encoding." }
+    event:
+      description: "The event name. Omitted writes no `event:` line, which a reader takes as `message`."
+      type: string
+      minLength: 1
+      pattern: "^[^\\r\\n]*$"
+    id:
+      description: The resume position a client sends back as `Last-Event-ID`.
+      anyOf:
+        - { type: string, pattern: "^[^\\r\\n]*$" }
+        - { type: integer }
+    retry: { description: The reconnection delay a client should use, in milliseconds., type: integer, minimum: 0 }
+---
+# A stream failing mid-way ends with `event: error\ndata: {"message":…,"code":…}`
+# (code only for a coded failure) and is logged: by then the response is
+# committed, so the frame is all a client gets.
 kind: Telo.Definition
 metadata:
   name: Encoder
   description: >-
-    Encodes each record of a stream as a Server-Sent Events frame, naming the event
-    from the record's type and carrying the rest as JSON data. A failure mid-stream is
-    delivered as a final error event.
+    Writes each frame of a stream as Server-Sent Events bytes: its payload as JSON,
+    with the event name, resume id and reconnection delay it carries. A value that
+    is not a frame, or a failure mid-stream, ends the stream with a final error
+    event.
 capability: Telo.Invocable
 extends: Codec.Encoder
 controllers: [pkg:telo/local/js?path=./nodejs/sse-codec.mjs&local_path=./nodejs/src/index.ts#EncoderController]
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    properties:
+      input:
+        description: The frames to write, in order.
+        x-telo-type: { name: Telo.Stream, of: !ref Frame }
 schema: { type: object, additionalProperties: false }
 ---
-# Decoder: SSE frame bytes → one record per frame, emitted as they arrive.
-#
-# Streaming rather than collecting, which is the variation Codec.Decoder leaves
-# open: the whole point of the format is that a frame is usable the moment it
-# lands, and buffering to the end would make every consumer wait for the
-# response to finish.
-#
-# `data` is handed over as TEXT and never parsed here. The format says nothing
-# about what a payload is, and a stream carrying JSON frames routinely also
-# carries a sentinel that is not JSON (`data: [DONE]`), so parsing would fail on
-# the one frame announcing the stream is over.
+# Streams rather than collects, and hands `data` over as text: a JSON stream routinely
+# ends with a sentinel that is not JSON (`data: [DONE]`).
 kind: Telo.Definition
 metadata:
   name: Decoder

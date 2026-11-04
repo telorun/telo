@@ -1,0 +1,17 @@
+# Templates whose braces are not whole path segments of distinct names.
+kind: Telo.Library
+metadata: { name: PathTemplateInvalidLib }
+imports: { Kinds: ../../kinds }
+exports: { resources: [partial, repeated, authority] }
+---
+kind: Kinds.Link
+metadata: { name: partial }
+href: { path: "/x/a{id}", pathParams: { id: a } }
+---
+kind: Kinds.Link
+metadata: { name: repeated }
+href: { path: "/x/{id}/{id}", pathParams: { id: a } }
+---
+kind: Kinds.Link
+metadata: { name: authority }
+href: { path: "https://{host}/x", pathParams: { host: a } }

@@ -239,10 +239,18 @@ export interface ConfirmationProps extends OverlayProps {
   describedBy: string;
 }
 
+/** One thing a menu offers. */
+export interface MenuItem extends Option {
+  /** The entry cannot be chosen: it is drawn, with `aria-disabled`, and reports nothing. */
+  disabled?: boolean;
+  /** Why or what, as finished text: the entry's `title` and its description. */
+  hint?: string;
+}
+
 export interface MenuProps {
   open: boolean;
   /** The things to do, each a key and its finished text. */
-  items: Option[];
+  items: MenuItem[];
   onOpenChange(open: boolean, reason?: CloseReason): void;
   /** An entry is chosen. */
   onChange(key: string): void;
@@ -299,6 +307,8 @@ export interface TabsProps {
   tabs: Option[];
   /** The chosen tab's key. */
   value: string;
+  /** Whether the tabs fill the room they are in: the root and the shown panel then carry `data-fill="true"`. */
+  fill: boolean;
   onChange(value: string): void;
   /** The chosen tab's content, drawn in its panel. */
   children: ReactNode;
@@ -317,28 +327,38 @@ export interface TooltipProps {
 export type IconName =
   | "add"
   | "alert"
+  | "attach"
   | "close"
   | "collapse"
+  | "copy"
   | "delete"
+  | "done"
   | "edit"
   | "expand"
+  | "export"
   | "filter"
+  | "go"
   | "loading"
   | "menu"
   | "more"
   | "next"
+  | "panel-close"
+  | "panel-open"
   | "previous"
+  | "regenerate"
   | "remove"
   | "reset"
+  | "send"
   | "sort-ascending"
   | "sort-descending"
-  | "sortable";
+  | "sortable"
+  | "stop";
 
 export interface IconProps {
   name: IconName;
 }
 
-/** The control set of `ui_react_controls-2`: a module implementing any of them
+/** The control set of `ui_react_controls-3`: a module implementing any of them
  *  exports each under its name. */
 export interface Controls {
   TextInput: ComponentType<TextInputProps>;

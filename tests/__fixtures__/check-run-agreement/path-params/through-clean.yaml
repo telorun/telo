@@ -1,0 +1,16 @@
+# A link naming a page and binding exactly its variables: checked and created.
+kind: Telo.Application
+metadata: { name: PathParamThroughCleanApp }
+imports: { Kinds: ./kinds }
+---
+kind: Kinds.Page
+metadata: { name: item }
+path: "/p/{id}"
+---
+kind: Kinds.PageLink
+metadata: { name: link }
+href: { path: !ref item, pathParams: { id: a } }
+---
+kind: Kinds.Link
+metadata: { name: plain }
+href: { path: "/x/{id}", pathParams: { id: a } }

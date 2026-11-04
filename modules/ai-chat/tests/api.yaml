@@ -1,0 +1,305 @@
+kind: Telo.Application
+metadata:
+  name: AiChatApi
+  version: 1.0.0
+  description: |
+    A chat endpoint over HTTP, end to end: what it offers, a turn started with an
+    idempotency key, its events as Server-Sent Events from the start and from a
+    position, the transcript the turn leaves, the conversation read, renamed,
+    archived and deleted, and each failure as a problem document — an unknown
+    conversation, a refused request with its issues under `/body`, a malformed
+    header and a key reused with another message. Every expectation holds both
+    for the kind and for its body written with public kinds.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Http: ../../http-server
+  HttpClient: ../../http-client
+  Assert: ../../assert
+  Ejected:
+    source: ./__fixtures__/ejected-api
+    resources: { conversation: !ref ejectedChat }
+variables:
+  scratchDir:
+    env: AI_CHAT_API_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    accepts: []
+    usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 }
+store: { kind: AiConversationSql.Store, connection: !ref db }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-api')" }
+detector: { kind: MediaType.Detector }
+---
+# The fixture's own endpoint, so neither run sees the other's conversations or keys.
+kind: SQLite.Connection
+metadata: { name: ejectedDb }
+file: ":memory:"
+---
+kind: Chat.Conversation
+metadata: { name: ejectedChat }
+agent:
+  kind: Ai.AgentStream
+  model:
+    kind: AiEcho.EchoModelStream
+    accepts: []
+    usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 }
+store: { kind: AiConversationSql.Store, connection: !ref ejectedDb }
+journal:
+  kind: RecordStream.Journal
+  store: { kind: RecordStreamSql.JournalStore, connection: !ref ejectedDb, pollInterval: 50ms }
+  markerRetention: 1h
+blobs: { kind: BlobFs.Store, root: !cel "variables.scratchDir.joinPath('scratch-api-ejected')" }
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.Api
+metadata: { name: chatApi }
+conversation: !ref chat
+---
+# The route expectations, against the endpoint served at `base`.
+kind: Telo.Sequence
+metadata: { name: routes }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [base], properties: { base: { type: string } } }
+steps:
+  - name: capabilities
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/capabilities" }
+  - name: start
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns"
+      headers: { content-type: application/json, idempotency-key: key-1 }
+      body: { message: hi, attachments: [] }
+  - name: events
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/turns/${{ steps.start.result.body.turn }}/events", responseType: text }
+  - name: resumed
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      responseType: text
+      url: !interpolate "${{ inputs.base }}/turns/${{ steps.start.result.body.turn }}/events"
+      headers: { last-event-id: "2" }
+  - name: replayed
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns"
+      headers: { content-type: application/json, idempotency-key: key-1 }
+      body: { message: hi, attachments: [] }
+  - name: reused
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns"
+      headers: { content-type: application/json, idempotency-key: key-1 }
+      body: { message: other, attachments: [] }
+  - name: entries
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations/${{ steps.start.result.body.conversation }}/entries" }
+  - name: checkTurn
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        capabilities: !cel "steps.capabilities.result.body"
+        started: { status: !cel "steps.start.result.status", ids: !cel "sort(keys(steps.start.result.body))" }
+        events: { status: !cel "steps.events.result.status", type: !cel "steps.events.result.headers['content-type']", body: !cel "steps.events.result.body" }
+        resumed: !cel "steps.resumed.result.body"
+        replayed: !cel "steps.replayed.result.body == steps.start.result.body"
+        reused: { status: !cel "steps.reused.result.status", code: !cel "steps.reused.result.body.code" }
+        entries: !cel >-
+          {
+            'total': steps.entries.result.body.total,
+            'roles': steps.entries.result.body.rows.map(r, r.role),
+            'parts': steps.entries.result.body.rows.map(r, r.parts)
+          }
+      expected:
+        capabilities: { operations: [branch, cancel] }
+        started: { status: 200, ids: [conversation, turn] }
+        events:
+          status: 200
+          type: text/event-stream
+          body: |+
+            id: 1
+            event: text-delta
+            data: {"text":"h","type":"text-delta"}
+
+            id: 2
+            event: text-delta
+            data: {"text":"i","type":"text-delta"}
+
+            id: 3
+            event: step-usage
+            data: {"type":"step-usage","usage":{"inputTokens":3,"outputTokens":2,"totalTokens":5}}
+
+            id: 4
+            event: turn-end
+            data: {"reason":"stop","type":"turn-end","usage":{"inputTokens":3,"outputTokens":2,"totalTokens":5}}
+
+        resumed: |+
+          id: 3
+          event: step-usage
+          data: {"type":"step-usage","usage":{"inputTokens":3,"outputTokens":2,"totalTokens":5}}
+
+          id: 4
+          event: turn-end
+          data: {"reason":"stop","type":"turn-end","usage":{"inputTokens":3,"outputTokens":2,"totalTokens":5}}
+
+        replayed: true
+        reused: { status: 422, code: ERR_IDEMPOTENCY_KEY_CONFLICT }
+        entries:
+          total: 2
+          roles: [assistant, user]
+          parts: [[{ type: text, text: hi }], [{ type: text, text: hi }]]
+  - name: list
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations?limit=10" }
+  - name: summary
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations/${{ steps.start.result.body.conversation }}" }
+  - name: rename
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/conversations/${{ steps.start.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { title: Greeting }
+  - name: archive
+    invoke: { kind: HttpClient.Request, method: PATCH }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/conversations/${{ steps.start.result.body.conversation }}"
+      headers: { content-type: application/json }
+      body: { archived: true }
+  - name: active
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations?archived=false" }
+  - name: archived
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations?archived=true" }
+  - name: delete
+    invoke: { kind: HttpClient.Request, method: DELETE }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations/${{ steps.start.result.body.conversation }}" }
+  - name: gone
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations/${{ steps.start.result.body.conversation }}" }
+  - name: checkConversations
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        list: !cel "steps.list.result.body.rows.map(r, {'title': r.title, 'archived': r.archived, 'running': r.running, 'sameTurn': r.turn == steps.start.result.body.turn})"
+        summary: !cel "{'id': steps.summary.result.body.id == steps.start.result.body.conversation, 'running': steps.summary.result.body.running}"
+        renamed: !cel "steps.rename.result.body.title"
+        archivedNow: !cel "steps.archive.result.body.archived"
+        active: !cel "steps.active.result.body.total"
+        archivedList: !cel "steps.archived.result.body.total"
+        deleted: !cel "steps.delete.result.status"
+        gone: { status: !cel "steps.gone.result.status", problem: !cel "steps.gone.result.headers['content-type'].startsWith('application/problem+json')", code: !cel "steps.gone.result.body.code" }
+      expected:
+        list: [{ title: null, archived: false, running: false, sameTurn: true }]
+        summary: { id: true, running: false }
+        renamed: Greeting
+        archivedNow: true
+        active: 0
+        archivedList: 1
+        deleted: 204
+        gone: { status: 404, problem: true, code: ERR_CONVERSATION_NOT_FOUND }
+  - name: approvalWithMessage
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns"
+      headers: { content-type: application/json }
+      body: { conversation: cnv_x, parent: ent_x, message: hi, attachments: [], approvals: [{ id: a1, approved: true }] }
+  - name: twiceNamed
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns"
+      headers: { content-type: application/json }
+      body: { message: hi, attachments: [att_0000000000000000000000, att_0000000000000000000000] }
+  - name: badKey
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns"
+      headers: { content-type: application/json, idempotency-key: "" }
+      body: { message: hi, attachments: [] }
+  - name: badEventId
+    invoke: { kind: HttpClient.Request }
+    inputs:
+      url: !interpolate "${{ inputs.base }}/turns/trn_0000000000000000000000/events"
+      headers: { last-event-id: later }
+  - name: unknownTurn
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/turns/trn_000000000000000missing/events" }
+  - name: unknownCancel
+    invoke: { kind: HttpClient.Request, method: POST }
+    inputs: { url: !interpolate "${{ inputs.base }}/turns/trn_000000000000000missing/cancel" }
+  - name: badTurnId
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/turns/idempotency%2Fabc/events" }
+  - name: badAttachmentId
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations/cnv_x/attachments/not-an-id" }
+  - name: unknownFile
+    invoke: { kind: HttpClient.Request }
+    inputs: { url: !interpolate "${{ inputs.base }}/conversations/cnv_x/attachments/att_0000000000000000000000" }
+  - name: checkProblems
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        approvalWithMessage:
+          status: !cel "steps.approvalWithMessage.result.status"
+          code: !cel "steps.approvalWithMessage.result.body.code"
+          issues: !cel "steps.approvalWithMessage.result.body.data.issues.map(i, i.pointer)"
+        twiceNamed: !cel "steps.twiceNamed.result.body.data.issues.map(i, i.pointer + ' ' + i.keyword)"
+        badKey: !cel "steps.badKey.result.body.data.issues.map(i, i.pointer)"
+        badEventId: !cel "steps.badEventId.result.body.data.issues.map(i, i.pointer)"
+        badTurnId: !cel "steps.badTurnId.result.body.data.issues.map(i, i.pointer)"
+        badAttachmentId: !cel "steps.badAttachmentId.result.body.data.issues.map(i, i.pointer)"
+        unknownTurn: { status: !cel "steps.unknownTurn.result.status", code: !cel "steps.unknownTurn.result.body.code" }
+        unknownCancel: { status: !cel "steps.unknownCancel.result.status", code: !cel "steps.unknownCancel.result.body.code" }
+        unknownFile: { status: !cel "steps.unknownFile.result.status", code: !cel "steps.unknownFile.result.body.code" }
+      expected:
+        approvalWithMessage: { status: 400, code: ERR_INPUT_INVALID, issues: [/body/message] }
+        twiceNamed: [/body/attachments uniqueItems]
+        badKey: [/headers/idempotency-key]
+        badEventId: [/headers/last-event-id]
+        badTurnId: [/params/turnId]
+        badAttachmentId: [/params/attachmentId]
+        unknownTurn: { status: 404, code: ERR_CONVERSATION_TURN_NOT_FOUND }
+        unknownCancel: { status: 404, code: ERR_CONVERSATION_TURN_NOT_FOUND }
+        unknownFile: { status: 404, code: ERR_CONVERSATION_ATTACHMENT_NOT_FOUND }
+---
+# The same expectations against the kind and against its body written with public kinds.
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 19411 }
+    mounts:
+      - { path: /chat, mount: !ref chatApi }
+      - { path: /ejected, mount: !ref Ejected.api }
+targets: [!ref server]
+steps:
+  - { name: mounted, invoke: !ref routes, inputs: { base: "http://127.0.0.1:19411/chat" } }
+  - { name: ejected, invoke: !ref routes, inputs: { base: "http://127.0.0.1:19411/ejected" } }

@@ -1208,7 +1208,6 @@ export function inlineNamedShapes(
   return liftFragmentDefs(expand(schema, new Set()) as Record<string, any>);
 }
 
-/** Collect property schemas from top-level `properties` and all `oneOf`/`anyOf` sub-schemas. */
 /**
  * The `oneOf` / `anyOf` branch a value is written against, when exactly one fits.
  *
@@ -1218,10 +1217,18 @@ export function inlineNamedShapes(
  * violations against a value that is perfectly valid. Picking the branch first
  * is what lets the leaves be typed.
  *
- * Selection is structural and conservative: a branch must agree with the data's
- * kind, and for an object every `required` key must be present (which is what
- * separates a `{type, text}` part from a `{type, data, mediaType}` one). If that
- * leaves anything other than exactly one branch, the union is returned unchanged
+ * Selection narrows exactly as far as the written data proves a branch cannot
+ * validate: its `type` excludes the data's kind; for an object a `required` key
+ * is absent (which separates a `{type, text}` part from a `{type, data,
+ * mediaType}` one); or a `const` / `enum` pin refuses a literal — the branch's
+ * own for a scalar, a member's for an object member written as a literal scalar
+ * (so a `type`-tagged union selects by its tag). Pins are read through `$ref`,
+ * through a union of pins, through the branch's `allOf` parts and over the
+ * union's shared base, and a branch that is itself a union fits when one of its
+ * branches does. An expression, a reference, an object or a list at a member is
+ * never judged, nor is a member's `type` (it may be read through a plain
+ * encoding) or `additionalProperties` (a walker's key set is not the author's
+ * alone). If that leaves anything other than exactly one branch, the union is returned unchanged
  * — an ambiguous union is one the analyzer should not resolve on the author's
  * behalf — with one exception, decided by the value itself: where every branch a
  * text or number fits is a value type written in a plain encoding (a duration
@@ -1272,22 +1279,13 @@ export function fittingUnionBranches(
               : undefined;
   if (!kind) return undefined;
 
+  const shared: DeclaredProperties[] = isSchemaRecord(schema.properties)
+    ? [{ properties: schema.properties, root }]
+    : [];
   const fits = branches
-    .map((b) => resolveRef(b, root, external))
-    .filter((b) => {
-      const types = Array.isArray(b.type) ? b.type : b.type ? [b.type] : [];
-      if (types.length > 0 && !types.includes(kind)) return false;
-      // A constant branch is the reading of exactly one scalar — `":memory:"`
-      // beside a path — so any other scalar is the other branch's.
-      if ("const" in b && (data === null || typeof data !== "object") && b.const !== data) {
-        return false;
-      }
-      if (kind === "object" && Array.isArray(b.required)) {
-        const keys = Object.keys(data as Record<string, unknown>);
-        if (!(b.required as string[]).every((r) => keys.includes(r))) return false;
-      }
-      return true;
-    });
+    .map((b) => resolveRefIn(b, root, external))
+    .filter((b) => branchFits(b.schema, b.root, data, kind, shared, external, new Set()))
+    .map((b) => b.schema);
   const read = encodedReading(fits, data);
   if (read) fits.splice(0, fits.length, read);
   if (schema.type === undefined && schema.properties === undefined) return fits;
@@ -1304,6 +1302,108 @@ export function fittingUnionBranches(
       ...(required.length > 0 ? { required: [...new Set(required)] } : {}),
     };
   });
+}
+
+/** The `properties` a branch inherits, each in the document it was written in. */
+interface DeclaredProperties {
+  properties: Record<string, any>;
+  root: Record<string, any>;
+}
+
+type DataKind = "array" | "null" | "object" | "string" | "number" | "boolean";
+
+const isSchemaRecord = (value: unknown): value is Record<string, any> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+/** A value the author wrote as a plain scalar — never an expression, a
+ *  reference or a decoded instance, each of which is an object here. */
+const isLiteralScalar = (value: unknown): value is string | number | boolean | null =>
+  value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+
+/**
+ * Whether `branch` may validate `data`, judged from the written data alone: its
+ * `type`, its `required` keys, and every `const` / `enum` pin it carries over a
+ * literal scalar — its own for a scalar, a member's for an object member, both
+ * read through the inherited `shared` properties and the branch's `allOf`
+ * parts. A branch that is itself a union fits when one of its branches does.
+ * `chain` holds the nodes being judged above this one, so a recursive shape
+ * is admitted rather than walked again.
+ */
+function branchFits(
+  branch: Record<string, any>,
+  root: Record<string, any>,
+  data: unknown,
+  kind: DataKind,
+  shared: readonly DeclaredProperties[],
+  external: ExternalSchemaResolver | undefined,
+  chain: ReadonlySet<Record<string, any>>,
+): boolean {
+  if (chain.has(branch)) return true;
+  const inner = new Set(chain).add(branch);
+  const types = Array.isArray(branch.type) ? branch.type : branch.type ? [branch.type] : [];
+  if (types.length > 0 && !types.includes(kind)) return false;
+  // The branch's own declaration of a member replaces an inherited one, and a
+  // nearer inherited one a further one: the last entry declaring it wins.
+  const declaring = isSchemaRecord(branch.properties)
+    ? [...shared, { properties: branch.properties, root }]
+    : shared;
+  if (kind === "object") {
+    const members = data as Record<string, unknown>;
+    if (Array.isArray(branch.required) && !(branch.required as string[]).every((r) => Object.hasOwn(members, r))) {
+      return false;
+    }
+    for (const [key, value] of Object.entries(members)) {
+      if (!isLiteralScalar(value)) continue;
+      let at: DeclaredProperties | undefined;
+      for (const entry of declaring) if (isSchemaRecord(entry.properties[key])) at = entry;
+      if (at && literalRefused(at.properties[key], at.root, value, external, new Set())) return false;
+    }
+  } else if (kind !== "array" && pinRefuses(branch, data)) {
+    return false;
+  }
+  for (const part of Array.isArray(branch.allOf) ? branch.allOf : []) {
+    if (!isSchemaRecord(part)) continue;
+    const entered = resolveRefIn(part, root, external);
+    if (!branchFits(entered.schema, entered.root, data, kind, [], external, inner)) return false;
+  }
+  const nested = branch.oneOf ?? branch.anyOf;
+  if (!Array.isArray(nested) || nested.length === 0) return true;
+  return nested.some((sub) => {
+    if (!isSchemaRecord(sub)) return true;
+    const entered = resolveRefIn(sub, root, external);
+    return branchFits(entered.schema, entered.root, data, kind, declaring, external, inner);
+  });
+}
+
+/** A `const` / `enum` on `schema` itself that `literal` falls outside. */
+function pinRefuses(schema: Record<string, any>, literal: unknown): boolean {
+  if ("const" in schema && schema.const !== literal) return true;
+  return Array.isArray(schema.enum) && !schema.enum.includes(literal);
+}
+
+/**
+ * Whether the member schema refuses the literal it was written with: a pin it
+ * falls outside, read through `$ref`, through a union none of whose branches
+ * admits it and through an `allOf` part that refuses it. Nothing else — a
+ * member's `type` may be read through a plain encoding, which its own walk
+ * decides.
+ */
+function literalRefused(
+  written: Record<string, any>,
+  root: Record<string, any>,
+  literal: string | number | boolean | null,
+  external: ExternalSchemaResolver | undefined,
+  chain: ReadonlySet<Record<string, any>>,
+): boolean {
+  const { schema, root: at } = resolveRefIn(written, root, external);
+  if (chain.has(schema)) return false;
+  const inner = new Set(chain).add(schema);
+  if (pinRefuses(schema, literal)) return true;
+  const refusedBy = (sub: unknown) =>
+    isSchemaRecord(sub) && literalRefused(sub, at, literal, external, inner);
+  if (Array.isArray(schema.allOf) && schema.allOf.some(refusedBy)) return true;
+  const union = schema.oneOf ?? schema.anyOf;
+  return Array.isArray(union) && union.length > 0 && union.every(refusedBy);
 }
 
 /**
@@ -1323,6 +1423,7 @@ function encodedReading(fits: Record<string, any>[], data: unknown): Record<stri
   return reading.length === 1 ? reading[0] : undefined;
 }
 
+/** Property schemas from top-level `properties`, `allOf` parts and every `oneOf` / `anyOf` branch. */
 export function collectProperties(schema: Record<string, any>): Record<string, any> {
   const props: Record<string, any> = { ...(schema.properties ?? {}) };
   // `allOf` INTERSECTS, so a branch constraining a property constrains the

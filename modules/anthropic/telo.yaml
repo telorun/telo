@@ -19,7 +19,37 @@ imports:
   # For its code entry: the stream kind's controller reads event-stream frames
   # with the reader `SseCodec.Decoder` runs.
   SseCodec: ../sse-codec
-exports: { kinds: [Client, MessagesModel, MessagesModelStream] }
+exports:
+  resources: [AcceptedContent]
+  kinds: [Client, MessagesModel, MessagesModelStream]
+---
+# What the Messages API can carry at all: four image types, PDF and plain text.
+# Audio and video have no input block.
+kind: Telo.JsonSchema
+metadata:
+  name: AcceptedContent
+  description: The media a Messages model can be declared to take — JPEG, PNG, GIF and WebP images, PDF and plain-text files, each with an optional size bound. Audio and video cannot be carried by this API.
+schema:
+  type: array
+  items:
+    oneOf:
+      - type: object
+        additionalProperties: false
+        required: [type, mediaTypes]
+        properties:
+          type: { const: image }
+          mediaTypes:
+            type: array
+            minItems: 1
+            items: { enum: [image/jpeg, image/png, image/gif, image/webp] }
+          maxBytes: { type: integer, minimum: 1 }
+      - type: object
+        additionalProperties: false
+        required: [type, mediaTypes]
+        properties:
+          type: { const: file }
+          mediaTypes: { type: array, minItems: 1, items: { enum: [application/pdf, text/plain] } }
+          maxBytes: { type: integer, minimum: 1 }
 ---
 # The account as an Http.Client: Anthropic's endpoint and a timeout sized for
 # inference. A complete answer arrives in one response, so the HTTP client's own
@@ -276,6 +306,14 @@ schema:
       type: array
       items: { type: string, minLength: 1 }
       x-telo-eval: compile
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: JPEG, PNG, GIF and WebP images, and PDF
+        and plain-text files. Absent means text only; a part outside it is refused
+        before anything is sent.
+      $ref: "telo://Self/AcceptedContent"
+      x-telo-eval: compile
     options:
       title: Options
       description: >-
@@ -523,6 +561,14 @@ schema:
         Opt-in API features, sent on every call as the `anthropic-beta` header.
       type: array
       items: { type: string, minLength: 1 }
+      x-telo-eval: compile
+    accepts:
+      title: Accepted content
+      description: >-
+        The media this model takes beside text: JPEG, PNG, GIF and WebP images, and PDF
+        and plain-text files. Absent means text only; a part outside it is refused
+        before anything is sent.
+      $ref: "telo://Self/AcceptedContent"
       x-telo-eval: compile
     options:
       title: Options

@@ -3,4 +3,5 @@
 // state is one module scope.
 export * as DecoderController from "./decoder-controller.js";
 export * as EncoderController from "./encoder-controller.js";
+export * as ReadPartController from "./read-part-controller.js";
 export * as ReaderController from "./reader-controller.js";

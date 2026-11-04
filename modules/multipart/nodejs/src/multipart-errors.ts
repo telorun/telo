@@ -2,6 +2,7 @@ import { InvokeError } from "@telorun/sdk";
 
 export const ERR_MULTIPART_MALFORMED = "ERR_MULTIPART_MALFORMED";
 export const ERR_MULTIPART_LIMIT_EXCEEDED = "ERR_MULTIPART_LIMIT_EXCEEDED";
+export const ERR_MULTIPART_PART_MISSING = "ERR_MULTIPART_PART_MISSING";
 
 export type MalformedReason =
   | "boundary-missing"
@@ -32,4 +33,9 @@ export function limitExceeded(
     ...(part === undefined ? {} : { part: part.index }),
     ...(part?.name === undefined ? {} : { name: part.name }),
   });
+}
+
+/** The payload ended at its closing boundary with no part named `name`. */
+export function partMissing(who: string, name: string): InvokeError {
+  return new InvokeError(ERR_MULTIPART_PART_MISSING, `${who}: the payload holds no part named '${name}'.`, { name });
 }

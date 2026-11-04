@@ -3,7 +3,8 @@
  * `Stream.Collect`), byte re-framing (`Stream.Chunk`), the three
  * element-wise transforms every streaming protocol is assembled from
  * (`Stream.Map`, `Stream.Scan`, `Stream.FlatMap`), a pass-through observer
- * (`Stream.Tap`), and lazy sequencing of several producers (`Stream.Concat`).
+ * (`Stream.Tap`), lazy sequencing of several producers (`Stream.Concat`), and
+ * ending a failed stream with a final value (`Stream.Recover`).
  */
 
 // Controller entry points. Each kind's `controllers:` candidate selects one of
@@ -15,5 +16,6 @@ export * as ConcatController from "./concat-controller.js";
 export * as FlatMapController from "./flat-map-controller.js";
 export * as MapController from "./map-controller.js";
 export * as OfController from "./of-controller.js";
+export * as RecoverController from "./recover-controller.js";
 export * as ScanController from "./scan-controller.js";
 export * as TapController from "./tap-controller.js";

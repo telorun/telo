@@ -5,6 +5,8 @@ import {
   browserExportAnnotationProblems,
   browserExportProblems,
   browserExportSites,
+  pathParamsAnnotationProblems,
+  pathParamsProblems,
   buildAccessorSites,
   buildEvalPaths,
   evaluatedField,
@@ -625,6 +627,16 @@ export class Kernel implements IKernel {
         "ERR_BROWSER_EXPORT_ANNOTATION_INVALID",
         `${definition.kind} ${browserExport.message}`,
       );
+    }
+    const [pathParams] = pathParamsAnnotationProblems(
+      String(definition.metadata?.name),
+      definition.schema,
+      (ref) =>
+        (this.sharedSchemaValidator.getSchema(ref) as Record<string, any> | undefined) ??
+        this.registry.schemaForId(ref),
+    );
+    if (pathParams) {
+      throw new RuntimeError("ERR_PATH_PARAMS_FOR_INVALID", `${definition.kind} ${pathParams.message}`);
     }
     this.controllers.registerDefinition(definition);
     this.registry.registerDefinition(definition);
@@ -3055,6 +3067,23 @@ export class Kernel implements IKernel {
     );
     if (unserializable) {
       throw new RuntimeError("ERR_SCHEMA_NOT_SERIALIZABLE", `${resourceLabel}: ${unserializable.message}`);
+    }
+
+    // A map of path variables against the template it fills, judged as written:
+    // an expression at the template field is never expanded. A reference there
+    // is read off the declaration it names. Same reader as `telo check`.
+    const [pathParams] = pathParamsProblems(configSchema as Record<string, any>, resource as Record<string, any>, {
+      external: schemaForRef,
+      declarationOf: (value, holder) => {
+        const injected = declarationOfInstance(value);
+        if (injected) return injected as unknown as Record<string, any>;
+        if (!isResolvedReference(value)) return undefined;
+        const scope = declarationScopeOf(holder) ?? (evalContext instanceof EvaluationContext ? evalContext : undefined);
+        return scope?.resolveDeclaredManifest?.(value.name, value.alias) as Record<string, any> | undefined;
+      },
+    });
+    if (pathParams) {
+      throw new RuntimeError(`ERR_${pathParams.code}`, `${resourceLabel}: ${pathParams.message}`);
     }
 
     // Every text the resource holds is judged in the language of the module

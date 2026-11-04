@@ -20,7 +20,7 @@ exports:
     - specifier: "@telorun/ui-react-radix"
       path: ./browser/ui-react-radix.js
       source: ./nodejs/src/controls/index.ts
-      abi: ui_react_controls-2
+      abi: ui_react_controls-3
       external: [react, react/jsx-runtime, react-dom]
       exports:
         [

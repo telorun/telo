@@ -53,11 +53,17 @@ client: !ref unreachable
 ---
 kind: OpenAI.ChatModel
 metadata: { name: chat }
+accepts:
+  - { type: image, mediaTypes: [image/png] }
+  - { type: file, mediaTypes: [application/pdf] }
 model: gpt-test
 request: !ref openaiRequest
 ---
 kind: OpenAI.ChatModelStream
 metadata: { name: chatStream }
+accepts:
+  - { type: image, mediaTypes: [image/png] }
+  - { type: file, mediaTypes: [application/pdf] }
 model: gpt-test
 request: !ref openaiRequest
 ---

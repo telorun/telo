@@ -2,6 +2,7 @@ import type { ResourceContext, ResourceInstance, RuntimeResource } from "@teloru
 import type { Provided, SpecNode } from "./composite.js";
 import { isComponentExport } from "./component-export-controller.js";
 import type { Binding } from "./row-binding.js";
+import { filledProvided } from "./fill-marking.js";
 
 type ComponentResource = RuntimeResource & {
   component: unknown;
@@ -20,7 +21,7 @@ class Component implements ResourceInstance {
       .resolveRef(this.resource.component, isComponentExport, () => `'component' of Ui.Component '${name}'`, "Ui.ComponentExport")
       .provide();
     const node: SpecNode = { type: "component", ...exported, props: this.resource.props ?? {} };
-    return { node, assets };
+    return filledProvided({ node, assets });
   }
 }
 

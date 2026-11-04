@@ -39,8 +39,15 @@ export interface ElementSpec {
   children?: ElementSpec[];
 }
 
-/** A response the page's requests are answered with; `pending` never answers. */
-export type CannedResponse = { status: number; body?: unknown } | { pending: true };
+/** A response the page's requests are answered with: a JSON `body`, or a `stream` of server-sent events as text; `pending` never answers. */
+export type CannedResponse = { status: number; body?: unknown } | { status: number; stream: string } | { pending: true };
+
+/** A file a person drops onto the page: no bytes, only what the page reads of it. */
+export interface DroppedFile {
+  name: string;
+  type: string;
+  size: number;
+}
 
 export interface Expectation {
   /** Exactly these intents, `[name, ...arguments]`, since the last expectation. */
@@ -68,6 +75,8 @@ export type Step =
   | { blur: Target }
   /** The target, and everything in it, is scrolled to its end. */
   | { scroll: Target }
+  /** Files dragged over the target and — unless `hold` — dropped on it. */
+  | { drop: Target; files: DroppedFile[]; hold?: true }
   | { wait: number }
   | { props: Record<string, unknown> }
   | { respond: Record<string, CannedResponse> }
@@ -402,6 +411,21 @@ function focusName(element: Element | null): string {
   return part ? `the '${part}' part` : `a ${element.tagName.toLowerCase()}${element.id ? ` '${element.id}'` : ""}`;
 }
 
+/** Files dragged over an element and, unless held over it, dropped on it. */
+function dropFiles(view: View, element: HTMLElement, specs: DroppedFile[], hold: boolean): void {
+  const files = specs.map((spec) => {
+    const file = new view.File([""], spec.name, { type: spec.type });
+    Object.defineProperty(file, "size", { value: spec.size });
+    return file;
+  });
+  const transfer = { types: ["Files"], files };
+  for (const type of hold ? ["dragover"] : ["dragover", "drop"]) {
+    const event = new view.Event(type, { bubbles: true, cancelable: true });
+    Object.defineProperty(event, "dataTransfer", { value: transfer });
+    element.dispatchEvent(event);
+  }
+}
+
 /** Perform one step that is not an expectation, a props change or an answer. */
 async function perform(step: Step, session: Session): Promise<void> {
   const { view } = session;
@@ -415,6 +439,8 @@ async function perform(step: Step, session: Session): Promise<void> {
     const element = resolve(step.blur, session);
     if (view.document.activeElement === element) element.blur();
     else element.dispatchEvent(new view.FocusEvent("focusout", { bubbles: true }));
+  } else if ("drop" in step) {
+    dropFiles(view, resolve(step.drop, session), step.files, step.hold === true);
   } else if ("scroll" in step) {
     // Whichever element of it scrolls is the control's: each is told it reached its end.
     const scrolled = resolve(step.scroll, session);
@@ -655,7 +681,7 @@ export async function runScene(options: {
   prepareWindow(view);
   const document = view.document;
   const scope = view as unknown as Record<string, any>;
-  const held = { fetch: scope.fetch, matchMedia: scope.matchMedia };
+  const held = { fetch: scope.fetch, matchMedia: scope.matchMedia, upload: scope.XMLHttpRequest };
   const ResponseOf: typeof Response = scope.Response ?? Response;
   let responses = { ...scene.responses };
   const json = (body: unknown, status = 200) =>
@@ -673,7 +699,41 @@ export async function runScene(options: {
     const canned = cannedFor(responses, method, url.pathname);
     if (!canned) return json({ error: "NotFound", message: `The scene answers no ${method} ${url.pathname}.`, status: 404 }, 404);
     if ("pending" in canned) return new Promise<Response>(() => {});
+    if ("stream" in canned) {
+      return new ResponseOf(canned.stream, { status: canned.status, headers: { "content-type": "text/event-stream" } });
+    }
     return json(canned.body, canned.status);
+  };
+  // An upload reports half its progress at once, then is answered like any request.
+  scope.XMLHttpRequest = class {
+    upload: { onprogress?: (event: unknown) => void } = {};
+    onload?: () => void;
+    onerror?: () => void;
+    onabort?: () => void;
+    status = 0;
+    statusText = "";
+    responseText = "";
+    withCredentials = false;
+    private method = "";
+    private path = "";
+    open(method: string, address: string) {
+      this.method = method;
+      this.path = new URL(address, view.location.href).pathname;
+    }
+    setRequestHeader() {}
+    send() {
+      this.upload.onprogress?.({ lengthComputable: true, loaded: 1, total: 2 });
+      const canned = cannedFor(responses, this.method, this.path);
+      if (canned && "pending" in canned) return;
+      view.setTimeout(() => {
+        this.status = canned && "status" in canned ? canned.status : 404;
+        this.responseText = JSON.stringify(canned && "body" in canned ? canned.body : { status: 404 });
+        this.onload?.();
+      }, 0);
+    }
+    abort() {
+      this.onabort?.();
+    }
   };
   if (scene.compact !== undefined) {
     scope.matchMedia = (query: string) => ({ matches: scene.compact, media: query, addEventListener() {}, removeEventListener() {} });
@@ -720,6 +780,7 @@ export async function runScene(options: {
     for (const leftover of document.body.querySelectorAll(":scope > *")) leftover.remove();
     scope.fetch = held.fetch;
     scope.matchMedia = held.matchMedia;
+    scope.XMLHttpRequest = held.upload;
   }
   return problems;
 }

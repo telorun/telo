@@ -1,0 +1,21 @@
+# The conversation list a page offers is a collection the contract declares.
+kind: Telo.Application
+metadata: { name: ConversationListsTest, version: 1.0.0 }
+imports: { Conversation: ../, Assert: ../../assert }
+targets:
+  - !ref declaration
+---
+kind: Telo.Sequence
+metadata: { name: declaration }
+steps:
+  - name: declaration
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "[resources.Conversation.conversations.key, resources.Conversation.conversations.query]"
+      expected:
+        - id
+        - filters:
+            - { property: title, operator: contains }
+            - { property: archived, operator: eq }
+          sort: [{ property: updatedAt }]
+          facets: []

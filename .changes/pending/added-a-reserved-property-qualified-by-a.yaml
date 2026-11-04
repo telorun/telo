@@ -1,0 +1,7 @@
+modules:
+  modules/ui-react-conformance: Added
+body: A reserved property qualified by a state (a part's, or any part's) is judged only
+  where a theme rule matched a part carrying that state in some scene, so a rule written
+  with :not() of the state keeps the property at rest; property-reserved names the state
+  in its subject and message, and flex, flex-flow, block-size and place-items count as
+  setting the longhands they set.

@@ -46,6 +46,7 @@ function makeModel() {
     {
       metadata: { name: "T" },
       model: "gpt-4o-mini",
+      accepts: [{ type: "image", mediaTypes: ["image/*"] }],
       request: { invoke: requestMock },
     } as never,
     {} as never,

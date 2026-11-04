@@ -41,7 +41,7 @@ model: !ref Account
 query: { signin: { type: string, enum: [denied, expired] } }
 source:
   path: /api/auth
-  params:
+  queryParams:
     signin: !cel "query.signin"
     fixed: 1
 reloadOn: [focus, unauthorized]
@@ -101,7 +101,7 @@ metadata: { name: send }
 inputModel:
   kind: Telo.JsonSchema
   schema: { type: object, properties: { to: { type: string } } }
-source: { path: /api/send }
+request: { target: /api/send }
 label: Send
 enabled:
   at: !cel "values.to"
@@ -119,6 +119,7 @@ steps:
       actual: !cel "steps.account.result.node"
       expected:
         type: data
+        fill: false
         schema:
           type: object
           required: [authorized]
@@ -133,18 +134,23 @@ steps:
                   name: { type: string, title: Name }
                   url: { type: string, format: uri-reference, title: Link }
         source:
-          path: /api/auth
-          params: { signin: { root: query, path: [signin] }, fixed: { value: 1 } }
+          path: { value: /api/auth }
+          pathParams: {}
+          queryParams: { signin: { root: query, path: [signin] }, fixed: { value: 1 } }
         query: { signin: { type: string, enum: [denied, expired] } }
         content:
           type: stack
+          fill: false
           children:
             - type: value
+              fill: false
               value: { root: data, path: [email] }
               present: { type: string }
               labels: []
               shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
             - type: list
+              fill: false
+              rowActionsDisplay: auto
               heading: { text: Files, context: null, lang: und, computed: false }
               rows: { root: data, path: [files] }
               columns:
@@ -158,14 +164,16 @@ steps:
                   labels: []
                   shown: { at: { root: data, path: [authorized] }, matches: { const: true } }
             - type: value
+              fill: false
               value: { root: query, path: [signin] }
               present: { type: string }
               labels:
                 - { value: denied, label: { text: denied, context: null, lang: und, computed: false } }
                 - { value: expired, label: { text: expired, context: null, lang: und, computed: false } }
-        loading: { type: text, text: { set: Ui.Translations, key: loading }, style: muted }
+        loading: { type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }
         failure:
           type: value
+          fill: false
           labels: []
           value: { root: error, path: [message] }
           present: { type: string }
@@ -178,17 +186,19 @@ steps:
       actual: !cel "steps.plain.result.node"
       expected:
         type: data
+        fill: false
         schema: { type: object }
-        source: { path: /api/plain, params: {} }
+        source: { path: { value: /api/plain }, pathParams: {}, queryParams: {} }
         query: {}
-        content: { type: text, text: { text: Ready, context: null, lang: und, computed: false } }
-        loading: { type: text, text: { set: Ui.Translations, key: loading }, style: muted }
+        content: { type: text, fill: false, text: { text: Ready, context: null, lang: und, computed: false } }
+        loading: { type: text, fill: false, text: { set: Ui.Translations, key: loading }, style: muted }
         failure:
           type: stack
+          fill: false
           style: danger
           children:
-            - { type: value, value: { root: error, path: [code] }, present: { type: string }, labels: [], style: strong }
-            - { type: value, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
+            - { type: value, fill: false, value: { root: error, path: [code] }, present: { type: string }, labels: [], style: strong }
+            - { type: value, fill: false, value: { root: error, path: [message] }, present: { type: string }, labels: [] }
         reloadOn: []
   - name: note
     invoke: { kind: Probe.Read, source: !ref note }

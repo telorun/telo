@@ -1,16 +1,26 @@
 # The action contract
 
-What the URL in a [`Ui.Action`](action.md)'s `source.path` must speak. Any
+What the URL in a [`Ui.Action`](action.md)'s `request.target` must speak. Any
 operation that answers this way can be run from a page.
 
-## The request — `POST <path>`
+## The request — `<method> <target>`
 
-`content-type: application/json`. The body is a record valid against the
-action's `inputModel`: each field that has a value, in the JSON type the model
-declares. A property with no value is left out rather than sent as `null`, and
-so is a list with nothing in it.
+`method` is the action's `request.method` (`POST` by default, `PUT`, `PATCH` or
+`DELETE`) and `target` its [request target](nodes.md#addresses) resolved over
+the record the press sends, `input`.
 
-Requests carry the page's same-origin credentials.
+An input property is **consumed** when a `pathParams` or `queryParams` binding
+is exactly `input.<property>`. A consumed property travels in the target, so
+the body is the input model's remaining properties.
+
+| Method | Body |
+| --- | --- |
+| `POST`, `PUT`, `PATCH` | `content-type: application/json`: each property that has a value, in the JSON type the model declares, minus the consumed ones. A property with no value is left out rather than sent as `null`, and so is a list with nothing in it |
+| `DELETE` | none. Every input property is consumed ([`UI_ACTION_INPUT_UNSENT`](action.md#refused)) |
+
+The body is valid against the route's request schema, which is the input model
+minus the consumed properties; the route's path parameters are the consumed
+ones. Requests carry the page's same-origin credentials.
 
 ## The answer
 
@@ -22,9 +32,10 @@ Requests carry the page's same-origin credentials.
 | anything else, or no answer at all | failed | the `failure` tree |
 
 **A 2xx body** is a JSON object valid against `outputModel`. It is read only
-when the action's `result` tree or `onSuccess.navigate` reads `result`; an
-action whose answer nothing reads may answer with anything, or with nothing. A
-body that is read and is not a JSON object, or that `outputModel` refuses, is a
+when something reads `result` — the action's `result` tree, `onSuccess.navigate`
+or a `onSuccess.refreshes` entry; an action whose answer nothing reads may
+answer with anything, or with nothing, a 204 included. A body that is read and
+is not a JSON object, that is empty, or that `outputModel` refuses, is a
 failure with `code: ERR_UI_RESPONSE_INVALID`.
 
 **Any other answer** may carry a problem body (RFC 9457, `application/problem+json`
@@ -59,8 +70,10 @@ tree reads the problem's `code` and `detail`.
 
 ## One shape, named twice
 
-The route and the action are written over the same two shapes, so the page
-cannot send what the route refuses or draw what it does not answer:
+The route and the action are written over the same two shapes — the route's
+body is the input model minus the consumed properties, its path parameters the
+consumed ones — so the page cannot send what the route refuses or draw what it
+does not answer:
 
 ```yaml
 kind: Telo.JsonSchema
@@ -120,7 +133,7 @@ kind: Ui.Action
 metadata: { name: generate }
 inputModel: !ref ReportRequest
 outputModel: !ref ReportAnswer
-source: { path: /api/reports }
+request: { target: /api/reports }
 label: Generate
 result:
   type: list
@@ -132,11 +145,21 @@ result:
 
 ## From a row
 
-[A row action](action.md#row-actions) sends the same request, its body built
+[A row action](action.md#row-actions) sends the same request, its input built
 from the row instead of a form: each input the entry binds, a path that
 resolves to nothing left out — and, where the entry declares `prompt`, each
-field its dialog entered. Its answer is read and drawn as the action's own:
+field its dialog entered. That input fills the action's `target`, so a bound
+`id` that the target consumes goes in the path and leaves the body: renaming a
+conversation from its row is `PATCH /api/chat/conversations/<id>` with `{ title }`.
+A prompted field may be consumed by the target too. Its answer is read and drawn as the action's own:
 the `result` tree in place of the row's button, the `failure` tree beside it;
 a 400 to an entry that prompts is shown on its dialog's fields, as a form's
-is. In a listing, any 2xx also reloads every listing over the same collection
-source `basePath` on the page.
+is.
+
+## After a 2xx
+
+The resolved target path, each resolved `onSuccess.refreshes` path and, in a
+listing, its `basePath` are announced as changed (a listing's own item writes
+announce the item path too). A `Ui.Data`, `Ui.Listing` or `Ui.Chat` whose
+request path — resolved, encoded, app-relative, query excluded — equals an
+announced one reads again.

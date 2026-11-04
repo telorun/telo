@@ -6,7 +6,7 @@ import type { TabsProps } from "../../contract/ui-react-controls.js";
  * arrow keys, Home and End move the focus among the tabs, and Enter, Space or
  * a press chooses one. Only the chosen tab's panel is drawn.
  */
-export function Tabs({ label, tabs, value, onChange, children }: TabsProps) {
+export function Tabs({ label, tabs, value, fill, onChange, children }: TabsProps) {
   const base = useId();
   const list = useRef<HTMLDivElement | null>(null);
   const chosen = tabs.findIndex((tab) => tab.key === value);
@@ -29,7 +29,7 @@ export function Tabs({ label, tabs, value, onChange, children }: TabsProps) {
     own[to].focus();
   };
   return (
-    <div data-telo-part="tabs">
+    <div data-telo-part="tabs" data-fill={fill ? "true" : undefined}>
       <div data-telo-part="tab-list" role="tablist" aria-label={label} ref={list} onKeyDown={move}>
         {tabs.map((tab, index) => (
           <button
@@ -48,7 +48,7 @@ export function Tabs({ label, tabs, value, onChange, children }: TabsProps) {
           </button>
         ))}
       </div>
-      <div data-telo-part="tab-panel" role="tabpanel" id={panelId} aria-labelledby={chosen === -1 ? undefined : tabId(chosen)} tabIndex={0} data-state="active">
+      <div data-telo-part="tab-panel" role="tabpanel" id={panelId} aria-labelledby={chosen === -1 ? undefined : tabId(chosen)} tabIndex={0} data-state="active" data-fill={fill ? "true" : undefined}>
         {children}
       </div>
     </div>

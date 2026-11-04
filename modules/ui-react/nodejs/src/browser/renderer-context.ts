@@ -31,8 +31,14 @@ export const RootsContext = createContext<Readonly<Record<string, unknown>>>({})
  *  starts no request until it is shown. */
 export const VisibleContext = createContext(true);
 
+/** Whether the node drawn next is the direct content of a flush split view, whose frame it then does not draw itself. */
+export const EmbeddedContext = createContext(false);
+
 /** The row a table cell is drawn for; absent everywhere else. */
 export const RowContext = createContext<Record<string, unknown> | undefined>(undefined);
+
+/** Whether a link drawn here leads from a record's own content (a layout's content, a column's value), not from a relation's label, an action's answer or a form. */
+export const RecordLinkContext = createContext(false);
 
 const NO_FILTERS: Param[] = [];
 

@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react-radix: Added
+body: The theme lays a split view's aside actions out under the bar as a row with a gap,
+  and as a column in the rail.

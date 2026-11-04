@@ -1,5 +1,6 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
-import { readBinding, styleAttribute, type Binding } from "./bindings.js";
+import { changeKey, resolveRequest, type AddressWire } from "./address-wire.js";
+import { fillAttribute, styleAttribute } from "./bindings.js";
 import { ResponseWatchContext, useHost, type ResponseWatcher } from "./host.js";
 import { Node, type SpecNode } from "./nodes.js";
 import { queryRoot } from "./query-root.js";
@@ -36,17 +37,6 @@ async function read(fetch: (url: string) => Promise<Response>, url: string, sche
   return { ok: true, data: body as Record<string, unknown> };
 }
 
-/** The address a read asks, with each parameter that holds a value. */
-function addressOf(prefix: string, path: string, params: Record<string, Binding>, roots: Readonly<Record<string, unknown>>): string {
-  const search = new URLSearchParams();
-  for (const [name, binding] of Object.entries(params)) {
-    const value = readBinding(binding, roots);
-    if (value.present && ["string", "number", "boolean"].includes(typeof value.value)) search.set(name, String(value.value));
-  }
-  const query = search.toString();
-  return `${underMount(prefix, path)}${query ? `?${query}` : ""}`;
-}
-
 /**
  * Data read when it is drawn. At most one read is in flight; any number of
  * triggers during it cause exactly one more read after it, and an answer to an
@@ -63,12 +53,21 @@ export function DataNode({ node }: { node: SpecNode }) {
   const watchers = useContext(ResponseWatchContext);
   const query = useMemo(() => queryRoot(node.query as Record<string, JsonSchema>, host.location.search), [node.query, host.location.search]);
   const scope = useMemo(() => ({ ...outer, query }), [outer, query]);
-  const address = addressOf(prefix, node.source.path as string, (node.source.params ?? {}) as Record<string, Binding>, scope);
+  const resolved = useMemo(() => resolveRequest(node.source as AddressWire, scope, "'data' source"), [node.source, scope]);
+  const address = resolved.ok ? underMount(prefix, resolved.address) : undefined;
+  const unresolved = resolved.ok ? undefined : resolved.error;
   const reloadOn = node.reloadOn as string[];
   const [outcome, setOutcome] = useState<Outcome>();
   const [data, setData] = useState<Record<string, unknown>>();
 
-  const state = useRef({ inFlight: false, again: false, wanted: false, visible, address, fetch: host.fetch });
+  const state = useRef<{ inFlight: boolean; again: boolean; wanted: boolean; visible: boolean; address: string | undefined; fetch: typeof host.fetch }>({
+    inFlight: false,
+    again: false,
+    wanted: false,
+    visible,
+    address,
+    fetch: host.fetch,
+  });
   state.current.visible = visible;
   state.current.address = address;
   state.current.fetch = host.fetch;
@@ -84,6 +83,7 @@ export function DataNode({ node }: { node: SpecNode }) {
       current.again = true;
       return;
     }
+    if (current.address === undefined) return;
     current.inFlight = true;
     current.wanted = false;
     const asked = current.address;
@@ -106,7 +106,8 @@ export function DataNode({ node }: { node: SpecNode }) {
   useEffect(() => {
     if (visible && state.current.wanted) request.current();
   }, [visible]);
-  useEffect(() => host.onChanged(node.source.path as string, () => request.current()), [node.source.path]);
+  const changeAt = resolved.ok ? changeKey(resolved.address) : undefined;
+  useEffect(() => (changeAt === undefined ? undefined : host.onChanged(changeAt, () => request.current())), [changeAt]);
   useEffect(() => {
     if (!reloadOn.includes("focus")) return;
     const onFocus = () => request.current();
@@ -125,11 +126,17 @@ export function DataNode({ node }: { node: SpecNode }) {
     [unauthorized, watchers],
   );
   const contentRoots = useMemo(() => ({ ...scope, data }), [scope, data]);
-  const failed = outcome !== undefined && !outcome.ok;
+  // An address that does not resolve sends nothing and draws the failure.
+  const failure: RequestError | undefined = unresolved
+    ? { code: unresolved.code, message: unresolved.message }
+    : outcome !== undefined && !outcome.ok
+      ? outcome.error
+      : undefined;
+  const failed = failure !== undefined;
   const status = failed ? "error" : data === undefined ? "loading" : "idle";
 
   return (
-    <div data-telo-part="data" data-state={status} data-style={styleAttribute(node.style)}>
+    <div data-telo-part="data" data-state={status} data-fill={fillAttribute(node)} data-style={styleAttribute(node.style)}>
       {data !== undefined && (
         <div style={{ display: failed ? "none" : "contents" }}>
           <VisibleContext.Provider value={visible && !failed}>
@@ -147,7 +154,7 @@ export function DataNode({ node }: { node: SpecNode }) {
         </RootsContext.Provider>
       )}
       {failed && (
-        <RootsContext.Provider value={{ ...scope, error: outcome.error }}>
+        <RootsContext.Provider value={{ ...scope, error: failure }}>
           <Node node={node.failure} />
         </RootsContext.Provider>
       )}

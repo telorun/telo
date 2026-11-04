@@ -18,6 +18,7 @@ export type {
   ScannedHeader,
 } from "./journal-store-contract.js";
 export {
+  ERR_JOURNAL_CANCELLED,
   ERR_JOURNAL_KEY_BUSY,
   ERR_JOURNAL_KEY_REMOVED,
   ERR_JOURNAL_WRITER_LOST,
@@ -26,13 +27,14 @@ export {
   JournalWriter,
   isJournal,
 } from "./journal.js";
-export type { JournalEntry, JournalKeyState, JournalSettings, JournalSnapshot } from "./journal.js";
+export type { JournalCancelOutcome, JournalEntry, JournalKeyState, JournalSettings, JournalSnapshot } from "./journal.js";
 
 // Controller entry points. Each kind's `controllers:` candidate selects one of
 // these by PURL fragment, so the whole module is one bundle and its shared
 // state is one module scope.
 export * as EndHandlerController from "./end-handler-controller.js";
 export * as ExtractTextController from "./extract-text-controller.js";
+export * as JournalCancelController from "./journal-cancel-controller.js";
 export * as JournalClaimController from "./journal-claim-controller.js";
 export * as JournalController from "./journal-controller.js";
 export * as JournalExpiryController from "./journal-expiry-controller.js";

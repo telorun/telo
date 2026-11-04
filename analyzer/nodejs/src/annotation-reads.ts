@@ -19,6 +19,7 @@ import { bindingsFromReads } from "./cel-bindings.js";
 import { itemFillsReads } from "./context-fill-cycle.js";
 import { fromReferrerReads } from "./context-from-referrer.js";
 import { elementFromItemReads } from "./element-from-item.js";
+import { pathParamsForReads } from "./path-params-slot.js";
 import type { ReadReporter } from "./read-place.js";
 import { refSlotReads } from "./ref-slot.js";
 import { referrerRulesReads } from "./referrer-rule.js";
@@ -74,6 +75,7 @@ export const ANNOTATION_READS: AnnotationReadTable = {
   "x-telo-inline": READS_NOTHING,
   "x-telo-match-for": matchForReads,
   "x-telo-outcome-list": outcomeListReads,
+  "x-telo-path-params-for": pathParamsForReads,
   "x-telo-provides-zone": providesZoneReads,
   "x-telo-ref": refSlotReads,
   "x-telo-requires-zone": requiresZoneReads,

@@ -1,0 +1,114 @@
+kind: Telo.Application
+metadata:
+  name: AiChatTurnShutdown
+  version: 1.0.0
+  description: |
+    A replica shut down gracefully while its turn runs — its scope torn down, the
+    path a shutdown takes — fails the turn as cancelled by the shutdown, not as
+    a user's cancel: another replica reading the turn's events sees them close
+    with the ERR_INVOKE_CANCELLED error and a failed ending.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Stream: ../../stream
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_TURN_SHUTDOWN_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref test]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+markerRetention: 1h
+---
+kind: BlobFs.Store
+metadata: { name: blobs }
+root: !cel "variables.scratchDir.joinPath('scratch-shutdown')"
+---
+kind: Telo.Sequence
+metadata: { name: slowTool }
+steps:
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 10s } }
+---
+# The replica reading the turn after the other has gone.
+kind: Chat.Conversation
+metadata: { name: reader }
+agent: { kind: Ai.AgentStream, model: { kind: AiEcho.EchoModelStream, accepts: [] } }
+store: !ref store
+journal: !ref journal
+blobs: !ref blobs
+detector: { kind: MediaType.Detector }
+---
+# The replica running the turn, shut down when the sequence ends.
+kind: Telo.Sequence
+metadata: { name: replicaRun }
+with:
+  - kind: Chat.Conversation
+    metadata: { name: replica }
+    agent:
+      kind: Ai.AgentStream
+      model: { kind: AiEcho.EchoModelStream, accepts: [], emitToolCall: { name: wait, arguments: {} } }
+      toolProviders:
+        - provider:
+            kind: Ai.Tools
+            tools: [{ tool: !ref slowTool, name: wait, description: Waits a while., parameters: { type: object } }]
+    store: !ref store
+    journal: !ref journal
+    blobs: !ref blobs
+    detector: { kind: MediaType.Detector }
+  - kind: Chat.StartTurn
+    metadata: { name: replicaStart }
+    conversation: !ref replica
+steps:
+  - name: started
+    invoke: !ref replicaStart
+    inputs: { message: go, attachments: [] }
+  - { name: running, invoke: { kind: Timer.Delay }, inputs: { duration: 500ms } }
+outputs:
+  turn: !cel "steps.started.result.turn"
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: replica
+    invoke: !ref replicaRun
+  - name: events
+    invoke: { kind: Chat.TurnEvents, conversation: !ref reader }
+    inputs: { turn: !cel "steps.replica.result.turn" }
+  - name: frames
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.events.result.output" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel >-
+        steps.frames.result.items.map(f, f.event.type == 'error'
+          ? {'id': f.id, 'type': f.event.type, 'code': f.event.code}
+          : f.event.type == 'turn-end'
+            ? {'id': f.id, 'type': f.event.type, 'reason': f.event.reason}
+            : {'id': f.id, 'type': f.event.type})
+      expected:
+        - { id: 1, type: tool-call }
+        - { id: 2, type: step-usage }
+        - { id: 3, type: error, code: ERR_INVOKE_CANCELLED }
+        - { id: 4, type: turn-end, reason: failed }

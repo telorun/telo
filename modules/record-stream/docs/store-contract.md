@@ -97,12 +97,14 @@ For a backend author, what the journal does with these primitives:
 | Fail a key whose writer's heartbeat is older than **the timeout the writer recorded** | `compareAndSet` at the version that was read — a live writer's heartbeat or append changes the version, so a live writer is never failed |
 | Resume a failed key: take it over for a new writer, keeping its log | `compareAndSet` of an open header at the version that was read; later appends continue from the log's last id |
 | Resume an open key whose writer went stale | fail it as above, then take it over at the version that write returned |
+| `JournalCancel` on an open key within its timeout | `compareAndSet` of the same open header carrying a cancel request, at the version that was read (read again when that write loses); a key already carrying one is returned as it is. A stale key is failed as lost first, so a cancel never keeps a dead writer alive |
+| A drain sees a cancel request | its next append or heartbeat is refused, and between writes it `wait`s on its own key at the version it last read, re-reading the header each time it wakes; it then `compareAndSet`s the failed header (`ERR_JOURNAL_CANCELLED`) at the version carrying the request |
 | Remove a key, leaving a marker | `compareAndTruncate`, retried on contention |
 | Expiry: fail dead writers, turn ended keys past `retention` into markers (none when the journal sets no retention), delete markers past `markerRetention` | `scan`, then the writes above and `compareAndDelete` |
 | A reader tails a live key | `read`, then `wait` for up to the time left before the writer could go stale |
 | A snapshot read | one `read`; a stale writer's key is failed as above and read again when that write loses |
 
-A refused append or heartbeat is explained by re-reading the header and comparing its holder and drain with the writer's own: a marker (or no key) is `ERR_JOURNAL_KEY_REMOVED`; the key failed as abandoned under this holder and drain is `ERR_JOURNAL_WRITER_LOST`; any other holder, or this holder with another drain or none, is `ERR_JOURNAL_KEY_BUSY`.
+A refused append or heartbeat is explained by re-reading the header and comparing its holder and drain with the writer's own: a marker (or no key) is `ERR_JOURNAL_KEY_REMOVED`; the key failed as abandoned under this holder and drain is `ERR_JOURNAL_WRITER_LOST`; the key open under this holder and drain with a cancel request is `ERR_JOURNAL_CANCELLED`; any other holder, or this holder with another drain or none, is `ERR_JOURNAL_KEY_BUSY`.
 
 ## Implementing one
 

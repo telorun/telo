@@ -4,7 +4,7 @@
    declared, and every value reads a design token, so a brand's tokens move it.
    The application places it in the `telo.theme` layer, after the theme's token
    values. */
-:root { color-scheme: light; }
+:root { color-scheme: light; --ui-react-bar-height: 3.5rem; }
 
 body {
   margin: 0;
@@ -16,7 +16,7 @@ body {
 }
 
 /* ---- Shell: a warm band under the title in the accent colour ---- */
-[data-telo-part="app"] { min-height: 100vh; background: var(--telo-color-background); }
+[data-telo-part="app"] { background: var(--telo-color-background); }
 [data-telo-part="header"] {
   padding-block: var(--telo-space-md);
   border-bottom: 3px double var(--telo-color-border);
@@ -114,6 +114,11 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
   font-variant: small-caps;
 }
 [data-telo-part="link"] { color: var(--telo-color-accent); text-underline-offset: 3px; }
+[data-telo-part="link"][data-button] { padding: var(--telo-space-xs) var(--telo-space-sm); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); color: var(--telo-color-text); text-decoration: none; }
+[data-telo-part="link"][data-button][data-style~="accent"] { border-color: var(--telo-color-accent); background: var(--telo-color-accent); color: var(--telo-color-accent-text); }
+[data-telo-part="link"][aria-current="page"] { font-weight: 700; }
+[data-telo-part="link"][data-button]:not([data-style~="accent"])[aria-current="page"] { background: color-mix(in oklab, var(--telo-color-accent) 12%, transparent); }
+:is([data-telo-part="table-row"], [data-telo-part="list-item"], [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"], [data-telo-part="tree-item"])[data-selected] { background: color-mix(in oklab, var(--telo-color-accent) 12%, transparent); }
 /* Long unbroken text (an address, a path) wraps rather than leaving its box. */
 :is([data-telo-part="text"], [data-telo-part="value"], [data-telo-part="link"]) { overflow-wrap: break-word; }
 [data-telo-part="image"], [data-telo-part="svg"] { border-radius: var(--telo-radius-sm); }
@@ -129,7 +134,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="data"] { gap: var(--telo-space-sm); }
 
 /* ---- Buttons: every pressable part, quiet by default ---- */
-[data-telo-part="listing-create"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"],
+[data-telo-part="listing-create"], [data-telo-part="row-action"], [data-telo-part="row-edit"], [data-telo-part="row-delete"], [data-telo-part="row-menu"],
 [data-telo-part="pager-prev"], [data-telo-part="pager-next"], [data-telo-part="load-more"], [data-telo-part="listing-sort-option"],
 [data-telo-part="record-move"], [data-telo-part="record-create"], [data-telo-part="calendar-prev"], [data-telo-part="calendar-next"],
 [data-telo-part="calendar-period"], [data-telo-part="timeline-prev"], [data-telo-part="timeline-next"], [data-telo-part="timeline-scale"],
@@ -181,6 +186,8 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="table-cell"][data-style~="success"] { color: var(--telo-color-success); }
 [data-telo-part="table-cell"][data-style~="warning"] { color: var(--telo-color-warning); }
 [data-telo-part="row-actions"] { gap: var(--telo-space-xs); }
+[data-telo-part="row-actions"][data-display="menu"] { justify-content: flex-end; }
+[data-telo-part="menu-item"][aria-disabled="true"] { opacity: 0.5; }
 [data-telo-part="table-detail"] { padding: var(--telo-space-md); background: var(--telo-color-background); }
 [data-telo-part="pager"] { gap: var(--telo-space-sm); padding: var(--telo-space-sm) var(--telo-space-md); }
 [data-telo-part="pager-status"], [data-telo-part="listing-empty"], [data-telo-part="listing-loading"], [data-telo-part="list-empty"] {
@@ -203,13 +210,16 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="listing-detail"] { padding: var(--telo-space-md); background: var(--telo-color-background); }
 
 /* ---- Listing layouts: a list, cards, a board, a calendar, a timeline, a tree ---- */
-[data-telo-part="list-layout"], [data-telo-part="tree-layout"] {
+[data-telo-part="list-layout"][data-frame="framed"], [data-telo-part="tree-layout"] {
   border: 1px solid var(--telo-color-border);
   border-radius: var(--telo-radius-md);
   background: var(--telo-color-surface);
 }
 [data-telo-part="list-item"] { gap: var(--telo-space-xs); padding: var(--telo-space-sm) var(--telo-space-md); border-bottom: 1px solid var(--telo-color-border); }
 [data-telo-part="list-item"]:last-child { border-bottom: none; }
+[data-telo-part="list-item"]:hover:not([data-selected]) { background: color-mix(in oklab, var(--telo-color-accent) 6%, transparent); }
+[data-telo-part="link"][data-record]:not([data-button]) { color: inherit; text-decoration: none; }
+[data-telo-part="link"][data-record]:not([data-button]):is(:hover, :focus-visible) { text-decoration: underline; }
 [data-telo-part="cards-layout"], [data-telo-part="board-layout"] { gap: var(--telo-space-md); }
 [data-telo-part="card"], [data-telo-part="board-card"], [data-telo-part="calendar-event"], [data-telo-part="timeline-bar"] {
   gap: var(--telo-space-xs);
@@ -412,7 +422,7 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 }
 
 /* ---- Status ---- */
-[data-telo-part="component"] { min-height: 1rem; }
+[data-telo-part="component"]:not([data-fill="true"]) { min-height: 1rem; }
 [data-telo-part="error"] {
   padding: var(--telo-space-md);
   border: 1px solid var(--telo-color-danger);
@@ -422,6 +432,190 @@ h3[data-telo-part="text"] { font-size: var(--telo-font-size-lg); font-style: ita
 [data-telo-part="error-code"] { font-family: var(--telo-font-mono), "Courier New", monospace; font-size: var(--telo-font-size-sm); }
 [data-telo-part="error-message"] { color: var(--telo-color-text); }
 [data-telo-part="loading"] { color: var(--telo-color-muted); font-style: italic; }
+
+/* ---- Markdown: text set as a page of the book, code in a ruled block ---- */
+[data-telo-part="markdown"] { display: flex; flex-direction: column; gap: var(--telo-space-md); min-width: 0; overflow-wrap: break-word; }
+:is([data-telo-part="markdown-paragraph"], [data-telo-part="markdown-list"], [data-telo-part="markdown-quote"], [data-telo-part="markdown-heading"]) { margin: 0; }
+[data-telo-part="markdown-heading"] { font-family: var(--telo-font-heading), system-ui, sans-serif; font-weight: 400; line-height: var(--telo-line-height-heading); }
+[data-telo-part="markdown-heading"]:is([data-level="1"], [data-level="2"]) { font-size: var(--telo-font-size-xl); }
+[data-telo-part="markdown-heading"][data-level="3"] { font-size: var(--telo-font-size-lg); font-style: italic; }
+[data-telo-part="markdown-heading"]:is([data-level="4"], [data-level="5"], [data-level="6"]) { font-size: var(--telo-font-size-md); font-variant: small-caps; }
+[data-telo-part="markdown-heading"]:is([data-level="5"], [data-level="6"]) { color: var(--telo-color-muted); }
+[data-telo-part="markdown-quote"] { padding-inline-start: var(--telo-space-md); border-inline-start: 3px double var(--telo-color-border); color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="markdown-list"] { padding-inline-start: var(--telo-space-xl); }
+[data-telo-part="markdown-list-item"] { margin-block: var(--telo-space-xs); }
+[data-telo-part="markdown-task"] { display: inline-block; box-sizing: border-box; width: 1em; height: 1em; margin-inline-end: var(--telo-space-sm); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); vertical-align: -0.125em; }
+[data-telo-part="markdown-task"][aria-checked="true"] { border-color: var(--telo-color-accent); background: var(--telo-color-accent); }
+[data-telo-part="markdown-task"][aria-checked="true"]::after { content: ""; display: block; box-sizing: border-box; width: 0.3em; height: 0.55em; margin: 0.02em auto 0; border: solid var(--telo-color-accent-text); border-width: 0 2px 2px 0; transform: rotate(45deg); }
+[data-telo-part="markdown-rule"] { width: 100%; margin: 0; border: 0; border-top: 3px double var(--telo-color-border); }
+[data-telo-part="markdown-emphasis"] { font-style: italic; }
+[data-telo-part="markdown-strong"] { font-weight: 700; }
+[data-telo-part="markdown-strike"] { color: var(--telo-color-muted); text-decoration: line-through; }
+[data-telo-part="markdown-break"] { line-height: var(--telo-line-height-body); }
+[data-telo-part="markdown-code"] { padding: 0 var(--telo-space-xs); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); background: var(--telo-color-background); font-family: var(--telo-font-mono), "Courier New", monospace; font-size: 0.9em; }
+[data-telo-part="markdown-link"] { color: var(--telo-color-accent); text-underline-offset: 3px; }
+[data-telo-part="markdown-image"] { height: auto; border-radius: var(--telo-radius-sm); }
+[data-telo-part="markdown-table-frame"] { border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); }
+[data-telo-part="markdown-table"] { border-collapse: collapse; width: 100%; font-variant-numeric: oldstyle-nums; }
+[data-telo-part="markdown-table-head"] { background: var(--telo-color-background); }
+[data-telo-part="markdown-table-header-cell"], [data-telo-part="markdown-table-cell"] { padding: var(--telo-space-sm) var(--telo-space-md); text-align: left; vertical-align: top; }
+[data-telo-part="markdown-table-header-cell"] { border-bottom: 2px solid var(--telo-color-border); font-variant: small-caps; }
+:is([data-telo-part="markdown-table-header-cell"], [data-telo-part="markdown-table-cell"])[data-align="center"] { text-align: center; }
+:is([data-telo-part="markdown-table-header-cell"], [data-telo-part="markdown-table-cell"])[data-align="end"] { text-align: right; }
+[data-telo-part="markdown-table-body"] { color: var(--telo-color-text); }
+[data-telo-part="markdown-table-row"] { border-bottom: 1px solid var(--telo-color-border); }
+[data-telo-part="markdown-table-body"] > [data-telo-part="markdown-table-row"]:last-child { border-bottom: 0; }
+[data-telo-part="markdown-code-block"] { min-width: 0; border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-background); }
+[data-telo-part="markdown-code-header"] { gap: var(--telo-space-sm); padding: var(--telo-space-xs) var(--telo-space-xs) var(--telo-space-xs) var(--telo-space-md); border-bottom: 3px double var(--telo-color-border); }
+[data-telo-part="markdown-code-language"] { color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); font-variant: small-caps; }
+[data-telo-part="markdown-code-copy"] { padding: 0 var(--telo-space-sm); border: 0; background: transparent; color: var(--telo-color-muted); font: inherit; font-size: var(--telo-font-size-sm); cursor: pointer; }
+[data-telo-part="markdown-code-copy"]:hover { color: var(--telo-color-accent); }
+[data-telo-part="markdown-code-pre"] { margin: 0; padding: var(--telo-space-md); font-family: var(--telo-font-mono), "Courier New", monospace; font-size: var(--telo-font-size-sm); line-height: var(--telo-line-height-body); }
+[data-telo-part="markdown-code-text"] { font: inherit; }
+[data-telo-part="markdown"][data-state="loading"] > [data-telo-part="markdown-code-pre"] { color: var(--telo-color-muted); }
+[data-telo-part="markdown-token"][data-token="comment"] { color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="markdown-token"]:is([data-token="string"], [data-token="inserted"]) { color: var(--telo-color-success); }
+[data-telo-part="markdown-token"]:is([data-token="number"], [data-token="constant"]) { color: var(--telo-color-warning); }
+[data-telo-part="markdown-token"][data-token="keyword"] { color: var(--telo-color-accent); font-weight: 700; }
+[data-telo-part="markdown-token"]:is([data-token="function"], [data-token="type"]) { color: var(--telo-color-text); font-weight: 700; }
+[data-telo-part="markdown-token"]:is([data-token="operator"], [data-token="punctuation"]) { color: var(--telo-color-muted); }
+[data-telo-part="markdown-token"]:is([data-token="property"], [data-token="variable"]) { color: color-mix(in oklab, var(--telo-color-accent) 60%, var(--telo-color-muted)); }
+[data-telo-part="markdown-token"][data-token="deleted"] { color: var(--telo-color-danger); }
+
+/* ---- Chat: a conversation as a correspondence, ruled in double lines ---- */
+[data-telo-part="chat"] { border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-lg); background: var(--telo-color-surface); box-shadow: var(--telo-shadow-sm); }
+[data-telo-part="chat-main"] { background: var(--telo-color-surface); }
+[data-telo-part="chat"][data-embedded] > [data-telo-part="chat-main"] { background: transparent; }
+[data-telo-part="split"][data-frame="framed"] { gap: var(--telo-space-md); }
+[data-telo-part="split"][data-frame="flush"] { border: 3px double var(--telo-color-border); border-radius: var(--telo-radius-lg); background: var(--telo-color-surface); }
+:is([data-telo-part="chat"], [data-telo-part="list-layout"], [data-telo-part="table-frame"], [data-telo-part="tree-layout"], [data-telo-part="calendar-grid"])[data-embedded] { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+[data-telo-part="split-aside"] { gap: var(--telo-space-sm); padding: 0 var(--telo-space-sm) var(--telo-space-sm); background: color-mix(in oklab, var(--telo-color-background) 55%, var(--telo-color-surface)); }
+[data-telo-part="split-bar"] { min-height: var(--ui-react-bar-height); margin-inline: calc(-1 * var(--telo-space-sm)); padding-inline: var(--telo-space-sm); border-bottom: 3px double var(--telo-color-border); }
+[data-telo-part="split-bar"] { gap: var(--telo-space-sm); }
+[data-telo-part="split-actions"] { gap: var(--telo-space-sm); }
+[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="framed"] { border: 3px double var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); }
+[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"] { border-inline-end: 3px double var(--telo-color-border); }
+[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"][data-side="end"] { border-inline-end: 0; border-inline-start: 3px double var(--telo-color-border); }
+[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"] { border-start-start-radius: calc(var(--telo-radius-lg) - 3px); border-end-start-radius: calc(var(--telo-radius-lg) - 3px); }
+[data-telo-part="split"] [data-telo-part="split-aside"][data-frame="flush"][data-side="end"] { border-radius: 0; border-start-end-radius: calc(var(--telo-radius-lg) - 3px); border-end-end-radius: calc(var(--telo-radius-lg) - 3px); }
+[data-telo-part="split"][data-side="end"] [data-telo-part="split-toggle"] > [data-telo-part="icon"], [data-telo-part="split"]:not([data-side="end"]):dir(rtl) [data-telo-part="split-toggle"] > [data-telo-part="icon"], :dir(rtl) [data-telo-part="link"][data-button] > [data-telo-part="icon"] { transform: scaleX(-1); }
+[data-telo-part="split"][data-side="end"]:dir(rtl) [data-telo-part="split-toggle"] > [data-telo-part="icon"] { transform: none; }
+[data-telo-part="split-aside"][data-state="rail"] { padding-bottom: 0; }
+[data-telo-part="split-content"] { gap: var(--telo-space-md); }
+[data-telo-part="split"][data-frame="flush"] > [data-telo-part="split-content"] { overflow-x: clip; border-start-end-radius: calc(var(--telo-radius-lg) - 3px); border-end-end-radius: calc(var(--telo-radius-lg) - 3px); }
+[data-telo-part="split"][data-frame="flush"] > [data-telo-part="split-content"]:not([data-fill="true"]) { overflow-y: clip; }
+[data-telo-part="split"][data-frame="flush"][data-side="end"] > [data-telo-part="split-content"] { border-radius: 0; border-start-start-radius: calc(var(--telo-radius-lg) - 3px); border-end-start-radius: calc(var(--telo-radius-lg) - 3px); }
+[data-telo-part="split-toggle"] { padding: var(--telo-space-xs); border: 0; background: transparent; color: var(--telo-color-muted); cursor: pointer; }
+[data-telo-part="split-toggle"]:hover { color: var(--telo-color-accent); }
+[data-telo-part="chat-header"] { gap: var(--telo-space-md); min-height: var(--ui-react-bar-height); box-sizing: border-box; padding: 0 var(--telo-space-lg); border-bottom: 3px double var(--telo-color-border); }
+/* The header is the bar: a bar in it takes no height of its own, its heading set like a card's title. */
+[data-telo-part="chat-header"] [data-telo-part="bar"]:not([data-fill="true"]) { min-height: 0; }
+[data-telo-part="chat-header"] :is(h2[data-telo-part="text"], [data-telo-part="value"][data-style~="heading"]) { margin: 0; font-family: var(--telo-font-heading), system-ui, sans-serif; font-size: var(--telo-font-size-lg); font-style: italic; font-weight: 400; line-height: var(--telo-line-height-heading); }
+/* A bar's regions in a row, each its items with a gap; as tall as every bar. */
+[data-telo-part="bar"] { gap: var(--telo-space-md); box-sizing: border-box; }
+[data-telo-part="bar"]:not([data-fill="true"]) { min-height: var(--ui-react-bar-height); }
+:is([data-telo-part="bar-start"], [data-telo-part="bar-center"], [data-telo-part="bar-end"]) { gap: var(--telo-space-sm); }
+[data-telo-part="value"][data-style~="heading"] { font-family: var(--telo-font-heading), system-ui, sans-serif; font-size: var(--telo-font-size-xl); font-weight: 400; }
+[data-telo-part="chat-transcript"] { gap: var(--telo-space-lg); padding: var(--telo-space-lg); }
+[data-telo-part="chat-empty"] { margin: auto; color: var(--telo-color-muted); font-style: italic; text-align: center; }
+[data-telo-part="chat-message"] { gap: var(--telo-space-xs); max-width: 100%; }
+[data-telo-part="chat-message"][data-role="user"] { align-self: flex-end; align-items: flex-end; max-width: 85%; }
+[data-telo-part="chat-message"][data-role="user"] > :is([data-telo-part="chat-message-body"], [data-telo-part="chat-edit-form"]) { box-sizing: border-box; padding: var(--telo-space-sm) var(--telo-space-md); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-background); }
+[data-telo-part="chat-message-label"] { color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); font-variant: small-caps; }
+[data-telo-part="chat-message-body"] { gap: var(--telo-space-md); }
+[data-telo-part="chat-message-actions"] { gap: var(--telo-space-xs); color: var(--telo-color-muted); }
+[data-telo-part="chat-edit-form"] { gap: var(--telo-space-sm); }
+[data-telo-part="chat-message"][data-role="user"]:has(> [data-telo-part="chat-edit-form"]) { width: 85%; }
+[data-telo-part="chat-message"] > [data-telo-part="chat-edit-form"] { align-self: stretch; }
+[data-telo-part="chat-branches"], [data-telo-part="chat-branch-position"] { gap: var(--telo-space-xs); font-size: var(--telo-font-size-sm); font-variant-numeric: oldstyle-nums; }
+[data-telo-part="chat-reasoning"] { gap: var(--telo-space-xs); padding-inline-start: var(--telo-space-md); border-inline-start: 3px double var(--telo-color-border); color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="chat-reasoning-toggle"] { align-self: flex-start; }
+[data-telo-part="chat-reasoning-body"] { font-size: var(--telo-font-size-sm); }
+:is([data-telo-part="chat-tool"], [data-telo-part="chat-approval"], [data-telo-part="chat-sources"]) { gap: var(--telo-space-xs); padding: var(--telo-space-sm) var(--telo-space-md); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); background: var(--telo-color-background); }
+[data-telo-part="chat-tool"][data-status="failed"] { border-color: var(--telo-color-danger); }
+[data-telo-part="chat-approval"][data-status="pending"] { border-color: var(--telo-color-accent); }
+[data-telo-part="chat-tool-header"], [data-telo-part="chat-approval-actions"], [data-telo-part="chat-composer-actions"], [data-telo-part="chat-starters"], [data-telo-part="chat-turn-note"] { gap: var(--telo-space-sm); }
+[data-telo-part="chat-tool-name"] { font-family: var(--telo-font-mono), "Courier New", monospace; font-size: var(--telo-font-size-sm); font-weight: 700; }
+[data-telo-part="chat-tool-status"], [data-telo-part="chat-tool-label"], [data-telo-part="chat-usage"], [data-telo-part="chat-turn-note"], [data-telo-part="chat-reconnecting"], [data-telo-part="chat-hint"] { margin: 0; color: var(--telo-color-muted); font-size: var(--telo-font-size-sm); }
+[data-telo-part="chat-tool-detail"] { gap: var(--telo-space-xs); }
+[data-telo-part="chat-tool-data"] { padding: var(--telo-space-sm); border-radius: var(--telo-radius-sm); background: var(--telo-color-surface); font-family: var(--telo-font-mono), "Courier New", monospace; font-size: var(--telo-font-size-sm); }
+[data-telo-part="chat-approval-title"] { font-weight: 700; }
+[data-telo-part="chat-approval-decision"] { color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="chat-sources-title"] { margin: 0; font-size: var(--telo-font-size-sm); font-variant: small-caps; }
+[data-telo-part="chat-source-list"] { margin: 0; padding-inline-start: var(--telo-space-xl); }
+[data-telo-part="chat-source"] { margin-block: var(--telo-space-xs); }
+[data-telo-part="chat-source-quote"] { margin-inline-start: var(--telo-space-sm); color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="chat-refusal"] { padding: var(--telo-space-sm) var(--telo-space-md); border: 1px solid var(--telo-color-danger); border-radius: var(--telo-radius-sm); background: var(--telo-color-surface); }
+[data-telo-part="chat-refusal-title"] { color: var(--telo-color-danger); font-variant: small-caps; }
+[data-telo-part="chat-attachment"] { display: inline-flex; align-self: flex-start; padding: var(--telo-space-xs) var(--telo-space-sm); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); font-size: var(--telo-font-size-sm); }
+a[data-telo-part="chat-attachment"] { color: var(--telo-color-accent); }
+[data-telo-part="chat-image"], [data-telo-part="chat-media"] { border-radius: var(--telo-radius-sm); }
+[data-telo-part="chat-pending"] { color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="chat-reconnecting"] { display: flex; align-items: center; gap: var(--telo-space-sm); }
+[data-telo-part="chat-announcer"] { margin: 0; }
+[data-telo-part="chat-composer"] { gap: var(--telo-space-sm); padding: var(--telo-space-md) var(--telo-space-lg); border-top: 3px double var(--telo-color-border); background: var(--telo-color-surface); }
+[data-telo-part="chat-attachments"] { gap: var(--telo-space-sm); }
+[data-telo-part="chat-attachment-item"] { gap: var(--telo-space-xs); padding: var(--telo-space-xs) var(--telo-space-sm); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); font-size: var(--telo-font-size-sm); }
+[data-telo-part="chat-attachment-item"][data-status="failed"] { border-color: var(--telo-color-danger); }
+[data-telo-part="chat-attachment-name"] { max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+[data-telo-part="chat-attachment-progress"] { color: var(--telo-color-muted); font-variant-numeric: oldstyle-nums; }
+[data-telo-part="chat-attachment-problem"], [data-telo-part="chat-attachment-refusals"] { color: var(--telo-color-danger); font-size: var(--telo-font-size-sm); }
+[data-telo-part="chat-attachment-remove"] { padding: 0 var(--telo-space-xs); border: 0; background: transparent; color: var(--telo-color-muted); cursor: pointer; }
+[data-telo-part="chat-attachment-thumbnail"] { border-radius: var(--telo-radius-sm); }
+[data-telo-part="media-viewer"] { gap: var(--telo-space-md); }
+[data-telo-part="media-viewer-stage"] { border-radius: var(--telo-radius-sm); background: transparent; }
+[data-telo-part="media-viewer-image"] { border-radius: var(--telo-radius-sm); }
+[data-telo-part="media-viewer-toolbar"] { gap: var(--telo-space-sm); }
+[data-telo-part="media-viewer-position"] { min-width: 4rem; color: var(--telo-color-muted); font-variant-numeric: tabular-nums; }
+[data-telo-part="media-viewer-previous"], [data-telo-part="media-viewer-next"], [data-telo-part="media-viewer-zoom-out"], [data-telo-part="media-viewer-zoom-reset"], [data-telo-part="media-viewer-zoom-in"], [data-telo-part="media-viewer-download"] { min-width: 2rem; min-height: 2rem; padding: 0 var(--telo-space-sm); border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-sm); background: transparent; color: var(--telo-color-text); font: inherit; text-decoration: none; cursor: pointer; }
+[data-telo-part="media-viewer-previous"]:hover, [data-telo-part="media-viewer-next"]:hover, [data-telo-part="media-viewer-zoom-out"]:hover, [data-telo-part="media-viewer-zoom-reset"]:hover, [data-telo-part="media-viewer-zoom-in"]:hover, [data-telo-part="media-viewer-download"]:hover { border-color: var(--telo-color-accent) }
+[data-telo-part="chat-input"] { display: block; }
+[data-telo-part="chat-placeholder"] { padding: var(--telo-space-xs) var(--telo-space-sm); color: var(--telo-color-muted); font-style: italic; }
+[data-telo-part="chat-composer-actions"] { justify-content: flex-end; }
+/* While the buttons sit inside the message box, its frame is the box's. */
+[data-telo-part="chat-composer"][data-actions="inside"] [data-telo-part="chat-input"] { border: 1px solid var(--telo-color-border); border-radius: var(--telo-radius-md); background: var(--telo-color-surface); }
+[data-telo-part="chat-composer"][data-actions="inside"] [data-telo-part="chat-input"]:focus-within { border-color: var(--telo-color-accent); box-shadow: var(--telo-shadow-sm); }
+[data-telo-part="chat-composer"][data-actions="inside"] [data-telo-part="textarea"] { border: 0; border-radius: inherit; background: transparent; }
+[data-telo-part="chat-input"] > [data-telo-part="textarea"] { display: block; width: 100%; box-sizing: border-box; }
+[data-telo-part="chat-composer"][data-actions="inside"] [data-telo-part="chat-input"] { display: flex; align-items: flex-end; }
+[data-telo-part="chat-composer"][data-actions="inside"] [data-telo-part="textarea"] { flex: 1 1 auto; min-width: 0; }
+[data-telo-part="chat-composer"][data-actions="inside"] [data-telo-part="chat-composer-actions"] { flex: none; flex-wrap: nowrap; padding: var(--telo-space-xs); }
+[data-telo-part="chat-drop"] { border: 2px dashed var(--telo-color-accent); border-radius: var(--telo-radius-lg); background: color-mix(in oklab, var(--telo-color-accent) 12%, var(--telo-color-surface)); font-family: var(--telo-font-heading), system-ui, sans-serif; font-style: italic; }
+/* Chat buttons: quiet, as every pressable part; the ones that decide are in the accent. */
+:is([data-telo-part="command"],
+  [data-telo-part="chat-copy"], [data-telo-part="chat-edit"], [data-telo-part="chat-regenerate"], [data-telo-part="chat-branch-previous"],
+  [data-telo-part="chat-branch-next"], [data-telo-part="chat-reasoning-toggle"], [data-telo-part="chat-tool-toggle"], [data-telo-part="chat-approve"],
+  [data-telo-part="chat-reject"], [data-telo-part="chat-send"], [data-telo-part="chat-stop"], [data-telo-part="chat-attach"],
+  [data-telo-part="chat-continue"], [data-telo-part="chat-retry"], [data-telo-part="chat-starter"]) {
+  padding: var(--telo-space-xs) var(--telo-space-md);
+  border: 1px solid var(--telo-color-border);
+  border-radius: var(--telo-radius-sm);
+  background: var(--telo-color-surface);
+  color: var(--telo-color-text);
+  font: inherit;
+  cursor: pointer;
+}
+:is([data-telo-part="command"], [data-telo-part="chat-copy"], [data-telo-part="chat-edit"],
+  [data-telo-part="chat-regenerate"], [data-telo-part="chat-branch-previous"], [data-telo-part="chat-branch-next"],
+  [data-telo-part="chat-reasoning-toggle"], [data-telo-part="chat-tool-toggle"]) {
+  padding-inline: var(--telo-space-sm);
+  border-color: transparent;
+  background: none;
+  color: var(--telo-color-muted);
+  font-size: var(--telo-font-size-sm);
+  font-variant: small-caps;
+}
+:is([data-telo-part="command"], [data-telo-part="chat-copy"], [data-telo-part="chat-edit"],
+  [data-telo-part="chat-regenerate"], [data-telo-part="chat-branch-previous"], [data-telo-part="chat-branch-next"],
+  [data-telo-part="chat-reasoning-toggle"], [data-telo-part="chat-tool-toggle"]):hover { color: var(--telo-color-accent); }
+:is([data-telo-part="chat-approve"], [data-telo-part="chat-send"], [data-telo-part="chat-continue"]) {
+  border-color: var(--telo-color-accent);
+  background: var(--telo-color-accent);
+  color: var(--telo-color-accent-text);
+  box-shadow: var(--telo-shadow-sm);
+}
+[data-telo-part="chat-starter"] { border-radius: 999px; }
+[data-telo-part="chat-continue"] { margin-inline-start: var(--telo-space-sm); padding-block: 0; }
 
 /* ---- Narrow screens: the navigation is behind the menu button, filters
    shrink and wrap, and a table frame shows an edge shadow while more

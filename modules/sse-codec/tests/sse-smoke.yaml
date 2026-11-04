@@ -3,94 +3,96 @@ metadata:
   name: SseCodecSmokeTest
   version: 1.0.0
   description: |
-    Smoke test for sse-codec. Pipes a small AsyncIterable of typed records through
-    Sse.Encoder and asserts the byte-exact SSE wire output. Byte→string conversion
-    happens in a JS.Script Drain — keeps the test self-contained, no cross-module
-    decoder dependency.
+    Frames through Sse.Encoder, compared byte for byte: each member writes its
+    line only when present, in the order id, event, retry, data; an id may be a
+    string or an integer, whether written in YAML or computed in CEL; a value
+    that is not a frame, or a field holding a line break, ends the stream with
+    the error frame.
 imports:
   Sse: ../
-  JS: ../../javascript
+  PlainText: ../../plain-text-codec
   Stream: ../../stream
-  Run: ../../run
   Assert: ../../assert
 targets:
-  - !ref testEncode
-  - !ref testResumeEnvelope
----
-kind: Stream.Of
-metadata: { name: source }
-items:
-  - { type: "text-delta", delta: "h" }
-  - { type: "text-delta", delta: "i" }
-  - { type: "finish", usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 }, finishReason: "stop" }
----
-kind: JS.Script
-metadata: { name: drain }
-code: |
-  async function main({ bytes }) {
-    const chunks = [];
-    for await (const chunk of bytes) chunks.push(Buffer.from(chunk));
-    return { text: Buffer.concat(chunks).toString("utf8") };
-  }
+  - !ref test
 ---
 kind: Sse.Encoder
 metadata: { name: encoder }
 ---
-kind: Run.Sequence
-metadata: { name: testEncode }
+# The wire text the encoder writes for `items`.
+kind: Telo.Sequence
+metadata: { name: encode }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, additionalProperties: false, required: [items], properties: { items: { type: array } } }
 steps:
-  - name: source
-    invoke: !ref source
-  - name: encode
-    inputs:
-      input: !cel "steps.source.result.output"
-    invoke: !ref encoder
-  - name: drain
-    inputs:
-      bytes: !cel "steps.encode.result.output"
-    invoke: !ref drain
-  - name: assert
-    inputs:
-      text: !cel "steps.drain.result.text"
-    invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          text:
-            const: "event: text-delta\ndata: {\"delta\":\"h\"}\n\nevent: text-delta\ndata: {\"delta\":\"i\"}\n\nevent: finish\ndata: {\"usage\":{\"promptTokens\":0,\"completionTokens\":0,\"totalTokens\":0},\"finishReason\":\"stop\"}\n\n"
-        required: [ text ]
+  - { name: source, invoke: { kind: Stream.Of }, inputs: { items: !cel "inputs.items" } }
+  - { name: frames, invoke: !ref encoder, inputs: { input: !cel "steps.source.result.output" } }
+  - { name: text, invoke: { kind: PlainText.Decoder }, inputs: { input: !cel "steps.frames.result.output" } }
+outputs:
+  text: !cel "steps.text.result.text"
 ---
-# Resumable-envelope framing: a typeless `{ id, data }` item (a replay-journal
-# entry) frames as a `message` event carrying an `id:` line, so a client can
-# checkpoint and reconnect. The `id` becomes the SSE id line; the rest is data.
-kind: Stream.Of
-metadata: { name: resumeSource }
-items:
-  - { id: 1, data: { type: "text-delta", delta: "h" } }
-  - { id: 2, data: { type: "finish" } }
----
-kind: Run.Sequence
-metadata: { name: testResumeEnvelope }
+kind: Telo.Sequence
+metadata: { name: test }
 steps:
-  - name: source
-    invoke: !ref resumeSource
-  - name: encode
+  # Written in YAML, an id is a number; every member present.
+  - name: literal
+    invoke: !ref encode
     inputs:
-      input: !cel "steps.source.result.output"
-    invoke: !ref encoder
-  - name: drain
+      items:
+        - { id: 1, event: "text-delta", retry: 3000, data: { delta: h } }
+        - { id: abc, data: "plain text" }
+        - { data: [1, true, null] }
+  - name: assertLiteral
+    invoke: { kind: Assert.Equals }
     inputs:
-      bytes: !cel "steps.encode.result.output"
-    invoke: !ref drain
-  - name: assert
+      actual: !cel "steps.literal.result.text"
+      expected: "id: 1\nevent: text-delta\nretry: 3000\ndata: {\"delta\":\"h\"}\n\nid: abc\ndata: \"plain text\"\n\ndata: [1,true,null]\n\n"
+
+  # Computed in CEL, an integer id and retry are int64.
+  - name: computed
+    invoke: !ref encode
     inputs:
-      text: !cel "steps.drain.result.text"
-    invoke:
-      kind: Assert.Schema
-      schema:
-        type: object
-        properties:
-          text:
-            const: "id: 1\nevent: message\ndata: {\"data\":{\"type\":\"text-delta\",\"delta\":\"h\"}}\n\nid: 2\nevent: message\ndata: {\"data\":{\"type\":\"finish\"}}\n\n"
-        required: [ text ]
+      items: !cel "[{'id': 9007199254740993, 'event': 'tick', 'retry': 0, 'data': {'at': 2}}]"
+  - name: assertComputed
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.computed.result.text"
+      expected: "id: 9007199254740993\nevent: tick\nretry: 0\ndata: {\"at\":2}\n\n"
+
+  # What came before a refused frame is delivered; the refusal is the last frame.
+  - name: eventBreak
+    invoke: !ref encode
+    inputs:
+      items:
+        - { data: 1 }
+        - { event: "a\nb", data: 2 }
+        - { data: 3 }
+  - name: assertEventBreak
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.eventBreak.result.text"
+      expected: "data: 1\n\nevent: error\ndata: {\"message\":\"Sse.Encoder \\\"encoder\\\": 'event' must not contain a line break.\",\"code\":\"ERR_INVALID_INPUT\"}\n\n"
+
+  - name: idBreak
+    invoke: !ref encode
+    inputs:
+      items:
+        - { id: "1\r2", data: 1 }
+  - name: assertIdBreak
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.idBreak.result.text"
+      expected: "event: error\ndata: {\"message\":\"Sse.Encoder \\\"encoder\\\": 'id' must not contain a line break.\",\"code\":\"ERR_INVALID_INPUT\"}\n\n"
+
+  # The record shape the encoder took before frames: refused, not guessed at.
+  - name: notAFrame
+    invoke: !ref encode
+    inputs:
+      items:
+        - { type: "text-delta", delta: h }
+  - name: assertNotAFrame
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.notAFrame.result.text"
+      expected: "event: error\ndata: {\"message\":\"Sse.Encoder \\\"encoder\\\": a frame holds only data, event, id and retry; got 'type', 'delta'.\",\"code\":\"ERR_INVALID_INPUT\"}\n\n"

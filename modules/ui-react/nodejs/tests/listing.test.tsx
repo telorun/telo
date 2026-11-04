@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import archiveRequest from "../../tests/__fixtures__/action/archive-request.json" with { type: "json" };
 import { loadFixtureComponents, render, type Rendered } from "./harness.js";
 import { FakeIntersections } from "./intersections.js";
-import { filtersNode, operation, listingNode, todos } from "./spec-nodes.js";
+import { filtersNode, operation, listingNode, todos, address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -58,6 +58,23 @@ describe("a table", () => {
     await rendered.click(rendered.part("pager-prev"));
     expect(cells(rendered, 0)).toEqual(["Ship the renderer", "Write the docs"]);
     expect(rendered.part("pager-status").textContent).toBe("3–4 of 5");
+  });
+
+  it("reads in the order it starts in until the viewer chooses another, and draws no sort control when none is chosen", async () => {
+    rendered = await show([listingNode({ sort: { sortable: ["text", "priority", "dueOn"], initial: "priority" } })]);
+    expect(lists(rendered)).toEqual(["GET /api/todos?limit=2&sort=priority"]);
+    await rendered.click(rendered.parts("table-sort")[1]);
+    expect(rendered.requests.at(-1)).toBe("GET /api/todos?limit=2&sort=-priority");
+    await rendered.unmount();
+    rendered = await show([listingNode({ sort: { sortable: [], initial: "-priority" } })]);
+    expect(lists(rendered)).toEqual(["GET /api/todos?limit=2&sort=-priority"]);
+    expect(rendered.parts("table-sort")).toEqual([]);
+  });
+
+  it("shows no range of the records it reads when it shows no count", async () => {
+    rendered = await show([listingNode({ show: { count: false } })]);
+    expect(rendered.parts("pager-status")).toEqual([]);
+    expect(rendered.parts("pager-next")).toHaveLength(1);
   });
 
   it("sorts by one column per click, from the first page", async () => {
@@ -682,7 +699,7 @@ export const authorsSource = {
   schema: authorSchema,
   value: row("id"),
   label: row("name"),
-  href: row("url"),
+  href: address({ root: "row", path: ["url"] }),
   basePath: "/api/authors",
   filters: {},
   pageSize: 2,

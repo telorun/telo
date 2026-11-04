@@ -1,0 +1,56 @@
+kind: Telo.Application
+metadata:
+  name: UiAddressRefusalsTest
+  version: 1.0.0
+  description: |
+    A path variable the template lacks, or a template variable nothing binds, is
+    refused by `telo check` and again when the node's resource is created, and
+    a row field a column's link reads that the row lacks is refused by
+    `telo check`. A `*` or `**` segment in a link or a request target is
+    refused in both spellings by `telo check` and again when the resource is
+    created, while a refresh with one is still held to its `pathParams`.
+imports: { Assert: ../../assert }
+targets:
+  - !ref pathParams
+  - !ref pathParamsAtRuntime
+  - !ref rowField
+  - !ref wildcards
+  - !ref wildcardAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: pathParams }
+source: ./__fixtures__/invalid/address-path-params/lib/telo.yaml
+expect:
+  errors:
+    - { code: PATH_PARAMETER_UNBOUND, message: "Ui.View/misspelledVariable" }
+    - { code: PATH_PARAMETER_UNUSED, message: "Ui.View/misspelledVariable" }
+---
+kind: Assert.Manifest
+metadata: { name: pathParamsAtRuntime }
+source: ./__fixtures__/invalid/address-path-params/telo.yaml
+expect: { errors: [], runFails: "ERR_PATH_PARAMETER_UNBOUND" }
+---
+kind: Assert.Manifest
+metadata: { name: rowField }
+source: ./__fixtures__/invalid/address-row-field/telo.yaml
+expect:
+  errors:
+    - code: CEL_UNKNOWN_FIELD
+      message: "Ui.Data/misspelledField: !cel: 'row.nmae' is not defined (available: id, name)"
+---
+kind: Assert.Manifest
+metadata: { name: wildcards }
+source: ./__fixtures__/invalid/address-wildcard/lib/telo.yaml
+expect:
+  errors:
+    - { code: SCHEMA_VIOLATION, message: "Ui.View/literalLink: /content/href" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.View/templateLink: /content/href/path" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Action/literalTarget: /request/target" }
+    - { code: SCHEMA_VIOLATION, message: "Ui.Action/templateTarget: /request/target/path" }
+    - { code: PATH_PARAMETER_UNBOUND, message: "Ui.Action/unboundRefresh" }
+    - { code: PATH_PARAMETER_UNUSED, message: "Ui.Action/unboundRefresh" }
+---
+kind: Assert.Manifest
+metadata: { name: wildcardAtRuntime }
+source: ./__fixtures__/invalid/address-wildcard/telo.yaml
+expect: { errors: [], runFails: "ERR_RESOURCE_SCHEMA_VALIDATION_FAILED" }

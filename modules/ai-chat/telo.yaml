@@ -1,0 +1,1250 @@
+kind: Telo.Library
+metadata:
+  name: AiChat
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [AI, Transport]
+  description: >-
+    A chat server over an AI agent, mountable on HTTP: start a turn, stream its
+    events as Server-Sent Events and resume them from any position on any replica,
+    stop it from anywhere, upload files the model accepts, each kept by the
+    conversation that sends it, and read conversations and their branching
+    transcripts back. Retried sends start one turn, and a turn whose writer dies
+    is reported as failed.
+requires:
+  # 0.122.0 refuses this file: its templated bodies read `inputs` and `steps`,
+  # and its `http-server` import declares display messages. Verified by
+  # `telo release check`.
+  telo: ">=0.129.0"
+imports:
+  Conversations: ../conversation
+  Ai: ../ai
+  AiConversation: ../ai-conversation
+  RecordStream: ../record-stream
+  Blob: ../blob
+  MediaType: ../media-type
+  Http: ../http-server
+  Multipart: ../multipart
+  Sse: ../sse-codec
+  Stream: ../stream
+  OctetCodec: ../octet-codec
+exports:
+  kinds: [Api, Conversation, StartTurn, TurnEvents, CancelTurn, ListConversations, ReadConversation, ConversationEntries, UpdateConversation, DeleteConversation, PutAttachment, GetAttachment, AttachmentExpiry, Capabilities]
+---
+kind: Telo.Definition
+metadata:
+  name: Conversation
+  description: >-
+    A chat endpoint over a streaming agent: where its conversations, turn journal
+    and uploaded files live, how large and how many files a message may carry,
+    and how long an upload no message has sent is kept. Publishes what it offers
+    — the media the agent's model accepts, each with the tighter size bound — and
+    the conversation operations it supports, branching and cancelling.
+capability: Telo.Provider
+extends: Conversations.Conversation
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#ConversationController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [agent, store, journal, blobs, detector]
+  properties:
+    agent:
+      title: Agent
+      description: The streaming agent each turn runs; its model's accepted media is what the endpoint offers.
+      x-telo-ref: { kind: Ai.AgentStream, use: dependency }
+    store:
+      title: Store
+      description: Where conversations and their transcripts are kept.
+      x-telo-ref: { kind: AiConversation.Store, use: dependency }
+    journal:
+      title: Journal
+      description: >-
+        Where each turn's events and each idempotency key are recorded. Its
+        `writerTimeout` is how soon a turn whose writer died is reported failed,
+        and its `retention` how long a finished turn and a retry key are kept.
+      x-telo-ref: { kind: RecordStream.Journal, use: dependency }
+    blobs:
+      title: Files
+      description: Where uploaded files and media a model or tool produces are kept.
+      x-telo-ref: { kind: Blob.Store, use: dependency }
+    detector:
+      title: Detector
+      description: Reads an upload's leading bytes to learn what it is before it is stored.
+      x-telo-ref: { kind: MediaType.Detector, use: dependency }
+    attachments:
+      title: Attachments
+      description: Bounds on what a message carries, beside the model's own.
+      type: object
+      additionalProperties: false
+      default: {}
+      properties:
+        maxBytes:
+          title: Largest file
+          description: The largest file a message may carry, in bytes; a model's smaller bound for a type wins.
+          type: integer
+          minimum: 1
+          default: 10485760
+        maxPerMessage:
+          title: Files per message
+          description: How many files one message may carry.
+          type: integer
+          minimum: 1
+          default: 4
+        # No `default:` — the kernel fills defaults without decoding them into an
+        # instance type, so a written duration default fails validation at boot.
+        pendingRetention:
+          title: Unsent upload retention
+          description: >-
+            How long an upload no message has sent stays usable; past it, a message
+            naming it is refused and an expiry pass removes it. 24h when omitted.
+          x-telo-type: Telo.Duration
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.attachments) || !has(self.attachments.pendingRetention) || duration(self.attachments.pendingRetention) > duration('0s')"
+      code: AI_CHAT_PENDING_RETENTION_NOT_POSITIVE
+      message: >-
+        sets `attachments.pendingRetention` to zero or less; every upload would
+        expire before a message could send it.
+---
+kind: Telo.Definition
+metadata:
+  name: StartTurn
+  description: >-
+    Starts a turn on a conversation — a new one when none is named — and returns
+    the conversation and turn ids at once while the agent's reply is recorded in
+    the background. Refused when a turn is already running; an idempotency key
+    makes a retried send answer the turn the first one started.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND: { description: No conversation has the given id. }
+    ERR_CONVERSATION_TURN_RUNNING: { description: A turn is already running on the conversation. }
+    ERR_CONVERSATION_CONFLICT:
+      description: >-
+        The conversation kept changing while the turn was admitted, or the store
+        refused a write for a concurrent change.
+    ERR_IDEMPOTENCY_KEY_CONFLICT:
+      description: >-
+        The idempotency key was first sent with a different request, or is no
+        longer remembered; send the request under a new key.
+    ERR_CONVERSATION_ENTRY_NOT_FOUND: { description: The conversation has no entry with the given id. }
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+# `Conversations.TurnRequest` restated with the key beside it, since the shape is
+# closed; the module's unit test holds the two equal.
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [message, attachments]
+    properties:
+      conversation: { description: The conversation to continue; absent starts one., type: string, minLength: 1 }
+      parent:
+        description: >-
+          The entry the message follows; absent continues the latest branch, null starts a new root.
+        anyOf:
+          - { type: string, minLength: 1 }
+          - { type: "null" }
+      message: { description: The user's text; may be empty when resuming with approvals., type: string }
+      attachments:
+        description: Ids returned by the attachment upload.
+        type: array
+        uniqueItems: true
+        items: { type: string, minLength: 1 }
+      approvals:
+        description: >-
+          Decisions that resume a turn which ended with reason approval; beside them
+          the message is empty and no attachment is sent.
+        type: array
+        minItems: 1
+        items:
+          type: object
+          additionalProperties: false
+          required: [id, approved]
+          properties:
+            id: { type: string, minLength: 1 }
+            approved: { type: boolean }
+            reason: { type: string }
+      idempotencyKey:
+        description: Makes a retried send answer the turn the first one started.
+        type: string
+        minLength: 1
+        maxLength: 255
+    if: { required: [approvals] }
+    then: { properties: { message: { type: string, const: "" }, attachments: { type: array, maxItems: 0 } } }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/TurnStarted" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint the turn runs on.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.Create, metadata: { name: create }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.Read, metadata: { name: read }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.Admit, metadata: { name: admit }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.Append, metadata: { name: append }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.Entries, metadata: { name: entries }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.RecordApproval, metadata: { name: recordApproval }, store: !cel "self.conversation.store" }
+  - { kind: RecordStream.JournalRead, metadata: { name: journalRead }, journal: !cel "self.conversation.journal" }
+  - { kind: RecordStream.JournalClaim, metadata: { name: journalClaim }, journal: !cel "self.conversation.journal" }
+  - { kind: RecordStream.JournalSink, metadata: { name: journalSink }, journal: !cel "self.conversation.journal" }
+  - { kind: RecordStream.JournalSource, metadata: { name: journalSource }, journal: !cel "self.conversation.journal" }
+  - { kind: RecordStream.JournalRemoval, metadata: { name: journalRemoval }, journal: !cel "self.conversation.journal" }
+  - { kind: AiConversation.RegisterAttachment, metadata: { name: registerAttachment }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.ReadAttachment, metadata: { name: readAttachment }, store: !cel "self.conversation.store" }
+  - { kind: Blob.Get, metadata: { name: blobGet }, store: !cel "self.conversation.blobs" }
+  - { kind: Blob.Head, metadata: { name: blobHead }, store: !cel "self.conversation.blobs" }
+  - { kind: Blob.Put, metadata: { name: blobPut }, store: !cel "self.conversation.blobs" }
+  - kind: Self.TurnRunner
+    metadata: { name: runner }
+    conversation: !cel "self.conversation"
+    agent: !cel "self.conversation.agent"
+    create: !ref create
+    read: !ref read
+    admit: !ref admit
+    append: !ref append
+    entries: !ref entries
+    recordApproval: !ref recordApproval
+    journalRead: !ref journalRead
+    journalClaim: !ref journalClaim
+    journalSink: !ref journalSink
+    journalSource: !ref journalSource
+    journalRemoval: !ref journalRemoval
+    registerAttachment: !ref registerAttachment
+    readAttachment: !ref readAttachment
+    blobGet: !ref blobGet
+    blobHead: !ref blobHead
+    blobPut: !ref blobPut
+invoke: !ref runner
+---
+# Not exported: the code behind StartTurn. Admission, idempotency, the detached
+# run and the part-to-event mapping; it holds the running turns.
+kind: Telo.Definition
+metadata:
+  name: TurnRunner
+  description: >-
+    Admits a chat turn, binding the files its message names, records its
+    idempotency key, and runs the agent detached into the turn's journal key,
+    storing each message and the media it produces as it commits.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#TurnRunnerController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation, agent, create, read, admit, append, entries, recordApproval, journalRead, journalClaim, journalSink, journalSource, journalRemoval, registerAttachment, readAttachment, blobGet, blobHead, blobPut]
+  properties:
+    conversation: { description: "The endpoint, read for what it offers.", x-telo-ref: { kind: Self.Conversation, use: dependency } }
+    agent: { description: The agent each turn runs., x-telo-ref: { kind: Ai.AgentStream, use: [call, trigger.consumer] } }
+    create: { x-telo-ref: { kind: AiConversation.Create, use: call } }
+    read: { x-telo-ref: { kind: AiConversation.Read, use: call } }
+    admit: { x-telo-ref: { kind: AiConversation.Admit, use: call } }
+    append: { x-telo-ref: { kind: AiConversation.Append, use: call } }
+    entries: { x-telo-ref: { kind: AiConversation.Entries, use: call } }
+    recordApproval: { x-telo-ref: { kind: AiConversation.RecordApproval, use: call } }
+    journalRead: { x-telo-ref: { kind: RecordStream.JournalRead, use: call } }
+    journalClaim: { x-telo-ref: { kind: RecordStream.JournalClaim, use: call } }
+    journalSink: { x-telo-ref: { kind: RecordStream.JournalSink, use: call } }
+    journalSource: { x-telo-ref: { kind: RecordStream.JournalSource, use: call } }
+    journalRemoval: { x-telo-ref: { kind: RecordStream.JournalRemoval, use: call } }
+    registerAttachment: { x-telo-ref: { kind: AiConversation.RegisterAttachment, use: call } }
+    readAttachment: { x-telo-ref: { kind: AiConversation.ReadAttachment, use: call } }
+    blobGet: { x-telo-ref: { kind: Blob.Get, use: call } }
+    blobHead: { x-telo-ref: { kind: Blob.Head, use: call } }
+    blobPut: { x-telo-ref: { kind: Blob.Put, use: call } }
+---
+kind: Telo.Definition
+metadata:
+  name: TurnEvents
+  description: >-
+    Streams a turn's events from a position: what was recorded after it, then
+    live until the turn ends, on any replica. A turn whose writer died, failed or
+    was cancelled closes with an error and a final turn-end, at positions after
+    its last recorded event.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_TURN_NOT_FOUND: { description: "The turn is unknown, or past retention." }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turn]
+    properties:
+      turn: { type: string, pattern: "^trn_[0-9A-Za-z]{22}$" }
+      after: { description: The last position received; omitted replays from the start., type: integer, minimum: 0 }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [output]
+    properties:
+      output:
+        description: >-
+          Each event as `{ id, event }` — its position and the Conversation.Event,
+          an attachment by its relative reference. Raises ERR_CONVERSATION_TURN_NOT_FOUND
+          when the turn is removed while it is read.
+        x-telo-type: Telo.Stream
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint whose turn is read.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: RecordStream.JournalRead, metadata: { name: journalRead }, journal: !cel "self.conversation.journal" }
+  - { kind: RecordStream.JournalSource, metadata: { name: journalSource }, journal: !cel "self.conversation.journal" }
+  - { kind: Self.EventReader, metadata: { name: reader }, journalRead: !ref journalRead, journalSource: !ref journalSource }
+invoke: !ref reader
+---
+# Not exported: the code behind TurnEvents.
+kind: Telo.Definition
+metadata:
+  name: EventReader
+  description: Reads a turn's journal key as wire events, closing an abnormal ending from the key's recorded error.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#EventReaderController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [journalRead, journalSource]
+  properties:
+    journalRead: { x-telo-ref: { kind: RecordStream.JournalRead, use: call } }
+    journalSource: { x-telo-ref: { kind: RecordStream.JournalSource, use: call } }
+---
+kind: Telo.Definition
+metadata:
+  name: CancelTurn
+  description: >-
+    Stops a running turn from any replica: its writer stops the agent and the
+    turn ends cancelled. Answers requested for a running turn and ended for one
+    that already ended; an unknown turn is refused.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_TURN_NOT_FOUND: { description: "The turn is unknown, or past retention." }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [turn]
+    properties: { turn: { type: string, pattern: "^trn_[0-9A-Za-z]{22}$" } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [outcome]
+    properties: { outcome: { enum: [requested, ended] } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint whose turn is stopped.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: RecordStream.JournalCancel, metadata: { name: journalCancel }, journal: !cel "self.conversation.journal" }
+  - kind: Telo.Sequence
+    metadata: { name: run }
+    inputType:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [turn], properties: { turn: { type: string } } }
+    steps:
+      - name: cancel
+        invoke: !ref journalCancel
+        inputs: { key: !cel "inputs.turn" }
+      - name: unknown
+        if: !cel "steps.cancel.result.outcome == 'unknown' || steps.cancel.result.outcome == 'removed'"
+        then:
+          - name: notFound
+            throw:
+              code: ERR_CONVERSATION_TURN_NOT_FOUND
+              message: !interpolate "No turn '${{ inputs.turn }}' is known, or it is past retention."
+    outputs:
+      outcome: !cel "steps.cancel.result.outcome"
+invoke: !ref run
+---
+kind: Telo.Definition
+metadata:
+  name: ListConversations
+  description: >-
+    Pages through a chat endpoint's conversations, most recently active first
+    unless the oldest are asked for, optionally by a text found in the title and
+    by whether they are archived. Each row says whether its latest turn is
+    still running.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_CURSOR_INVALID: { description: "The cursor was not returned by this listing, or can no longer be read." }
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      titleContains: { type: string, description: "Lists only conversations whose title contains this text, ignoring case." }
+      archived: { type: boolean, description: True lists only archived conversations and false only active ones; absent lists both. }
+      sort: { enum: [updatedAt, -updatedAt], description: "The order of last activity: `-updatedAt`, the default, lists the newest first." }
+      limit: { type: integer, minimum: 1, maximum: 100, description: Rows per page; 25 when absent. }
+      cursor: { type: string, description: The `next` of the previous page, read with the same sort. }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/ConversationPage" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint whose conversations are listed.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.List, metadata: { name: list }, store: !cel "self.conversation.store" }
+  - { kind: RecordStream.JournalRead, metadata: { name: journalRead }, journal: !cel "self.conversation.journal" }
+  - { kind: Self.ConversationLister, metadata: { name: lister }, list: !ref list, journalRead: !ref journalRead }
+invoke: !ref lister
+---
+# Not exported: the code behind ListConversations.
+kind: Telo.Definition
+metadata:
+  name: ConversationLister
+  description: Lists stored conversations as summaries, each judged running by its turn's journal key.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#ConversationListerController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [list, journalRead]
+  properties:
+    list: { x-telo-ref: { kind: AiConversation.List, use: call } }
+    journalRead: { x-telo-ref: { kind: RecordStream.JournalRead, use: call } }
+---
+kind: Telo.Definition
+metadata:
+  name: ReadConversation
+  description: >-
+    Reads one conversation's summary — its title, whether it is archived, when it
+    last changed, its latest turn and whether that turn is still running — so a
+    client can reopen it and follow a turn in progress.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND: { description: No conversation has the given id. }
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties: { id: { type: string, minLength: 1 } }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/ConversationSummary" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint the conversation belongs to.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.Read, metadata: { name: read }, store: !cel "self.conversation.store" }
+  - { kind: RecordStream.JournalRead, metadata: { name: journalRead }, journal: !cel "self.conversation.journal" }
+  - kind: Telo.Sequence
+    metadata: { name: run }
+    inputType:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [id], properties: { id: { type: string } } }
+    steps:
+      - name: header
+        invoke: !ref read
+        inputs: { conversation: !cel "inputs.id" }
+      - name: latest
+        when: !cel "steps.header.result.turn != null"
+        invoke: !ref journalRead
+        inputs: { key: !cel "string(steps.header.result.turn)", limit: 0 }
+    outputs:
+      id: !cel "steps.header.result.id"
+      title: !cel "steps.header.result.title"
+      archived: !cel "steps.header.result.archived"
+      updatedAt: !cel "string(steps.header.result.updatedAt)"
+      turn: !cel "steps.header.result.turn"
+      running: !cel "steps.header.result.turn != null && steps.latest.result.state == 'open'"
+invoke: !ref run
+---
+kind: Telo.Definition
+metadata:
+  name: ConversationEntries
+  description: >-
+    Reads a page of one branch of a conversation's transcript, newest first, the
+    branch chosen by an entry it passes through or else the latest. Each entry
+    carries its place among its siblings, its tool calls with their approvals,
+    and its media by attachment reference.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND: { description: No conversation has the given id. }
+    ERR_CONVERSATION_ENTRY_NOT_FOUND: { description: The conversation has no entry with the given id. }
+    ERR_CONVERSATION_CURSOR_INVALID: { description: "The cursor was not returned by this listing, or can no longer be read." }
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id: { type: string, minLength: 1 }
+      through: { type: string, minLength: 1, description: An entry the branch passes through. }
+      limit: { type: integer, minimum: 1, maximum: 500 }
+      cursor: { type: string, description: The `next` of the previous page; repeat `through` with it. }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/EntryPage" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint the conversation belongs to.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.Entries, metadata: { name: entries }, store: !cel "self.conversation.store" }
+  - { kind: Self.EntryReader, metadata: { name: reader }, entries: !ref entries }
+invoke: !ref reader
+---
+# Not exported: the code behind ConversationEntries.
+kind: Telo.Definition
+metadata:
+  name: EntryReader
+  description: Reads a page of stored entries as transcript entries a viewer draws.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#EntryReaderController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [entries]
+  properties: { entries: { x-telo-ref: { kind: AiConversation.Entries, use: call } } }
+---
+kind: Telo.Definition
+metadata:
+  name: UpdateConversation
+  description: >-
+    Renames or archives a conversation and answers its new summary. Applied at
+    the version just read and retried when another change lands first, so a
+    rename during a running turn never disturbs it.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND: { description: No conversation has the given id. }
+    ERR_CONVERSATION_CONFLICT: { description: The conversation kept changing while the change was applied. }
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties:
+      id: { type: string, minLength: 1 }
+      title: { type: string }
+      archived: { type: boolean }
+    anyOf:
+      - { required: [title] }
+      - { required: [archived] }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/ConversationSummary" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint the conversation belongs to.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.Read, metadata: { name: read }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.Update, metadata: { name: update }, store: !cel "self.conversation.store" }
+  - { kind: RecordStream.JournalRead, metadata: { name: journalRead }, journal: !cel "self.conversation.journal" }
+  - { kind: Self.ConversationUpdater, metadata: { name: updater }, read: !ref read, update: !ref update, journalRead: !ref journalRead }
+invoke: !ref updater
+---
+# Not exported: the code behind UpdateConversation.
+kind: Telo.Definition
+metadata:
+  name: ConversationUpdater
+  description: Applies a rename or an archive at the version just read, re-reading on a conflict.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#ConversationUpdaterController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [read, update, journalRead]
+  properties:
+    read: { x-telo-ref: { kind: AiConversation.Read, use: call } }
+    update: { x-telo-ref: { kind: AiConversation.Update, use: call } }
+    journalRead: { x-telo-ref: { kind: RecordStream.JournalRead, use: call } }
+---
+kind: Telo.Definition
+metadata:
+  name: DeleteConversation
+  description: >-
+    Deletes a conversation with its whole transcript, and every file it holds is
+    unreadable at once; an expiry pass removes their bytes. A turn still running
+    on it is asked to stop first.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_NOT_FOUND: { description: No conversation has the given id. }
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [id]
+    properties: { id: { type: string, minLength: 1 } }
+outputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint the conversation belongs to.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.Read, metadata: { name: read }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.Delete, metadata: { name: delete }, store: !cel "self.conversation.store" }
+  - { kind: RecordStream.JournalCancel, metadata: { name: journalCancel }, journal: !cel "self.conversation.journal" }
+  - { kind: Self.ConversationDeleter, metadata: { name: deleter }, read: !ref read, journalCancel: !ref journalCancel, delete: !ref delete }
+invoke: !ref deleter
+---
+# Not exported: the code behind DeleteConversation.
+kind: Telo.Definition
+metadata:
+  name: ConversationDeleter
+  description: >-
+    Stops a conversation's running turn, then deletes the conversation, releasing
+    its files.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#ConversationDeleterController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [read, journalCancel, delete]
+  properties:
+    read: { x-telo-ref: { kind: AiConversation.Read, use: call } }
+    journalCancel: { x-telo-ref: { kind: RecordStream.JournalCancel, use: call } }
+    delete: { x-telo-ref: { kind: AiConversation.Delete, use: call } }
+---
+kind: Telo.Definition
+metadata:
+  name: PutAttachment
+  description: >-
+    Stores one uploaded file for a later message. Its type is read from its
+    leading bytes before anything is stored, it must be a type the agent's model
+    accepts, and it is streamed into storage under that type's size bound. The
+    file belongs to no conversation until a message sends it, and expires if
+    none does. Returns the attachment id, media type and size.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [content]
+    properties:
+      content:
+        description: The file's bytes, or a stream of them.
+        anyOf:
+          - { x-telo-type: Telo.Bytes }
+          - { x-telo-type: Telo.Stream }
+      declaredMediaType: { description: The media type the client declared., type: string }
+      name: { description: "The file's name, handed to the model with it.", type: string }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/Attachment" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint the file is uploaded to.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.RegisterAttachment, metadata: { name: registerAttachment }, store: !cel "self.conversation.store" }
+  - { kind: Blob.Put, metadata: { name: blobPut }, store: !cel "self.conversation.blobs" }
+  - kind: Self.AttachmentWriter
+    metadata: { name: writer }
+    conversation: !cel "self.conversation"
+    detector: !cel "self.conversation.detector"
+    registerAttachment: !ref registerAttachment
+    blobPut: !ref blobPut
+invoke: !ref writer
+---
+# Not exported: the code behind PutAttachment.
+kind: Telo.Definition
+metadata:
+  name: AttachmentWriter
+  description: Detects an upload's type, holds it to the offered types, registers it pending and stores it under that type's bound.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#AttachmentWriterController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation, detector, registerAttachment, blobPut]
+  properties:
+    conversation: { x-telo-ref: { kind: Self.Conversation, use: dependency } }
+    detector: { x-telo-ref: { kind: MediaType.Detector, use: call } }
+    registerAttachment: { x-telo-ref: { kind: AiConversation.RegisterAttachment, use: call } }
+    blobPut: { x-telo-ref: { kind: Blob.Put, use: call } }
+---
+kind: Telo.Definition
+metadata:
+  name: GetAttachment
+  description: >-
+    Reads a file back under the conversation holding it: its bytes as a stream,
+    with its media type and size. A file that is unknown, unsent, deleted or held
+    by another conversation is refused alike, so an id reveals nothing about
+    where it is held.
+capability: Telo.Invocable
+throws:
+  codes:
+    ERR_CONVERSATION_ATTACHMENT_NOT_FOUND:
+      description: >-
+        The conversation holds no attachment with this id; also when its bytes
+        are not stored when read — removed meanwhile, or a produced file's still
+        being written or never written.
+      data: { type: object, additionalProperties: false, required: [attachment], properties: { attachment: { type: string } } }
+    ERR_CONVERSATION_UNAVAILABLE: { description: The conversation store could not be reached or failed. Retryable. }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [conversation, id]
+    properties:
+      conversation: { type: string, minLength: 1 }
+      id: { type: string, pattern: "^att_[0-9A-Za-z]{22}$" }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [content, mediaType, size]
+    properties:
+      content: { x-telo-type: Telo.Stream, description: The file's bytes. }
+      mediaType: { type: string }
+      size: { type: integer, minimum: 0 }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint the file was uploaded to.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.ReadAttachment, metadata: { name: readAttachment }, store: !cel "self.conversation.store" }
+  - { kind: Blob.Get, metadata: { name: blobGet }, store: !cel "self.conversation.blobs" }
+  - kind: Telo.Sequence
+    metadata: { name: run }
+    inputType:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [conversation, id], properties: { conversation: { type: string }, id: { type: string } } }
+    steps:
+      - name: record
+        invoke: !ref readAttachment
+        inputs: { attachment: !cel "inputs.id" }
+      - name: held
+        if: !cel "steps.record.result.conversation != inputs.conversation"
+        then:
+          - name: elsewhere
+            throw:
+              code: ERR_CONVERSATION_ATTACHMENT_NOT_FOUND
+              message: !interpolate "Conversation '${{ inputs.conversation }}' holds no attachment '${{ inputs.id }}'."
+              data: { attachment: !cel "inputs.id" }
+      # The record was read and the bytes are not there: removed meanwhile, or a
+      # produced file's put has not finished or failed.
+      - name: read
+        try:
+          - name: file
+            invoke: !ref blobGet
+            inputs: { key: !interpolate "attachments/${{ inputs.id }}" }
+        catch:
+          - name: gone
+            if: !cel "error.code == 'ERR_BLOB_NOT_FOUND'"
+            then:
+              - name: removed
+                throw:
+                  code: ERR_CONVERSATION_ATTACHMENT_NOT_FOUND
+                  message: !interpolate "Attachment '${{ inputs.id }}' has no stored bytes."
+                  data: { attachment: !cel "inputs.id" }
+          - { name: other, rethrow: {} }
+    outputs:
+      content: !cel "steps.file.result.output"
+      mediaType: !cel "steps.file.result.contentType"
+      size: !cel "steps.file.result.size"
+invoke: !ref run
+---
+kind: Telo.Definition
+metadata:
+  name: AttachmentExpiry
+  description: >-
+    Removes the files a chat endpoint no longer needs: uploads no message sent
+    within the endpoint's retention, and every file of a deleted conversation.
+    Returns how many it removed. Run it on a schedule; without it neither kind
+    of file is ever removed. A pass that fails is finished by the next one.
+capability: Telo.Invocable
+inputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [count]
+    properties: { count: { type: integer, minimum: 0, description: How many files the pass removed. } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint whose files expire.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+resources:
+  - { kind: AiConversation.ExpireAttachments, metadata: { name: expire }, store: !cel "self.conversation.store" }
+  - { kind: AiConversation.ForgetAttachments, metadata: { name: forget }, store: !cel "self.conversation.store" }
+  - { kind: Blob.Delete, metadata: { name: blobDelete }, store: !cel "self.conversation.blobs" }
+  - kind: Self.AttachmentSweeper
+    metadata: { name: sweeper }
+    conversation: !cel "self.conversation"
+    expire: !ref expire
+    forget: !ref forget
+    blobDelete: !ref blobDelete
+invoke: !ref sweeper
+---
+# Not exported: the code behind AttachmentExpiry.
+kind: Telo.Definition
+metadata:
+  name: AttachmentSweeper
+  description: >-
+    Releases expired uploads, then removes each released file's bytes before
+    forgetting its record, a batch at a time.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#AttachmentSweeperController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation, expire, forget, blobDelete]
+  properties:
+    conversation: { description: "The endpoint, read for its retention.", x-telo-ref: { kind: Self.Conversation, use: dependency } }
+    expire: { x-telo-ref: { kind: AiConversation.ExpireAttachments, use: call } }
+    forget: { x-telo-ref: { kind: AiConversation.ForgetAttachments, use: call } }
+    blobDelete: { x-telo-ref: { kind: Blob.Delete, use: call } }
+---
+kind: Telo.Definition
+metadata:
+  name: Capabilities
+  description: >-
+    Answers what a chat endpoint offers before any message — the media its model
+    accepts with their size bounds, how many files a message may carry, and the
+    conversation operations — and publishes it as its reading.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/ai-chat.mjs&local_path=./nodejs/src/index.ts#CapabilitiesController]
+inputType: { kind: Telo.JsonSchema, schema: { type: object, additionalProperties: false } }
+outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/Spec" } }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint whose offer is read.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+---
+kind: Telo.Definition
+metadata:
+  name: Api
+  description: >-
+    Serves a chat endpoint over HTTP: starting turns and streaming their events as
+    Server-Sent Events that resume from the last position seen, stopping a turn,
+    listing, reading, renaming, archiving and deleting conversations, paging
+    their branching transcripts, uploading files and reading each back under its
+    conversation. Every failure is a problem document.
+capability: Telo.Mount
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  examples:
+    - { conversation: !ref chat }
+  properties:
+    conversation:
+      title: Conversation
+      description: The chat endpoint served.
+      x-telo-ref: { kind: Self.Conversation, use: dependency }
+mount: !ref api
+resources:
+  - { kind: Self.Capabilities, metadata: { name: capabilities }, conversation: !cel "self.conversation" }
+  - { kind: Self.StartTurn, metadata: { name: startTurn }, conversation: !cel "self.conversation" }
+  - { kind: Self.TurnEvents, metadata: { name: turnEvents }, conversation: !cel "self.conversation" }
+  - { kind: Self.CancelTurn, metadata: { name: cancelTurn }, conversation: !cel "self.conversation" }
+  - { kind: Self.ListConversations, metadata: { name: listConversations }, conversation: !cel "self.conversation" }
+  - { kind: Self.ReadConversation, metadata: { name: readConversation }, conversation: !cel "self.conversation" }
+  - { kind: Self.ConversationEntries, metadata: { name: conversationEntries }, conversation: !cel "self.conversation" }
+  - { kind: Self.UpdateConversation, metadata: { name: updateConversation }, conversation: !cel "self.conversation" }
+  - { kind: Self.DeleteConversation, metadata: { name: deleteConversation }, conversation: !cel "self.conversation" }
+  - { kind: Self.PutAttachment, metadata: { name: putAttachment }, conversation: !cel "self.conversation" }
+  - { kind: Self.GetAttachment, metadata: { name: getAttachment }, conversation: !cel "self.conversation" }
+  - { kind: OctetCodec.Encoder, metadata: { name: fileBytes } }
+  # The stream is piped from `output`, which is where a transport reads it.
+  - kind: Telo.Sequence
+    metadata: { name: attachmentBytes }
+    inputType:
+      kind: Telo.JsonSchema
+      schema: { type: object, required: [conversation, id], properties: { conversation: { type: string }, id: { type: string } } }
+    steps:
+      - name: file
+        invoke: !ref getAttachment
+        inputs: { conversation: !cel "inputs.conversation", id: !cel "inputs.id" }
+    outputs:
+      output: !cel "steps.file.result.content"
+  - kind: Http.Api
+    metadata: { name: api }
+    catches:
+      - when: !cel "problem.code == 'ERR_INPUT_INVALID'"
+        status: 400
+        content:
+          application/problem+json:
+            body:
+              type: !cel "problem.type"
+              title: !cel "problem.title"
+              status: !cel "problem.status"
+              detail: !cel "problem.detail"
+              code: !cel "problem.code"
+              data:
+                issues: !cel "problem.data == null ? [] : problem.data.issues.map(i, {'pointer': '/body' + i.pointer, 'keyword': i.keyword, 'params': i.params})"
+      - when: !cel "problem.code in ['ERR_CONVERSATION_CURSOR_INVALID', 'ERR_MULTIPART_MALFORMED', 'ERR_MULTIPART_LIMIT_EXCEEDED']"
+        status: 400
+        content: { application/problem+json: {} }
+      - when: !cel "problem.code in ['ERR_CONVERSATION_NOT_FOUND', 'ERR_CONVERSATION_ENTRY_NOT_FOUND', 'ERR_CONVERSATION_TURN_NOT_FOUND', 'ERR_CONVERSATION_ATTACHMENT_NOT_FOUND']"
+        status: 404
+        content: { application/problem+json: {} }
+      - when: !cel "problem.code in ['ERR_CONVERSATION_TURN_RUNNING', 'ERR_CONVERSATION_CONFLICT']"
+        status: 409
+        content: { application/problem+json: {} }
+      - when: !cel "problem.code == 'ERR_IDEMPOTENCY_KEY_CONFLICT'"
+        status: 422
+        content: { application/problem+json: {} }
+      - when: !cel "problem.code == 'ERR_CONVERSATION_UNAVAILABLE'"
+        status: 503
+        content: { application/problem+json: {} }
+    routes:
+      - operationId: capabilities
+        summary: What the endpoint offers
+        request: { method: GET, path: /capabilities }
+        handler: !ref capabilities
+        inputs: {}
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+      - operationId: startTurn
+        summary: Start a turn
+        request:
+          method: POST
+          path: /turns
+          schema:
+            headers:
+              type: object
+              properties:
+                idempotency-key: { type: string, minLength: 1, maxLength: 255, description: Makes a retried send start one turn. }
+            # `Conversations.TurnRequest` restated, since a route's schema takes no
+            # shape reference; the module's unit test holds the two equal.
+            body:
+              type: object
+              additionalProperties: false
+              required: [message, attachments]
+              properties:
+                conversation: { description: The conversation to continue; absent starts one., type: string, minLength: 1 }
+                parent:
+                  description: >-
+                    The entry the message follows; absent continues the latest branch, null starts a new root.
+                  anyOf:
+                    - { type: string, minLength: 1 }
+                    - { type: "null" }
+                message: { description: The user's text; may be empty when resuming with approvals., type: string }
+                attachments:
+                  description: Ids returned by the attachment upload.
+                  type: array
+                  uniqueItems: true
+                  items: { type: string, minLength: 1 }
+                approvals:
+                  description: >-
+                    Decisions that resume a turn which ended with reason approval; beside them
+                    the message is empty and no attachment is sent.
+                  type: array
+                  minItems: 1
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [id, approved]
+                    properties:
+                      id: { type: string, minLength: 1 }
+                      approved: { type: boolean }
+                      reason: { type: string }
+              if: { required: [approvals] }
+              then: { properties: { message: { type: string, const: "" }, attachments: { type: array, maxItems: 0 } } }
+        handler: !ref startTurn
+        inputs: !cel "merge(request.body, 'idempotency-key' in request.headers ? {'idempotencyKey': request.headers['idempotency-key']} : {})"
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+      - operationId: turnEvents
+        summary: A turn's events
+        request:
+          method: GET
+          path: /turns/{turnId}/events
+          schema:
+            params: { type: object, required: [turnId], properties: { turnId: { type: string, pattern: "^trn_[0-9A-Za-z]{22}$" } } }
+            headers:
+              type: object
+              properties:
+                last-event-id: { type: string, pattern: "^[0-9]{1,15}$", description: The position of the last event received. }
+        handler:
+          kind: Telo.Sequence
+          inputType:
+            kind: Telo.JsonSchema
+            schema: { type: object, required: [turn], properties: { turn: { type: string }, after: { type: integer } } }
+          steps:
+            - { name: events, invoke: !ref turnEvents, inputs: !cel "inputs" }
+            # A frame's id is the event's position, its name the event's type and its data the event whole.
+            - name: frames
+              invoke: { kind: Stream.Map, elementType: !ref Sse.Frame, value: { id: !cel "item.id", event: !cel "item.event.type", data: !cel "item.event" } }
+              inputs: { input: !cel "steps.events.result.output" }
+            - name: ended
+              invoke:
+                kind: Stream.Recover
+                elementType: !ref Sse.Frame
+                value: { event: error, data: { type: error, code: !cel "error.code", detail: !cel "error.message" } }
+              inputs: { input: !cel "steps.frames.result.output" }
+          outputs:
+            output: !cel "steps.ended.result.output"
+        inputs: !cel "merge({'turn': request.params.turnId}, 'last-event-id' in request.headers ? {'after': int(request.headers['last-event-id'])} : {})"
+        returns:
+          - status: 200
+            mode: stream
+            headers: { Cache-Control: no-cache }
+            content: { text/event-stream: { encoder: { kind: Sse.Encoder } } }
+        # Raised before the stream starts only by a defect of this route: no stream, or a non-boolean `when`.
+        catches:
+          - when: !cel "problem.code in ['ERR_INVALID_INPUT', 'ERR_INVALID_VALUE']"
+            status: 500
+            content: { application/problem+json: {} }
+
+      - operationId: cancelTurn
+        summary: Stop a running turn
+        request:
+          method: POST
+          path: /turns/{turnId}/cancel
+          schema:
+            params: { type: object, required: [turnId], properties: { turnId: { type: string, pattern: "^trn_[0-9A-Za-z]{22}$" } } }
+        handler: !ref cancelTurn
+        inputs: { turn: !cel "request.params.turnId" }
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+      - operationId: listConversations
+        summary: List conversations
+        request:
+          method: GET
+          path: /conversations
+          schema:
+            # The collection contract against `Conversations.conversations`: the
+            # listed filters and sort, and nothing else.
+            query:
+              type: object
+              additionalProperties: false
+              properties:
+                title.contains: { type: string, description: Lists only conversations whose title contains this text. }
+                archived: { type: boolean, description: True lists only archived conversations and false only active ones. }
+                sort: { enum: [updatedAt, -updatedAt], description: The order of last activity; -updatedAt by default. }
+                limit: { type: integer, minimum: 1, maximum: 100, description: Rows per page; 25 when absent. }
+                cursor: { type: string, description: The `next` of the previous page. }
+        handler: !ref listConversations
+        inputs: !cel >-
+          compact({
+            'titleContains': 'title.contains' in request.query ? request.query['title.contains'] : null,
+            'archived': 'archived' in request.query ? request.query.archived : null,
+            'sort': 'sort' in request.query ? request.query.sort : null,
+            'limit': 'limit' in request.query ? request.query.limit : null,
+            'cursor': 'cursor' in request.query ? request.query.cursor : null
+          })
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+      - operationId: readConversation
+        summary: One conversation's summary
+        request:
+          method: GET
+          path: /conversations/{conversationId}
+          schema:
+            params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+        handler: !ref readConversation
+        inputs: { id: !cel "request.params.conversationId" }
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+      - operationId: conversationEntries
+        summary: A page of a conversation's transcript
+        request:
+          method: GET
+          path: /conversations/{conversationId}/entries
+          schema:
+            params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+            query:
+              type: object
+              properties:
+                through: { type: string, minLength: 1, description: An entry the branch passes through. }
+                limit: { type: integer, minimum: 1, maximum: 500 }
+                cursor: { type: string, description: The `next` of the previous page. }
+        handler: !ref conversationEntries
+        inputs: !cel >-
+          compact({
+            'id': request.params.conversationId,
+            'through': 'through' in request.query ? request.query.through : null,
+            'limit': 'limit' in request.query ? request.query.limit : null,
+            'cursor': 'cursor' in request.query ? request.query.cursor : null
+          })
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+      - operationId: updateConversation
+        summary: Rename or archive a conversation
+        request:
+          method: PATCH
+          path: /conversations/{conversationId}
+          schema:
+            params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+            # `Conversations.ConversationPatch` restated, held equal by the unit test.
+            body:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties: { title: { type: string }, archived: { type: boolean } }
+        handler: !ref updateConversation
+        inputs: !cel "merge({'id': request.params.conversationId}, request.body)"
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+      - operationId: deleteConversation
+        summary: Delete a conversation
+        request:
+          method: DELETE
+          path: /conversations/{conversationId}
+          schema:
+            params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+        handler: !ref deleteConversation
+        inputs: { id: !cel "request.params.conversationId" }
+        returns:
+          - { status: 204 }
+
+      # The attachment limit plus the multipart framing; 64 KiB alone without attachments.
+      - operationId: putAttachment
+        summary: Upload one file
+        maxBodyBytes: !cel "('attachments' in resources.capabilities ? int(max(resources.capabilities.attachments.accepts.map(a, a.maxBytes))) : 0) + 65536"
+        request:
+          method: POST
+          path: /attachments
+          schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
+        handler:
+          kind: Telo.Sequence
+          inputType:
+            kind: Telo.JsonSchema
+            schema:
+              type: object
+              required: [input, contentType]
+              properties: { input: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }, contentType: { type: string } }
+          steps:
+            - name: part
+              invoke: { kind: Multipart.ReadPart }
+              inputs: { input: !cel "inputs.input", contentType: !cel "inputs.contentType", name: file }
+            - name: stored
+              invoke: !ref putAttachment
+              inputs: !cel "{'content': steps.part.result.content, ?'declaredMediaType': steps.part.result.?contentType, ?'name': steps.part.result.?filename}"
+          outputs:
+            id: !cel "steps.stored.result.id"
+            mediaType: !cel "steps.stored.result.mediaType"
+            size: !cel "steps.stored.result.size"
+        inputs:
+          input: !cel "request.body"
+          contentType: !cel "request.headers['content-type']"
+        returns:
+          - { status: 200, content: { application/json: { body: !cel "result" } } }
+        # The file arrives as the form's `file` part, so the store's `/content` is `/body/file` here.
+        catches:
+          - when: !cel "problem.code == 'ERR_INPUT_INVALID'"
+            status: 400
+            content:
+              application/problem+json:
+                body:
+                  type: !cel "problem.type"
+                  title: !cel "problem.title"
+                  status: !cel "problem.status"
+                  detail: !cel "problem.detail"
+                  code: !cel "problem.code"
+                  data:
+                    issues: !cel "problem.data == null ? [] : problem.data.issues.map(i, {'pointer': i.pointer == '/content' ? '/body/file' : '/body' + i.pointer, 'keyword': i.keyword, 'params': i.params})"
+          - when: !cel "problem.code == 'ERR_MULTIPART_PART_MISSING'"
+            status: 400
+            content:
+              application/problem+json:
+                body:
+                  type: !cel "problem.type"
+                  title: !cel "problem.title"
+                  status: !cel "problem.status"
+                  detail: !cel "problem.detail"
+                  code: !cel "problem.code"
+                  data:
+                    issues: !cel "problem.data == null ? [] : [{'pointer': '/body/' + problem.data.name, 'keyword': 'required', 'params': {'missingProperty': problem.data.name}}]"
+
+      - operationId: getAttachment
+        summary: A file of a conversation
+        request:
+          method: GET
+          path: /conversations/{conversationId}/attachments/{attachmentId}
+          schema:
+            params:
+              type: object
+              required: [conversationId, attachmentId]
+              properties:
+                conversationId: { type: string }
+                attachmentId: { type: string, pattern: "^att_[0-9A-Za-z]{22}$" }
+        handler: !ref attachmentBytes
+        inputs: { conversation: !cel "request.params.conversationId", id: !cel "request.params.attachmentId" }
+        returns:
+          - status: 200
+            mode: stream
+            content:
+              application/octet-stream: { encoder: !ref fileBytes }

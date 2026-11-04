@@ -1,0 +1,12 @@
+modules:
+  modules/ui: Added
+body: "Ui.ConversationSource and Ui.Chat draw a conversation endpoint as a full chat —
+  streamed replies, reasoning, tool calls and approvals, attachments and branches — with
+  the upload button present only when the endpoint offers it. Ui.Chat takes
+  conversation: { parameter } (the page query parameter naming the conversation shown,
+  written back when the chat creates one) and refreshes (requests read again, over
+  conversation.id, when a send is admitted and when a turn ends); the list of
+  conversations is an ordinary Ui.Listing beside it, so the chat has no sidebar, compact
+  surface or new-conversation button. The chat node and the markdown node join
+  Ui.SpecNode, and the chat's own texts become new keys of Ui.Translations, translated
+  into every shipped language."

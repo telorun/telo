@@ -1,3 +1,4 @@
+import { acceptedByModel } from "./accepted-content.js";
 import type { InvokeContext, ResourceContext, ResourceInstance } from "@telorun/sdk";
 import { InvokeError } from "@telorun/sdk";
 import { logCompletion } from "./completion-log.js";
@@ -398,7 +399,7 @@ class AiAgent implements ResourceInstance<AiAgentInputs, AiAgentOutput> {
   }
 
   snapshot(): Record<string, unknown> {
-    return {};
+    return { accepts: acceptedByModel(this.resource.model) };
   }
 }
 

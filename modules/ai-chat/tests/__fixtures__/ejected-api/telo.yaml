@@ -1,0 +1,368 @@
+# Chat.Api's body written with public kinds alone: a library an app could own in
+# its place. `ejection.test.ts` holds it equal to the body.
+kind: Telo.Library
+metadata: { name: EjectedChatApi }
+imports:
+  AiChat: ../../..
+  Http: ../../../../http-server
+  Multipart: ../../../../multipart
+  Sse: ../../../../sse-codec
+  Stream: ../../../../stream
+  OctetCodec: ../../../../octet-codec
+resources: { conversation: { kind: AiChat.Conversation } }
+exports: { resources: [api] }
+---
+{ kind: AiChat.Capabilities, metadata: { name: capabilities }, conversation: !ref conversation }
+---
+{ kind: AiChat.StartTurn, metadata: { name: startTurn }, conversation: !ref conversation }
+---
+{ kind: AiChat.TurnEvents, metadata: { name: turnEvents }, conversation: !ref conversation }
+---
+{ kind: AiChat.CancelTurn, metadata: { name: cancelTurn }, conversation: !ref conversation }
+---
+{ kind: AiChat.ListConversations, metadata: { name: listConversations }, conversation: !ref conversation }
+---
+{ kind: AiChat.ReadConversation, metadata: { name: readConversation }, conversation: !ref conversation }
+---
+{ kind: AiChat.ConversationEntries, metadata: { name: conversationEntries }, conversation: !ref conversation }
+---
+{ kind: AiChat.UpdateConversation, metadata: { name: updateConversation }, conversation: !ref conversation }
+---
+{ kind: AiChat.DeleteConversation, metadata: { name: deleteConversation }, conversation: !ref conversation }
+---
+{ kind: AiChat.PutAttachment, metadata: { name: putAttachment }, conversation: !ref conversation }
+---
+{ kind: AiChat.GetAttachment, metadata: { name: getAttachment }, conversation: !ref conversation }
+---
+{ kind: OctetCodec.Encoder, metadata: { name: fileBytes } }
+---
+# The stream is piped from `output`, which is where a transport reads it.
+kind: Telo.Sequence
+metadata: { name: attachmentBytes }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [conversation, id], properties: { conversation: { type: string }, id: { type: string } } }
+steps:
+  - name: file
+    invoke: !ref getAttachment
+    inputs: { conversation: !cel "inputs.conversation", id: !cel "inputs.id" }
+outputs:
+  output: !cel "steps.file.result.content"
+---
+kind: Http.Api
+metadata: { name: api }
+catches:
+  - when: !cel "problem.code == 'ERR_INPUT_INVALID'"
+    status: 400
+    content:
+      application/problem+json:
+        body:
+          type: !cel "problem.type"
+          title: !cel "problem.title"
+          status: !cel "problem.status"
+          detail: !cel "problem.detail"
+          code: !cel "problem.code"
+          data:
+            issues: !cel "problem.data == null ? [] : problem.data.issues.map(i, {'pointer': '/body' + i.pointer, 'keyword': i.keyword, 'params': i.params})"
+  - when: !cel "problem.code in ['ERR_CONVERSATION_CURSOR_INVALID', 'ERR_MULTIPART_MALFORMED', 'ERR_MULTIPART_LIMIT_EXCEEDED']"
+    status: 400
+    content: { application/problem+json: {} }
+  - when: !cel "problem.code in ['ERR_CONVERSATION_NOT_FOUND', 'ERR_CONVERSATION_ENTRY_NOT_FOUND', 'ERR_CONVERSATION_TURN_NOT_FOUND', 'ERR_CONVERSATION_ATTACHMENT_NOT_FOUND']"
+    status: 404
+    content: { application/problem+json: {} }
+  - when: !cel "problem.code in ['ERR_CONVERSATION_TURN_RUNNING', 'ERR_CONVERSATION_CONFLICT']"
+    status: 409
+    content: { application/problem+json: {} }
+  - when: !cel "problem.code == 'ERR_IDEMPOTENCY_KEY_CONFLICT'"
+    status: 422
+    content: { application/problem+json: {} }
+  - when: !cel "problem.code == 'ERR_CONVERSATION_UNAVAILABLE'"
+    status: 503
+    content: { application/problem+json: {} }
+routes:
+  - operationId: capabilities
+    summary: What the endpoint offers
+    request: { method: GET, path: /capabilities }
+    handler: !ref capabilities
+    inputs: {}
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+  - operationId: startTurn
+    summary: Start a turn
+    request:
+      method: POST
+      path: /turns
+      schema:
+        headers:
+          type: object
+          properties:
+            idempotency-key: { type: string, minLength: 1, maxLength: 255, description: Makes a retried send start one turn. }
+        # `Conversations.TurnRequest` restated, since a route's schema takes no
+        # shape reference; the module's unit test holds the two equal.
+        body:
+          type: object
+          additionalProperties: false
+          required: [message, attachments]
+          properties:
+            conversation: { description: The conversation to continue; absent starts one., type: string, minLength: 1 }
+            parent:
+              description: >-
+                The entry the message follows; absent continues the latest branch, null starts a new root.
+              anyOf:
+                - { type: string, minLength: 1 }
+                - { type: "null" }
+            message: { description: The user's text; may be empty when resuming with approvals., type: string }
+            attachments:
+              description: Ids returned by the attachment upload.
+              type: array
+              uniqueItems: true
+              items: { type: string, minLength: 1 }
+            approvals:
+              description: >-
+                Decisions that resume a turn which ended with reason approval; beside them
+                the message is empty and no attachment is sent.
+              type: array
+              minItems: 1
+              items:
+                type: object
+                additionalProperties: false
+                required: [id, approved]
+                properties:
+                  id: { type: string, minLength: 1 }
+                  approved: { type: boolean }
+                  reason: { type: string }
+          if: { required: [approvals] }
+          then: { properties: { message: { type: string, const: "" }, attachments: { type: array, maxItems: 0 } } }
+    handler: !ref startTurn
+    inputs: !cel "merge(request.body, 'idempotency-key' in request.headers ? {'idempotencyKey': request.headers['idempotency-key']} : {})"
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+  - operationId: turnEvents
+    summary: A turn's events
+    request:
+      method: GET
+      path: /turns/{turnId}/events
+      schema:
+        params: { type: object, required: [turnId], properties: { turnId: { type: string, pattern: "^trn_[0-9A-Za-z]{22}$" } } }
+        headers:
+          type: object
+          properties:
+            last-event-id: { type: string, pattern: "^[0-9]{1,15}$", description: The position of the last event received. }
+    handler:
+      kind: Telo.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema: { type: object, required: [turn], properties: { turn: { type: string }, after: { type: integer } } }
+      steps:
+        - { name: events, invoke: !ref turnEvents, inputs: !cel "inputs" }
+        # A frame's id is the event's position, its name the event's type and its data the event whole.
+        - name: frames
+          invoke: { kind: Stream.Map, elementType: !ref Sse.Frame, value: { id: !cel "item.id", event: !cel "item.event.type", data: !cel "item.event" } }
+          inputs: { input: !cel "steps.events.result.output" }
+        - name: ended
+          invoke:
+            kind: Stream.Recover
+            elementType: !ref Sse.Frame
+            value: { event: error, data: { type: error, code: !cel "error.code", detail: !cel "error.message" } }
+          inputs: { input: !cel "steps.frames.result.output" }
+      outputs:
+        output: !cel "steps.ended.result.output"
+    inputs: !cel "merge({'turn': request.params.turnId}, 'last-event-id' in request.headers ? {'after': int(request.headers['last-event-id'])} : {})"
+    returns:
+      - status: 200
+        mode: stream
+        headers: { Cache-Control: no-cache }
+        content: { text/event-stream: { encoder: { kind: Sse.Encoder } } }
+    # Raised before the stream starts only by a defect of this route: no stream, or a non-boolean `when`.
+    catches:
+      - when: !cel "problem.code in ['ERR_INVALID_INPUT', 'ERR_INVALID_VALUE']"
+        status: 500
+        content: { application/problem+json: {} }
+
+  - operationId: cancelTurn
+    summary: Stop a running turn
+    request:
+      method: POST
+      path: /turns/{turnId}/cancel
+      schema:
+        params: { type: object, required: [turnId], properties: { turnId: { type: string, pattern: "^trn_[0-9A-Za-z]{22}$" } } }
+    handler: !ref cancelTurn
+    inputs: { turn: !cel "request.params.turnId" }
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+  - operationId: listConversations
+    summary: List conversations
+    request:
+      method: GET
+      path: /conversations
+      schema:
+        # The collection contract against `Conversations.conversations`: the
+        # listed filters and sort, and nothing else.
+        query:
+          type: object
+          additionalProperties: false
+          properties:
+            title.contains: { type: string, description: Lists only conversations whose title contains this text. }
+            archived: { type: boolean, description: True lists only archived conversations and false only active ones. }
+            sort: { enum: [updatedAt, -updatedAt], description: The order of last activity; -updatedAt by default. }
+            limit: { type: integer, minimum: 1, maximum: 100, description: Rows per page; 25 when absent. }
+            cursor: { type: string, description: The `next` of the previous page. }
+    handler: !ref listConversations
+    inputs: !cel >-
+      compact({
+        'titleContains': 'title.contains' in request.query ? request.query['title.contains'] : null,
+        'archived': 'archived' in request.query ? request.query.archived : null,
+        'sort': 'sort' in request.query ? request.query.sort : null,
+        'limit': 'limit' in request.query ? request.query.limit : null,
+        'cursor': 'cursor' in request.query ? request.query.cursor : null
+      })
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+  - operationId: readConversation
+    summary: One conversation's summary
+    request:
+      method: GET
+      path: /conversations/{conversationId}
+      schema:
+        params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+    handler: !ref readConversation
+    inputs: { id: !cel "request.params.conversationId" }
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+  - operationId: conversationEntries
+    summary: A page of a conversation's transcript
+    request:
+      method: GET
+      path: /conversations/{conversationId}/entries
+      schema:
+        params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+        query:
+          type: object
+          properties:
+            through: { type: string, minLength: 1, description: An entry the branch passes through. }
+            limit: { type: integer, minimum: 1, maximum: 500 }
+            cursor: { type: string, description: The `next` of the previous page. }
+    handler: !ref conversationEntries
+    inputs: !cel >-
+      compact({
+        'id': request.params.conversationId,
+        'through': 'through' in request.query ? request.query.through : null,
+        'limit': 'limit' in request.query ? request.query.limit : null,
+        'cursor': 'cursor' in request.query ? request.query.cursor : null
+      })
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+  - operationId: updateConversation
+    summary: Rename or archive a conversation
+    request:
+      method: PATCH
+      path: /conversations/{conversationId}
+      schema:
+        params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+        # `Conversations.ConversationPatch` restated, held equal by the unit test.
+        body:
+          type: object
+          additionalProperties: false
+          minProperties: 1
+          properties: { title: { type: string }, archived: { type: boolean } }
+    handler: !ref updateConversation
+    inputs: !cel "merge({'id': request.params.conversationId}, request.body)"
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+
+  - operationId: deleteConversation
+    summary: Delete a conversation
+    request:
+      method: DELETE
+      path: /conversations/{conversationId}
+      schema:
+        params: { type: object, required: [conversationId], properties: { conversationId: { type: string } } }
+    handler: !ref deleteConversation
+    inputs: { id: !cel "request.params.conversationId" }
+    returns:
+      - { status: 204 }
+
+  # The attachment limit plus the multipart framing; 64 KiB alone without attachments.
+  - operationId: putAttachment
+    summary: Upload one file
+    maxBodyBytes: !cel "('attachments' in resources.capabilities ? int(max(resources.capabilities.attachments.accepts.map(a, a.maxBytes))) : 0) + 65536"
+    request:
+      method: POST
+      path: /attachments
+      schema: { body: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } } }
+    handler:
+      kind: Telo.Sequence
+      inputType:
+        kind: Telo.JsonSchema
+        schema:
+          type: object
+          required: [input, contentType]
+          properties: { input: { x-telo-type: { name: Telo.Stream, of: Telo.Bytes } }, contentType: { type: string } }
+      steps:
+        - name: part
+          invoke: { kind: Multipart.ReadPart }
+          inputs: { input: !cel "inputs.input", contentType: !cel "inputs.contentType", name: file }
+        - name: stored
+          invoke: !ref putAttachment
+          inputs: !cel "{'content': steps.part.result.content, ?'declaredMediaType': steps.part.result.?contentType, ?'name': steps.part.result.?filename}"
+      outputs:
+        id: !cel "steps.stored.result.id"
+        mediaType: !cel "steps.stored.result.mediaType"
+        size: !cel "steps.stored.result.size"
+    inputs:
+      input: !cel "request.body"
+      contentType: !cel "request.headers['content-type']"
+    returns:
+      - { status: 200, content: { application/json: { body: !cel "result" } } }
+    # The file arrives as the form's `file` part, so the store's `/content` is `/body/file` here.
+    catches:
+      - when: !cel "problem.code == 'ERR_INPUT_INVALID'"
+        status: 400
+        content:
+          application/problem+json:
+            body:
+              type: !cel "problem.type"
+              title: !cel "problem.title"
+              status: !cel "problem.status"
+              detail: !cel "problem.detail"
+              code: !cel "problem.code"
+              data:
+                issues: !cel "problem.data == null ? [] : problem.data.issues.map(i, {'pointer': i.pointer == '/content' ? '/body/file' : '/body' + i.pointer, 'keyword': i.keyword, 'params': i.params})"
+      - when: !cel "problem.code == 'ERR_MULTIPART_PART_MISSING'"
+        status: 400
+        content:
+          application/problem+json:
+            body:
+              type: !cel "problem.type"
+              title: !cel "problem.title"
+              status: !cel "problem.status"
+              detail: !cel "problem.detail"
+              code: !cel "problem.code"
+              data:
+                issues: !cel "problem.data == null ? [] : [{'pointer': '/body/' + problem.data.name, 'keyword': 'required', 'params': {'missingProperty': problem.data.name}}]"
+
+  - operationId: getAttachment
+    summary: A file of a conversation
+    request:
+      method: GET
+      path: /conversations/{conversationId}/attachments/{attachmentId}
+      schema:
+        params:
+          type: object
+          required: [conversationId, attachmentId]
+          properties:
+            conversationId: { type: string }
+            attachmentId: { type: string, pattern: "^att_[0-9A-Za-z]{22}$" }
+    handler: !ref attachmentBytes
+    inputs: { conversation: !cel "request.params.conversationId", id: !cel "request.params.attachmentId" }
+    returns:
+      - status: 200
+        mode: stream
+        content:
+          application/octet-stream: { encoder: !ref fileBytes }

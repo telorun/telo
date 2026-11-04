@@ -17,6 +17,7 @@ import {
   preparedNavigation,
   resolvedPageWidth,
   RequestNodes,
+  servedIconFormat,
   SpecTranslator,
   type NavigationConfig,
   type NavigationEntrySpec,
@@ -33,7 +34,6 @@ import { HostedNodes, type SpecNode } from "./component-abi.js";
 import { holdsCurrent, servedDocument, SPEC_VERSION } from "./documents.js";
 import { EventStreams } from "./event-streams.js";
 import { headerReads, unionReads, varyHeader, type HeaderReads } from "./header-reads.js";
-import { servedIconFormat } from "./icon-file.js";
 import { shellHtml } from "./shell.js";
 import type { ProvidedTheme } from "./theme-controller.js";
 import { tokensStylesheet, type ProvidedTokens } from "./tokens-stylesheet.js";

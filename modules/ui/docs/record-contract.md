@@ -7,15 +7,17 @@ proxy, a static file.
 ## The request
 
 ```
-GET <source.path>?<param>=<value>&…
+GET <source path>?<param>=<value>&…
 Accept: application/json
 ```
 
-- `<source.path>` is app-relative: a renderer mounted under a prefix reads it
-  under that prefix.
-- Each of `source.params` that holds a value is sent as one query parameter: a
-  string as written, a number or a boolean as its text. A parameter whose value
-  is missing is not sent.
+- `<source path>` is the reader's `source` [expanded](nodes.md#addresses):
+  app-relative, so a renderer mounted under a prefix reads it under that
+  prefix, with each `{name}` segment filled from `pathParams`. A path variable
+  that holds nothing leaves the read unsent.
+- Each of `source.queryParams` that holds a value is sent as one query
+  parameter: a string as written, a number or a boolean as its text, a list
+  repeating its key. A parameter whose value is missing is not sent.
 - Credentials of the page's own origin travel with it, as for every request a
   renderer makes.
 

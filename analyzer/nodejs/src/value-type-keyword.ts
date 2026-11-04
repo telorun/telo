@@ -80,6 +80,7 @@ export const ANNOTATION_KEYWORDS = [
   "x-telo-inline",
   "x-telo-match-for",
   "x-telo-outcome-list",
+  "x-telo-path-params-for",
   "x-telo-provides-zone",
   "x-telo-ref",
   "x-telo-requires-zone",

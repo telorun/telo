@@ -1,0 +1,57 @@
+kind: Telo.Library
+metadata: { name: FixedConversation, version: 0.1.0 }
+imports: { Conversation: ../../.., Run: ../../../../run }
+exports: { kinds: [Endpoint, ReadSpec] }
+---
+kind: Telo.Definition
+metadata: { name: Endpoint }
+capability: Telo.Provider
+extends: Conversation.Conversation
+schema:
+  type: object
+  additionalProperties: false
+  required: [operations]
+  properties:
+    attachments: { $ref: "telo:Conversations/AttachmentOffer" }
+    operations: { $ref: "telo:Conversations/Operations" }
+resources:
+  - kind: Run.Value
+    metadata: { name: spec }
+    outputType: { kind: Telo.JsonSchema, schema: { $ref: "telo:Conversations/Spec" } }
+    value:
+      operations: !cel "self.operations"
+provide: !ref spec
+---
+# Reads what a conversation offers through the abstract's slot.
+kind: Telo.Definition
+metadata: { name: ReadSpec }
+capability: Telo.Invocable
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [operations, maxPerMessage]
+    properties:
+      operations: { $ref: "telo:Conversations/Operations" }
+      maxPerMessage: { type: integer }
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation]
+  properties:
+    conversation: { x-telo-ref: { kind: Conversation.Conversation, use: dependency } }
+resources:
+  - kind: Run.Value
+    metadata: { name: read }
+    outputType:
+      kind: Telo.JsonSchema
+      schema:
+        type: object
+        required: [operations, maxPerMessage]
+        properties:
+          operations: { $ref: "telo:Conversations/Operations" }
+          maxPerMessage: { type: integer }
+    value:
+      operations: !cel "self.conversation.operations"
+      maxPerMessage: !cel "self.conversation.attachments.maxPerMessage"
+invoke: !ref read

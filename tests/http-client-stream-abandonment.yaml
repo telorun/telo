@@ -34,20 +34,20 @@ imports:
 targets:
   - !ref test
 ---
-# Enough records that the consumer gives up well before the end.
+# Enough frames that the consumer gives up well before the end.
 kind: Stream.Of
 metadata: { name: records }
 items:
-  - { type: tick, n: 0 }
-  - { type: tick, n: 1 }
-  - { type: tick, n: 2 }
-  - { type: tick, n: 3 }
-  - { type: tick, n: 4 }
-  - { type: tick, n: 5 }
-  - { type: tick, n: 6 }
-  - { type: tick, n: 7 }
-  - { type: tick, n: 8 }
-  - { type: tick, n: 9 }
+  - { event: tick, data: { n: 0 } }
+  - { event: tick, data: { n: 1 } }
+  - { event: tick, data: { n: 2 } }
+  - { event: tick, data: { n: 3 } }
+  - { event: tick, data: { n: 4 } }
+  - { event: tick, data: { n: 5 } }
+  - { event: tick, data: { n: 6 } }
+  - { event: tick, data: { n: 7 } }
+  - { event: tick, data: { n: 8 } }
+  - { event: tick, data: { n: 9 } }
 ---
 kind: Sse.Encoder
 metadata: { name: sseEncoder }

@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react-radix: Added
+body: The Menu control draws disabled entries with a hint, and the theme styles the
+  record actions menu button.

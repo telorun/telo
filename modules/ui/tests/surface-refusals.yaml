@@ -13,6 +13,8 @@ targets:
   - !ref navigationPlacements
   - !ref compactAddressedAtRuntime
   - !ref compactNestedAtRuntime
+  - !ref splitCompactAddressedAtRuntime
+  - !ref splitCompactNestedAtRuntime
   - !ref conditions
   - !ref texts
 ---
@@ -22,13 +24,13 @@ source: ./__fixtures__/invalid/shapes/telo.yaml
 expect:
   errors:
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | list | composite)"
+      message: "Ui.View/misspelled: /content/type must be equal to one of the allowed values (box | stack | columns | text | badge | link | menu | tabs | image | svg | value | list | bar | command | composite)"
     - code: SCHEMA_VIOLATION
       message: "Ui.View/strayKey: /content/children/0 must NOT have additional properties ('gap' is not allowed)"
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/offsiteLink: /content/href must match pattern"
+      message: "Ui.View/offsiteLink: /content/href must match a schema in anyOf"
     - code: SCHEMA_VIOLATION
-      message: "Ui.View/offsiteItem: /content/items/1/href must match pattern"
+      message: "Ui.View/offsiteItem: /content/items/1/href must match a schema in anyOf"
     - code: SCHEMA_VIOLATION
       message: "Ui.Component/pill: `props` does not satisfy the type declared at `/component/props`: / must NOT have additional properties ('colour' is not allowed)"
     - code: SCHEMA_VIOLATION
@@ -95,6 +97,20 @@ source: ./__fixtures__/invalid/compact-nested/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Dialog 'compactNested': names a compact surface that declares a compact surface of its own"
+---
+kind: Assert.Manifest
+metadata: { name: splitCompactAddressedAtRuntime }
+source: ./__fixtures__/invalid/split-compact-addressed/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.SplitView 'splitCompactAddressed': names a compact surface that declares an address"
+---
+kind: Assert.Manifest
+metadata: { name: splitCompactNestedAtRuntime }
+source: ./__fixtures__/invalid/split-compact-nested/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.SplitView 'splitCompactNested': names a compact surface that declares a compact surface of its own"
 ---
 # A condition holds only keywords of the interpreted profile and can hold for
 # the type it reads; a reader's query parameters leave `_telo` to the renderer;

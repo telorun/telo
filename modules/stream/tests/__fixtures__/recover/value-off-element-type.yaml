@@ -1,0 +1,13 @@
+# A recovery value naming a member its element type does not declare.
+kind: Telo.Application
+metadata: { name: RecoverValueOffElementType }
+imports: { Stream: ../../.. }
+---
+kind: Telo.JsonSchema
+metadata: { name: Line }
+schema: { type: object, additionalProperties: false, required: [text], properties: { text: { type: string } } }
+---
+kind: Stream.Recover
+metadata: { name: ending }
+elementType: !ref Line
+value: { txt: !cel "error.message" }

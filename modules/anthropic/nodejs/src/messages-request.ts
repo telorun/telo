@@ -5,6 +5,9 @@ import {
   isTextPart,
   modelContentUnsupported,
   modelRequestRejected,
+  acceptedOf,
+  requireAccepted,
+  type AcceptedContent,
   type ContentPart,
   type MediaPart,
   type Message,
@@ -29,6 +32,7 @@ export interface MessagesResource {
   /** Injected by Phase 5 — the account's base URL and key live on its client. */
   request: HttpRequestInstance;
   maxTokens: number | bigint;
+  accepts?: AcceptedContent;
   cacheLifetime?: "5m" | "1h";
   betas?: string[];
   options?: Record<string, unknown>;
@@ -40,6 +44,7 @@ export function publishedConfig(resource: MessagesResource): Record<string, unkn
   const { model, maxTokens, cacheLifetime, betas, options } = resource;
   return {
     model,
+    accepts: acceptedOf(resource),
     maxTokens,
     cacheLifetime: cacheLifetime ?? "5m",
     ...(betas ? { betas } : {}),
@@ -149,7 +154,8 @@ function documentSource(part: MediaPart, label: string): Block {
 }
 
 /** One part a caller sends, as the block the API takes it as. */
-function translatePart(part: ContentPart, label: string): Block {
+function translatePart(part: ContentPart, label: string, accepts: AcceptedContent): Block {
+  requireAccepted(accepts, part, label);
   switch (part.type) {
     case "text":
       return { type: "text", text: part.text };
@@ -212,12 +218,17 @@ function systemBlocks(content: MessageContent, label: string, out: Translation):
   }
 }
 
-function userBlocks(content: MessageContent, label: string, out: Translation): Block[] {
+function userBlocks(
+  content: MessageContent,
+  label: string,
+  accepts: AcceptedContent,
+  out: Translation,
+): Block[] {
   if (typeof content === "string") return content === "" ? [] : [{ type: "text", text: content }];
   const blocks: Block[] = [];
   for (const part of content) {
     if (isEmptyText(part)) continue;
-    const block = translatePart(part, label);
+    const block = translatePart(part, label, accepts);
     blocks.push(block);
     if (wantsBreakpoint(part)) out.mark(block);
   }
@@ -265,7 +276,13 @@ function replayedBlocks(message: Message, state: MessagesProviderState, out: Tra
  * breakpoint on a part inside a result marks the result, which is the block
  * the API caches at.
  */
-function toolTurn(run: Message[], start: number, label: string, out: Translation): Turn {
+function toolTurn(
+  run: Message[],
+  start: number,
+  label: string,
+  accepts: AcceptedContent,
+  out: Translation,
+): Turn {
   const results: Block[] = [];
   const documents: Block[] = [];
   for (const [offset, message] of run.entries()) {
@@ -286,7 +303,7 @@ function toolTurn(run: Message[], start: number, label: string, out: Translation
       // A part a model produces is left out of a result, not refused.
       if (!isTextPart(part) && !isMediaPart(part)) continue;
       if (isEmptyText(part)) continue;
-      const block = translatePart(part, label);
+      const block = translatePart(part, label, accepts);
       if (part.type === "file") {
         documents.push(block);
         if (wantsBreakpoint(part)) out.mark(block);
@@ -370,13 +387,13 @@ function translateMessages(
     if (message.role === "tool") {
       let end = index;
       while (messages[end + 1]?.role === "tool") end++;
-      out.turns.push(toolTurn(messages.slice(index, end + 1), index, label, out));
+      out.turns.push(toolTurn(messages.slice(index, end + 1), index, label, acceptedOf(resource), out));
       index = end;
       continue;
     }
     const content =
       message.role === "user"
-        ? userBlocks(message.content, label, out)
+        ? userBlocks(message.content, label, acceptedOf(resource), out)
         : index === newestAssistant && state && isTurnOf(state, message)
           ? replayedBlocks(message, state, out)
           : assistantBlocks(message, out);

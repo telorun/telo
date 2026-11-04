@@ -173,6 +173,10 @@ first read (`ERR_UI_SURFACE_COMPACT_ADDRESSED`,
 `ERR_UI_SURFACE_COMPACT_NESTED`), for a manifest that never passed
 `telo check`.
 
+A [`Ui.SplitView`](split-view.md) names a compact surface the same way, for
+its aside; it has no address of its own to stand in for, so the same two rules
+apply to it.
+
 ## After a submit, and unsaved input
 
 Both belong to the opener, beside `surface`:

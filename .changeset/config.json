@@ -22,6 +22,9 @@
   "ignore": [
     "@telorun-test/fake-embedding",
     "@telorun/ai",
+    "@telorun/ai-chat",
+    "@telorun/ai-conversation",
+    "@telorun/ai-conversation-sql",
     "@telorun/ai-fixtures",
     "@telorun/ai-mcp-build",
     "@telorun/anthropic-build",

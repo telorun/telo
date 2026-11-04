@@ -24,6 +24,7 @@ native way to seed a pipeline with fixed data (instead of a `JS.Script`).
 | `Stream.FlatMap` | Expand every value into any number of values, flattened. Emit `[]` to drop one. |
 | `Stream.Tap` | Hand every value to a handler just before delivering it, unchanged and in order — gated by `when:`, holding nothing. Printing a command's output live while a later stage still reads it. |
 | `Stream.Concat` | Join several producers' streams into one, in order, invoking each only when the previous stream has ended. A record written before a model call, then the model's own stream, read as one stream. See [docs/concat.md](docs/concat.md). |
+| `Stream.Recover` | End a stream whose source fails part-way with a final value computed from the error, logging the failure — a last record a reader can act on instead of a broken connection. See [docs/recover.md](docs/recover.md). |
 
 The three transforms — `Map`, `Scan`, `FlatMap` — are what make a streaming
 protocol expressible in a manifest: an SSE decoder hands over wire frames, and

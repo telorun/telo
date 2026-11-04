@@ -1,6 +1,7 @@
 import type { ResourceContext, ResourceInstance, RuntimeResource } from "@telorun/sdk";
 import type { Provided } from "./composite.js";
 import { resolveNode, type AuthoredNode } from "./node-resolution.js";
+import { filledProvided } from "./fill-marking.js";
 
 type ViewResource = RuntimeResource & { content: AuthoredNode };
 
@@ -14,7 +15,7 @@ class View implements ResourceInstance {
   async provide(): Promise<Provided> {
     const name = this.resource.metadata.name;
     const resolved = await resolveNode(this.resource.content, this.ctx, `Ui.View '${name}' content`);
-    return resolved ?? { assets: [] };
+    return filledProvided(resolved ?? { assets: [] });
   }
 }
 

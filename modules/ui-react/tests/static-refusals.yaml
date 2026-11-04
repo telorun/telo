@@ -81,7 +81,7 @@ expect:
     - code: SCHEMA_VIOLATION
       message: "UiReact.App/offsitePath: /pages/0/path must match pattern"
     - code: SCHEMA_VIOLATION
-      message: "UiReact.App/offsiteLink: /pages/0/children/0/href must match pattern"
+      message: "UiReact.App/offsiteLink: /pages/0/children/0/href must match a schema in anyOf"
 ---
 kind: Run.Sequence
 metadata: { name: ruleRuns }

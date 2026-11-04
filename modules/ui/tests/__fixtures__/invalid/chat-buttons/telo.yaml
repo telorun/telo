@@ -1,0 +1,23 @@
+# A text button takes no label, and an icon button's icon is an icon.
+kind: Telo.Application
+metadata: { name: UiInvalidChatButtonsApp, version: 1.0.0 }
+imports: { Ui: ../../../../, Fixture: ../../conversation }
+---
+kind: Fixture.Endpoint
+metadata: { name: conversation }
+operations: [cancel]
+---
+kind: Ui.ConversationSource
+metadata: { name: source }
+conversation: !ref conversation
+basePath: /api/chat
+---
+kind: Ui.Chat
+metadata: { name: textWithLabel }
+source: !ref source
+buttons: { copy: { kind: Ui.TextButton, label: hidden } }
+---
+kind: Ui.Chat
+metadata: { name: iconNotAnIcon }
+source: !ref source
+buttons: { send: { kind: Ui.IconButton, icon: { kind: Ui.Dialog } } }

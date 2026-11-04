@@ -1,0 +1,268 @@
+kind: Telo.Application
+metadata:
+  name: AiChatTurnRequests
+  version: 1.0.0
+  description: |
+    What a turn request may say, through AiChat.StartTurn: a message or an
+    attachment beside approvals, an empty approval list, a parent without its
+    conversation, an unknown parent and approvals with nothing waiting are each
+    refused at their own input pointer; an unknown conversation is not found. A
+    send repeated under one idempotency key answers the first send's turn and
+    starts no second one, the same key with another message is a key conflict,
+    and a send refused because a turn was running is admitted when repeated
+    under its key once that turn is cancelled.
+imports:
+  Chat: ../
+  Ai: ../../ai
+  AiEcho: ../../ai/tests/__fixtures__/ai-echo.yaml
+  AiConversationSql: ../../ai-conversation-sql
+  RecordStream: ../../record-stream
+  RecordStreamSql: ../../record-stream-sql
+  BlobFs: ../../blob-fs
+  MediaType: ../../media-type
+  SQLite: ../../sqlite
+  Stream: ../../stream
+  Timer: ../../timer
+  Assert: ../../assert
+variables:
+  scratchDir:
+    env: AI_CHAT_TURN_REQUESTS_FIXTURES
+    type: string
+    x-telo-type: Telo.HostPath
+    default: .telo/ai-chat-tests
+targets: [!ref refusals, !ref idempotent, !ref retryAfterRunning]
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: RecordStream.Journal
+metadata: { name: journal }
+store: { kind: RecordStreamSql.JournalStore, connection: !ref db, pollInterval: 50ms }
+markerRetention: 1h
+---
+kind: BlobFs.Store
+metadata: { name: blobs }
+root: !cel "variables.scratchDir.joinPath('scratch-requests')"
+---
+kind: Chat.Conversation
+metadata: { name: chat }
+agent: { kind: Ai.AgentStream, model: { kind: AiEcho.EchoModelStream, accepts: [] } }
+store: !ref store
+journal: !ref journal
+blobs: !ref blobs
+detector: { kind: MediaType.Detector }
+---
+kind: Telo.Sequence
+metadata: { name: slowTool }
+steps:
+  - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 10s } }
+---
+kind: Chat.Conversation
+metadata: { name: slowChat }
+agent:
+  kind: Ai.AgentStream
+  model: { kind: AiEcho.EchoModelStream, accepts: [], emitToolCall: { name: wait, arguments: {} } }
+  toolProviders:
+    - provider:
+        kind: Ai.Tools
+        tools: [{ tool: !ref slowTool, name: wait, description: Waits a while., parameters: { type: object } }]
+store: !ref store
+journal: !ref journal
+blobs: !ref blobs
+detector: { kind: MediaType.Detector }
+---
+kind: Chat.StartTurn
+metadata: { name: startTurn }
+conversation: !ref chat
+---
+kind: Chat.StartTurn
+metadata: { name: startSlow }
+conversation: !ref slowChat
+---
+kind: Telo.Sequence
+metadata: { name: refusals }
+steps:
+  - name: base
+    invoke: !ref startTurn
+    inputs: { message: base, attachments: [] }
+  - name: messageBesideApprovals
+    try:
+      - name: messageBesideApprovalsTry
+        invoke: !ref startTurn
+        # Computed, so the refusal is the call's rather than telo check's.
+        inputs:
+          conversation: !cel "steps.base.result.conversation"
+          message: !cel "steps.base.result.conversation.substring(0, 2)"
+          attachments: []
+          approvals: [{ id: apr_1, approved: true }]
+      - { name: messageBesideApprovalsOutcome, value: admitted }
+    catch:
+      - { name: messageBesideApprovalsOutcome, value: !cel "error.code" }
+  - name: emptyApprovals
+    try:
+      - name: emptyApprovalsTry
+        invoke: !ref startTurn
+        inputs:
+          conversation: !cel "steps.base.result.conversation"
+          message: ""
+          attachments: []
+          approvals: !cel "[{'id': 'apr_1', 'approved': true}].filter(a, !a.approved)"
+      - { name: emptyApprovalsOutcome, value: admitted }
+    catch:
+      - { name: emptyApprovalsOutcome, value: !cel "error.code" }
+  - name: parentAlone
+    try:
+      - name: parentAloneTry
+        invoke: !ref startTurn
+        inputs: { parent: ent_1, message: hi, attachments: [] }
+      - { name: parentAloneOutcome, value: admitted }
+    catch:
+      - { name: parentAloneOutcome, value: !cel "error.code + ' ' + error.data.issues.map(i, i.pointer).join(',')" }
+  # The base turn has ended before its conversation takes another.
+  - name: baseEvents
+    invoke: { kind: Chat.TurnEvents, conversation: !ref chat }
+    inputs: { turn: !cel "steps.base.result.turn" }
+  - name: baseEnded
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.baseEvents.result.output" }
+  - name: unknownParent
+    try:
+      - name: unknownParentTry
+        invoke: !ref startTurn
+        inputs: { conversation: !cel "steps.base.result.conversation", parent: ent_nowhere, message: hi, attachments: [] }
+      - { name: unknownParentOutcome, value: admitted }
+    catch:
+      - { name: unknownParentOutcome, value: !cel "error.code + ' ' + error.data.issues.map(i, i.pointer).join(',')" }
+  - name: nothingWaiting
+    try:
+      - name: nothingWaitingTry
+        invoke: !ref startTurn
+        inputs: { conversation: !cel "steps.base.result.conversation", message: "", attachments: [], approvals: [{ id: apr_1, approved: true }] }
+      - { name: nothingWaitingOutcome, value: admitted }
+    catch:
+      - { name: nothingWaitingOutcome, value: !cel "error.code + ' ' + error.data.issues.map(i, i.pointer).join(',')" }
+  - name: unknownConversation
+    try:
+      - name: unknownConversationTry
+        invoke: !ref startTurn
+        inputs: { conversation: cnv_nowhere, message: hi, attachments: [] }
+      - { name: unknownConversationOutcome, value: admitted }
+    catch:
+      - { name: unknownConversationOutcome, value: !cel "error.code" }
+  - name: listBefore
+    invoke: { kind: Chat.ListConversations, conversation: !ref chat }
+    inputs: {}
+  - name: refusedFirst
+    try:
+      - name: refusedFirstTry
+        invoke: !ref startTurn
+        inputs: { message: hi, attachments: [att_0000000000000000000000] }
+      - { name: refusedFirstOutcome, value: admitted }
+    catch:
+      - { name: refusedFirstOutcome, value: !cel "error.code" }
+  - name: listAfter
+    invoke: { kind: Chat.ListConversations, conversation: !ref chat }
+    inputs: {}
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        refusedFirst:
+          outcome: !cel "steps.refusedFirstOutcome.result"
+          conversationsCreated: !cel "steps.listAfter.result.total - steps.listBefore.result.total"
+        messageBesideApprovals: !cel "steps.messageBesideApprovalsOutcome.result"
+        emptyApprovals: !cel "steps.emptyApprovalsOutcome.result"
+        parentAlone: !cel "steps.parentAloneOutcome.result"
+        unknownParent: !cel "steps.unknownParentOutcome.result"
+        nothingWaiting: !cel "steps.nothingWaitingOutcome.result"
+        unknownConversation: !cel "steps.unknownConversationOutcome.result"
+      expected:
+        refusedFirst: { outcome: ERR_INPUT_INVALID, conversationsCreated: 0 }
+        # Refused by the input contract, which carries no issue list (see docs).
+        messageBesideApprovals: ERR_INPUT_INVALID
+        emptyApprovals: ERR_INPUT_INVALID
+        parentAlone: ERR_INPUT_INVALID /parent
+        unknownParent: ERR_INPUT_INVALID /parent
+        nothingWaiting: ERR_INPUT_INVALID /approvals
+        unknownConversation: ERR_CONVERSATION_NOT_FOUND
+---
+kind: Telo.Sequence
+metadata: { name: idempotent }
+steps:
+  - name: first
+    invoke: !ref startTurn
+    inputs: { message: once, attachments: [], idempotencyKey: send-1 }
+  - name: retried
+    invoke: !ref startTurn
+    inputs: { message: once, attachments: [], idempotencyKey: send-1 }
+  - name: events
+    invoke: { kind: Chat.TurnEvents, conversation: !ref chat }
+    inputs: { turn: !cel "steps.first.result.turn" }
+  - name: ended
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.events.result.output" }
+  - name: reusedAttempt
+    try:
+      - name: reusedTry
+        invoke: !ref startTurn
+        inputs: { message: other, attachments: [], idempotencyKey: send-1 }
+      - { name: reusedOutcome, value: admitted }
+    catch:
+      - { name: reusedOutcome, value: !cel "error.code" }
+  - name: entries
+    invoke: { kind: Chat.ConversationEntries, conversation: !ref chat }
+    inputs: { id: !cel "steps.first.result.conversation" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        same: !cel "steps.retried.result == steps.first.result"
+        reused: !cel "steps.reusedOutcome.result"
+        entries: !cel "steps.entries.result.total"
+      expected: { same: true, reused: ERR_IDEMPOTENCY_KEY_CONFLICT, entries: 2 }
+---
+kind: Telo.Sequence
+metadata: { name: retryAfterRunning }
+steps:
+  - name: running
+    invoke: !ref startSlow
+    inputs: { message: go, attachments: [] }
+  - name: refusedAttempt
+    try:
+      - name: refusedTry
+        invoke: !ref startSlow
+        inputs: { conversation: !cel "steps.running.result.conversation", message: next, attachments: [], idempotencyKey: send-2 }
+      - { name: refusedOutcome, value: admitted }
+    catch:
+      - { name: refusedOutcome, value: !cel "error.code" }
+  - name: cancel
+    invoke: { kind: Chat.CancelTurn, conversation: !ref slowChat }
+    inputs: { turn: !cel "steps.running.result.turn" }
+  - name: cancelledEvents
+    invoke: { kind: Chat.TurnEvents, conversation: !ref slowChat }
+    inputs: { turn: !cel "steps.running.result.turn" }
+  - name: cancelled
+    invoke: { kind: Stream.Collect }
+    inputs: { input: !cel "steps.cancelledEvents.result.output" }
+  - name: resent
+    invoke: !ref startSlow
+    inputs: { conversation: !cel "steps.running.result.conversation", message: next, attachments: [], idempotencyKey: send-2 }
+  - name: summary
+    invoke: { kind: Chat.ReadConversation, conversation: !ref slowChat }
+    inputs: { id: !cel "steps.running.result.conversation" }
+  - name: stopResent
+    invoke: { kind: Chat.CancelTurn, conversation: !ref slowChat }
+    inputs: { turn: !cel "steps.resent.result.turn" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        refused: !cel "steps.refusedOutcome.result"
+        admitted: !cel "steps.summary.result.turn == steps.resent.result.turn"
+        running: !cel "steps.summary.result.running"
+      expected: { refused: ERR_CONVERSATION_TURN_RUNNING, admitted: true, running: true }

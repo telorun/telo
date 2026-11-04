@@ -1159,6 +1159,15 @@ export {
   type BrowserExportProblem,
   type BrowserExportSite,
 } from "./browser-export-slot.js";
+export {
+  pathParamsAnnotationProblems,
+  pathParamsProblems,
+  type PathParamsAnnotationProblem,
+  type PathParamsHost,
+  type PathParamsProblem,
+  type PathParamsSite,
+  type PathTemplateReading,
+} from "./path-params-slot.js";
 export type {
   LibraryCandidate,
   LibraryCandidateProblem,

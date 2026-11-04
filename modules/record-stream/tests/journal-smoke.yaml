@@ -36,6 +36,8 @@ targets:
   - !ref Suite.claimSameWriterEnded
   - !ref Suite.claimGoesStale
   - !ref Suite.claimResumeStale
+  - !ref Suite.cancelIdleWriter
+  - !ref Suite.cancelOutcomes
 ---
 kind: RecordStream.MemoryJournalStore
 metadata: { name: store }

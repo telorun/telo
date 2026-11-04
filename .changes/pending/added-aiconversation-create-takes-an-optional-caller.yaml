@@ -1,0 +1,5 @@
+modules:
+  modules/ai-conversation: Added
+body: AiConversation.Create takes an optional caller-minted id; an id that already
+  exists answers that conversation's header unchanged, so a retried create makes one
+  conversation.

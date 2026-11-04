@@ -15,19 +15,8 @@ interface EncoderOutputs {
 }
 
 /**
- * Server-Sent Events encoder. Each item becomes one frame:
- *   `[id: <id>\n]event: <type>\ndata: <json>\n\n`
- *
- * Item shape: an object whose optional `type` becomes the SSE event (default
- * `message` when absent) and whose optional `id` (string / number) becomes the
- * SSE `id:` line — the reconnection cursor a client echoes as `Last-Event-ID`.
- * All remaining fields become the data payload, written as plain JSON (a CEL
- * value in its plain encoding, `writePlainJson`). A typeless object
- * (e.g. a `{ id, data }` replay-journal envelope) frames as a `message` event
- * carrying an `id:` line, so a resumable stream needs no bespoke shaping. Bare
- * strings frame as a `message` event whose data is the JSON-encoded string.
- * `data:` lines must not contain literal newlines, so JSON encoding is the safe
- * default; authors who need raw-text-on-wire should use `PlainText.Encoder`.
+ * Server-Sent Events encoder. Each item is an `SseCodec.Frame` and becomes one
+ * frame, written by `sseFrame`; an item that is not a frame fails the stream.
  *
  * Mid-stream error: if the upstream iterable throws, emit a final
  * `event: error\ndata: {"message":"..."}\n\n` then end.
@@ -68,7 +57,7 @@ async function* encode(
     // The frame tells the client, and nothing else does: the stream has already
     // been handed to the transport, so the failure never reaches the caller and
     // the response still completes 200. Server-side this is the only report.
-    ctx.log.error("Upstream failed mid-stream; emitted a terminal SSE error frame", undefined, {
+    ctx.log.error("The stream failed or held a value that is not a frame; ended with an error frame", undefined, {
       error: err,
     });
     const message = err instanceof Error ? err.message : String(err);

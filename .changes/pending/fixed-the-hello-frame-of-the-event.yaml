@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react: Fixed
+body: The hello frame of the event stream is written through the frame shape sse-codec
+  now takes; its bytes are unchanged.

@@ -1,0 +1,421 @@
+{
+  "description": "Which readers a refresh entry of an action or a chat reads again, one row per case. `address` is the entry in the wire form `ui` produces and `roots` what a chain reads from; `path` is the encoded app-relative path a reader is keyed by (its query left out); `match` whether the reader reads again. A `*` or `**` segment is a wildcard only in a literal template: a `{name}` value is encoded, so a star in it is text, and a path read from data is exact. Held by every renderer's matcher.",
+  "rows": [
+    {
+      "name": "a path with no wildcard matches itself",
+      "address": {
+        "path": {
+          "value": "/api/projects"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects",
+      "match": true
+    },
+    {
+      "name": "a path with no wildcard matches nothing else",
+      "address": {
+        "path": {
+          "value": "/api/projects"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects/7",
+      "match": false
+    },
+    {
+      "name": "a path with no wildcard does not match a parent",
+      "address": {
+        "path": {
+          "value": "/api/projects/7"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects",
+      "match": false
+    },
+    {
+      "name": "a query on the path is left out of the pattern",
+      "address": {
+        "path": {
+          "value": "/api/projects/*?x=1"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects/7",
+      "match": true
+    },
+    {
+      "name": "a star matches one segment",
+      "address": {
+        "path": {
+          "value": "/api/*/members"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/7/members",
+      "match": true
+    },
+    {
+      "name": "a star matches a segment of any text",
+      "address": {
+        "path": {
+          "value": "/api/*"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/a%20b",
+      "match": true
+    },
+    {
+      "name": "a star does not match two segments",
+      "address": {
+        "path": {
+          "value": "/api/*"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/7/members",
+      "match": false
+    },
+    {
+      "name": "a star does not match no segment",
+      "address": {
+        "path": {
+          "value": "/api/*"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api",
+      "match": false
+    },
+    {
+      "name": "a star does not match an empty segment",
+      "address": {
+        "path": {
+          "value": "/api/*"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/",
+      "match": false
+    },
+    {
+      "name": "a star in the middle keeps the segments after it",
+      "address": {
+        "path": {
+          "value": "/api/*/members"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/7/owners",
+      "match": false
+    },
+    {
+      "name": "two stars match zero segments",
+      "address": {
+        "path": {
+          "value": "/api/projects/7/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects/7",
+      "match": true
+    },
+    {
+      "name": "two stars match one segment",
+      "address": {
+        "path": {
+          "value": "/api/projects/7/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects/7/members",
+      "match": true
+    },
+    {
+      "name": "two stars match many segments",
+      "address": {
+        "path": {
+          "value": "/api/projects/7/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects/7/members/3/roles",
+      "match": true
+    },
+    {
+      "name": "two stars keep the segments before them",
+      "address": {
+        "path": {
+          "value": "/api/projects/7/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects/70",
+      "match": false
+    },
+    {
+      "name": "two stars keep the segments before them whole",
+      "address": {
+        "path": {
+          "value": "/api/projects/7/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects/70/members",
+      "match": false
+    },
+    {
+      "name": "two stars leave the parent out",
+      "address": {
+        "path": {
+          "value": "/api/projects/7/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/projects",
+      "match": false
+    },
+    {
+      "name": "two stars alone match the root",
+      "address": {
+        "path": {
+          "value": "/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/",
+      "match": true
+    },
+    {
+      "name": "two stars alone match every path",
+      "address": {
+        "path": {
+          "value": "/**"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/anything/at/all",
+      "match": true
+    },
+    {
+      "name": "two stars in the middle match any depth",
+      "address": {
+        "path": {
+          "value": "/api/**/members"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/a/b/members",
+      "match": true
+    },
+    {
+      "name": "two stars in the middle match no segment",
+      "address": {
+        "path": {
+          "value": "/api/**/members"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/members",
+      "match": true
+    },
+    {
+      "name": "two stars in the middle keep the segments after them",
+      "address": {
+        "path": {
+          "value": "/api/**/members"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/a/b/owners",
+      "match": false
+    },
+    {
+      "name": "a star beside text in a segment is that text",
+      "address": {
+        "path": {
+          "value": "/api/a*b"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/axb",
+      "match": false
+    },
+    {
+      "name": "a star beside text in a segment matches itself",
+      "address": {
+        "path": {
+          "value": "/api/a*b"
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/a*b",
+      "match": true
+    },
+    {
+      "name": "a variable segment is filled before matching",
+      "address": {
+        "path": {
+          "value": "/api/projects/{id}/**"
+        },
+        "pathParams": {
+          "id": {
+            "value": 7
+          }
+        },
+        "queryParams": {}
+      },
+      "path": "/api/projects/7/members",
+      "match": true
+    },
+    {
+      "name": "a variable segment is filled with its whole value",
+      "address": {
+        "path": {
+          "value": "/api/projects/{id}/**"
+        },
+        "pathParams": {
+          "id": {
+            "value": 7
+          }
+        },
+        "queryParams": {}
+      },
+      "path": "/api/projects/70",
+      "match": false
+    },
+    {
+      "name": "a variable holding a star is text",
+      "address": {
+        "path": {
+          "value": "/api/projects/{id}/**"
+        },
+        "pathParams": {
+          "id": {
+            "value": "*"
+          }
+        },
+        "queryParams": {}
+      },
+      "path": "/api/projects/7",
+      "match": false
+    },
+    {
+      "name": "a variable holding a star matches that text encoded",
+      "address": {
+        "path": {
+          "value": "/api/projects/{id}/**"
+        },
+        "pathParams": {
+          "id": {
+            "value": "*"
+          }
+        },
+        "queryParams": {}
+      },
+      "path": "/api/projects/%2A/members",
+      "match": true
+    },
+    {
+      "name": "a variable holding two stars is text",
+      "address": {
+        "path": {
+          "value": "/api/{id}"
+        },
+        "pathParams": {
+          "id": {
+            "value": "**"
+          }
+        },
+        "queryParams": {}
+      },
+      "path": "/api/anything",
+      "match": false
+    },
+    {
+      "name": "a path read from data is exact",
+      "address": {
+        "path": {
+          "root": "result",
+          "path": [
+            "where"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/7",
+      "match": false,
+      "roots": {
+        "result": {
+          "where": "/api/*"
+        }
+      }
+    },
+    {
+      "name": "a path read from data holding stars matches itself",
+      "address": {
+        "path": {
+          "root": "result",
+          "path": [
+            "where"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/*",
+      "match": true,
+      "roots": {
+        "result": {
+          "where": "/api/*"
+        }
+      }
+    },
+    {
+      "name": "a path read from data holding two stars is exact",
+      "address": {
+        "path": {
+          "root": "result",
+          "path": [
+            "where"
+          ]
+        },
+        "pathParams": {},
+        "queryParams": {}
+      },
+      "path": "/api/7/members",
+      "match": false,
+      "roots": {
+        "result": {
+          "where": "/api/**"
+        }
+      }
+    }
+  ]
+}

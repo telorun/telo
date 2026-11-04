@@ -1,0 +1,5 @@
+modules:
+  modules/ui: Added
+body: Documents that a flush Ui.SplitView is one panel with one divider holding its
+  content and aside frameless, that folding the aside leaves a rail with the toggle in
+  place, and that a Ui.ListLayout record is one line with its actions at its end.

@@ -1,0 +1,164 @@
+kind: Telo.Application
+metadata:
+  name: AiConversationSqlFencing
+  version: 1.0.0
+  description: |
+    The header version and the turn fence: of two admissions at one version exactly
+    one succeeds, an append by a superseded turn is refused while a rename during a
+    turn is not, a tool-call approval is decided once, and nothing may be appended
+    beneath an entry with an undecided approval. Decided approvals read back with
+    the transcript.
+imports:
+  AiConversation: ../../ai-conversation
+  AiConversationSql: ../
+  SQLite: ../../sqlite
+  Assert: ../../assert
+targets:
+  - !ref testFencing
+  - !ref testApprovals
+---
+kind: SQLite.Connection
+metadata: { name: db }
+file: ":memory:"
+---
+kind: AiConversationSql.Store
+metadata: { name: store }
+connection: !ref db
+---
+kind: Telo.Sequence
+metadata: { name: testFencing }
+steps:
+  - name: created
+    invoke: { kind: AiConversation.Create, store: !ref store }
+    inputs: { title: First }
+  - name: admitFirst
+    invoke: { kind: AiConversation.Admit, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", version: 1, turn: trn_1, attachments: [], expiredBefore: !cel "timestamp('1970-01-01T00:00:00Z')" }
+  - name: admitSecond
+    invoke: { kind: AiConversation.Admit, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", version: 2, turn: trn_2, attachments: [], expiredBefore: !cel "timestamp('1970-01-01T00:00:00Z')" }
+  - name: lostRaceAttempt
+    try:
+      - name: lostRaceTry
+        invoke: { kind: AiConversation.Admit, store: !ref store }
+        inputs: { conversation: !cel "steps.created.result.id", version: 2, turn: trn_3, attachments: [], expiredBefore: !cel "timestamp('1970-01-01T00:00:00Z')" }
+      - { name: lostRaceUnreachable, value: no error }
+    catch:
+      - name: lostRace
+        value: !cel "error.code"
+  - name: staleAppendAttempt
+    try:
+      - name: staleAppendTry
+        invoke: { kind: AiConversation.Append, store: !ref store }
+        inputs: { conversation: !cel "steps.created.result.id", parent: null, turn: trn_1, message: { role: user, content: late } }
+      - { name: staleAppendUnreachable, value: no error }
+    catch:
+      - name: staleAppend
+        value: !cel "error.code"
+  - name: rename
+    invoke: { kind: AiConversation.Update, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", version: 3, title: Renamed }
+  - name: appendAfterRename
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: null, turn: trn_2, message: { role: user, content: current } }
+  - name: unknownAttempt
+    try:
+      - name: unknownTry
+        invoke: { kind: AiConversation.Read, store: !ref store }
+        inputs: { conversation: cnv_missing }
+      - { name: unknownUnreachable, value: no error }
+    catch:
+      - name: unknown
+        value: !cel "error.code"
+  - name: header
+    invoke: { kind: AiConversation.Read, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.admitSecond.result.version"
+        - !cel "steps.lostRace.result"
+        - !cel "steps.staleAppend.result"
+        - !cel "steps.unknown.result"
+        - !cel "steps.appendAfterRename.result.message.content"
+        - !cel "[steps.header.result.title, steps.header.result.turn, steps.header.result.version]"
+      expected: [3, ERR_CONVERSATION_CONFLICT, ERR_CONVERSATION_CONFLICT, ERR_CONVERSATION_NOT_FOUND, current, [Renamed, trn_2, 4]]
+---
+kind: Telo.Sequence
+metadata: { name: testApprovals }
+steps:
+  - name: created
+    invoke: { kind: AiConversation.Create, store: !ref store }
+  - name: admit
+    invoke: { kind: AiConversation.Admit, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", version: 1, turn: trn_1, attachments: [], expiredBefore: !cel "timestamp('1970-01-01T00:00:00Z')" }
+  - name: user
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: null, turn: trn_1, message: { role: user, content: run it } }
+  - name: assistant
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: !cel "steps.user.result.id", turn: trn_1, message: { role: assistant, content: calling, toolCalls: [{ id: call_1, name: deploy, arguments: {} }] } }
+  - name: requested
+    invoke: { kind: AiConversation.RecordApproval, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", turn: trn_1, id: apr_1, entry: !cel "steps.assistant.result.id", toolCallId: call_1 }
+  - name: wrongCallAttempt
+    try:
+      - name: wrongCallTry
+        invoke: { kind: AiConversation.RecordApproval, store: !ref store }
+        inputs: { conversation: !cel "steps.created.result.id", turn: trn_1, id: apr_2, entry: !cel "steps.assistant.result.id", toolCallId: call_9 }
+      - { name: wrongCallUnreachable, value: no error }
+    catch:
+      - name: wrongCall
+        value: !cel "error.code"
+  - name: appendBeneathUndecidedAttempt
+    try:
+      - name: appendBeneathUndecidedTry
+        invoke: { kind: AiConversation.Append, store: !ref store }
+        inputs: { conversation: !cel "steps.created.result.id", parent: !cel "steps.assistant.result.id", turn: trn_1, message: { role: user, content: too early } }
+      - { name: appendBeneathUndecidedUnreachable, value: no error }
+    catch:
+      - name: appendBeneathUndecided
+        value: !cel "error.code"
+  - name: pending
+    invoke: { kind: AiConversation.Entries, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id" }
+  - name: decided
+    invoke: { kind: AiConversation.RecordApproval, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", turn: trn_1, id: apr_1, entry: !cel "steps.assistant.result.id", toolCallId: call_1, decision: { approved: false, reason: not now } }
+  - name: decidedTwiceAttempt
+    try:
+      - name: decidedTwiceTry
+        invoke: { kind: AiConversation.RecordApproval, store: !ref store }
+        inputs: { conversation: !cel "steps.created.result.id", turn: trn_1, id: apr_1, entry: !cel "steps.assistant.result.id", toolCallId: call_1, decision: { approved: true } }
+      - { name: decidedTwiceUnreachable, value: no error }
+    catch:
+      - name: decidedTwice
+        value: !cel "error.code"
+  - name: appendAfterDecision
+    invoke: { kind: AiConversation.Append, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", parent: !cel "steps.assistant.result.id", turn: trn_1, message: { role: user, content: now } }
+  - name: decidedRows
+    invoke: { kind: AiConversation.Entries, store: !ref store }
+    inputs: { conversation: !cel "steps.created.result.id", through: !cel "steps.assistant.result.id" }
+  - name: check
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        - !cel "steps.requested.result.decision"
+        - !cel "steps.wrongCall.result"
+        - !cel "steps.appendBeneathUndecided.result"
+        - !cel "steps.pending.result.rows[0].approvals.map(a, [a.id, a.toolCallId, a.decision])"
+        - !cel "steps.decidedTwice.result"
+        - !cel "steps.decided.result.decision == null ? null : steps.decided.result.decision.approved"
+        - !cel "steps.appendAfterDecision.result.message.content"
+        - !cel "steps.decidedRows.result.rows[1].approvals.map(a, a.decision == null ? [a.id] : [a.id, a.decision.approved, a.decision.reason, a.decision.turn])"
+      expected:
+        - null
+        - ERR_CONVERSATION_TOOL_CALL_NOT_FOUND
+        - ERR_CONVERSATION_CONFLICT
+        - [[apr_1, call_1, null]]
+        - ERR_CONVERSATION_CONFLICT
+        - false
+        - now
+        - [[apr_1, false, not now, trn_1]]

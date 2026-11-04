@@ -1,0 +1,56 @@
+# Kinds whose schemas carry `x-telo-path-params-for`: a link whose address is a
+# named shape holding a literal template or an expression, and a link whose
+# address may name a page holding the template.
+kind: Telo.Library
+metadata: { name: PathParamsKinds }
+imports: { Run: ../../../../../modules/run }
+exports: { kinds: [Page, Link, PageLink], resources: [Address] }
+---
+kind: Telo.JsonSchema
+metadata: { name: Address }
+schema:
+  type: object
+  required: [path]
+  properties:
+    path: { type: string }
+    pathParams:
+      type: object
+      additionalProperties: { type: string }
+      x-telo-path-params-for: { template: /path }
+---
+kind: Telo.Definition
+metadata: { name: Page, description: A page served at a path template. }
+extends: Run.Value
+schema: { type: object, required: [path], properties: { path: { type: string } } }
+base: { value: page }
+---
+kind: Telo.Definition
+metadata:
+  name: Link
+  description: A link to an address whose path template is filled from its parameters.
+extends: Run.Value
+schema:
+  type: object
+  required: [href]
+  properties: { href: { $ref: "telo:PathParamsKinds/Address" } }
+base: { value: link }
+---
+kind: Telo.Definition
+metadata:
+  name: PageLink
+  description: A link to a page, its path template filled from its parameters.
+extends: Run.Value
+schema:
+  type: object
+  required: [href]
+  properties:
+    href:
+      type: object
+      required: [path]
+      properties:
+        path: { x-telo-ref: { kind: Self.Page, use: schema } }
+        pathParams:
+          type: object
+          additionalProperties: { type: string }
+          x-telo-path-params-for: { template: /path, through: path }
+base: { value: link }

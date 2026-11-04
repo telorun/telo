@@ -7,6 +7,9 @@ import contract from "../src/contract/parts.json" with { type: "json" };
 import data from "../src/contract/scenes.json" with { type: "json" };
 import { uiTexts } from "./ui-texts.js";
 
+// The markdown renderer is a chunk fetched on first use; transforming it is slower than a scene waits.
+await import("../src/browser/markdown/markdown-view.js");
+
 const listed = Object.values(contract.parts).flat();
 const scenes = data.scenes as unknown as Scene[];
 const texts = data.texts as unknown as Record<string, unknown>;
@@ -38,8 +41,15 @@ describe("the styling contract", () => {
   // One test per scene, so each is bounded on its own rather than all of them by one timeout.
   describe("is emitted whole by the scenes, and nothing outside it is", () => {
     const seen = new Set<string>();
+    const qualified = contract.reserved.flatMap((entry) => (entry.state === undefined ? [] : [entry.state]));
+    /** Each part seen carrying the state of a qualified reservation, as `<part> <attribute>=<value>`. */
+    const carrying = new Set<string>();
     const collect = () => {
-      for (const element of document.querySelectorAll("[data-telo-part]")) seen.add(element.getAttribute("data-telo-part") as string);
+      for (const element of document.querySelectorAll("[data-telo-part]")) {
+        const part = element.getAttribute("data-telo-part") as string;
+        seen.add(part);
+        for (const { attribute, value } of qualified) if (element.getAttribute(attribute) === value) carrying.add(`${part} ${attribute}=${value}`);
+      }
     };
     for (const scene of scenes) {
       it(`scene '${scene.name}'`, async () => {
@@ -49,6 +59,13 @@ describe("the styling contract", () => {
     it("every part listed, and only those", () => {
       expect([...seen].filter((part) => !listed.includes(part))).toEqual([]);
       expect(listed.filter((part) => !seen.has(part))).toEqual([]);
+    });
+    it("every part a state-qualified reservation reaches, carrying that state", () => {
+      const states = contract.states as Record<string, { values: string[]; on: string[] }>;
+      const reached = contract.reserved.flatMap(({ part, state }) =>
+        state === undefined ? [] : (part === undefined ? states[state.attribute].on : [part]).map((each) => `${each} ${state.attribute}=${state.value}`),
+      );
+      expect([...new Set(reached)].filter((key) => !carrying.has(key))).toEqual([]);
     });
   });
 

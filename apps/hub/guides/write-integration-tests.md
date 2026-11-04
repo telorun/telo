@@ -13,14 +13,14 @@ container engine, so the same file runs alone under `telo run`, inside a test
 suite, and in a runner session, unchanged. The worked example is PostgreSQL;
 every other service is the same pattern with another image.
 
-Take the exact schema of every kind named here — `Container.Instance`,
+The exact schema of every kind named here — `Container.Instance`,
 `Container.Port`, `Container.LogReady`, `Docker.Engine`, `Test.Suite`,
 `App.Instance`, `Assert.Equals`, your database connection — and the
-`imports:` line for each module from `get_kinds` (the `container`, `docker`,
-`test`, `app`, `run` and `assert` modules, plus your database's). Snippets
-below write each import as `<ref>@<version>#<pin>`; write what `get_kinds`
-returns. A `Telo.*` kind (`Telo.Application`) is built in: `get_kinds` returns
-it with no import line, and nothing is imported for it.
+`imports:` line for each module (the `container`, `docker`, `test`, `app`,
+`run` and `assert` modules, plus your database's) are on the
+[hub](https://hub.telo.run) (`get_kinds` over MCP). Snippets below write each
+import as `<ref>@<version>#<pin>`; write the hub's line. A `Telo.*` kind
+(`Telo.Application`) is built in: nothing is imported for it.
 
 ## When a mock cannot stand in
 

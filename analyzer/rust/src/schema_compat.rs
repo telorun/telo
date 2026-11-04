@@ -67,11 +67,12 @@ pub fn select_union_branch<'s: 'a, 'a>(
 }
 
 /// Every branch `data` may be written against — each merged over the union's
-/// shared base — or `None` when `schema` is not a union. Selection is structural
-/// and conservative: a branch must agree with the data's kind, a constant branch
-/// reads exactly one scalar, and an object must hold every `required` key. Where
-/// every branch a text or number fits is a value type with a plain encoding, the
-/// value is the type of the one whose encoding reads it ([`encoded_reading`]).
+/// shared base — or `None` when `schema` is not a union. A branch is dropped only
+/// where the written data proves it cannot validate ([`branch_fits`]): its `type`
+/// excludes the data's kind, a `required` key is absent, or a `const` / `enum` pin
+/// refuses a literal. Where every branch a text or number fits is a value type
+/// with a plain encoding, the value is the type of the one whose encoding reads it
+/// ([`encoded_reading`]).
 pub fn fitting_union_branches<'s: 'a, 'a>(
     schema: &'a Value,
     data: &Value,
@@ -88,30 +89,15 @@ pub fn fitting_union_branches<'s: 'a, 'a>(
         Value::Number(_) => "number",
         Value::Bool(_) => "boolean",
     };
+    let shared: Vec<Declared<'a>> = match schema.get("properties") {
+        Some(properties @ Value::Object(_)) => vec![Declared { properties, root }],
+        _ => Vec::new(),
+    };
     let fits: Vec<&'a Value> = branches
         .iter()
-        .map(|branch| resolve_ref_in(branch, root, external).0)
-        .filter(|branch| {
-            let types: Vec<&str> = match branch.get("type") {
-                Some(Value::Array(types)) => types.iter().filter_map(Value::as_str).collect(),
-                Some(Value::String(t)) => vec![t.as_str()],
-                _ => Vec::new(),
-            };
-            if !types.is_empty() && !types.contains(&kind) {
-                return false;
-            }
-            if let Some(constant) = branch.get("const") {
-                if !data.is_object() && !data.is_array() && constant != data {
-                    return false;
-                }
-            }
-            if let (Value::Object(entries), Some(Value::Array(required))) = (data, branch.get("required")) {
-                if !required.iter().filter_map(Value::as_str).all(|key| entries.contains_key(key)) {
-                    return false;
-                }
-            }
-            true
-        })
+        .map(|branch| resolve_ref_in(branch, root, external))
+        .filter(|(branch, branch_root)| branch_fits(branch, branch_root, data, kind, &shared, external, &[]))
+        .map(|(branch, _)| branch)
         .collect();
     let fits = match encoded_reading(&fits, data) {
         Some(read) => vec![read],
@@ -123,6 +109,153 @@ pub fn fitting_union_branches<'s: 'a, 'a>(
     let mut base = schema.as_object().cloned().unwrap_or_default();
     base.remove(union_key);
     Some(fits.into_iter().map(|branch| Cow::Owned(merged_over(&base, branch))).collect())
+}
+
+/// The `properties` a branch inherits, in the document they were written in.
+#[derive(Clone, Copy)]
+struct Declared<'a> {
+    properties: &'a Value,
+    root: &'a Value,
+}
+
+/// Whether `branch` may validate `data`, judged from the written data alone: its
+/// `type`, its `required` keys, and every `const` / `enum` pin it carries over a
+/// literal scalar — its own for a scalar, a member's for an object member, both
+/// read through the inherited `shared` properties and the branch's `allOf` parts.
+/// A branch that is itself a union fits when one of its branches does. `chain`
+/// holds the nodes judged above this one, so a recursive shape is admitted rather
+/// than walked again.
+fn branch_fits<'s: 'a, 'a>(
+    branch: &'a Value,
+    root: &'a Value,
+    data: &Value,
+    kind: &str,
+    shared: &[Declared<'a>],
+    external: Option<&ExternalSchemaResolver<'s>>,
+    chain: &[*const Value],
+) -> bool {
+    let identity = branch as *const Value;
+    if chain.contains(&identity) {
+        return true;
+    }
+    let inner: Vec<*const Value> = chain.iter().copied().chain([identity]).collect();
+    let types: Vec<&str> = match branch.get("type") {
+        Some(Value::Array(types)) => types.iter().filter_map(Value::as_str).collect(),
+        Some(Value::String(t)) => vec![t.as_str()],
+        _ => Vec::new(),
+    };
+    if !types.is_empty() && !types.contains(&kind) {
+        return false;
+    }
+    // The branch's own declaration of a member replaces an inherited one, and a
+    // nearer inherited one a further one: the last entry declaring it wins.
+    let mut declaring: Vec<Declared<'a>> = shared.to_vec();
+    if let Some(properties @ Value::Object(_)) = branch.get("properties") {
+        declaring.push(Declared { properties, root });
+    }
+    if let Value::Object(members) = data {
+        if let Some(Value::Array(required)) = branch.get("required") {
+            if !required.iter().filter_map(Value::as_str).all(|key| members.contains_key(key)) {
+                return false;
+            }
+        }
+        for (key, value) in members {
+            if !is_literal_scalar(value) {
+                continue;
+            }
+            let at = declaring.iter().rev().find_map(|entry| {
+                entry.properties.get(key).filter(|member| member.is_object()).map(|member| (member, entry.root))
+            });
+            if let Some((member, member_root)) = at {
+                if literal_refused(member, member_root, value, external, &[]) {
+                    return false;
+                }
+            }
+        }
+    } else if kind != "array" && pin_refuses(branch, data) {
+        return false;
+    }
+    for part in branch.get("allOf").and_then(Value::as_array).into_iter().flatten() {
+        if !part.is_object() {
+            continue;
+        }
+        let (entered, entered_root) = resolve_ref_in(part, root, external);
+        if !branch_fits(entered, entered_root, data, kind, &[], external, &inner) {
+            return false;
+        }
+    }
+    let nested = branch.get("oneOf").filter(|n| !n.is_null()).or_else(|| branch.get("anyOf"));
+    let Some(nested) = nested.and_then(Value::as_array).filter(|n| !n.is_empty()) else {
+        return true;
+    };
+    nested.iter().any(|sub| {
+        if !sub.is_object() {
+            return true;
+        }
+        let (entered, entered_root) = resolve_ref_in(sub, root, external);
+        branch_fits(entered, entered_root, data, kind, &declaring, external, &inner)
+    })
+}
+
+/// A value the author wrote as a plain scalar — never an expression, a reference
+/// or a decoded instance, each of which is an object here.
+fn is_literal_scalar(value: &Value) -> bool {
+    matches!(value, Value::Null | Value::String(_) | Value::Number(_) | Value::Bool(_))
+}
+
+/// A `const` / `enum` on `schema` itself that `literal` falls outside.
+fn pin_refuses(schema: &Value, literal: &Value) -> bool {
+    if let Some(constant) = schema.get("const") {
+        if !same_json_scalar(constant, literal) {
+            return true;
+        }
+    }
+    match schema.get("enum") {
+        Some(Value::Array(values)) => !values.iter().any(|allowed| same_json_scalar(allowed, literal)),
+        _ => false,
+    }
+}
+
+/// JSON Schema equality against a written scalar: a number is its value whatever
+/// its spelling (`1` is `1.0`), and text never equals a boolean or a number.
+fn same_json_scalar(pin: &Value, literal: &Value) -> bool {
+    match (pin, literal) {
+        (Value::Number(a), Value::Number(b)) => match (a.as_i64(), b.as_i64(), a.as_u64(), b.as_u64()) {
+            (Some(x), Some(y), _, _) => x == y,
+            (_, _, Some(x), Some(y)) => x == y,
+            _ => a.as_f64() == b.as_f64(),
+        },
+        _ => pin == literal,
+    }
+}
+
+/// Whether the member schema refuses the literal it was written with: a pin it
+/// falls outside, read through `$ref`, through a union none of whose branches
+/// admits it and through an `allOf` part that refuses it. Nothing else — a
+/// member's `type` may be read through a plain encoding, which its own walk
+/// decides.
+fn literal_refused<'s: 'a, 'a>(
+    written: &'a Value,
+    root: &'a Value,
+    literal: &Value,
+    external: Option<&ExternalSchemaResolver<'s>>,
+    chain: &[*const Value],
+) -> bool {
+    let (schema, at) = resolve_ref_in(written, root, external);
+    let identity = schema as *const Value;
+    if chain.contains(&identity) {
+        return false;
+    }
+    let inner: Vec<*const Value> = chain.iter().copied().chain([identity]).collect();
+    if pin_refuses(schema, literal) {
+        return true;
+    }
+    let refused_by = |sub: &'a Value| sub.is_object() && literal_refused(sub, at, literal, external, &inner);
+    if schema.get("allOf").and_then(Value::as_array).is_some_and(|parts| parts.iter().any(refused_by)) {
+        return true;
+    }
+    let union = schema.get("oneOf").filter(|u| !u.is_null()).or_else(|| schema.get("anyOf"));
+    union.and_then(Value::as_array).is_some_and(|branches| !branches.is_empty() && branches.iter().all(refused_by))
 }
 
 /// The one branch whose plain encoding reads `data`, where every fitting branch is
@@ -280,5 +413,145 @@ mod tests {
         let properties = collect_properties(&schema);
         assert_eq!(properties["score"], json!({ "type": "integer", "minimum": 10 }));
         assert_eq!(properties["extra"], json!({ "type": "boolean" }));
+    }
+
+    // Twins of `../../nodejs/tests/union-branch-pins.test.ts`.
+    fn titles_of(schema: &Value, data: &Value, external: Option<&ExternalSchemaResolver<'_>>) -> Vec<String> {
+        fitting_union_branches(schema, data, schema, external)
+            .unwrap_or_default()
+            .iter()
+            .map(|branch| branch["title"].as_str().unwrap_or_default().to_string())
+            .collect()
+    }
+
+    fn cel(source: &str) -> Value {
+        json!({ "__tagged": true, "engine": "cel", "source": source })
+    }
+
+    fn node() -> Value {
+        json!({
+            "type": "object",
+            "oneOf": [
+                { "title": "text", "required": ["type", "text"], "properties": { "type": { "enum": ["text", "badge"] } } },
+                { "title": "link", "required": ["type", "text", "href"], "properties": { "type": { "const": "link" } } },
+                { "title": "command", "required": ["type", "command", "text"], "properties": { "type": { "const": "command" } } },
+                { "title": "bar", "required": ["type"], "properties": { "type": { "const": "bar" } } }
+            ]
+        })
+    }
+
+    #[test]
+    fn selects_the_one_branch_a_const_tag_names() {
+        let schema = json!({
+            "oneOf": [
+                { "title": "a", "required": ["type"], "properties": { "type": { "const": "a" } } },
+                { "title": "b", "required": ["type"], "properties": { "type": { "const": "b" } } }
+            ]
+        });
+        assert_eq!(titles_of(&schema, &json!({ "type": "b" }), None), ["b"]);
+    }
+
+    #[test]
+    fn selects_the_one_branch_an_enum_tag_holds() {
+        assert_eq!(titles_of(&node(), &json!({ "type": "badge", "text": "New" }), None), ["text"]);
+    }
+
+    #[test]
+    fn fits_a_link_or_a_command_node_to_its_own_branch_only() {
+        assert_eq!(titles_of(&node(), &json!({ "type": "link", "text": "Home", "href": "/" }), None), ["link"]);
+        let command = json!({ "type": "command", "text": "Stop", "command": cel("chat.stop") });
+        assert_eq!(titles_of(&node(), &command, None), ["command"]);
+    }
+
+    #[test]
+    fn reads_a_branch_level_enum_for_a_scalar() {
+        let schema = json!({ "anyOf": [{ "title": "mode", "enum": ["a", "b"] }, { "title": "other", "type": "string" }] });
+        assert_eq!(titles_of(&schema, &json!("c"), None), ["other"]);
+    }
+
+    #[test]
+    fn reads_a_tag_declared_through_a_reference() {
+        let shape = json!({ "$id": "telo:M/Tag", "const": "one" });
+        let schema = json!({
+            "$defs": { "Two": { "const": "two" } },
+            "oneOf": [
+                { "title": "one", "required": ["type"], "properties": { "type": { "$ref": "telo:M/Tag" } } },
+                { "title": "two", "required": ["type"], "properties": { "type": { "$ref": "#/$defs/Two" } } }
+            ]
+        });
+        let external = |reference: &str| (reference == "telo:M/Tag").then_some(&shape);
+        assert_eq!(titles_of(&schema, &json!({ "type": "two" }), Some(&external)), ["two"]);
+        assert_eq!(titles_of(&schema, &json!({ "type": "one" }), Some(&external)), ["one"]);
+    }
+
+    #[test]
+    fn reads_a_tag_declared_as_an_any_of_of_constants() {
+        let schema = json!({
+            "oneOf": [
+                { "title": "ab", "required": ["type"], "properties": { "type": { "anyOf": [{ "const": "a" }, { "const": "b" }] } } },
+                { "title": "c", "required": ["type"], "properties": { "type": { "const": "c" } } }
+            ]
+        });
+        assert_eq!(titles_of(&schema, &json!({ "type": "b" }), None), ["ab"]);
+    }
+
+    #[test]
+    fn fits_a_branch_that_is_itself_a_union_when_one_of_its_branches_fits() {
+        let schema = json!({
+            "oneOf": [
+                {
+                    "title": "shapes",
+                    "oneOf": [
+                        { "required": ["type"], "properties": { "type": { "const": "circle" } } },
+                        { "required": ["type"], "properties": { "type": { "const": "square" } } }
+                    ]
+                },
+                { "title": "line", "required": ["type"], "properties": { "type": { "const": "line" } } }
+            ]
+        });
+        assert_eq!(titles_of(&schema, &json!({ "type": "square" }), None), ["shapes"]);
+        assert_eq!(titles_of(&schema, &json!({ "type": "line" }), None), ["line"]);
+    }
+
+    #[test]
+    fn reads_a_pin_in_a_branch_all_of_part() {
+        let schema = json!({
+            "oneOf": [
+                { "title": "a", "allOf": [{ "required": ["type"] }, { "properties": { "type": { "const": "a" } } }] },
+                { "title": "b", "allOf": [{ "required": ["type"] }, { "properties": { "type": { "const": "b" } } }] }
+            ]
+        });
+        assert_eq!(titles_of(&schema, &json!({ "type": "b" }), None), ["b"]);
+    }
+
+    #[test]
+    fn reads_a_pin_on_the_shared_base_under_the_branch_own() {
+        let schema = json!({
+            "type": "object",
+            "properties": { "mode": { "enum": ["fast", "safe"] } },
+            "oneOf": [
+                { "title": "fast", "required": ["mode"], "properties": { "mode": { "const": "fast" } } },
+                { "title": "safe", "required": ["mode"], "properties": { "mode": { "const": "safe" } } }
+            ]
+        });
+        assert_eq!(titles_of(&schema, &json!({ "mode": "safe" }), None), ["safe"]);
+    }
+
+    #[test]
+    fn compares_by_json_schema_equality() {
+        let schema = json!({
+            "oneOf": [
+                { "title": "string", "required": ["v"], "properties": { "v": { "const": "true" } } },
+                { "title": "boolean", "required": ["v"], "properties": { "v": { "const": true } } },
+                { "title": "number", "required": ["v"], "properties": { "v": { "const": 1.0 } } }
+            ]
+        });
+        assert_eq!(titles_of(&schema, &json!({ "v": true }), None), ["boolean"]);
+        assert_eq!(titles_of(&schema, &json!({ "v": 1 }), None), ["number"]);
+    }
+
+    #[test]
+    fn leaves_the_union_ambiguous_when_the_tag_is_an_expression() {
+        assert_eq!(titles_of(&node(), &json!({ "type": cel("'bar'"), "text": "x" }), None), ["text", "bar"]);
     }
 }

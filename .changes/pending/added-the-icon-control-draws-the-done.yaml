@@ -1,0 +1,4 @@
+modules:
+  modules/ui-react-radix: Added
+body: The Icon control draws the done glyph (a check mark), shown on a chat button while
+  it confirms a press.

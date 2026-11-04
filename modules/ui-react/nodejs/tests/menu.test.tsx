@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HostStore } from "../src/browser/host.js";
 import { HEADER_NAVIGATION, render, type Page, type Rendered } from "./harness.js";
+import { address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => {
@@ -23,8 +24,9 @@ describe("a menu node", () => {
   it("is one disclosure and no landmark, its items links and the current one marked", async () => {
     rendered = await show([
       menu([
-        { type: "link", text: "English", href: "/done", style: ["muted", "strong"] },
-        { type: "link", text: "Polski", href: "/done?lang=pl" },
+        { type: "link", text: "English", href: address("/done"), style: ["muted", "strong"] },
+        { type: "link", text: "Polski", href: address("/done?lang=pl") },
+        { type: "link", text: "Home", href: address("/"), style: "strong" },
       ]),
     ]);
     const root = rendered.part("navigation");
@@ -42,6 +44,7 @@ describe("a menu node", () => {
     expect(rendered.parts("nav-item").map((item) => [item.tagName, item.getAttribute("role"), item.textContent, item.getAttribute("href"), item.getAttribute("aria-current")])).toEqual([
       ["A", null, "English", "/done", "true"],
       ["A", null, "Polski", "/done?lang=pl", null],
+      ["A", null, "Home", "/", "page"],
     ]);
     expect(document.querySelectorAll('[role="menu"], [role="menuitem"]')).toHaveLength(0);
   });
@@ -51,9 +54,9 @@ describe("a menu node", () => {
     rendered = await show(
       [
         menu([
-          { type: "link", text: "Done", href: "/done?lang=pl" },
-          { type: "link", text: "A file", href: "/files/a.pdf" },
-          { type: "link", text: "Elsewhere", href: "https://example.com/x" },
+          { type: "link", text: "Done", href: address("/done?lang=pl") },
+          { type: "link", text: "A file", href: address("/files/a.pdf") },
+          { type: "link", text: "Elsewhere", href: address("https://example.com/x") },
         ]),
       ],
       "/admin",
@@ -76,17 +79,17 @@ describe("a menu node", () => {
   it("offers only the links whose condition holds", async () => {
     rendered = await show([
       menu([
-        { type: "link", text: "Shown", href: "/done" },
-        { type: "link", text: "Hidden", href: "/done", shown: { at: { value: 1 }, matches: { const: 2 } } },
+        { type: "link", text: "Shown", href: address("/done") },
+        { type: "link", text: "Hidden", href: address("/done"), shown: { at: { value: 1 }, matches: { const: 2 } } },
       ]),
     ]);
     await rendered.click(rendered.part("nav-toggle"));
     expect(rendered.parts("nav-item").map((item) => item.textContent)).toEqual(["Shown"]);
   });
 
-  it("is an error node when one of its links leaves the application once resolved", async () => {
-    rendered = await show([menu([{ type: "link", text: "Here", href: "/done" }, { type: "link", text: "Away", href: "javascript:alert(1)" }])]);
-    expect(rendered.parts("navigation")).toEqual([]);
-    expect(rendered.part("error-code").textContent).toBe("ERR_UI_NODE_INVALID");
+  it("leaves out an item whose address does not resolve", async () => {
+    rendered = await show([menu([{ type: "link", text: "Here", href: address("/done") }, { type: "link", text: "Away", href: address("javascript:alert(1)") }])]);
+    await rendered.click(rendered.part("nav-toggle"));
+    expect(rendered.parts("nav-item").map((item) => item.textContent)).toEqual(["Here"]);
   });
 });

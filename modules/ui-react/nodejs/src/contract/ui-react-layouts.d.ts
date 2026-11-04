@@ -22,7 +22,7 @@ export interface LayoutRecord {
   detail?: ReactNode;
   /** The style names `rowStyle` gives it, for its element's `data-style`. */
   style?: string;
-  /** Whether it is selected. Nothing selects a record in this generation. */
+  /** Whether a link the renderer draws for it leads to where the viewer is; false for a component layout. */
   selected: boolean;
   /** Whether `onMove` may be reported for it. */
   movable: boolean;

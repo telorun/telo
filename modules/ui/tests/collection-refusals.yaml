@@ -15,6 +15,7 @@ targets:
   - !ref formFieldAtRuntime
   - !ref formFieldUnsupportedAtRuntime
   - !ref sourceFilterNotAcceptedAtRuntime
+  - !ref sortNotAcceptedAtRuntime
   - !ref filterNotAcceptedAtRuntime
   - !ref filterValuesNotFacetedAtRuntime
   - !ref filterOptionValueMismatchAtRuntime
@@ -36,6 +37,8 @@ expect:
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Listing/sourceFilter at 'filters.done': filters its source by a property the row model does not declare"
     - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.Listing/sortNotAccepted: starts sorted by a property the collection does not accept a sort on"
+    - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Form/formField at 'fields[2]': lists a field for a property the model does not declare"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Form/formFieldUnsupported at 'fields[1]': lists a property no control can enter"
@@ -53,6 +56,10 @@ expect:
       message: "Ui.Panel/compactAddressed: names a compact surface that declares an address"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Dialog/compactNested: names a compact surface that declares a compact surface of its own"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.SplitView/splitCompactAddressed: names a compact surface that declares an address"
+    - code: RESOURCE_RULE_VIOLATED
+      message: "Ui.SplitView/splitCompactNested: names a compact surface that declares a compact surface of its own"
     - code: RESOURCE_RULE_VIOLATED
       message: "Ui.Filters/filterDuplicate at 'fields[1]': lists a property and operator another field already has"
     - code: RESOURCE_RULE_VIOLATED
@@ -125,6 +132,13 @@ source: ./__fixtures__/invalid/source-filter-not-accepted/telo.yaml
 expect:
   errors: []
   runFails: "Ui.Listing 'sourceFilterNotAccepted': 'filters.isDone' filters its source by a property the collection does not accept an equality on"
+---
+kind: Assert.Manifest
+metadata: { name: sortNotAcceptedAtRuntime }
+source: ./__fixtures__/invalid/sort-not-accepted/telo.yaml
+expect:
+  errors: []
+  runFails: "Ui.Listing 'sortNotAccepted': 'sort.by' starts sorted by 'text', which the collection does not accept a sort on"
 ---
 kind: Assert.Manifest
 metadata: { name: filterNotAcceptedAtRuntime }

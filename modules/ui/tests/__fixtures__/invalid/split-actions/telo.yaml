@@ -1,0 +1,17 @@
+# A text node in a split view's aside actions, which holds button links only.
+kind: Telo.Library
+metadata:
+  name: UiInvalidSplitActions
+  version: 1.0.0
+  description: Test fixture exporting a split view whose aside actions hold a text node.
+imports: { Ui: ../../../../ }
+exports: { resources: [actionNotAButton] }
+---
+kind: Ui.SplitView
+metadata: { name: actionNotAButton }
+label: Conversations
+aside:
+  actions:
+    - { type: text, text: New }
+  content: { type: text, text: Aside }
+content: { type: text, text: Content }

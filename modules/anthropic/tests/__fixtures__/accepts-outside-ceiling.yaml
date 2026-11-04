@@ -1,0 +1,38 @@
+kind: Telo.Application
+metadata:
+  name: AnthropicAcceptsOutsideCeiling
+  version: 1.0.0
+  description: Fixture — one declaration per model kind, each accepting what the Messages API cannot carry.
+imports: { Anthropic: ../../, Http: ../../../http-client }
+---
+kind: Http.Client
+metadata: { name: client }
+baseUrl: http://127.0.0.1:1/v1
+---
+kind: Http.Request
+metadata: { name: request }
+client: !ref client
+---
+kind: Anthropic.MessagesModel
+metadata: { name: audio }
+model: claude-test
+request: !ref request
+maxTokens: 16
+accepts:
+  - { type: audio, mediaTypes: [audio/wav] }
+---
+kind: Anthropic.MessagesModelStream
+metadata: { name: bmp }
+model: claude-test
+request: !ref request
+maxTokens: 16
+accepts:
+  - { type: image, mediaTypes: [image/bmp] }
+---
+kind: Anthropic.MessagesModel
+metadata: { name: html }
+model: claude-test
+request: !ref request
+maxTokens: 16
+accepts:
+  - { type: file, mediaTypes: [text/html] }

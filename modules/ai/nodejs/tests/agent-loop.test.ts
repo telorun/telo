@@ -202,8 +202,14 @@ describe("the agent loop", () => {
   it("hands the agent invocation's context to the tool provider", async () => {
     const source = createCancellationSource();
     const tool = provider(async () => "ok");
-    await runBoth(toolThenAnswer, tool, source.context);
-    expect(tool.contexts).toEqual([source.context, source.context]);
+    // The streaming agent derives a context whose cancellation also follows its
+    // consumer; every other member is the invocation's.
+    const invokeCtx = { ...source.context, traceId: "trace-1", invocationId: 7 };
+    await runBoth(toolThenAnswer, tool, invokeCtx);
+    expect(tool.contexts).toEqual([
+      expect.objectContaining({ traceId: "trace-1", invocationId: 7 }),
+      expect.objectContaining({ traceId: "trace-1", invocationId: 7 }),
+    ]);
   });
 
   it("ends both agents with the cancellation when a tool is cancelled mid-call, even under feedback", async () => {

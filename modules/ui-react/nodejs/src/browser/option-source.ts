@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo, useRef, useState } from "react";
+import { resolveAddress, type AddressWire } from "./address-wire.js";
 import { readBinding, type Binding } from "./bindings.js";
 import { boundFilters, fetchPage, filterParam, type Operator, type Param } from "./collection.js";
 import { useHost } from "./host.js";
@@ -13,7 +14,7 @@ export interface OptionSourceSpec {
   value: Binding;
   label: Binding;
   hint?: Binding;
-  href?: Binding;
+  href?: AddressWire;
   basePath: string;
   filters: Record<string, Binding>;
   pageSize: number;
@@ -41,7 +42,7 @@ export function optionOf(spec: OptionSourceSpec, row: Record<string, unknown>): 
   const value = readBinding(spec.value, { row });
   if (!value.present) return undefined;
   const hint = text(spec.hint, row);
-  const href = text(spec.href, row);
+  const href = spec.href && resolveAddress(spec.href, { row }, "option source href");
   return { value: value.value, label: text(spec.label, row) ?? String(value.value), ...(hint ? { hint } : {}), ...(href ? { href } : {}) };
 }
 

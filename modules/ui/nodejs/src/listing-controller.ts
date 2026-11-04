@@ -9,6 +9,7 @@ import { uiText } from "./spec-texts.js";
 import { dialogSpec, isSurface } from "./surface-spec.js";
 import { isLayout, type LayoutAnswer, type LayoutInputs } from "./listing-layout.js";
 import { tableLayout } from "./table-layout.js";
+import { filledProvided } from "./fill-marking.js";
 
 /** How a form is opened. A member holding nothing is one left out. */
 interface OpenerConfig {
@@ -25,6 +26,9 @@ type ListingResource = RuntimeResource & {
   query?: Record<string, JsonSchema> | null;
   pageSize?: number | bigint | null;
   paging?: string | null;
+  sort?: { by?: { property: string; direction?: string | null } | null; choosable?: boolean | null } | null;
+  show?: { count?: boolean | null } | null;
+  rowActionsDisplay?: string | null;
   rowStyle?: StyleRule | null;
   create?: OpenerConfig | null;
   edit?: OpenerConfig | null;
@@ -77,6 +81,14 @@ class Listing implements ResourceInstance {
         );
       }
     }
+    const by = resource.sort?.by;
+    if (by && !collection.query.sort.some((sort) => sort.property === by.property)) {
+      throw new RuntimeError(
+        "ERR_UI_LISTING_SORT_NOT_ACCEPTED",
+        `${owner}: 'sort.by' starts sorted by '${by.property}', which the collection does not accept a sort on. Declare it under the collection's 'query.sort', or change 'sort.by'.`,
+      );
+    }
+    const choosable = resource.sort?.choosable !== false;
     const inputs: LayoutInputs = {
       model: schema,
       collection: {
@@ -123,18 +135,23 @@ class Listing implements ResourceInstance {
       ...(resource.filters ? { filters: resource.filters } : {}),
       pageSize: Number(resource.pageSize ?? 25),
       paging: resource.paging ?? "pages",
-      sort: collection.query.sort.map((sort) => sort.property),
+      sort: {
+        sortable: choosable ? collection.query.sort.map((sort) => sort.property) : [],
+        initial: by ? `${by.direction === "descending" ? "-" : ""}${by.property}` : null,
+      },
+      show: { count: resource.show?.count !== false },
       ...(resource.rowStyle ? { rowStyle: resource.rowStyle } : {}),
       ...(create ? { create } : {}),
       ...(edit ? { edit } : {}),
       delete: resource.delete === true,
       rowActions,
+      rowActionsDisplay: resource.rowActionsDisplay ?? "auto",
       relations,
       empty: written?.node ?? { type: "text", text: uiText("noRows") },
       layout: layout.spec!,
       ...(compact ? { compact: compact.spec! } : {}),
     };
-    return { node, assets: mergeAssets(...assets) };
+    return filledProvided({ node, assets: mergeAssets(...assets) });
   }
 }
 

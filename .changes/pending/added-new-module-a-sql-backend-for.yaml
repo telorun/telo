@@ -1,0 +1,6 @@
+modules:
+  modules/ai-conversation-sql: Added
+body: "New module: a SQL backend for the conversation store over any Sql.Connection
+  (PostgreSQL, SQLite). It owns five tables under a configurable tablePrefix, indexed
+  for the default newest-first listing as well as the archived-filtered one, records its
+  schema version, upgrades an older layout in place at start and refuses a newer one."

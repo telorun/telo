@@ -10,8 +10,9 @@ the caller's decision.
 
 - **The label is checked against the content.** A PNG sent as `image/jpeg`, or
   random bytes sent as `image/png`, comes back `mislabelled: true`.
-- **One closed set.** PNG, JPEG, GIF, WebP, PDF, ZIP and the three Office Open
-  XML document types — a data file, not code, so the set is the same wherever
+- **One closed set.** PNG, JPEG, GIF, WebP, PDF, ZIP, the three Office Open
+  XML document types, and the common audio and video containers (MP3, WAV,
+  OGG, FLAC, MP4 / M4A, WebM, QuickTime) — a data file, not code, so the set is the same wherever
   the module runs.
 - **Streams stay streams.** At most 4,096 leading bytes are read; `output`
   hands on every input byte unchanged, so an upload is sniffed on its way to

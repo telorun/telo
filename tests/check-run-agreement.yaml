@@ -283,6 +283,8 @@ targets:
   - !ref ambiguousUnionResult
   - !ref ambiguousUnionResultAtRuntime
   - !ref ambiguousUnionResultAccepted
+  - !ref tagSelectedUnionResult
+  - !ref tagSelectedUnionResultAtRuntime
   - !ref spanAttributeReachedThroughRef
   - !ref spanAttributeReachedThroughRefRuns
   - !ref spanAttributeThroughItems
@@ -614,6 +616,19 @@ targets:
   - !ref durationBound
   - !ref durationBoundAtRuntime
   - !ref abstractExtendsChain
+  - !ref pathParameterUnbound
+  - !ref pathParameterUnboundAtRuntime
+  - !ref pathParameterOmitted
+  - !ref pathParameterOmittedAtRuntime
+  - !ref pathTemplateInvalid
+  - !ref pathTemplateInvalidAtRuntime
+  - !ref pathParameterUnusedExpression
+  - !ref pathParameterUnusedExpressionAtRuntime
+  - !ref pathParamsThrough
+  - !ref pathParamsThroughAtRuntime
+  - !ref pathParamsThroughClean
+  - !ref pathParamsForInvalid
+  - !ref pathParamsForInvalidAtRuntime
 ---
 # The two legacy spellings a published artifact may carry. DEPRECATIONS, not
 # errors: the kernel still reads them, so refusing them statically would be the
@@ -2784,6 +2799,22 @@ kind: Assert.Manifest
 metadata: { name: ambiguousUnionResultAccepted }
 source: ./__fixtures__/check-run-agreement/compiled-results/ambiguous-union-accepted.yaml
 expect: { runs: true }
+---
+# A union whose branches pin a `type` tag is decided by the tag written: the
+# expression is held to that branch alone, though another branch's slot would
+# take its result.
+kind: Assert.Manifest
+metadata: { name: tagSelectedUnionResult }
+source: ./__fixtures__/check-run-agreement/compiled-results/tag-selected-union-refused.yaml
+expect:
+  errors:
+    - code: CEL_TYPE_ERROR
+      message: "CEL at 'cfg.x' returns 'string' but the field expects 'integer'"
+---
+kind: Assert.Manifest
+metadata: { name: tagSelectedUnionResultAtRuntime }
+source: ./__fixtures__/check-run-agreement/compiled-results/tag-selected-union-dyn.yaml
+expect: { errors: [], runFails: "Holder/holder: cfg.x must be an integer, but the expression produced the string \"s\"" }
 ---
 # A projection derived through references, refused where it cannot yield one
 # declaration or one entry: a second hop naming nothing, a kind-level derivation
@@ -5951,3 +5982,126 @@ kind: Assert.Manifest
 metadata: { name: abstractExtendsChain }
 source: ./__fixtures__/check-run-agreement/abstract-extends-chain/app.yaml
 expect: { errors: [], runs: true }
+---
+# A map of path variables annotated `x-telo-path-params-for` is held to the
+# template beside it: a variable no entry binds and an entry naming no variable
+# are refused at the library…
+kind: Assert.Manifest
+metadata: { name: pathParameterUnbound }
+source: ./__fixtures__/check-run-agreement/path-params/unbound/lib/telo.yaml
+expect:
+  errors:
+    - code: PATH_PARAMETER_UNBOUND
+      message: "Kinds.Link/link: 'href.path: /x/{id}' reads '{id}', which 'href.pathParams' does not bind. Add 'id' to 'href.pathParams'."
+    - code: PATH_PARAMETER_UNUSED
+      message: "Kinds.Link/link: 'href.pathParams.idd' names no variable of 'href.path: /x/{id}' — it reads 'id'."
+---
+# …and by the kernel when the import creates the resource, the consumer's own
+# check being silent.
+kind: Assert.Manifest
+metadata: { name: pathParameterUnboundAtRuntime }
+source: ./__fixtures__/check-run-agreement/path-params/unbound/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PATH_PARAMETER_UNBOUND] RuntimeError: PathParamsKinds.Link/link: 'href.path: /x/{id}' reads '{id}', which 'href.pathParams' does not bind. Add 'id' to 'href.pathParams'."
+---
+# An omitted map binds nothing, so a variable is unbound exactly as under `{}`…
+kind: Assert.Manifest
+metadata: { name: pathParameterOmitted }
+source: ./__fixtures__/check-run-agreement/path-params/unbound-omitted/lib/telo.yaml
+expect:
+  errors:
+    - code: PATH_PARAMETER_UNBOUND
+      message: "Kinds.Link/link: 'href.path: /x/{id}' reads '{id}', which 'href.pathParams' does not bind. Add 'id' to 'href.pathParams'."
+---
+# …and by the kernel when the import creates the resource.
+kind: Assert.Manifest
+metadata: { name: pathParameterOmittedAtRuntime }
+source: ./__fixtures__/check-run-agreement/path-params/unbound-omitted/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PATH_PARAMETER_UNBOUND] RuntimeError: PathParamsKinds.Link/link: 'href.path: /x/{id}' reads '{id}', which 'href.pathParams' does not bind. Add 'id' to 'href.pathParams'."
+---
+# A brace that is not a whole segment, a name used twice and a variable in an
+# absolute URL's authority are no template.
+kind: Assert.Manifest
+metadata: { name: pathTemplateInvalid }
+source: ./__fixtures__/check-run-agreement/path-params/template-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: PATH_TEMPLATE_INVALID
+      message: "Kinds.Link/partial: 'href.path: /x/a{id}' is not a path template: segment 'a{id}' holds a variable beside other text"
+    - code: PATH_TEMPLATE_INVALID
+      message: "Kinds.Link/repeated: 'href.path: /x/{id}/{id}' is not a path template: '{id}' appears twice"
+    - code: PATH_TEMPLATE_INVALID
+      message: "Kinds.Link/authority: 'href.path: https://{host}/x' is not a path template: its authority '{host}' holds a variable"
+---
+kind: Assert.Manifest
+metadata: { name: pathTemplateInvalidAtRuntime }
+source: ./__fixtures__/check-run-agreement/path-params/template-invalid/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PATH_TEMPLATE_INVALID] RuntimeError: PathParamsKinds.Link/authority: 'href.path: https://{host}/x' is not a path template: its authority '{host}' holds a variable"
+---
+# An expression at the template field is a whole address, never expanded, so
+# every entry of the map is unused.
+kind: Assert.Manifest
+metadata: { name: pathParameterUnusedExpression }
+source: ./__fixtures__/check-run-agreement/path-params/expression/lib/telo.yaml
+expect:
+  errors:
+    - code: PATH_PARAMETER_UNUSED
+      message: "Kinds.Link/link: 'href.pathParams.id' is never read: 'href.path' is an expression, read as a whole address and never expanded."
+---
+kind: Assert.Manifest
+metadata: { name: pathParameterUnusedExpressionAtRuntime }
+source: ./__fixtures__/check-run-agreement/path-params/expression/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PATH_PARAMETER_UNUSED] RuntimeError: PathParamsKinds.Link/link: 'href.pathParams.id' is never read: 'href.path' is an expression"
+---
+# A reference at the template field is read through to the field `through`
+# names on the declaration it names: a page's own template.
+kind: Assert.Manifest
+metadata: { name: pathParamsThrough }
+source: ./__fixtures__/check-run-agreement/path-params/through/lib/telo.yaml
+expect:
+  errors:
+    - code: PATH_PARAMETER_UNBOUND
+      message: "Kinds.PageLink/link: the template 'path: /p/{id}' of 'item' (named at 'href.path') reads '{id}', which 'href.pathParams' does not bind."
+    - code: PATH_PARAMETER_UNUSED
+      message: "Kinds.PageLink/link: 'href.pathParams.page' names no variable of the template 'path: /p/{id}' of 'item' (named at 'href.path')"
+---
+kind: Assert.Manifest
+metadata: { name: pathParamsThroughAtRuntime }
+source: ./__fixtures__/check-run-agreement/path-params/through/telo.yaml
+expect:
+  errors: []
+  runFails: "[ERR_PATH_PARAMETER_UNBOUND] RuntimeError: PathParamsKinds.PageLink/link: the template 'path: /p/{id}' of 'item' (named at 'href.path') reads '{id}', which 'href.pathParams' does not bind."
+---
+# Binding exactly the variables of the template — a literal one, or a page's —
+# is checked clean and created.
+kind: Assert.Manifest
+metadata: { name: pathParamsThroughClean }
+source: ./__fixtures__/check-run-agreement/path-params/through-clean.yaml
+expect: { errors: [], runs: true }
+---
+# The annotation on a field holding no map is refused at the kind writing it…
+kind: Assert.Manifest
+metadata: { name: pathParamsForInvalid }
+source: ./__fixtures__/check-run-agreement/path-params/annotation-invalid/lib/telo.yaml
+expect:
+  errors:
+    - code: PATH_PARAMS_FOR_INVALID
+      message: "Telo.Definition 'Link' declares 'schema.properties.id.x-telo-path-params-for' on a property that holds no object"
+---
+# …and at the import reaching it, since the kernel refuses the kind when the
+# import registers it.
+kind: Assert.Manifest
+metadata: { name: pathParamsForInvalidAtRuntime }
+source: ./__fixtures__/check-run-agreement/path-params/annotation-invalid/telo.yaml
+expect:
+  errors:
+    - code: PATH_PARAMS_FOR_INVALID
+      message: "reached through import 'Lib': Telo.Definition 'Link' declares 'schema.properties.id.x-telo-path-params-for' on a property that holds no object"
+  runFails: "[PATH_PARAMS_FOR_INVALID] Imported library 'PathParamsForInvalidLib', reached through import 'Lib': Telo.Definition 'Link' declares 'schema.properties.id.x-telo-path-params-for' on a property that holds no object"

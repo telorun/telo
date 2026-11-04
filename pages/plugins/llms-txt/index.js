@@ -317,6 +317,10 @@ function syntheticSlugForId(id) {
 
   if (id === "examples/INDEX") return "/examples";
 
+  if (id === "apps/hub/guides/build-ui") return "/learn/build-ui";
+  if (id === "apps/hub/guides/design-library") return "/extend/design-library";
+  if (id === "apps/hub/guides/write-integration-tests") return "/build/integration-tests";
+
   return undefined;
 }
 

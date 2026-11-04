@@ -19,13 +19,13 @@ requires:
 lang: en
 # The conformance rows a renderer's tests read: the interpreted profile's,
 # which control fits which property, and what a listing's read plan requests.
-files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json]
+files: [conformance/match.json, conformance/control-fits.json, conformance/listing-reads.json, conformance/addresses.json, conformance/current-location.json, conformance/refreshes.json]
 # ui's own texts translated, one `Self.Translations` per language.
 include: [./translations/de.yaml, ./translations/es.yaml, ./translations/fr.yaml, ./translations/hi.yaml, ./translations/it.yaml, ./translations/ja.yaml, ./translations/ko.yaml, ./translations/nl.yaml, ./translations/pl.yaml, ./translations/pt.yaml, ./translations/ru.yaml, ./translations/tr.yaml, ./translations/uk.yaml, ./translations/zh.yaml]
-imports: { Font: ../font, DataModel: ../data-model }
+imports: { Font: ../font, DataModel: ../data-model, Conversation: ../conversation }
 exports:
-  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, Page, View, CollectionSource, CollectionPresentation, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
-  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth]
+  kinds: [Translations, Composite, Surface, Overlay, ViewportOverlay, Dialog, Drawer, Popover, InlineSurface, Panel, PageSurface, FilterPlacement, FoldingFilterPlacement, AbovePlacement, AsidePlacement, CollapsiblePlacement, OverlayPlacement, StateStore, LocalStore, SessionStore, NavigationPlacement, CompactNavigationPlacement, HeaderNavigation, SidebarNavigation, OverlayNavigation, TabBarNavigation, Icon, FileIcon, ButtonDisplay, TextButton, IconButton, Page, View, CollectionSource, ConversationSource, CollectionPresentation, Chat, SplitView, Listing, ListingLayout, TableLayout, ListLayout, CardLayout, BoardLayout, CalendarLayout, TimelineLayout, TreeLayout, ComponentLayout, Form, Action, Filters, Component, ComponentExport, DesignTokens, Data, Field, InputField, ChoiceField, PickerField, DateRangeField, OptionSource, CollectionOptions]
+  resources: [chineseTranslations, dutchTranslations, frenchTranslations, germanTranslations, hindiTranslations, italianTranslations, japaneseTranslations, koreanTranslations, polishTranslations, portugueseTranslations, russianTranslations, spanishTranslations, turkishTranslations, ukrainianTranslations, BoundText, Match, Condition, Enablement, RequestError, AppRelativeReference, QueryParameters, Address, RequestTarget, RefreshTarget, Control, FieldGroup, StateRecord, FieldAnswer, OptionSourceSpec, Relations, ListingLayoutSpec, ListingLayoutAnswer, controlFits, RowAction, Command, Grouping, Span, Node, SpecNode, OverlaySpec, SurfaceSpec, ButtonDisplaySpec, AfterCreate, AfterEdit, UnsavedInput, FilterPolicy, FilterPlacementSpec, StateStoreSpec, Navigation, NavigationItem, NavigationPlacementSpec, PageWidth, Frame, RowActionsDisplay]
   # The entry point a renderer's controller bundle resolves `@telorun/ui` to:
   # how a built browser entry becomes the files a page loads, so a renderer
   # addresses its own entries exactly as a placed component's are addressed.
@@ -186,6 +186,142 @@ schema:
                 type: { const: array }
                 items: { required: [type], properties: { type: { const: string } } }
 ---
+# Where a link or a navigation leads: a literal string, or a path template, the
+# values that fill its `{name}` segments and the query parameters appended to it.
+# It binds no root: the place it is written does. A literal path is an
+# app-relative path or an `https:` / `http:` / `mailto:` address; a chain reads a
+# whole address from data and is never expanded; a page reference is read as the
+# page's `path`.
+kind: Telo.JsonSchema
+metadata: { name: Address }
+schema:
+  anyOf:
+    - type: string
+      pattern: "^[^{}]*$"
+      anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }]
+      not: { pattern: "(^|/)[*]{1,2}([/?#]|$)" }
+    - type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          title: Path
+          description: >-
+            The address: a path template whose `{name}` segments `pathParams`
+            fills, a path into data holding a whole address, or the page it leads to.
+          not: { type: string, pattern: "(^|/)[*]{1,2}([/?#]|$)" }
+          x-telo-eval: accessor
+          anyOf:
+            - type: string
+              anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }]
+            - { x-telo-ref: { kind: Self.Page, use: schema } }
+        pathParams:
+          title: Path parameters
+          description: >-
+            The value of each `{name}` segment of `path`: a path into a root in
+            scope, or a fixed value. One that holds nothing leaves the address unresolved.
+          type: object
+          x-telo-path-params-for: { template: /path, through: path }
+          additionalProperties: { type: [string, integer], x-telo-eval: accessor }
+        queryParams:
+          title: Query parameters
+          description: >-
+            Parameters appended to the address in the order written: a path into a
+            root in scope, or a fixed value. A list repeats its key; null and an
+            empty list are left out.
+          type: object
+          additionalProperties: false
+          patternProperties:
+            "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
+              x-telo-eval: accessor
+              type: [string, integer, number, boolean, array]
+              items: { type: [string, integer, number, boolean] }
+---
+# Where a request goes: as an address, but app-relative and never a page.
+kind: Telo.JsonSchema
+metadata: { name: RequestTarget }
+schema:
+  anyOf:
+    - { type: string, pattern: "^[^{}]*$", $ref: "telo:Ui/AppRelativeReference", not: { pattern: "(^|/)[*]{1,2}([/?#]|$)" } }
+    - type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          title: Path
+          description: >-
+            The app-relative path to request: a template whose `{name}` segments
+            `pathParams` fills, or a path into data holding a whole one.
+          x-telo-eval: accessor
+          type: string
+          $ref: "telo:Ui/AppRelativeReference"
+          not: { pattern: "(^|/)[*]{1,2}([/?#]|$)" }
+        pathParams:
+          title: Path parameters
+          description: >-
+            The value of each `{name}` segment of `path`: a path into a root in
+            scope, or a fixed value. One that holds nothing leaves the request unsent.
+          type: object
+          x-telo-path-params-for: { template: /path }
+          additionalProperties: { type: [string, integer], x-telo-eval: accessor }
+        queryParams:
+          title: Query parameters
+          description: >-
+            Parameters sent with the request in the order written: a path into a
+            root in scope, or a fixed value. A list repeats its key; null and an
+            empty list are left out.
+          type: object
+          additionalProperties: false
+          patternProperties:
+            "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
+              x-telo-eval: accessor
+              type: [string, integer, number, boolean, array]
+              items: { type: [string, integer, number, boolean] }
+---
+# Which requests to read again: as a request target, except that a whole
+# segment of a literal path may be `*` (any one segment) or `**` (any number,
+# none included). A path read from data, and every value of `pathParams`, is
+# exact: a `*` in either is text.
+kind: Telo.JsonSchema
+metadata: { name: RefreshTarget }
+schema:
+  anyOf:
+    - { type: string, pattern: "^[^{}]*$", $ref: "telo:Ui/AppRelativeReference" }
+    - type: object
+      additionalProperties: false
+      required: [path]
+      properties:
+        path:
+          title: Path
+          description: >-
+            The app-relative path of the requests to read again: a template whose
+            `{name}` segments `pathParams` fills and whose `*` / `**` segments match, or a
+            path into data holding a whole one, matched exactly.
+          x-telo-eval: accessor
+          type: string
+          $ref: "telo:Ui/AppRelativeReference"
+        pathParams:
+          title: Path parameters
+          description: >-
+            The value of each `{name}` segment of `path`: a path into a root in
+            scope, or a fixed value. One that holds nothing leaves the refresh out.
+          type: object
+          x-telo-path-params-for: { template: /path }
+          additionalProperties: { type: [string, integer], x-telo-eval: accessor }
+        queryParams:
+          title: Query parameters
+          description: >-
+            Parameters appended in the order written; matching leaves the query out: a path into a
+            root in scope, or a fixed value. A list repeats its key; null and an
+            empty list are left out.
+          type: object
+          additionalProperties: false
+          patternProperties:
+            "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$":
+              x-telo-eval: accessor
+              type: [string, integer, number, boolean, array]
+              items: { type: [string, integer, number, boolean] }
+---
 # How a value is entered: derived from what the model says it is (`auto`), a
 # `select` list, `options` side by side, a `toggle`, a `slider`, or typed
 # `tags`. One vocabulary for form fields and filters, judged by `controlFits`.
@@ -289,7 +425,7 @@ schema:
         value: { $ref: "#/$defs/Binding" }
         label: { $ref: "#/$defs/Binding" }
         hint: { $ref: "#/$defs/Binding" }
-        href: { $ref: "#/$defs/Binding" }
+        href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
         basePath: { type: string }
         filters: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         # Sent as `limit` on every request, a label lookup's batches included.
@@ -352,9 +488,8 @@ schema:
             row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
       href:
         title: Link
-        description: Where a related record links to, as a path into it.
-        type: string
-        x-telo-eval: accessor
+        description: Where a related record links to, an address over the related `row`.
+        $ref: "telo:Ui/Address"
         x-telo-context:
           type: object
           properties:
@@ -439,10 +574,11 @@ schema:
         reads: { $ref: "#/$defs/Reads" }
     # A record per item of one column, `content` drawn for each.
     - additionalProperties: false
-      required: [type, content, reads]
+      required: [type, content, frame, reads]
       properties:
         type: { const: list }
         content: { $ref: "telo:Ui/SpecNode" }
+        frame: { $ref: "telo:Ui/Frame" }
         reads: { $ref: "#/$defs/Reads" }
     - additionalProperties: false
       required: [type, content, size, reads]
@@ -550,6 +686,8 @@ schema:
       properties:
         header: { $ref: "telo:Ui/SpecNode#/$defs/Text" }
         value: { $ref: "telo:Ui/SpecNode#/$defs/Binding" }
+        # Present when the value is drawn as a link.
+        href: { $ref: "telo:Ui/SpecNode#/$defs/Address" }
         # What each value the model labels is shown as.
         labels: { $ref: "telo:Ui/SpecNode#/$defs/Labels" }
         # Present when the column is sortable: the property sent as `sort`.
@@ -682,6 +820,18 @@ schema:
         scope, and the reason shown while it cannot. Omitted, it always can.
       $ref: "telo:Ui/Enablement"
 ---
+# A command a root of a region offers to the nodes drawn over it: a chat's
+# export, a listing's reload. Each command is a member of that root.
+kind: Telo.JsonSchema
+metadata: { name: Command }
+schema:
+  type: object
+  additionalProperties: false
+  required: [offered, enabled]
+  properties:
+    offered: { description: Whether the owner offers the command here; a command node over one it does not is not drawn., type: boolean }
+    enabled: { description: Whether it can run now; while it cannot, its button is disabled., type: boolean }
+---
 # One node of a page, as an author writes it. Internally tagged on `type`, each
 # branch closed, so a misspelled type lists the valid ones and a stray key is
 # reported on the branch it was written in. Spacing — gap, alignment, width —
@@ -689,7 +839,8 @@ schema:
 # renders the tree. `when` decides whether a node is delivered — evaluated per
 # request on a page's own nodes, at creation inside a composite — and `shown`
 # whether a delivered node is drawn, a condition the renderer reads over the
-# roots the place it is written binds.
+# roots the place it is written binds. `fill` stretches the node to the bottom
+# of the page or surface body it sits in; `ui` marks every node above it.
 kind: Telo.JsonSchema
 metadata: { name: Node }
 schema:
@@ -704,6 +855,7 @@ schema:
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     - additionalProperties: false
       required: [type, text]
       properties:
@@ -712,15 +864,19 @@ schema:
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     - additionalProperties: false
       required: [type, text, href]
       properties:
         type: { const: link }
         text: { $ref: "telo:Ui/BoundText" }
-        href: { type: string, anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }] }
+        href: { $ref: "telo:Ui/Address" }
+        # Draws the link as a button: its text, or a glyph with the text as its name.
+        button: { x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     # A button opening a list of links: choosing one follows its `href` as
     # clicking the link would. An item whose `style` holds `strong` is the
     # current choice. Items are delivered by their own `when`.
@@ -736,10 +892,11 @@ schema:
           items:
             allOf:
               - { $ref: "#" }
-              - { properties: { type: { const: link } } }
+              - { properties: { type: { const: link }, button: { not: {} }, fill: { not: {} } } }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     # Content under tabs, one tab's content shown at a time. Each tab is
     # delivered by its own `when`; with `address`, the chosen tab is part of
     # the page's address under that name.
@@ -765,6 +922,7 @@ schema:
           properties: { name: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" } }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     - additionalProperties: false
       required: [type, src, alt]
       properties:
@@ -774,6 +932,7 @@ schema:
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     - additionalProperties: false
       required: [type, markup, alt]
       properties:
@@ -783,6 +942,7 @@ schema:
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     # One value, presented as its schema says: a `format: uri` /
     # `uri-reference` string is a link, drawn as `text` when that is given.
     - additionalProperties: false
@@ -791,9 +951,12 @@ schema:
         type: { const: value }
         value: { x-telo-eval: accessor }
         text: { $ref: "telo:Ui/BoundText" }
+        # Draws the presented value as the text of a link.
+        href: { $ref: "telo:Ui/Address" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     # The rows of a list one answer holds, a column per value. Bounded by the
     # answer: it never pages — an unbounded set is a listing's.
     - additionalProperties: false
@@ -817,6 +980,13 @@ schema:
                   type: object
                   properties:
                     row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
+              # Draws the value as the text of a link, over `row` and the roots the list is drawn under.
+              href:
+                $ref: "telo:Ui/Address"
+                x-telo-context:
+                  type: object
+                  properties:
+                    row: { x-telo-context-element-from-item: "2/rows", x-telo-context-eval: accessor }
               # Reads the roots the list is drawn under, never `row`.
               shown: { $ref: "telo:Ui/Condition" }
         # Operations each row offers, over `row` and the roots the list is
@@ -829,9 +999,39 @@ schema:
             properties:
               row: { x-telo-context-element-from-item: "0/rows", x-telo-context-eval: accessor }
           items: { $ref: "telo:Ui/RowAction" }
+        # How the row actions are drawn: `auto` measures the room.
+        rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
+    # A row of three regions: `start` and `end` at its edges, `center` centred
+    # on the row however wide the sides are.
+    - additionalProperties: false
+      required: [type]
+      properties:
+        type: { const: bar }
+        start: { type: array, items: { $ref: "#" } }
+        center: { type: array, items: { $ref: "#" } }
+        end: { type: array, items: { $ref: "#" } }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
+    # A button running a command a root of the region offers (`chat.stop`):
+    # not drawn while the command is not offered, disabled while it cannot run.
+    # `text` is its label, or the name of its glyph; `button` defaults to text.
+    - additionalProperties: false
+      required: [type, command, text]
+      properties:
+        type: { const: command }
+        command: { x-telo-eval: accessor, $ref: "telo:Ui/Command" }
+        text: { $ref: "telo:Ui/BoundText" }
+        button: { x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
+        style: { $ref: "#/$defs/Style" }
+        when: { type: boolean, default: true }
+        shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
     - additionalProperties: false
       required: [type, ref]
       properties:
@@ -840,6 +1040,7 @@ schema:
         style: { $ref: "#/$defs/Style" }
         when: { type: boolean, default: true }
         shown: { $ref: "telo:Ui/Condition" }
+        fill: { type: boolean, default: false }
   $defs:
     StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
@@ -856,33 +1057,36 @@ schema:
   type: object
   oneOf:
     - additionalProperties: false
-      required: [type, children]
+      required: [type, children, fill]
       properties:
         type: { enum: [box, stack, columns] }
         children: { type: array, items: { $ref: "#" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - additionalProperties: false
-      required: [type, text]
+      required: [type, text, fill]
       properties:
         type: { enum: [text, badge] }
         text: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - { $ref: "#/$defs/Link" }
     # Its items as delivered for the request, never empty.
     - additionalProperties: false
-      required: [type, text, items]
+      required: [type, text, items, fill]
       properties:
         type: { const: menu }
         text: { $ref: "#/$defs/NodeText" }
         items: { type: array, minItems: 1, items: { $ref: "#/$defs/Link" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     # Its tabs as delivered for the request, never none, each keyed by the
     # slug of the source text it was written with.
     - additionalProperties: false
-      required: [type, tabs]
+      required: [type, tabs, fill]
       properties:
         type: { const: tabs }
         tabs:
@@ -898,27 +1102,30 @@ schema:
               children: { type: array, items: { $ref: "#" } }
         address: { $ref: "telo:Ui/OverlaySpec#/$defs/Address" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - additionalProperties: false
-      required: [type, src, alt]
+      required: [type, src, alt, fill]
       properties:
         type: { const: image }
         src: { type: string, anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://)" }] }
         alt: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - additionalProperties: false
-      required: [type, markup, alt]
+      required: [type, markup, alt, fill]
       properties:
         type: { const: svg }
         markup: { type: string }
         alt: { $ref: "#/$defs/NodeText" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     # Records read page by page from a collection and drawn by `layout` (by
     # `compact` below the application's breakpoint, keeping the listing's
     # state). Everything but the drawing is the listing's, whatever the layout.
     - additionalProperties: false
-      required: [type, schema, basePath, key, query, pageSize, paging, sort, delete, rowActions, relations, empty, layout]
+      required: [type, schema, basePath, key, query, pageSize, paging, sort, show, delete, rowActions, rowActionsDisplay, relations, empty, layout, fill]
       properties:
         type: { const: listing }
         schema: { type: object }
@@ -933,8 +1140,21 @@ schema:
         filters: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         pageSize: { type: integer }
         paging: { enum: [pages, more, scroll] }
-        # The properties the viewer may sort by, sent as `sort`.
-        sort: { type: array, items: { type: string } }
+        # `sortable`: the properties the viewer may sort by, sent as `sort`
+        # (none when the order is fixed); `initial`: the order sent until the
+        # viewer chooses, `-` leading a descending one.
+        sort:
+          type: object
+          additionalProperties: false
+          required: [sortable, initial]
+          properties:
+            sortable: { type: array, items: { type: string } }
+            initial: { type: [string, "null"] }
+        show:
+          type: object
+          additionalProperties: false
+          required: [count]
+          properties: { count: { type: boolean } }
         rowStyle: { $ref: "#/$defs/StyleRule" }
         create:
           type: object
@@ -958,6 +1178,7 @@ schema:
         # What each record offers beyond edit and delete, in order: an
         # operation run with values of the record.
         rowActions: { type: array, items: { $ref: "#/$defs/RowAction" } }
+        rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
         # The related records each property with a relation is labelled from,
         # by property: read with its key under `in`, one batch per page.
         relations: { type: object, additionalProperties: { $ref: "telo:Ui/OptionSourceSpec" } }
@@ -967,8 +1188,9 @@ schema:
         compact: { $ref: "telo:Ui/ListingLayoutSpec" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - additionalProperties: false
-      required: [type, schema, basePath, fields, groups, state]
+      required: [type, schema, basePath, fields, groups, state, fill]
       properties:
         type: { const: form }
         schema: { type: object }
@@ -978,9 +1200,10 @@ schema:
         state: { $ref: "#/$defs/State" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - { $ref: "#/$defs/Action" }
     - additionalProperties: false
-      required: [type, basePath, fields, content, show, placement, controls, apply, summary, state, presets]
+      required: [type, basePath, fields, content, show, placement, controls, apply, summary, state, presets, fill]
       properties:
         type: { const: filters }
         # The presentation's source `basePath` as written: where a `values:
@@ -1036,8 +1259,9 @@ schema:
                     value: { type: array, items: { type: [string, number, boolean] } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - additionalProperties: false
-      required: [type, module, export, external, stylesheets, props]
+      required: [type, module, export, external, stylesheets, props, fill]
       properties:
         type: { const: component }
         module: { $ref: "#/$defs/AssetRef" }
@@ -1048,20 +1272,24 @@ schema:
         props: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     # One value of a data scope, with what its schema says about it.
     - additionalProperties: false
-      required: [type, value, labels]
+      required: [type, value, labels, fill]
       properties:
         type: { const: value }
         value: { $ref: "#/$defs/Binding" }
         text: { $ref: "#/$defs/NodeText" }
+        # Present when the value is drawn as a link.
+        href: { $ref: "#/$defs/Address" }
         # What each value the model labels is shown as.
         labels: { $ref: "#/$defs/Labels" }
         present: { type: object }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     - additionalProperties: false
-      required: [type, rows, columns]
+      required: [type, rows, columns, rowActionsDisplay, fill]
       properties:
         type: { const: list }
         heading: { $ref: "#/$defs/NodeText" }
@@ -1078,25 +1306,23 @@ schema:
               labels: { $ref: "#/$defs/Labels" }
               # The model's own description of the value.
               present: { type: object }
+              # Present when the value is drawn as a link.
+              href: { $ref: "#/$defs/Address" }
               shown: { $ref: "#/$defs/Shown" }
         rowActions: { type: array, items: { $ref: "#/$defs/RowAction" } }
+        rowActionsDisplay: { $ref: "telo:Ui/RowActionsDisplay" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     # Data read when it is drawn, under the record contract: `content` drawn
     # over `data` once an answer is in, `loading` before the first, `failure`
     # over `error` when the read does not succeed.
     - additionalProperties: false
-      required: [type, schema, source, query, content, loading, failure, reloadOn]
+      required: [type, schema, source, query, content, loading, failure, reloadOn, fill]
       properties:
         type: { const: data }
         schema: { type: object }
-        source:
-          type: object
-          additionalProperties: false
-          required: [path, params]
-          properties:
-            path: { type: string }
-            params: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
+        source: { $ref: "#/$defs/Address" }
         # The declared query parameters, by name; empty when none is.
         query: { type: object }
         content: { $ref: "#" }
@@ -1105,25 +1331,177 @@ schema:
         reloadOn: { type: array, items: { enum: [focus, unauthorized] } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # Three regions in a row, each `[]` when not written.
     - additionalProperties: false
-      required: [type, code, message]
+      required: [type, start, center, end, fill]
+      properties:
+        type: { const: bar }
+        start: { type: array, items: { $ref: "#" } }
+        center: { type: array, items: { $ref: "#" } }
+        end: { type: array, items: { $ref: "#" } }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # A button running the command its binding names among the roots in scope.
+    - additionalProperties: false
+      required: [type, command, text, button, fill]
+      properties:
+        type: { const: command }
+        command: { $ref: "#/$defs/Binding" }
+        text: { $ref: "#/$defs/NodeText" }
+        button: { $ref: "telo:Ui/ButtonDisplaySpec" }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # Markdown text: CommonMark with tables and task lists, raw HTML drawn as text.
+    - additionalProperties: false
+      required: [type, text, fill]
+      properties:
+        type: { const: markdown }
+        text: { $ref: "#/$defs/Binding" }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # A conversation drawn as a chat: what the endpoint offers, where it is
+    # served, and how the page presents it. Every member is present;
+    # `placeholder` is null when not drawn, `header` empty when none is.
+    - additionalProperties: false
+      required: [type, spec, basePath, header, placeholder, starters, show, buttons, composer, conversation, refreshes, fill]
+      properties:
+        type: { const: chat }
+        spec: { $ref: "telo:Conversations/Spec" }
+        basePath: { type: string }
+        # Drawn top to bottom above the transcript, over `conversation` and `chat`.
+        header: { type: array, items: { $ref: "#" } }
+        placeholder: { $ref: "#/$defs/Description" }
+        starters:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [prompt, onChoose]
+            properties: { prompt: { $ref: "#/$defs/Text" }, onChoose: { enum: [send, fill] } }
+        # A switch only hides what the spec offers; none shows what it does not.
+        show:
+          type: object
+          additionalProperties: false
+          required: [reasoning, toolDetail, usage, copy]
+          properties:
+            reasoning: { type: boolean }
+            toolDetail: { type: boolean }
+            usage: { type: boolean }
+            copy: { type: boolean }
+        # How each configurable button is drawn: by its text, or by a glyph.
+        buttons:
+          type: object
+          additionalProperties: false
+          required: [copy, edit, regenerate, attach, send, stop]
+          properties:
+            copy: { $ref: "telo:Ui/ButtonDisplaySpec" }
+            edit: { $ref: "telo:Ui/ButtonDisplaySpec" }
+            regenerate: { $ref: "telo:Ui/ButtonDisplaySpec" }
+            attach: { $ref: "telo:Ui/ButtonDisplaySpec" }
+            send: { $ref: "telo:Ui/ButtonDisplaySpec" }
+            stop: { $ref: "telo:Ui/ButtonDisplaySpec" }
+        # Whether the composer's buttons sit inside the message box's frame.
+        composer:
+          type: object
+          additionalProperties: false
+          required: [actions]
+          properties: { actions: { enum: [inside, outside] } }
+        # The page query parameter naming the conversation shown; null keeps the choice in memory.
+        conversation:
+          anyOf:
+            - { type: "null" }
+            - type: object
+              additionalProperties: false
+              required: [parameter]
+              properties: { parameter: { type: string } }
+        # Requests read again when a send is admitted and when a turn ends, over `conversation.id`.
+        refreshes: { type: array, items: { $ref: "#/$defs/Address" } }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # An aside beside its content, both trees. `collapse` is null when the aside
+    # never folds; `state` is null when the choice is kept in memory only.
+    - additionalProperties: false
+      required: [type, side, size, frame, toggle, label, aside, content, collapse, compact, fill]
+      properties:
+        type: { const: split }
+        side: { enum: [start, end] }
+        size: { enum: [small, medium, large] }
+        frame: { $ref: "telo:Ui/Frame" }
+        toggle: { $ref: "telo:Ui/ButtonDisplaySpec" }
+        label: { $ref: "#/$defs/Text" }
+        # `actions` holds the button-shaped links drawn under the aside's top bar.
+        aside:
+          type: object
+          additionalProperties: false
+          required: [actions, content]
+          properties:
+            actions: { type: array, items: { $ref: "#/$defs/Link" } }
+            content: { $ref: "#" }
+        content: { $ref: "#" }
+        collapse:
+          anyOf:
+            - { type: "null" }
+            - type: object
+              additionalProperties: false
+              required: [collapsed, state]
+              properties:
+                collapsed: { type: boolean }
+                state:
+                  anyOf:
+                    - { type: "null" }
+                    - type: object
+                      additionalProperties: false
+                      required: [key, store]
+                      properties:
+                        key: { type: string, pattern: "^[A-Za-z][A-Za-z0-9]*$" }
+                        store: { $ref: "telo:Ui/StateStoreSpec" }
+        # The surface the aside becomes below the application's breakpoint.
+        compact: { $ref: "telo:Ui/OverlaySpec#/$defs/Compact" }
+        style: { $ref: "#/$defs/Style" }
+        shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    - additionalProperties: false
+      required: [type, code, message, fill]
       properties:
         type: { const: error }
         code: { type: string }
         message: { type: string }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
   $defs:
     # A `link` node, and each item of a `menu`.
     Link:
       type: object
       additionalProperties: false
-      required: [type, text, href]
+      required: [type, text, href, button, fill]
       properties:
         type: { const: link }
         text: { $ref: "#/$defs/NodeText" }
-        href: { type: string, anyOf: [{ $ref: "telo:Ui/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }] }
+        href: { $ref: "#/$defs/Address" }
+        # Null draws the link inline as text.
+        button:
+          anyOf:
+            - { type: "null" }
+            - { $ref: "telo:Ui/ButtonDisplaySpec" }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
+    # An address or a request target as the renderer receives it, every member
+    # present: `path` a template (`value`) or data (a chain) holding a whole
+    # address; the other two by name, each value a binding.
+    Address:
+      type: object
+      additionalProperties: false
+      required: [path, pathParams, queryParams]
+      properties:
+        path: { $ref: "#/$defs/Binding" }
+        pathParams: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
+        queryParams: { type: object, additionalProperties: { $ref: "#/$defs/Binding" } }
     # A text as the renderer receives it from `ui`: the record a controller
     # was handed (its renderer translates it), or a library's keyed text.
     Text:
@@ -1171,11 +1549,20 @@ schema:
     Action:
       type: object
       additionalProperties: false
-      required: [type, schema, path, label, fields, groups, state, failure, onSuccess, concurrency, clearAnswerOn]
+      required: [type, schema, request, label, fields, groups, state, failure, onSuccess, concurrency, clearAnswerOn, fill]
       properties:
         type: { const: action }
         schema: { type: object }
-        path: { type: string }
+        # `consumed`: the input properties the target's parameters read whole
+        # (`input.<property>`), which the body leaves out.
+        request:
+          type: object
+          additionalProperties: false
+          required: [method, target, consumed]
+          properties:
+            method: { enum: [POST, PUT, PATCH, DELETE] }
+            target: { $ref: "#/$defs/Address" }
+            consumed: { type: array, items: { type: string } }
         label: { $ref: "#/$defs/Text" }
         fields: { type: array, items: { $ref: "#/$defs/Field" } }
         groups: { type: array, items: { $ref: "#/$defs/Group" } }
@@ -1192,12 +1579,13 @@ schema:
           additionalProperties: false
           required: [refreshes]
           properties:
-            navigate: { $ref: "#/$defs/Binding" }
-            refreshes: { type: array, items: { type: string } }
+            navigate: { $ref: "#/$defs/Address" }
+            refreshes: { type: array, items: { $ref: "#/$defs/Address" } }
         concurrency: { enum: [parallel, serial] }
         clearAnswerOn: { type: array, items: { type: string } }
         style: { $ref: "#/$defs/Style" }
         shown: { $ref: "#/$defs/Shown" }
+        fill: { type: boolean }
     # An operation a row offers: the action, what of the row it sends, and how
     # a press is asked and allowed. The action's own `enabled` is its form's.
     RowAction:
@@ -2526,6 +2914,96 @@ schema:
         that ships with the module.
       x-telo-type: { name: Telo.HostPath, entry: file }
 ---
+# How one button is drawn, as a renderer receives it: by its text alone, or by a
+# glyph. `icon` is the glyph's file, addressed like every file a node carries;
+# null means the look's own glyph for the button's meaning.
+kind: Telo.JsonSchema
+metadata: { name: ButtonDisplaySpec }
+schema:
+  oneOf:
+    - additionalProperties: false
+      required: [type]
+      properties: { type: { const: text } }
+    - additionalProperties: false
+      required: [type, icon, label]
+      properties:
+        type: { const: icon }
+        icon:
+          anyOf:
+            - { $ref: "telo:Ui/SpecNode#/$defs/AssetRef" }
+            - { type: "null" }
+        label: { enum: [shown, hidden] }
+---
+# How a button is drawn. Each way is a kind of its own, so a key that only
+# means something for one (a glyph) cannot be written on the other.
+kind: Telo.Abstract
+metadata:
+  name: ButtonDisplay
+  description: >-
+    How one button of an interface is drawn: as its text, or as a glyph with
+    the text as its accessible name and tooltip. Provides what a renderer draws
+    the button from, so a button can be an icon without changing what it does
+    or says.
+capability: Telo.Provider
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    oneOf:
+      - additionalProperties: false
+        required: [type]
+        properties: { type: { const: text } }
+      - additionalProperties: false
+        required: [type, icon, label]
+        properties:
+          type: { const: icon }
+          icon:
+            anyOf:
+              - type: object
+                additionalProperties: false
+                required: [file]
+                properties: { file: { x-telo-type: Telo.HostPath } }
+              - { type: "null" }
+          label: { enum: [shown, hidden] }
+---
+kind: Telo.Definition
+metadata:
+  name: TextButton
+  description: >-
+    A button drawn as its text alone, the way buttons are drawn unless said
+    otherwise.
+capability: Telo.Provider
+extends: Self.ButtonDisplay
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#TextButtonController]
+schema: { type: object, additionalProperties: false }
+---
+kind: Telo.Definition
+metadata:
+  name: IconButton
+  description: >-
+    A button drawn as a glyph: an icon of your own, or the look's glyph for what
+    the button does. The button's text is its accessible name and tooltip, and
+    can also be shown beside the glyph.
+capability: Telo.Provider
+extends: Self.ButtonDisplay
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#IconButtonController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    icon:
+      title: Icon
+      description: >-
+        The glyph. Omitted, the look draws its own glyph for what the button
+        does.
+      x-telo-ref: { kind: Self.Icon, use: dependency }
+    label:
+      title: Label
+      description: >-
+        Whether the text is drawn beside the glyph or only named to assistive
+        technology and shown as a tooltip.
+      enum: [shown, hidden]
+      default: hidden
+---
 # How wide a page's content is drawn: within the look's measure, or across all
 # the room it has. The one definition of the values; every place an author
 # writes a width names it.
@@ -2538,6 +3016,31 @@ schema:
     (the `width.page` design token), centred; `full` lets it take all the room
     it has.
   enum: [contained, full]
+---
+# How a split view's aside and a list layout's records are set against their
+# surroundings. The one definition of the values; every place an author writes
+# one names it.
+kind: Telo.JsonSchema
+metadata: { name: Frame }
+schema:
+  title: Frame
+  description: >-
+    `framed` draws the element as a bordered, rounded panel of its own on the
+    surface background, spaced from its neighbours by the gap. `flush` draws it
+    with no frame and no gap, set against its neighbour by a divider line.
+  enum: [framed, flush]
+---
+# How a record's row actions are drawn. The one definition of the values;
+# `Ui.Listing` and the `list` node name it.
+kind: Telo.JsonSchema
+metadata: { name: RowActionsDisplay }
+schema:
+  title: Row actions display
+  description: >-
+    `inline` draws each action as a button on its record; `menu` folds them,
+    with edit and delete, into one menu button; `auto` draws them inline while
+    they fit the room the layout gives them and as a menu when they do not.
+  enum: [auto, inline, menu]
 ---
 # One page of an application: its address, its title and its nodes. Its
 # composites are resolved once, when it is created; the application invokes it
@@ -2709,27 +3212,15 @@ schema:
       $ref: "telo://Self/QueryParameters"
     source:
       title: Source
-      type: object
-      additionalProperties: false
-      required: [path]
-      properties:
-        path:
-          title: Path
-          description: >-
-            App-relative URL of the record: `/` followed by anything but `/` or
-            `\`, holding no control character. Read with `GET`.
-          $ref: "telo://Self/AppRelativeReference"
-        params:
-          title: Parameters
-          description: >-
-            Query parameters sent with the read, by name: a path into `query`
-            or a fixed value. A value that is absent is not sent.
-          type: object
-          x-telo-context:
-            type: object
-            properties:
-              query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
-          additionalProperties: { type: [string, number, integer, boolean], x-telo-eval: accessor }
+      description: >-
+        Where the record is read from with `GET`: an app-relative path, or a
+        path template filled from `query` with query parameters appended. A
+        value that holds nothing leaves the read unsent.
+      $ref: "telo://Self/RequestTarget"
+      x-telo-context:
+        type: object
+        properties:
+          query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
     content:
       title: Content
       description: What is drawn once an answer is in, over `data` and `query`.
@@ -2799,6 +3290,310 @@ schema:
         or `\`, holding no control character.
       $ref: "telo://Self/AppRelativeReference"
 ---
+kind: Telo.Definition
+metadata:
+  name: ConversationSource
+  description: >-
+    Where a browser talks to a chat endpoint: the conversation — the
+    attachments it accepts and the operations it supports — and the
+    app-relative URL its routes are served under. Written once and used by every
+    chat over that endpoint.
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ConversationSourceController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [conversation, basePath]
+  properties:
+    conversation:
+      title: Conversation
+      description: The conversation endpoint, read for what it offers before any message.
+      x-telo-ref: { kind: Conversation.Conversation, use: dependency }
+    basePath:
+      title: Base path
+      description: >-
+        App-relative URL the conversation's routes are served under: `/`
+        followed by anything but `/` or `\`, holding no control character.
+      $ref: "telo://Self/AppRelativeReference"
+---
+kind: Telo.Definition
+metadata:
+  name: Chat
+  description: >-
+    A full AI chat on a page: streamed replies with formatted text, reasoning,
+    tool calls and approvals, attachments and edit-and-resend branches. The
+    conversation shown follows a query parameter of the page, so a link opens
+    one and a new one is written back; a header of any nodes over the open
+    conversation and the chat's own commands (export, copy, stop, new), an
+    input placeholder, starter prompts, switches hiding reasoning, tool detail,
+    usage or copy, buttons drawn as icons and the composer's layout set how it
+    is presented.
+capability: Telo.Provider
+extends: Self.Composite
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#ChatController]
+schema:
+  type: object
+  x-telo-text-keys: [Self.Translations]
+  additionalProperties: false
+  required: [source]
+  properties:
+    source:
+      title: Source
+      description: The conversation endpoint the chat talks to and where it is served.
+      x-telo-ref: { kind: Self.ConversationSource, use: dependency }
+    header:
+      title: Header
+      description: >-
+        Nodes drawn top to bottom above the transcript, over `conversation`
+        (the open conversation's summary, null for a new one) and `chat` (its
+        commands). Omitted, a bar holding the export command; `[]` draws no header.
+      type: array
+      items: { $ref: "telo://Self/Node" }
+      x-telo-context:
+        type: object
+        properties:
+          conversation:
+            x-telo-context-eval: accessor
+            anyOf: [{ $ref: "telo:Conversations/ConversationSummary" }, { type: "null" }]
+          chat:
+            x-telo-context-eval: accessor
+            type: object
+            additionalProperties: false
+            required: [exportTranscript, copyTranscript, stop, newConversation]
+            properties:
+              exportTranscript: { description: Downloads the transcript as Markdown; runs once it holds a message., $ref: "telo://Self/Command" }
+              copyTranscript: { description: Copies the transcript as Markdown; runs once it holds a message., $ref: "telo://Self/Command" }
+              stop: { description: Stops the reply being written; offered where the endpoint can cancel., $ref: "telo://Self/Command" }
+              newConversation: { description: Opens a new conversation; runs while one is open or a message is drafted., $ref: "telo://Self/Command" }
+    placeholder:
+      title: Placeholder
+      description: >-
+        Shown in the empty message box. Omitted, none is drawn; the box's
+        accessible name does not depend on it.
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
+    starters:
+      title: Starters
+      description: >-
+        Prompts offered on an empty conversation. A bare text, or `{ prompt, onChoose }`
+        where `onChoose` is `send` (default; choosing sends the prompt) or `fill` (puts the
+        prompt in the message box, sending nothing).
+      type: array
+      items:
+        anyOf:
+          - { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+          - type: object
+            additionalProperties: false
+            required: [prompt]
+            properties:
+              prompt: { $ref: "telo://manifest#/$defs/Text", x-telo-text-values: {} }
+              onChoose: { enum: [send, fill], default: send }
+    show:
+      title: Show
+      description: >-
+        Switches hiding what the chat draws. A switch only hides a surface; none
+        shows one the conversation does not offer.
+      type: object
+      additionalProperties: false
+      properties:
+        reasoning: { title: Reasoning, description: The model's reasoning., type: boolean, default: true }
+        toolDetail:
+          title: Tool detail
+          description: The arguments and result of each tool call.
+          type: boolean
+          default: true
+        usage: { title: Usage, description: Token usage under each reply., type: boolean, default: true }
+        copy:
+          title: Copy
+          description: The button copying a message's text; a code block's own copy button is unaffected.
+          type: boolean
+          default: true
+    buttons:
+      title: Buttons
+      description: >-
+        How each button is drawn, a `Ui.TextButton` or a `Ui.IconButton`. The
+        buttons on a message (`copy`, `edit`, `regenerate`) are icons unless
+        named here; every other button is drawn by its text.
+      type: object
+      additionalProperties: false
+      properties:
+        copy: { title: Copy, description: Copies a message's text., x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
+        edit: { title: Edit, description: Opens a sent message for editing., x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
+        regenerate: { title: Regenerate, description: Writes a reply again., x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
+        attach: { title: Attach, description: Opens the file picker., x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
+        send: { title: Send, description: Sends the message., x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
+        stop: { title: Stop, description: Stops the reply being written., x-telo-ref: { kind: Self.ButtonDisplay, use: dependency } }
+    composer:
+      title: Composer
+      description: How the message box and its buttons are laid out.
+      type: object
+      additionalProperties: false
+      properties:
+        actions:
+          title: Actions
+          description: >-
+            Where the attach and send (or stop) buttons sit: `inside` the message
+            box's frame, after the text, or `outside` it, in a row under the box.
+          enum: [inside, outside]
+          default: inside
+    conversation:
+      title: Conversation
+      description: >-
+        Ties the conversation shown to a query parameter of the page: absent or
+        empty is a new conversation, an id opens that conversation, and the one
+        the chat creates is written back by replacing the current history entry.
+        Omitted, the selection lives in memory and a reload starts a new one.
+      type: object
+      additionalProperties: false
+      required: [parameter]
+      properties:
+        parameter:
+          title: Parameter
+          description: The query parameter holding the conversation id.
+          type: string
+          pattern: "^(?!_telo)(?!(as|break|const|continue|else|false|for|function|if|import|in|let|loop|namespace|null|package|return|true|var|void|while)$)[A-Za-z_][A-Za-z0-9_]*$"
+    refreshes:
+      title: Refreshes
+      description: >-
+        Requests read again, over `conversation.id`, when a send is admitted and
+        when a turn the chat started or followed ends: every reader whose path
+        resolves to one of theirs, a listing of conversations among them.
+      type: array
+      items: { $ref: "telo://Self/RefreshTarget" }
+      x-telo-context:
+        type: object
+        properties:
+          conversation:
+            x-telo-context-eval: accessor
+            type: object
+            required: [id]
+            properties: { id: { type: string } }
+            additionalProperties: false
+---
+kind: Telo.Definition
+metadata:
+  name: SplitView
+  description: >-
+    A fold-out side panel beside the main content of a page: a list of
+    conversations, a navigation tree or a set of filters next to the screen
+    they steer. Sits at the start or end edge in one of three widths, folds
+    away on request and remembers the choice between visits, and on a narrow
+    viewport becomes a sheet or window opened from a button.
+capability: Telo.Provider
+extends: Self.Composite
+controllers: [pkg:telo/local/js?path=./nodejs/ui.mjs&local_path=./nodejs/src/index.ts#SplitViewController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [label, aside, content]
+  properties:
+    side:
+      title: Side
+      description: The edge of the content the aside sits at.
+      enum: [start, end]
+      default: start
+    size:
+      title: Size
+      description: How wide the aside is.
+      enum: [small, medium, large]
+      default: medium
+    frame:
+      title: Frame
+      description: >-
+        `flush` sets the aside against the content, separated by a divider and
+        no gap; `framed` draws it as a bordered panel of its own, spaced from
+        the content. Applies while the aside is drawn beside the content.
+      $ref: "telo://Self/Frame"
+      default: flush
+    toggle:
+      title: Toggle
+      description: >-
+        How the button folding the aside away and showing it again is drawn.
+        Omitted, a glyph of the look's own with the text as its name and tooltip.
+      x-telo-ref: { kind: Self.ButtonDisplay, use: dependency }
+    label:
+      title: Label
+      description: >-
+        Names the aside for assistive technology and is the value of the
+        button showing and hiding it.
+      $ref: "telo://manifest#/$defs/Text"
+      x-telo-text-values: {}
+    aside:
+      title: Aside
+      description: >-
+        What is drawn beside the content. It stays mounted while folded away.
+      type: object
+      additionalProperties: false
+      required: [content]
+      properties:
+        actions:
+          title: Actions
+          description: >-
+            Link nodes drawn as buttons under the aside's top bar; folded
+            away, they stand under it as glyphs.
+          type: array
+          items:
+            allOf:
+              - { $ref: "telo://Self/Node" }
+              - { required: [type, button], properties: { type: { const: link } } }
+        content:
+          title: Content
+          description: The nodes the aside holds.
+          $ref: "telo://Self/Node"
+    content:
+      title: Content
+      description: What the aside sits beside.
+      $ref: "telo://Self/Node"
+    collapse:
+      title: Collapse
+      description: Lets the viewer fold the aside away. Omitted, it never folds on a wide viewport.
+      type: object
+      additionalProperties: false
+      properties:
+        collapsed:
+          title: Collapsed
+          description: Whether the aside starts folded away. A stored choice overrides it.
+          type: boolean
+          default: false
+        state:
+          title: State
+          description: >-
+            Keeps the choice between visits under `key` in `store`; split views
+            naming one key share it. Omitted, it is kept in memory only.
+          type: object
+          additionalProperties: false
+          required: [key, store]
+          properties:
+            key:
+              title: Key
+              description: The name the choice is kept under, letters and digits.
+              type: string
+              pattern: "^[A-Za-z][A-Za-z0-9]*$"
+            store:
+              title: Store
+              description: Where the choice is stored between visits.
+              x-telo-ref: { kind: Self.StateStore, use: dependency }
+    compact:
+      title: Compact
+      description: >-
+        The surface the aside becomes below the application's breakpoint: a
+        `Ui.ViewportOverlay` holding it, with neither an address nor a compact
+        surface of its own. Omitted, a drawer from the aside's side.
+      x-telo-ref: { kind: Self.ViewportOverlay, use: dependency }
+  x-telo-resource-rules:
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.address)"
+      code: UI_SURFACE_COMPACT_ADDRESSED
+      message: >-
+        names a compact surface that declares an address. The split view has no
+        address of its own to stand in for: remove `address` from it.
+    - resolve: [/compact]
+      condition: !cel "!has(self.compact) || !has(self.compact.compact)"
+      code: UI_SURFACE_COMPACT_NESTED
+      message: >-
+        names a compact surface that declares a compact surface of its own.
+        Only one level applies: remove `compact` from it.
+---
 # How one set of screens shows a collection: its source, and how each related
 # record is read and labelled. Listings, filter bars and forms over the same
 # records share one.
@@ -2856,9 +3651,8 @@ schema:
                 row: { x-telo-context-eval: accessor, x-telo-context-ref-from: source/collection/model }
           href:
             title: Link
-            description: Where a related record links to, as a path into it.
-            type: string
-            x-telo-eval: accessor
+            description: Where a related record links to, an address over the related `row`.
+            $ref: "telo:Ui/Address"
             x-telo-context:
               type: object
               properties:
@@ -2984,6 +3778,42 @@ schema:
         end (`scroll`). Both layouts follow it.
       enum: [pages, more, scroll]
       default: pages
+    sort:
+      title: Sort
+      description: >-
+        The order of the records. `by` is the order they start in, a
+        `query.sort` property of the collection; `choosable: false` draws no
+        sort control and no sortable header, and without `by` keeps the
+        collection's own order.
+      type: object
+      additionalProperties: false
+      properties:
+        by:
+          title: By
+          type: object
+          additionalProperties: false
+          required: [property]
+          properties:
+            property: { title: Property, description: The record property to order by., type: string }
+            direction: { title: Direction, enum: [ascending, descending], default: ascending }
+        choosable:
+          title: Choosable
+          description: Whether the viewer may choose another order.
+          type: boolean
+          default: true
+    show:
+      title: Show
+      description: What the listing shows besides its records.
+      type: object
+      additionalProperties: false
+      properties:
+        count:
+          title: Count
+          description: >-
+            Whether the number of records is shown, in the pager and in each
+            group's heading.
+          type: boolean
+          default: true
     rowStyle:
       title: Style rule
       description: Styles chosen by a value of the record, on its element in every layout.
@@ -3076,6 +3906,14 @@ schema:
           row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor }
           query: { x-telo-context-eval: accessor, x-telo-context-from: query, type: object, properties: {}, additionalProperties: false }
       items: { $ref: "telo://Self/RowAction" }
+    rowActionsDisplay:
+      title: Row actions display
+      description: >-
+        How each record's actions, with edit and delete, are drawn in every
+        layout. `auto` measures the listing's room and folds them into a menu
+        when they do not fit.
+      $ref: "telo://Self/RowActionsDisplay"
+      default: auto
     empty:
       title: Empty
       description: >-
@@ -3128,6 +3966,14 @@ schema:
         filters its source by a property the collection does not accept an
         equality on. Declare it with operator `eq` under the collection's
         `query.filters`, or remove this filter.
+    - resolve: [/presentation/source/collection]
+      condition: !cel >-
+        !has(self.sort) || !has(self.sort.by)
+        || self.presentation.source.collection.query.sort.exists(s, s.property == self.sort.by.property)
+      code: UI_LISTING_SORT_NOT_ACCEPTED
+      message: >-
+        starts sorted by a property the collection does not accept a sort on.
+        Declare it under the collection's `query.sort`, or change `sort.by`.
 ---
 # How a listing's records are drawn. The listing calls its layout with its row
 # model, its collection and its relations; the layout answers the spec it draws
@@ -3200,6 +4046,13 @@ schema:
             x-telo-context:
               type: object
               properties: { row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor } }
+          href:
+            title: Link
+            description: Draws the value as the text of a link, an address over `row`.
+            $ref: "telo://Self/Address"
+            x-telo-context:
+              type: object
+              properties: { row: { x-telo-context-from-referrer: row, x-telo-context-eval: accessor } }
           cell:
             title: Cell
             description: A component drawn in place of a value.
@@ -3227,6 +4080,7 @@ schema:
         oneOf:
           - { required: [value] }
           - { required: [cell] }
+        dependencies: { href: [value] }
   $defs:
     StyleName: { enum: [heading, subheading, muted, strong, accent, danger, warning, success] }
     Style:
@@ -3248,6 +4102,13 @@ schema:
   type: object
   additionalProperties: false
   properties:
+    frame:
+      title: Frame
+      description: >-
+        `framed` draws the list as a bordered, rounded panel; `flush` draws
+        no border, radius or background, the records separated by dividers.
+      $ref: "telo://Self/Frame"
+      default: framed
     content:
       title: Content
       description: >-
@@ -4063,9 +4924,10 @@ kind: Telo.Definition
 metadata:
   name: Action
   description: >-
-    A button that runs a server operation from a page, with an optional input
-    form generated from the request's data model and validated before anything
-    is sent. Draws the answer as content — generated files, report links,
+    A button that runs a server operation from a page with a POST, PUT, PATCH
+    or DELETE request, with an optional input form generated from the
+    request's data model and validated before anything is sent. Input
+    properties can fill the request path or query instead of the body. Draws the answer as content — generated files, report links,
     search hits — and a refusal as an error, then navigates or refreshes data
     on success; presses run in parallel or one at a time. Data grids and lists
     offer one on every row.
@@ -4077,7 +4939,7 @@ inputType: { type: object, x-telo-value-schema-from: inputModel }
 schema:
   type: object
   additionalProperties: false
-  required: [inputModel, source, label]
+  required: [inputModel, request, label]
   examples:
     - inputModel:
         kind: Telo.JsonSchema
@@ -4100,7 +4962,7 @@ schema:
                 properties:
                   name: { type: string, title: File }
                   url: { type: string, title: Download, format: uri-reference }
-      source: { path: /api/reports }
+      request: { target: /api/reports }
       label: Generate
       result:
         type: list
@@ -4121,18 +4983,33 @@ schema:
         The shape of the answer, read as `result`. A success's body is held to
         it before anything is drawn from it.
       x-telo-ref: { kind: Telo.Type, use: schema }
-    source:
-      title: Source
+    request:
+      title: Request
+      description: >-
+        The request a press sends: the HTTP `method` and the `target` it goes
+        to. A `target` parameter reads the record sent as `input`; an input
+        property read whole (`input.<property>`) travels in the target and
+        stays out of the body.
       type: object
       additionalProperties: false
-      required: [path]
+      required: [target]
       properties:
-        path:
-          title: Path
+        method:
+          title: Method
           description: >-
-            App-relative URL of the operation: `/` followed by anything but
-            `/` or `\`, holding no control character.
-          $ref: "telo://Self/AppRelativeReference"
+            `POST`, `PUT` and `PATCH` send the input's remaining properties as a
+            JSON body; `DELETE` sends none and must read every input property in
+            its target.
+          enum: [POST, PUT, PATCH, DELETE]
+          default: POST
+        target:
+          title: Target
+          description: Where the request goes, over `input`. A value that holds nothing leaves the press unsent.
+          $ref: "telo://Self/RequestTarget"
+          x-telo-context:
+            type: object
+            properties:
+              input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
     label:
       title: Label
       description: The text of the button that runs the operation.
@@ -4228,13 +5105,11 @@ schema:
         navigate:
           title: Navigate
           description: >-
-            Where the page goes: a path into `result`, or a fixed address. An
-            app-relative path of a declared page moves within the application,
-            any other loads it; an `https://` or `http://` address replaces the
-            page. A value that is no such address navigates nowhere.
-          type: string
-          anyOf: [{ $ref: "telo://Self/AppRelativeReference" }, { pattern: "^(https://|http://|mailto:)" }]
-          x-telo-eval: accessor
+            Where the page goes, over `result` and `input`. An app-relative
+            address of a declared page moves within the application, any other
+            loads it; an `https://` or `http://` address replaces the page. An
+            address that does not resolve navigates nowhere.
+          $ref: "telo://Self/Address"
           x-telo-context:
             type: object
             properties:
@@ -4244,15 +5119,25 @@ schema:
                 type: object
                 properties: {}
                 additionalProperties: false
+              input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
         refreshes:
           title: Refreshes
           description: >-
-            App-relative paths read again: every listing whose collection
-            source's `basePath`, and every reader whose `source.path`, equals
-            one of them.
+            Requests read again, over `input` and `result`: every reader whose
+            `source` and every listing whose collection source's `basePath`
+            resolves to one of their paths.
           type: array
-          uniqueItems: true
-          items: { $ref: "telo://Self/AppRelativeReference" }
+          items: { $ref: "telo://Self/RefreshTarget" }
+          x-telo-context:
+            type: object
+            properties:
+              result:
+                x-telo-context-from-root: "outputModel"
+                x-telo-context-eval: accessor
+                type: object
+                properties: {}
+                additionalProperties: false
+              input: { x-telo-context-from-root: "inputModel", x-telo-context-eval: accessor }
     concurrency:
       title: Concurrency
       description: >-
@@ -4270,6 +5155,24 @@ schema:
       uniqueItems: true
       items: { type: string }
   x-telo-resource-rules:
+    - resolve: [/inputModel]
+      condition: !cel >-
+        !has(self.request.method) || self.request.method != 'DELETE'
+        || cel.bind(m, has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel,
+          !has(m.properties) || m.properties.all(k,
+            type(self.request.target) != string && (
+              (has(self.request.target.pathParams) && self.request.target.pathParams.exists(n,
+                'root' in self.request.target.pathParams[n] && self.request.target.pathParams[n].root == 'input'
+                && self.request.target.pathParams[n].path == [k]))
+              || (has(self.request.target.queryParams) && self.request.target.queryParams.exists(n,
+                'root' in self.request.target.queryParams[n] && self.request.target.queryParams[n].root == 'input'
+                && self.request.target.queryParams[n].path == [k])))))
+      code: UI_ACTION_INPUT_UNSENT
+      message: >-
+        is a `DELETE`, which sends no body, yet leaves an input property out of
+        its target. Read every property of `inputModel` in a `pathParams` or
+        `queryParams` entry as exactly `input.<property>`, or remove it from
+        `inputModel`.
     - resolve: [/inputModel]
       in: /clearAnswerOn
       condition: !cel "has((has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties) && this in (has(self.inputModel.schema) ? self.inputModel.schema : self.inputModel).properties"
@@ -5057,9 +5960,8 @@ schema:
         properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
     href:
       title: Link
-      description: Where the chosen option links to, as a path into the record.
-      type: string
-      x-telo-eval: accessor
+      description: Where the chosen option links to, an address over the record's `row`.
+      $ref: "telo://Self/Address"
       x-telo-context:
         type: object
         properties: { row: { x-telo-context-from-root: "model", x-telo-context-eval: accessor } }
@@ -5576,3 +6478,183 @@ keys:
     message: "Has a name that is not allowed: {$propertyName}"
     values: { propertyName: { type: string } }
     description: Under a field whose value fails `propertyNames`.
+  chatMessage:
+    message: "Message"
+    description: "The accessible name of the message box, always drawn and never taken from the placeholder."
+  chatComposerHint:
+    message: "Enter to send, Shift+Enter for a new line"
+    description: "Tells how the message box sends and breaks lines."
+  chatSend: { message: "Send", description: "Sends the message." }
+  chatStop: { message: "Stop", description: "Stops the reply being written." }
+  chatAttach:
+    message: "Attach files"
+    description: "Opens the file picker to attach files to the message."
+  chatDropFiles:
+    message: "Drop files to attach"
+    description: "Shown over the chat while files are dragged onto it."
+  chatTranscript:
+    message: "Conversation"
+    description: "Names the list of messages for assistive technology."
+  chatStarters:
+    message: "Suggested prompts"
+    description: "Names the prompts offered on an empty conversation."
+  chatEmpty:
+    message: "Send a message to start the conversation."
+    description: "Drawn in a conversation with no messages."
+  chatYou: { message: "You", description: "Labels the user's messages." }
+  chatAssistant: { message: "Assistant", description: "Labels the assistant's messages." }
+  chatCopy: { message: "Copy message", description: "Copies a message's text." }
+  chatCopied: { message: "Copied", description: "Confirms a copy." }
+  chatCopyCode: { message: "Copy code", description: "Copies a code block." }
+  chatRegenerate:
+    message: "Regenerate"
+    description: "Asks for another reply to the same message."
+  chatEditMessage: { message: "Edit message", description: "Opens a sent message for editing." }
+  chatResend:
+    message: "Save and resend"
+    description: "Sends the edited message as a new version."
+  chatBranchPrevious:
+    message: "Previous version"
+    description: "Shows the previous version of a message."
+  chatBranchNext: { message: "Next version", description: "Shows the next version of a message." }
+  chatBranchPosition:
+    message: "{$position} of {$total}"
+    values: { position: { type: integer }, total: { type: integer } }
+    description: "Which version of a message is shown, of how many."
+  chatExport:
+    message: "Export as Markdown"
+    description: "Downloads the conversation as a Markdown file."
+  chatReasoning:
+    message: "Reasoning"
+    description: "Titles the panel holding the model's reasoning."
+  chatThinking: { message: "Thinking…", description: "Shown while the model is reasoning." }
+  chatShowDetails: { message: "Show details", description: "Expands a panel." }
+  chatHideDetails: { message: "Hide details", description: "Collapses a panel." }
+  chatToolCall:
+    message: "Tool: {$name}"
+    values: { name: { type: string } }
+    description: "Titles a tool call, naming the tool."
+  chatToolRunning:
+    message: "Running…"
+    description: "Shown while a tool call has no result yet."
+  chatToolFailed: { message: "Failed", description: "Shown when a tool call ended in an error." }
+  chatToolArguments: { message: "Arguments", description: "Titles the arguments of a tool call." }
+  chatToolResult: { message: "Result", description: "Titles the result of a tool call." }
+  chatApprovalRequest:
+    message: "Approval needed to run {$name}"
+    values: { name: { type: string } }
+    description: "Asks the user to approve a tool call, naming the tool."
+  chatApprove: { message: "Approve", description: "Approves a tool call." }
+  chatReject: { message: "Reject", description: "Rejects a tool call." }
+  chatRejectReason:
+    message: "Reason (optional)"
+    description: "Labels the box for why a tool call is rejected."
+  chatApproved: { message: "Approved", description: "Shown once a tool call was approved." }
+  chatRejected: { message: "Rejected", description: "Shown once a tool call was rejected." }
+  chatRejectedReason:
+    message: "Rejected: {$reason}"
+    values: { reason: { type: string } }
+    description: "Shown once a tool call was rejected with a reason."
+  chatSources: { message: "Sources", description: "Titles the citations of a reply." }
+  chatRefusal:
+    message: "Declined"
+    description: "Labels a reply in which the assistant declined to answer."
+  chatUsage:
+    message: "Tokens: {$input} in, {$output} out"
+    values: { input: { type: integer }, output: { type: integer } }
+    description: "A reply's token usage."
+  chatUsageTotal:
+    message: "Tokens: {$total}"
+    values: { total: { type: integer } }
+    description: "A reply's token usage when only the total is known."
+  chatTurnLength:
+    message: "The reply was cut off at the length limit."
+    description: "Shown when a reply ended because it reached the length limit."
+  chatTurnContentFilter:
+    message: "The reply was stopped by a content filter."
+    description: "Shown when a reply ended because a content filter stopped it."
+  chatTurnLimit:
+    message: "The assistant stopped at its step limit."
+    description: "Shown when a reply ended because the assistant reached its step limit."
+  chatTurnApproval:
+    message: "Waiting for your approval."
+    description: "Shown when a reply paused for an approval."
+  chatTurnCancelled: { message: "Stopped.", description: "Shown when a reply was stopped." }
+  chatTurnFailed:
+    message: "The reply failed."
+    description: "Shown when a reply ended in a failure."
+  chatContinue:
+    message: "Continue"
+    description: "Asks the assistant to carry on after it stopped."
+  chatReconnecting:
+    message: "Reconnecting…"
+    description: "Shown while a dropped reply stream is being resumed."
+  chatReconnectFailed:
+    message: "Could not reconnect."
+    description: "Shown when a dropped reply stream could not be resumed."
+  chatRetry: { message: "Try again", description: "Retries a failed request." }
+  chatAnnounceStarted:
+    message: "The assistant is replying."
+    description: "Announced to assistive technology when a reply starts."
+  chatAnnounceDone:
+    message: "The reply is complete."
+    description: "Announced to assistive technology when a reply ends."
+  chatAttachments:
+    message: "Attachments"
+    description: "Names the files attached to a message."
+  chatAttachmentRemove:
+    message: "Remove {$name}"
+    values: { name: { type: string } }
+    description: "Removes an attached file, naming it."
+  chatAttachmentUploading:
+    message: "Uploading {$name}: {$percent}%"
+    values: { name: { type: string }, percent: { type: integer } }
+    description: "A file's upload progress."
+  chatAttachmentFailed:
+    message: "Uploading {$name} failed: {$reason}"
+    values: { name: { type: string }, reason: { type: string } }
+    description: "A file whose upload failed, with the reason."
+  chatAttachmentTooLarge:
+    message: "{$name} is larger than {$limit}"
+    values: { name: { type: string }, limit: { type: string } }
+    description: "A file over the size limit, with the limit written as a size."
+  chatAttachmentWrongType:
+    message: "{$name} is not an accepted file type"
+    values: { name: { type: string } }
+    description: "A file whose type the endpoint does not accept."
+  chatAttachmentTooMany:
+    message: "Too many files. Limit per message: {$limit}"
+    values: { limit: { type: integer } }
+    description: "Files beyond the limit per message."
+  chatAttachmentOpen:
+    message: "Open {$name}"
+    values: { name: { type: string } }
+    description: "Opens a file attached to a message."
+  chatLoadEarlier:
+    message: "Load earlier messages"
+    description: "Loads the previous page of a conversation's messages."
+  mediaViewer: { message: "Image viewer", description: "Names the full-screen viewer that steps through a conversation's pictures." }
+  mediaPrevious: { message: "Previous picture", description: "Shows the previous picture in the viewer." }
+  mediaNext: { message: "Next picture", description: "Shows the next picture in the viewer." }
+  mediaPosition:
+    message: "{$position} of {$total}"
+    values: { position: { type: integer }, total: { type: integer } }
+    description: "Which picture the viewer shows, of how many."
+  mediaZoomIn: { message: "Zoom in", description: "Enlarges the picture in the viewer." }
+  mediaZoomOut: { message: "Zoom out", description: "Shrinks the picture in the viewer." }
+  mediaZoomReset: { message: "Reset zoom", description: "Returns the picture in the viewer to its fitted size." }
+  mediaDownload:
+    message: "Download {$name}"
+    values: { name: { type: string } }
+    description: "Links to the original of the picture in the viewer, naming it."
+  splitShow:
+    message: "Show {$label}"
+    values: { label: { type: string } }
+    description: "Opens or unfolds the aside of a split view; the value is the aside's label."
+  splitHide:
+    message: "Hide {$label}"
+    values: { label: { type: string } }
+    description: "Folds away the aside of a split view; the value is the aside's label."
+  rowActionsMenu:
+    message: "Actions"
+    description: "Names the button that opens a record's actions menu."

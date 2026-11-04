@@ -89,23 +89,32 @@ This is what lets [`Ai.AgentStream`](../../ai/docs/ai-agent-stream.md) drive a t
 
 ## Multimodal content
 
-Message `content` may be a string or [content parts](../../ai/docs/ai-model.md#modality-lives-in-the-parts). Which parts each API carries:
+Message `content` may be a string or [content parts](../../ai/docs/ai-model.md#modality-lives-in-the-parts).
 
-| Part | Chat completions (`OpenAI.ChatModel`, `ChatModelStream`) | Responses (`OpenAI.ResponsesModel`, `ResponsesModelStream`) |
-| --- | --- | --- |
-| text | yes | yes |
-| image by bytes (`data`) | yes — a `data:` URL | yes — a `data:` URL |
-| image by `http:` / `https:` `uri` | yes — the string as written | yes — the string as written |
-| file by bytes (`data`), with `name` (sent as its filename) | yes | yes |
-| file by bytes with no `name` | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
-| file by `http:` / `https:` `uri` | `ERR_MODEL_CONTENT_UNSUPPORTED` | yes — the string as written |
-| any other `uri` scheme (`file:`, `s3:`, …) | `ERR_MODEL_CONTENT_UNSUPPORTED`, `error.data.scheme` set | the same |
-| audio, video | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
-| a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input | `ERR_MODEL_CONTENT_UNSUPPORTED` | `ERR_MODEL_CONTENT_UNSUPPORTED` |
+Declare what the model takes with [`accepts`](../../ai/docs/ai-model.md#accepts--what-a-model-takes-beside-text); with none it takes text only, and a part outside it is refused before anything is sent. This kind narrows it to what chat completions can carry at all: images of any `image/…` type and files of any media type (audio and video have no input shape here), so an entry outside that is a `SCHEMA_VIOLATION` under `telo check`.
+
+```yaml
+kind: OpenAI.ChatModel
+metadata: { name: vision }
+model: gpt-4o
+request: !ref openaiRequest
+accepts:
+  - { type: image, mediaTypes: [image/png, image/jpeg, image/webp], maxBytes: 20971520 }
+  - { type: file, mediaTypes: [application/pdf], maxBytes: 33554432 }
+```
+
+The endpoint decides which media types it really reads: `accepts` states what *you* declare and the provider enforces. Beyond `accepts`, these stay call-time rules of the dialect:
+
+- an image goes by bytes (a `data:` URL) or by an `http:` / `https:` `uri`, sent as written;
+- a file goes by bytes under its `name`, sent as its filename; a file with no `name` is refused, and so is one by `uri` (the responses kinds take one);
+- any other `uri` scheme (`file:`, `s3:`, …) is refused with `error.data.scheme` set;
+- a part a model produces (`reasoning`, `citation`, `refusal`, `tool-call`) sent as input is refused.
+
+The model publishes its list as `resources.<name>.accepts`.
 
 `ERR_MODEL_CONTENT_UNSUPPORTED` is raised while the request is built — by the call itself, on the streaming kind too, and before anything is sent. Its message names the part type, its media type and what the endpoint takes instead; `error.data.partType` is the refused part's `type`, `error.data.mediaType` its media type when it has one, and `error.data.scheme` the `uri`'s scheme when the scheme is the reason. A `uri` is passed to the endpoint exactly as written and never fetched here: the endpoint must be able to reach it. A part that is *malformed* never gets this far — its shape is [`Ai.ContentPart`'s](../../ai/docs/ai-model.md#modality-lives-in-the-parts), refused by the contract (`ERR_INPUT_INVALID`).
 
-A file by bytes needs `name`: both APIs take the bytes beside a filename, so one without is refused here (`error.data.partType: file`, no `scheme`) rather than sent; a file by `uri` on the responses kinds needs none. The provider gates on no media type. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; any other type is the endpoint's to accept or refuse, and its refusal is the code its status and error name (usually `ERR_MODEL_REQUEST_REJECTED`).
+A file with no `name` is refused with `error.data.partType: file` and no `scheme`. At OpenAI's own endpoint a file by bytes on chat completions is a PDF; a type the endpoint does not read is its to refuse, under the code its status and error name (usually `ERR_MODEL_REQUEST_REJECTED`).
 
 How a carried part lands on this API's wire:
 

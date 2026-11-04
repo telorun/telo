@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
 import { render, type Rendered } from "./harness.js";
+import { address } from "./spec-nodes.js";
 
 let rendered: Rendered | undefined;
 afterEach(() => rendered?.unmount());
@@ -18,7 +19,7 @@ describe("the application shell", () => {
   });
 
   it("draws the application's own header nodes before its title and after its navigation, on every page", async () => {
-    const header = { start: [{ type: "image", src: "/logo.svg", alt: "Logo" }], end: [{ type: "link", text: "Help", href: "/help" }] };
+    const header = { start: [{ type: "image", src: "/logo.svg", alt: "Logo" }], end: [{ type: "link", text: "Help", href: address("/help") }] };
     rendered = await render({ path: "/nowhere", prefix: "/admin", pages, header });
     const parts = (element: Element) => [...element.children].map((child) => child.getAttribute("data-telo-part"));
     expect(parts(rendered.part("header"))).toEqual(["header-content"]);

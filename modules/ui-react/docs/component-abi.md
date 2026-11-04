@@ -56,8 +56,8 @@ and re-renders the caller when `location` changes. The object has six fields:
 | `navigate` | `navigate(to, { replace? })` — go to an app-relative reference, resolved against the current page: `/done`, `/chat?c=7`, `?c=7`, `#top`. Adds a history entry, or replaces the current one with `replace: true`. A different page renders that page; the same page with a new query or fragment fetches nothing and re-renders the callers of `useHost`; a path no page declares renders the not-found page. A reference with a scheme or a host throws `TypeError`. While a form opened with `unsaved: confirm` holds unsaved input and the reference would close it, the navigation waits for the user's answer and does not happen if they stay. |
 | `href` | `href(to)` — the same resolution, returned as the URL for an anchor, mount prefix included. |
 | `fetch` | `fetch(…)` — the platform `fetch` as the application's own composites call it: same-origin credentials, origin-relative URLs. Returns the platform `Response` untouched, 401 and 403 included. A cross-origin request passes through unchanged. |
-| `notifyChanged` | `notifyChanged(basePath)` — say that the collection at this `basePath` changed. Local to the document: every listing whose source's `basePath` is exactly that string reloads what it shows, keeping the viewer's place, and every `onChanged` listener for it runs. The renderer's own forms and deletes say the same after a successful write. |
-| `onChanged` | `onChanged(basePath, listener)` — call `listener()` after each such change, whoever said it; returns the function that stops it. |
+| `notifyChanged` | `notifyChanged(basePath)` — say that the data at this app-relative path changed. Local to the document: every listing whose source's `basePath`, every `data` reader whose resolved source path and every chat whose open conversation path is exactly that path (encoded, its query left out) reloads what it shows, keeping the viewer's place, and every `onChanged` listener for it runs. The renderer's own forms, deletes and actions say the same after a successful write, for the path they wrote. |
+| `onChanged` | `onChanged(basePath, listener)` — call `listener()` after each change announced for exactly that path, whoever said it; returns the function that stops it. |
 
 The declaration, which a library can type-check against:
 
@@ -89,9 +89,9 @@ export interface Host {
    * untouched, 401 and 403 included.
    */
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;
-  /** Say that the collection at this `basePath` changed. */
+  /** Say that the data at this app-relative path changed: the path as it was requested, encoded, its query left out. */
   notifyChanged(basePath: string): void;
-  /** Call `listener` after each such change; returns the function that stops it. */
+  /** Call `listener` after each change announced for exactly this path; returns the function that stops it. */
   onChanged(basePath: string, listener: () => void): () => void;
 }
 
@@ -106,13 +106,13 @@ export function useHost(): Host;
 
 | | Is relative to | Used by |
 | --- | --- | --- |
-| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, a `link` node's `href`, an `image` node's `src`, a `source.basePath`, a reader's `source.path` and an action's `path` |
+| **The application's** | the mount: `/done` is the page `/done` wherever the application is mounted | `location`, `navigate`, `href`, an address's resolved path (a `link` node's `href`, a reader's `source`, an action's `request.target`), an `image` node's `src` and a `source.basePath` |
 | **The origin's** | the origin: `/api/todos` is that path on the server | `fetch` |
 
 A page is addressed in the first; `fetch` requests in the second, so a
 component requests a collection the page names with `fetch(href(basePath))`.
-`notifyChanged` and `onChanged` take the `basePath` as written: they compare
-strings and request nothing. An
+`notifyChanged` and `onChanged` take an app-relative path as it is requested
+— percent-encoded, its query left out: they compare strings and request nothing. An
 app-relative `image.src` is in the first too, so an image an application ships
 is served from a mount beneath its own — `Http.Static` at `/admin/files` for
 an application at `/admin`. A link to such a file is reachable the same way:
@@ -170,50 +170,21 @@ Anything else is a new ABI.
 | --- | --- |
 | event wiring in the manifest | call `navigate`, `fetch`, `notifyChanged` from the component |
 | shared store between components | hold state in the URL (`navigate("?c=7")`, read `location.search`), or in the API and `notifyChanged` |
-| server push to a component | open your own stream with `fetch`, as below |
+| server push to a component | open your own stream with `fetch` |
 | access to another component's props or to the page document | declare the property and pass it |
 | way to run before the page renders | a component runs when it is drawn |
 
 ## Recipe: a streaming chat
 
-The API streams text from an `Http.Api` route; the component reads the body as
-it arrives and keeps the conversation in the URL.
-
-```tsx
-import { useHost } from "@telorun/ui-react";
-import { useState } from "react";
-
-export function Chat({ basePath }: { basePath: string }) {
-  const host = useHost();
-  const conversation = new URLSearchParams(host.location.search).get("c") ?? "new";
-  const [reply, setReply] = useState("");
-
-  const send = async (text: string) => {
-    const response = await host.fetch(host.href(`${basePath}/${conversation}/messages`), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!response.ok || !response.body) return setReply(`Failed: ${response.status}`);
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let text = "";
-    for (let part = await reader.read(); !part.done; part = await reader.read()) {
-      text += decoder.decode(part.value, { stream: true });
-      setReply(text);
-    }
-    // A listing of conversations at this path refreshes itself.
-    host.notifyChanged(basePath);
-  };
-
-  return (
-    <form onSubmit={(event) => { event.preventDefault(); send(new FormData(event.currentTarget).get("text") as string); }}>
-      <output>{reply}</output>
-      <input name="text" />
-    </form>
-  );
-}
-```
+Do not build one. A streaming chat is [`Ui.Chat`](../../ui/docs/chat.md): a
+composite over a [`Ui.ConversationSource`](../../ui/docs/conversation-source.md)
+that draws a conversation — streamed text, reasoning, tool calls, approvals,
+attachments and branches — as a client of the
+conversation contract, and the [`chat` node](chat.md) the renderer draws it
+with already resumes a dropped stream, announces replies to assistive
+technology and carries the parts a theme styles. A component is for what the
+contract does not cover; its requests go through `host.fetch` as every
+component's do.
 
 ## Recipe: an upload
 

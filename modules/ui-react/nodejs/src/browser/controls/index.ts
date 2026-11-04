@@ -1,5 +1,5 @@
 /**
- * The built-in controls: the reference implementation of `ui_react_controls-2`,
+ * The built-in controls: the reference implementation of `ui_react_controls-3`,
  * drawn wherever no theme replaces a control. This directory is the only part
  * of the renderer that reaches the interactive primitives, the icon set and the
  * browser's own entry elements.

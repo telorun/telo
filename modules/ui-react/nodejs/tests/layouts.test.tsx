@@ -62,6 +62,11 @@ async function drag(r: Rendered, from: Element, onto: Element) {
 }
 
 describe("a list layout", () => {
+  it("draws a record's content and its actions as siblings of one row", async () => {
+    rendered = await show([listOf({ delete: true, rowActionsDisplay: "inline" })]);
+    expect([...rendered.parts("list-item")[0].children].map((child) => child.getAttribute("data-telo-part"))).toEqual(["value", "row-actions"]);
+  });
+
   it("under scroll loads the next page when its end comes into view, and through its Load more from the keyboard", async () => {
     (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = FakeIntersections;
     rendered = await show([listOf({ paging: "scroll" })]);
@@ -133,6 +138,11 @@ describe("a card layout", () => {
 });
 
 describe("a board layout", () => {
+  it("words its group headings without the count when the listing shows none", async () => {
+    rendered = await show([board({ show: { count: false } })]);
+    expect(rendered.parts("board-heading").map((heading) => heading.textContent)).toEqual(["open", "blocked", "done"]);
+  });
+
   it("reads a column per group, each headed by its total, and pages each column on its own", async () => {
     rendered = await show([board()]);
     expect(rendered.parts("board-heading").map((heading) => heading.textContent)).toEqual(["open (3)", "blocked (1)", "done (1)"]);

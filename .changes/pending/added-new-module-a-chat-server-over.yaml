@@ -1,0 +1,18 @@
+modules:
+  modules/ai-chat: Added
+body: "New module: a chat server over a streaming AI agent. AiChat.Conversation
+  publishes what the endpoint offers (the media the model accepts with the tighter size
+  bound, and the operations branch and cancel); transport-neutral invocables start a
+  turn, stream its journaled events from any position on any replica, cancel it from
+  anywhere, list, read, rename, archive and delete conversations, and store and read
+  attachments; AiChat.Api mounts them on an HTTP server as the conversation contract,
+  with Server-Sent Events that resume from Last-Event-ID, streamed multipart uploads
+  checked against the accepted media, and problem documents. GET /conversations speaks
+  the collection contract against Conversation.conversations: title.contains, archived,
+  sort by updatedAt or -updatedAt, limit 1 to 100 and cursor, anything else refused as
+  ERR_INPUT_INVALID with its issue under /query; reading, renaming, archiving and
+  deleting a conversation are served whatever the spec lists. A turn whose writer died
+  or was shut down closes with an error and a failed ending, a retried send under one
+  idempotency key starts one turn, and a client may send again as soon as it has read a
+  turn's end. The journal's retention applies only while the application runs
+  RecordStream.JournalExpiry on a schedule."

@@ -335,9 +335,9 @@ pages:
                       kind: Ui.Action
                       inputModel: !ref NoInput
                       outputModel: !ref ConsentLink
-                      source: { path: /api/auth/connect }
+                      request: { target: /api/auth/connect }
                       label: Connect Google
-                      onSuccess: { navigate: !cel "result.url" }
+                      onSuccess: { navigate: { path: !cel "result.url" } }
               - type: stack
                 shown: { at: !cel "data.authorized", matches: { const: true } }
                 children:
@@ -354,7 +354,7 @@ pages:
                             ref:
                               kind: Ui.Action
                               inputModel: !ref NoInput
-                              source: { path: /api/auth/signout }
+                              request: { target: /api/auth/signout }
                               label: Sign out
                               onSuccess: { refreshes: [ /api/auth ] }
                   - type: composite
@@ -362,7 +362,7 @@ pages:
                       kind: Ui.Action
                       inputModel: !ref ReportRequest
                       outputModel: !ref ReportAnswer
-                      source: { path: /api/generate }
+                      request: { target: /api/generate }
                       label: Generate
                       groups:
                         - { name: source, label: Source, description: The timesheet the hours are read from. }
@@ -386,7 +386,7 @@ pages:
                             value: !cel "row.id"
                             label: !cel "row.name"
                             hint: !cel "row.owner"
-                            href: !cel "row.url"
+                            href: { path: !cel "row.url" }
                             source: !ref driveSource
                             filters: { kind: spreadsheet }
                             search: { property: name, operator: contains }
@@ -398,7 +398,7 @@ pages:
                             model: !ref DriveFile
                             value: !cel "row.id"
                             label: !cel "row.name"
-                            href: !cel "row.url"
+                            href: { path: !cel "row.url" }
                             source: !ref driveSource
                             filters: { kind: folder }
                             search: { property: name, operator: contains }
@@ -529,7 +529,7 @@ pages:
                                   kind: Ui.Action
                                   inputModel: !ref DraftRequest
                                   outputModel: !ref DraftAnswer
-                                  source: { path: /api/draft }
+                                  request: { target: /api/draft }
                                   label: Draft e-mail
                                   result: { type: value, value: !cel "result.url", text: Open the draft }
                                 inputs:
@@ -547,7 +547,7 @@ pages:
                                   kind: Ui.Action
                                   inputModel: !ref UploadRequest
                                   outputModel: !ref UploadAnswer
-                                  source: { path: /api/upload }
+                                  request: { target: /api/upload }
                                   label: Upload
                                   concurrency: serial
                                   result:
@@ -622,7 +622,7 @@ pages:
                         kind: Ui.Action
                         inputModel: !ref RemindRequest
                         outputModel: !ref RemindAnswer
-                        source: { path: /api/projects/remind }
+                        request: { target: /api/projects/remind }
                         label: Remind
                         result:
                           type: text

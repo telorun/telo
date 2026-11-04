@@ -1,0 +1,5 @@
+modules:
+  modules/ui-react-radix: Added
+body: Styles the chat-* parts the ui-react renderer draws for a chat node — the
+  transcript, tool and approval cards, attachments and the message box — with the
+  existing design tokens.

@@ -86,7 +86,7 @@ export function CalendarLayout(props: LayoutProps) {
           ))}
         </div>
       </div>
-      <div data-telo-part="calendar-grid" style={view === "day" ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}>
+      <div data-telo-part="calendar-grid" data-embedded={props.props.embedded ? "true" : undefined} style={view === "day" ? { gridTemplateColumns: "minmax(0, 1fr)" } : undefined}>
         {view !== "day" &&
           Array.from({ length: 7 }, (_, index) => (
             <div key={`w${index}`} data-telo-part="calendar-weekday">

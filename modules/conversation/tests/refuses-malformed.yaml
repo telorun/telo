@@ -1,0 +1,47 @@
+# A value outside a shape is refused where it is written: an operation the
+# contract does not list, an event of a type the union does not hold, and a
+# message sent beside approvals.
+kind: Telo.Application
+metadata: { name: ConversationRefusesMalformedTest, version: 1.0.0 }
+imports: { Run: ../../run, Assert: ../../assert }
+targets:
+  - !ref unknownOperation
+  - !ref unknownEventType
+  - !ref entryWithoutSiblings
+  - !ref emptyParent
+  - !ref approvalsWithMessage
+---
+kind: Assert.Manifest
+metadata: { name: unknownOperation }
+source: ./__fixtures__/unknown-operation/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH }
+---
+kind: Assert.Manifest
+metadata: { name: unknownEventType }
+source: ./__fixtures__/unknown-event-type/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH }
+---
+kind: Assert.Manifest
+metadata: { name: entryWithoutSiblings }
+source: ./__fixtures__/entry-without-siblings/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH }
+---
+kind: Assert.Manifest
+metadata: { name: emptyParent }
+source: ./__fixtures__/empty-parent/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH }
+---
+kind: Assert.Manifest
+metadata: { name: approvalsWithMessage }
+source: ./__fixtures__/approvals-with-message/telo.yaml
+expect:
+  errors:
+    - { code: CONTRACT_INPUTS_MISMATCH }

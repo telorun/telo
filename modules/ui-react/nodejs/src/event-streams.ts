@@ -25,7 +25,7 @@ export class EventStreams {
           "cache-control": "no-cache",
           "x-accel-buffering": "no",
         });
-        response.write(sseFrame({ type: "hello", bundle }, this.owner));
+        response.write(sseFrame({ event: "hello", data: { bundle } }, this.owner));
         const keepalive = setInterval(
           () => response.write(sseComment("keepalive", this.owner)),
           this.keepaliveMs,
