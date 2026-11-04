@@ -1,0 +1,21 @@
+kind: Telo.Application
+metadata: { name: RefusedInputs, version: 1.0.0 }
+imports: { Crypto: ../../ }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: hmacWithoutExpected
+    invoke: { kind: Crypto.Hmac }
+    inputs: { op: verify, key: k, input: x }
+  - name: passwordWithoutHash
+    invoke: { kind: Crypto.PasswordHash }
+    inputs: { op: verify, password: x }
+  - name: tooLong
+    invoke: { kind: Crypto.DeriveKey }
+    inputs: { secret: x, length: 8161 }
+  - name: scryptCost
+    invoke: { kind: Crypto.PasswordHash, algorithm: scrypt, parameters: { scrypt: { cost: 1000 } } }
+    inputs: { op: hash, password: x }

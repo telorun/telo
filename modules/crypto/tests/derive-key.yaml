@@ -1,0 +1,38 @@
+kind: Telo.Application
+metadata:
+  name: CryptoDeriveKeyTest
+  version: 1.0.0
+  description: |
+    Crypto.DeriveKey matches RFC 5869 test case 3 (HKDF-SHA-256, empty salt and
+    info), and a different info yields a different key.
+imports: { Crypto: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  # IKM is 22 octets of 0x0b, which is also the UTF-8 text of 22 U+000B.
+  - name: rfc5869
+    invoke: { kind: Crypto.DeriveKey }
+    inputs:
+      secret: "\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b\x0b"
+      length: 42
+      encoding: hex
+  - name: purposeA
+    invoke: { kind: Crypto.DeriveKey }
+    inputs: { secret: master, info: a }
+  - name: purposeB
+    invoke: { kind: Crypto.DeriveKey }
+    inputs: { secret: master, info: b }
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        rfc5869: !cel "steps.rfc5869.result.key"
+        independent: !cel "steps.purposeA.result.key != steps.purposeB.result.key"
+        defaultLength: !cel "size(steps.purposeA.result.key)"
+      expected:
+        rfc5869: 8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8
+        independent: true
+        defaultLength: 43

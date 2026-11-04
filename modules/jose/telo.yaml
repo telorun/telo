@@ -1,0 +1,535 @@
+kind: Telo.Library
+metadata:
+  name: Jose
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    JSON Web Tokens and keys for applications: sign and verify JWTs, keep signing
+    keys in a durable store with scheduled rotation that converges across
+    replicas, publish a JWKS, verify against a remote issuer's keys, and seal
+    values such as encrypted cookies with a rotatable secret. Verification returns
+    why a token was refused instead of failing.
+requires:
+  # 0.84.0 first honours `x-telo-sensitive` on contract properties; 0.129.0
+  # (forward-declared) first reads a bounded `Telo.Duration` (`exclusiveMinimum: 0s`).
+  telo: ">=0.129.0"
+imports: { KvStore: ../kv-store, Crypto: ../crypto }
+exports:
+  kinds: [Keys, KeySet, RemoteKeySet, Sign, Verify, Rotate, PublicKeys, Encrypt, Decrypt]
+  # The key-set instance contract and token verification, for sibling
+  # controllers holding a key set through a reference slot.
+  code:
+    - specifier: "@telorun/jose"
+      format: js
+      path: ./nodejs/jose.mjs
+      source: ./nodejs/src/index.ts
+---
+kind: Telo.Abstract
+metadata:
+  name: Keys
+  description: >-
+    A source of keys that verify signed tokens: a local signing key set, or the
+    published keys of another issuer. Verification and key publication read it on
+    every call, so keys that rotate are picked up without a restart.
+capability: Telo.Provider
+---
+kind: Telo.Definition
+metadata:
+  name: KeySet
+  description: >-
+    Keys this application signs tokens with. Managed: generated on first use, kept
+    as one record in a durable store with private keys encrypted, rotated on
+    demand, and retired after a grace period, consistently across replicas.
+    Static: JWKs supplied from secrets, with no store and no rotation.
+capability: Telo.Provider
+extends: Self.Keys
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#KeySetController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    algorithm:
+      title: Algorithm
+      description: >-
+        The algorithm new tokens are signed with. An HS256 set publishes no
+        public keys. On a managed set a change takes effect at the next rotation.
+      type: string
+      enum: [ES256, RS256, EdDSA, HS256]
+      default: ES256
+    store:
+      title: Store
+      description: The durable store holding a managed set's record; omit for a static set.
+      x-telo-ref: { kind: KvStore.Store, use: dependency }
+    name:
+      title: Name
+      description: >-
+        The managed set's identity in the store. Sets sharing a store and a name
+        are one set; never derived from the resource's name.
+      type: string
+      pattern: "^[A-Za-z0-9_.-]+$"
+    wrapKey:
+      title: Wrap key
+      description: >-
+        The secret a managed set's private keys are encrypted under before they are
+        stored; bind it from `secrets:`. Losing or changing it makes the set unusable.
+      type: string
+      minLength: 16
+    rotation:
+      title: Rotation
+      description: When a managed set rotates and how long a replaced key keeps verifying.
+      type: object
+      additionalProperties: false
+      required: [retireAfter]
+      properties:
+        every:
+          title: Every
+          description: >-
+            A rotation without `force` makes a new key only once the current one is
+            this old; omitted, every rotation makes one.
+          x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+        retireAfter:
+          title: Retire after
+          description: >-
+            How long a replaced key keeps verifying. Set it above the longest token
+            lifetime, or tokens signed just before a rotation stop verifying early.
+          x-telo-type: { name: Telo.Duration, minimum: 0s }
+    cacheTtl:
+      title: Cache TTL
+      description: >-
+        How long a managed set reuses the record it read before reading it again;
+        30s when omitted. A token naming a key the copy lacks re-reads at once.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+    keys:
+      title: Keys
+      description: >-
+        A static set's JWKs, usually from `secrets:`. The first key holding private
+        material signs; every key verifies. A key without `kid` gets its RFC 7638
+        thumbprint.
+      type: array
+      minItems: 1
+      items:
+        type: object
+        required: [kty]
+        properties: { kty: { enum: [EC, RSA, OKP, oct] } }
+  # Each managed field needs the others, and none appears on a static set.
+  dependencies:
+    store: [name, wrapKey, rotation]
+    name: [store]
+    wrapKey: [store]
+    rotation: [store]
+    cacheTtl: [store]
+  x-telo-resource-rules:
+    - condition: !cel "has(self.store) != has(self.keys)"
+      code: JOSE_KEYSET_FORM
+      message: >-
+        must declare either `store` (a managed, rotating set) or `keys` (a static
+        set), not both and not neither.
+---
+kind: Telo.Definition
+metadata:
+  name: RemoteKeySet
+  description: >-
+    Another issuer's published signing keys, fetched from a JWKS URL or found
+    through the issuer's discovery document, cached, and refetched early when a
+    token names a key the cache lacks. An unreachable key source fails the
+    verification rather than refusing the token.
+capability: Telo.Provider
+extends: Self.Keys
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#RemoteKeySetController]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    url:
+      title: URL
+      description: The JWKS document's address; http or https.
+      x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
+    issuer:
+      title: Issuer
+      description: >-
+        The issuer identifier, an http or https URL; its OpenID Connect or RFC 8414
+        metadata document names the JWKS (`jwks_uri`), and must declare this exact
+        issuer.
+      x-telo-type: { name: Telo.Url, scheme: { enum: [http, https] } }
+    cacheTtl:
+      title: Cache TTL
+      description: How long fetched keys are used before they are fetched again; 10m when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+    cooldown:
+      title: Cooldown
+      description: >-
+        The least time between an early refetch for an unknown key and the last
+        fetch; 30s when omitted.
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+    timeout:
+      title: Timeout
+      description: How long one fetch may take; 10s when omitted.
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+  x-telo-resource-rules:
+    - condition: !cel "has(self.url) != has(self.issuer)"
+      code: JOSE_REMOTE_KEYSET_SOURCE
+      message: >-
+        must declare either `url` (a JWKS) or `issuer` (discovered through its
+        metadata document), not both and not neither.
+---
+kind: Telo.Definition
+metadata:
+  name: Sign
+  description: >-
+    Issues a signed JWT with the current key of a key set: given claims, an
+    optional subject, audience, lifetime and token id, it returns the token, the
+    id of the key that signed it and when it expires.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#SignController]
+throws:
+  codes:
+    ERR_JOSE_KEYSET_UNAVAILABLE:
+      description: >-
+        The key set cannot be read: its store failed, its keys will not unwrap
+        under `wrapKey`, or a static set holds no private key.
+schema:
+  type: object
+  additionalProperties: false
+  required: [keys]
+  properties:
+    keys:
+      title: Keys
+      description: The key set tokens are signed with.
+      x-telo-ref: { kind: Self.KeySet, use: dependency }
+    type:
+      title: Type
+      description: The `typ` header, naming what the token is for.
+      type: string
+      enum: [JWT, at+jwt, logout+jwt]
+      default: JWT
+    issuer: { title: Issuer, description: The `iss` claim., type: string, x-telo-eval: compile }
+    audience:
+      title: Audience
+      description: The `aud` claim, unless a call gives its own.
+      x-telo-eval: compile
+      anyOf:
+        - { type: string }
+        - { type: array, items: { type: string } }
+    expiresIn:
+      title: Expires in
+      description: The token lifetime, unless a call gives its own; 15m when omitted.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    notBefore:
+      title: Not before
+      description: How long after issue the token becomes valid (`nbf`); valid at once when omitted.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      claims:
+        title: Claims
+        description: Claims to carry. The signer always sets `iat` and `exp`, and `iss`, `aud`, `sub`, `nbf` and `jti` set by the resource or the call replace the same names here.
+        type: object
+        additionalProperties: true
+      subject: { title: Subject, description: The `sub` claim., type: string }
+      audience:
+        title: Audience
+        description: The `aud` claim for this token.
+        anyOf:
+          - { type: string }
+          - { type: array, items: { type: string } }
+      expiresIn:
+        title: Expires in
+        description: This token's lifetime.
+        x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+      jwtId:
+        title: JWT ID
+        description: The `jti` claim; `auto` generates a random one.
+        type: string
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [token, kid, expiresAt]
+    properties:
+      token: { title: Token, description: The signed JWT., type: string, x-telo-sensitive: true }
+      kid: { title: Key ID, description: The id of the key that signed it., type: string }
+      expiresAt: { title: Expires at, description: The `exp` claim., x-telo-type: Telo.Timestamp }
+---
+kind: Telo.Definition
+metadata:
+  name: Verify
+  description: >-
+    Checks a JWT's signature and claims against a set of keys and returns either
+    its payload and header or the reason it was refused — malformed, algorithm,
+    unknown key, signature, expired, not yet valid, issuer, audience, type or
+    missing claims — so a caller can answer 401 or branch.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#VerifyController]
+throws:
+  codes:
+    ERR_JOSE_REMOTE_KEYS_UNREACHABLE:
+      description: A remote key set could not be fetched, so the token could not be judged.
+    ERR_JOSE_KEYSET_UNAVAILABLE: { description: A local key set's store failed or its keys will not unwrap. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [keys, algorithms]
+  properties:
+    keys:
+      title: Keys
+      description: The keys tokens are verified against.
+      x-telo-ref: { kind: Self.Keys, use: dependency }
+    algorithms:
+      title: Algorithms
+      description: >-
+        The only signature algorithms accepted. Required: the algorithm is never
+        taken from the token, and `none` is never accepted.
+      type: array
+      minItems: 1
+      uniqueItems: true
+      items:
+        type: string
+        enum: [ES256, ES384, ES512, RS256, RS384, RS512, PS256, PS384, PS512, EdDSA, HS256, HS384, HS512]
+    issuer:
+      title: Issuer
+      description: The `iss` the token must carry, or a list of accepted issuers.
+      x-telo-eval: compile
+      anyOf:
+        - { type: string }
+        - { type: array, items: { type: string } }
+    audience:
+      title: Audience
+      description: An audience the token's `aud` must include, unless a call gives its own.
+      x-telo-eval: compile
+      anyOf:
+        - { type: string }
+        - { type: array, items: { type: string } }
+    type:
+      title: Type
+      description: The `typ` header the token must carry (`at+jwt`); unchecked when omitted.
+      type: string
+    clockTolerance:
+      title: Clock tolerance
+      description: Leeway for `exp`, `nbf` and `iat` against this host's clock.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, minimum: 0s }
+    maxTokenAge:
+      title: Max token age
+      description: The oldest `iat` accepted; a token without `iat` is then refused for its claims.
+      x-telo-eval: compile
+      x-telo-type: { name: Telo.Duration, exclusiveMinimum: 0s }
+    requiredClaims:
+      title: Required claims
+      description: Claims the token must carry.
+      type: array
+      items: { type: string }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [token]
+    properties:
+      token: { title: Token, description: The compact JWT., type: string, x-telo-sensitive: true }
+      audience:
+        title: Audience
+        description: An audience the token must be for, replacing the configured one.
+        anyOf:
+          - { type: string }
+          - { type: array, items: { type: string } }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [valid]
+    properties:
+      valid: { title: Valid, description: Whether the token was accepted., type: boolean }
+      payload: { title: Payload, description: The token's claims, when valid., type: object }
+      header: { title: Header, description: The token's protected header, when valid., type: object }
+      reason:
+        title: Reason
+        description: Why the token was refused, when not valid.
+        type: string
+        enum: [malformed, algorithm, unknownKey, signature, expired, notBefore, issuer, audience, type, claims]
+---
+kind: Telo.Definition
+metadata:
+  name: Rotate
+  description: >-
+    Rotates a managed signing key set: makes a new key current when one is due or
+    forced, keeps the replaced key verifying for its grace period and removes keys
+    past it. Concurrent rotations from several replicas make one new key. Run it
+    on a schedule.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#RotateController]
+throws:
+  codes:
+    ERR_JOSE_KEYSET_UNAVAILABLE: { description: "The store failed, or the set is static and cannot rotate." }
+schema:
+  type: object
+  additionalProperties: false
+  required: [keys]
+  properties:
+    keys:
+      title: Keys
+      description: The managed key set to rotate.
+      x-telo-ref: { kind: Self.KeySet, use: dependency }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      force:
+        title: Force
+        description: Make a new key current even if the current one is younger than `rotation.every`.
+        type: boolean
+        default: false
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [rotated, currentKid, retiredKids]
+    properties:
+      rotated:
+        title: Rotated
+        description: Whether this call made a new key current; false when none was due or another writer rotated first.
+        type: boolean
+      currentKid: { title: Current key ID, type: string }
+      retiredKids:
+        title: Retired key IDs
+        description: Keys this call removed because their grace period had passed.
+        type: array
+        items: { type: string }
+---
+kind: Telo.Definition
+metadata:
+  name: PublicKeys
+  description: >-
+    Returns the public JWKS of a key set — the current key and every key still in
+    its grace period — for serving at `/.well-known/jwks.json`. Read on every call,
+    so a rotated key appears without a restart.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#PublicKeysController]
+throws:
+  codes:
+    ERR_JOSE_KEYSET_UNAVAILABLE: { description: A local key set's store failed. }
+    ERR_JOSE_REMOTE_KEYS_UNREACHABLE: { description: A remote key set could not be fetched. }
+schema:
+  type: object
+  additionalProperties: false
+  required: [keys]
+  properties:
+    keys:
+      title: Keys
+      description: The keys to publish.
+      x-telo-ref: { kind: Self.Keys, use: dependency }
+# Open, so a route can mount it without an `inputs:` map (it is then handed the request).
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, description: Takes no inputs; whatever is given is ignored. }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [keys]
+    properties:
+      keys:
+        title: Keys
+        description: The public JWKs; empty for a symmetric set.
+        type: array
+        items: { type: object }
+---
+kind: Telo.Definition
+metadata:
+  name: Encrypt
+  description: >-
+    Seals a value into an encrypted, tamper-proof token (JWE, AES-256-GCM) under a
+    key derived from a secret, for stateless encrypted cookies and pending records
+    held by a client.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#EncryptController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [secret]
+  properties:
+    secret:
+      title: Secret
+      description: The secret the sealing key is derived from; bind it from `secrets:`.
+      type: string
+      minLength: 16
+      x-telo-eval: compile
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [payload]
+    properties:
+      payload: { title: Payload, description: The value to seal., x-telo-sensitive: true }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [token]
+    properties:
+      token: { title: Token, description: The sealed value., type: string, x-telo-sensitive: true }
+---
+kind: Telo.Definition
+metadata:
+  name: Decrypt
+  description: >-
+    Opens a token sealed under a secret, trying the current secret and any previous
+    ones so a secret can be rotated without invalidating what is already issued.
+    Returns the value, or why it was refused: malformed, unknown key, or failed
+    decryption.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/jose.mjs&local_path=./nodejs/src/index.ts#DecryptController]
+schema:
+  type: object
+  additionalProperties: false
+  required: [secret]
+  properties:
+    secret:
+      title: Secret
+      description: The secret new tokens are sealed under; bind it from `secrets:`.
+      type: string
+      minLength: 16
+      x-telo-eval: compile
+    previousSecrets:
+      title: Previous secrets
+      description: Secrets tokens may still be sealed under; used to open, never to seal.
+      type: array
+      items: { type: string, minLength: 16 }
+      x-telo-eval: compile
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [token]
+    properties:
+      token: { title: Token, description: The sealed value., type: string, x-telo-sensitive: true }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [valid]
+    properties:
+      valid: { title: Valid, description: Whether the token opened., type: boolean }
+      payload: { title: Payload, description: The sealed value, when valid., x-telo-sensitive: true }
+      reason:
+        title: Reason
+        description: Why the token was refused, when not valid.
+        type: string
+        enum: [malformed, unknownKey, decryption]

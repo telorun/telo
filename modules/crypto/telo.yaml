@@ -1,0 +1,359 @@
+kind: Telo.Library
+metadata:
+  name: Crypto
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Security]
+  description: >-
+    Cryptographic building blocks for applications: unguessable random tokens and
+    API keys, SHA-2 digests, HMAC signing and verification, password hashing with
+    argon2id, bcrypt, scrypt or PBKDF2 (pepper support, upgrade of weaker stored
+    hashes on login, verification of imported hashes), constant-time comparison
+    and HKDF key derivation.
+requires:
+  # 0.84.0 is the first release honouring `x-telo-sensitive` on contract
+  # properties; an older runtime ignores it and puts passwords and keys on the
+  # debug wire, so the floor guards against the silent leak.
+  telo: ">=0.84.0"
+exports:
+  kinds: [Random, Digest, Hmac, PasswordHash, Compare, DeriveKey]
+  # The same operations as functions, for sibling controllers to call in-process.
+  code:
+    - specifier: "@telorun/crypto"
+      format: js
+      path: ./nodejs/crypto.mjs
+      source: ./nodejs/src/index.ts
+---
+kind: Telo.Definition
+metadata:
+  name: Random
+  description: >-
+    Generates cryptographically secure random bytes encoded as hex, base64url or
+    base64: session ids, API keys, CSRF tokens, nonces. The value is sensitive and
+    kept out of logs and traces.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crypto.mjs&local_path=./nodejs/src/index.ts#RandomController]
+schema: { type: object, additionalProperties: false }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      bytes:
+        title: Bytes
+        description: Number of random bytes, from 1 to 65536.
+        type: integer
+        minimum: 1
+        maximum: 65536
+        default: 32
+      encoding:
+        title: Encoding
+        description: How the bytes are written as text.
+        type: string
+        enum: [hex, base64url, base64]
+        default: base64url
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [value]
+    properties:
+      value: { title: Value, description: The encoded random bytes., type: string, x-telo-sensitive: true }
+---
+kind: Telo.Definition
+metadata:
+  name: Digest
+  description: >-
+    Computes the SHA-256, SHA-384 or SHA-512 digest of a string (its UTF-8 bytes)
+    or of bytes, written as hex, base64url or base64. For fingerprints and
+    checksums, not for passwords.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crypto.mjs&local_path=./nodejs/src/index.ts#DigestController]
+schema: { type: object, additionalProperties: false }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [input]
+    properties:
+      algorithm: { title: Algorithm, type: string, enum: [sha256, sha384, sha512], default: sha256 }
+      input:
+        title: Input
+        description: The text or bytes to digest.
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      encoding: { title: Encoding, type: string, enum: [hex, base64url, base64], default: hex }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [value]
+    properties: { value: { title: Value, description: The encoded digest., type: string } }
+---
+kind: Telo.Definition
+metadata:
+  name: Hmac
+  description: >-
+    Signs text or bytes with a secret key (HMAC-SHA-2), or verifies a signature in
+    constant time. A signature that does not decode in the stated encoding is
+    reported as not valid rather than failing.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crypto.mjs&local_path=./nodejs/src/index.ts#HmacController]
+schema: { type: object, additionalProperties: false }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [op, key, input]
+    if: { properties: { op: { const: verify } } }
+    then: { required: [expected] }
+    properties:
+      op:
+        title: Operation
+        description: "`sign` returns the signature; `verify` checks `expected` against it."
+        type: string
+        enum: [sign, verify]
+      algorithm: { title: Algorithm, type: string, enum: [sha256, sha384, sha512], default: sha256 }
+      key:
+        title: Key
+        description: The secret key.
+        x-telo-sensitive: true
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      input:
+        title: Input
+        description: The text or bytes to sign.
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      encoding:
+        title: Encoding
+        description: How the signature is written, and how `expected` is read.
+        type: string
+        enum: [hex, base64url, base64]
+        default: hex
+      expected:
+        title: Expected
+        description: The signature to check; required for `verify`.
+        type: string
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      value: { title: Value, description: The signature, for `sign`., type: string }
+      valid: { title: Valid, description: Whether `expected` matched, for `verify`., type: boolean }
+---
+kind: Telo.Definition
+metadata:
+  name: PasswordHash
+  description: >-
+    Hashes a password with argon2id (default), bcrypt, scrypt or PBKDF2 using
+    current recommended parameters, and verifies a password against a stored hash
+    in any of those formats, including hashes imported from elsewhere. A
+    successful verification reports whether the stored hash is weaker than the
+    configured one, so it can be re-hashed at login. An optional pepper is mixed
+    in before hashing.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crypto.mjs&local_path=./nodejs/src/index.ts#PasswordHashController]
+throws:
+  codes:
+    ERR_CRYPTO_UNSUPPORTED_HASH: { description: The stored hash is in an encoding the module does not know. }
+    ERR_PASSWORD_TOO_LONG:
+      description: A bcrypt password is longer than 72 bytes, which bcrypt would silently truncate.
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    algorithm:
+      title: Algorithm
+      description: The algorithm new hashes are made with.
+      type: string
+      enum: [argon2id, bcrypt, scrypt, pbkdf2]
+      default: argon2id
+    parameters:
+      title: Parameters
+      description: >-
+        Cost parameters of the algorithms; only the block of the configured
+        algorithm is used. Omitted values default to the OWASP recommendations.
+      type: object
+      additionalProperties: false
+      properties:
+        argon2id:
+          type: object
+          additionalProperties: false
+          properties:
+            memoryKiB: { type: integer, minimum: 8, default: 19456 }
+            iterations: { type: integer, minimum: 1, default: 2 }
+            parallelism: { type: integer, minimum: 1, default: 1 }
+        bcrypt:
+          type: object
+          additionalProperties: false
+          properties:
+            cost: { type: integer, minimum: 4, maximum: 31, default: 12 }
+        scrypt:
+          type: object
+          additionalProperties: false
+          properties:
+            cost: { type: integer, enum: [2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576, 2097152, 4194304, 8388608, 16777216, 33554432, 67108864, 134217728, 268435456, 536870912, 1073741824], default: 131072, description: The CPU/memory cost N; a power of two. }
+            blockSize: { type: integer, minimum: 1, default: 8 }
+            parallelization: { type: integer, minimum: 1, default: 1 }
+        pbkdf2:
+          type: object
+          additionalProperties: false
+          properties:
+            iterations: { type: integer, minimum: 1, default: 600000, description: Iterations over SHA-256. }
+    pepper:
+      title: Pepper
+      description: >-
+        A secret mixed into every password (HMAC-SHA-256) before hashing; bind it
+        from `secrets:`. Changing it invalidates every stored hash.
+      x-telo-eval: compile
+      type: string
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [op, password]
+    if: { properties: { op: { const: verify } } }
+    then: { required: [hash] }
+    properties:
+      op:
+        title: Operation
+        description: "`hash` makes a new hash; `verify` checks `password` against `hash`."
+        type: string
+        enum: [hash, verify]
+      password:
+        title: Password
+        x-telo-sensitive: true
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      hash:
+        title: Hash
+        description: The stored hash to verify against; required for `verify`.
+        type: string
+        x-telo-sensitive: true
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    properties:
+      hash: { title: Hash, description: The new hash, for `hash`., type: string, x-telo-sensitive: true }
+      valid: { title: Valid, description: Whether the password matches, for `verify`., type: boolean }
+      rehash:
+        title: Rehash
+        description: >-
+          For `verify`: true when the password matched but the stored hash is a
+          different algorithm or weaker parameters than configured.
+        type: boolean
+---
+kind: Telo.Definition
+metadata:
+  name: Compare
+  description: >-
+    Compares two secrets (tokens, signatures, API keys) in constant time, so the
+    comparison does not leak how much of them matched or their lengths. CEL's ==
+    is not constant-time.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crypto.mjs&local_path=./nodejs/src/index.ts#CompareController]
+schema: { type: object, additionalProperties: false }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [a, b]
+    properties:
+      a:
+        title: A
+        x-telo-sensitive: true
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      b:
+        title: B
+        x-telo-sensitive: true
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [equal]
+    properties: { equal: { title: Equal, type: boolean } }
+---
+kind: Telo.Definition
+metadata:
+  name: DeriveKey
+  description: >-
+    Derives one or more independent keys from a master secret with HKDF (RFC
+    5869): give each purpose its own salt and info and get a key of the requested
+    length, as hex, base64url or base64.
+capability: Telo.Invocable
+controllers: [pkg:telo/local/js?path=./nodejs/crypto.mjs&local_path=./nodejs/src/index.ts#DeriveKeyController]
+schema: { type: object, additionalProperties: false }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [secret]
+    allOf:
+      - if: { properties: { hash: { const: sha384 } }, required: [hash] }
+        then: { properties: { length: { maximum: 12240 } } }
+      - if: { properties: { hash: { const: sha512 } }, required: [hash] }
+        then: { properties: { length: { maximum: 16320 } } }
+      - if: { not: { required: [hash] } }
+        then: { properties: { length: { maximum: 8160 } } }
+      - if: { properties: { hash: { const: sha256 } }, required: [hash] }
+        then: { properties: { length: { maximum: 8160 } } }
+    properties:
+      secret:
+        title: Secret
+        description: The input keying material.
+        x-telo-sensitive: true
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      salt:
+        title: Salt
+        description: Optional salt; empty when omitted.
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      info:
+        title: Info
+        description: Context label binding the key to its purpose; empty when omitted.
+        anyOf:
+          - { type: string }
+          - { x-telo-type: Telo.Bytes }
+      length:
+        title: Length
+        description: Key length in bytes; at most 255 times the hash size (8160 for sha256, 12240 for sha384, 16320 for sha512).
+        type: integer
+        minimum: 1
+        default: 32
+      hash: { title: Hash, type: string, enum: [sha256, sha384, sha512], default: sha256 }
+      encoding: { title: Encoding, type: string, enum: [hex, base64url, base64], default: base64url }
+outputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    additionalProperties: false
+    required: [key]
+    properties:
+      key: { title: Key, description: The derived key., type: string, x-telo-sensitive: true }

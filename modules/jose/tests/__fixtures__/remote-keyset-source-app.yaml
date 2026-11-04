@@ -1,0 +1,5 @@
+# Consumes the library beside it; the remote key set's refusal at creation is
+# what remains of its check.
+kind: Telo.Application
+metadata: { name: ConsumesRemoteKeySetSource }
+imports: { Lib: ./remote-keyset-source }

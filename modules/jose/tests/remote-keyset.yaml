@@ -1,0 +1,130 @@
+kind: Telo.Application
+metadata:
+  name: JoseRemoteKeySetTest
+  version: 1.0.0
+  description: |
+    An issuer serves its key set's JWKS over HTTP; a remote key set pointed at the
+    JWKS URL, and one finding it through the issuer's discovery document, verify
+    its tokens. After the issuer rotates, a token under the new kid makes the
+    remote set refetch and verify it. Pointed at a closed port, verification
+    throws ERR_JOSE_REMOTE_KEYS_UNREACHABLE.
+imports:
+  Jose: ../
+  KvStoreMemory: ../../kv-store-memory
+  Http: ../../http-server
+  Assert: ../../assert
+targets:
+  - !ref test
+---
+kind: Jose.KeySet
+metadata: { name: issuerKeys }
+store: { kind: KvStoreMemory.Store }
+name: issuer
+wrapKey: test-wrap-key-0123456789
+rotation: { retireAfter: 1h }
+---
+kind: Jose.Sign
+metadata: { name: sign }
+keys: !ref issuerKeys
+issuer: http://127.0.0.1:9471
+---
+kind: Http.Api
+metadata: { name: wellKnown }
+routes:
+  - request: { path: /.well-known/jwks.json, method: GET }
+    handler: { kind: Jose.PublicKeys, keys: !ref issuerKeys }
+    returns:
+      - status: 200
+        content: { application/json: { body: !cel "result" } }
+    catches:
+      - { status: 503, content: { application/problem+json: {} } }
+  # The current key preceded by a key of the same id that cannot be imported.
+  - request: { path: /broken-jwks.json, method: GET }
+    handler: { kind: Jose.PublicKeys, keys: !ref issuerKeys }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: !cel "{'keys': [{'kty': 'EC', 'crv': 'P-256', 'x': 'AAAA', 'y': 'AAAA', 'kid': result.keys[0].kid}] + result.keys}"
+    catches:
+      - { status: 503, content: { application/problem+json: {} } }
+  - request: { path: /.well-known/openid-configuration, method: GET }
+    returns:
+      - status: 200
+        content:
+          application/json:
+            body: { issuer: http://127.0.0.1:9471, jwks_uri: http://127.0.0.1:9471/.well-known/jwks.json }
+---
+kind: Jose.Verify
+metadata: { name: verifyByUrl }
+keys:
+  kind: Jose.RemoteKeySet
+  url: http://127.0.0.1:9471/.well-known/jwks.json
+  cooldown: 0s
+algorithms: [ES256]
+issuer: http://127.0.0.1:9471
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Http.Server
+    metadata: { name: server }
+    listen: { address: 127.0.0.1, port: 9471 }
+    mounts:
+      - path: /
+        mount: !ref wellKnown
+targets:
+  - !ref server
+steps:
+  - name: first
+    invoke: !ref sign
+  - name: firstByUrl
+    invoke: !ref verifyByUrl
+    inputs: { token: !cel "steps.first.result.token" }
+  - name: firstWithBrokenKey
+    invoke:
+      kind: Jose.Verify
+      keys: { kind: Jose.RemoteKeySet, url: "http://127.0.0.1:9471/broken-jwks.json" }
+      algorithms: [ES256]
+    inputs: { token: !cel "steps.first.result.token" }
+  - name: firstByDiscovery
+    invoke:
+      kind: Jose.Verify
+      keys: { kind: Jose.RemoteKeySet, issuer: http://127.0.0.1:9471 }
+      algorithms: [ES256]
+    inputs: { token: !cel "steps.first.result.token" }
+  - name: rotated
+    invoke: { kind: Jose.Rotate, keys: !ref issuerKeys }
+  - name: second
+    invoke: !ref sign
+  - name: secondByUrl
+    invoke: !ref verifyByUrl
+    inputs: { token: !cel "steps.second.result.token" }
+  - name: closedPort
+    try:
+      - name: unreachable
+        invoke:
+          kind: Jose.Verify
+          keys: { kind: Jose.RemoteKeySet, url: http://127.0.0.1:9472/.well-known/jwks.json, timeout: 2s }
+          algorithms: [ES256]
+        inputs: { token: !cel "steps.first.result.token" }
+    catch:
+      - name: caught
+        value: !cel "error.code"
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        firstByUrl: !cel "steps.firstByUrl.result.valid"
+        firstWithBrokenKey: !cel "steps.firstWithBrokenKey.result.valid"
+        firstByDiscovery: !cel "steps.firstByDiscovery.result.valid"
+        newKid: !cel "steps.second.result.kid != steps.first.result.kid"
+        secondByUrl: !cel "steps.secondByUrl.result.valid"
+        closedPort: !cel "steps.caught.result"
+      expected:
+        firstByUrl: true
+        firstWithBrokenKey: true
+        firstByDiscovery: true
+        newKid: true
+        secondByUrl: true
+        closedPort: ERR_JOSE_REMOTE_KEYS_UNREACHABLE

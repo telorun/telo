@@ -1,0 +1,12 @@
+# A key set naming neither a store nor keys: refused here by `telo check`, and at
+# creation for an importer whose check does not reach this library's internals.
+kind: Telo.Library
+metadata:
+  name: KeySetFormFixture
+  version: 1.0.0
+  description: Fixture declaring a key set with neither a store nor keys.
+imports: { Jose: ../../.. }
+---
+kind: Jose.KeySet
+metadata: { name: keys }
+algorithm: ES256

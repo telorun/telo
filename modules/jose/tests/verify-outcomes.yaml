@@ -1,0 +1,138 @@
+kind: Telo.Application
+metadata:
+  name: JoseVerifyOutcomesTest
+  version: 1.0.0
+  description: |
+    Jose.Verify returns every refusal by name instead of failing: malformed, an
+    algorithm outside the configured list (`alg: none`, and an HS256 token against
+    an asymmetric key), an unknown key, a bad signature, an expired token, one not
+    yet valid, a wrong issuer, a wrong audience, a wrong type and a missing claim.
+    An HS256 token is never checked against an asymmetric set's public key: with
+    HS256 allowed it finds no key at all.
+include: [./__fixtures__/static-key-sets.yaml]
+imports: { Jose: ../, Assert: ../../assert }
+targets:
+  - !ref test
+---
+kind: Jose.Verify
+metadata: { name: verify }
+keys: !ref hsKeys
+algorithms: [HS256]
+issuer: https://issuer.test
+audience: api
+type: JWT
+requiredClaims: [role]
+---
+kind: Jose.Sign
+metadata: { name: issue }
+keys: !ref hsKeys
+issuer: https://issuer.test
+audience: api
+---
+kind: Telo.Sequence
+metadata: { name: test }
+steps:
+  - name: good
+    invoke: !ref issue
+    inputs: { subject: alice, claims: { role: admin } }
+  - name: accepted
+    invoke: !ref verify
+    inputs: { token: !cel "steps.good.result.token" }
+  - name: malformed
+    invoke: !ref verify
+    inputs: { token: not-a-token }
+  # `{"alg":"none"}` over `{"sub":"alice"}`, unsigned.
+  - name: unsigned
+    invoke: !ref verify
+    inputs: { token: eyJhbGciOiJub25lIn0.eyJzdWIiOiJhbGljZSJ9. }
+  - name: hsAgainstEs
+    invoke: { kind: Jose.Verify, keys: !ref esKeys, algorithms: [ES256] }
+    inputs: { token: !cel "steps.good.result.token" }
+  - name: hsAgainstEsAllowed
+    invoke: { kind: Jose.Verify, keys: !ref esKeys, algorithms: [ES256, HS256] }
+    inputs: { token: !cel "steps.good.result.token" }
+  - name: foreignKid
+    invoke:
+      kind: Jose.Sign
+      # A kid no verifying set holds.
+      keys: { kind: Jose.KeySet, algorithm: HS256, keys: [{ kty: oct, kid: k2, k: YW5vdGhlci1rZXktd2l0aC1hbm90aGVyLWtpZC0xMjM0NTY }] }
+      issuer: https://issuer.test
+      audience: api
+    inputs: { claims: { role: admin } }
+  - name: unknownKey
+    invoke: !ref verify
+    inputs: { token: !cel "steps.foreignKid.result.token" }
+  - name: forged
+    invoke:
+      kind: Jose.Sign
+      # The same kid as `hsKeys` over a different secret: known key, failing signature.
+      keys: { kind: Jose.KeySet, algorithm: HS256, keys: [{ kty: oct, kid: k1, k: c2FtZS1raWQtYnV0LWEtZGlmZmVyZW50LXNlY3JldC0xMjM }] }
+      issuer: https://issuer.test
+      audience: api
+    inputs: { claims: { role: admin } }
+  - name: signature
+    invoke: !ref verify
+    inputs: { token: !cel "steps.forged.result.token" }
+  # Signed under `hsKeys` with `exp` an hour in the past.
+  - name: expired
+    invoke: !ref verify
+    inputs:
+      token: eyJhbGciOiJIUzI1NiIsImtpZCI6ImsxIiwidHlwIjoiSldUIn0.eyJyb2xlIjoiYWRtaW4iLCJpc3MiOiJodHRwczovL2lzc3Vlci50ZXN0IiwiYXVkIjoiYXBpIiwic3ViIjoiYWxpY2UiLCJpYXQiOjE3OTM3MzUxNzAsImV4cCI6MTc5MzczODc3MH0.NLe3gcUkiMXDVgzUIxlo96WOWEfitNbN2Piu6DwFcGA
+  - name: later
+    invoke: { kind: Jose.Sign, keys: !ref hsKeys, issuer: https://issuer.test, audience: api, notBefore: 1h }
+    inputs: { claims: { role: admin } }
+  - name: notBefore
+    invoke: !ref verify
+    inputs: { token: !cel "steps.later.result.token" }
+  - name: foreignIssuer
+    invoke: { kind: Jose.Sign, keys: !ref hsKeys, issuer: https://elsewhere.test, audience: api }
+    inputs: { claims: { role: admin } }
+  - name: issuer
+    invoke: !ref verify
+    inputs: { token: !cel "steps.foreignIssuer.result.token" }
+  - name: audience
+    invoke: !ref verify
+    inputs: { token: !cel "steps.good.result.token", audience: billing }
+  - name: accessToken
+    invoke: { kind: Jose.Sign, keys: !ref hsKeys, issuer: https://issuer.test, audience: api, type: at+jwt }
+    inputs: { claims: { role: admin } }
+  - name: type
+    invoke: !ref verify
+    inputs: { token: !cel "steps.accessToken.result.token" }
+  - name: roleless
+    invoke: !ref issue
+    inputs: { subject: alice }
+  - name: claims
+    invoke: !ref verify
+    inputs: { token: !cel "steps.roleless.result.token" }
+  - name: verdicts
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual:
+        accepted: !cel "steps.accepted.result.valid"
+        malformed: !cel "steps.malformed.result"
+        unsigned: !cel "steps.unsigned.result"
+        hsAgainstEs: !cel "steps.hsAgainstEs.result"
+        hsAgainstEsAllowed: !cel "steps.hsAgainstEsAllowed.result"
+        unknownKey: !cel "steps.unknownKey.result"
+        signature: !cel "steps.signature.result"
+        expired: !cel "steps.expired.result"
+        notBefore: !cel "steps.notBefore.result"
+        issuer: !cel "steps.issuer.result"
+        audience: !cel "steps.audience.result"
+        type: !cel "steps.type.result"
+        claims: !cel "steps.claims.result"
+      expected:
+        accepted: true
+        malformed: { valid: false, reason: malformed }
+        unsigned: { valid: false, reason: algorithm }
+        hsAgainstEs: { valid: false, reason: algorithm }
+        hsAgainstEsAllowed: { valid: false, reason: unknownKey }
+        unknownKey: { valid: false, reason: unknownKey }
+        signature: { valid: false, reason: signature }
+        expired: { valid: false, reason: expired }
+        notBefore: { valid: false, reason: notBefore }
+        issuer: { valid: false, reason: issuer }
+        audience: { valid: false, reason: audience }
+        type: { valid: false, reason: type }
+        claims: { valid: false, reason: claims }

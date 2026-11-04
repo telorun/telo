@@ -198,6 +198,11 @@ team does not have to build or remember, each described in detail below:
 - **Benchmarks in CI.** `Benchmark.Suite` fails the build on `p99` thresholds.
 - **Interactive apps.** `Channel.SendLine` / `Channel.ReadUntil` drive one step by step, with bounded reads.
 
+### Security
+
+- **Password hashing.** `Crypto.PasswordHash` hashes with argon2id at OWASP parameters (or bcrypt, scrypt, PBKDF2), verifies hashes imported from other systems, and reports `rehash` on a successful login so weaker hashes upgrade as users sign in. Passwords and hashes are redacted from trace payloads; `Crypto.Compare` compares secrets in constant time.
+- **JWTs with rotating keys.** `Jose.Sign` and `Jose.Verify` issue and check tokens; a `Jose.KeySet` over a `KvStore.Store` generates its keys, stores them encrypted, rotates them when `Jose.Rotate` runs on a `Scheduler.Cron` (replicas rotating at once make one new key) and keeps a replaced key verifying for `rotation.retireAfter`. `Jose.PublicKeys` serves the JWKS, `Jose.RemoteKeySet` verifies another issuer's tokens by URL or discovery, `algorithms:` is required so a token never picks its own, and a refused token returns its reason instead of failing.
+
 ### Auth and untrusted input
 
 - **OAuth.** `OAuthClient`: PKCE on, `iss` checked, single-use sign-ins, one refresh per grant at a time, tokens never logged.

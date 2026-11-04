@@ -2822,6 +2822,53 @@ transport as a resource input typed by the abstract
   `Mail.CaptureRead` / `Sms.CaptureRead` (`capture: !ref …`, input `{ to? }`,
   output `{ messages }`) — never a real provider.
 
+## Passwords, tokens and secret comparison — `crypto`
+
+Never hash a password with `Crypto.Digest` or a hand-rolled script, and never
+compare secrets with CEL `==` (it is not constant-time). Use the `crypto` module:
+
+- `Crypto.PasswordHash` — `algorithm: argon2id` (default) | `bcrypt` | `scrypt` |
+  `pbkdf2`, OWASP-default `parameters`, optional `pepper: !cel "secrets.pepper"`.
+  Invoke `{ op: hash, password }` → `{ hash }` to store; `{ op: verify, password,
+  hash }` → `{ valid, rehash }`. When `valid && rehash`, hash the password again
+  and store it: that upgrades weaker or imported hashes on login. An unknown
+  stored format is `ERR_CRYPTO_UNSUPPORTED_HASH`; a bcrypt password over 72 bytes
+  is `ERR_PASSWORD_TOO_LONG`.
+- `Crypto.Compare` `{ a, b }` → `{ equal }` — constant-time, for tokens, API keys
+  and signatures.
+- `Crypto.Random` `{ bytes, encoding }` → `{ value }` for session ids and API keys;
+  `Crypto.Hmac` (`op: sign | verify`), `Crypto.Digest` and `Crypto.DeriveKey` (HKDF).
+
+## JWTs, JWKS and key rotation — `jose`
+
+Never sign or verify a JWT in a script. Use the `jose` module:
+
+- `Jose.KeySet` — the signing keys. Managed: `store: !ref <KvStore.Store>`,
+  `name` (the set's identity in the store), `wrapKey: !cel "secrets.…"`,
+  `rotation: { every?, retireAfter }`, `algorithm: ES256` (default) | `RS256` |
+  `EdDSA` | `HS256`; keys are generated on first use. Static: `keys:` (JWKs from a
+  `type: array` secret) and none of the managed fields. Exactly one of `store` /
+  `keys`.
+- `Jose.Sign` (`keys: !ref <KeySet>`, `issuer`, `audience`, `expiresIn`, `type`)
+  `{ claims?, subject?, audience?, expiresIn?, jwtId? }` → `{ token, kid, expiresAt }`.
+- `Jose.Verify` (`keys: !ref <KeySet or RemoteKeySet>`, `algorithms: [ES256]` —
+  REQUIRED, never omit or widen it to "whatever the token says" — `issuer`,
+  `audience`, `type`, `clockTolerance`, `maxTokenAge`, `requiredClaims`)
+  `{ token }` → `{ valid, payload, header }` or `{ valid: false, reason }`. A
+  refusal is a result, not an error: branch on `result.valid` and answer 401;
+  only `ERR_JOSE_REMOTE_KEYS_UNREACHABLE` / `ERR_JOSE_KEYSET_UNAVAILABLE` throw, so
+  a route's `catches:` maps those to 503.
+- `Jose.RemoteKeySet` (`url:` a JWKS, or `issuer:` for discovery) verifies tokens
+  from another issuer.
+- Serve the JWKS with a route `GET /.well-known/jwks.json` whose handler is
+  `{ kind: Jose.PublicKeys, keys: !ref <KeySet> }` and body `!cel "result"`.
+- Rotate on a schedule: `Scheduler.Cron` with
+  `invoke: { kind: Jose.Rotate, keys: !ref <KeySet> }`; set `rotation.every` so
+  every replica's tick rotates once, and `retireAfter` above the token lifetime.
+- `Jose.Encrypt` / `Jose.Decrypt` (`secret`, `previousSecrets` on Decrypt) seal a
+  value into an encrypted token — a stateless cookie — and open it as
+  `{ valid, payload }` or `{ valid: false, reason }`.
+
 ## Application / Library fields
 
 `metadata.name` becomes the module's canonical kind prefix. It is not a
