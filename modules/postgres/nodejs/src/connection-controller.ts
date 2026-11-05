@@ -2,7 +2,7 @@ import { integerInput, toPlainJson, type Logger, type ResourceContext } from "@t
 import { quoteAnsiIdentifier, SqlConnectionBase, type SqlDialect } from "@telorun/sql";
 import { CompiledQuery, Kysely, PostgresDialect } from "kysely";
 import { Pool, type ClientConfig } from "pg";
-import { NotificationListener, type NotificationHandler } from "./notification-listener.js";
+import { NotificationListener, type ListenOptions, type NotificationHandler } from "./notification-listener.js";
 
 interface PoolConfig {
   min?: number;
@@ -285,7 +285,11 @@ class PostgresConnection extends SqlConnectionBase {
    * reason to hold a second connection open and most applications never take
    * one.
    */
-  async listen(channel: string, onNotify: NotificationHandler): Promise<() => Promise<void>> {
+  async listen(
+    channel: string,
+    onNotify: NotificationHandler,
+    options?: ListenOptions,
+  ): Promise<() => Promise<void>> {
     if (!this.#listener) {
       // Registered at the moment it is created, not reserved as a slot in
       // `init()`: an inverse pairs with a forward action that HAPPENED, and an
@@ -301,7 +305,7 @@ class PostgresConnection extends SqlConnectionBase {
         })
         .perform();
     }
-    return this.#listener!.listen(channel, onNotify);
+    return this.#listener!.listen(channel, onNotify, options);
   }
 
   /** Send a notification. A no-op statement away from `execute`, named here so a

@@ -25,11 +25,23 @@ import { Client, type ClientConfig } from "pg";
  *  from its own store rather than shipping it here. */
 export type NotificationHandler = (payload: string | undefined) => void;
 
+/** Options of a subscription. */
+export interface ListenOptions {
+  /** Called after the connection dropped and was re-established with every
+   *  subscription replayed — notifications sent in between were not delivered. */
+  onReconnect?: () => void;
+}
+
+interface Subscriber {
+  onNotify: NotificationHandler;
+  onReconnect?: () => void;
+}
+
 const INITIAL_RECONNECT_MS = 250;
 const MAX_RECONNECT_MS = 30_000;
 
 export class NotificationListener {
-  readonly #handlers = new Map<string, Set<NotificationHandler>>();
+  readonly #handlers = new Map<string, Set<Subscriber>>();
   #client: Client | undefined;
   #connecting: Promise<Client> | undefined;
   #reconnectDelay = INITIAL_RECONNECT_MS;
@@ -48,16 +60,21 @@ export class NotificationListener {
    * handler, so the statement runs once and the last handler to leave is what
    * issues `UNLISTEN`.
    */
-  async listen(channel: string, onNotify: NotificationHandler): Promise<() => Promise<void>> {
+  async listen(
+    channel: string,
+    onNotify: NotificationHandler,
+    options: ListenOptions = {},
+  ): Promise<() => Promise<void>> {
     if (this.#closed) {
       throw new Error("Postgres.Connection: listen() after the connection was torn down");
     }
     const quoted = quoteChannel(channel);
+    const subscriber: Subscriber = { onNotify, onReconnect: options.onReconnect };
     const existing = this.#handlers.get(channel);
     if (existing) {
-      existing.add(onNotify);
+      existing.add(subscriber);
     } else {
-      this.#handlers.set(channel, new Set([onNotify]));
+      this.#handlers.set(channel, new Set([subscriber]));
       try {
         const client = await this.connect();
         await client.query(`LISTEN ${quoted}`);
@@ -75,7 +92,7 @@ export class NotificationListener {
       released = true;
       const handlers = this.#handlers.get(channel);
       if (!handlers) return;
-      handlers.delete(onNotify);
+      handlers.delete(subscriber);
       if (handlers.size > 0) return;
       this.#handlers.delete(channel);
       // Best-effort: a client that is already gone has no subscription left to
@@ -128,8 +145,8 @@ export class NotificationListener {
     });
     client.on("end", () => this.dropAndReconnect(client));
     client.on("notification", (message) => {
-      for (const handler of this.#handlers.get(message.channel) ?? []) {
-        handler(message.payload === "" ? undefined : (message.payload ?? undefined));
+      for (const { onNotify } of this.#handlers.get(message.channel) ?? []) {
+        onNotify(message.payload === "" ? undefined : (message.payload ?? undefined));
       }
     });
     await client.connect();
@@ -143,6 +160,21 @@ export class NotificationListener {
     this.#client = client;
     this.#reconnectDelay = INITIAL_RECONNECT_MS;
     return client;
+  }
+
+  /** Tell every subscriber that notifications may have been lost. One that throws
+   *  is reported and does not stop the others. */
+  private announceReconnect(): void {
+    for (const subscribers of [...this.#handlers.values()]) {
+      for (const { onReconnect } of [...subscribers]) {
+        if (!onReconnect) continue;
+        try {
+          onReconnect();
+        } catch (error) {
+          this.log.error("postgres listener reconnect notice failed", undefined, { error });
+        }
+      }
+    }
   }
 
   /**
@@ -170,6 +202,7 @@ export class NotificationListener {
           this.log.debug("postgres listener reconnected", {
             "db.listen.channels": this.#handlers.size,
           });
+          this.announceReconnect();
         })
         .catch((error) => {
           this.log.debug("postgres listener reconnect failed; retrying", undefined, { error });

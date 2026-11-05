@@ -311,5 +311,19 @@ Design around that — a notification makes a poller prompt, it does not make it
 correct. [`durable-journal-postgres`](../durable-journal-postgres/README.md) is
 the worked example.
 
+A subscriber that cannot afford to miss a notification asks to be told when the
+connection came back, with a third argument. The notice fires once every
+subscription has been replayed, so notifications sent while the connection was
+down were not delivered, and the subscriber re-reads its source of truth:
+
+```ts
+await connection.listen("jobs_ready", wake, { onReconnect: () => reread() });
+```
+
+The option is additive: `listen(channel, onNotify)` is unchanged, and a
+subscriber that gives no `onReconnect` is not told. A notice that throws is
+logged and does not stop the other subscribers'.
+[`broadcast-postgres`](../broadcast-postgres/README.md) turns it into a gap.
+
 Failing to subscribe in the first place is *not* swallowed: `listen()` rejects,
 because a subscription nobody established is one the caller thinks it has.

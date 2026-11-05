@@ -78,6 +78,7 @@ schema:
           inputs:
             title: Inputs
             description: CEL mapping from the request onto the workflow's inputs.
+            default: {}
           handler:
             title: Workflow
             description: The steps the workflow runs — a Telo.Sequence, a durable workflow, or any invocable.

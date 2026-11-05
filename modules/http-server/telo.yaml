@@ -488,6 +488,7 @@ schema:
                 title: Inputs
                 type: object
                 additionalProperties: true
+                default: {}
                 description: >-
                   CEL expressions evaluated against the request, before its body
                   is read; the result is the guard's input. Without `inputs:`
@@ -828,6 +829,7 @@ schema:
           title: Inputs
           type: "object"
           additionalProperties: true
+          default: {}
           description: "CEL expressions evaluated against the request context; result is passed to the fallback handler's invoke()"
           x-telo-context:
             type: object
@@ -1179,6 +1181,7 @@ schema:
             title: Inputs
             type: "object"
             additionalProperties: true
+            default: {}
             description: "CEL expressions evaluated against the request context; result is passed to handler.invoke()"
             x-telo-context:
               type: object

@@ -6,45 +6,32 @@ targets:
   - !ref listener
   - !ref router
 variables:
-  limits:
-    env: LIMITS
-    type: object
-    default: { tag: cel, source: "1+1" }
-  region:
-    env: REGION
-    type: string
-    default: eu
+  limits: { env: LIMITS, type: object, default: { tag: cel, source: "1+1" } }
+  region: { env: REGION, type: string, default: eu }
 ---
 kind: Telo.Definition
 metadata:
   name: Listener
   description: Hands each message on a topic to its handler, with the arguments it names.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Listener
+controllers: [pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Listener]
 schema:
   type: object
   properties:
-    topics:
-      type: array
-      x-telo-topology-role: matcher
-      items: {}
+    topics: { type: array, x-telo-topology-role: matcher, items: {} }
     queue: { type: string, x-telo-topology-role: matcher, x-telo-eval: compile }
-    invoke:
-      x-telo-ref: { kind: Telo.Invocable, use: trigger.inbound, inputs: /inputs }
+    invoke: { x-telo-ref: { kind: Telo.Invocable, use: trigger.inbound, inputs: /inputs } }
     inputs:
       type: object
-      properties:
-        next:
-          x-telo-ref: { kind: Telo.Invocable, use: dependency }
+      default: {}
+      properties: { next: { x-telo-ref: { kind: Telo.Invocable, use: dependency } } }
 ---
 kind: Telo.Definition
 metadata:
   name: Router
   description: Hands each request to the handler of the route whose path it matches.
 capability: Telo.Service
-controllers:
-  - pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Router
+controllers: [pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Router]
 schema:
   type: object
   properties:
@@ -60,12 +47,9 @@ schema:
             x-telo-ref: { kind: Telo.Invocable, use: trigger.inbound }
 ---
 kind: Telo.Definition
-metadata:
-  name: Sequence
-  description: Runs its steps in order.
+metadata: { name: Sequence, description: Runs its steps in order. }
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Sequence
+controllers: [pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Sequence]
 schema:
   type: object
   properties:
@@ -75,15 +59,10 @@ schema:
       items: { $ref: "telo://manifest#/$defs/Step" }
 ---
 kind: Telo.Definition
-metadata:
-  name: Task
-  description: Does one unit of work.
+metadata: { name: Task, description: Does one unit of work. }
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Task
-schema:
-  type: object
-  properties: {}
+controllers: [pkg:telo/local/js?path=./nodejs/values.mjs&local_path=./nodejs/src/index.ts#Task]
+schema: { type: object, properties: {} }
 ---
 kind: Values.Listener
 metadata: { name: listener }

@@ -19,12 +19,9 @@ requires:
   # ERR_ZONE_ANNOTATION_MISSING. Forward-declared: 0.129.0 is the release that
   # carries them.
   telo: ">=0.129.0"
-imports:
-  Sql: ../sql
+imports: { Sql: ../sql }
 exports:
-  kinds:
-    - Ledger
-    - Once
+  kinds: [Ledger, Once]
   # The controllers every engine module re-exports under its own kinds, so the
   # implementation is one module scope across engines.
   code:
@@ -56,23 +53,17 @@ schema:
     connection:
       title: Connection
       description: The connection the ledger's table lives on, and the one a guarded transaction must be open on.
-      x-telo-ref:
-        kind: Sql.Connection
-        use: dependency
+      x-telo-ref: { kind: Sql.Connection, use: dependency }
     schema:
       title: Schema
       description: >-
         The engine schema that lists the ledger's table. It creates and migrates
         the table and renders its name; the ledger issues no DDL.
-      x-telo-ref:
-        kind: Sql.Schema
-        use: dependency
+      x-telo-ref: { kind: Sql.Schema, use: dependency }
     table:
       title: Table
       description: The ledger's table, declared with the engine module's own ledger table kind.
-      x-telo-ref:
-        kind: Sql.Table
-        use: dependency
+      x-telo-ref: { kind: Sql.Table, use: dependency }
     name:
       title: Name
       description: >-
@@ -102,8 +93,7 @@ metadata:
     Returns whether the work ran, and its result when it did; a key reused with a
     different fingerprint is refused.
 capability: Telo.Invocable
-controllers:
-  - pkg:telo/local/js?path=./nodejs/idempotency-sql.mjs&local_path=./nodejs/src/index.ts#Once
+controllers: [pkg:telo/local/js?path=./nodejs/idempotency-sql.mjs&local_path=./nodejs/src/index.ts#Once]
 throws:
   # Whatever the body throws passes through unchanged and rolls the caller's
   # transaction back, the key with it.
@@ -118,9 +108,7 @@ throws:
         type: object
         additionalProperties: false
         required: [key]
-        properties:
-          key:
-            type: string
+        properties: { key: { type: string } }
     ERR_ZONE_REQUIRED:
       description: >-
         No transaction is open on the ledger's connection, so the key would be
@@ -175,16 +163,11 @@ schema:
     ledger:
       title: Ledger
       description: The ledger the key is recorded in.
-      x-telo-ref:
-        kind: Self.Ledger
-        use: dependency
+      x-telo-ref: { kind: Self.Ledger, use: dependency }
     invoke:
       title: Invoke
       description: The work run once per key, inside the caller's transaction.
-      x-telo-ref:
-        kind: Telo.Executable
-        use: call
-        inputs: /inputs
+      x-telo-ref: { kind: Telo.Executable, use: call }
       x-telo-provides-zone:
         idempotent: >-
           the key is committed with this body's writes, so running it again after

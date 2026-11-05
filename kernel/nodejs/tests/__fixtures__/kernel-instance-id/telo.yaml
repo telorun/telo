@@ -1,0 +1,32 @@
+kind: Telo.Library
+metadata:
+  name: KernelInstanceId
+  version: 1.0.0
+  description: >-
+    Test fixture: resources reporting the kernel instance that owns them, read
+    from their context, so tests can compare it across kernels, reloads and
+    child applications.
+exports: { kinds: [Probe, Report], resources: [probe] }
+---
+kind: Telo.Definition
+metadata:
+  name: Probe
+  description: Provides the kernel instance id its context carries.
+capability: Telo.Provider
+controllers: [pkg:telo/local/js?path=./nodejs/probe.mjs#probe]
+schema:
+  type: object
+  additionalProperties: false
+  properties:
+    label: { type: string, description: Changed by a test to make a reload re-create the probe. }
+---
+kind: Telo.Definition
+metadata:
+  name: Report
+  description: Writes the kernel instance id its context carries to standard output, one line.
+capability: Telo.Runnable
+controllers: [pkg:telo/local/js?path=./nodejs/probe.mjs#report]
+schema: { type: object, additionalProperties: false }
+---
+kind: Self.Probe
+metadata: { name: probe }

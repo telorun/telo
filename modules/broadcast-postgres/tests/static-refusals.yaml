@@ -1,0 +1,23 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastPostgresStaticRefusals
+  version: 1.0.0
+  description: |
+    A bound above the notification payload limit is refused where the channel is
+    declared, and at creation when a consumer's analysis is silent about it.
+imports: { Assert: ../../assert }
+targets:
+  - !ref oversizedBound
+  - !ref oversizedBoundAtRuntime
+---
+kind: Assert.Manifest
+metadata: { name: oversizedBound }
+source: ./__fixtures__/oversized-bound/telo.yaml
+expect:
+  errors:
+    - { code: RESOURCE_RULE_VIOLATED, message: "sets 'maxBytes' above 7999" }
+---
+kind: Assert.Manifest
+metadata: { name: oversizedBoundAtRuntime }
+source: ./__fixtures__/oversized-bound/consumer.yaml
+expect: { errors: [], runFails: "ERR_BROADCAST_MAX_BYTES_EXCEEDS_BACKEND" }

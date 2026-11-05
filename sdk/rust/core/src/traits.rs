@@ -47,6 +47,16 @@ pub trait ResourceContext {
     /// Resolve a type reference (named string or inline schema as a `Value`)
     /// to a `DataValidator`. Mirrors the JS-side `ctx.createTypeValidator`.
     fn create_type_validator(&self, type_ref: &Value) -> Result<Box<dyn DataValidator>>;
+
+    /// The kernel instance that owns this resource — the controller protocol's
+    /// session: opaque, unique in the process, fixed for the kernel's whole life
+    /// and never reused. One process may run several kernels, so in-process
+    /// state every resource of one application must share is keyed by this,
+    /// never held in a `static`. Mirrors the JS-side `ctx.kernelInstanceId`.
+    ///
+    /// `None` from a host that carries no such id: a Node kernel released before
+    /// it, and the Rust kernel, whose ABI (`abi=telo-3`) carries no session.
+    fn kernel_instance_id(&self) -> Result<Option<String>>;
 }
 
 /// Schema/type validator. Returned by `ResourceContext::create_type_validator`.

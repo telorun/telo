@@ -4,27 +4,29 @@
 //! `ERR_FIXTURE` when its input sets `fail: true` — carrying `data` and a display
 //! message as well when it also sets `displayMessage: true`. An input setting
 //! `numbers: true` returns integers on each side of the bounds a JS number holds
-//! exactly, for asserting which reach the kernel as numbers. Otherwise `invoke`
-//! returns the input unchanged.
+//! exactly, for asserting which reach the kernel as numbers. An input setting
+//! `kernelInstanceId: true` returns the id `create` read from its context.
+//! Otherwise `invoke` returns the input unchanged.
 
 use telorun_sdk::{
     controller, Controller, ControllerError, InvokeContext, MessageSource, ResourceContext,
     Result, TextRecord, Value,
 };
 
-pub struct Probe;
+pub struct Probe {
+    kernel_instance_id: Option<String>,
+}
 
 #[controller]
 impl Controller for Probe {
     fn create(manifest: Value, ctx: &dyn ResourceContext) -> Result<Self> {
-        let _ = ctx;
         if manifest.get("failCreate") == Some(&Value::Bool(true)) {
             return Err(ControllerError::new(
                 "ERR_FIXTURE_CREATE",
                 "the probe was configured to fail at create",
             ));
         }
-        Ok(Self)
+        Ok(Self { kernel_instance_id: ctx.kernel_instance_id()? })
     }
 
     fn invoke(&self, input: Value, ctx: &InvokeContext) -> Result<Value> {
@@ -54,6 +56,9 @@ impl Controller for Probe {
                     "belowNegativeSafe": -9_007_199_254_740_993i64,
                 }
             }));
+        }
+        if input.get("kernelInstanceId") == Some(&Value::Bool(true)) {
+            return Ok(serde_json::json!({ "kernelInstanceId": self.kernel_instance_id }));
         }
         Ok(input)
     }

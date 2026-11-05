@@ -124,7 +124,7 @@ schema:
       title: Invoke
       description: The wrapped body run at most once per key.
       type: object
-      x-telo-ref: { kind: Telo.Executable, use: call, inputs: /inputs }
+      x-telo-ref: { kind: Telo.Executable, use: call }
       # The claim makes this region genuinely re-runnable, so it EARNS
       # `idempotent` rather than asserting it: a second pass finds the settled
       # result and replays it instead of executing the body again. That is what

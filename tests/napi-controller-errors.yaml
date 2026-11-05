@@ -11,7 +11,8 @@ metadata:
     An integer a Rust controller returns reaches the kernel as a number within
     ±(2^53−1) and as a 64-bit integer beyond it, whatever its sign. The
     controller is built on the Rust SDK, so this is the SDK's napi bridge under
-    test as well as the loader.
+    test as well as the loader. The kernel instance id a controller reads in
+    `create` crosses the bridge as the string the kernel minted.
 imports:
   NapiErrors: ./__fixtures__/napi-controller-errors/telo.yaml
   Run: ../modules/run
@@ -20,6 +21,7 @@ targets:
   - !ref testInvokeError
   - !ref testCreateError
   - !ref testIntegers
+  - !ref testKernelInstanceId
 ---
 kind: NapiErrors.Probe
 metadata: { name: probe }
@@ -29,8 +31,7 @@ metadata: { name: testInvokeError }
 steps:
   - name: succeeds
     invoke: !ref probe
-    inputs:
-      fail: false
+    inputs: { fail: false }
   - name: assertSucceeded
     invoke: { kind: Assert.Equals }
     inputs:
@@ -40,8 +41,7 @@ steps:
     try:
       - name: fails
         invoke: !ref probe
-        inputs:
-          fail: true
+        inputs: { fail: true }
       - name: unreachable
         throw:
           code: ERR_PROBE_SUCCEEDED
@@ -53,16 +53,12 @@ steps:
           actual:
             code: !cel "error.code"
             message: !cel "error.message"
-          expected:
-            code: ERR_FIXTURE
-            message: the probe was asked to fail
+          expected: { code: ERR_FIXTURE, message: the probe was asked to fail }
   - name: attemptWithDisplayMessage
     try:
       - name: failsWithDisplayMessage
         invoke: !ref probe
-        inputs:
-          fail: true
-          displayMessage: true
+        inputs: { fail: true, displayMessage: true }
     catch:
       - name: assertCarried
         invoke: { kind: Assert.Equals }
@@ -79,8 +75,7 @@ metadata: { name: testIntegers }
 steps:
   - name: returned
     invoke: !ref probe
-    inputs:
-      numbers: true
+    inputs: { numbers: true }
   - name: assertRepresentations
     invoke: { kind: Assert.Equals }
     inputs:
@@ -98,6 +93,18 @@ steps:
         maxSafe: true
         aboveSafe: true
         belowNegativeSafe: true
+---
+kind: Run.Sequence
+metadata: { name: testKernelInstanceId }
+steps:
+  - name: returned
+    invoke: !ref probe
+    inputs: { kernelInstanceId: true }
+  - name: assertCarried
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "size(steps.returned.result.kernelInstanceId) > 0"
+      expected: true
 ---
 kind: Assert.Manifest
 metadata: { name: testCreateError }

@@ -1,0 +1,106 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastPostgresTransactions
+  version: 1.0.0
+  description: |
+    A publish inside a Sql.Transaction is delivered when the transaction commits
+    and never when it rolls back. The first transaction publishes and fails, so no
+    handler runs. The second records a marker row and publishes twice with a pause
+    between: both handlers run after the commit, so each sees the marker, and in
+    call order.
+
+    NEEDS A CONTAINER ENGINE: it starts its own PostgreSQL, which is why it is under `tests/integration/`.
+include: [./__fixtures__/model.yaml]
+imports:
+  Pg:
+    source: ../../../postgres/tests/__fixtures__/container
+    variables: { engineUrl: !cel "variables.engineUrl" }
+    secrets: { engineToken: !cel "secrets.engineToken" }
+  BroadcastPostgres: ../..
+  Broadcast: ../../../broadcast
+  Postgres: ../../../postgres
+  Sql: ../../../sql
+  App: ../../../app
+  Timer: ../../../timer
+  Assert: ../../../assert
+variables:
+  engineUrl: { env: TELO_HOST_CONTAINER_ENGINE_URL, type: string, default: "unix:///var/run/docker.sock" }
+secrets:
+  engineToken: { env: TELO_HOST_CONTAINER_ENGINE_TOKEN, type: string, default: "" }
+targets:
+  - !ref appSchema
+  - !ref transactions
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access: !ref Pg.databaseAccess
+---
+kind: Telo.Sequence
+metadata: { name: transactions }
+with:
+  - kind: App.Instance
+    metadata: { name: replicaA }
+    source: ./__fixtures__/listener.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+      instance: a
+  - kind: App.Instance
+    metadata: { name: replicaB }
+    source: ./__fixtures__/listener.yaml
+    variables:
+      dbHost: !cel "resources.Pg.endpoint.status.host"
+      dbPort: !cel "resources.Pg.endpoint.status.port"
+      instance: b
+targets:
+  - !ref replicaA
+  - !ref replicaB
+steps:
+  - name: rollback
+    try:
+      - name: attempt
+        invoke:
+          kind: Sql.Transaction
+          connection: !ref db
+          steps:
+            kind: Telo.Sequence
+            steps:
+              - name: announce
+                invoke: { kind: Broadcast.Publish, channel: !ref bus }
+                inputs: { topic: tx.lost, message: { text: rolled-back } }
+              - name: fail
+                throw: { code: ROLLED_BACK, message: the transaction fails after publishing }
+    catch:
+      - name: expected
+        value: !cel "error.code"
+  - name: commit
+    invoke:
+      kind: Sql.Transaction
+      connection: !ref db
+      steps:
+        kind: Telo.Sequence
+        steps:
+          - name: marker
+            invoke: { kind: Sql.Command, connection: !ref db }
+            inputs: { sql: "INSERT INTO bc_markers (id) VALUES ('committed')" }
+          - name: first
+            invoke: { kind: Broadcast.Publish, channel: !ref bus }
+            inputs: { topic: tx.kept, message: { text: first } }
+          - { name: pause, invoke: { kind: Timer.Delay }, inputs: { duration: 500ms } }
+          - name: second
+            invoke: { kind: Broadcast.Publish, channel: !ref bus }
+            inputs: { topic: tx.kept, message: { text: second } }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+  - name: heard
+    invoke: { kind: Sql.Query, connection: !ref db }
+    inputs:
+      sql: SELECT instance, kind, topic, detail, marker FROM bc_deliveries ORDER BY instance, seq
+  - name: verify
+    invoke: { kind: Assert.Equals }
+    inputs:
+      actual: !cel "steps.heard.result.rows"
+      expected:
+        - { instance: a, kind: message, topic: tx.kept, detail: first, marker: 1 }
+        - { instance: a, kind: message, topic: tx.kept, detail: second, marker: 1 }
+        - { instance: b, kind: message, topic: tx.kept, detail: first, marker: 1 }
+        - { instance: b, kind: message, topic: tx.kept, detail: second, marker: 1 }

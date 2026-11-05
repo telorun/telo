@@ -1,0 +1,4 @@
+modules:
+  modules/jose: Added
+body: Jose.PublicKeys mounted on a route with no `inputs:` is dispatched `{}` instead of
+  the request; it ignores its inputs, so what it answers is unchanged.

@@ -160,6 +160,7 @@ team does not have to build or remember, each described in detail below:
 
 - **Idempotency.** `Idempotency.Once` claims atomically, replays the stored result on repeats and releases on failure; a repeated workflow `runId` attaches to the existing run.
 - **Distributed locks.** `Lease.Critical` acquires, runs and releases, expires on `ttl`, fails closed on an empty key and guards release by holder.
+- **Messages to every running instance.** A `Broadcast.Publish` sends a small typed message, optionally under a topic such as `rooms.42`, to every `Broadcast.Subscription` live on the channel, which runs its `invoke` per message and is told by `onGap` when it may have missed some. `BroadcastPostgres.Channel` carries it across instances on one PostgreSQL database, delivering a publish made in a `Sql.Transaction` only when it commits.
 - **Race-free key/value.** `putIfAbsent` / `compareAndSet` are atomic, and a lost race is `null`, not an exception.
 - **Rate limiting.** `RateLimit.Guard` and `RateLimit.Budget` return `{ allowed, remaining, retryAfter }` over any cache store.
 

@@ -1,0 +1,4 @@
+modules:
+  modules/idempotency-sql: Fixed
+body: "`IdempotencySql.Once`'s `invoke` slot no longer claims a resource-level `inputs:`
+  field it never had; the body's arguments still arrive through the call's `inputs`."

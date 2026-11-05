@@ -1,0 +1,60 @@
+# One replica: records every message, gap and failure it sees as a tagged row of
+# `bc_deliveries`, with how many markers were committed when the handler ran.
+kind: Telo.Application
+metadata: { name: BroadcastListener, version: 1.0.0 }
+include: [./model.yaml]
+imports:
+  BroadcastPostgres: ../../..
+  Broadcast: ../../../../broadcast
+  Postgres: ../../../../postgres
+  Sql: ../../../../sql
+  Timer: ../../../../timer
+variables:
+  dbHost: { env: DB_HOST, type: string }
+  dbPort: { env: DB_PORT, type: integer }
+  instance: { env: INSTANCE, type: string }
+  announce: { env: ANNOUNCE, type: string, default: "" }
+targets:
+  - !ref listen
+  - ref: !ref announceAfterStart
+    when: !cel "variables.announce != ''"
+---
+kind: Postgres.Connection
+metadata: { name: db }
+access:
+  kind: Postgres.DatabaseAccess
+  fields:
+    url:
+      scheme: postgres
+      host: !cel "variables.dbHost"
+      port: !cel "variables.dbPort"
+      user: postgres
+      password: postgres
+      path: /postgres
+      query: { options: "-c search_path=public" }
+---
+kind: Broadcast.Subscription
+metadata: { name: listen }
+channel: !ref bus
+invoke: { kind: Sql.Command, connection: !ref db }
+inputs:
+  sql: !sql >-
+    INSERT INTO bc_deliveries (instance, kind, topic, detail, marker)
+    VALUES (${{ variables.instance }}, 'message', ${{ topic }}, ${{ message.text }},
+    (SELECT CAST(count(*) AS INTEGER) FROM bc_markers))
+onGap:
+  invoke: { kind: Sql.Command, connection: !ref db }
+  inputs:
+    sql: !sql "INSERT INTO bc_deliveries (instance, kind, detail) VALUES (${{ variables.instance }}, 'gap', ${{ reason }})"
+onError:
+  invoke: { kind: Sql.Command, connection: !ref db }
+  inputs:
+    sql: !sql "INSERT INTO bc_deliveries (instance, kind, detail) VALUES (${{ variables.instance }}, 'error', ${{ error.code }})"
+---
+kind: Telo.Sequence
+metadata: { name: announceAfterStart }
+steps:
+  - { name: bothListening, invoke: { kind: Timer.Delay }, inputs: { duration: 1500ms } }
+  - name: publish
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { topic: rooms.42, message: { text: !cel "variables.announce" } }

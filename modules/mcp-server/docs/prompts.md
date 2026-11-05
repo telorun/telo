@@ -65,6 +65,8 @@ runs.
 | `result:`  | `result` (handler output), `request.{name, arguments}`                    |
 | `catches:` | `error.{code, message, data}`, `request.{name, arguments}`                |
 
+The handler is dispatched exactly the map `inputs:` evaluates to: nothing is spread into it and no `inputs` member is added, so a closed `inputType` sees only what the entry wrote. An entry writing no `inputs:` dispatches `{}`.
+
 ## Result envelope
 
 `result:` is the full MCP `GetPromptResult`:

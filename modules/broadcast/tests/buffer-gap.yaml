@@ -1,0 +1,87 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastBufferGap
+  version: 1.0.0
+  description: |
+    A handler slower than the publish rate, with `buffer: 2`, drops its
+    backlog and `onGap` runs once; the message published after the gap is
+    still handled. Of five messages published at once the first is running,
+    the next two wait, the fourth finds the buffer full and is dropped with
+    them, and the fifth is queued behind the gap. The handler holds until the
+    test opens `gate`, so no publish can race a finished handler.
+imports: { Broadcast: ../, Timer: ../../timer, Watch: ../../watch, Assert: ../../assert }
+targets:
+  - !ref test
+  - !ref expectGap
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: buffer_gap
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [n], properties: { n: { type: integer } } }
+---
+kind: Watch.MemoryStore
+metadata: { name: gate }
+---
+kind: Telo.Sequence
+metadata: { name: slowHandle }
+inputType:
+  kind: Telo.JsonSchema
+  schema:
+    type: object
+    required: [topic, message]
+    properties: { topic: { type: [string, "null"] }, message: { type: object } }
+steps:
+  - name: held
+    invoke: { kind: Watch.Wait, store: !ref gate, maxTimeout: 30s }
+    inputs: { topic: open, after: 0, timeout: 10s }
+---
+kind: Telo.Sequence
+metadata: { name: onGapRun }
+steps:
+  - { name: noted, value: gap }
+---
+kind: Telo.Sequence
+metadata: { name: test }
+with:
+  - kind: Broadcast.Subscription
+    metadata: { name: subscription }
+    channel: !ref bus
+    invoke: !ref slowHandle
+    inputs: { topic: !cel "topic", message: !cel "message" }
+    buffer: 2
+    onGap:
+      invoke: !ref onGapRun
+targets:
+  - !ref subscription
+steps:
+  - name: publishAll
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 1 } }
+  - name: publish2
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 2 } }
+  - name: publish3
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 3 } }
+  - name: publish4
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 4 } }
+  - name: publish5
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { n: 5 } }
+  - name: open
+    invoke: { kind: Watch.Publish, store: !ref gate }
+    inputs: { topic: open, version: 1 }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 2s } }
+---
+kind: Assert.Events
+metadata: { name: expectGap }
+filter:
+  - { type: "*.Invoked" }
+expect:
+  - { event: onGapRun.Invoked, times: 1 }
+  - { event: slowHandle.Invoked, times: 2 }
+  - { event: slowHandle.Invoked, payload: { inputs: { message: { n: 1 } } } }
+  - { event: slowHandle.Invoked, payload: { inputs: { message: { n: 5 } } } }

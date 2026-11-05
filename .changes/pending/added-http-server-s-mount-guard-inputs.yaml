@@ -1,0 +1,5 @@
+modules:
+  modules/http-server: Added
+body: "`Http.Server`'s mount `guard.inputs` and `notFoundHandler.inputs` and
+  `Http.Api`'s route `inputs` declare `default: {}`, so `telo check` judges a call
+  written without `inputs:` as sending `{}` to its target."

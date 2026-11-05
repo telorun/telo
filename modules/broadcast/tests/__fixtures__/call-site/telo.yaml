@@ -1,0 +1,25 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastCallSite
+  version: 1.0.0
+  description: Publishes whose message or topic the channel refuses.
+imports: { Broadcast: ../../.. }
+targets:
+  - !ref send
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: call_site
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [orderId], properties: { orderId: { type: string } } }
+---
+kind: Telo.Sequence
+metadata: { name: send }
+steps:
+  - name: missingProperty
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { customerId: c-1 } }
+  - name: upperCaseTopic
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { topic: Rooms.1, message: { orderId: o-1 } }

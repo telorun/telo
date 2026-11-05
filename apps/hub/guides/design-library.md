@@ -370,6 +370,11 @@ throws:
   bindings it offers. A `when:` comparing a marked code chain with code
   literals proves coverage, and every marked data member is typed inside each
   entry from the codes it matches; a list marking no code proves nothing.
+- A feature that must reach every running instance (a cache to drop, a screen to
+  refresh, a configuration to reload) is not a transport of your own: publish on
+  a `Broadcast.Channel` and subscribe with `Broadcast.Subscription`. A backend
+  is its own module implementing the `@telorun/broadcast` interface (`settings`,
+  `publish`, `subscribe`), recognised by those methods alone.
 - Use an abstract only where there will be more than one implementation, or
   the backend is the importer's choice. To reuse one controller under a
   friendlier schema, specialize the concrete kind instead.

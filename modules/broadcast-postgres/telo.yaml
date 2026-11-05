@@ -1,0 +1,49 @@
+kind: Telo.Library
+metadata:
+  name: BroadcastPostgres
+  version: 0.1.0
+  repository: https://github.com/telorun/telo
+  license: MIT
+  categories: [Coordination, Streaming]
+  description: >-
+    Broadcast channels carried by PostgreSQL notifications, so a message published
+    on one application instance reaches the live subscriptions of every instance
+    on the same database. A message published inside a transaction is delivered
+    when it commits and dropped when it rolls back; a subscription is told when its
+    database connection dropped and came back, so it can re-read what it missed.
+imports: { Broadcast: ../broadcast, Postgres: ../postgres }
+exports: { kinds: [Channel] }
+---
+kind: Telo.Definition
+metadata:
+  name: Channel
+  description: >-
+    A broadcast channel over a PostgreSQL connection: each channel is one
+    notification channel, listened on over one database connection per instance
+    however many subscriptions it serves. A message is at most 7,999 bytes encoded,
+    and one published inside an open transaction on the connection is delivered at
+    commit; a full server notification queue fails that commit.
+extends: Broadcast.Channel
+controllers: [pkg:telo/local/js?path=./nodejs/broadcast-postgres.mjs&local_path=./nodejs/src/index.ts#Channel]
+schema:
+  type: object
+  required: [connection]
+  additionalProperties: false
+  examples:
+    - connection: !ref db
+      name: cache_events
+      maxBytes: 1024
+      messageType: !ref CacheEvent
+  properties:
+    connection:
+      title: Connection
+      description: >-
+        The connection notifications are sent and listened on, and the one a
+        transactional publish must run inside a transaction of.
+      x-telo-ref: { kind: Postgres.Connection, use: dependency }
+  x-telo-resource-rules:
+    - condition: !cel "!has(self.maxBytes) || self.maxBytes <= 7999"
+      code: BROADCAST_MAX_BYTES_EXCEEDS_BACKEND
+      message: >-
+        sets 'maxBytes' above 7999, the largest notification payload PostgreSQL
+        accepts. Lower the bound.

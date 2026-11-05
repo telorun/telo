@@ -1,0 +1,37 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastMemoryChild
+  version: 1.0.0
+  description: >-
+    One application of a memory-channel test: it subscribes to its own channel
+    `events`, publishes its label once and prints each message its subscription
+    hears, then `done`.
+imports: { Broadcast: ../../.., Console: ../../../../console, Timer: ../../../../timer }
+variables: { label: { env: BROADCAST_CHILD_LABEL, type: string } }
+targets:
+  - !ref announce
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: events
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [text], properties: { text: { type: string } } }
+---
+kind: Telo.Sequence
+metadata: { name: announce }
+with:
+  - kind: Broadcast.Subscription
+    metadata: { name: listen }
+    channel: !ref bus
+    invoke: { kind: Console.WriteLine }
+    inputs: { output: !interpolate "heard ${{ message.text }}" }
+targets:
+  - !ref listen
+steps:
+  - { name: subscribed, invoke: { kind: Timer.Delay }, inputs: { duration: 300ms } }
+  - name: publish
+    invoke: { kind: Broadcast.Publish, channel: !ref bus }
+    inputs: { message: { text: !cel "variables.label" } }
+  - { name: settle, invoke: { kind: Timer.Delay }, inputs: { duration: 700ms } }
+  - { name: finished, invoke: { kind: Console.WriteLine }, inputs: { output: done } }

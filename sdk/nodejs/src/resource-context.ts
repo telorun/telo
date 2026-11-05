@@ -115,6 +115,15 @@ export interface ResourceContext extends ControllerContext {
    *  collide and the children nest under their parent in a debug view. */
   readonly ownerPrefix: string;
   /**
+   * The kernel instance that owns this resource: an opaque string, unique in
+   * the process, fixed for the kernel's whole life (a reconcile keeps it) and
+   * never reused. One process may run several kernels — a child manifest
+   * (`ctx.runtime.run`, `App.Instance`) is a kernel of its own — so in-process
+   * state every resource of one application must share is keyed by this, never
+   * held module-global. A kernel released before this member reads `undefined`.
+   */
+  readonly kernelInstanceId: string;
+  /**
    * Describe a revertible action: `body` does the work and yields the inverse
    * that undoes it. Returns a LAZY chain — `.effect(...)` extends it, threading
    * each step's result into the next.

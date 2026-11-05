@@ -251,11 +251,13 @@ import type { StandIns } from "./stand-in-findings.js";
 import { producerAdmitsNull, slotAdmitsNull } from "./schema-nullability.js";
 import {
   callSiteAt,
+  omittedSlotCallSite,
   slotInputsPath,
   stepCallSiteOf,
   stepItemsOf,
   templateCallSite,
   valueSchemaSites,
+  type CallSite,
   type DerivedSlotContext,
   type StepItem,
 } from "./derived-slots.js";
@@ -1815,16 +1817,19 @@ const RELATION_READERS: RelationReaderTable = {
       const inputsKeys = instance.related?.[0];
       if (!inputsKeys || !value || typeof value !== "object" || Array.isArray(value)) return [];
       const values = door.place(inputsKeys);
-      if (!values || typeof values !== "object" || Array.isArray(values)) return [];
       const manifest = identityManifest(identity);
-      const site = callSiteAt(
-        "slot",
-        pathText(inputsKeys),
-        values as Record<string, any>,
-        value as Record<string, any>,
-        manifest as Record<string, any>,
-        doorCallContext(door, instance.anchor),
-      );
+      const ctx = doorCallContext(door, instance.anchor);
+      let site: CallSite | undefined;
+      if (values === undefined) {
+        // No map is written: judged as the default its property declares.
+        const holder = anchorHolder(identity, instance.anchor, value);
+        const path = pathText(instance.anchor);
+        const reached = door.defs.referenceSites(holder, door.aliases, door.aliasesByModule).find((each) => each.path === path);
+        site = reached && omittedSlotCallSite(reached, manifest as Record<string, any>, ctx);
+      } else if (values && typeof values === "object" && !Array.isArray(values)) {
+        site = callSiteAt("slot", pathText(inputsKeys), values as Record<string, any>, value as Record<string, any>, manifest as Record<string, any>, ctx);
+      }
+      if (!site) return [];
       return checkCallSite(site, manifest as Record<string, any>, door.requests, door.defs, door.aliases, doorScopes(door)).map(
         (issue) => callInputFinding(manifest, issue),
       );
@@ -2363,7 +2368,11 @@ function callInputFinding(m: ResourceManifest, issue: StepInputIssue): OwnFindin
         message:
           issue.code === "LIVE_VALUE_RETRIED"
             ? `${m.kind}/${name}: at '${issue.path}', ${issue.message}`
-            : `${m.kind}/${name}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
+            : issue.omitted
+              ? `${m.kind}/${name}: the call at '${issue.path}' writes no 'inputs:', so ${issue.targetLabel} is sent ` +
+                `the default ${JSON.stringify(issue.omitted.default)} its argument map declares, which does not satisfy ` +
+                `its declared inputType: ${issue.message}. Write 'inputs:' at '${issue.omitted.inputsPath}' with the arguments it needs.`
+              : `${m.kind}/${name}: inputs at '${issue.path}' do not satisfy ${issue.targetLabel}'s declared inputType: ${issue.message}`,
         data: {
           resource: { kind: m.kind, name: name ?? "" },
           filePath: (m.metadata as { source?: string } | undefined)?.source,

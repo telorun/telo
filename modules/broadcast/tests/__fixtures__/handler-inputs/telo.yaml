@@ -1,0 +1,59 @@
+kind: Telo.Application
+metadata:
+  name: BroadcastHandlerInputs
+  version: 1.0.0
+  description: Subscriptions whose handler inputs the checker refuses.
+imports: { Broadcast: ../../.. }
+targets:
+  - !ref omitted
+  - !ref misspelled
+  - !ref topicIntoRequired
+  - !ref hookOmitted
+---
+kind: Broadcast.MemoryChannel
+metadata: { name: bus }
+name: handler_inputs
+messageType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [key], properties: { key: { type: string } } }
+---
+kind: Telo.Sequence
+metadata: { name: needsKey }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [key], properties: { key: { type: string } } }
+steps:
+  - { name: seen, value: !cel "inputs.key" }
+---
+kind: Telo.Sequence
+metadata: { name: needsCode }
+inputType:
+  kind: Telo.JsonSchema
+  schema: { type: object, required: [code], properties: { code: { type: string } } }
+steps:
+  - { name: seen, value: !cel "inputs.code" }
+---
+kind: Broadcast.Subscription
+metadata: { name: omitted }
+channel: !ref bus
+invoke: !ref needsKey
+---
+kind: Broadcast.Subscription
+metadata: { name: misspelled }
+channel: !ref bus
+invoke: !ref needsKey
+inputs: { key: !cel "message.kye" }
+---
+kind: Broadcast.Subscription
+metadata: { name: topicIntoRequired }
+channel: !ref bus
+invoke: !ref needsKey
+inputs: { key: !cel "topic" }
+---
+kind: Broadcast.Subscription
+metadata: { name: hookOmitted }
+channel: !ref bus
+invoke: !ref needsKey
+inputs: { key: !cel "message.key" }
+onError:
+  invoke: !ref needsCode

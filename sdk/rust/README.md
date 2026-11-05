@@ -19,7 +19,7 @@ The split is a Rust packaging boundary only: each file still twins its Node coun
 > **Status:** Both backends are implemented. `napi` loads a controller into the Node.js kernel; `native` loads one into the Rust kernel (`kernel/rust`) over the C ABI in `telorun-abi`.
 
 - **Controller trait** (`Controller`) — author-facing contract with `register`, `create`, `invoke`, and `snapshot` hooks. Implement on your struct, add `#[controller]` to the impl block, and the SDK generates the FFI bindings.
-- **Resource context** (`ResourceContext`) — per-resource handle passed to `create`. Today exposes `create_type_validator(type_ref)` for resolving named or inline schemas into a `DataValidator`.
+- **Resource context** (`ResourceContext`) — per-resource handle passed to `create`. Exposes `create_type_validator(type_ref)` for resolving named or inline schemas into a `DataValidator`, and `kernel_instance_id()`, the kernel instance that owns the resource (the controller protocol's session): opaque, unique in the process, fixed for the kernel's life. Key in-process state every resource of one application must share by it, never a `static` — one process may run several kernels. It is `Ok(None)` from a host carrying none: a Node kernel released before it, and the Rust kernel, whose `abi=telo-3` carries no session.
 - **Schema validation** (`DataValidator`) — `validate(data)` returns `Ok(())` when the value conforms, otherwise a structured error.
 - **Shared error type** (`ControllerError`) — carries `code` + `message`; the kernel surfaces `code` as the structured error code.
 - **Data exchange** — `serde_json::Value` is the universal payload type, re-exported as `telorun_sdk::Value`.
